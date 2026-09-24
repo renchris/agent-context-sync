@@ -64,7 +64,11 @@ loop() {
       args+=(-d "$(( ((k + 1) * 1000 + LOOP_FPS / 2) / LOOP_FPS - (k * 1000 + LOOP_FPS / 2) / LOOP_FPS ))" "$f")
       k=$((k + 1))
     done
-    img2webp -loop 0 -near_lossless 40 -m 6 "${args[@]}" -o "docs/media/hero-$theme.webp" >/dev/null
+    # near_lossless 60, not 40: the animation encoder never re-sends a pixel whose SOURCE is unchanged
+    # between frames, so near-lossless rounding in one shot survived the cut into the next (measured:
+    # 3-4/255 letterforms of the governing thought in every step shot). At 60 the rounding is 2/255 at
+    # most, under the 3/255 film-verify.py allows, and -min_size lets a cut re-send the whole canvas.
+    img2webp -loop 0 -near_lossless 60 -m 6 -min_size "${args[@]}" -o "docs/media/hero-$theme.webp" >/dev/null
     printf '  docs/media/hero-%s.webp  %s bytes, %s frames stored, %s ms\n' "$theme" "$(stat -f %z "docs/media/hero-$theme.webp")" \
       "$(webpinfo "docs/media/hero-$theme.webp" | grep -c 'Duration:' || true)" \
       "$(webpinfo "docs/media/hero-$theme.webp" | awk '/Duration:/ { s += $2 } END { print s }')"

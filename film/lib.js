@@ -29,10 +29,18 @@ export const THEMES = {
   dark: {
     bg: '#0d1117', ink: '#e6edf3', muted: '#8b949e', faint: '#3d444d', cell: '#161b22',
     amber: '#f0a33a', amberSide: '#c98933', amberTop: '#f6bc68', amberText: '#f0a33a', amberFill: '#2d2111', green: '#3fb950', greenSide: '#339a43', greenTop: '#62cc72', greenFill: '#0f2a19', red: '#ff7b72', redFill: '#2d1417',
+    // The world's light: tile edges, the warm pool a read casts round its base, the key light's shadow,
+    // and the cap, a step LIGHTER than amber here so it still reads in greyscale.
+    edge: '#3d444d', pool: '#4a3314', shadow: '#010409', shadowA: 0.6,
+    capFace: '#7ee787', capSide: '#56d364', capTop: '#aff5b4', capUnder: '#1f6f33',
   },
   light: {
-    bg: '#ffffff', ink: '#1f2328', muted: '#59636e', faint: '#afb8c1', cell: '#f6f8fa',
+    bg: '#ffffff', ink: '#1f2328', muted: '#59636e', faint: '#afb8c1', cell: '#ebeff3',
     amber: '#c86a00', amberSide: '#b35900', amberTop: '#d98a2e', amberText: '#b35900', amberFill: '#fff1dc', green: '#1a7f37', greenSide: '#146b2e', greenTop: '#2a9a4a', greenFill: '#dafbe1', red: '#cf222e', redFill: '#ffebe9',
+    // One step darker field than GitHub's subtle canvas, so the pages survive 838 px. The cap is a
+    // step DARKER than amber here, so it still reads in greyscale.
+    edge: '#97a1ac', pool: '#f9cf95', shadow: '#1f2328', shadowA: 0.2,
+    capFace: '#116329', capSide: '#0b4d1f', capTop: '#1a7f37', capUnder: '#062e13',
   },
 }
 
