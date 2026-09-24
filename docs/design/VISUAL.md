@@ -25,5 +25,17 @@ rendered transparent on GitHub's exact palettes, with the four roles above hand-
 refused read highlighted red and the successful download green, so the demo reads in the same
 cost vocabulary as the diagrams.
 
-**What was cut.** No hero banner, badges wall, or decorative icons. The README's one memorable
-element is the recording of a real refused read, and everything around it stays quiet.
+**The hero loop** (`docs/media/hero-{dark,light}.svg`, from `scripts/render-hero.mjs`; direction in
+[`hero/DIRECTION.md`](hero/DIRECTION.md)) extends the same idea to time. Free work is instant and
+neutral, and a byte read is the only slow motion and the only amber. It is not a banner: frame 0 is
+the README's governing thought and its four steps as text, outlined in Geist Sans and Mono (OFL),
+over a field of 256 source objects of which two are ever read. It adds two light-mode hero tokens.
+The cell outline is `#afb8c1`, because `#d1d9e0` is 1.43:1 on white and a field of cells drawn in it
+disappears. The filled amber is `#c86a00` (chip and meter), because `#b35900` fills a 9 px chip
+rust-brown. That meter is 24 px, which is large text, and 3.81:1 clears the 3:1 bar there.
+
+**What was cut.** No banner of logos, no badge wall, no decorative icons. The README has two
+memorable elements, and they do different jobs: the hero loop states the argument, and the
+recording of a real refused read proves one step of it. Everything around them stays quiet.
+*(Until 2026-09-24 this line said "No hero banner" and named the recording as the one memorable
+element. The hero reverses that on purpose: it carries the message rather than decorating it.)*
