@@ -59,7 +59,7 @@ print(f"seam: {seam} px of the last frame differ from frame 0 by more than 15 %"
 if src:
     from PIL import ImageFilter
 
-    ghosted, worst = 0, (0, None)
+    ghosted, worst = 0, (0, "none")
     for k, start in enumerate(starts):
         f = src / f"f{round(start * 30 / 1000):06d}.png"
         if not f.exists():
