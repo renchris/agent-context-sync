@@ -205,8 +205,8 @@ Linear, Raycast, Vercel, Stripe, Apple and Arc launch films).
 
 | Artefact | What it is | Where it lives |
 |---|---|---|
-| **LOOP** | the README's first element: an animated WebP, 1676 × 943, one dark and one light grade behind `<picture>`, about 15 s, locked-off shots joined by hard cuts | `docs/media/hero-{dark,light}.webp`, committed |
-| **FILM** | the launch film: an MP4, 1920 × 1080, 60 fps, H.264, dark grade, about 40 s | a user-attachments asset, linked from the hero and from the caption under it |
+| **LOOP** | the README's first element: an animated WebP, 1676 × 943, one dark and one light grade behind `<picture>`, 15 s, locked-off shots joined by hard cuts | `docs/media/hero-{dark,light}.webp`, committed |
+| **FILM** | the launch film: an MP4, 1920 × 1080, 60 fps, H.264, dark grade, 25 s (29 s before critique round 2) | a user-attachments asset, linked from the hero and from the caption under it |
 
 - The film is **linked, not embedded as a player.** A player directly under the hero would repeat the
   same poster frame twice in a row, it cannot autoplay, and its URL dies after five minutes; a link
@@ -238,14 +238,77 @@ The SVG's table above still holds. The film adds:
 
 | Motion | Means | Rule |
 |---|---|---|
-| **rise**: a page grows into an amber pillar at a constant rate | bytes materialised | the only slow motion (1.6 s, `walk`). Both pillars have the same height, because both reads are one object each |
+| **rise**: a page grows into an amber pillar at a constant rate | bytes materialised | the only slow motion (1.6 s, `walk`). Both pillars have the same height, because both reads are one object each, and since round 2 they stand on the same row so they are equal on screen too |
+| **wall**: every page rises, at a read's own rate, row by row from the lens to the horizon | the counterfactual: re-reading everything | FILM only, dimmer than a real read, still growing when it is cut away from; the match cut to the flat field is the film's key image |
 | **ring**: an ellipse appears on the ground around a page | a source reported it; metadata only | muted, ≥ 3 design px, so it survives 838 px |
 | **`=` / `≠`**: a Mono chip over a ringed page | H0, the stored hash against the reported one | `=` turns the ring green, then both fade back to neutral |
-| **cap**: a flat green top on a pillar | H2 equal: the read went no further, no commit | shape (a cap) as well as hue |
-| **lift**: a text-coloured page leaves a pillar's top and lands in the words "One commit." | converted markdown going to git | the sentence is the destination |
+| **cap**: a green slab on a pillar, overhanging it on every side, with a gap below | H2 equal: the read went no further, no commit | a shape and a lightness step as well as a hue (round 2); it never adds height |
+| **lift**: a text-coloured page leaves a pillar's top, descends, and comes to rest just after the words "One commit." | converted markdown going to git | the sentence is the destination, and the page stays there as the commit's mark, so frame 0 carries it (round 2) |
 | **cut** | a change of shot | the only way time is skipped; nothing ever drains or sinks |
 
-### LOOP (the README hero, ≈ 15 s)
+### LOOP (the README hero, 15 s), as built after critique round 2
+
+| t (s) | Shot | Line | What happens |
+|---|---|---|---|
+| 0.0–3.0 | **The poster**: a camera at eye height (y 2.5) in OneDrive's lane; two equal, lit amber reads stand either side of the gutter on the right third, unlabelled, each in a warm pool with a long shadow | the governing thought, then **Two files read. One commit.** as its third tier, with the converted page at rest after "commit." | held: the outcome |
+| 3.0–5.5 | **The map**: high, all four lanes, names painted at the lane heads at 2.3 units | **Ask each source what changed.** | eight rings appear, lane by lane |
+| 5.5–8.0 | the map | **Decide before reading a byte.** | six rings turn green, are held about 1.3 s, and leave the field; two stay |
+| 8.0–11.8 | **The read**: low and close, a 3/4 on `proposal.docx` | **Read only on purpose.** | both rise, 2.1 s at a constant rate; the `.xlsx` takes its green slab |
+| 11.8–15.0 | the poster | the governing thought; "One commit." muted | a converted page lifts off the `.docx`, descends clear of every glyph and comes to rest after "One commit.", which turns to ink; held 1.35 s to the seam |
+
+Continuous stillness across the seam is 4.35 s (29 %), down from 7.67 s (51 %). The wordmark is on
+screen at every t, and in every shot without the governing thought the tagline beside it says what
+the design does, now in the README's imperative: `keep docs/ in sync with Microsoft 365, processing
+only what changed`.
+
+### FILM (25 s), as built after critique round 2
+
+| t (s) | Shot | Line |
+|---|---|---|
+| 0.0–2.2 | the poster, pushing in from frame 1; beside the wordmark, *a design with measured probes · no implementation yet* | the governing thought |
+| 2.2–5.6 | a low glide down the middle gutter | **Tens of thousands of files.**, centred (the problem) |
+| 5.6–9.1 | **the wall**: every file rises at a read's own rate, row by row from the lens toward the horizon, still growing at the cut | none |
+| 9.1–12.9 | **the match cut**: the same camera, still moving, on a flat field; eight rings, six green exits, and the two reads begin to rise | **Only what changed.**, left (the turn) |
+| 12.9–16.2 | the read, cut on the action from the match shot: the rise continues at 0.45× | none |
+| 16.2–19.4 | the reverse angle on `forecast.xlsx`: `H0 ≠`, `H1 ≠`, `H2 =`, then its green slab | **A no-op save: one read, no commit.** |
+| 19.4–25.0 | the poster, one continuous dolly out that arrives on exactly frame 0; the page lands after "One commit.", then the status line returns | the governing thought |
+
+No header between the two posters: the film is reached from a link that already names it. The
+expiry beat, the map's walk, the proof plate and the `git log` line are cut; the README below the
+hero carries them, and the proof plate's recording is its own figure there.
+
+### LOOP (the README hero, 15 s), as built after critique round 1 (superseded by round 2 above)
+
+| t (s) | Shot | Line | What happens |
+|---|---|---|---|
+| 0.0–4.5 | **The poster**: a low camera, horizon at y 700; two amber monoliths stand up into the sky on the right | the governing thought (two tiers, ink) · **Two files read. / One commit.** above the pillars | held: the outcome |
+| 4.5–5.9 | **The map**: high, all four lanes, their names painted on the ground at the lane heads | **Ask each source what changed.** | eight rings appear, lane by lane |
+| 5.9–7.3 | the map | **Decide before reading a byte.** | six rings flash green and leave the field; two stay |
+| 7.3–10.3 | **The read**: low and close, a 3/4 on `proposal.docx` | **Read only on purpose.** | both rise, 1.6 s at a constant rate; the `.xlsx` takes its green cap |
+| 10.3–15.0 | the poster | the governing thought | a converted page lifts off the `.docx` and lands in "One commit."; held across the seam |
+
+Free work gets 1.4 s shots and the read gets 3 s: the edit follows tempo means cost, not only the
+motion inside a shot. The wordmark is on screen at every t; in every shot without the governing
+thought, a tagline beside it says what the tool does (`keeps docs/ in sync with Microsoft 365,
+processing only what changed`), so every 3 s window a visitor lands on says it.
+
+### FILM (29 s), as built after critique round 1 (superseded by round 2 above)
+
+| t (s) | Shot | Line |
+|---|---|---|
+| 0.0–1.6 | the poster, pushing in from frame 1 | the governing thought |
+| 1.6–4.4 | a low glide down the middle gutter | **Tens of thousands of files.** |
+| 4.4–7.0 | every file rises as a faint, hollow amber outline: the counterfactual | **Re-reading everything: hours of downloads.** |
+| 7.0–8.4 | the map; SharePoint's lane is walked | **Ask each source what changed.** |
+| 8.4–10.6 | SharePoint's lane head: its token turns `410 Gone`, the walk crosses the lane, a new token is stored | **An expired token costs 0 bytes.** |
+| 10.6–12.0 | the map | **Decide before reading a byte.** |
+| 12.0–15.8 | the read, at 0.55× speed: the longest and slowest motion in the film | **Read only on purpose.** |
+| 15.8–19.8 | the proof plate: four whole lines of the recorded run, typed as a terminal prints them | **Online-only stays online.** |
+| 19.8–22.8 | the reverse angle on `forecast.xlsx`: `H0 ≠`, `H1 ≠`, `H2 =`, then its green cap | **A no-op save: one read, no commit.** |
+| 22.8–26.0 | the poster: the converted page lifts and lands | **What changed since Tuesday / is `git log`.** |
+| 26.0–29.0 | the poster, drifting back to exactly frame 0 | the governing thought |
+
+### LOOP (the plan before critique round 1, superseded above)
 
 | t (s) | Shot | Card | What happens |
 |---|---|---|---|
@@ -288,8 +351,98 @@ governing thought or one step, never neither.
     and the SVG round already settled that there is no contradiction: H1 catches a `.pptx` no-op
     save, H2 catches `.xlsx` and `.docx` (§ Decisions above). The film says "no-op save" only of the
     `.xlsx`, at H2.
+- **Critique round 1 (`film-critique-round-1.md`, a fresh critic on rendered frames), adopted.** Its
+  verdict: *"a correct, legible, well-coloured diagram in perspective"*, and the picture was *"not on
+  screen yet"*.
+  - *The poster is a monolith composition* (finding 1). The wide shot put two 9–13 CSS px sticks over
+    a row of lane-label chips, which read as a bar chart. The camera is now low (y 4.5), the horizon
+    sits at y 700, and the two reads stand 600–690 px tall into the sky, ≥ 20 CSS px wide at 838. The
+    chip row is gone; lane names are painted on the ground at the lane heads, like road markings.
+  - *One line per shot at display scale* (finding 2). Every explanatory subtitle is cut; the README
+    holds the explanations. The subject line of the governing thought is set in ink.
+  - *The read is the loudest thing in its frame* (finding 3). Faces are full-strength amber, the side
+    face darkened ≤ 15 % (`amberSide`), and the top lighter. In round 1 the side face measured 3.45:1
+    in dark and 2.01:1 in light and was outranked by a white file icon.
+  - *A tagline beside the wordmark* in every shot without the governing thought (finding 4): 37 % of
+    3 s landing windows used to say nothing about what the tool does.
+  - *The proof plate re-sets four whole recorded lines* (finding 5): the command, `policy=off(1)`,
+    the refused read with `bytes=0`, and the file still `(dataless)` afterwards. Its old caption called
+    the login shell's default download an opt-in, which it is not. The download half is left to the
+    README's own recording.
+  - *"docs/ is a pure function of the source"* is gone (finding 6): only `docs/mirror/` is.
+  - *Files and pages are different words and different shapes* (finding 7). Source files are tiles
+    with a folded corner; the converted page is a sheet with a `#` heading. "Online-only" is used only
+    of the recorded placeholder.
+  - *The map shows all eight reports* (finding 8), so no count on screen can be checked and fail.
+  - *The cap recolours the top of the pillar instead of adding height* (finding 9), and never fires
+    in the same moment as the lift.
+  - *Transient colours return to neutral* (finding 10): `410 Gone` becomes a new `delta` when the walk
+    ends, and the green exits leave the field before the cut.
+  - *The FILM pushes in from frame 1 and ends on exactly frame 0* (finding 11), and *its edit follows
+    tempo means cost* (finding 12): free shots 1.4 s, the read the longest and slowest.
+  - *The counterfactual is hollow amber at 35 % opacity* (finding 13), not neutral: it is still bytes.
+  - *The read camera stays on the map's side of the lanes* (finding 14); the hashes shot is a
+    deliberate reverse angle, framed so both reads stand below the line.
+  - *The lifted page is placed in the pillar's own corrected screen space* (finding 15), *travels a
+    short, fast move*, and *"One commit." writes itself as it lands* (finding 16).
+  - *Type is on screen from the cut, by opacity only* (finding 19): rising means bytes.
+- **Round 1, declined.**
+  - *A ≤ 40-word LOOP.* It is 42 plus the tagline, because each step's line keeps the README's own
+    key-line wording, which is worth more than the two words.
+  - *Dropping H2 from the LOOP.* The poster keeps the green cap, because the FILM's first frame is
+    the same poster and must explain it there; in the LOOP it is a shape the colour key right below
+    the hero already defines (green = a free exit).
 - **The SVG loop goes.** It argued the same thing in a smaller voice, and two heroes would compete.
   It remains in history at `2ca9af1`, with its generator.
 - **Why the LOOP never moves its camera, and the FILM does:** see *Stillness* above. The films studied
   are never fully still (Apple, Stripe, Vercel all drift or push during holds), and the FILM follows
   them. The LOOP spends its bytes on cuts and on the few things that change.
+- **Critique round 2 ([`film-critique-round-2.md`](film-critique-round-2.md), a fresh critic, blind
+  to round 1, on the shipped decoded files).** Its verdict: *"closer to a launch film than the SVG
+  was … it still reads as an animated explainer"*, and the one image worth remembering, *"a wall of
+  reading collapsing to two monoliths, is never staged"*. Adopted:
+  - *The FILM stops being a slide deck* (finding 2). No header between the two posters; twelve
+    statements become four lines, set where the act sits (the problem centred, the turn left); the
+    wall and the close rise carry no type at all. One mechanism beat stays, the no-op save. The
+    expiry beat, the map's walk, the proof plate and the `git log` line are cut: README work.
+  - *The collapse is one image* (finding 4). The counterfactual is a wall at full pillar height,
+    rising at a read's own constant rate, lens to horizon, dimmer than a real read; then a match cut
+    on the same, still-moving camera to the flat field, where only the two reads rise. The rise is
+    then cut on the action into the close shot, so story time never rewinds (which also retires
+    finding 11's rewinding cut).
+  - *The key image is lit, equal and unlabelled* (finding 3). Both reads sit on row 18 either side of
+    the lane 0/1 gutter, so they are equal on screen; the camera is at eye height (y 2.5); faces grade
+    lighter toward the top; each read casts a warm pool on the pages round its base, growing with its
+    height, and one long shadow from a low key light. "Two files read. One commit." moved into the
+    left column as the governing thought's third tier.
+  - *The cap is a shape* (finding 9): a slab 31 % wider than the pillar, with a gap and a visible
+    underside, a step lighter than amber in dark and darker in light. It never adds height.
+  - *The loop's stillness is cut from 51 % to 29 %* (finding 5): head hold 3.0 s, tail 1.35 s, map
+    shots 2.5 s each, the green exits held about 1.3 s.
+  - *The payoff lands, and stays* (finding 6): "One commit." is on screen, muted, from the cut; the
+    page descends (no hop: rising means bytes) on a path that clears every glyph, and comes to rest
+    after the line as the commit's mark, which frame 0 now carries.
+  - *Honesty* (finding 8): the tagline is the README's imperative ("keep docs/ in sync…"), and the
+    FILM's poster says *a design with measured probes · no implementation yet*. It joins the end card
+    only after the page has landed, so the page never crosses it.
+  - *One continuous dolly on the end card* (finding 10), arriving exactly on frame 0.
+  - *The encoder ghost* (finding 13). Measured by a separate probe over every variant `img2webp`
+    offers: WebPAnimEncoder never re-sends a pixel whose SOURCE is unchanged, so near-lossless 40's
+    rounding of the poster's text edges survived every cut. `-near_lossless 60 -min_size` leaves
+    0 flat pixels off by 3/255 or more across the whole loop, for +13 % (light) and +15 % (dark);
+    per-frame `-lossless` is a no-op under `-near_lossless`, and forced keyframes cost +246 % to
+    +629 %. `scripts/film-verify.py` now checks every stored frame against its source.
+  - *Lane names at 2.3 units* (finding 14, ≥ 13 CSS px), a darker light-grade field (finding 16), and
+    a tighter gap after the mono `docs/` (finding 16).
+  - Findings 7, 11 and 12 are retired by the cuts in finding 2: the proof plate, the expiry beat and
+    the FILM's header are gone.
+- **Round 2, declined.**
+  - *Editing the design doc's classifier line* (finding 15). The film now names the measured case,
+    a no-op re-save whose H1 differs and whose H2 is equal (a LibreOffice round trip), in its source;
+    on screen it says only "a no-op save". The design's own §4.1 #2 already states that H2, not H1,
+    is what makes a no-op save free; its classifier label "(the Office no-op save)" at H1 assumes the
+    per-attribute canonicalization that paragraph specifies. The design doc is outside the hero's
+    scope, and the two are consistent once canonicalization is applied.
+  - *A sound bed* (finding 16, offered as optional). The film has to read with the sound off anyway,
+    because the README hero cut from it is an image and silent; a composed or licensed score is its
+    own project.

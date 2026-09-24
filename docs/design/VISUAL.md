@@ -25,8 +25,20 @@ rendered transparent on GitHub's exact palettes, with the four roles above hand-
 refused read highlighted red and the successful download green, so the demo reads in the same
 cost vocabulary as the diagrams.
 
-**The hero loop** (`docs/media/hero-{dark,light}.svg`, from `scripts/render-hero.mjs`; direction in
-[`hero/DIRECTION.md`](hero/DIRECTION.md)) extends the same idea to time. Free work is instant and
+**The launch film** (`docs/media/hero-{dark,light}.webp` inline, and a 25 s MP4 linked from it;
+rendered from `film/` by `scripts/film-render.sh`; direction in
+[`hero/DIRECTION.md` § Launch video](hero/DIRECTION.md#launch-video)) replaced the SVG loop below on
+2026-09-24. It extends colour means cost to **height**: a company's knowledge is four lanes of
+documents running to the horizon, one per source, and reading bytes is the only thing on that plane
+with height, so a sync's outcome is two amber pillars in a flat field. It keeps every token in the
+table above and the two light-mode tokens below, and adds two. Amber *text* in light mode is
+`#b35900` (4.83:1 on white), because the film sets amber words below the 24 CSS px large-text size.
+The green cap on a pillar (a free exit after a paid read) is a *shape* and a *lightness step*, not
+only a hue: a slab that overhangs the pillar, lighter than amber in dark (`#7ee787` face) and darker
+in light (`#116329`), so it still reads in greyscale and to a red-green colour-blind eye.
+
+**The hero loop, retired 2026-09-24** (`docs/media/hero-{dark,light}.svg`, from
+`scripts/render-hero.mjs`, both still in history at `2ca9af1`) extended the same idea to time. Free work is instant and
 neutral, and a byte read is the only slow motion and the only amber. It is not a banner: frame 0 is
 the README's governing thought and its four steps as text, outlined in Geist Sans and Mono (OFL),
 over a field of 256 source objects of which two are ever read. It adds two light-mode hero tokens.
@@ -35,7 +47,7 @@ disappears. The filled amber is `#c86a00` (chip and meter), because `#b35900` fi
 rust-brown. That meter is 24 px, which is large text, and 3.81:1 clears the 3:1 bar there.
 
 **What was cut.** No banner of logos, no badge wall, no decorative icons. The README has two
-memorable elements, and they do different jobs: the hero loop states the argument, and the
-recording of a real refused read proves one step of it. Everything around them stays quiet.
+memorable elements, and they do different jobs: the launch film states the argument (the hero loop
+did, until 2026-09-24), and the recording of a real refused read proves one step of it. Everything around them stays quiet.
 *(Until 2026-09-24 this line said "No hero banner" and named the recording as the one memorable
 element. The hero reverses that on purpose: it carries the message rather than decorating it.)*
