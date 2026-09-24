@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 729.3425 1549.4479999999996" width="729.3425" height="1549.4479999999996" style="--bg:#ffffff;--fg:#1f2328;--line:#d1d9e0;--accent:#59636e;--muted:#59636e">
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="O" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="208.83925,93.80000000000001 208.83925,141.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="DL" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="yes" points="184.7565833333333,262.21333333333337 184.7565833333333,919.3480000000001 109.881,919.3480000000001 109.881,999.648" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="H0" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="no" points="232.92191666666668,262.21333333333337 232.92191666666668,298.296 307.7975,298.296 307.7975,378.596" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H0" data-to="U" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="equal" points="274.4523333333333,545.3218333333332 274.4523333333333,1021.148 219.28524999999996,1021.148 219.28524999999996,1101.4479999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H0" data-to="R" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="moved, or new id" points="341.1426666666666,545.3218333333333 341.1426666666666,614.667 396.30974999999995,614.667 396.30974999999995,694.967" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="R" data-to="H1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="396.30974999999995,748.7669999999999 396.30975,796.7669999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H1" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="equal" points="371.7330833333333,919.6503333333332 371.7330833333333,1191.2479999999998 296.49725,1191.2479999999998 296.49725,1271.5479999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H1" data-to="CV" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="differs" points="420.88641666666666,919.6503333333333 420.88641666666666,980.227 496.1222499999999,980.227 496.12224999999995,1060.5269999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="CV" data-to="H2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="496.12224999999995,1114.3269999999998 496.1222499999999,1162.3269999999998" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H2" data-to="EC" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="equal" points="468.95208333333323,1298.1778333333332 468.95208333333323,1361.3479999999997 404.64599999999996,1361.3479999999997 404.64599999999996,1441.6479999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H2" data-to="G" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="differs" points="523.2924166666667,1298.177833333333 523.2924166666667,1361.3479999999997 587.5985000000001,1361.3479999999997 587.5985,1441.6479999999997" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="D" data-to="DL" data-label="yes">
+  <rect x="91.881" y="926.3480000000001" width="35.47" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="109.616" y="941.498" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">yes</text>
+</g>
+<g class="edge-label" data-from="D" data-to="H0" data-label="no">
+  <rect x="292.7975" y="305.296" width="29.53" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="307.5625" y="320.44599999999997" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">no</text>
+</g>
+<g class="edge-label" data-from="H0" data-to="U" data-label="equal">
+  <rect x="197.28524999999996" y="1028.148" width="43.786" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="219.17824999999996" y="1043.298" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">equal</text>
+</g>
+<g class="edge-label" data-from="H0" data-to="R" data-label="moved, or new id">
+  <rect x="348.8097499999999" y="621.667" width="94.27600000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="395.9477499999999" y="636.817" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">moved, or new id</text>
+</g>
+<g class="edge-label" data-from="H1" data-to="T" data-label="equal">
+  <rect x="274.49725" y="1198.2479999999998" width="43.786" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="296.39025000000004" y="1213.398" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">equal</text>
+</g>
+<g class="edge-label" data-from="H1" data-to="CV" data-label="differs">
+  <rect x="472.1222499999999" y="987.227" width="47.35" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="495.7972499999999" y="1002.377" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">differs</text>
+</g>
+<g class="edge-label" data-from="H2" data-to="EC" data-label="equal">
+  <rect x="382.64599999999996" y="1368.3479999999997" width="43.786" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="404.539" y="1383.4979999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">equal</text>
+</g>
+<g class="edge-label" data-from="H2" data-to="G" data-label="differs">
+  <rect x="563.5985000000001" y="1368.3479999999997" width="47.35" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="587.2735" y="1383.4979999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">differs</text>
+</g>
+<g class="node" data-id="O" data-label="&lt;b&gt;observed object&lt;/b&gt;
+keyed by source_id, never by path" data-shape="rectangle">
+  <rect x="86.71775" y="40" width="244.243" height="53.800000000000004" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="208.83925" y="66.9" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="208.83925" dy="-3.9000000000000012"><tspan font-weight="bold">observed object</tspan></tspan><tspan x="208.83925" dy="16.900000000000002">keyed by source_id, never by path</tspan></text>
+</g>
+<g class="node" data-id="D" data-label="dataless
+placeholder?" data-shape="diamond">
+  <polygon points="208.83925,141.8 281.08725,214.048 208.83925,286.296 136.59125,214.048" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="208.83925" y="214.048" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="208.83925" dy="-3.9000000000000012">dataless</tspan><tspan x="208.83925" dy="16.900000000000002">placeholder?</tspan></text>
+</g>
+<g class="node" data-id="DL" data-label="&lt;b&gt;DATALESS&lt;/b&gt;
+skip, never open" data-shape="stadium">
+  <rect x="40" y="999.648" width="139.762" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="109.881" y="1026.548" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="109.881" dy="-3.9000000000000012"><tspan font-weight="bold">DATALESS</tspan></tspan><tspan x="109.881" dy="16.900000000000002">skip, never open</tspan></text>
+</g>
+<g class="node" data-id="H0" data-label="&lt;b&gt;H0 · zero bytes&lt;/b&gt;
+provider hash, else
+(fileid, gen_count) + stat" data-shape="diamond">
+  <polygon points="307.7975,378.596 407.83299999999997,478.63149999999996 307.7975,578.6669999999999 207.76200000000003,478.63149999999996" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="307.7975" y="478.63149999999996" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="307.7975" dy="-12.350000000000001"><tspan font-weight="bold">H0 · zero bytes</tspan></tspan><tspan x="307.7975" dy="16.900000000000002">provider hash, else</tspan><tspan x="307.7975" dy="16.900000000000002">(fileid, gen_count) + stat</tspan></text>
+</g>
+<g class="node" data-id="U" data-label="&lt;b&gt;UNCHANGED&lt;/b&gt;
+zero bytes read" data-shape="stadium">
+  <rect x="151.62724999999998" y="1101.4479999999999" width="135.316" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#dafbe1" stroke="#1a7f37" stroke-width="0.75" />
+  <text x="219.28524999999996" y="1128.348" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="219.28524999999996" dy="-3.9000000000000012"><tspan font-weight="bold">UNCHANGED</tspan></tspan><tspan x="219.28524999999996" dy="16.900000000000002">zero bytes read</tspan></text>
+</g>
+<g class="node" data-id="R" data-label="&lt;b&gt;read bytes&lt;/b&gt;
+budgeted materialise" data-shape="rectangle">
+  <rect x="314.9432499999999" y="694.967" width="162.73300000000003" height="53.800000000000004" rx="0" ry="0" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="396.30974999999995" y="721.867" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="396.30974999999995" dy="-3.9000000000000012"><tspan font-weight="bold">read bytes</tspan></tspan><tspan x="396.30974999999995" dy="16.900000000000002">budgeted materialise</tspan></text>
+</g>
+<g class="node" data-id="H1" data-label="&lt;b&gt;H1&lt;/b&gt; · canonical
+content hash" data-shape="diamond">
+  <polygon points="396.30975,796.7669999999999 470.03975,870.497 396.30975,944.227 322.57975,870.497" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="396.30975" y="870.497" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="396.30975" dy="-3.9000000000000012"><tspan font-weight="bold">H1</tspan> · canonical</tspan><tspan x="396.30975" dy="16.900000000000002">content hash</tspan></text>
+</g>
+<g class="node" data-id="T" data-label="&lt;b&gt;TOUCHED, NOT CHANGED&lt;/b&gt;
+no-op save: stop" data-shape="stadium">
+  <rect x="196.23525" y="1271.5479999999998" width="200.52399999999994" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#dafbe1" stroke="#1a7f37" stroke-width="0.75" />
+  <text x="296.49725" y="1298.4479999999999" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="296.49725" dy="-3.9000000000000012"><tspan font-weight="bold">TOUCHED, NOT CHANGED</tspan></tspan><tspan x="296.49725" dy="16.900000000000002">no-op save: stop</tspan></text>
+</g>
+<g class="node" data-id="CV" data-label="&lt;b&gt;convert&lt;/b&gt;
+write-once cache" data-shape="rectangle">
+  <rect x="424.75924999999995" y="1060.5269999999998" width="142.726" height="53.800000000000004" rx="0" ry="0" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="496.12224999999995" y="1087.427" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="496.12224999999995" dy="-3.9000000000000012"><tspan font-weight="bold">convert</tspan></tspan><tspan x="496.12224999999995" dy="16.900000000000002">write-once cache</tspan></text>
+</g>
+<g class="node" data-id="H2" data-label="&lt;b&gt;H2&lt;/b&gt; · hash of
+converter output" data-shape="diamond">
+  <polygon points="496.1222499999999,1162.3269999999998 577.6327499999999,1243.8374999999999 496.1222499999999,1325.348 414.6117499999999,1243.8374999999999" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="496.1222499999999" y="1243.8374999999999" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="496.1222499999999" dy="-3.9000000000000012"><tspan font-weight="bold">H2</tspan> · hash of</tspan><tspan x="496.1222499999999" dy="16.900000000000002">converter output</tspan></text>
+</g>
+<g class="node" data-id="EC" data-label="&lt;b&gt;early cutoff&lt;/b&gt;
+no commit" data-shape="stadium">
+  <rect x="351.4375" y="1441.6479999999997" width="106.41699999999999" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#dafbe1" stroke="#1a7f37" stroke-width="0.75" />
+  <text x="404.646" y="1468.5479999999998" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="404.646" dy="-3.9000000000000012"><tspan font-weight="bold">early cutoff</tspan></tspan><tspan x="404.646" dy="16.900000000000002">no commit</tspan></text>
+</g>
+<g class="node" data-id="G" data-label="&lt;b&gt;commit to docs/&lt;/b&gt;
+dependents flagged STALE" data-shape="cylinder">
+  <rect x="485.8544999999999" y="1448.6479999999997" width="203.488" height="53.80000000000001" fill="#f6f8fa" stroke="none" />
+  <line x1="485.8544999999999" y1="1448.6479999999997" x2="485.8544999999999" y2="1502.4479999999996" stroke="#d1d9e0" stroke-width="0.75" />
+  <line x1="689.3425" y1="1448.6479999999997" x2="689.3425" y2="1502.4479999999996" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="587.5985" cy="1502.4479999999996" rx="101.744" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="587.5985" cy="1448.6479999999997" rx="101.744" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="587.5985" y="1475.5479999999998" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="587.5985" dy="-3.9000000000000012"><tspan font-weight="bold">commit to docs/</tspan></tspan><tspan x="587.5985" dy="16.900000000000002">dependents flagged STALE</tspan></text>
+</g>
+</svg>

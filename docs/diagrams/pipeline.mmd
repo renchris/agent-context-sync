@@ -1,0 +1,36 @@
+flowchart TD
+  GD["<b>L0</b> · OneDrive · SharePoint<br/>Outlook · Teams"]
+  FP["<b>L0</b> · local sync-client folder<br/>(File Provider)"]
+  MD["<b>L0</b> · manual drop"]
+  A["<b>L1 · Arm A · Graph delta</b><br/>stored deltaLink<br/>1 RU per poll"]
+  B["<b>L1 · Arm B · local walk</b><br/>FSEvents event id,<br/>getattrlistbulk walk"]
+  C["<b>L1 · Arm C · inbox</b><br/>same walk,<br/>max(created, modified)"]
+  M["<b>L2 · Manifest</b><br/>identity = stable id, never path<br/>H0 stat tuple, then H1, then H2"]
+  U(["<b>unchanged</b><br/>zero bytes read"])
+  X["<b>materialise</b><br/>budgeted download"]
+  V["<b>L3 · Convert</b><br/>write-once cache<br/>keyed on converter + content"]
+  E(["<b>early cutoff</b><br/>nothing downstream moves"])
+  MI[("<b>docs/mirror/</b><br/>pure function of source")]
+  T["<b>L4 · Curate</b><br/>docs/topics/ pins<br/>at_rendered_sha256"]
+  S[("<b>L5 · Surface</b><br/>docs/ in git · INDEX.md<br/>what changed = git log")]
+  O["<b>L6 · Operate</b><br/>one writer · flock · heartbeat<br/>hourly full reconcile"]
+  GD --> A
+  FP --> B
+  MD --> C
+  A --> M
+  B --> M
+  C --> M
+  M -->|"hash or stat tuple equal"| U
+  M -->|"maybe changed"| X
+  X --> V
+  V -->|"H2 output hash equal"| E
+  V -->|"H2 differs"| MI
+  MI --> T
+  T --> S
+  O -.->|"re-enumerates metadata"| M
+  classDef neutral fill:@neutral-bg,stroke:@neutral-fg,color:@text
+  classDef amber fill:@amber-bg,stroke:@amber-fg,color:@text
+  classDef green fill:@green-bg,stroke:@green-fg,color:@text
+  class GD,FP,MD,A,B,C,M,MI,T,S,O neutral
+  class X,V amber
+  class U,E green

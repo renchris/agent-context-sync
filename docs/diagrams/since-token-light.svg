@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900.3679999999999 631.1" width="900.3679999999999" height="631.1" style="--bg:#ffffff;--fg:#1f2328;--line:#d1d9e0;--accent:#59636e;--muted:#59636e">
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="ENTRY" data-to="FULL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="137.59349999999995,321.40000000000003 137.59349999999995,339.40000000000003 640.8794999999998,339.40000000000003 640.8794999999998,357.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="FULL" data-to="SYNC" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="last page: store token" points="640.8794999999999,445.00000000000006 640.8794999999999,525.3000000000001 369.80491666666654,525.3000000000001 369.80491666666654,537.3000000000001" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="SYNC" data-to="POLL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="311.11458333333326,537.3000000000001 311.11458333333326,525.3000000000001 40.039999999999964,525.3000000000001 40.039999999999964,187.3 423.03629166666656,187.3 423.03629166666656,110.7" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="POLL" data-to="COMMIT" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="200" points="460.6559583333333,110.7 460.6559583333333,199.3 334.6249999999999,199.3 334.62499999999983,267.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="POLL" data-to="WAIT" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="429 / 503" points="498.2756249999999,110.7 498.2756249999999,175.3 498.3114999999999,175.3 498.31149999999985,267.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="POLL" data-to="EXP" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="410 Gone
+journal wrap
+UUID change" points="535.8952916666666,110.7 535.8952916666666,146.7 640.8794999999999,146.7 640.8794999999999,267.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="POLL" data-to="BAD" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="400
+malformed" points="573.5149583333332,110.7 573.5149583333332,134.7 795.3035,134.7 795.3035,267.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="EXP" data-to="FULL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="640.8794999999999,321.40000000000003 640.8794999999999,339.40000000000003 640.8794999999998,339.40000000000003 640.8794999999998,357.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="BAD" data-to="FULL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="795.3035,321.40000000000003 795.3035,339.40000000000003 640.8794999999998,339.40000000000003 640.8794999999998,357.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="FULL" data-to="SYNC" data-label="last page: store token">
+  <rect x="582.3794999999999" y="488.00000000000006" width="116.84800000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="640.8034999999999" y="503.15000000000003" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">last page: store token</text>
+</g>
+<g class="edge-label" data-from="POLL" data-to="COMMIT" data-label="200">
+  <rect x="316.6249999999999" y="206.3" width="35.47" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="334.3599999999999" y="221.45000000000002" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">200</text>
+</g>
+<g class="edge-label" data-from="POLL" data-to="WAIT" data-label="429 / 503">
+  <rect x="468.3114999999999" y="182.3" width="59.824" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="498.2234999999999" y="197.45000000000002" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">429 / 503</text>
+</g>
+<g class="edge-label" data-from="POLL" data-to="EXP" data-label="410 Gone
+journal wrap
+UUID change">
+  <rect x="601.3794999999999" y="153.7" width="78.83200000000001" height="58.900000000000006" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="640.7955" y="183.14999999999998" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)"><tspan x="640.7955" dy="-10.450000000000001">410 Gone</tspan><tspan x="640.7955" dy="14.3">journal wrap</tspan><tspan x="640.7955" dy="14.3">UUID change</tspan></text>
+</g>
+<g class="edge-label" data-from="POLL" data-to="BAD" data-label="400
+malformed">
+  <rect x="762.3035" y="168" width="65.17" height="44.6" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="794.8885" y="190.3" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)"><tspan x="794.8885" dy="-3.3000000000000007">400</tspan><tspan x="794.8885" dy="14.3">malformed</tspan></text>
+</g>
+<g class="node" data-id="ENTRY" data-label="&lt;b&gt;new source&lt;/b&gt;
+or the hourly schedule" data-shape="stadium">
+  <rect x="51.039999999999964" y="267.6" width="173.10699999999997" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="137.59349999999995" y="294.5" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="137.59349999999995" dy="-3.9000000000000012"><tspan font-weight="bold">new source</tspan></tspan><tspan x="137.59349999999995" dy="16.900000000000002">or the hourly schedule</tspan></text>
+</g>
+<g class="node" data-id="SYNC" data-label="&lt;b&gt;synced&lt;/b&gt;
+token stored outside git" data-shape="rectangle">
+  <rect x="252.42424999999992" y="537.3000000000001" width="176.07099999999997" height="53.800000000000004" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="340.4597499999999" y="564.2" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="340.4597499999999" dy="-3.9000000000000012"><tspan font-weight="bold">synced</tspan></tspan><tspan x="340.4597499999999" dy="16.900000000000002">token stored outside git</tspan></text>
+</g>
+<g class="node" data-id="POLL" data-label="&lt;b&gt;poll with the token&lt;/b&gt;
+Graph delta: 1 RU
+FSEvents: resume from event id" data-shape="rectangle">
+  <rect x="385.41662499999995" y="40" width="225.718" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="498.27562499999993" y="75.35" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="498.27562499999993" dy="-12.350000000000001"><tspan font-weight="bold">poll with the token</tspan></tspan><tspan x="498.27562499999993" dy="16.900000000000002">Graph delta: 1 RU</tspan><tspan x="498.27562499999993" dy="16.900000000000002">FSEvents: resume from event id</tspan></text>
+</g>
+<g class="node" data-id="COMMIT" data-label="&lt;b&gt;commit docs/&lt;/b&gt;
+then advance cursor" data-shape="stadium">
+  <rect x="252.14699999999982" y="267.6" width="164.95600000000002" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="334.62499999999983" y="294.5" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="334.62499999999983" dy="-3.9000000000000012"><tspan font-weight="bold">commit docs/</tspan></tspan><tspan x="334.62499999999983" dy="16.900000000000002">then advance cursor</tspan></text>
+</g>
+<g class="node" data-id="WAIT" data-label="&lt;b&gt;back off&lt;/b&gt;
+Retry-After" data-shape="stadium">
+  <rect x="445.10299999999984" y="267.6" width="106.417" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="498.31149999999985" y="294.5" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="498.31149999999985" dy="-3.9000000000000012"><tspan font-weight="bold">back off</tspan></tspan><tspan x="498.31149999999985" dy="16.900000000000002">Retry-After</tspan></text>
+</g>
+<g class="node" data-id="EXP" data-label="&lt;b&gt;token expired&lt;/b&gt;
+by design" data-shape="rectangle">
+  <rect x="579.5199999999999" y="267.6" width="122.71900000000001" height="53.800000000000004" rx="0" ry="0" fill="#ffebe9" stroke="#cf222e" stroke-width="0.75" />
+  <text x="640.8794999999999" y="294.5" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="640.8794999999999" dy="-3.9000000000000012"><tspan font-weight="bold">token expired</tspan></tspan><tspan x="640.8794999999999" dy="16.900000000000002">by design</tspan></text>
+</g>
+<g class="node" data-id="BAD" data-label="&lt;b&gt;cursor corrupt&lt;/b&gt;
+alarm, drop it" data-shape="rectangle">
+  <rect x="730.2389999999999" y="267.6" width="130.12900000000002" height="53.800000000000004" rx="0" ry="0" fill="#ffebe9" stroke="#cf222e" stroke-width="0.75" />
+  <text x="795.3035" y="294.5" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="795.3035" dy="-3.9000000000000012"><tspan font-weight="bold">cursor corrupt</tspan></tspan><tspan x="795.3035" dy="16.900000000000002">alarm, drop it</tspan></text>
+</g>
+<g class="node" data-id="FULL" data-label="&lt;b&gt;full enumeration&lt;/b&gt;
+metadata only, zero file bytes
+diff the listing against the manifest
+deletes allowed only once it completes" data-shape="rectangle">
+  <rect x="510.60699999999986" y="357.40000000000003" width="260.54499999999996" height="87.60000000000001" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="640.8794999999998" y="401.20000000000005" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="640.8794999999998" dy="-20.8"><tspan font-weight="bold">full enumeration</tspan></tspan><tspan x="640.8794999999998" dy="16.900000000000002">metadata only, zero file bytes</tspan><tspan x="640.8794999999998" dy="16.900000000000002">diff the listing against the manifest</tspan><tspan x="640.8794999999998" dy="16.900000000000002">deletes allowed only once it completes</tspan></text>
+</g>
+</svg>

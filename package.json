@@ -1,0 +1,12 @@
+{
+  "name": "agent-context-sync",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "diagrams": "node scripts/render-diagrams.mjs",
+    "diagrams:check": "node scripts/render-diagrams.mjs --check"
+  },
+  "devDependencies": {
+    "beautiful-mermaid": "1.1.3"
+  }
+}

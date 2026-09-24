@@ -1,0 +1,30 @@
+flowchart TD
+  O["<b>observed object</b><br/>keyed by source_id, never by path"]
+  D{"dataless<br/>placeholder?"}
+  DL(["<b>DATALESS</b><br/>skip, never open"])
+  H0{"<b>H0 · zero bytes</b><br/>provider hash, else<br/>(fileid, gen_count) + stat"}
+  U(["<b>UNCHANGED</b><br/>zero bytes read"])
+  R["<b>read bytes</b><br/>budgeted materialise"]
+  H1{"<b>H1</b> · canonical<br/>content hash"}
+  T(["<b>TOUCHED, NOT CHANGED</b><br/>no-op save: stop"])
+  CV["<b>convert</b><br/>write-once cache"]
+  H2{"<b>H2</b> · hash of<br/>converter output"}
+  EC(["<b>early cutoff</b><br/>no commit"])
+  G[("<b>commit to docs/</b><br/>dependents flagged STALE")]
+  O --> D
+  D -->|"yes"| DL
+  D -->|"no"| H0
+  H0 -->|"equal"| U
+  H0 -->|"moved, or new id"| R
+  R --> H1
+  H1 -->|"equal"| T
+  H1 -->|"differs"| CV
+  CV --> H2
+  H2 -->|"equal"| EC
+  H2 -->|"differs"| G
+  classDef neutral fill:@neutral-bg,stroke:@neutral-fg,color:@text
+  classDef amber fill:@amber-bg,stroke:@amber-fg,color:@text
+  classDef green fill:@green-bg,stroke:@green-fg,color:@text
+  class O,D,DL,H0,G neutral
+  class R,H1,CV,H2 amber
+  class U,T,EC green

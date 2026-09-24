@@ -1,0 +1,33 @@
+name: diagrams
+
+# Guards against editing a .mmd diagram source without regenerating its SVGs
+# (or hand-editing an SVG). Fails if `npm run diagrams` would change anything.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "docs/diagrams/**"
+      - "scripts/render-diagrams.mjs"
+      - "README.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/diagrams.yml"
+  pull_request:
+    paths:
+      - "docs/diagrams/**"
+      - "scripts/render-diagrams.mjs"
+      - "README.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/diagrams.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run diagrams:check

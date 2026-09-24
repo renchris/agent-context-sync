@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920.895 1095.5" width="920.895" height="1095.5" style="--bg:#ffffff;--fg:#1f2328;--line:#d1d9e0;--accent:#59636e;--muted:#59636e">
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="GD" data-to="A" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="142.48499999999999,105.80000000000001 142.48499999999999,153.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="FP" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="373.60249999999996,105.80000000000001 373.60249999999996,153.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="MD" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.2275,88.9 573.2275,153.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="A" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="142.48499999999999,224.5 142.48499999999999,248.5 409.92330000000004,248.5 409.92330000000004,260.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="373.60249999999996,224.5 373.60249999999996,236.5 452.2511,236.5 452.2511,260.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="573.2275,224.5 573.2275,236.5 494.57890000000003,236.5 494.57890000000003,260.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="M" data-to="U" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="hash or stat tuple equal" points="438.14183333333335,331.2 438.14183333333335,367.2 386.75525000000005,367.2 386.75525000000005,447.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="M" data-to="X" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="maybe changed" points="508.6881666666667,331.2 508.6881666666667,367.2 560.07475,367.2 560.07475,447.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="X" data-to="V" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="560.07475,501.3 560.0747499999999,549.3000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="V" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="H2 output hash equal" points="524.6780833333332,620 524.6780833333332,656 452.2965,656 452.2965,736.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="V" data-to="MI" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="H2 differs" points="595.4714166666665,620 595.4714166666665,656 667.8529999999998,656 667.8529999999998,736.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="MI" data-to="T" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="667.8529999999998,804.0999999999999 667.853,852.0999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="T" data-to="S" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="667.853,922.8 667.8529999999998,970.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="O" data-to="M" data-style="dotted" data-arrow-start="false" data-arrow-end="true" data-label="re-enumerates metadata" points="776.5575,168.2 776.5575,248.5 536.9067,248.5 536.9067,260.5" fill="none" stroke="var(--_line)" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="M" data-to="U" data-label="hash or stat tuple equal">
+  <rect x="324.25525000000005" y="374.2" width="124.57000000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="386.54025000000007" y="389.34999999999997" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">hash or stat tuple equal</text>
+</g>
+<g class="edge-label" data-from="M" data-to="X" data-label="maybe changed">
+  <rect x="514.07475" y="374.2" width="91.9" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="560.02475" y="389.34999999999997" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">maybe changed</text>
+</g>
+<g class="edge-label" data-from="V" data-to="E" data-label="H2 output hash equal">
+  <rect x="394.7965" y="663" width="114.47200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="452.03249999999997" y="678.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">H2 output hash equal</text>
+</g>
+<g class="edge-label" data-from="V" data-to="MI" data-label="H2 differs">
+  <rect x="636.3529999999998" y="663" width="62.2" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="667.4529999999999" y="678.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">H2 differs</text>
+</g>
+<g class="edge-label" data-from="O" data-to="M" data-label="re-enumerates metadata">
+  <rect x="711.0575" y="211.2" width="130.51000000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="776.3125" y="226.35" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">re-enumerates metadata</text>
+</g>
+<g class="node" data-id="GD" data-label="&lt;b&gt;L0&lt;/b&gt; · OneDrive · SharePoint
+Outlook · Teams" data-shape="rectangle">
+  <rect x="40" y="52" width="204.96999999999997" height="53.800000000000004" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="142.48499999999999" y="78.9" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="142.48499999999999" dy="-3.9000000000000012"><tspan font-weight="bold">L0</tspan> · OneDrive · SharePoint</tspan><tspan x="142.48499999999999" dy="16.900000000000002">Outlook · Teams</tspan></text>
+</g>
+<g class="node" data-id="FP" data-label="&lt;b&gt;L0&lt;/b&gt; · local sync-client folder
+(File Provider)" data-shape="rectangle">
+  <rect x="272.97" y="52" width="201.265" height="53.800000000000004" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="373.6025" y="78.9" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="373.6025" dy="-3.9000000000000012"><tspan font-weight="bold">L0</tspan> · local sync-client folder</tspan><tspan x="373.6025" dy="16.900000000000002">(File Provider)</tspan></text>
+</g>
+<g class="node" data-id="MD" data-label="&lt;b&gt;L0&lt;/b&gt; · manual drop" data-shape="rectangle">
+  <rect x="502.235" y="52" width="141.985" height="36.900000000000006" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="573.2275" y="70.45" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328" dy="4.55"><tspan font-weight="bold">L0</tspan> · manual drop</text>
+</g>
+<g class="node" data-id="A" data-label="&lt;b&gt;L1 · Arm A · Graph delta&lt;/b&gt;
+stored deltaLink
+1 RU per poll" data-shape="rectangle">
+  <rect x="52.59699999999999" y="153.8" width="179.77599999999998" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="142.48499999999999" y="189.15" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="142.48499999999999" dy="-12.350000000000001"><tspan font-weight="bold">L1 · Arm A · Graph delta</tspan></tspan><tspan x="142.48499999999999" dy="16.900000000000002">stored deltaLink</tspan><tspan x="142.48499999999999" dy="16.900000000000002">1 RU per poll</tspan></text>
+</g>
+<g class="node" data-id="B" data-label="&lt;b&gt;L1 · Arm B · local walk&lt;/b&gt;
+FSEvents event id,
+getattrlistbulk walk" data-shape="rectangle">
+  <rect x="288.9015" y="153.8" width="169.402" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="373.60249999999996" y="189.15" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="373.60249999999996" dy="-12.350000000000001"><tspan font-weight="bold">L1 · Arm B · local walk</tspan></tspan><tspan x="373.60249999999996" dy="16.900000000000002">FSEvents event id,</tspan><tspan x="373.60249999999996" dy="16.900000000000002">getattrlistbulk walk</tspan></text>
+</g>
+<g class="node" data-id="C" data-label="&lt;b&gt;L1 · Arm C · inbox&lt;/b&gt;
+same walk,
+max(created, modified)" data-shape="rectangle">
+  <rect x="487.41499999999996" y="153.8" width="171.62499999999997" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="573.2275" y="189.15" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="573.2275" dy="-12.350000000000001"><tspan font-weight="bold">L1 · Arm C · inbox</tspan></tspan><tspan x="573.2275" dy="16.900000000000002">same walk,</tspan><tspan x="573.2275" dy="16.900000000000002">max(created, modified)</tspan></text>
+</g>
+<g class="node" data-id="M" data-label="&lt;b&gt;L2 · Manifest&lt;/b&gt;
+identity = stable id, never path
+H0 stat tuple, then H1, then H2" data-shape="rectangle">
+  <rect x="367.5955" y="260.5" width="211.639" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="473.415" y="295.85" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="473.415" dy="-12.350000000000001"><tspan font-weight="bold">L2 · Manifest</tspan></tspan><tspan x="473.415" dy="16.900000000000002">identity = stable id, never path</tspan><tspan x="473.415" dy="16.900000000000002">H0 stat tuple, then H1, then H2</tspan></text>
+</g>
+<g class="node" data-id="U" data-label="&lt;b&gt;unchanged&lt;/b&gt;
+zero bytes read" data-shape="stadium">
+  <rect x="319.09725000000003" y="447.5" width="135.316" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#dafbe1" stroke="#1a7f37" stroke-width="0.75" />
+  <text x="386.75525000000005" y="474.4" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="386.75525000000005" dy="-3.9000000000000012"><tspan font-weight="bold">unchanged</tspan></tspan><tspan x="386.75525000000005" dy="16.900000000000002">zero bytes read</tspan></text>
+</g>
+<g class="node" data-id="X" data-label="&lt;b&gt;materialise&lt;/b&gt;
+budgeted download" data-shape="rectangle">
+  <rect x="482.41324999999995" y="447.5" width="155.32299999999998" height="53.800000000000004" rx="0" ry="0" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="560.07475" y="474.4" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="560.07475" dy="-3.9000000000000012"><tspan font-weight="bold">materialise</tspan></tspan><tspan x="560.07475" dy="16.900000000000002">budgeted download</tspan></text>
+</g>
+<g class="node" data-id="V" data-label="&lt;b&gt;L3 · Convert&lt;/b&gt;
+write-once cache
+keyed on converter + content" data-shape="rectangle">
+  <rect x="453.88474999999994" y="549.3000000000001" width="212.37999999999997" height="70.7" rx="0" ry="0" fill="#fff1dc" stroke="#b35900" stroke-width="0.75" />
+  <text x="560.0747499999999" y="584.6500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="560.0747499999999" dy="-12.350000000000001"><tspan font-weight="bold">L3 · Convert</tspan></tspan><tspan x="560.0747499999999" dy="16.900000000000002">write-once cache</tspan><tspan x="560.0747499999999" dy="16.900000000000002">keyed on converter + content</tspan></text>
+</g>
+<g class="node" data-id="E" data-label="&lt;b&gt;early cutoff&lt;/b&gt;
+nothing downstream moves" data-shape="stadium">
+  <rect x="352.7755" y="736.3" width="199.04199999999994" height="53.800000000000004" rx="26.900000000000002" ry="26.900000000000002" fill="#dafbe1" stroke="#1a7f37" stroke-width="0.75" />
+  <text x="452.2965" y="763.1999999999999" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="452.2965" dy="-3.9000000000000012"><tspan font-weight="bold">early cutoff</tspan></tspan><tspan x="452.2965" dy="16.900000000000002">nothing downstream moves</tspan></text>
+</g>
+<g class="node" data-id="MI" data-label="&lt;b&gt;docs/mirror/&lt;/b&gt;
+pure function of source" data-shape="cylinder">
+  <rect x="579.8174999999999" y="743.3" width="176.07099999999997" height="53.80000000000001" fill="#f6f8fa" stroke="none" />
+  <line x1="579.8174999999999" y1="743.3" x2="579.8174999999999" y2="797.0999999999999" stroke="#d1d9e0" stroke-width="0.75" />
+  <line x1="755.8884999999998" y1="743.3" x2="755.8884999999998" y2="797.0999999999999" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="667.8529999999998" cy="797.0999999999999" rx="88.03549999999998" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="667.8529999999998" cy="743.3" rx="88.03549999999998" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="667.8529999999998" y="770.1999999999999" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="667.8529999999998" dy="-3.9000000000000012"><tspan font-weight="bold">docs/mirror/</tspan></tspan><tspan x="667.8529999999998" dy="16.900000000000002">pure function of source</tspan></text>
+</g>
+<g class="node" data-id="T" data-label="&lt;b&gt;L4 · Curate&lt;/b&gt;
+docs/topics/ pins
+at_rendered_sha256" data-shape="rectangle">
+  <rect x="583.8929999999999" y="852.0999999999999" width="167.92" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="667.853" y="887.4499999999999" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="667.853" dy="-12.350000000000001"><tspan font-weight="bold">L4 · Curate</tspan></tspan><tspan x="667.853" dy="16.900000000000002">docs/topics/ pins</tspan><tspan x="667.853" dy="16.900000000000002">at_rendered_sha256</tspan></text>
+</g>
+<g class="node" data-id="S" data-label="&lt;b&gt;L5 · Surface&lt;/b&gt;
+docs/ in git · INDEX.md
+what changed = git log" data-shape="cylinder">
+  <rect x="581.2994999999999" y="977.8" width="173.10699999999997" height="70.7" fill="#f6f8fa" stroke="none" />
+  <line x1="581.2994999999999" y1="977.8" x2="581.2994999999999" y2="1048.5" stroke="#d1d9e0" stroke-width="0.75" />
+  <line x1="754.4064999999998" y1="977.8" x2="754.4064999999998" y2="1048.5" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="667.8529999999998" cy="1048.5" rx="86.55349999999999" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <ellipse cx="667.8529999999998" cy="977.8" rx="86.55349999999999" ry="7" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="667.8529999999998" y="1013.15" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="667.8529999999998" dy="-12.350000000000001"><tspan font-weight="bold">L5 · Surface</tspan></tspan><tspan x="667.8529999999998" dy="16.900000000000002">docs/ in git · INDEX.md</tspan><tspan x="667.8529999999998" dy="16.900000000000002">what changed = git log</tspan></text>
+</g>
+<g class="node" data-id="O" data-label="&lt;b&gt;L6 · Operate&lt;/b&gt;
+one writer · flock · heartbeat
+hourly full reconcile" data-shape="rectangle">
+  <rect x="672.22" y="97.5" width="208.675" height="70.7" rx="0" ry="0" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="0.75" />
+  <text x="776.5575" y="132.85" text-anchor="middle" font-size="13" font-weight="500" fill="#1f2328"><tspan x="776.5575" dy="-12.350000000000001"><tspan font-weight="bold">L6 · Operate</tspan></tspan><tspan x="776.5575" dy="16.900000000000002">one writer · flock · heartbeat</tspan><tspan x="776.5575" dy="16.900000000000002">hourly full reconcile</tspan></text>
+</g>
+</svg>

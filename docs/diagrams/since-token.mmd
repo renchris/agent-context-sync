@@ -1,0 +1,22 @@
+flowchart TD
+  ENTRY(["<b>new source</b><br/>or the hourly schedule"])
+  SYNC["<b>synced</b><br/>token stored outside git"]
+  POLL["<b>poll with the token</b><br/>Graph delta: 1 RU<br/>FSEvents: resume from event id"]
+  COMMIT(["<b>commit docs/</b><br/>then advance cursor"])
+  WAIT(["<b>back off</b><br/>Retry-After"])
+  EXP["<b>token expired</b><br/>by design"]
+  BAD["<b>cursor corrupt</b><br/>alarm, drop it"]
+  FULL["<b>full enumeration</b><br/>metadata only, zero file bytes<br/>diff the listing against the manifest<br/>deletes allowed only once it completes"]
+  ENTRY --> FULL
+  FULL -.->|"last page: store token"| SYNC
+  SYNC --> POLL
+  POLL -->|"200"| COMMIT
+  POLL -->|"429 / 503"| WAIT
+  POLL -->|"410 Gone<br/>journal wrap<br/>UUID change"| EXP
+  POLL -->|"400<br/>malformed"| BAD
+  EXP --> FULL
+  BAD --> FULL
+  classDef neutral fill:@neutral-bg,stroke:@neutral-fg,color:@text
+  classDef red fill:@red-bg,stroke:@red-fg,color:@text
+  class ENTRY,SYNC,POLL,COMMIT,WAIT,FULL neutral
+  class EXP,BAD red
