@@ -576,3 +576,5 @@ governing thought or one step, never neither.
     contrast on white (§ Decisions above): 3.81:1, where the dark amber measures 2.1:1.
   - *Outline-only wall pages* (finding 1). Outlines at this scale read as texture, which is how the
     first round-3 wall looked; the caption does the work instead.
+- **Operator verdict on the round-3 film (2026-09-24):** *"Good for now!"* Round 3 stands as
+  shipped (`821c3da`, linked by `bd1eaa0`). A round 4 opens only on new feedback.
