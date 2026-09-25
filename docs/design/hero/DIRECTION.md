@@ -454,3 +454,16 @@ governing thought or one step, never neither.
   - *A sound bed* (finding 16, offered as optional). The film has to read with the sound off anyway,
     because the README hero cut from it is an image and silent; a composed or licensed score is its
     own project.
+- **Operator verdict on the round-2 film (2026-09-24), which opens round 3.** *"This is cool but
+  a) the scene is very abstract b) there is no 3d transpilation transitions from scene to scene to
+  scene."* Neither critic round named either point, so both are now binding direction:
+  - *Concrete, not abstract.* The world of page tiles and amber bars is a metaphor a visitor has to
+    decode. Round 3 draws recognisable things: documents with real names and file types, the four
+    sources, the `docs/` folder of converted pages, the agent that reads it.
+  - *Continuous 3D camera transitions between scenes, not hard cuts.* The camera travels through one
+    world from each scene to the next. This reverses "cut: the only way time is skipped" in the
+    motion vocabulary, and it collides with a measured cost: an animated WebP has no motion
+    compensation, and a camera move costs about 1 MB/s lossy (2.9 MB/s near-lossless) at
+    1280 × 720, against a measured 1–5 MB budget per grade. Round 3 has to resolve that for the
+    LOOP by measurement (short flights between locked holds, lossy frames only while the camera
+    moves, a smaller frame, or a different carrier), not by dropping the transitions.
