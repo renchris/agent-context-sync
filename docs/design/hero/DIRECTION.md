@@ -200,6 +200,13 @@ Linear, Raycast, Vercel, Stripe, Apple and Arc launch films).
   down the repo page and an image's clock starts at page load, so most visitors land mid-loop.
 - **An upload needs no browser.** `POST https://uploads.github.com/user-attachments/assets` with the
   `gh` OAuth token returns the asset URL and posts nothing. The asset cannot be deleted afterwards.
+- **…but its direct URL is not public** (measured 2026-09-24, after the upload). Logged out,
+  `github.com/user-attachments/assets/<uuid>` for an asset uploaded this way answers `404`, 75 minutes
+  after upload and after a public README referenced it, while a web-UI-uploaded asset in another
+  repo answers `302` to storage. GitHub's markdown renderer, called anonymously in this repo's
+  context, still renders the same URL as a player whose signed `private-user-images` source serves
+  `206 video/mp4` at the full size. So the hero and its caption link to a page,
+  `docs/media/launch-film.md`, that renders the player; every visit signs a fresh URL.
 
 ### Decision: two artefacts from one composition (conviction 85 %)
 
@@ -210,7 +217,8 @@ Linear, Raycast, Vercel, Stripe, Apple and Arc launch films).
 
 - The film is **linked, not embedded as a player.** A player directly under the hero would repeat the
   same poster frame twice in a row, it cannot autoplay, and its URL dies after five minutes; a link
-  is re-signed on every click. A lone `<a><img></a>` is replaced by a player on render, so the
+  is re-signed on every click. (The link goes to `docs/media/launch-film.md`, which renders the player, because the
+  asset's own URL is not served to logged-out visitors; see above.) A lone `<a><img></a>` is replaced by a player on render, so the
   `<picture>` sits inside a `<div>` with a caption line (measured).
 - **Both come from one page that is a pure function of time** (`film/`), photographed frame by frame
   over the Chrome DevTools Protocol (`scripts/film-capture.mjs`), then encoded by
