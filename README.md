@@ -5,7 +5,7 @@
   <img src="docs/media/hero-light.webp" width="100%" alt="Keep an agent-readable docs/ folder in sync with OneDrive, SharePoint, Outlook and Teams by processing only what changed. Four steps: 1, ask each source what changed, and make expiry cheap; 2, decide with three hashes before reading a byte; 3, read bytes only on purpose; 4, publish a pure function of the source, in git. The picture: a company's files as four lanes of real, named documents running to the horizon, one lane per source (Word pages, spreadsheets, decks and PDFs, emails, chat messages), beside a fifth lane, docs/, of converted markdown pages with a git line down it. After one sync, two documents stand up in amber among thousands lying flat: proposal.docx from OneDrive and forecast.xlsx from SharePoint, the spreadsheet banded green as a no-op save. The camera flies over them to the next stretch of the field, where the sources report eight changed files; six are decided unchanged before a byte is read. It comes down to the other two, which stand up and turn amber as their bytes arrive, then follows the converted proposal page to docs/, where it lands as one commit, and flies back to the start.">
 </picture></a>
 <br>
-<sub><a href="docs/media/launch-film.md">▶ Watch the 25-second launch film</a> · a design with measured probes, not yet an implementation</sub>
+<sub><a href="docs/media/launch-film.md">▶ Watch the 26-second launch film</a> · a design with measured probes, not yet an implementation</sub>
 </div>
 
 # agent-context-sync
