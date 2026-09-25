@@ -212,8 +212,8 @@ Linear, Raycast, Vercel, Stripe, Apple and Arc launch films).
 
 | Artefact | What it is | Where it lives |
 |---|---|---|
-| **LOOP** | the README's first element: an animated WebP, 1676 × 943, one dark and one light grade behind `<picture>`, 15 s, locked-off shots joined by hard cuts | `docs/media/hero-{dark,light}.webp`, committed |
-| **FILM** | the launch film: an MP4, 1920 × 1080, 60 fps, H.264, dark grade, 25 s (29 s before critique round 2) | a user-attachments asset, linked from the hero and from the caption under it |
+| **LOOP** | the README's first element: an animated WebP, 1676 × 943, one dark and one light grade behind `<picture>`, 15 s, locked-off holds joined by 3D camera flights (round 3; hard cuts before) | `docs/media/hero-{dark,light}.webp`, committed |
+| **FILM** | the launch film: an MP4, 1920 × 1080, 60 fps, H.264, dark grade, 26 s (25 s in round 2, 29 s before critique round 2), one unbroken camera since round 3 | a user-attachments asset, linked from the hero and from the caption under it |
 
 - The film is **linked, not embedded as a player.** A player directly under the hero would repeat the
   same poster frame twice in a row, it cannot autoplay, and its URL dies after five minutes; a link
@@ -230,6 +230,13 @@ Linear, Raycast, Vercel, Stripe, Apple and Arc launch films).
   compensation. Measured at 1280 × 720, 30 fps: a locked-off shot costs 25–70 KB/s, and a slow
   camera move about 1 MB/s even lossy. So every LOOP shot is locked off, and all camera movement
   lives in the FILM.
+- **Round 3 keeps the stillness and adds the moves** (the operator's verdict, § Decisions (film)).
+  The LOOP's holds are still locked off; four 1 s flights join them. Measured on round 3's world at
+  1676 × 943: a flight costs 7.1–7.8 MB/s near-lossless and 1.0–1.6 MB/s lossy (q45–q75). So
+  `scripts/film-encode-loop.py` stores each frame the way its content can afford: flights lossy at
+  q55 and sampled at 20 fps (motion blur covers the rate), holds lossy at q90, and the two poster
+  holds near-lossless, so frame 0 is pristine and the seam is exact. Shipped: 4.10 MB dark, 4.30 MB
+  light, where near-lossless holds measured 4.9 MB for dark alone.
 
 ### The image
 
@@ -239,6 +246,18 @@ into the distance. Colour means cost (VISUAL.md), and now height means cost too:
 the free work. The tiles are portrait pages, not squares, so the field reads as documents and not
 as a generic data grid. The plane never carries a count: it carries "tens of thousands of files"
 (README line 19) by running past the horizon.
+
+**Round 3: the same plane, made of real things.** Every tile is now a document with its name on it,
+drawn in `film/cards.js`. A lane's files are its source's own kinds: OneDrive and SharePoint hold
+`.docx` pages, `.xlsx` grids, `.pptx` decks and PDFs; Outlook holds emails; Teams holds channel
+messages. A fifth lane, `docs/`, holds the converted markdown pages an agent reads, with the git
+history running down its middle and HEAD in ink. A file the sync has seen only as metadata shows
+its name and a faint body. A file whose bytes are read **stands up at full size and turns amber from
+the top down** as its bytes arrive. So the two reads are two recognisable documents, `proposal.docx`
+and `forecast.xlsx`, standing in a field of thousands, and "One commit." is a page landing in
+`docs/`. The world is periodic: each sync happens in one stretch of the field, and every loop is the
+next sync, one stretch further on. The camera never undoes anything; the last sync's reads are still
+standing behind it, and the last frame is the first one moved down the field.
 
 ### Motion vocabulary, extended for the film
 
@@ -254,7 +273,49 @@ The SVG's table above still holds. The film adds:
 | **lift**: a text-coloured page leaves a pillar's top, descends, and comes to rest just after the words "One commit." | converted markdown going to git | the sentence is the destination, and the page stays there as the commit's mark, so frame 0 carries it (round 2) |
 | **cut** | a change of shot | the only way time is skipped; nothing ever drains or sinks |
 
-### LOOP (the README hero, 15 s), as built after critique round 2
+Round 3 revises the table: there are no cuts, and the read is a document.
+
+| Motion | Means | Rule |
+|---|---|---|
+| **flight**: the camera travels through the one world from a scene to the next | a change of scene | replaces the cut. The LOOP flies for 1 s between locked holds; the FILM's camera never stops until it lands on frame 0 again. Each flight goes somewhere the story goes next (over the reads to the lanes, down onto the reported files, after the converted page to `docs/`) |
+| **stand**: a reported page stands up, growing to full size (0.45 s) | the sync opens it on purpose | always followed by the read |
+| **read**: amber fills the standing page from the top down, at a constant rate | bytes materialised | the only slow motion (2.0 s story time); it replaces the rise |
+| **band**: a green band clips across the no-op save, below its name, reading `no-op save` | H2 equal: the read went no further, no commit | a shape and a word as well as a hue, and the filename stays visible (round 3) |
+| **wall**: every file in view stands up full size in a dim amber, row after row, then falls away | the counterfactual, captioned as one | FILM only; it falls to "Only what changed." |
+| **land**: the converted page crosses to `docs/` and lies down in its slot, outlined in ink; HEAD advances on the git line | one commit | the page never rises: rising is bytes |
+
+### LOOP (the README hero, 15 s), as built in round 3
+
+| t (s) | Place | Line | What happens |
+|---|---|---|---|
+| 0.0–2.5 | **The poster**: eye height in OneDrive's lane; `proposal.docx` and `forecast.xlsx` stand amber either side of the gutter, labelled with their sources | the governing thought, then **Two files read. One commit.** | held: the outcome of the last sync |
+| 2.5–3.5 | flight: up and over the two reads, onto the next stretch | | |
+| 3.5–5.0 | **The lanes**: all four sources named at the head of the stretch | **Ask each source what changed.** | eight files are ringed |
+| 5.0–6.6 | the lanes | **Decide before reading a byte.** | chips: six `H0 = · skip` turn green and leave; two `H0 ≠ · read` |
+| 6.6–7.5 | flight: down onto the two | | |
+| 7.5–10.9 | **The read**: low and close | **Read only on purpose.** | both stand up and fill amber; `H1 ≠ · new bytes`, `H2 = · same page`, and the `no-op save` band, held a full second |
+| 10.9–11.9 | flight: up and left after the converted page | | `proposal.md` leaves `proposal.docx` |
+| 11.9–13.3 | **`docs/`**: the lane of markdown pages and the git line | **Publish it to `docs/`, in git.** | the page lands, `docs/mirror/onedrive/proposal.md`; `+1 commit` at HEAD |
+| 13.3–14.3 | flight: back to the poster, one stretch on | | |
+| 14.3–15.0 | the poster | the governing thought | held to the seam |
+
+### FILM (26 s), as built in round 3
+
+One camera path through key poses (`FILM_PATH`), monotone so it never overshoots, leaving frame 0
+from rest and arriving back on it at 25.3 s.
+
+| t (s) | Where the camera goes | Line |
+|---|---|---|
+| 0.0–2.4 | the poster, pushing in; *a design with measured probes · no implementation yet* | the governing thought |
+| 2.4–6.2 | up over the two reads and high above the next stretch: four lanes to the horizon | **Tens of thousands of files.** |
+| 6.2–9.7 | gliding on while every file in view stands up, row after row: the wall | **Re-reading all of it: hours of downloads.** |
+| 9.7–12.7 | the wall falls away; down onto eight rings, six `H0 = · skip` | **Only what changed.** |
+| 12.7–16.2 | the read, drifting in | **Read only on purpose.** |
+| 16.2–19.2 | round the front of the pair to `forecast.xlsx` | **A no-op save: one read, no commit.** |
+| 19.2–23.1 | after the converted page to `docs/`; it lands, HEAD advances | **Your agent reads `docs/`.** |
+| 23.1–26.0 | back to the poster, one stretch on: exactly frame 0 | the governing thought |
+
+### LOOP (the README hero, 15 s), as built after critique round 2 (superseded by round 3 above)
 
 | t (s) | Shot | Line | What happens |
 |---|---|---|---|
@@ -269,7 +330,7 @@ screen at every t, and in every shot without the governing thought the tagline b
 the design does, now in the README's imperative: `keep docs/ in sync with Microsoft 365, processing
 only what changed`.
 
-### FILM (25 s), as built after critique round 2
+### FILM (25 s), as built after critique round 2 (superseded by round 3 above)
 
 | t (s) | Shot | Line |
 |---|---|---|
@@ -467,3 +528,51 @@ governing thought or one step, never neither.
     1280 × 720, against a measured 1–5 MB budget per grade. Round 3 has to resolve that for the
     LOOP by measurement (short flights between locked holds, lossy frames only while the camera
     moves, a smaller frame, or a different carrier), not by dropping the transitions.
+- **Round 3, as built** (the image, the vocabulary and both edit lists are above).
+  - *One world in three.js* (`film/world.js`), rendered on the GPU in headless Chrome. SwiftShader
+    rendered the same frames to within 0.1 % of pixels and 5× slower; `FILM_GL=sw` keeps it
+    available. The type stays DOM, crisp at every size.
+  - *Concrete:* named documents of each source's own kinds, a `docs/` lane of markdown pages, a git
+    line with HEAD, and a read that is a document standing up and turning amber.
+  - *Continuous:* one camera. Each loop is the next sync one stretch further down a periodic field,
+    so nothing is undone and the seam is exact (0 px decoded, both grades). The FILM's last frame is
+    its frame 0 (951 px of 2.07 M differ at 6 % fuzz, all H.264 noise; 0 px in the source frames).
+  - *The LOOP's bytes, resolved by measurement, not by dropping the flights.* Mixed per-frame
+    encoding (the Stillness bullet above): 4.10 MB dark, 4.30 MB light.
+  - *The ghost check, extended.* `film-verify.py` reads the encoder's per-frame plan. It holds
+    near-lossless frames to 2/255 as before. Lossy frames may not keep a solid stale patch (a 3×3
+    erosion of pixels 24/255 or more off a flat source): ringing is thin, a ghost is solid. A planted
+    41 × 41 stale patch is caught (1,225 px); the shipped loops show 0.
+  - *One encoder-driven device:* the flight back to the poster renders its background two levels
+    off (`bgRekey`), so the poster is re-sent whole and near-lossless. Without it, the faded
+    tagline's lossy pixels (252 for 255) survived into the poster: 126 px, which failed the ghost
+    check.
+- **Critique round 3 ([`film-critique-round-3.md`](film-critique-round-3.md), a fresh critic, blind
+  to rounds 1 and 2, briefed with the operator's verdict as its top criterion).** Its verdicts:
+  transitions *fixed*, concreteness *partly*. Adopted:
+  - *The wall is captioned* "Re-reading all of it: hours of downloads." (README line 19), drawn
+    dimmer (finding 1, the one blocker). It stays solid, because a wall is the image; the caption
+    makes it the counterfactual.
+  - *The no-op save is held a full second* before the flight leaves; ask and decide pay for it
+    (finding 2).
+  - *The green slab became a band* below the filename, reading `no-op save` (finding 3).
+  - *`docs/` has 40 distinct pages*; `proposal.md` appears only in its own slot (finding 4).
+  - *A scrim under the headlines*, and the `docs/` shot framed lower (finding 5).
+  - *The agent's beat is 2.5 s* (finding 6, in part).
+  - *The hash chips say what they decided:* `H0 = · skip`, `H0 ≠ · read`, `H1 ≠ · new bytes`,
+    `H2 = · same page` (finding 7).
+  - *The light field is a step darker, and the rings are thicker* (finding 8, in part).
+  - *The FILM's read has its line* (finding 9).
+  - *Git history as muted commits*, HEAD alone in ink (finding 10).
+  - *On the poster, each read is labelled with its source* ("the picture only says two files were
+    read").
+  - *The flight to `docs/` rises higher*, so it shows where `docs/` sits (the flights "read as a
+    whoosh").
+- **Round 3, declined.**
+  - *An agent drawn answering a question* (finding 6). There is no implementation, so any answer on
+    screen would be invented output. The line "Your agent reads `docs/`." states the purpose, and
+    the README's own words carry it.
+  - *Keeping the dark grade's amber in light* (finding 8). `#c86a00` is the light token tuned for
+    contrast on white (§ Decisions above): 3.81:1, where the dark amber measures 2.1:1.
+  - *Outline-only wall pages* (finding 1). Outlines at this scale read as texture, which is how the
+    first round-3 wall looked; the caption does the work instead.

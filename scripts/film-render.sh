@@ -20,7 +20,7 @@ WORKERS=${WORKERS:-3}
 CAP="node scripts/film-capture.mjs"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }; }
-need node; need ffmpeg; need magick; need img2webp; need webpinfo
+need node; need ffmpeg; need magick; need img2webp; need webpinfo; need python3
 
 sheet() { # $1 = frame dir, $2 = fps of the frames, $3 = output png, $4 = columns
   local dir=$1 fps=$2 out=$3 cols=${4:-4} i=0 labelled="$1/labelled"
@@ -50,28 +50,18 @@ review() {
 loop() {
   for theme in dark light; do
     local dir="$OUT/loop-$theme"
-    $CAP --cut loop --theme "$theme" --fps "$LOOP_FPS" --width 1920 --height 1080 --workers "$WORKERS" --out "$dir"
+    # Holds at 30 fps; flights (the page's meta.flights) at 20 fps, where motion blur covers the rate.
+    $CAP --cut loop --theme "$theme" --fps "$LOOP_FPS" --flight-fps 20 --width 1920 --height 1080 --workers "$WORKERS" --out "$dir"
     mkdir -p "$dir/small"
     rm -f "$dir/small"/*.png
+    cp "$dir/meta.json" "$dir/small/"
     # One magick per frame, eight at a time: serial resizing took over 2 s a frame under load.
     # shellcheck disable=SC2016 # the single-quoted script is expanded by the inner sh, per frame
     find "$dir" -maxdepth 1 -name 'f*.png' -print0 |
       xargs -0 -P "${JOBS:-8}" -I{} sh -c 'magick "$1" -filter Lanczos -resize "$2" "$3/small/$(basename "$1")"' _ {} "${LOOP_W}x${LOOP_H}!" "$dir"
-    # Per-frame durations that sum to the exact loop length (1000/30 is not an integer):
-    # frame k lasts round((k+1)*1000/fps) - round(k*1000/fps) ms, so 30 fps alternates 33/33/34.
-    local args=() k=0
-    for f in "$dir"/small/f*.png; do
-      args+=(-d "$(( ((k + 1) * 1000 + LOOP_FPS / 2) / LOOP_FPS - (k * 1000 + LOOP_FPS / 2) / LOOP_FPS ))" "$f")
-      k=$((k + 1))
-    done
-    # near_lossless 60, not 40: the animation encoder never re-sends a pixel whose SOURCE is unchanged
-    # between frames, so near-lossless rounding in one shot survived the cut into the next (measured:
-    # 3-4/255 letterforms of the governing thought in every step shot). At 60 the rounding is 2/255 at
-    # most, under the 3/255 film-verify.py allows, and -min_size lets a cut re-send the whole canvas.
-    img2webp -loop 0 -near_lossless 60 -m 6 -min_size "${args[@]}" -o "docs/media/hero-$theme.webp" >/dev/null
-    printf '  docs/media/hero-%s.webp  %s bytes, %s frames stored, %s ms\n' "$theme" "$(stat -f %z "docs/media/hero-$theme.webp")" \
-      "$(webpinfo "docs/media/hero-$theme.webp" | grep -c 'Duration:' || true)" \
-      "$(webpinfo "docs/media/hero-$theme.webp" | awk '/Duration:/ { s += $2 } END { print s }')"
+    # Held frames lossy at q90, flights lossy at q55 (measured round 3: 3.2 MB against 4.9 MB with
+    # near-lossless holds). See scripts/film-encode-loop.py for why the frames are encoded differently.
+    python3 scripts/film-encode-loop.py "$dir/small" "docs/media/hero-$theme.webp" --hold "${LOOP_HOLD:-q90}" --flight "${LOOP_FLIGHT:-q55}"
   done
 }
 

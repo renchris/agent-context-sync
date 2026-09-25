@@ -33,14 +33,21 @@ export const THEMES = {
     // and the cap, a step LIGHTER than amber here so it still reads in greyscale.
     edge: '#3d444d', pool: '#4a3314', shadow: '#010409', shadowA: 0.6,
     capFace: '#7ee787', capSide: '#56d364', capTop: '#aff5b4', capUnder: '#1f6f33',
+    // Documents (film/cards.js): a metadata-only body is faint; a read page is amber with its content
+    // printed dark on it; a converted markdown page in docs/ is outlined in ink once it lands.
+    skeleton: '#8b949e', onAmber: '#0d1117', mdFill: '#161b22', mdNew: '#21262d', ghostFill: '#3b2914', onCap: '#0d1117',
+    // The background two levels off, for the flight back to the poster (see REKEY in film.js).
+    bgRekey: '#0d1119',
   },
   light: {
-    bg: '#ffffff', ink: '#1f2328', muted: '#59636e', faint: '#afb8c1', cell: '#ebeff3',
+    bg: '#ffffff', ink: '#1f2328', muted: '#59636e', faint: '#afb8c1', cell: '#e6eaef',
     amber: '#c86a00', amberSide: '#b35900', amberTop: '#d98a2e', amberText: '#b35900', amberFill: '#fff1dc', green: '#1a7f37', greenSide: '#146b2e', greenTop: '#2a9a4a', greenFill: '#dafbe1', red: '#cf222e', redFill: '#ffebe9',
     // One step darker field than GitHub's subtle canvas, so the pages survive 838 px. The cap is a
     // step DARKER than amber here, so it still reads in greyscale.
-    edge: '#97a1ac', pool: '#f9cf95', shadow: '#1f2328', shadowA: 0.2,
+    edge: '#8c959f', pool: '#f9cf95', shadow: '#1f2328', shadowA: 0.2,
     capFace: '#116329', capSide: '#0b4d1f', capTop: '#1a7f37', capUnder: '#062e13',
+    skeleton: '#59636e', onAmber: '#ffffff', mdFill: '#f6f8fa', mdNew: '#ffffff', ghostFill: '#fbe6cb', onCap: '#ffffff',
+    bgRekey: '#fffffd',
   },
 }
 

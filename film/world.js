@@ -1,317 +1,535 @@
-// film/world.js: the plane. A company's knowledge as a flat field of document tiles, four regions
-// wide (one per source). Reading bytes is the only thing on the plane that has height.
+// film/world.js: one world, in three.js. A company's files are four lanes of real documents running
+// to the horizon, one lane per source, and beside them a fifth lane, docs/: the converted markdown
+// pages an agent reads, with the git history running down its middle.
 //
-// Everything here is a pure function of the arguments passed to draw(): the camera and the per-tile
-// state are computed by the caller from the film clock, so any frame renders identically.
+// The world is PERIODIC in depth. It is cut into stretches of SR rows, one per sync, and every stretch
+// holds the same documents in the same places. A sync happens in one stretch; the camera then moves
+// on to the next one. So the loop never has to undo anything: the last sync's two reads are still
+// standing behind the camera, bytes never drain, and the last frame is the first one moved one
+// stretch down the field.
+//
+// Nothing here keeps time. film.js computes every state from the clock and calls update(); any frame
+// renders the same pixels in any order.
 
-export const REGIONS = ['OneDrive', 'SharePoint', 'Outlook', 'Teams']
-export const COLS = 16 // tiles across one region
-export const ROWS = 190 // tiles deep
-export const GAP = 2.5 // tiles between regions
-// A tile is a page lying face up: portrait, with its far right corner folded.
-export const SX = 0.78 // page width (world units)
-export const SZ = 1.0 // page length
-export const S = SX // kept for callers that centre on a tile's width
-export const P = 0.3 // gap between pages
-export const PX = SX + P
-export const PZ = SZ + P
-export const PITCH_ = PZ
-export const N = REGIONS.length * COLS * ROWS // 12,160
-export const WIDTH = (REGIONS.length * COLS + (REGIONS.length - 1) * GAP) * PX
-export const X0 = -WIDTH / 2
-const DOG = 0.24 // the folded corner
+import * as THREE from '../node_modules/three/build/three.module.js'
+import { CARD_H, CARD_W, DOCS_FILES, LANES, canvas, drawDoc } from './cards.js'
+import { clamp01, ease, rng } from './lib.js'
 
-/** World x of a page's left edge and z of its near edge. */
-export const tileX = (r, i) => X0 + (r * (COLS + GAP) + i) * PX
-export const tileZ = (j) => j * PZ
-/** The centre of a page's footprint. */
-export const tileC = (r, i, j) => [tileX(r, i) + SX / 2, tileZ(j) + SZ / 2]
-/** The centre line of a lane. */
-export const laneX = (r) => tileX(r, 0) + (COLS * PX - P) / 2
-/** The centre of a region's near edge, where its since-token sits. */
-export const regionFront = (r) => [tileX(r, 0) + (COLS * PITCH_) / 2, 0, -2.2]
+// --------------------------------------------------------------------------------- the layout
+export const DW = 0.78 // a document's width (world units)
+export const DL = 1.0 // and its length
+export const PX = DW + 0.3 // pitch across
+export const PZ = DL + 0.3 // pitch down the lane
+export const COLS = 8 // documents across one source lane
+export const DCOLS = 6 // across docs/
+export const GAP = 2.5 // pitches between lanes
+export const SR = 24 // rows per stretch: one sync
+export const ROW0 = -70
+export const ROW1 = 330
+// Lane l = -1 is docs/; 0..3 are the sources. x of a document's left edge.
+const laneStart = (l) => (l < 0 ? 0 : DCOLS + GAP + l * (COLS + GAP))
+// x = 0 is the middle of the OneDrive/SharePoint gutter, between the two files one sync reads.
+const X0 = -((laneStart(0) + COLS - 1 + laneStart(1)) / 2) * PX - DW / 2
+export const docX = (l, i) => X0 + (laneStart(l) + i) * PX
+export const laneMid = (l) => docX(l, 0) + ((l < 0 ? DCOLS : COLS) * PX - 0.3) / 2
+/** World z of a row's near edge (the lanes run away from the camera, toward -z). */
+export const rowZ = (j) => -j * PZ
+/** A document's centre on the ground. */
+export const docC = (l, i, j) => [docX(l, i) + DW / 2, rowZ(j) - DL / 2]
 
-const hex = (h) => (Array.isArray(h) ? h : [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)))
-/** a → b by k, as an [r, g, b] array (inputs may be hex strings or arrays). */
-export function mixA(a, b, k) {
-  const A = hex(a)
-  const B = hex(b)
-  return A.map((v, i) => v + (B[i] - v) * k)
+// One sync: the eight files its sources report, as (lane, column, row within the stretch). H0 is
+// equal on six. SharePoint's forecast.xlsx is a no-op save (H1 differs, H2 is equal); OneDrive's
+// proposal.docx becomes one page in docs/. The two stand either side of the gutter, on one row.
+export const REPORTED = [
+  { l: 0, i: 7, j: 14, name: 'proposal.docx', sub: 'Northwind renewal', read: 'commit' },
+  { l: 1, i: 0, j: 14, name: 'forecast.xlsx', sub: 'Sales · Q3', read: 'noop' },
+  { l: 0, i: 2, j: 7, name: 'roadmap.pptx', sub: '12 slides' },
+  { l: 1, i: 5, j: 19, name: 'handbook.pdf', sub: '42 pages' },
+  { l: 2, i: 2, j: 9, name: 'Offsite agenda', sub: 'Marcus Lee' },
+  { l: 2, i: 6, j: 17, name: 'RE: renewal terms', sub: 'Priya Shah' },
+  { l: 3, i: 1, j: 11, name: '#sales', sub: 'Dana: new forecast is up' },
+  { l: 3, i: 5, j: 5, name: '#launch', sub: 'Marcus: date moved' },
+]
+// Where the converted page lands in docs/, and where its commit sits on the git line.
+export const MD_SLOT = { i: 4, j: 14 }
+export const GIT_X = docX(-1, 3) - 0.15
+const STRETCHES = [-2, -1, 0, 1, 2, 3] // stretches whose sync is drawn object by object
+const key = (l, i, j) => `${l},${i},${j}`
+const reportedSlot = new Map(REPORTED.map((o, n) => [key(o.l, o.i, o.j), n]))
+export const GROW = 2.4 // a read page stands up at this size: the bytes made it a whole document
+
+// Deterministic field: which of a lane's twelve files sits in each place, periodic in the stretch.
+function variantAt(l, i, j) {
+  const jj = ((j % SR) + SR) % SR
+  const R = rng(1009 * (l + 7) + 131 * i + 17 * jj)
+  R()
+  return Math.floor(R() * 12)
 }
-export function mix(a, b, k) {
-  return `rgb(${mixA(a, b, k).map(Math.round).join(',')})`
-}
-const rgba = (c, a) => `rgba(${hex(c).map(Math.round).join(',')},${a.toFixed(3)})`
 
-// The key light is low, from the front left, so every read throws one long shadow across the lanes,
-// back and to the right. Shadow length per unit of height.
-const LIGHT = { dx: 0.8, dz: 0.6, len: 2.2 }
-// Bytes read light up their neighbourhood: a warm pool on the pages round a read's base.
-const POOL_R = 5.5
-// The height whose shadow sets the fade's length (a full read, in the film's units).
-const SHADOW_FADE = 11
+// --------------------------------------------------------------------------------- building
+export function buildWorld(T, { width = 1920, height = 1080 } = {}) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' })
+  renderer.setPixelRatio(1)
+  renderer.setSize(width, height)
+  renderer.outputColorSpace = THREE.SRGBColorSpace
+  const maxAniso = renderer.capabilities.getMaxAnisotropy()
+  const scene = new THREE.Scene()
+  const bg = new THREE.Color(T.bg)
+  scene.background = bg
+  scene.fog = new THREE.Fog(bg, 40, 160)
+  const cam = new THREE.PerspectiveCamera(40, width / height, 0.05, 600)
+  cam.rotation.order = 'YXZ'
 
-/** A pinhole camera: position, pitch (radians, looking down), yaw, focal length in px, horizon y. */
-export function camera({ x, y, z, pitch, yaw = 0, F, cx = 960, cy = 600 }) {
-  const cp = Math.cos(pitch)
-  const sp = Math.sin(pitch)
-  const cyw = Math.cos(yaw)
-  const syw = Math.sin(yaw)
-  return {
-    F,
-    x,
-    y,
-    V: F * cp, // screen px per world unit of height, per unit of depth (verticals stay vertical)
-    proj(wx, wy, wz) {
-      let dx = wx - x
-      const dy = wy - y
-      let dz = wz - z
-      ;[dx, dz] = [dx * cyw - dz * syw, dx * syw + dz * cyw]
-      const zc = dz * cp - dy * sp
-      const yc = dy * cp + dz * sp
-      if (zc < 0.2) return null
-      return [cx + (F * dx) / zc, cy - (F * yc) / zc, zc]
-    },
+  const tex = (c) => {
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    t.anisotropy = maxAniso
+    t.generateMipmaps = true
+    t.minFilter = THREE.LinearMipmapLinearFilter
+    return t
   }
-}
+  const flat = new THREE.PlaneGeometry(DW, DL).rotateX(-Math.PI / 2)
 
-function poly(g, pts, fill, stroke, lw) {
-  g.beginPath()
-  g.moveTo(pts[0][0], pts[0][1])
-  for (let k = 1; k < pts.length; k += 1) g.lineTo(pts[k][0], pts[k][1])
-  g.closePath()
-  if (fill) {
-    g.fillStyle = fill
-    g.fill()
+  // The field: every ordinary document, instanced by (lane, variant).
+  const fieldTex = LANES.map((lane, l) =>
+    lane.files.map(([name, sub], v) => {
+      const c = canvas()
+      drawDoc(c.getContext('2d'), T, { lane: l, name, sub, seed: 97 * l + v })
+      return tex(c)
+    }),
+  )
+  const docsTex = DOCS_FILES.map(([name, sub], v) => {
+    const c = canvas()
+    drawDoc(c.getContext('2d'), T, { lane: -1, name, sub, seed: 500 + v }, { md: true })
+    return tex(c)
+  })
+  const buckets = new Map()
+  const push = (k, x, z) => {
+    if (!buckets.has(k)) buckets.set(k, [])
+    buckets.get(k).push([x, z])
   }
-  if (stroke) {
-    g.strokeStyle = stroke
-    g.lineWidth = lw
-    g.stroke()
-  }
-}
-
-/**
- * Draw the plane. `state(r, i, j)` returns null for an ordinary tile, or an object with any of:
- *   h      pillar height in tiles (bytes read); 0 = flat
- *   cap    0..1, a green slab on the pillar (paid, then free at H2)
- * `fog` pushes distant tiles toward the background; `dim` lowers the whole plane (for type).
- * `pools` is a list of { x, z, k }: a read's warm light on the pages round its base, k = 0..1.
- */
-export function drawPlane(g, T, cam, state, { fogNear = 60, fogFar = 180, dim = 0, pools = [], shadows = true } = {}) {
-  const pillars = []
-  const edgeC = T.edge ?? T.faint
-  // Pages lie on the ground and never overlap, so their order does not matter. Pillars stand on the
-  // ground, so no page can hide one: they are painted after every page, far to near by camera depth.
-  for (let j = ROWS - 1; j >= 0; j -= 1) {
-    const z = tileZ(j)
-    for (let r = 0; r < REGIONS.length; r += 1) {
+  const firstK = STRETCHES[0]
+  const lastK = STRETCHES[STRETCHES.length - 1]
+  for (let j = ROW0; j < ROW1; j += 1) {
+    const k = Math.floor(j / SR)
+    const jj = j - k * SR
+    for (let l = 0; l < 4; l += 1) {
       for (let i = 0; i < COLS; i += 1) {
-        const x = tileX(r, i)
-        const st = state(r, i, j)
-        if (st && st.h > 0.001) {
-          pillars.push({ x, z, st })
-          continue
-        }
-        const a = cam.proj(x, 0, z)
-        if (!a) continue
-        const b = cam.proj(x + SX, 0, z)
-        const d = cam.proj(x, 0, z + SZ)
-        if (!b || !d) continue
-        if (Math.max(a[0], b[0]) < -40 || Math.min(a[0], b[0]) > 1960) continue
-        if (a[1] < -40 || d[1] > 1120) continue
-        const fog = Math.min(1, Math.max(0, (a[2] - fogNear) / (fogFar - fogNear)))
-        const k = Math.min(1, fog * 0.92 + dim)
-        if (k >= 0.995) continue
-        let warm = 0
-        for (const pl of pools) {
-          const f = 1 - Math.hypot(x + SX / 2 - pl.x, z + SZ / 2 - pl.z) / POOL_R
-          if (f > 0) warm = Math.max(warm, pl.k * f * f)
-        }
-        const px = Math.abs(b[0] - a[0])
-        const fill = mix(warm > 0.003 ? mixA(T.cell, T.pool, warm) : T.cell, T.bg, k)
-        const edge = px > 2.2 ? mix(warm > 0.003 ? mixA(edgeC, T.amber, warm * 0.55) : edgeC, T.bg, Math.min(1, k * 1.05)) : null
-        if (px > 9) {
-          // Near pages show their folded corner.
-          const c1 = cam.proj(x + SX, 0, z + SZ - DOG)
-          const c2 = cam.proj(x + SX - DOG * 0.8, 0, z + SZ)
-          if (!c1 || !c2) continue
-          poly(g, [a, b, c1, c2, d], fill, edge, px > 30 ? 1.5 : 1)
-          poly(g, [c1, c2, cam.proj(x + SX - DOG * 0.8, 0, z + SZ - DOG)], mix(edgeC, T.bg, 0.25 + k * 0.6), null, 1)
-        } else {
-          const c = cam.proj(x + SX, 0, z + SZ)
-          if (!c) continue
-          poly(g, [a, b, c, d], fill, edge, 1)
+        if (jj < 2) continue // each stretch opens on a band that carries the lane names
+        if (k >= firstK && k <= lastK && reportedSlot.has(key(l, i, jj))) continue
+        const [x, z] = docC(l, i, j)
+        push(`${l}:${variantAt(l, i, j)}`, x, z)
+      }
+    }
+    for (let i = 0; i < DCOLS; i += 1) {
+      if (i === 2 || i === 3 || jj < 2) continue // the git line runs here
+      if (k >= firstK && k <= lastK && i === MD_SLOT.i && jj === MD_SLOT.j) continue
+      const [x, z] = docC(-1, i, j)
+      // Forty pages, dealt so neighbours differ: a real folder has one of each.
+      push(`d:${(jj * 5 + i * 11) % DOCS_FILES.length}`, x, z) // periodic in the stretch, like the field
+    }
+  }
+  const m4 = new THREE.Matrix4()
+  for (const [k, list] of buckets) {
+    const [a, b] = k.split(':')
+    const map = a === 'd' ? docsTex[Number(b)] : fieldTex[Number(a)][Number(b)]
+    const mesh = new THREE.InstancedMesh(flat, new THREE.MeshBasicMaterial({ map, transparent: false, alphaTest: 0.5 }), list.length)
+    list.forEach(([x, z], n) => mesh.setMatrixAt(n, m4.makeTranslation(x, 0, z)))
+    mesh.frustumCulled = false
+    scene.add(mesh)
+  }
+
+  // Lane names, painted on the ground at the head of every stretch like road markings.
+  const nameTex = [-1, 0, 1, 2, 3].map((l) => {
+    const text = l < 0 ? 'docs/' : LANES[l].name
+    const c = canvas(1024, 200)
+    const g = c.getContext('2d')
+    g.font = '500 150px "Geist Mono"'
+    g.fillStyle = l < 0 ? T.ink : T.muted
+    g.textAlign = 'center'
+    g.textBaseline = 'alphabetic'
+    g.fillText(text, 512, 158)
+    return { t: tex(c), l }
+  })
+  const nameGeo = new THREE.PlaneGeometry(1, 200 / 1024).rotateX(-Math.PI / 2)
+  for (let k = Math.floor(ROW0 / SR); k * SR < ROW1; k += 1) {
+    for (const { t, l } of nameTex) {
+      const w = (l < 0 ? DCOLS : COLS) * PX * 0.92
+      const m = new THREE.Mesh(nameGeo, new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }))
+      m.scale.set(w, 1, w)
+      m.position.set(laneMid(l), 0.004, rowZ(k * SR) - PZ + 0.1)
+      m.renderOrder = 1
+      scene.add(m)
+    }
+  }
+
+  // The git line down docs/: history is behind, and it ends at the newest commit (HEAD).
+  const lineMat = new THREE.MeshBasicMaterial({ color: T.faint }) // quieter than the commits on it
+  const gitLine = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 1).rotateX(-Math.PI / 2), lineMat)
+  gitLine.renderOrder = 2
+  scene.add(gitLine)
+  const dotGeo = new THREE.CircleGeometry(0.24, 48).rotateX(-Math.PI / 2)
+  const dotRingGeo = new THREE.RingGeometry(0.24, 0.36, 48).rotateX(-Math.PI / 2)
+  // Earlier history: a commit every six rows behind the line's tip, muted. Only HEAD is in ink.
+  const hist = []
+  for (let j = ROW0 + 3; j < ROW1; j += 6) if ((((j - MD_SLOT.j) % SR) + SR) % SR !== 0) hist.push(j)
+  const histDots = new THREE.InstancedMesh(new THREE.CircleGeometry(0.16, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: T.muted }), hist.length)
+  hist.forEach((j, n) => histDots.setMatrixAt(n, m4.makeTranslation(GIT_X, 0.013, docC(-1, 0, j)[1])))
+  histDots.renderOrder = 3
+  histDots.frustumCulled = false
+  scene.add(histDots)
+  const commits = STRETCHES.map((k) => {
+    const g = new THREE.Group()
+    const [, z] = docC(-1, 0, k * SR + MD_SLOT.j)
+    const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: T.ink, transparent: true }))
+    const halo = new THREE.Mesh(dotRingGeo, new THREE.MeshBasicMaterial({ color: T.bg, transparent: true }))
+    g.add(halo, dot)
+    g.position.set(GIT_X, 0.012, z)
+    g.renderOrder = 3
+    scene.add(g)
+    return { k, g, dot, z }
+  })
+  for (const c of commits) {
+    c.dot.renderOrder = 4
+    c.halo = c.g.children[0]
+    c.halo.renderOrder = 3
+  }
+
+  // The reported documents, one object each, in the stretches a cut can see.
+  const box = new THREE.BoxGeometry(DW, 0.02, DL)
+  const sideMat = new THREE.MeshBasicMaterial({ color: T.edge })
+  const ringGeo = new THREE.RingGeometry(0.76, 1.0, 72).rotateX(-Math.PI / 2)
+  const events = []
+  for (const k of STRETCHES) {
+    REPORTED.forEach((o, n) => {
+      const c = canvas()
+      const t = tex(c)
+      const faceMat = new THREE.MeshBasicMaterial({ map: t })
+      // Box faces: +x, -x, +y (the page), -y, +z, -z.
+      const back = new THREE.MeshBasicMaterial({ color: T.cell })
+      const mesh = new THREE.Mesh(box, [sideMat, sideMat, faceMat, back, sideMat, sideMat])
+      // Pivot on the page's near edge, so a read stands up facing the camera.
+      const pivot = new THREE.Group()
+      const [x, z] = docC(o.l, o.i, k * SR + o.j)
+      pivot.position.set(x, 0.011, z + DL / 2)
+      mesh.position.set(0, 0, -DL / 2)
+      pivot.add(mesh)
+      scene.add(pivot)
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: T.muted, transparent: true, depthWrite: false }))
+      ring.position.set(x, 0.006, z)
+      ring.renderOrder = 2
+      scene.add(ring)
+      events.push({ k, n, o, c, t, pivot, mesh, ring, x, z, last: '' })
+    })
+  }
+
+  // A read's light and shadow: a warm pool round its base, and one long shadow from a low key light
+  // at the front left.
+  const poolC = canvas(256, 256)
+  {
+    const g = poolC.getContext('2d')
+    // An alpha map reads the green channel, so it is drawn opaque, white to black.
+    const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128)
+    gr.addColorStop(0, '#ffffff')
+    gr.addColorStop(0.3, '#8a8a8a')
+    gr.addColorStop(0.65, '#262626')
+    gr.addColorStop(1, '#000000')
+    g.fillStyle = gr
+    g.fillRect(0, 0, 256, 256)
+  }
+  const poolTex = new THREE.CanvasTexture(poolC)
+  const shadowC = canvas(64, 256)
+  {
+    const g = shadowC.getContext('2d')
+    const gr = g.createLinearGradient(0, 0, 0, 256)
+    gr.addColorStop(0, '#ffffff')
+    gr.addColorStop(0.4, '#808080')
+    gr.addColorStop(1, '#000000')
+    g.fillStyle = gr
+    g.fillRect(0, 0, 64, 256)
+  }
+  const shadowTex = new THREE.CanvasTexture(shadowC)
+  const LIGHT = new THREE.Vector2(0.55, -0.8).normalize() // on the ground: toward +x and into the field
+  for (const ev of events) {
+    if (!ev.o.read) continue
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 6.5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: T.pool, alphaMap: poolTex, transparent: true, depthWrite: false }))
+    pool.position.set(ev.x, 0.008, ev.z)
+    pool.renderOrder = 1
+    scene.add(pool)
+    const sg = new THREE.BufferGeometry()
+    sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3))
+    // v = 1 at the base (the dark end of the gradient) and 0 at the tip.
+    sg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2))
+    sg.setIndex([0, 1, 2, 0, 2, 3])
+    const shadow = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: T.shadow, alphaMap: shadowTex, transparent: true, opacity: T.shadowA, depthWrite: false }))
+    shadow.renderOrder = 2
+    shadow.frustumCulled = false
+    scene.add(shadow)
+    // The cap: a green slab clipped over the top of the no-op save: paid, then free at H2.
+    let cap = null
+    if (ev.o.read === 'noop') {
+      // A green band across the page, below its name and overhanging both edges: paid, then free at
+      // H2. A shape as well as a hue, and it says what it is.
+      const bc = canvas(512, 96)
+      {
+        const g = bc.getContext('2d')
+        g.fillStyle = T.capFace
+        g.fillRect(0, 0, 512, 96)
+        g.fillStyle = T.onCap
+        g.font = '600 50px "Geist Mono"'
+        g.textAlign = 'center'
+        g.textBaseline = 'middle'
+        g.fillText('no-op save', 256, 50)
+      }
+      const bandTex = tex(bc)
+      const side = new THREE.MeshBasicMaterial({ color: T.capSide })
+      cap = new THREE.Mesh(new THREE.BoxGeometry(DW + 0.16, 0.05, 0.16), [side, side, new THREE.MeshBasicMaterial({ map: bandTex }), new THREE.MeshBasicMaterial({ color: T.capUnder }), side, side])
+      ev.mesh.add(cap)
+    }
+    Object.assign(ev, { pool, shadow, cap })
+  }
+
+  // The converted page: proposal.md, which leaves proposal.docx and lands in docs/.
+  const mdC = canvas()
+  const mdTex = tex(mdC)
+  const mdMesh = new THREE.Mesh(new THREE.BoxGeometry(DW, 0.02, DL), [sideMat, sideMat, new THREE.MeshBasicMaterial({ map: mdTex }), new THREE.MeshBasicMaterial({ color: T.cell }), sideMat, sideMat])
+  scene.add(mdMesh)
+  const mdSlots = STRETCHES.map((k) => {
+    const c = canvas()
+    const t = tex(c)
+    const m = new THREE.Mesh(flat, new THREE.MeshBasicMaterial({ map: t, alphaTest: 0.5 }))
+    const [x, z] = docC(-1, MD_SLOT.i, k * SR + MD_SLOT.j)
+    m.position.set(x, 0.001, z)
+    scene.add(m)
+    return { k, c, t, m, x, z, last: '' }
+  })
+
+  // The counterfactual (FILM only): every file in view read again, drawn hollow and dimmer.
+  const ghostC = canvas()
+  drawDoc(ghostC.getContext('2d'), T, { lane: 0, name: '', seed: 1 }, { ghost: true })
+  const ghostTex = tex(ghostC)
+  const GHOST_MAX = 4 * COLS * 70
+  const ghosts = new THREE.InstancedMesh(new THREE.PlaneGeometry(DW, DL).translate(0, DL / 2, 0), new THREE.MeshBasicMaterial({ map: ghostTex, alphaTest: 0.5, side: THREE.DoubleSide }), GHOST_MAX)
+  ghosts.count = 0
+  ghosts.frustumCulled = false
+  ghosts.renderOrder = 5
+  scene.add(ghosts)
+
+  // Accumulation, for motion blur: each sub-frame renders into `one`, then adds into `acc`.
+  const rtOpts = { type: THREE.HalfFloatType, samples: 4, colorSpace: THREE.LinearSRGBColorSpace }
+  const one = new THREE.WebGLRenderTarget(width, height, rtOpts)
+  const acc = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType })
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2))
+  const quadScene = new THREE.Scene()
+  quadScene.add(quad)
+  const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+  const addMat = new THREE.ShaderMaterial({
+    uniforms: { src: { value: null }, w: { value: 1 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform sampler2D src; uniform float w; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(src, vUv).rgb * w, 1.0); }',
+    blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true,
+  })
+  const outMat = new THREE.ShaderMaterial({
+    uniforms: { src: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'uniform sampler2D src; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(src, vUv).rgb, 1.0);\n#include <colorspace_fragment>\n}',
+    depthTest: false, depthWrite: false,
+  })
+
+  // ------------------------------------------------------------------------------ the camera
+  // A pose: position, yaw (turning right is positive), pitch (looking down is positive), focal length
+  // F in px and the principal point (cx, cy). A principal point off-centre is a lens shift: it moves
+  // the horizon without tilting the camera, so standing pages stay vertical.
+  function pose(p) {
+    cam.position.set(p.x, p.y, p.z)
+    cam.rotation.set(-(p.pitch ?? 0), -(p.yaw ?? 0), 0)
+    const n = cam.near
+    const cx = p.cx ?? width / 2
+    const cy = p.cy ?? height / 2
+    cam.projectionMatrix.makePerspective((-cx / p.F) * n, ((width - cx) / p.F) * n, (cy / p.F) * n, (-(height - cy) / p.F) * n, n, cam.far)
+    cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert()
+    cam.updateMatrixWorld(true)
+  }
+  const v3 = new THREE.Vector3()
+  /** Screen position of a world point under the current pose, or null behind the camera. */
+  function project(x, y, z) {
+    v3.set(x, y, z).applyMatrix4(cam.matrixWorldInverse)
+    if (v3.z > -0.05) return null
+    const d = -v3.z
+    v3.applyMatrix4(cam.projectionMatrix)
+    return [(v3.x + 1) * 0.5 * width, (1 - v3.y) * 0.5 * height, d]
+  }
+
+  // ------------------------------------------------------------------------------ the state
+  const q = new THREE.Quaternion()
+  const s3 = new THREE.Vector3()
+  const p3 = new THREE.Vector3()
+  const xAxis = new THREE.Vector3(1, 0, 0)
+
+  /**
+   * Apply one moment. st(k) returns stretch k's sync state:
+   *   { ring[n], green[n], read (0..1), stand (0..1), grow (0..1), h1, h2, cap (0..1), md: {...}, commit (0..1) }
+   * ghostWall: null or { rows: fn(j) -> height 0..1 } for the counterfactual.
+   */
+  const bgRekey = new THREE.Color(T.bgRekey)
+  function update(st, { fog = [40, 160], ghostWall = null, ghostFrom = 0, md = null, rekey = false } = {}) {
+    scene.fog.near = fog[0]
+    scene.fog.far = fog[1]
+    scene.background = rekey ? bgRekey : bg
+    scene.fog.color.copy(rekey ? bgRekey : bg)
+    let newest = null
+    for (const c of commits) {
+      const s = st(c.k)
+      c.g.visible = s.commit > 0.001
+      c.dot.material.opacity = s.commit
+      c.halo.material.opacity = s.commit
+      if (s.commit > 0.001 && (newest === null || c.k > newest.k)) newest = { k: c.k, z: c.z, a: s.commit }
+    }
+    // The line runs from the far past up to HEAD, and draws its last segment as the commit lands.
+    const zBack = rowZ(ROW0)
+    let zHead = newest ? newest.z : rowZ(ROW0 + 1)
+    if (newest && newest.a < 1) {
+      const prev = commits.find((c) => c.k === newest.k - 1)
+      if (prev) zHead = prev.z + (newest.z - prev.z) * newest.a
+    }
+    gitLine.scale.set(1, 1, Math.max(0.001, zBack - zHead))
+    gitLine.position.set(GIT_X, 0.01, (zBack + zHead) / 2)
+    histDots.count = hist.filter((j) => docC(-1, 0, j)[1] > zHead + 0.2).length
+    for (const c of commits) {
+      const head = newest && c.k === newest.k
+      c.dot.material.color.set(head ? T.ink : T.muted)
+      c.g.scale.setScalar(head ? 1 : 0.75)
+    }
+
+    for (const ev of events) {
+      const s = st(ev.k)
+      const o = ev.o
+      // Rings: reported, metadata only. Green once H0 is equal, then gone.
+      const ra = s.ring[ev.n]
+      ev.ring.visible = ra > 0.001
+      ev.ring.material.opacity = ra
+      ev.ring.material.color.set(s.green[ev.n] > 0.5 ? T.green : T.muted)
+      ev.ring.scale.setScalar(s.green[ev.n] > 0.5 ? 1.06 : 1)
+      const r = o.read ? s.read : 0
+      const stand = o.read ? s.stand : 0
+      const grow = o.read ? s.grow : 0
+      const hot = ra > 0.5 && s.green[ev.n] < 0.5
+      const sig = `${r.toFixed(3)}${hot ? 'h' : ''}`
+      if (sig !== ev.last) {
+        drawDoc(ev.c.getContext('2d'), T, { lane: o.l, name: o.name, sub: o.sub, seed: 97 * o.l + ev.n + 11 }, { read: r, reported: hot })
+        ev.t.needsUpdate = true
+        ev.last = sig
+      }
+      const sc = 1 + (GROW - 1) * grow
+      ev.pivot.rotation.set(stand * Math.PI / 2, 0, 0)
+      ev.pivot.scale.setScalar(sc)
+      if (ev.pool) {
+        ev.pool.visible = s.pool > 0.001
+        ev.pool.material.opacity = s.pool * 0.85
+        // The shadow: the standing page's top edge thrown along the light onto the ground.
+        const H = DL * sc * Math.sin(stand * Math.PI / 2)
+        ev.shadow.visible = H > 0.01
+        const L = H * 1.9
+        const bx0 = ev.x - (DW * sc) / 2
+        const bx1 = ev.x + (DW * sc) / 2
+        const bz = ev.z + DL / 2
+        const pos = ev.shadow.geometry.attributes.position.array
+        const ox = LIGHT.x * L
+        const oz = LIGHT.y * L
+        pos.set([bx0, 0.009, bz, bx1, 0.009, bz, bx1 + ox, 0.009, bz + oz, bx0 + ox, 0.009, bz + oz])
+        ev.shadow.geometry.attributes.position.needsUpdate = true
+        if (ev.cap) {
+          const c = s.cap
+          ev.cap.visible = c > 0.001
+          // It slides down onto the page from above its top edge.
+          ev.cap.position.set(0, 0.035, -DL / 2 + 0.36 - (1 - c) * 0.3)
+          ev.cap.scale.set(1, 1, 1)
+          ev.cap.material.forEach((m) => {
+            m.transparent = c < 1
+            m.opacity = c
+          })
         }
       }
     }
-  }
-  if (shadows) for (const p of pillars) drawShadow(g, T, cam, p.x, p.z, p.st.h)
-  const depth = (p) => cam.proj(p.x + SX / 2, 0, p.z + SZ / 2)?.[2] ?? 0
-  pillars.sort((a, b) => depth(b) - depth(a))
-  for (const p of pillars) drawPillar(g, T, cam, p.x, p.z, p.st)
-}
-
-// The key light's shadow: the pillar's footprint swept along the light, fading with distance.
-function drawShadow(g, T, cam, x, z, h) {
-  const L = h * LIGHT.len
-  const ox = LIGHT.dx * L
-  const oz = LIGHT.dz * L
-  const foot = [[x, z], [x + SX, z], [x + SX, z + SZ], [x, z + SZ]]
-  const pts = [...foot, ...foot.map(([a, b]) => [a + ox, b + oz])]
-  // Convex hull (monotone chain) of the eight ground points.
-  pts.sort((p, q) => p[0] - q[0] || p[1] - q[1])
-  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-  const half = (list) => {
-    const out = []
-    for (const pt of list) {
-      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], pt) <= 0) out.pop()
-      out.push(pt)
+    // The converted page.
+    mdMesh.visible = !!md?.visible
+    if (md?.visible) {
+      const sig = 'md'
+      if (mdMesh.userData.sig !== sig) {
+        drawDoc(mdC.getContext('2d'), T, { lane: -1, name: 'proposal.md', sub: 'mirror/onedrive', seed: 500 }, { md: true, landed: 1 })
+        mdTex.needsUpdate = true
+        mdMesh.userData.sig = sig
+      }
+      mdMesh.position.set(md.x, md.y, md.z)
+      mdMesh.rotation.set(md.rx, md.ry ?? 0, 0)
+      mdMesh.scale.setScalar(md.scale)
     }
-    out.pop()
-    return out
+    for (const sl of mdSlots) {
+      const s = st(sl.k)
+      const landed = s.landed
+      const sig = landed > 0.5 ? 'new' : 'old'
+      if (sig !== sl.last) {
+        drawDoc(sl.c.getContext('2d'), T, { lane: -1, name: 'proposal.md', sub: 'mirror/onedrive', seed: 500 }, { md: true, landed: landed > 0.5 ? 1 : 0 })
+        sl.t.needsUpdate = true
+        sl.last = sig
+      }
+    }
+    // The counterfactual wall.
+    let n = 0
+    if (ghostWall) {
+      for (let j = ghostFrom; j < ghostFrom + 70; j += 1) {
+        const hgt = ghostWall(j)
+        if (hgt <= 0.001) continue
+        for (let l = 0; l < 4; l += 1) {
+          for (let i = 0; i < COLS; i += 1) {
+            if (n >= GHOST_MAX) break
+            const [x, z] = docC(l, i, j)
+            // Flat is a quarter turn back into the field; standing faces the camera.
+            // It stands up and grows to a read's full size, like a real read.
+            q.setFromAxisAngle(xAxis, -(Math.PI / 2) * (1 - hgt))
+            const sc = 1 + (GROW - 1) * hgt
+            s3.set(sc, sc, 1)
+            p3.set(x, 0.02, z + DL / 2)
+            m4.compose(p3, q, s3)
+            ghosts.setMatrixAt(n, m4)
+            n += 1
+          }
+        }
+      }
+    }
+    ghosts.count = n
+    ghosts.instanceMatrix.needsUpdate = true
   }
-  const hull = [...half(pts), ...half([...pts].reverse())]
-  const scr = hull.map(([a, b]) => cam.proj(a, 0.012, b))
-  if (scr.some((v) => !v)) return
-  // The fade is anchored in the world, over the shadow a full read throws, so a growing shadow only
-  // advances its tip: the ground it already covers does not change (and costs the loop no bytes).
-  const F = SHADOW_FADE * LIGHT.len
-  const s0 = cam.proj(x + SX / 2, 0, z + SZ / 2)
-  const s1 = cam.proj(x + SX / 2 + LIGHT.dx * F, 0, z + SZ / 2 + LIGHT.dz * F)
-  if (!s0 || !s1) return
-  const grad = g.createLinearGradient(s0[0], s0[1], s1[0], s1[1])
-  grad.addColorStop(0, rgba(T.shadow, T.shadowA))
-  grad.addColorStop(0.35, rgba(T.shadow, T.shadowA * 0.55))
-  grad.addColorStop(1, rgba(T.shadow, 0))
-  poly(g, scr, grad, null, 0)
+
+  /** Render the current state, or the average of several (motion blur). */
+  function render(samples) {
+    if (!samples) {
+      renderer.setRenderTarget(null)
+      renderer.render(scene, cam)
+      return
+    }
+    renderer.setRenderTarget(acc)
+    renderer.setClearColor(0x000000, 1)
+    renderer.clear()
+    samples.forEach((apply, k) => {
+      apply()
+      renderer.setRenderTarget(one)
+      renderer.render(scene, cam)
+      quad.material = addMat
+      addMat.uniforms.src.value = one.texture
+      addMat.uniforms.w.value = 1 / samples.length
+      renderer.setRenderTarget(acc)
+      renderer.autoClear = false
+      renderer.render(quadScene, quadCam)
+      renderer.autoClear = true
+    })
+    quad.material = outMat
+    outMat.uniforms.src.value = acc.texture
+    renderer.setRenderTarget(null)
+    renderer.render(quadScene, quadCam)
+  }
+
+  return { renderer, scene, cam, pose, project, update, render, events }
 }
 
-// A read is a pillar: bytes are the only thing on the plane that has height. Its verticals are drawn
-// vertical on screen (a two-point correction), so it stands instead of leaning away from the lens.
-// The faces are full-strength amber, lit from the low key light: each face grades lighter toward the
-// top, and a read is always the loudest thing in its frame. `cap` (0..1) turns the top of the pillar
-// into a green slab that overhangs it on every side, with a thin gap below: paid, then free at H2.
-// It is a SHAPE as well as a hue, and it never adds height, because height means bytes.
-export const CAP = 0.42 // the slab's thickness
-const CAP_GAP = 0.1
-const CAP_OVER = 0.12 // overhang on each side (about 30 % wider than the pillar)
-
-export function drawBox(g, cam, [x0, x1, z0, z1], y0, y1, c) {
-  const q = (xx, zz) => cam.proj(xx, 0, zz)
-  const b0 = [q(x0, z0), q(x1, z0), q(x1, z1), q(x0, z1)]
-  if (b0.some((v) => !v)) return
-  const at = (y) => b0.map(([sx, sy, sz]) => [sx, sy - (cam.V * y) / sz, sz])
-  const lo = at(y0)
-  const hi = at(y1)
-  const shade = (fill, a, b) => {
-    if (!Array.isArray(fill)) return fill
-    // [bottom, top]: a vertical gradient up the face.
-    const gr = g.createLinearGradient(0, a, 0, b)
-    gr.addColorStop(0, fill[0])
-    gr.addColorStop(1, fill[1])
-    return gr
-  }
-  if (c.under && cam.y < y0) poly(g, lo, c.under, c.under, 1)
-  const front = shade(c.front, lo[0][1], hi[0][1])
-  poly(g, [lo[0], lo[1], hi[1], hi[0]], front, front, 1)
-  const side = cam.x > x1 ? 'right' : cam.x < x0 ? 'left' : null
-  if (side === 'right') {
-    const f = shade(c.side, lo[1][1], hi[1][1])
-    poly(g, [lo[1], lo[2], hi[2], hi[1]], f, f, 1)
-  }
-  if (side === 'left') {
-    const f = shade(c.side, lo[0][1], hi[0][1])
-    poly(g, [lo[3], lo[0], hi[0], hi[3]], f, f, 1)
-  }
-  if (cam.y > y1) poly(g, hi, c.top, c.top, 1)
-}
-
-export function drawPillar(g, T, cam, x, z, st) {
-  const h = st.h
-  const k = st.cap ?? 0
-  const k1 = Math.min(1, k * 2) // the top turns green, from the top down...
-  const k2 = Math.max(0, k * 2 - 1) // ...then overhangs, and the gap opens below it
-  const k2e = k2 >= 1 ? 1 : 1 - 2 ** (-10 * k2)
-  const slab0 = h - CAP * k1
-  const body = slab0 - CAP_GAP * k2e
-  const lift = (c, t) => mix(c, T.amberTop, t)
-  drawBox(g, cam, [x, x + SX, z, z + SZ], 0, body, {
-    front: [mix(T.amber, T.amberSide, 0.35), lift(T.amber, 0.55)],
-    side: [mix(T.amberSide, T.bg, 0.12), lift(T.amberSide, 0.35)],
-    top: T.amberTop,
-  })
-  if (k1 <= 0) return
-  const o = CAP_OVER * k2e
-  drawBox(g, cam, [x - o, x + SX + o, z - o, z + SZ + o], slab0, h, { front: T.capFace, side: T.capSide, top: T.capTop, under: T.capUnder })
-}
-
-// Text painted flat on the ground, like a road marking: it foreshortens with the plane instead of
-// floating over it. The text's baseline sits at depth z0 and its top at z0 + height; x0 is its left
-// edge. Rendered in horizontal strips, each an affine map of one band of the text image, which is
-// exact for a camera with no yaw (the only cameras that use it).
-const glyphCache = new Map()
-export function drawGroundText(g, cam, text, xCenter, z0, height, color, font = '500 200px "Geist Mono"') {
-  const cacheKey = `${text}|${color}|${font}`
-  let img = glyphCache.get(cacheKey)
-  // Never cache a fallback face: only cache once the web font is actually available.
-  if (!img || !img.real) {
-    const c = document.createElement('canvas')
-    const m = c.getContext('2d')
-    m.font = font
-    const w = Math.ceil(m.measureText(text).width) + 8
-    c.width = w
-    c.height = 200
-    const n = c.getContext('2d')
-    n.font = font
-    n.fillStyle = color
-    n.textBaseline = 'alphabetic'
-    n.fillText(text, 4, 160)
-    img = { c, w, h: 200, base: 160, cap: 140, real: document.fonts.check(font) }
-    glyphCache.set(cacheKey, img)
-  }
-  // World units per image pixel: the cap height (about 140 px) spans `height`.
-  const k = height / img.cap
-  const width = img.w * k
-  const x0 = xCenter - width / 2
-  const strips = 40
-  for (let n = 0; n < strips; n += 1) {
-    const v0 = (img.h * n) / strips
-    const v1 = (img.h * (n + 1)) / strips
-    const zTop = z0 + (img.base - v0) * k
-    const zBot = z0 + (img.base - v1) * k
-    const p00 = cam.proj(x0, 0.01, zTop)
-    const p10 = cam.proj(x0 + width, 0.01, zTop)
-    const p01 = cam.proj(x0, 0.01, zBot)
-    if (!p00 || !p10 || !p01) continue
-    const ax = (p10[0] - p00[0]) / img.w
-    const ay = (p10[1] - p00[1]) / img.w
-    const bx = (p01[0] - p00[0]) / (v1 - v0)
-    const by = (p01[1] - p00[1]) / (v1 - v0)
-    g.save()
-    g.setTransform(ax * 2, ay * 2, bx * 2, by * 2, (p00[0] - bx * v0) * 2, (p00[1] - by * v0) * 2)
-    g.drawImage(img.c, 0, v0, img.w, v1 - v0 + 0.6, 0, v0, img.w, v1 - v0 + 0.6)
-    g.restore()
-  }
-  return width
-}
-
-/** An ellipse on the ground around a tile: "reported". color, alpha, radius in tiles. */
-export function drawRing(g, cam, r, i, j, color, alpha, radius = 1.6, lw = 2) {
-  if (alpha <= 0.001) return
-  const cx = tileX(r, i) + SX / 2
-  const cz = tileZ(j) + SZ / 2
-  g.beginPath()
-  for (let k = 0; k <= 48; k += 1) {
-    const a = (k / 48) * Math.PI * 2
-    const p = cam.proj(cx + Math.cos(a) * radius, 0.02, cz + Math.sin(a) * radius)
-    if (!p) return
-    if (k === 0) g.moveTo(p[0], p[1])
-    else g.lineTo(p[0], p[1])
-  }
-  g.globalAlpha = alpha
-  g.strokeStyle = color
-  g.lineWidth = lw
-  g.stroke()
-  g.globalAlpha = 1
-}
+export { ease, clamp01, CARD_W, CARD_H }

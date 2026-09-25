@@ -40,7 +40,7 @@ function serve() {
 let BASE = null
 
 function parseArgs(argv) {
-  const o = { page: 'film/index.html', query: '', theme: 'dark', cut: 'film', fps: 60, from: 0, to: null, width: 1920, height: 1080, scale: 1, out: null, times: null, workers: 1, format: 'png' }
+  const o = { page: 'film/index.html', query: '', theme: 'dark', cut: 'film', fps: 60, flightFps: null, from: 0, to: null, width: 1920, height: 1080, scale: 1, out: null, times: null, workers: 1, format: 'png' }
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i]
     const v = () => argv[(i += 1)]
@@ -49,6 +49,7 @@ function parseArgs(argv) {
     else if (a === '--theme') o.theme = v()
     else if (a === '--cut') o.cut = v()
     else if (a === '--fps') o.fps = Number(v())
+    else if (a === '--flight-fps') o.flightFps = Number(v())
     else if (a === '--from') o.from = Number(v())
     else if (a === '--to') o.to = Number(v())
     else if (a === '--width') o.width = Number(v())
@@ -89,14 +90,16 @@ function launchChrome(port, userDataDir) {
       '--force-device-scale-factor=1',
       '--hide-scrollbars',
       '--mute-audio',
-      '--disable-gpu',
+      // The world is WebGL, on the real GPU: about 5x faster than SwiftShader here, and its frames
+      // match SwiftShader's to 0.1 % of pixels (measured 2026-09-24). FILM_GL=sw renders on the CPU.
+      ...(process.env.FILM_GL === 'sw' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : []),
       '--disable-lcd-text',
       '--font-render-hinting=none',
       'about:blank',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   )
-  const BENIGN = /DEPRECATED|Fontconfig|GPU|dbus|CVDisplayLink|process_mac\.cc|registration_request\.cc|gcm|voice_transcription|Network service|cert_verify/i
+  const BENIGN = /IOPMAssertion|DEPRECATED|Fontconfig|GPU|dbus|CVDisplayLink|process_mac\.cc|registration_request\.cc|gcm|voice_transcription|Network service|cert_verify/i
   child.stderr.on('data', (b) => {
     const s = String(b)
     if (/error|fatal/i.test(s) && !BENIGN.test(s)) process.stderr.write(`  chrome: ${s}`)
@@ -189,7 +192,9 @@ async function worker(o, times, names, label) {
     await loaded
     await evaluate(cdp, 'document.fonts.ready.then(() => true)')
     await evaluate(cdp, 'document.documentElement.classList.add("capturing"); true')
-    if (!(await evaluate(cdp, 'typeof window.__seek === "function"'))) throw new Error('film page did not expose window.__seek(t)')
+    // The page builds its world after its fonts load; wait for it to expose the clock.
+    const ready = 'new Promise((r) => { const t0 = Date.now(); const f = () => (typeof window.__seek === "function" ? r(true) : Date.now() - t0 > 60000 ? r(false) : setTimeout(f, 50)); f() })'
+    if (!(await evaluate(cdp, ready))) throw new Error('film page did not expose window.__seek(t)')
     for (let i = 0; i < times.length; i += 1) {
       await evaluate(cdp, `window.__seek(${times[i]}); true`)
       const { data } = await cdp.send('Page.captureScreenshot', { format: o.format, captureBeyondViewport: false, fromSurface: true })
@@ -221,7 +226,7 @@ async function durationOf(o) {
     const loaded = cdp.once('Page.loadEventFired')
     await cdp.send('Page.navigate', { url: `${BASE}/${o.page}?theme=${o.theme}&cut=${o.cut}${o.query ? `&${o.query}` : ''}` })
     await loaded
-    return await evaluate(cdp, 'window.__duration')
+    return await evaluate(cdp, 'window.__meta ?? { duration: window.__duration }')
   } finally {
     try { cdp?.close() } catch { /* gone */ }
     const exited = new Promise((res) => chrome.once('exit', res))
@@ -255,10 +260,22 @@ async function capture(o) {
     times = o.times
     names = times.map((t) => `t${t.toFixed(3).padStart(8, '0')}.${ext}`)
   } else {
-    const duration = o.to ?? (await durationOf(o))
+    const meta = await durationOf(o)
+    const duration = o.to ?? meta.duration
     const total = Math.round((duration - o.from) * o.fps)
     times = Array.from({ length: total }, (_, f) => o.from + f / o.fps)
+    // --flight-fps: while the camera flies (the page's meta.flights), sample at this rate instead.
+    if (o.flightFps && meta.flights?.length) {
+      const inFlight = (t) => meta.flights.some(([a, b]) => t >= a - 1e-9 && t < b - 1e-9)
+      times = times.filter((t) => !inFlight(t))
+      for (const [a, b] of meta.flights) {
+        const n = Math.round((b - a) * o.flightFps)
+        for (let m = 0; m < n; m += 1) times.push(a + m / o.flightFps)
+      }
+      times.sort((x, y) => x - y)
+    }
     names = times.map((_, f) => `f${String(f).padStart(6, '0')}.${ext}`)
+    writeFileSync(join(o.out, 'meta.json'), `${JSON.stringify({ ...meta, fps: o.fps, flightFps: o.flightFps, times })}\n`)
     process.stdout.write(`${o.cut}/${o.theme} ${duration.toFixed(2)}s · ${o.width}x${o.height}@${o.scale}x · ${o.fps}fps · ${total} frames · ${o.workers} worker(s) -> ${o.out}\n`)
   }
   const t0 = Date.now()
