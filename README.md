@@ -98,8 +98,8 @@ changes since that token, instead of looking at the files:
 
 | Source | Since-token | Cost of asking |
 |---|---|---|
-| OneDrive, SharePoint, Outlook folders, Teams channels | Microsoft Graph `deltaLink` | 1 resource unit per poll: a drive polled every 60 s uses 0.12 % of the smallest per-app daily budget (Microsoft's published defaults) |
-| A folder synced by the OneDrive client | FSEvents event id, backed by a `getattrlistbulk` metadata walk | 0.13–0.31 s per 100,000 files on local APFS ([C11](docs/design/receipts/verify/C11-local-walk.md)); a 2,000-file walk costs the same on OneDrive's File Provider as on local disk ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)) |
+| OneDrive, SharePoint, Outlook folders, Teams channels | Microsoft Graph `deltaLink` | 1 resource unit per poll: a drive polled every 60 s uses 0.12 % of the smallest per-app daily budget (Microsoft's published defaults). **CORRECTED (2026-09-29):** the resource-unit figure holds for OneDrive and SharePoint drives only. Outlook and Teams are throttled under their own Graph service limits, not resource units (Outlook: 10,000 requests per 10 min and 4 concurrent requests per app per mailbox), and neither budget is modelled yet. Under auth rung (ii) the per-app bucket belongs to the first-party Microsoft Graph PowerShell app and is shared with every user of that app in the tenant |
+| A folder synced by the OneDrive client | FSEvents event id, backed by a `getattrlistbulk` metadata walk | 0.13–0.31 s per 100,000 files on local APFS ([C11](docs/design/receipts/verify/C11-local-walk.md)); a 2,000-file walk costs the same on OneDrive's File Provider as on local disk ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)). **CORRECTED (2026-09-29):** that holds for directories the provider had already listed; the first walk of a never-listed directory is a provider round trip whose cost has no receipt |
 | A manual drop folder | the same walk | the same |
 
 **Every token expires by design:** a 410 from Graph, a wrapped FSEvents journal, a changed volume UUID. So the part that
@@ -148,9 +148,13 @@ flowchart TD
 A symlink into the OneDrive folder cannot play this role. It carries no since-token, and the agent's own tools do not
 see through it: in a three-file fixture, ripgrep, BSD `grep -r` and `-R`, `find`, and Claude Code's Grep and Glob each
 found 1 of 3 files, all with exit 0, and `git` stores the link as a single blob
-([C1](docs/design/receipts/C1-macos-onedrive-symlinks.md)). The local walk, by contrast, gets a real change signal from
-the kernel: `ATTR_CMN_GEN_COUNT`, returned for 2,000 of 2,000 File Provider items, placeholders included
-([C14 §3](docs/design/receipts/verify/C14-file-provider.md)).
+([C1](docs/design/receipts/C1-macos-onedrive-symlinks.md)). The local walk, by contrast, gets a change signal from
+the kernel: `ATTR_CMN_GEN_COUNT`, returned for 2,000 of 2,000 downloaded File Provider items and for the one placeholder
+tested ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)). **CORRECTED (2026-09-29):** this sentence said
+"2,000 of 2,000 File Provider items, placeholders included" and called the counter "a real change signal". The 2,000
+were all downloaded (`dataless=0`), only one placeholder was tested, the counter also moves on evict/download churn with
+no content change, and whether it moves on an in-place edit on File Provider is unmeasured. A moved counter means "hash
+to confirm", not "edited".
 
 ## 2. Decide with three hashes before reading a byte
 
@@ -221,8 +225,17 @@ H2 is not an optimisation. Real Office apps never re-save a file byte for byte, 
 | `.docx` | `word/document.xml` and `word/settings.xml`: new revision-save ids (`w:rsid*`) | identical |
 
 A LibreOffice round trip changed the styles part and every sheet. Without H2, each of those saves would become a commit
-that says nothing. The bookkeeping is cheap: a 200,000-row manifest is 31 MB of JSON and loads in 0.12 s
-([design §4.1](docs/design/agent-context-sync.md#41-the-seven-invariants)).
+that says nothing. **CORRECTED (2026-09-29):** "identical" was measured on the converter's body output only (pandoc
+`gfm`, an openpyxl values-and-formulas dump, slide shape text), and on one generated fixture per format, not on a
+full mirror page. The design's mirror frontmatter also carries `source_etag`, `source_modified`, `source_version` and
+`content_sha256`, which change on every no-op save, so the page as specified would still change; that is a design gap,
+and the implementation ([`docs/plans/implementation.md`](docs/plans/implementation.md)) resolves it.
+
+The bookkeeping is cheap: a 200,000-row manifest is 31 MB of JSON and loads in 0.12 s
+([design §4.1](docs/design/agent-context-sync.md#41-the-seven-invariants)). **CORRECTED (2026-09-29):** that figure
+was measured on a four-field row (path, size, mtime, sha256; 155 B/row,
+[D-manifest-buildgraph](docs/design/receipts/D-manifest-buildgraph.md)), not on the design's ~25-field `source` row,
+which will be several times larger (estimated from the field count, not measured).
 
 ## 3. Read bytes only on purpose
 
@@ -244,6 +257,14 @@ Two consequences shape the design:
 
 - **A launchd job is fail-closed for free.** The walk and hash stages inherit the refusing policy, and one budgeted
   `materialise()` step opts in with `setiopolicy_np(…_ON)` or the job's `MaterializeDatalessFiles` key.
+  **CORRECTED (2026-09-29):** two limits. (1) `MaterializeDatalessFiles` applies to the whole job
+  ([C14 §2](docs/design/receipts/verify/C14-file-provider.md)), so setting it on a job that also walks and hashes
+  would switch those stages to downloading; inside that job, `setiopolicy_np(…_ON)` in `materialise()` is the only
+  route that keeps them fail-closed. (2) "Fail-closed" covers the materialization policy, not file access: on
+  2026-09-24 a freshly built, unapproved `readfp` under launchd blocked inside `open()` on a File Provider path for
+  more than 20 s instead of returning `EDEADLK` ([probes/README](probes/README.md#launchd-runsh--run-a-probe-as-a-launchd-job)).
+  That is still unexplained, so a new binary may hang rather than fail. Every CloudStorage call needs a per-call
+  timeout, and the launchd access matrix (unapproved vs approved binaries) is an open probe.
 - **A stray walk from a login shell is a download.** `rg` or a hash pass over the sync folder would pull down the whole
   library, and macOS evicts it again under disk pressure. That is why phase 1 reads no bytes, and why a placeholder is
   recorded as `dataless`, a state distinct from both changed and unchanged.
@@ -264,7 +285,9 @@ The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s 
 ([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
 separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).
 Freshness never rides on file times: `git clone` resets every mtime, and Claude Code's Glob orders its results by mtime
-([retrieval review](docs/design/receipts/review/retrieval.md)).
+([G §4](docs/design/receipts/G-agent-docs-conventions.md) measures the clone reset;
+[C7 (a)](docs/design/receipts/verify/C7.md) the mtime ordering). **CORRECTED (2026-09-29):** this cited the
+[retrieval review](docs/design/receipts/review/retrieval.md), which contains neither measurement.
 
 ## Four probes are measured, five still need a corporate tenant
 
@@ -273,17 +296,32 @@ decide one part of the architecture. Four ran on a Microsoft 365 Business Standa
 
 | # | Probe | Result |
 |---|---|---|
-| 3 | Which FSEvents fire when a file is edited on the web | A downloaded file raises `Modified` on the CloudStorage path within about 20 s. A new folder raises only its directory event, so a new directory needs a walk ([C14 §4](docs/design/receipts/verify/C14-file-provider.md)) |
+| 3 | Which FSEvents fire when a file is edited on the web | A downloaded file raises `Modified` on the CloudStorage path within about 20 s. A new folder raises only its directory event, so a new directory needs a walk ([C14 §4](docs/design/receipts/verify/C14-file-provider.md)). **CORRECTED (2026-09-29):** case (ii), an online-only file, was not measured |
 | 4 | Reading a placeholder, by context | Login shell downloads; launchd job fails `EDEADLK`, errno 11 ([C14 §2](docs/design/receipts/verify/C14-file-provider.md)) |
-| 5 | Walk cost and `GEN_COUNT` on File Provider | `GEN_COUNT` on 2,000 of 2,000 items; walk cost equal to local APFS ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)) |
-| 6 | Office no-op re-save | Never byte-stable; H2 identical for `.pptx`, `.xlsx` and `.docx` ([C12 §6](docs/design/receipts/verify/C12-office-resave.md)) |
+| 5 | Walk cost and `GEN_COUNT` on File Provider | `GEN_COUNT` on 2,000 of 2,000 items; walk cost equal to local APFS ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)). **CORRECTED (2026-09-29):** the 2,000 were downloaded items in already-listed directories, plus one placeholder; cold (never-listed) walk cost and `GEN_COUNT` on an in-place edit are unmeasured |
+| 6 | Office no-op re-save | Never byte-stable; H2 identical for `.pptx`, `.xlsx` and `.docx` ([C12 §6](docs/design/receipts/verify/C12-office-resave.md)). **CORRECTED (2026-09-29):** measured on generated fixtures, one per format, not on real tenant files, and on the converter body only |
 
 Five depend on the tenant itself, so they wait for the target one: whether SharePoint libraries return `quickXorHash`
 in delta (1), whether a non-admin may consent to `Files.Read.All` and `Sites.Read.All` (2), whether two downloads of a
 sensitivity-labelled file are byte-identical (4b), whether the spreadsheet converter reads a real Excel-saved workbook
 correctly (8), and how long an idle delta token lives (9).
 
+**CORRECTED (2026-09-29):** §9 has ten probes (1–9 plus 4b), not nine. Four are measured (3 and 6 only in part, as
+marked above), five are unmeasured (1, 2, 4b, 8, 9), and one is partly measured: probe 7, converting a 50-file sample
+twice with each converter, has pandoc ×2 on one `.docx` ([C13](docs/design/receipts/verify/C13-pandoc-docx.md)) and
+MarkItDown and PyMuPDF4LLM in the [E report](docs/design/receipts/E-converters.md). The 2026-09-29 readiness audit adds
+open probes, listed at the end of
+[design §9](docs/design/agent-context-sync.md#9-what-to-measure-first-on-the-corporate-tenant): `GEN_COUNT` on an
+in-place edit on File Provider, the launchd access matrix, device-code sign-in under Conditional Access, Teams channel
+delta, and shared-mailbox delta.
+
 ## Everything behind these numbers is in this repository
+
+**CORRECTED (2026-09-29):** three exceptions. The H2 comparison in
+[C12 §6](docs/design/receipts/verify/C12-office-resave.md) is not computed by any tracked script (see
+[probes/README](probes/README.md#office-no-op-re-save)). The 0.044 s first-walk figure in `probes/README.md` has no
+receipt. And the design's "six-verdict fixture" re-run of the refresh queue has no receipt; C11 §3 records a 1,600-row
+all-fresh run and a two-row fixture.
 
 | Path | What it holds |
 |---|---|
