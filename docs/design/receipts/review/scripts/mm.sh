@@ -3,6 +3,8 @@
 # Reviewer fixture script, recorded exactly as it ran during the 2026-09-21 review wave.
 # The shebang and the directive line above were added afterwards so the research repo's land gate
 # (bare shellcheck + bash -n) accepts it as a receipt; no command below was changed.
+# CORRECTED (2026-09-29): that land gate lives in the research repo, not in this one. Here the same checks
+# (shellcheck, then bash -n under macOS /bin/bash) run in .github/workflows/diagrams.yml, jobs lint and probes.
 set -e
 R=/tmp/scratchpad/review/mm
 rm -rf "$R"; mkdir -p "$R"; cd "$R"

@@ -18,7 +18,12 @@ int main(int argc,char**argv){
   memcpy(&fl,p,4);p+=4;
   memcpy(&gc,p,4);p+=4;
   memcpy(&did,p,4);p+=4;
-  p+=4; /* pad to 8-byte align for fileid */
+  /* CORRECTED (2026-09-29): a `p+=4; pad to 8-byte align for fileid` stood here. The kernel packs attributes
+   * on 4-byte boundaries with no such pad (measured: record length 60, FILEID at offset 52 = stat's inode),
+   * so gc3 read FILEID 4 bytes late and printed buffer garbage (e.g. 1152921500311879680, and the same value
+   * for /dev/null). The pad is removed. FSOPT_PACK_INVAL_ATTRS keeps this fixed layout valid even when an
+   * attribute is not returned (ret_common then lacks its bit and the slot is zero). gc4.c parsed correctly,
+   * and the FILEID figures in the C2 receipt use gc4's format. */
   memcpy(&fid,p,8);p+=8;
   printf("%-10s ret_common=0x%x fileid=%llu mtime=%ld.%09ld flags=0x%x GEN=%u DOCID=%u dataless=%d\n",
     argv[i],ret.commonattr,fid,(long)mt.tv_sec,(long)mt.tv_nsec,fl,gc,did,(fl&SF_DATALESS)?1:0);

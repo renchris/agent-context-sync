@@ -2,6 +2,15 @@ name: diagrams
 
 # Guards against editing a .mmd diagram source without regenerating its SVGs
 # (or hand-editing an SVG). Fails if `npm run diagrams` would change anything.
+#
+# CORRECTED (2026-09-29): this workflow used mutable Node-20 action tags (@v4), had no `permissions:` key (the
+# token was read-only only because of a repository setting), left the token in .git/config, ran on the floating
+# ubuntu-latest label, and checked nothing but the diagrams. Actions are now pinned by full commit SHA to their
+# Node-24 majors (checkout v7.0.1, setup-node v7.0.0; resolved with `gh api repos/<action>/commits/<tag>` on
+# 2026-09-29), the token is read-only by declaration, checkout does not persist it, runners are pinned images,
+# every job has a timeout, and two jobs were added: `lint` (shellcheck, ruff, node --check) and `probes` (build
+# the macOS probes with -Werror, `bash -n` under macOS /bin/bash 3.2, and the smoke test in probes/smoke.sh).
+# The workflow keeps its name and the `check` job id so existing required-check settings still match.
 on:
   workflow_dispatch:
   push:
@@ -12,6 +21,10 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/diagrams.yml"
+      - "probes/**"
+      - "scripts/**"
+      - "docs/design/receipts/review/scripts/**"
+      - "docs/design/receipts/verify/experiments/**"
   pull_request:
     paths:
       - "docs/diagrams/**"
@@ -20,14 +33,59 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/diagrams.yml"
+      - "probes/**"
+      - "scripts/**"
+      - "docs/design/receipts/review/scripts/**"
+      - "docs/design/receipts/verify/experiments/**"
+
+permissions:
+  contents: read
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - run: npm ci
       - run: npm run diagrams:check
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: shellcheck
+        run: shellcheck probes/*.sh scripts/*.sh docs/design/receipts/review/scripts/*.sh
+      - name: ruff (default rules; the experiments are kept byte-for-byte as receipts and are not linted)
+        run: pipx run ruff==0.15.9 check --isolated scripts
+      - name: node --check
+        run: for f in scripts/*.mjs; do node --check "$f"; done
+
+  probes:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: bash -n under macOS /bin/bash 3.2
+        run: for f in probes/*.sh scripts/*.sh docs/design/receipts/review/scripts/*.sh; do /bin/bash -n "$f"; done
+      - name: build probes with warnings as errors
+        run: make -C probes CFLAGS='-O2 -Wall -Wextra -Werror'
+      - name: compile the receipt experiments
+        run: for f in docs/design/receipts/verify/experiments/*.c; do /usr/bin/clang -Wall -Wextra -Werror -fsyntax-only "$f"; done
+      - name: smoke test (walkfp, gen1, readfp, evict, fswatch on a local tree in $RUNNER_TEMP)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: make -C probes check

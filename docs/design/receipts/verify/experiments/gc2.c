@@ -12,6 +12,8 @@ static void probe(const char*path,uint32_t common,uint32_t fork,uint64_t opt,con
   printf("%-28s OK len=%u\n",tag,*(uint32_t*)buf);
 }
 int main(int argc,char**argv){
+  /* CORRECTED (2026-09-29): argc was unused and a missing argument passed NULL to getattrlist; now usage + exit 2. */
+  if(argc!=2){fprintf(stderr,"usage: gc2 <path>\n");return 2;}
   const char*p=argv[1];
   probe(p,ATTR_CMN_RETURNED_ATTRS|ATTR_CMN_FILEID,0,0,"plain fileid");
   probe(p,ATTR_CMN_RETURNED_ATTRS,ATTR_CMN_GEN_COUNT,FSOPT_ATTR_CMN_EXTENDED,"gen only, EXTENDED");

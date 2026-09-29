@@ -7,6 +7,10 @@
 #   bash scripts/film-render.sh seam     # loop seam: frame 0 against the last frame, both themes
 #
 # Output goes to $OUT (default /tmp/acs-film); only the two WebPs are written into the repo.
+# CORRECTED (2026-09-29): every `loop` render used to overwrite docs/media/hero-*.webp, and each committed
+# round adds about 8 MB to history for good (measured in the readiness audit: 12.17 MB of WebP blobs on main).
+# LOOP_DEST picks where the loop WebPs go: render review rounds with LOOP_DEST="$OUT" and write docs/media
+# (the default, unchanged) only for the final render.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,6 +21,7 @@ FONT=${FONT:-/System/Library/Fonts/Menlo.ttc}
 LOOP_FPS=${LOOP_FPS:-30}
 FILM_FPS=${FILM_FPS:-60}
 WORKERS=${WORKERS:-3}
+LOOP_DEST=${LOOP_DEST:-docs/media}
 CAP="node scripts/film-capture.mjs"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }; }
@@ -61,7 +66,8 @@ loop() {
       xargs -0 -P "${JOBS:-8}" -I{} sh -c 'magick "$1" -filter Lanczos -resize "$2" "$3/small/$(basename "$1")"' _ {} "${LOOP_W}x${LOOP_H}!" "$dir"
     # Held frames lossy at q90, flights lossy at q55 (measured round 3: 3.2 MB against 4.9 MB with
     # near-lossless holds). See scripts/film-encode-loop.py for why the frames are encoded differently.
-    python3 scripts/film-encode-loop.py "$dir/small" "docs/media/hero-$theme.webp" --hold "${LOOP_HOLD:-q90}" --flight "${LOOP_FLIGHT:-q55}"
+    mkdir -p "$LOOP_DEST"
+    python3 scripts/film-encode-loop.py "$dir/small" "$LOOP_DEST/hero-$theme.webp" --hold "${LOOP_HOLD:-q90}" --flight "${LOOP_FLIGHT:-q55}"
   done
 }
 

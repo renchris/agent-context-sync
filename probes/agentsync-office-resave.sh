@@ -14,18 +14,38 @@
 #   * gives per-app steps that avoid Excel's cell-edit trap (⌘S does nothing mid-edit).
 # One human step per app, twice, because scripted saves are refused by all three apps
 # (AppleScript -50 / -1708 / -1712, receipt verify/C12). Safe to re-run.
+#
+# CORRECTED (2026-09-29): the result file is no longer the fixed, predictable
+# /tmp/agentsync-office-resave-result.txt in world-writable /tmp (another account could plant a symlink there);
+# it lives in the per-user $TMPDIR, or a mktemp name. The probe folder can be moved with AGENTSYNC_PROBE_DIR
+# (it must still be named agentsync-probe, because it is deleted and rebuilt), and the script refuses to run
+# when the folder resolves into a cloud-synced location (OneDrive Known Folder Move redirects ~/Documents on
+# many managed Macs): there the fixtures would sync to the tenant, the `rm -rf` below would delete from it,
+# and Office's cloud AutoSave would change the save path being measured. $PY, when set, is tried first. The
+# closing message no longer claims a notification was sent when NOTIFY is unset. Office steps are unchanged.
 set -u
-DIR="$HOME/Documents/agentsync-probe"; OUT=/tmp/agentsync-office-resave-result.txt
+DIR="${AGENTSYNC_PROBE_DIR:-$HOME/Documents/agentsync-probe}"
+[ "${DIR##*/}" = agentsync-probe ] || { echo "refusing to run: the probe folder is deleted and rebuilt, so it must be named agentsync-probe (got $DIR)" >&2; exit 2; }
+if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ] && [ -O "$TMPDIR" ]; then OUT="${TMPDIR%/}/agentsync-office-resave-result.txt"
+else OUT=$(mktemp /tmp/agentsync-office-resave-result.XXXXXX) || exit 2; fi
+[ -L "$OUT" ] && { echo "refusing to write through a symlink at $OUT" >&2; exit 2; }
+resolve_dir() { local d="$1" rest=""; while [ ! -d "$d" ]; do rest="/${d##*/}$rest"; d=$(dirname "$d"); done; echo "$(cd "$d" && pwd -P)$rest"; }
+real_dir=$(resolve_dir "$DIR"); real_home=$(cd "$HOME" && pwd -P)
+case "$real_dir" in
+  "$real_home/Library/CloudStorage/"*|"$real_home/Library/Mobile Documents/"*)
+    echo "refusing to run: $DIR resolves to $real_dir, a cloud-synced folder. Set AGENTSYNC_PROBE_DIR to a local folder named agentsync-probe." >&2; exit 2 ;;
+esac
 WAIT=${WAIT:-1800}
 say_line() { echo "$*" | tee -a "$OUT"; }
 if ( : </dev/tty ) 2>/dev/null; then TTY=1; else TTY=0; fi
 # Pick a python3 that HAS openpyxl/python-docx/python-pptx — a terminal tab's PATH can resolve
 # /usr/bin/python3 instead (measured 2026-09-23: ModuleNotFoundError from a kitty-launched tab).
-PY=""
-for c in /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /opt/homebrew/bin/python3 "$(command -v python3)" /usr/bin/python3; do
+# $PY (if set) is tried first; the fixed paths after it are this author's fallbacks, not requirements.
+want_py="${PY:-}"; PY=""
+for c in ${want_py:+"$(command -v "$want_py")"} "$(command -v python3)" /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /opt/homebrew/bin/python3 /usr/bin/python3; do
   [ -x "$c" ] && "$c" -c 'import openpyxl, docx, pptx' 2>/dev/null && { PY="$c"; break; }
 done
-[ -n "$PY" ] || { echo "No python3 with openpyxl + python-docx + python-pptx found — tell Claude."; exit 2; }
+[ -n "$PY" ] || { echo "No python3 with openpyxl + python-docx + python-pptx found. Install them (python3 -m pip install openpyxl python-docx python-pptx) or point PY= at a python3 that has them."; exit 2; }
 
 # --- 0. close leftovers, then refuse to proceed while anything still holds the folder ---
 osascript -e "with timeout of 10 seconds" -e 'tell application "Microsoft Excel" to close (every workbook whose name starts with "a.") saving no' -e "end timeout" >/dev/null 2>&1
@@ -43,7 +63,7 @@ held=$( { lsof +D "$DIR" 2>/dev/null | awk 'NR>1{print $1, $NF}'
   done; } | sort -u)
 if [ -n "$held" ]; then
   echo "A probe document is still open and could not be closed by script:"
-  echo "$held" | sed 's/^/   /'
+  while IFS= read -r l; do echo "   $l"; done <<<"$held"
   echo "Switch to that app — it is probably showing a dialog — dismiss it WITHOUT saving, close the document, then re-run."
   exit 3
 fi
@@ -62,7 +82,7 @@ bar() { printf '\n\033[1;97;44m %-100s \033[0m\n' "$*"; }
 pause() { printf '\n\033[1;33m   ⏎  %s\033[0m' "$*"; [ "$TTY" = 1 ] && read -r _ </dev/tty; echo; }
 bar "Office re-save probe — 6 short steps (Excel, Word, PowerPoint × 2). About 5 minutes."
 echo "   Each step: a document opens, you make one tiny edit and press ⌘S. The script does the rest."
-echo "   Everything happens in a throwaway folder (~/Documents/agentsync-probe). Nothing else is touched."
+echo "   Everything happens in a throwaway folder ($DIR). Nothing else is touched."
 pause "Press Return to begin."
 
 sig() { stat -f '%m:%i' "$1" 2>/dev/null; }
@@ -154,6 +174,8 @@ for ext in ("xlsx","docx","pptx"):
     print(f"{ext}: whole-file equal={hb==hc} ({hb} vs {hc}) | parts={len(names)} content-differing={diff} zip-timestamp-differing={ts} | rollup-excluding-docProps equal={rb==rc}")
 PY
 bar "All done — thank you. You can close this window."
-echo "   The result is saved in $OUT and Claude has been pinged; there is nothing else to do."
-${NOTIFY:-true} "agentsync office resave probe FINISHED — result in $OUT: $(tr '\n' ' ' < "$OUT" | cut -c1-600)" >/dev/null 2>&1 \
-  || echo "   (Could not ping Claude automatically — just tell it: done.)"
+if [ -n "${NOTIFY:-}" ] && $NOTIFY "agentsync office resave probe FINISHED — result in $OUT: $(tr '\n' ' ' < "$OUT" | cut -c1-600)" >/dev/null 2>&1; then
+  echo "   The result is saved in $OUT and Claude has been pinged; there is nothing else to do."
+else
+  echo "   The result is saved in $OUT. $([ -n "${NOTIFY:-}" ] && echo "Could not ping Claude automatically" || echo "Nothing was notified (NOTIFY is unset)") — tell the waiting Claude session: done."
+fi
