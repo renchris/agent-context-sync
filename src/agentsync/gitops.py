@@ -1,0 +1,364 @@
+"""git via subprocess for the docs repo: init, status, one commit per cycle, recovery (owner: publish).
+
+git is resolved once to an absolute path (launchd has a minimal PATH) and run with ``LC_ALL=C``,
+``GIT_TERMINAL_PROMPT=0``, ``GIT_OPTIONAL_LOCKS=0``.  Nothing here fetches, and nothing pushes except
+:func:`push_if_allowed`, which does nothing unless the caller passes ``allow=True`` AND a remote exists
+(the week-0 default is no remote and no push: corporate content never leaves the machine).
+"""
+
+from __future__ import annotations
+
+import functools
+import logging
+import os
+import shutil
+import subprocess
+import sys
+from collections import Counter
+from collections.abc import Sequence
+from pathlib import Path
+
+from agentsync.errors import GitError, PublishError
+from agentsync.model import ChangeOp, MirrorChange
+from agentsync.paths import expand, is_cloud_path
+
+log = logging.getLogger(__name__)
+
+GENERATED_PATHSPECS: tuple[str, ...] = (
+    "mirror",
+    "_manifest",
+    "_index",
+    "CHANGELOG",
+    "CHANGELOG.md",
+    "INDEX.md",
+    "DEPENDS.tsv",
+    "_sync/QUARANTINE.tsv",
+    "_sync/STATE.snapshot.md",
+)
+"""Paths the pipeline owns and may reset on recovery."""
+
+COMMIT_PATHSPECS: tuple[str, ...] = (
+    *GENERATED_PATHSPECS,
+    "topics",
+    "README.md",
+    "CLAUDE.md",
+    "SYNONYMS.tsv",
+    ".gitignore",
+    ".gitattributes",
+)
+"""Paths a cycle commit stages (``git add -A -- <these>``); ``_sync/STATE.md`` is gitignored."""
+
+PUBLISHED_TAG = "published"
+
+_GIT_TIMEOUT_S = 600.0
+_PUSH_TIMEOUT_S = 300.0
+_LOCAL_IDENTITY = (("user.name", "agentsync"), ("user.email", "agentsync@localhost"))
+_CORE_SETTINGS = (("core.precomposeunicode", "true"), ("core.quotepath", "false"))
+# Inherited variables that would redirect git away from ``-C repo`` (e.g. when run from a git hook).
+_SCRUBBED_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_NAMESPACE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+)
+_XCODE_GIT_CANDIDATES = (
+    Path("/Library/Developer/CommandLineTools/usr/bin/git"),
+    Path("/Applications/Xcode.app/Contents/Developer/usr/bin/git"),
+)
+
+
+def _is_executable(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def _usr_bin_git_usable() -> bool:
+    """``/usr/bin/git`` on macOS is an xcrun shim: usable only when a developer dir provides git."""
+    if not _is_executable(Path("/usr/bin/git")):
+        return False
+    if sys.platform != "darwin":
+        return True
+    if os.environ.get("DEVELOPER_DIR"):
+        return True
+    return any(_is_executable(p) for p in _XCODE_GIT_CANDIDATES)
+
+
+@functools.cache
+def git_executable() -> Path:
+    """Return the absolute path of git (``/usr/bin/git`` preferred); raises GitError if absent."""
+    if _usr_bin_git_usable():
+        return Path("/usr/bin/git")
+    candidates: list[Path] = []
+    found = shutil.which("git")
+    if found:
+        candidates.append(Path(found))
+    candidates += [Path("/opt/homebrew/bin/git"), Path("/usr/local/bin/git"), *_XCODE_GIT_CANDIDATES]
+    for c in candidates:
+        if c.is_absolute() and _is_executable(c):
+            return c
+    raise GitError(["--version"], 127, "git not found (install the Xcode Command Line Tools)")
+
+
+def _env() -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _SCRUBBED_ENV}
+    env.update(
+        {
+            "LC_ALL": "C",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_ADVICE": "0",
+            "GIT_EDITOR": ":",
+            "GIT_PAGER": "cat",
+        }
+    )
+    return env
+
+
+def _run(
+    repo: Path,
+    args: Sequence[str],
+    *,
+    check: bool = True,
+    input_text: str | None = None,
+    timeout: float = _GIT_TIMEOUT_S,
+) -> subprocess.CompletedProcess[str]:
+    argv = [str(git_executable()), "-C", str(repo), *args]
+    try:
+        proc = subprocess.run(
+            argv,
+            input=input_text,
+            stdin=None if input_text is not None else subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            env=_env(),
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise GitError(list(args), 124, f"timed out after {timeout:.0f}s") from None
+    except OSError as exc:
+        raise GitError(list(args), 127, str(exc)) from None
+    if check and proc.returncode != 0:
+        raise GitError(list(args), proc.returncode, proc.stderr)
+    return proc
+
+
+def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run ``git -C repo *args`` with the fixed env; raises GitError on non-zero exit when ``check``."""
+    return _run(repo, args, check=check)
+
+
+def _config_get(repo: Path, key: str, *, local: bool) -> str | None:
+    args = ["config", "--local", "--get", key] if local else ["config", "--get", key]
+    proc = run_git(repo, *args, check=False)
+    if proc.returncode == 0:
+        return proc.stdout.rstrip("\n")
+    if proc.returncode == 1:  # key unset
+        return None
+    raise GitError(args, proc.returncode, proc.stderr)
+
+
+def ensure_repo(repo: Path) -> bool:
+    """``git init -b main`` if needed; set core.precomposeunicode=true, core.quotepath=false and a local
+    user.name/user.email (``agentsync``/``agentsync@localhost``) only if unset.  Returns True if created.
+    Refuses (PublishError) a repo under ~/Library/CloudStorage."""
+    repo = expand(repo)
+    resolved = repo.resolve() if repo.exists() else repo
+    if is_cloud_path(repo) or is_cloud_path(resolved):
+        raise PublishError(
+            f"{repo}: the docs repo must live outside ~/Library/CloudStorage (design 4.7: a git dir inside "
+            "a File Provider tree inherits every hydration/eviction failure)"
+        )
+    if repo.exists() and not repo.is_dir():
+        raise PublishError(f"{repo}: exists and is not a directory")
+    repo.mkdir(parents=True, exist_ok=True)
+    created = not (repo / ".git").exists()
+    if created:
+        run_git(repo, "init", "-q", "-b", "main")
+        log.info("initialised docs repo %s", repo)
+    for key, value in _CORE_SETTINGS:
+        if _config_get(repo, key, local=True) != value:
+            run_git(repo, "config", "--local", key, value)
+    for key, value in _LOCAL_IDENTITY:
+        if _config_get(repo, key, local=True) is None:
+            run_git(repo, "config", "--local", key, value)
+    return created
+
+
+def _rev_parse(repo: Path, rev: str) -> str | None:
+    proc = run_git(repo, "rev-parse", "--verify", "-q", rev, check=False)
+    if proc.returncode == 0:
+        return proc.stdout.strip() or None
+    if proc.returncode == 1:
+        return None
+    raise GitError(["rev-parse", "--verify", "-q", rev], proc.returncode, proc.stderr)
+
+
+def head_sha(repo: Path) -> str | None:
+    """Return HEAD's commit sha, or None for an unborn branch."""
+    return _rev_parse(repo, "HEAD^{commit}")
+
+
+def head_tree_sha(repo: Path) -> str | None:
+    """Return ``git rev-parse HEAD^{tree}``, or None for an unborn branch."""
+    return _rev_parse(repo, "HEAD^{tree}")
+
+
+def has_changes(repo: Path, pathspecs: Sequence[str] = COMMIT_PATHSPECS) -> bool:
+    """True when the working tree or index differs from HEAD under ``pathspecs`` (untracked included)."""
+    proc = run_git(
+        repo, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *_literal(pathspecs)
+    )
+    return bool(proc.stdout.strip("\0"))
+
+
+def commit_subject(changes: Sequence[MirrorChange], source_ids: Sequence[str]) -> str:
+    """Return ``"sync: <A>a <M>m <R>r <D>d <comma-joined sorted source ids>"``."""
+    counts = Counter(c.op for c in changes)
+    ids = ",".join(sorted({s for s in source_ids if s}))
+    subject = (
+        f"sync: {counts[ChangeOp.ADDED]}a {counts[ChangeOp.MODIFIED]}m "
+        f"{counts[ChangeOp.RENAMED]}r {counts[ChangeOp.DELETED]}d"
+    )
+    return f"{subject} {ids}" if ids else subject
+
+
+def commit_body(
+    changes: Sequence[MirrorChange],
+    *,
+    run_id: int,
+    mode: str,
+    notes: Sequence[str] = (),
+) -> str:
+    """Return the structured commit body: per-source A/M/R/D counts, notes, then ``Agentsync-*`` trailers."""
+    per_source: dict[str, Counter[ChangeOp]] = {}
+    for c in changes:
+        per_source.setdefault(c.source_id, Counter())[c.op] += 1
+    lines = [
+        f"{sid}: {n[ChangeOp.ADDED]}a {n[ChangeOp.MODIFIED]}m {n[ChangeOp.RENAMED]}r {n[ChangeOp.DELETED]}d"
+        for sid, n in sorted(per_source.items())
+    ]
+    lines += [" ".join(note.split()) for note in notes if note.strip()]
+    trailers = [f"Agentsync-Run: {run_id}", f"Agentsync-Mode: {mode}"]
+    return "\n".join([*lines, "", *trailers]) if lines else "\n".join(trailers)
+
+
+def _literal(pathspecs: Sequence[str]) -> list[str]:
+    """Pathspecs as literal paths (no glob magic: a mirror name may legally contain ``*`` or ``[``)."""
+    return [f":(literal){p}" for p in pathspecs]
+
+
+def _matching_specs(present: Sequence[str], pathspecs: Sequence[str]) -> list[str]:
+    """Pathspecs that name one of ``present`` exactly or as a directory prefix."""
+    out: list[str] = []
+    for spec in pathspecs:
+        s = spec.rstrip("/")
+        if any(p == s or p.startswith(s + "/") for p in present):
+            out.append(spec)
+    return out
+
+
+def _stageable_specs(repo: Path, pathspecs: Sequence[str]) -> list[str]:
+    """Pathspecs that exist on disk or are tracked in the index (``git add`` rejects the rest)."""
+    tracked = tracked_files(repo, pathspecs)
+    known = set(_matching_specs(tracked, pathspecs))
+    return [p for p in pathspecs if p in known or os.path.lexists(repo / p)]
+
+
+def commit_cycle(
+    repo: Path, subject: str, body: str = "", pathspecs: Sequence[str] = COMMIT_PATHSPECS
+) -> str | None:
+    """Stage ``pathspecs`` and commit once; return the new sha, or None (and no commit) if nothing staged."""
+    specs = _stageable_specs(repo, pathspecs)
+    if not specs:
+        return None
+    literal = _literal(specs)
+    run_git(repo, "add", "-A", "--", *literal)
+    staged = run_git(repo, "diff", "--cached", "--quiet", "--", *literal, check=False)
+    if staged.returncode == 0:
+        return None
+    if staged.returncode != 1:
+        raise GitError(["diff", "--cached", "--quiet"], staged.returncode, staged.stderr)
+    one_line = " ".join(subject.split())
+    if not one_line:
+        raise PublishError("empty commit subject")
+    message = one_line + ("\n\n" + body.strip("\n") if body.strip() else "") + "\n"
+    _run(
+        repo,
+        [
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "--no-verify",
+            "--cleanup=strip",
+            "-F",
+            "-",
+            "--only",
+            "--",
+            *literal,
+        ],
+        input_text=message,
+    )
+    sha = head_sha(repo)
+    if sha is None:
+        raise PublishError("commit reported success but HEAD is unborn")
+    log.info("committed %s %s", sha[:12], one_line)
+    return sha
+
+
+def restore_generated(repo: Path) -> None:
+    """Recovery: ``git checkout HEAD -- <generated>`` + ``git clean -fd -- <generated>`` (never topics/)."""
+    literal = _literal(GENERATED_PATHSPECS)
+    if head_sha(repo) is None:
+        run_git(repo, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", *literal)
+    else:
+        run_git(repo, "reset", "-q", "HEAD", "--", *literal)
+        in_head = run_git(repo, "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", *literal).stdout
+        present = [p for p in in_head.split("\0") if p]
+        matched = _matching_specs(present, GENERATED_PATHSPECS)
+        if matched:
+            run_git(repo, "checkout", "-q", "HEAD", "--", *_literal(matched))
+    run_git(repo, "clean", "-f", "-d", "-q", "--", *literal)
+    log.warning("restored generated paths of %s to HEAD", repo)
+
+
+def tag_published(repo: Path, sha: str) -> None:
+    """Force-move the lightweight ``published`` tag to ``sha`` (the tree readers should consume)."""
+    run_git(repo, "-c", "tag.gpgSign=false", "tag", "-f", PUBLISHED_TAG, f"{sha}^{{commit}}")
+
+
+def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:
+    """Return ``git ls-files -z`` paths (repo-relative, sorted)."""
+    args = ["ls-files", "-z"]
+    if pathspecs:
+        args += ["--", *_literal(pathspecs)]
+    out = run_git(repo, *args).stdout
+    return sorted(p for p in out.split("\0") if p)
+
+
+def push_if_allowed(repo: Path, *, allow: bool, remote: str = "origin") -> str:
+    """Push the current branch (fast-forward only) and the ``published`` tag, only when ``allow`` AND the
+    remote exists; return what happened (``disabled`` | ``no-remote`` | ``refused: …`` | ``pushed …``)."""
+    if not allow:
+        return "disabled"
+    remotes = run_git(repo, "remote").stdout.split()
+    if remote not in remotes:
+        return "no-remote"
+    url = run_git(repo, "remote", "get-url", remote).stdout.strip()
+    if url and "://" not in url and ":" not in url.split("/")[0] and is_cloud_path(Path(url)):
+        return f"refused: remote {remote} is inside ~/Library/CloudStorage"
+    branch = run_git(repo, "symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip()
+    if not branch or head_sha(repo) is None:
+        return "refused: nothing committed"
+    refspecs = [f"refs/heads/{branch}:refs/heads/{branch}"]
+    if _rev_parse(repo, f"refs/tags/{PUBLISHED_TAG}") is not None:
+        refspecs.append(f"+refs/tags/{PUBLISHED_TAG}:refs/tags/{PUBLISHED_TAG}")
+    _run(repo, ["push", "--porcelain", "--quiet", remote, *refspecs], timeout=_PUSH_TIMEOUT_S)
+    log.info("pushed %s to %s", branch, remote)
+    return f"pushed {branch} to {remote}"
