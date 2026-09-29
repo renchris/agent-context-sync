@@ -1,0 +1,779 @@
+"""Arm B (local / sync-client folder) and arm C (manual inbox): T3 metadata walk, zero file opens (owner:
+local).
+
+The walk is ``os.scandir`` + ``lstat`` + one ``getattrlist`` per file (GEN_COUNT and creation time): no file
+is ever opened, so an online-only (dataless) File Provider placeholder is recorded, never downloaded.  A
+directory that is itself dataless (its child list not yet fetched) is listed under THREAD-scope
+materialisation ON, which fetches the listing (metadata) only.  Bytes are read solely by ``fetch`` through
+``materialise.materialise``.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import ctypes
+import dataclasses
+import errno as errno_mod
+import functools
+import hashlib
+import logging
+import os
+import plistlib
+import pwd
+import re
+import socket
+import stat
+import subprocess
+import sys
+import time
+import unicodedata
+import uuid
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+
+from agentsync.config import SourceConfig
+from agentsync.errors import ConfigError, MaterialiseError
+from agentsync.materialise import is_dataless, materialise, materialize_allowed, sha256_file
+from agentsync.model import ByteBudget, FetchResult, PassKind, ScanResult, SourceItem, SourceKind
+from agentsync.paths import CLOUD_STORAGE_ROOT, expand, glob_match, is_included, is_under
+
+log = logging.getLogger(__name__)
+
+# sys/attr.h (macOS 15 SDK)
+_ATTR_BIT_MAP_COUNT = 5
+_ATTR_CMN_CRTIME = 0x00000200
+_ATTR_CMN_GEN_COUNT = 0x00080000
+_ATTR_CMN_RETURNED_ATTRS = 0x80000000
+_ATTR_VOL_UUID = 0x00040000
+_ATTR_VOL_INFO = 0x80000000
+_FSOPT_NOFOLLOW = 0x00000001
+_FSOPT_PACK_INVAL_ATTRS = 0x00000008
+_FSOPT_ATTR_CMN_EXTENDED = 0x00000020  # required for ATTR_CMN_GEN_COUNT via getattrlist (else EINVAL)
+
+# Buffer layouts (attributes packed in bit order, 4-byte aligned; FSOPT_PACK_INVAL_ATTRS keeps offsets fixed):
+#   file: u32 length | attribute_set_t (5 x u32) | CRTIME struct timespec (2 x i64) | GEN_COUNT u32
+#   vol:  u32 length | attribute_set_t (5 x u32) | VOL_UUID uuid_t (16 bytes)
+_HDR = 4 + 4 * _ATTR_BIT_MAP_COUNT
+_FILE_BUF = _HDR + 16 + 4
+_VOL_BUF = _HDR + 16
+
+# Always ignored in an inbox, whatever ``exclude`` says: lock files and in-flight downloads.
+_INBOX_IGNORES: tuple[str, ...] = (
+    "~$*",
+    "*.tmp",
+    ".~lock.*#",
+    "*.crdownload",
+    "*.part",
+    "*.partial",
+    "*.download",
+    ".DS_Store",
+    "._*",
+    "Icon\r",
+)
+
+_WINDOWS_DEFAULT_HOST_RE = re.compile(r"-(?:DESKTOP|LAPTOP)-[A-Z0-9]{7}$", re.IGNORECASE)
+_COPY_SUFFIX_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r" \(\d+\)$"),  # "Report (1)"
+    re.compile(r" - Copy(?: \(\d+\))?$", re.IGNORECASE),  # Windows "Report - Copy", "Report - Copy (2)"
+    re.compile(r" copy(?: \d+)?$", re.IGNORECASE),  # Finder "Report copy", "Report copy 2"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class WalkStats:
+    """Counters from one walk (reported in STATE.md and the CycleReport)."""
+
+    files: int
+    dirs: int
+    dataless: int
+    excluded: int
+    symlinks_skipped: int
+    unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
+    sentinel_present: bool | None  # None when no sentinel is configured
+
+
+# ---------------------------------------------------------------------------------------------------------
+# getattrlist
+# ---------------------------------------------------------------------------------------------------------
+
+
+class _AttrList(ctypes.Structure):
+    _fields_ = (
+        ("bitmapcount", ctypes.c_ushort),
+        ("reserved", ctypes.c_uint16),
+        ("commonattr", ctypes.c_uint32),
+        ("volattr", ctypes.c_uint32),
+        ("dirattr", ctypes.c_uint32),
+        ("fileattr", ctypes.c_uint32),
+        ("forkattr", ctypes.c_uint32),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _FileAttrs:
+    gen_count: int | None
+    created_ns: int | None
+
+
+@functools.cache
+def _getattrlist_fn() -> Callable[[bytes, object, object, int, int], int]:
+    """Bind libSystem getattrlist (raises OSError(ENOSYS) off macOS)."""
+    if sys.platform != "darwin":
+        raise OSError(errno_mod.ENOSYS, f"getattrlist is macOS-only (platform {sys.platform})")
+    libc = ctypes.CDLL(None, use_errno=True)
+    fn = libc.getattrlist
+    fn.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def _getattrlist(path: Path, al: _AttrList, size: int, options: int) -> bytes:
+    """Call getattrlist and return the raw buffer; raises OSError with the path on failure."""
+    fn = _getattrlist_fn()
+    buf = ctypes.create_string_buffer(size)
+    ctypes.set_errno(0)
+    if fn(os.fsencode(path), ctypes.byref(al), buf, size, options) != 0:
+        err = ctypes.get_errno() or errno_mod.EINVAL
+        raise OSError(err, os.strerror(err), str(path))
+    return buf.raw
+
+
+def _file_attrs(path: Path) -> _FileAttrs:
+    """Return (GEN_COUNT or None, creation time ns or None) for ``path`` without following or opening it."""
+    al = _AttrList(
+        _ATTR_BIT_MAP_COUNT, 0, _ATTR_CMN_RETURNED_ATTRS | _ATTR_CMN_CRTIME | _ATTR_CMN_GEN_COUNT, 0, 0, 0, 0
+    )
+    raw = _getattrlist(
+        path, al, _FILE_BUF, _FSOPT_NOFOLLOW | _FSOPT_PACK_INVAL_ATTRS | _FSOPT_ATTR_CMN_EXTENDED
+    )
+    returned = int.from_bytes(raw[4:8], sys.byteorder)
+    sec = int.from_bytes(raw[_HDR : _HDR + 8], sys.byteorder, signed=True)
+    nsec = int.from_bytes(raw[_HDR + 8 : _HDR + 16], sys.byteorder, signed=True)
+    gen = int.from_bytes(raw[_HDR + 16 : _HDR + 20], sys.byteorder)
+    return _FileAttrs(
+        gen_count=gen if returned & _ATTR_CMN_GEN_COUNT and gen != 0 else None,
+        created_ns=sec * 1_000_000_000 + nsec if returned & _ATTR_CMN_CRTIME else None,
+    )
+
+
+def _getattrlist_volume_uuid(path: Path) -> str:
+    """ATTR_VOL_UUID of the volume holding ``path``; raises OSError if not returned."""
+    al = _AttrList(_ATTR_BIT_MAP_COUNT, 0, _ATTR_CMN_RETURNED_ATTRS, _ATTR_VOL_INFO | _ATTR_VOL_UUID, 0, 0, 0)
+    raw = _getattrlist(path, al, _VOL_BUF, _FSOPT_PACK_INVAL_ATTRS)
+    returned_vol = int.from_bytes(raw[8:12], sys.byteorder)
+    value = raw[_HDR : _HDR + 16]
+    if not returned_vol & _ATTR_VOL_UUID or value == bytes(16):
+        raise OSError(errno_mod.ENOTSUP, "volume UUID not returned by getattrlist", str(path))
+    return str(uuid.UUID(bytes=value)).upper()
+
+
+def _mount_point(path: Path) -> str:
+    """Return the mount point of the volume holding ``path`` (``df -P``)."""
+    out = subprocess.run(
+        ["/bin/df", "-P", os.fspath(path)], capture_output=True, text=True, check=True, timeout=30
+    ).stdout
+    lines = out.strip().splitlines()
+    if len(lines) < 2:
+        raise OSError(errno_mod.ENOENT, "df printed no mount", str(path))
+    cols = lines[-1].split(maxsplit=5)
+    if len(cols) < 6:
+        raise OSError(errno_mod.ENOENT, f"cannot parse df output {lines[-1]!r}", str(path))
+    return cols[5]
+
+
+def _diskutil_volume_uuid(path: Path) -> str:
+    """VolumeUUID from ``diskutil info -plist <mount point>``; raises OSError when absent."""
+    try:
+        mount = _mount_point(path)
+        proc = subprocess.run(
+            ["/usr/sbin/diskutil", "info", "-plist", mount], capture_output=True, check=True, timeout=30
+        )
+        info = plistlib.loads(proc.stdout)
+    except (subprocess.SubprocessError, plistlib.InvalidFileException, ValueError) as exc:
+        raise OSError(errno_mod.ENOTSUP, f"diskutil fallback failed: {exc}", str(path)) from exc
+    value = info.get("VolumeUUID") if isinstance(info, dict) else None
+    if not isinstance(value, str) or not value:
+        raise OSError(errno_mod.ENOTSUP, "diskutil reported no VolumeUUID", str(path))
+    return str(uuid.UUID(value)).upper()
+
+
+def volume_uuid(path: Path) -> str:
+    """Return the UUID of the volume holding ``path`` (getattrlist ATTR_VOL_UUID on its mount point).
+
+    Falls back to ``diskutil info -plist <mount>`` VolumeUUID; raises OSError if neither yields one. Stable
+    across reboots, unlike st_dev.
+    """
+    try:
+        return _getattrlist_volume_uuid(path)
+    except OSError as exc:
+        if exc.errno == errno_mod.ENOENT:
+            raise
+        log.info("getattrlist(ATTR_VOL_UUID) failed for %s (%s); trying diskutil", path, exc)
+    return _diskutil_volume_uuid(path)
+
+
+def gen_count(path: Path) -> int | None:
+    """Return ATTR_CMN_GEN_COUNT via getattrlist (no open, no hydration); None when not returned or 0."""
+    return _file_attrs(path).gen_count
+
+
+def stable_id_for(volume: str, ino: int) -> str:
+    """Return the local identity string ``f"{volume}:{ino}"`` (never the path)."""
+    return f"{volume}:{ino}"
+
+
+# ---------------------------------------------------------------------------------------------------------
+# walk
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _nfc(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+@functools.cache
+def _account_cloud_root() -> Path | None:
+    """``<account home>/Library/CloudStorage`` from the password database (independent of $HOME)."""
+    try:
+        return Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library" / "CloudStorage"
+    except KeyError:
+        return None
+
+
+def _cloud_roots() -> tuple[Path, ...]:
+    """``~/Library/CloudStorage`` for $HOME and for the account's real home (launchd/tests may differ)."""
+    roots = {expand(CLOUD_STORAGE_ROOT)}
+    account = _account_cloud_root()
+    if account is not None:
+        roots.add(account)
+    return tuple(sorted(roots))
+
+
+def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:
+    """True when ``path`` lies in a File Provider tree (``~/Library/CloudStorage/...``)."""
+    return any(is_under(path, r) for r in roots)
+
+
+def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:
+    """True when a directory matches an exclude glob; ``name/`` (directory-only) patterns match the dir."""
+    for pattern in exclude:
+        p = pattern.strip()
+        if p.endswith("/"):
+            p = p.rstrip("/")
+            if not p:
+                continue
+        if glob_match(rel, p):
+            return True
+    return False
+
+
+def _birthtime_ns(st: os.stat_result) -> int | None:
+    ns = getattr(st, "st_birthtime_ns", None)
+    if isinstance(ns, int):
+        return ns
+    bt = getattr(st, "st_birthtime", None)
+    return round(bt * 1_000_000_000) if isinstance(bt, float | int) else None
+
+
+@dataclass(slots=True)
+class _WalkState:
+    """Mutable accumulator private to one walk() call."""
+
+    items: list[SourceItem] = dataclasses.field(default_factory=list)
+    dirs: int = 0
+    excluded: int = 0
+    symlinks: int = 0
+    unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
+
+
+@contextlib.contextmanager
+def _listing_policy(dir_dataless: bool) -> Iterator[None]:
+    """Allow the provider to fetch a dataless directory's child list (metadata only); else no change."""
+    if dir_dataless:
+        with materialize_allowed():
+            yield
+    else:
+        yield
+
+
+def _list_dir(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+    with _listing_policy(dir_dataless), os.scandir(path) as it:
+        return list(it)
+
+
+def walk(
+    root: Path,
+    *,
+    source_id: str,
+    volume: str,
+    include: Sequence[str],
+    exclude: Sequence[str],
+    with_gen_count: bool = True,
+) -> tuple[list[SourceItem], WalkStats]:
+    """Walk ``root`` with os.scandir + lstat: never follows symlinks, never opens or reads a file.
+
+    Emits files only (is_dir=False), sorted by rel_path; rel_path is POSIX, NFC-normalised, relative to
+    ``root``.  Directories are pruned only by ``exclude`` (``include`` applies to files).  Each item carries
+    size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
+    A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
+    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist.
+    """
+    root_st = os.lstat(root)  # FileNotFoundError propagates
+    if stat.S_ISLNK(root_st.st_mode):
+        raise NotADirectoryError(
+            errno_mod.ENOTDIR, "source root is a symlink; configure the canonical path", str(root)
+        )
+    if not stat.S_ISDIR(root_st.st_mode):
+        raise NotADirectoryError(errno_mod.ENOTDIR, "source root is not a directory", str(root))
+
+    state = _WalkState()
+    cloud_roots = _cloud_roots()
+    # (absolute dir, rel prefix, lstat of the dir)
+    stack: list[tuple[Path, str, os.stat_result]] = [(root, "", root_st)]
+    while stack:
+        dir_path, rel_dir, dir_st = stack.pop()
+        shown = rel_dir or "."
+        try:
+            entries = _list_dir(dir_path, dir_dataless=is_dataless(dir_st))
+        except OSError as exc:
+            # EPERM/EACCES (TCC), EDEADLK/ETIMEDOUT (provider), ENOENT (vanished mid-walk), anything else:
+            # the directory's contents are unknown this pass, never empty.
+            code = errno_mod.errorcode.get(exc.errno or 0, "E?")
+            reason = f"{code}: {exc.strerror or exc}"
+            state.unknown[shown] = reason
+            log.warning("%s: directory %r is unknown (%s)", source_id, shown, reason)
+            continue
+        state.dirs += 1
+        if not entries and _is_cloud_tree(dir_path, cloud_roots):
+            state.unknown[shown] = "zero children in a cloud tree" + (
+                " (dataless)" if is_dataless(dir_st) else ""
+            )
+            log.warning(
+                "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
+            )
+            continue
+        for entry in entries:
+            name = _nfc(entry.name)
+            try:
+                name.encode("utf-8")
+            except UnicodeEncodeError:
+                state.excluded += 1
+                log.warning("%s: skipping undecodable name %r in %r", source_id, entry.name, shown)
+                continue
+            rel = f"{rel_dir}/{name}" if rel_dir else name
+            try:
+                st = entry.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                log.debug("%s: %r vanished during the walk", source_id, rel)
+                continue
+            except OSError as exc:
+                state.unknown[shown] = f"lstat {name!r}: {exc.strerror}"
+                log.warning("%s: cannot lstat %r (%s); %r is unknown", source_id, rel, exc.strerror, shown)
+                continue
+            mode = st.st_mode
+            if stat.S_ISLNK(mode):
+                state.symlinks += 1
+                continue
+            if stat.S_ISDIR(mode):
+                if _dir_excluded(rel, exclude):
+                    state.excluded += 1
+                    continue
+                if st.st_dev != root_st.st_dev:
+                    state.excluded += 1
+                    log.warning("%s: not crossing into another volume at %r", source_id, rel)
+                    continue
+                stack.append((Path(entry.path), rel, st))
+                continue
+            if not stat.S_ISREG(mode) or not is_included(rel, include, exclude):
+                state.excluded += 1
+                continue
+            _emit(
+                state,
+                Path(entry.path),
+                rel,
+                name,
+                st,
+                source_id=source_id,
+                volume=volume,
+                with_gen_count=with_gen_count,
+            )
+
+    items = _dedupe_hard_links(state, source_id)
+    stats = WalkStats(
+        files=len(items),
+        dirs=state.dirs,
+        dataless=sum(1 for i in items if i.dataless),
+        excluded=state.excluded,
+        symlinks_skipped=state.symlinks,
+        unknown_dirs=tuple(sorted(state.unknown)),
+        sentinel_present=None,
+    )
+    return items, stats
+
+
+def _emit(
+    state: _WalkState,
+    path: Path,
+    rel: str,
+    name: str,
+    st: os.stat_result,
+    *,
+    source_id: str,
+    volume: str,
+    with_gen_count: bool,
+) -> None:
+    gen: int | None = None
+    created = _birthtime_ns(st)
+    if with_gen_count:
+        try:
+            attrs = _file_attrs(path)
+        except FileNotFoundError:
+            log.debug("%s: %r vanished during the walk", source_id, rel)
+            return
+        except OSError as exc:
+            log.debug("%s: getattrlist %r failed (%s); gen_count unknown", source_id, rel, exc)
+        else:
+            gen = attrs.gen_count
+            if attrs.created_ns is not None:
+                created = attrs.created_ns
+    state.items.append(
+        SourceItem(
+            source_id=source_id,
+            stable_id=stable_id_for(volume, st.st_ino),
+            rel_path=rel,
+            name=name,
+            size=st.st_size,
+            mtime_ns=st.st_mtime_ns,
+            ctime_ns=st.st_ctime_ns,
+            is_dir=False,
+            dataless=is_dataless(st),
+            gen_count=gen,
+            created_ns=created,
+            ino=st.st_ino,
+            mode=st.st_mode,
+        )
+    )
+
+
+def _dedupe_hard_links(state: _WalkState, source_id: str) -> list[SourceItem]:
+    """Sort by rel_path and keep the first path of each inode (identity is the inode, never the path)."""
+    seen: set[str] = set()
+    out: list[SourceItem] = []
+    for item in sorted(state.items, key=lambda i: i.rel_path):
+        if item.stable_id in seen:
+            state.excluded += 1
+            log.warning("%s: %r is a hard link to an already-walked inode; skipped", source_id, item.rel_path)
+            continue
+        seen.add(item.stable_id)
+        out.append(item)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------
+# inbox dedup
+# ---------------------------------------------------------------------------------------------------------
+
+
+@functools.cache
+def _local_host_names() -> tuple[str, ...]:
+    """This Mac's host names, as OneDrive appends them to conflict copies (``Name-<host>.ext``)."""
+    names: set[str] = set()
+    for raw in (socket.gethostname(), os.uname().nodename):
+        base = raw.strip()
+        if base.endswith(".local"):
+            base = base[: -len(".local")]
+        if base:
+            names.add(base)
+            names.add(base.split(".", 1)[0])
+    return tuple(sorted((n for n in names if len(n) >= 2), key=lambda n: (-len(n), n)))
+
+
+def fold_conflict_suffix(name: str) -> str:
+    """Normalise a name for inbox dedup: NFC, strip ``-<COMPUTERNAME>``, `` (1)``, `` - Copy`` suffixes."""
+    name = _nfc(name)
+    dot = name.rfind(".")
+    stem, ext = (name[:dot], name[dot:]) if dot > 0 else (name, "")
+    hosts = _local_host_names()
+    changed = True
+    while changed:
+        changed = False
+        candidates = [r.sub("", stem) for r in (*_COPY_SUFFIX_RES, _WINDOWS_DEFAULT_HOST_RE)]
+        candidates += [stem[: -len(h) - 1] for h in hosts if stem.lower().endswith("-" + h.lower())]
+        for new in candidates:
+            if new != stem and new.strip():
+                stem = new
+                changed = True
+                break
+    return stem + ext
+
+
+# ---------------------------------------------------------------------------------------------------------
+# arms
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _staging_dest(dest_dir: Path, item: SourceItem) -> Path:
+    """Unique staging path per item that keeps the original file name (converters route by suffix)."""
+    key = hashlib.sha256(f"{item.source_id}\0{item.stable_id}".encode()).hexdigest()[:16]
+    name = item.name
+    if not name or "/" in name or "\0" in name or name in (".", ".."):
+        name = "file" + item.suffix
+    return dest_dir / key / name
+
+
+class LocalArm:
+    """SourceArm for kind ``local``: every scan is a FULL enumeration (T3 is the truth tier)."""
+
+    source_id: str
+    kind: SourceKind
+
+    def __init__(self, cfg: SourceConfig) -> None:
+        """Bind to one configured local source; raises ConfigError if cfg.kind is not LOCAL/INBOX."""
+        if cfg.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+            raise ConfigError(f"source {cfg.id!r}: kind {cfg.kind.value!r} is not served by the local arm")
+        if cfg.path is None:
+            raise ConfigError(f"source {cfg.id!r}: kind {cfg.kind.value!r} needs 'path'")
+        self.cfg = cfg
+        self.source_id = cfg.id
+        self.kind = cfg.kind
+        self.root = cfg.path
+        self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
+        self._volume: str | None = None
+
+    # -- helpers -------------------------------------------------------------------------------------------
+
+    def _exclude(self) -> tuple[str, ...]:
+        return tuple(self.cfg.exclude)
+
+    def _volume_uuid(self) -> str:
+        if self._volume is None:
+            self._volume = volume_uuid(self.root)
+        return self._volume
+
+    def _incomplete(self, alarm: str) -> ScanResult:
+        log.warning("%s: %s", self.source_id, alarm)
+        return ScanResult(
+            source_id=self.source_id,
+            pass_kind=PassKind.FULL,
+            items=(),
+            new_cursor=None,
+            enumeration_complete=False,
+            alarms=(alarm,),
+        )
+
+    def _sentinel_present(self, items: Sequence[SourceItem]) -> bool | None:
+        sentinel = self.cfg.sentinel
+        if sentinel is None:
+            return None
+        want = _nfc(PurePosixPath(sentinel).as_posix())
+        if any(i.rel_path == want for i in items):
+            return True
+        try:  # a directory sentinel: present if it is a real (non-symlink) directory under the root
+            return stat.S_ISDIR(os.lstat(self.root / want).st_mode)
+        except OSError:
+            return False
+
+    def _walk_scan(self) -> tuple[list[SourceItem], WalkStats, list[str]] | ScanResult:
+        """Walk the root; returns (items, stats, alarms) or an incomplete, empty ScanResult."""
+        try:
+            root_st = os.lstat(self.root)
+        except FileNotFoundError:
+            return self._incomplete(f"source root missing: {self.root} (walk skipped; nothing is deleted)")
+        except OSError as exc:
+            return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
+        if stat.S_ISLNK(root_st.st_mode):
+            return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
+        if not stat.S_ISDIR(root_st.st_mode):
+            return self._incomplete(f"source root is not a directory: {self.root}")
+        try:
+            volume = self._volume_uuid()
+        except OSError as exc:
+            return self._incomplete(f"volume UUID unavailable for {self.root}: {exc}")
+        try:
+            items, stats = walk(
+                self.root,
+                source_id=self.source_id,
+                volume=volume,
+                include=self.cfg.include,
+                exclude=self._exclude(),
+            )
+        except FileNotFoundError:
+            return self._incomplete(f"source root vanished during the walk: {self.root}")
+        except OSError as exc:
+            return self._incomplete(f"walk failed at {self.root}: {exc}")
+        sentinel = self._sentinel_present(items)
+        stats = dataclasses.replace(stats, sentinel_present=sentinel)
+        alarms: list[str] = []
+        if sentinel is False:
+            alarms.append(
+                f"sentinel {self.cfg.sentinel!r} missing under {self.root}: enumeration treated as incomplete"
+            )
+        if stats.unknown_dirs:
+            shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
+            more = f" (+{len(stats.unknown_dirs) - 5} more)" if len(stats.unknown_dirs) > 5 else ""
+            alarms.append(
+                f"{len(stats.unknown_dirs)} unknown dir(s) — permission denied (TCC), provider error, or "
+                f"zero children in a cloud tree: {shown}{more}; enumeration incomplete, no deletions "
+                "this pass (exclude a deliberately empty cloud folder, or grant the agent Files and "
+                "Folders access)"
+            )
+        return items, stats, alarms
+
+    # -- SourceArm -----------------------------------------------------------------------------------------
+
+    def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
+        """Walk the source root; ``cursor`` and ``full`` are ignored (always FULL, new_cursor=None).
+
+        enumeration_complete is True only if the root exists, the sentinel (if configured) is present, and
+        ``unknown_dirs`` is empty; otherwise False with an alarm naming the cause.  Root missing -> an empty
+        ScanResult with enumeration_complete=False (never mass deletion).
+        """
+        del cursor, full
+        walked = self._walk_scan()
+        if isinstance(walked, ScanResult):
+            self.last_stats = None
+            return walked
+        items, stats, alarms = walked
+        self.last_stats = stats
+        complete = stats.sentinel_present is not False and not stats.unknown_dirs
+        log.info(
+            "%s: walked %d files, %d dirs (%d dataless, %d excluded, %d symlinks skipped); complete=%s",
+            self.source_id,
+            stats.files,
+            stats.dirs,
+            stats.dataless,
+            stats.excluded,
+            stats.symlinks_skipped,
+            complete,
+        )
+        return ScanResult(
+            source_id=self.source_id,
+            pass_kind=PassKind.FULL,
+            items=tuple(items),
+            new_cursor=None,
+            enumeration_complete=complete,
+            unknown_dirs=stats.unknown_dirs,
+            alarms=tuple(alarms),
+        )
+
+    def _source_path(self, item: SourceItem) -> Path:
+        rel = PurePosixPath(item.rel_path)
+        if rel.is_absolute() or not rel.parts or any(p in ("", ".", "..") for p in rel.parts):
+            raise MaterialiseError(item.rel_path, None, "rel_path escapes the source root")
+        return self.root.joinpath(*rel.parts)
+
+    def _check_identity(self, path: Path, item: SourceItem) -> None:
+        st = os.lstat(path)  # FileNotFoundError propagates
+        if item.ino is not None and st.st_ino != item.ino:
+            raise FileNotFoundError(
+                errno_mod.ENOENT, f"inode changed ({item.ino} -> {st.st_ino}); re-classify", str(path)
+            )
+
+    def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:
+        """Materialise ``root/item.rel_path`` into ``dest_dir`` via ``materialise.materialise``.
+
+        Re-lstats first: if the inode no longer matches ``item.ino`` raises FileNotFoundError (re-classify).
+        """
+        if item.source_id != self.source_id:
+            raise ValueError(f"item of source {item.source_id!r} fetched through arm {self.source_id!r}")
+        path = self._source_path(item)
+        self._check_identity(path, item)
+        dest = _staging_dest(dest_dir, item)
+        result = materialise(path, dest, budget)
+        try:
+            self._check_identity(path, item)  # a safe-save between our lstat and materialise's
+        except FileNotFoundError:
+            with contextlib.suppress(FileNotFoundError):
+                dest.unlink()
+            raise
+        return FetchResult(
+            stable_id=item.stable_id, path=result.dest, size=result.size, content_sha256=result.content_sha256
+        )
+
+
+class InboxArm(LocalArm):
+    """SourceArm for kind ``inbox``: LocalArm plus quiescence, lock-file ignores and max(created,
+    modified)."""
+
+    def __init__(self, cfg: SourceConfig) -> None:
+        """Bind to one configured inbox source (see LocalArm)."""
+        super().__init__(cfg)
+        self._clock: Callable[[], int] = time.time_ns  # wall clock in ns; replaceable in tests
+
+    def _exclude(self) -> tuple[str, ...]:
+        extra = tuple(p for p in _INBOX_IGNORES if p not in self.cfg.exclude)
+        return (*self.cfg.exclude, *extra)
+
+    def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
+        """As LocalArm.scan, but items whose size/mtime changed within ``quiescence_s`` are withheld.
+
+        mtime_ns is reported as max(created_ns, mtime_ns) (a copied file keeps its original mtime).  Withheld
+        items make enumeration_complete False (they are neither new nor absent this pass).
+        """
+        del cursor, full
+        walked = self._walk_scan()
+        if isinstance(walked, ScanResult):
+            self.last_stats = None
+            return walked
+        items, stats, alarms = walked
+        self.last_stats = stats
+        horizon = self._clock() - self.cfg.quiescence_s * 1_000_000_000
+        kept: list[SourceItem] = []
+        withheld: list[str] = []
+        for item in items:
+            created = item.created_ns if item.created_ns is not None else item.mtime_ns
+            if max(item.mtime_ns, item.ctime_ns, created) > horizon:
+                withheld.append(item.rel_path)
+                continue
+            kept.append(
+                dataclasses.replace(
+                    item,
+                    mtime_ns=max(created, item.mtime_ns),
+                    extra={"dedup_name": fold_conflict_suffix(item.name)},
+                )
+            )
+        if withheld:
+            shown = ", ".join(repr(p) for p in withheld[:5])
+            more = f" (+{len(withheld) - 5} more)" if len(withheld) > 5 else ""
+            alarms.append(
+                f"{len(withheld)} inbox item(s) withheld: changed within the last {self.cfg.quiescence_s}s "
+                f"(still being written?): {shown}{more}"
+            )
+        complete = stats.sentinel_present is not False and not stats.unknown_dirs and not withheld
+        log.info(
+            "%s: inbox walk %d files (%d withheld, %d excluded); complete=%s",
+            self.source_id,
+            stats.files,
+            len(withheld),
+            stats.excluded,
+            complete,
+        )
+        return ScanResult(
+            source_id=self.source_id,
+            pass_kind=PassKind.FULL,
+            items=tuple(kept),
+            new_cursor=None,
+            enumeration_complete=complete,
+            unknown_dirs=stats.unknown_dirs,
+            alarms=tuple(alarms),
+        )
+
+    def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:
+        """As LocalArm.fetch, plus two-read agreement: hash differs across two reads -> MaterialiseError."""
+        first = super().fetch(item, dest_dir, budget)
+        path = self._source_path(item)
+        try:
+            with materialize_allowed():
+                second = sha256_file(path)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                first.path.unlink()
+            raise
+        if second != first.content_sha256:
+            with contextlib.suppress(FileNotFoundError):
+                first.path.unlink()
+            raise MaterialiseError(
+                str(path), None, "unstable: two reads disagree (still being written?); retried next cycle"
+            )
+        return first
