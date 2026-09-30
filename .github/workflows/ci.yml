@@ -1,0 +1,41 @@
+name: ci
+
+# The Python gate: the locked environment, ruff (lint + format), mypy --strict over src/ (pyproject [tool.mypy]),
+# and the full pytest suite on a pinned macOS image (the suite has macOS-only tests: st_flags, getattrlist,
+# plutil, codesign, tmutil). Actions are pinned by full commit SHA: checkout as in diagrams.yml, setup-uv v10.2.0
+# resolved with `gh api repos/astral-sh/setup-uv/git/ref/tags/v10.2.0` on 2026-09-29 (a lightweight tag on
+# commit c18668a). ruff is scoped to src/ and tests/: the receipt experiments under docs/ are kept byte-for-byte,
+# and the film scripts and the Python blocks inside the design docs are not held to it.
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.17"
+      - name: uv sync --locked
+        run: uv sync --locked
+      - name: ruff check
+        run: uv run --locked ruff check src tests
+      - name: ruff format --check
+        run: uv run --locked ruff format --check src tests
+      - name: mypy src
+        run: uv run --locked mypy src
+      - name: pytest
+        run: uv run --locked pytest -q -p no:cacheprovider
