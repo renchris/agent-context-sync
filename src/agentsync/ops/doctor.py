@@ -37,6 +37,16 @@ _MAX_LOG_BYTES = 64 * 1024**2
 _STALE_FACTOR = 3  # design 4.7 watcher rule: cursor/success age > 3 x cadence
 _INCOMPLETE_RUNS = 3  # consecutive passes with enumeration_complete false before we warn
 _POLICY_NAMES = {0: "default", 1: "off", 2: "on"}
+AGENT_STEP_PENDING_ENV = "AGENTSYNC_AGENT_STEP_PENDING"
+"""Set to 1 by scripts/install.sh --confirm-install-agent for its doctor step: the LaunchAgents are installed
+by its later agent step, so a launchd.* fix that is install-agent reads :data:`AGENT_STEP_NOTE` instead."""
+AGENT_STEP_NOTE = "installed by the agent step below"
+_AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
+NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"
+"""Set to 1 by scripts/install.sh (the same variable as ``cli.NO_NEXT_HINT_ENV``): its NEXT: line is the only
+instruction in its output, so the ad hoc launcher's Developer ID fix (an IT action, nothing the person or
+their agent does) reads :data:`ADHOC_IT_NOTE`, with no ``fix:``."""
+ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 
 
 class Severity(enum.StrEnum):
@@ -56,6 +66,7 @@ class CheckResult:
     detail: str
     severity: Severity = Severity.ERROR
     fix: str | None = None  # the exact command or setting that fixes it
+    note: str | None = None  # shown in brackets instead of a fix a caller has already scheduled
 
 
 @dataclass(frozen=True, slots=True)
@@ -823,7 +834,17 @@ def _check_launcher(config: Config) -> list[CheckResult]:
                 + ("" if pinned else " (no certificate leaf[subject.OU]: not pinned to a TeamID)"),
             )
         )
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        out = [_for_it(r) for r in out]
     return out
+
+
+def _for_it(result: CheckResult) -> CheckResult:
+    """``result`` with the Developer ID rebuild fix (an IT/fleet signing action) worded as
+    :data:`ADHOC_IT_NOTE`, with no ``fix:`` (under :data:`NO_NEXT_HINT_ENV`)."""
+    if result.ok or result.fix != _DEVELOPER_ID_FIX:
+        return result
+    return CheckResult(result.name, result.ok, result.detail, result.severity, fix=None, note=ADHOC_IT_NOTE)
 
 
 def _check_tcc_access(config: Config) -> list[CheckResult]:
@@ -1025,7 +1046,16 @@ def _check_launchd(config: Config) -> list[CheckResult]:
             out.append(
                 _bad(f"launchd.{suffix}", f"check crashed: {type(exc).__name__}: {exc}", Severity.WARN)
             )
+    if os.environ.get(AGENT_STEP_PENDING_ENV, "").strip() == "1":
+        out = [_agent_step_pending(r) for r in out]
     return out
+
+
+def _agent_step_pending(result: CheckResult) -> CheckResult:
+    """``result`` with an install-agent (or bootstrap) fix replaced by :data:`AGENT_STEP_NOTE`."""
+    if result.ok or result.fix is None or not result.fix.startswith(_AGENT_STEP_FIXES):
+        return result
+    return CheckResult(result.name, result.ok, result.detail, result.severity, fix=None, note=AGENT_STEP_NOTE)
 
 
 def _check_lock(config: Config) -> list[CheckResult]:
@@ -1244,7 +1274,7 @@ _TAGS = {Severity.ERROR: "FAIL", Severity.WARN: "warn", Severity.INFO: "info"}
 
 
 def format_results(results: list[CheckResult]) -> str:
-    """Render results as aligned text lines ``[ok|FAIL|warn] name — detail (fix: ...)``."""
+    """Render results as aligned text lines ``[ok|FAIL|warn] name — detail (fix: ...)`` (or ``(<note>)``)."""
     if not results:
         return ""
     width = max(len(r.name) for r in results)
@@ -1254,5 +1284,7 @@ def format_results(results: list[CheckResult]) -> str:
         line = f"[{tag:<4}] {r.name:<{width}} — {r.detail}"
         if not r.ok and r.fix:
             line += f" (fix: {r.fix})"
+        elif not r.ok and r.note:
+            line += f" ({r.note})"
         lines.append(line)
     return "\n".join(lines)

@@ -44,6 +44,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentsync"]
 
+# `agentsync it-request` renders the IT request page; a wheel installed without its source checkout reads
+# this copy (src/agentsync/it_request.py).
+[tool.hatch.build.targets.wheel.force-include]
+"docs/deploy/it-request.md" = "agentsync/_deploy/it-request.md"
+"docs/deploy/entra-app.json" = "agentsync/_deploy/entra-app.json"
+
 [tool.ruff]
 line-length = 110
 target-version = "py311"

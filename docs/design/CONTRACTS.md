@@ -686,6 +686,10 @@ class SourceArm(Protocol):
 class ByteBudget:
     """Mutable per-cycle, per-source byte/file budget; ``charge`` raises BudgetExhaustedError when exceeded.
 
+    The byte side bounds downloads (2026-09-30, L3): callers charge a file's size only when reading it downloads
+    it (a dataless, online-only local file, or any Graph item), and 0 bytes for an already-local file, which
+    still counts one file against ``max_files``.
+
     Deliberately not a frozen dataclass: one instance lives for one source for one cycle.
     """
     __slots__ = ("files_used", "max_bytes", "max_files", "used")
@@ -782,13 +786,15 @@ class SourceReport:
     pass_kind: PassKind | None  # None when the source was skipped (network down, paused, lock, error)
     enumeration_complete: bool
     counts: Mapping[Verdict, int] = field(default_factory=dict, hash=False)
-    materialised_bytes: int = 0
+    materialised_bytes: int = 0  # bytes downloaded (online-only files, Graph items); local reads are not counted
     deferred: int = 0
     breaker_tripped: bool = False
     cursor_advanced: bool = False
     skipped_reason: str | None = None
     alarms: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    converted: int = 0  # 2026-09-30 (L3): files read and converted this run (their pages changed or not)
+    deferred_online_only: int = 0  # 2026-09-30 (L3): of ``deferred``, the online-only files (a download refused)
 
 @dataclass(frozen=True, slots=True)
 class CycleReport:
@@ -1881,8 +1887,11 @@ def materialise(
 ) -> MaterialiseResult:
     """Copy ``src`` to ``dest`` (tmp + rename) hashing on the way, under ``materialize_allowed()``.
 
-    Pre: ``src`` is a regular file (lstat, not a symlink). Charges ``budget`` with lstat().st_size BEFORE
-    reading (raises BudgetExhaustedError without reading). EDEADLK -> DatalessRefusedError (no retry);
+    Pre: ``src`` is a regular file (lstat, not a symlink). Charges ``budget`` BEFORE reading (raises
+    BudgetExhaustedError without reading): one file always, and ``download_cost(lstat)`` bytes, which is
+    st_size when ``src`` is dataless (online-only) at that lstat and 0 for an already-local file (2026-09-30,
+    L3: the byte budget bounds downloads; a budget of 0 still copies every local file). EDEADLK ->
+    DatalessRefusedError (no retry);
     ETIMEDOUT -> retry ``retries`` times with exponential backoff, then ProviderTimeoutError; ENOENT ->
     FileNotFoundError propagates (vanished between walk and read: re-classify next cycle); size or mtime
     changed during the copy -> MaterialiseError("unstable"), dest removed. Post: dest holds exactly the bytes
@@ -3224,6 +3233,12 @@ class CheckResult:
     detail: str
     severity: Severity = Severity.ERROR
     fix: str | None = None  # the exact command or setting that fixes it
+    note: str | None = None  # shown in brackets instead of a fix a caller has already scheduled (2026-09-30)
+
+AGENT_STEP_PENDING_ENV = "AGENTSYNC_AGENT_STEP_PENDING"  # "1": launchd.* install-agent fixes are pending
+AGENT_STEP_NOTE = "installed by the agent step below"
+NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"  # "1" (install.sh): the ad hoc launcher's fix is a note for IT
+ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 
 def run_checks(config: Config) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
@@ -3237,8 +3252,21 @@ def run_checks(config: Config) -> list[CheckResult]:
     """
 
 def format_results(results: list[CheckResult]) -> str:
-    """Render results as aligned text lines ``[ok|FAIL|warn] name — detail (fix: ...)``."""
+    """Render results as aligned text lines ``[ok|FAIL|warn] name — detail (fix: ...)`` (or ``(<note>)``)."""
 ```
+
+Amendment (2026-09-30, judge finding K5): with `AGENTSYNC_AGENT_STEP_PENDING=1` in the environment (set by
+`scripts/install.sh --confirm-install-agent` for the doctor step it runs before its agent step), each failed
+`launchd.*` result whose fix is `agentsync install-agent` or `launchctl bootstrap ...` has `fix=None` and
+`note=AGENT_STEP_NOTE`, so its line ends "(installed by the agent step below)" instead of an instruction the agent
+might run early. Any other value, or none, leaves every fix as it is.
+
+Amendment (2026-09-30, judge finding L8, the rest of K5): with `AGENTSYNC_NO_NEXT_HINT=1` (scripts/install.sh
+exports it for every agentsync call), the failed `launcher.signature` and `launcher.requirement` results of an ad
+hoc launcher, whose fix is the Developer ID rebuild (`SIGN_IDENTITY=... launcher/build.sh`, then install.sh: a
+fleet-signing action for IT, nothing the person or their agent does), have `fix=None` and `note=ADHOC_IT_NOTE`,
+so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix:`. Any other value, or none, and
+`agentsync doctor` run by hand prints the fix itself.
 
 ### `agentsync.cycle` — `src/agentsync/cycle.py` — owner: **integrator (W2)**
 
@@ -3295,7 +3323,7 @@ def source_statuses(
 ``agentsync`` command line (owner: integrator).
 
 Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] [--mode poll|reconcile|dry_run]
-[--dry-run] [--source ID ...] · reconcile [--source ID ...] [--accept-deletions] · status · doctor · lint ·
+[--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · reconcile [--source ID ...] [--accept-deletions] · status · doctor · lint ·
 refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
 SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
@@ -4208,6 +4236,7 @@ class AgentSpec:
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line | 0 |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks | 0 · 1 |
+| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
 
 ```python
 EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher returns it (LaunchAgent runs)
@@ -4359,3 +4388,518 @@ def append_to_config(config_path: Path, table: str) -> Config:
     """Append ``table`` to sources.toml keeping every existing byte; validated with parse_config before an
     atomic replace (mode kept). Raises ConfigError, writing nothing, when the result would not load."""
 ```
+
+### 16.14 `setup-report` and the install.sh setup log (2026-09-29, integrator)
+
+Additive. The loop is described for operators in `docs/deploy/setup-feedback.md`; the README one-prompt block's
+step 6 (setup prompt v4; step 9 before v4) runs `~/.local/bin/agentsync setup-report --out
+~/agent-context/setup-report.md` and step 7 (step 10 before v4) links the issue form
+`.github/ISSUE_TEMPLATE/setup-report.yml`. Revised 2026-09-30 for prompt v4 (the "v4 revision" paragraphs below
+supersede the first version where they differ) and again for prompt v5, whose step 5 appends `<time> | end |
+finished` to friction.md and then runs the same command, which prints the prefilled issue link (the "v5 revision"
+paragraphs supersede the v4 ones where they differ).
+
+**install.sh setup log.** Every real run (never `--dry-run`) appends to `$AGENTSYNC_SETUP_LOG` (default
+`~/agent-context/setup/install.log`; directories it creates are 0700 and the file 0600, under `umask 077`). Every line
+is `<UTC ISO-8601> run=<YYYYmmddTHHMMSSZ>-<pid> <rest>`, with three kinds of `<rest>`:
+`start install.sh commit=<12-hex[-dirty]|-> kind=checkout|wheel source=<%q path> args=<every argument, %q>` (the
+commit only for a checkout with a `.git` and the Command Line Tools present, so `/usr/bin/git` never raises the
+install dialog), `step=<uv|agentsync|launcher|config|doctor|agent> seconds=<n> rc=<n> result=done|skipped|failed
+[note=<word>]` (the stamp is the step's start), and `end rc=<n> seconds=<n>` (from an EXIT trap, so a `fail` or an
+unexpected exit still closes the open step as `failed` with the failing command's status). A log that cannot be
+written is ignored. Stdout, stderr, the exit status and the `NEXT:` line are unchanged. v4 revision: a run whose
+LaunchAgents were not really installed (a sandbox or validation harness) says so with the token `launchd=simulated`
+(or the text `launchd: simulated`) on any of its lines, usually the `agent` step's; setup-report then reports
+"launchd: simulated" instead of reading another install's job as this setup's result.
+
+**`agentsync setup-report [--out PATH] [--friction PATH] [--no-redact] [--config PATH]`** writes Markdown whose
+headings are `REPORT_TITLE` and then `SECTION_TITLES` in order (v4 revision: Summary, Agent friction log,
+Environment, Installer, Configuration, Doctor, Status, Background runs, Recent errors, Redaction; before v4 the
+friction log came last and there was no Summary). It never fails hard: each section catches its own exception and
+prints "This section failed: <type>: <message>"; a missing or invalid sources.toml is a Configuration finding and
+skips Doctor and Status. No network (doctor runs `_extra_checks(..., offline=True)`: the Graph reachability probe
+becomes an info line), no sudo, no prompts, no `tmutil`; each external command has a timeout and the whole report
+`TIME_BUDGET_S` (doctor and status run in abandoned-on-timeout daemon threads). Read-only apart from `--out`, written
+atomically with mode 0600. Redaction is on unless `--no-redact` (which the report states at the top); the
+Redaction section gives the count per kind.
+
+v4 revision, the friction log. The agent no longer writes into the report. `setup-report` reads the friction log
+file (`--friction PATH`, else `$AGENTSYNC_FRICTION_LOG`, else `~/agent-context/setup/friction.md`; at most
+`FRICTION_MAX_BYTES`), embeds it in a `~~~text` block under `FRICTION_HEADING` (backtick and tilde fences inside are
+broken up so the issue form's code block survives), redacted with the same map as every other section. With no
+file the section says "No friction log found at <path>". `parse_friction` reads the first `Prompt:`, `Agent:`,
+`Run:` and `Outcome:` lines (a leading `- ` or `**` is tolerated) and every
+`F<n> | step <n> | clean / needed help / failed | <minutes> | <what happened> | <what would have avoided it>` line:
+the fix is the text after the last `|`, so a pipe inside a quoted command stays in the what text. Each item is
+classed as at most one human turn by keyword on its what text: an Allow click (`allow` and `click`), else a tool
+approval or refusal (`approv`, `refus`), else a question (`question`, `ask`, `asked`). A re-run no longer keeps text
+from the previous `--out` file (`previous_friction` and `FRICTION_HINT` are gone).
+
+v4 revision, the Summary (first section, computed, redacted like the rest): the outcome (the friction log's; "in
+progress" is flagged as step 6 not reached; with no log, "unknown"); prompt version, run type and agent (plus
+"launchd: simulated" when install.log says so and the Run line does not); install.sh runs and total seconds and the
+last run's exit; doctor FAIL and warn counts; background sync per job, decoded; friction items per status and the
+minutes logged; human turns (questions, tool approvals or refusals, Allow clicks); an outcome check when the outcome
+says "fully one command" but items needed help or failed; a PATH shadow; "N replacement(s) of M value(s)"; then "Top
+items", one line per needed-help or failed item with its F-id, step, status, what and fix; then the generated-at,
+agentsync version, install source and time taken.
+
+v4 revision, the machine sections. Environment lists every `agentsync` on `PATH` in order and flags a SHADOW when
+the first is not this home folder's `~/.local/bin/agentsync` (by path or same file). Installer shows, per run, the
+exit status and a step table (step, seconds, result with rc and note) and keeps the raw install.log lines in a
+collapsed `<details>` block. Doctor lists only the lines that are not ok, then "N ok: <names>". Background runs
+parses `launchctl print` (read-only; `path`, `program`, `arguments`, `state`, `runs`, `last exit code`, `last
+terminating signal`; the pid is not shown) and says, per job: not installed; plist present but not loaded; loaded,
+but the job belongs to another install (its plist or any ProgramArguments path is in a user or temporary folder
+other than this home: its exit codes are not reported as this setup's); loaded, but the plist is absent (removed
+without bootout); or loaded with `last exit code` decoded by `EXIT_MEANINGS` (0 ok, 1, 2, 75, 77, 78, 79 TCC_PENDING,
+80 TCC_DENIED; "(never exited)" explained). Redaction lists only the placeholder kinds used.
+
+v4 revision, redaction adds: every folder name `cloud_folder_names` finds under `~/Library/CloudStorage` at depth 2
+and 3 (what the prompt's `find ... -mindepth 2 -maxdepth 3 -type d ! -name '.*'` shows, configured or not; a depth-2
+name under `OneDrive-SharedLibraries-*` is a `<library-N>`; a short list of generic names such as `Documents` is kept;
+listed in a thread bounded to 3 s), hex runs of 16 or more digits with at least one letter and one digit
+(`<hash-N>`: launcher cdhashes, content hashes), docs-repo commit ids from the docs repo's `.git/logs/HEAD` (read as
+a file) and from status's `last runs:` line (`<commit-N>`, every abbreviation sharing the first 7 digits maps to the
+same placeholder), and the ComputerName and LocalHostName (`scutil --get`) as `<host>`, which also covers run ids that
+embed a host name. The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
+
+v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
+with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
+`<time> | step <n> | <kind> | <what happened> | <what would have avoided it>`, with `<kind>` from the closed list
+`FRICTION_KINDS` (start, end, question, click, approval, deviation, error, prompt), and ends with `<time> | end |
+finished`. `parse_friction` returns every attempt, oldest first: lines before the first `Attempt:` line (a v4 log)
+form an attempt of their own, and a second `Prompt:` line inside one attempt starts another. Kinds are matched
+case-insensitively and never guessed: a line with another word is "untyped" (shown, not counted), and a v4
+`F<n> | ...` line is "legacy" (shown, not counted). The fix is the text after the last `|` (a lone dash is no fix).
+The section records what it embedded (the file's modification time and line count, so a line written later is
+visibly missing) and gives one line per attempt: its lines, start time, prompt version, agent, computed outcome,
+events per kind, legacy and untyped counts, and whether it has its `end | finished` line.
+
+v5 revision, the Summary judges the latest attempt, and everything it judges is computed (J3, J12-J15). The
+install.sh runs of an attempt are those that started between its begin time and the next attempt's. The outcome
+(`compute_outcome`) is "fully one command" iff the attempt's last install.sh run ended rc 0, the attempt has no
+error, deviation or prompt line, no question beyond the folder question (the first question in step
+`FOLDER_QUESTION_STEP` = 2), no click beyond the Allow clicks (the first click in each of `ALLOW_CLICK_STEPS` = 2,
+3) and no untyped or legacy line; "worked with help" when install.sh ended rc 0 otherwise (also with no friction
+log); "failed at step 3" when the attempt's last install.sh run did not end rc 0 (with the installer's failing
+step and rc); with no install.sh run, "failed at step <n>" from the last error with no later `end` of its step,
+else the last error, else the last step logged. The Summary shows why, the agent's own `Outcome:` (and v4 `Run:`)
+line only as "agent said", and a WARNING when the attempt has no `end | finished` line. Its lines: the attempt
+count with each earlier attempt's outcome; prompt version (the vN of the `Prompt:` line) · run type · agent; human
+turns = questions + clicks + approvals, counted by kind, with approvals "not observable" when none is logged and
+the `Agent:` line names a tool in `APPROVAL_HIDDEN_TOOLS` (it does not tell the agent about its approval
+prompts); events per kind; the session time (first to last timestamp of the attempt) and each step's time (its
+first `start` to its last `end`); install.sh (runs during the attempt, the last one's exit and per-step seconds from
+install.log); the first sync (install.log's `first-sync` step, and from status how many sources have a complete
+baseline); doctor (FAIL and warn counts, then which warns are expected: `launcher.signature` and
+`launcher.requirement` of an ad hoc launcher, and `launchd.*` "is not installed" while the last install.sh run has
+not really installed the LaunchAgents; every other warn and every FAIL is unexpected); background sync; the IT draft
+(`IT_DRAFT`: whether it exists, and which `IT_PERSON_FIELDS` and `IT_ADMIN_FIELDS` are still in the email below
+its first `---` line); a PATH shadow; the redaction count. Then "Items that were not one command": every error,
+deviation, prompt, question, click and approval line of the attempt, in that kind order, the folder question and
+the Allow clicks marked "(expected)", redacted before they are shortened. The run type (`compute_run_type`) is
+"simulated launchd" when the attempt's last install.sh run says `launchd=simulated`, else "sandbox" when HOME (or
+what it resolves to) is under one of `SANDBOX_HOMES` (/tmp, /private/tmp, /var/folders, /private/var/folders),
+else "real".
+
+v5 revision, redaction (J6, J21). Folder, library, organisation and full-name values are registered `fuzzy`: they
+also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
+`client-alpha`, `CLIENT_ALPHA`, `ClientAlpha`); a lone first or last name matches its written and upper-case forms.
+The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
+Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
+source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,
+`<team>`, `<Org>`, `<TEAMID>`, `<serial>`) are not redactions.
+
+v5 revision, the issue link (J23). The report's last line is `ISSUE_URL` plus a URL-encoded title
+(`ISSUE_TITLE` + outcome · run type · prompt version) and four form fields, keyed by `ISSUE_FIELDS` (the ids in
+`.github/ISSUE_TEMPLATE/setup-report.yml`: `outcome`, `run_type`, `prompt_version`, `agent`): the outcome's form
+option ("Fully one command", "Worked with help", "Failed at step <n> (<PROMPT_STEPS[n]>)"), the run type's option
+(`ISSUE_RUN_TYPES`), the prompt version, and the `Agent:` line, always redacted (also under `--no-redact`) and
+limited to 100 plain characters. Nothing else of the report goes into the link. Without `--out` the report, and so
+the link, is the last thing on stdout; `issue_link(report)` returns it for the CLI to print after writing `--out`.
+
+v5 revision 2 (2026-09-30, judge findings K3, K4, K6, K9, K10, K17; supersedes the v5 paragraphs above where they
+differ). **Outcome from person-facing facts (K4).** `compute_outcome(attempt, runs, *, doctor_fails=())` judges the
+attempt's install runs only (`install_runs_only`: an `install.sh --list-folders` run, whose install.log run has a
+`list-folders` step, is never judged; `compute_run_type` and `agents_installed` skip it too). "Fully one command"
+iff the last install run ended rc 0 and there is no question beyond the folder question, no click beyond the
+Allow clicks, no approval line, no error that stopped the run and no unexpected doctor FAIL (every doctor FAIL is
+unexpected; the latest attempt's outcome gets them, in the Summary and in the friction section alike). "Worked with
+help" when the last install run ended rc 0 otherwise, also with no friction log or with an attempt that has no v5
+event line ("human turns unknown"). An error stopped the run (`stopping_error`) when it was logged in a step before
+`REPORT_STEP` (5) and neither an `end` of its step nor an event of a later step before 5 follows it; with the
+installer at rc 0 the outcome is then "failed at step <n>" at that step. Deviation, prompt and error lines
+(`PROBLEM_KINDS`) are agent friction: they never change the outcome by themselves, and untyped and legacy lines are
+shown, not counted. **Summary lines (K10).** `prompt: vN · run: <ISSUE_RUN_TYPES label> (computed: ...) · agent:
+...`; `human turns: N (q question(s), <clicks>, <approvals>; counted by kind)` where `<clicks>` is "c click(s)" on a
+real Mac and, in a sandbox, "clicks: none possible (launchd simulated)" (or "(sandbox)"), or "c click(s) logged,
+though none is possible (...)" when some were logged; `expected turns: the folder question F<n> · Allow click F<n>
+(step s) ...` (or "Allow clicks: none possible (...)") on their own line; `agent friction: N deviation, M prompt, K
+error (F-ids)` plus the untyped/legacy count and either "none of these changes the outcome by itself" or "F<n>
+stopped the run"; `install.sh: 1 install run (+1 --list-folders) during this attempt; the last exit ...`;
+`installer output: ...` (K17, below) when install.out exists; `PATH: SHADOW: ...` gets "(expected in a sandbox)"
+when the run type is not "real". "Items that were not one command" lists only the person-facing items (the stopping
+error, then questions, clicks and approvals beyond the expected ones); a separate "Agent friction (attempt N; it does
+not change the outcome by itself):" list follows with the other deviation, prompt, error and untyped lines.
+**Install source (K6).** The last install.sh start line's `commit=<sha>[-dirty]` and `tree=<12-hex>` (the SHA-256
+prefix of `git diff HEAD` in that checkout; the older `commit=<sha>-dirty dirty <fp>` form is still read) are shown
+as `last install.sh run: commit <sha>-dirty tree <fp> (...)`. **Redaction (K9).** The login name is registered
+before the fuzzy full name, so a login that is the name run together (`janedoe` for "Jane Doe") is `<user>`; the
+residue check runs over the whole redacted report (`residue_by_section`) and lists its hits by section
+("Residue check: N capitalised word(s) next to a placeholder in this report (<section>: <words>; ...)"). **Installer
+output (K17).** The Installer section ends with install.sh's output copy, `install_out_path()` = `INSTALL_OUT_NAME`
+next to install.log (`~/agent-context/setup/install.out`): its last `INSTALL_OUT_TAIL` (60) lines, redacted, in a
+collapsed `<details>` block, and `instruction_counts` of the lines read (its last 64 KiB): `INSTRUCTION_KINDS`, each
+line counted once, `NEXT:` and `next:` at a line start, `fix:` anywhere, `run:` at a line start or after `(`. The
+section and the Summary say "<a> NEXT: line(s) in <r> run(s) (exactly one per install.sh run is expected) and <b>
+other instruction-like line(s) (...) in the last <n> line(s) of install.out", <r> being the lines read that are
+install.sh's `# run=<id> <UTC> install.sh <arguments>` header (the "in <r> run(s)" is left out when there is none);
+with no file, "No installer output at <path>".
+
+v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
+the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
+`install.sh --log-start '<agent>'` appends the attempt header (`Attempt: <UTC>`, `Prompt: v<compat>`, `Agent:
+<agent>`), `install.sh --log '<step>' '<kind>' '<what>' '<fix>'` appends `<UTC> | step <n> | <kind> | <what> |
+<fix>` (no step column when the step is not a number), and `install.sh --log-end` appends `<UTC> | end |
+finished`, the close of step 3; the parser is unchanged. v6's kinds are `FRICTION_KINDS` (question, click,
+approval, deviation, error, prompt: no `start`/`end`, the installer times the steps); v5's `STEP_KINDS` (start,
+end) are still read and counted. **Step numbers by prompt version.** `PromptLayout` / `prompt_layout(version)`
+(`PROMPT_LAYOUTS`): an attempt's `version` (its `Prompt:` line; not stated = v6) picks its steps. v6: 1
+preflight (code and folders), 2 install and start (`INSTALL_STEP`), 3 IT request and report (`REPORT_STEP`), 4
+finish; the folder question is asked in step 1 and the announced Allow clicks happen in steps 1 and 2, but v6
+logs neither (its `question` is "something other than which folders to sync", its `click` "something other than
+an Allow this prompt announced"), so every logged question and click is beyond the expected turns. v5 keeps its
+own numbers (install 3, report 5, the first question in step 2 and the first click in each of steps 2 and 3
+expected). `Outcome.version` records the numbering; `form_label` maps a v5 step to the current form's (v5 1-2 ->
+1, 3 -> 2, 4-5 -> 3, 6 -> 4). **Outcome (rule unchanged: person-facing facts).** "Human turns unknown" applies
+only to a v5/v4 attempt with no event line, or a v6 attempt with no `Attempt:` line. `stopping_error(attempt,
+runs)`: a v6 error (no step `end` lines) is resolved by a later install.log run that ended rc 0 (any run for a
+step-1 error, an install run for an install-step error); a v5 error still by a later `end` of its step. With only
+a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Summary.** `human turns: N (q
+question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: none possible; approvals: not
+observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
+logged, though none is possible" when some were logged there, and on a real Mac "c click(s)" (v6: "beyond the
+announced Allow clicks (not logged)"); approvals "not observable" or "a approval(s)"; the total counts only what
+is known. `expected turns:` for v6 names the folder question and the Allow clicks as "not logged". Event kinds
+are counted with the closing line ("... 1 question, 1 finished"), so they add up to the event line count; the
+friction section embeds each line with its line number (the F<n> ids). A v6 attempt's time line adds the step
+times from install.log ("install.sh (install.log): step 1 --list-folders 4s · step 2 install 57s"). The first
+sync line adds "converted N, deferred M online-only" (install.log's first-sync `note=converted-N-deferred-M`,
+else the sync's own line in install.out) and says "N of M source(s) listed completely (status: baseline
+complete)". The generated-at, agentsync, install source and took bullets end the Summary under
+`RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
+source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
+· on origin/main: yes|no|unknown (as of the checkout's last fetch)`, every git call read-only
+(`GIT_OPTIONAL_LOCKS=0`); `tree_fingerprint` is install.sh's (the first 12 hex digits of the SHA-256 of `git diff
+HEAD`); `origin_label` is `github.com/renchris/agent-context-sync` for this repository in any URL form, else
+"other (redacted)" (the URL is never shown), or "none"; on origin/main is `git merge-base --is-ancestor HEAD
+origin/main`. **Environment (L10).** Each `~/Library/CloudStorage` folder says whether it is a File Provider
+domain: `file_provider_marker(path)` lists the folder's own extended attributes (`listxattr`, no symlink
+followed, no provider file opened) and returns the first name containing `fileprovider` or `file-provider`
+("File Provider domain (<name>)"), else "not a File Provider domain: no File Provider attribute (a plain
+folder)". **Redaction (L6, L7).** `$TMPDIR` and its realpath are registered (after the home, so a sandbox home
+inside it stays `~`) and any `/(private/)?var/folders/<x>/<y>` becomes `<tmp>` (legend "<tmp> this account's
+temporary folder"). The residue check ignores the fixed macOS path components (Users, Library, Application,
+Support, CloudStorage, Volumes, Applications), and `/Users/<user>/` (the login is `<user>`) is read as a home
+prefix like `~/`, so a SHADOW path such as `/Users/<user>/.local/bin/agentsync` is no hit.
+**Doctor (L8, V3).** An expected warn (`expected_warn`) is shown without its `(fix: ...)` or install.sh note and
+ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs keep their fix. **Installer
+(V4).** A run whose `step=report` line follows its `end` line says the report step is logged after the run's end
+line (install.sh writes the report once the run is closed), so the run's seconds exclude it.
+
+```python
+REPORT_TITLE = "# agentsync setup report"
+SECTION_TITLES: tuple[str, ...]  # the "## " headings in report order: Summary first, Redaction last
+FRICTION_HEADING = "## Agent friction log"
+FRICTION_ENV = "AGENTSYNC_FRICTION_LOG"
+FRICTION_KEYS = ("Prompt", "Agent", "Outcome", "Run")  # Outcome and Run: shown as "agent said", never used
+FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt")  # v6 (install.sh --log)
+STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
+TURN_KINDS = ("question", "click", "approval")
+PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
+PROMPT_VERSION = 6
+PROMPT_STEPS: dict[int, str]  # v6: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
+FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
+ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
+INSTALL_STEP = 2
+REPORT_STEP = 3  # every run ends at the report step; an error before it, unresolved and with no later step, stopped it
+RUN_METADATA_HEADING = "### Run metadata"
+SANDBOX_HOMES = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+APPROVAL_HIDDEN_TOOLS = ("claude code", "copilot")
+IT_DRAFT = "~/agent-context/it-request-draft.md"
+IT_PERSON_FIELDS: tuple[str, ...]  # <it-contact>, <requester-name>, <requester-upn>, <team>, <serial>, ...
+IT_ADMIN_FIELDS = ("<it-owner>", "<tenant-id>", "<app-client-id>")
+FRICTION_MAX_BYTES = 256 * 1024
+SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
+INSTALL_OUT_NAME = "install.out"  # install.sh's output copy, next to install.log
+INSTALL_OUT_TAIL = 60
+INSTRUCTION_KINDS = ("NEXT:", "next:", "fix:", "run:")
+TIME_BUDGET_S = 12.0
+ISSUE_URL = "https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml"
+ISSUE_LINK_LABEL = "issue link (review the report first):"  # the CLI's last line with --out
+ISSUE_TITLE = "Setup report: "
+ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent"}
+ISSUE_RUN_TYPES = {"real": "Real Mac", "sandbox": "Sandbox", "simulated launchd": "Sandbox with simulated launchd"}
+RECENT_ERROR_LINES = 40
+INSTALL_RUNS_SHOWN = 3
+EXIT_MEANINGS: dict[int, str]  # a LaunchAgent's last exit code -> agentsync's meaning
+
+@dataclass(frozen=True, slots=True)
+class FrictionEvent:
+    line: int; at: datetime | None; step: int | None; kind: str; what: str; fix: str
+    typed: bool  # property: kind in FRICTION_KINDS or "finished"
+
+@dataclass(frozen=True, slots=True)
+class Attempt:
+    number: int; started: datetime | None; header: dict[str, str]; events: tuple[FrictionEvent, ...]
+    legacy: tuple[str, ...]; first_line: int; last_line: int
+    finished: bool; begin: datetime | None; untyped: list[FrictionEvent]  # properties
+    def of_kind(self, *kinds: str) -> list[FrictionEvent]: ...
+    def kinds(self) -> Counter[str]: ...
+    def wall_seconds(self) -> float | None: ...  # first to last timestamp
+    def step_seconds(self) -> list[tuple[int, float | None]]: ...  # first start to last end, per step
+    def extra_questions(self) -> list[FrictionEvent]: ...  # beyond the folder question (v6: every logged one)
+    def extra_clicks(self) -> list[FrictionEvent]: ...  # beyond the Allow clicks (v6: every logged one)
+    def expected(self, event: FrictionEvent) -> bool: ...
+    version: int | None; layout: PromptLayout  # properties (v6 revision)
+
+@dataclass(frozen=True, slots=True)
+class PromptLayout:
+    version: int; steps: dict[int, str]; folder_question_step: int; allow_click_steps: tuple[int, ...]
+    install_step: int; report_step: int; logs_expected_turns: bool; logs_steps: bool
+    form_step: dict[int, int]  # this version's step -> the PROMPT_STEPS step of the issue form
+PROMPT_LAYOUTS: dict[int, PromptLayout]  # 5 and 6
+def prompt_layout(version: int | None) -> PromptLayout: ...  # v5 for <= 5, else v6
+
+@dataclass(frozen=True, slots=True)
+class Friction:
+    attempts: tuple[Attempt, ...]; text: str; truncated: bool = False; mtime: datetime | None = None
+    latest: Attempt | None; line_count: int  # properties
+
+@dataclass(frozen=True, slots=True)
+class InstallRun:
+    run_id: str; started: datetime | None; rc: int | None; seconds: int | None
+    steps: tuple[tuple[str, dict[str, str]], ...]; simulated: bool; lines: tuple[str, ...]
+    def step(self, name: str) -> dict[str, str] | None: ...
+    def failed_step(self) -> tuple[str, dict[str, str]] | None: ...  # the report step excluded
+    display_id: str  # property: the run id without its -<pid> suffix
+    list_only: bool  # property: an install.sh --list-folders run (a list-folders step), not an install run
+    report_after_end: bool  # property: its step=report line follows its end line (v6 revision)
+
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    kind: str; step: int | None; why: tuple[str, ...]  # kind: fully one command | worked with help | failed | unknown
+    version: int = PROMPT_VERSION  # the prompt whose numbering ``step`` uses (v6 revision)
+    text: str; form_label: str | None  # properties
+
+def parse_time(text: str) -> datetime | None: ...  # ISO-8601 -> aware UTC
+def parse_friction(text: str) -> Friction: ...
+def read_friction(path: Path) -> Friction | None: ...  # None when the file does not exist; records its mtime
+def default_friction_path() -> Path: ...
+def read_install_runs(log: Path) -> list[InstallRun]: ...
+def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]: ...
+def install_runs_only(runs: Sequence[InstallRun]) -> list[InstallRun]: ...  # without --list-folders runs
+def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> FrictionEvent | None: ...  # v6: runs resolve
+def compute_outcome(attempt: Attempt | None, runs: Sequence[InstallRun], *,
+                    doctor_fails: Sequence[str] = ()) -> Outcome: ...  # doctor_fails: unexpected FAIL names
+def compute_run_type(runs: Sequence[InstallRun], home: str) -> str: ...
+def home_path() -> str: ...
+def is_sandbox_home(home: str) -> bool: ...
+def it_draft_fields(text: str) -> tuple[list[str], list[str]]: ...  # (person fields, IT fields) still open
+def expected_warn(name: str, detail: str, *, agents_installed: bool) -> str | None: ...
+def agents_installed(runs: Sequence[InstallRun]) -> bool: ...
+def build_issue_url(*, outcome: str | None, run_type: str | None, prompt: str | None, agent: str | None) -> str: ...
+def issue_link(report: str) -> str | None: ...  # the link a report ends with
+def origin_label(url: str) -> str: ...  # github.com/renchris/agent-context-sync | other (redacted) | none
+def tree_fingerprint(diff: bytes) -> str: ...  # install.sh's: sha256(git diff HEAD)[:12]
+def file_provider_marker(path: Path) -> str | None: ...  # the folder's File Provider xattr name, or None
+def residue(text: str) -> list[str]: ...
+def residue_by_section(report: str) -> list[tuple[str, list[str]]]: ...  # (section title, words), hits only
+def instruction_counts(lines: Iterable[str]) -> Counter[str]: ...  # per INSTRUCTION_KINDS kind
+def install_out_path(log: Path | None = None) -> Path: ...  # INSTALL_OUT_NAME next to install.log
+def cloud_folder_names(root: Path | None = None, limit: int = 2000) -> list[tuple[str, int, str]]: ...
+def agentsync_on_path(path_env: str | None = None) -> list[str]: ...
+def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]: ...
+def decode_exit(value: str) -> str: ...
+
+@dataclass(frozen=True, slots=True)
+class ReportHooks:
+    """What the report needs from the CLI (this module never imports agentsync.cli)."""
+    doctor: Callable[[Config], list[str]] | None = None
+    status: Callable[[Config], list[str]] | None = None
+
+class Redactor:
+    """Known values (home ~, <user>, <name>, <org-N>, <library-N>, <folder-N>, <source-N>, <serial>, <host>,
+    <proxy-N>, <tmp>), docs-repo commits (<commit-N>) and email/GUID/long-hex/temporary-folder patterns
+    (<email-N>, <guid-N>, <hash-N>, <tmp>) to placeholders, the same value always the same placeholder; single pass, longest value first,
+    bounded so /Users/jdoe2 is not /Users/jdoe."""
+    def __init__(self, *, enabled: bool = True) -> None: ...
+    def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None: ...
+    def add_commit(self, sha: str | None) -> None: ...  # 7-40 hex; abbreviations share a placeholder
+    def redact(self, text: str) -> str: ...
+    def scrub(self, text: str) -> str: ...  # redacts even when disabled, without counting (the issue link)
+    def kinds_used(self) -> list[str]: ...  # kinds with a replacement, in legend order
+    counts: Counter[str]  # replacements per kind
+    total: int  # property: replacements
+    values: int  # property: distinct values replaced
+
+def default_setup_log() -> Path:
+    """$AGENTSYNC_SETUP_LOG, else ~/agent-context/setup/install.log."""
+
+def cloud_storage_root() -> Path:
+    """~/Library/CloudStorage (listing it reads no provider's files)."""
+
+def build_report(config_path: Path | None = None, *, redact: bool = True, hooks: ReportHooks | None = None,
+                 friction_path: Path | None = None, now: datetime | None = None,
+                 budget_s: float = TIME_BUDGET_S) -> tuple[str, Redactor]:
+    """The report and the redactor that produced it; never raises for a failed probe or section.
+    friction_path defaults to default_friction_path()."""
+
+def write_report(path: Path, text: str) -> None:
+    """Atomic write (same-directory temp file, 0600, os.replace); creates the parent; raises OSError."""
+```
+
+The `agentsync.setup_report` module (`src/agentsync/setup_report.py`) is owned by the integrator. `cli._status_lines`
+is `status`'s output as a list (the `status` command prints it unchanged) and `cli._doctor_lines_offline` is every
+doctor line without the network probe; both are the hooks `setup-report` passes. The CLI prints "wrote <out>
+(N replacement(s) of M value(s); friction log embedded | no friction log found at <path>)" and a "next:" line; its
+help names the `TIME_BUDGET_S` budget (12 s). v5 revision: with `--out`, prompt v5 step 5 expects the CLI to print
+`setup_report.issue_link(text)` as its last stdout line. v5 revision 2 (K3): the "next:" line is gone; with `--out`
+the last stdout line is `ISSUE_LINK_LABEL` + " " + the link ("issue link (review the report first): <url>", the bare
+`ISSUE_URL` when the report has no link), also in the fallback branch where `--out` cannot be written and the report
+goes to stdout (exit 1). Without `--out` the report itself is stdout and its last line is the bare link.
+
+**`AGENTSYNC_NO_NEXT_HINT`** (`cli.NO_NEXT_HINT_ENV`, 2026-09-30, K5): set to `1` (scripts/install.sh exports it),
+`init` and `add-source` print no `next:` hint, so install.sh's single `NEXT:` line is the only next step in its
+output; `setup-report` prints none either way.
+
+**`sync --materialise-budget BYTES`** (2026-09-30, K15): a size (`parse_size`: `0`, `"200MB"`, `"1GiB"`; an invalid
+one exits 78) passed to `run_cycle(budget_bytes=...)`, overriding every selected source's per-cycle
+`max_materialise_bytes` for this run only (as `materialise --budget` does). `0` means no downloads this run.
+scripts/install.sh's first sync uses it so that one install command is not bounded by downloading online-only
+files; the background job downloads them. With the flag, the per-file "exceeds the per-cycle budget" alarms of each
+source are printed as one line, `    <n> online-only file(s) left for a later run (over this run's
+--materialise-budget of <B> bytes)`; the docs-repo commit notes still carry them per file.
+
+L3 revision (2026-09-30, judge finding L3; supersedes the K15 paragraph where it differs). The materialise byte
+budget (the per-source `max_materialise_bytes` and `--materialise-budget` alike) is charged only for downloads: a
+local or inbox file costs its size only when it is dataless (online-only) — the manifest's `dataless` for the
+cycle's pre-check (`cycle._download_cost`) and `materialise.download_cost(lstat)` when it is read, so a file
+evicted since the scan is caught — and a Graph item always costs its size. An already-local file never consumes
+the byte budget (it still counts against `max_files`), so `sync --once --materialise-budget 0` converts every local
+file and downloads nothing: only online-only files are DEFERRED (`SourceReport.deferred_online_only`), with their
+"exceeds the per-cycle budget" alarm. `materialised_bytes` is the bytes downloaded. Every `sync`, `reconcile` and
+`materialise` run prints, as its last report line, `converted N, deferred M online-only` (N = the selected sources'
+`SourceReport.converted`, the files read and converted this run; M = their `deferred_online_only`);
+scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`.
+
+### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
+
+Additive (judge finding J10; setup prompt v5 step 4). `agentsync it-request --out PATH [--config PATH]` renders
+`docs/deploy/it-request.md` into a draft email for this Mac and writes it to PATH. It never sends anything and
+makes no network call. `--out` is required.
+
+**Template.** The page and `docs/deploy/entra-app.json` come from the first agentsync source checkout that has
+both. The candidates are the tree the module runs from (`Path(__file__).parents[2]`, for an editable or in-repo run),
+then the local directory in the distribution's PEP 610 `direct_url.json` (`file://` URLs only, which `uv tool install
+<checkout>` records). Otherwise they come from the copy packaged in the wheel at `agentsync/_deploy/`, which
+pyproject's `[tool.hatch.build.targets.wheel.force-include]` maps from `docs/deploy/`. If neither exists, the
+command raises `TemplateError` and exits 1.
+
+**The placeholder table is the specification.** The table before the page's `---` line has one row per
+placeholder. A row whose "Where the value comes from" cell starts with a code span is filled by `FILLERS`, and
+tests/test_it_request.py checks that the two sets are equal. A cell starting "you fill in" is the person's, one
+starting "IT fills in" is IT's, and "leave them" marks parts of a format. The fillers are read-only:
+
+| Placeholder | Value |
+|---|---|
+| `<requester-name>` | `id -F`; else the passwd entry's gecos name |
+| `<serial>` | `system_profiler SPHardwareDataType`, its `Serial Number (system)` line (20 s timeout) |
+| `<arch>` | `platform.machine()` (what `uname -m` prints) |
+| `<org>` | one `OneDrive-<org>` / `OneDrive-SharedLibraries-<org>` name (never `Personal`). It is taken from the configured sources' paths first, else from the folder names in `~/Library/CloudStorage`. With two or more, it stays open and a note lists them |
+| `<arms-today>` | the sources' `kind` values with counts (`local: 2 sources, inbox: 1 source`). With no sources.toml, "no sources configured yet". With an invalid one, it stays open |
+| `<date>` | today, ISO 8601 |
+
+**Draft layout.** The draft starts with a head:
+
+- line 1: `You fill: <placeholders still open that are neither IT's nor format parts>`
+- line 2: `IT fills (leave them as they are): ...`
+- line 3: `Filled from this Mac: serial = <value>, ...`, with each name written without its angle brackets
+  so that a placeholder count (setup-report's `it_draft_fields`) does not see a filled field as open
+- any notes
+- a line saying nothing has been sent
+- a link to the page's operator section
+
+Then `---`, `To: ...` and `Subject: ...` (from the page's `**To:** ... **Subject:** ...` line), a blank line, and
+the body. The body is the page after `---`, with these changes:
+
+- the To/Subject line is removed;
+- every `## ... (operator)` section is dropped;
+- the ```` ```json ```` block is replaced by entra-app.json with the same values filled, JSON-escaped;
+- "The manifest, byte-identical to [`entra-app.json`](...)." becomes "The manifest: [`entra-app.json`](...) with
+  this request's values filled in ...";
+- every relative Markdown link outside code fences becomes
+  `https://github.com/renchris/agent-context-sync/blob/main/<repo path>[#anchor]` (an anchor on its own points at
+  the page);
+- every filled placeholder is replaced, as a code span or bare.
+
+**Writing.** PATH must not be inside the source checkout or the configured `docs_repo`, both compared canonically.
+If it is, the command exits 2 and writes nothing. The file is written atomically (a temp file in the same
+directory, fsync, replace) with mode 0600, and a missing parent is created 0700. An existing file with the same
+text is left as it is. An existing file with different text is first renamed to `PATH.<YYYYmmddTHHMMSS>.bak`, so a
+person's edits survive a re-run. The CLI prints the following, and exits 1 if the file cannot be written:
+
+- "wrote PATH (mode 0600; from <origin>; nothing was sent)"
+- the backup path, if there was one
+- "You fill: ..." and "IT fills: ... (leave them)"
+- the notes
+
+```python
+REPO_URL = "https://github.com/renchris/agent-context-sync"
+BLOB_BASE = REPO_URL + "/blob/main/"
+PAGE_REL = "docs/deploy/it-request.md"; ENTRA_REL = "docs/deploy/entra-app.json"
+PACKAGE_DATA_DIR = "_deploy"
+DEFAULT_OUT = "~/agent-context/it-request-draft.md"
+YOU_FILL = "you fill in"; IT_FILLS = "IT fills in"; LEAVE = "leave them"  # prefixes of the table's source cell
+COMMAND_TIMEOUT_S = 20.0
+FILLERS: dict[str, Callable[[MacFacts], str | None]]  # exactly the table's command rows
+
+class TemplateError(Exception): ...
+
+def run_command(argv: Sequence[str]) -> str | None: ...  # no shell, no stdin, COMMAND_TIMEOUT_S; None on failure
+
+@dataclass(frozen=True, slots=True)
+class Template: page: str; entra: str; origin: str
+
+@dataclass(frozen=True, slots=True)
+class Placeholder:
+    name: str; meaning: str; source: str
+    by_command: bool; by_person: bool; by_it: bool  # properties, from source
+
+@dataclass(frozen=True, slots=True)
+class MacFacts:
+    requester_name: str | None; serial: str | None; arch: str | None; orgs: tuple[str, ...]
+    arms: str | None; today: date
+    org: str | None  # property: the only org, else None
+
+@dataclass(frozen=True, slots=True)
+class Draft: text: str; you_fill: list[str]; it_fills: list[str]; filled: dict[str, str]; notes: list[str]
+
+def checkout_candidates() -> list[Path]: ...
+def source_checkout() -> Path | None: ...
+def load_template(checkouts: Iterable[Path] | None = None) -> Template: ...  # raises TemplateError
+def placeholder_table(page: str) -> list[Placeholder]: ...
+def org_of(provider: str) -> str | None: ...
+def find_orgs(cloud_root: Path, source_paths: Iterable[Path] = ()) -> tuple[str, ...]: ...
+def describe_kinds(kinds: Iterable[str]) -> str: ...
+def gather_facts(*, kinds: Iterable[str] | None, source_paths: Iterable[Path] = (), cloud_root: Path | None = None,
+                 run: Runner | None = None, today: date | None = None) -> MacFacts: ...
+def absolute_links(text: str, page_rel: str = PAGE_REL) -> str: ...
+def render(template: Template, facts: MacFacts) -> Draft: ...  # raises TemplateError
+def refused_location(out: Path, roots: Iterable[Path]) -> Path | None: ...
+def write_draft(path: Path, text: str, *, now: datetime | None = None) -> Path | None: ...  # the backup, if any
+```
+
+The module `agentsync.it_request` (`src/agentsync/it_request.py`) is owned by the integrator and imports nothing
+from `agentsync.cli` or `agentsync.setup_report`.

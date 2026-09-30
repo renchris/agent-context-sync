@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -656,3 +657,95 @@ def test_add_source_refuses_bad_paths_and_writes_nothing(
     assert cli.main(["add-source", str(tmp_path), "--config", str(missing)]) == cli.EXIT_CONFIG
     assert not missing.exists()
     capsys.readouterr()
+
+
+def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_ones(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``sync --materialise-budget 0`` (install.sh's first sync, K15 and L3): the byte budget is charged only
+    for files that are dataless (online-only) when read, so every local file is converted now and only the
+    online-only ones wait for a run whose budget allows the download. Each run ends with one line
+    ``converted N, deferred M online-only``."""
+    from agentsync import arm_local, materialise  # noqa: PLC0415
+
+    online = {(local_source_dir / "projects" / n).stat().st_ino for n in ("sample.pptx", "sample.pdf")}
+    real = materialise.is_dataless
+
+    def fake(st: object) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return getattr(st, "st_ino", None) in online or real(st)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+    cfg = str(initialised.config_path)
+    mirror = initialised.docs_repo / "mirror/source/projects"
+    assert cli.main(["sync", "--once", "--materialise-budget", "0", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "source: full_enumeration · complete · 2 deferred" in out
+    assert "exceeds the per-cycle budget" not in out, "no per-file alarm at budget 0"
+    assert re.search(
+        r"^    2 online-only file\(s\) left for a later run \(over this run's --materialise-budget of 0 "
+        r"bytes\)$",
+        out,
+        re.MULTILINE,
+    )
+    last = out.rstrip("\n").splitlines()[-1]
+    m = re.fullmatch(r"converted (\d+), deferred 2 online-only", last)
+    assert m and int(m.group(1)) >= 8, last
+    assert not re.search(r"(?im)^\s*(next|run|fix):", out)
+    assert (mirror / "sample.docx.md").is_file(), "a local file is converted by the budget-0 run"
+    assert not (mirror / "sample.pdf.md").exists(), "an online-only file is not downloaded"
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert (mirror / "sample.pdf.md").is_file() and "left for a later run" not in out
+    assert out.rstrip("\n").splitlines()[-1] == "converted 2, deferred 0 online-only"
+    assert cli.main(["sync", "--materialise-budget", "lots", "--config", cfg]) == cli.EXIT_CONFIG
+    parser = cli.build_parser()
+    sync = parser.parse_args(["sync", "--materialise-budget", "200MB"])
+    assert sync.materialise_budget == "200MB"
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["sync", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "Only online-only files are charged" in text and "every local file is converted" in text
+
+
+def test_no_next_hint_env_silences_init_add_source_and_setup_report(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """install.sh exports AGENTSYNC_NO_NEXT_HINT=1 so that its own NEXT: is the only next step (K5)."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
+    cfg = tmp_path / "ctx" / "sources.toml"
+    other = tmp_path / "Other Folder"
+    other.mkdir()
+    argv_init = ["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]
+    report = ["setup-report", "--out", str(tmp_path / "r.md"), "--config", str(cfg)]
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+    assert cli.main([*argv_init, "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(other), "--config", str(cfg)]) == cli.EXIT_OK
+    assert cli.main(report) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert not re.search(r"(?im)^\s*next:", out), out
+    assert (
+        out.rstrip("\n")
+        .splitlines()[-1]
+        .startswith(f"issue link (review the report first): {setup_report.ISSUE_URL}&")
+    )
+    monkeypatch.delenv(cli.NO_NEXT_HINT_ENV)
+    third = tmp_path / "Third"
+    third.mkdir()
+    assert cli.main([*argv_init, "--force", "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(third), "--config", str(cfg)]) == cli.EXIT_OK
+    assert cli.main(report) == cli.EXIT_OK
+    hints = re.findall(r"(?m)^next: .*$", capsys.readouterr().out)
+    assert hints == [
+        "next: agentsync doctor · agentsync sync --once · agentsync install-agent",
+        "next: agentsync doctor · agentsync sync --once",
+    ], "without the variable: init's and add-source's hints, and none from setup-report"

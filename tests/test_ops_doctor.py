@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import gitops
+from agentsync import cli, gitops
 from agentsync.config import Config, parse_config
 from agentsync.model import PassKind, SourceState
 from agentsync.ops import doctor, launchd
@@ -869,3 +869,53 @@ def test_installed_job_bypassing_the_launcher_is_an_error(
     assert not r.ok and r.severity is Severity.ERROR and "not the signed launcher" in r.detail
     install_agents(sample_config, loaded)
     assert by_name(run_checks(sample_config))["launchd.poll"].ok
+
+
+def test_launchd_fix_reads_agent_step_below_while_the_installer_step_is_pending(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """install.sh --confirm-install-agent runs doctor before its agent step: no stray install-agent hint
+    (K5)."""
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
+    results = run_checks(sample_config)
+    for name in ("launchd.poll", "launchd.reconcile"):
+        r = by_name(results)[name]
+        assert not r.ok and r.fix is None and r.note == "installed by the agent step below"
+        line = next(ln for ln in format_results(results).splitlines() if f"] {name} " in ln)
+        assert "is not installed" in line and "fix:" not in line
+        assert line.endswith(" (installed by the agent step below)")
+    # installed but not loaded: the bootstrap fix is the agent step's too
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    install_agents(sample_config, loaded)
+    loaded.clear()
+    assert by_name(run_checks(sample_config))["launchd.poll"].note == doctor.AGENT_STEP_NOTE
+    # any other value, or none: the fix itself
+    for value in ("0", ""):
+        monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, value)
+        r = by_name(run_checks(sample_config))["launchd.poll"]
+        assert r.fix is not None and r.fix.startswith("launchctl bootstrap ") and r.note is None
+    # a failed check with neither fix nor note renders as before
+    plain = CheckResult("x", False, "broken", Severity.WARN)
+    assert format_results([plain]) == "[warn] x — broken"
+
+
+def test_adhoc_launcher_fix_is_worded_for_it_under_no_next_hint(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L8 (K5's rest): under install.sh (AGENTSYNC_NO_NEXT_HINT=1) the ad hoc launcher's Developer ID rebuild
+    is IT's action, not an instruction to the person or their agent: no ``fix:``, a note for IT."""
+    _launcher(monkeypatch)
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    results = run_checks(sample_config)
+    lines = format_results(results).splitlines()
+    for name in ("launcher.signature", "launcher.requirement"):
+        r = by_name(results)[name]
+        assert not r.ok and r.fix is None and r.note == doctor.ADHOC_IT_NOTE
+        [line] = [ln for ln in lines if f"] {name} " in ln]
+        assert line.endswith(" (for IT: Developer ID build (docs/deploy/mdm))") and "fix:" not in line
+    assert (Path(__file__).parents[1] / "docs" / "deploy" / "mdm").is_dir(), "the note names a real folder"
+    assert doctor.NO_NEXT_HINT_ENV == cli.NO_NEXT_HINT_ENV
+    for value in ("0", ""):  # anything else: the fix itself, as `agentsync doctor` prints it by hand
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, value)
+        r = by_name(run_checks(sample_config))["launcher.signature"]
+        assert r.note is None and "SIGN_IDENTITY=" in (r.fix or "")

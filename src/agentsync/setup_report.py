@@ -1,0 +1,2785 @@
+"""``agentsync setup-report``: one Markdown report of how setting up this Mac went, redacted, for the setup
+feedback loop (docs/deploy/setup-feedback.md; owner: integrator).
+
+Read-only and bounded: no network, no sudo, no prompts, no ``tmutil``; every external command has a timeout
+and the whole report a time budget (:data:`TIME_BUDGET_S`). Each section catches its own errors and records
+them in the report, so a report is always produced. The doctor and status sections come from the CLI through
+:class:`ReportHooks` (this module never imports ``agentsync.cli``); doctor runs without its Graph network
+probe.
+
+The report opens with a computed ``## Summary``, then the friction log (``~/agent-context/setup/friction.md``,
+embedded and redacted, one line per attempt), then the machine sections and the redaction legend, and its last
+line is a prefilled "Setup report" issue link. The friction log is a sequence of attempts (``Attempt:
+<time>``, ``Prompt:``, ``Agent:``, then ``<time> | step <n> | <kind> | <what> | <fix>`` lines and ``<time> |
+end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--log-end`` for setup prompt v6 (by
+the agent itself in v5, whose step numbers :class:`PromptLayout` keeps); v4 ``F<n> | ...`` lines are shown as
+legacy, never counted. Everything the
+Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
+did: install.log's last install run exit, questions beyond the folder question, clicks beyond the Allow
+clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
+prompt and error lines are counted apart as "agent friction"), human turns (by kind), step and session times
+(from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
+the first sync, which doctor warns are expected, and the IT draft's unfilled fields. The agent's own
+``Outcome:`` line is shown only as "agent said". The Installer section also embeds the tail of install.sh's
+output copy (``install.out`` next to install.log: what the agent saw) and counts its instruction-like lines.
+
+Redaction (on by default) replaces, consistently (the same value always gets the same placeholder): the home
+path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
+``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
+(``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
+folder listing shows, configured or not; a few generic names such as ``Documents`` are kept) and every
+configured source folder path component (``<folder-N>``), the source ids derived from those folders
+(``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex fingerprints of 16 or more
+digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids (``<commit-N>``), the serial number
+(``<serial>``), the host and computer names (``<host>``), proxy hosts (``<proxy-N>``) and this account's
+temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``). Folder, library,
+organisation and full-name values also match their case, space, hyphen, underscore and CamelCase variants.
+install.sh run ids are shown without their process id. The friction log is redacted with the same map. The
+login name is registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue
+check runs over the whole redacted report, listing its hits by section.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import ctypes
+import dataclasses
+import errno
+import functools
+import hashlib
+import importlib.metadata
+import json
+import os
+import platform
+import plistlib
+import pwd
+import queue
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from collections import Counter
+from collections.abc import Callable, Iterable, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TypeVar, cast
+from urllib.parse import quote, unquote, urlencode, urlsplit
+
+from agentsync import __version__, net
+from agentsync.config import Config, load_config
+from agentsync.paths import default_config_path, expand
+
+REPORT_TITLE = "# agentsync setup report"
+SECTION_TITLES = (
+    "Summary",
+    "Agent friction log",
+    "Environment",
+    "Installer",
+    "Configuration",
+    "Doctor",
+    "Status",
+    "Background runs",
+    "Recent errors",
+    "Redaction",
+)
+"""The ``## `` headings, in report order (stable: the issue template and triage depend on them)."""
+RUN_METADATA_HEADING = "### Run metadata"
+"""The Summary's last block (generated at, agentsync version, install source, time taken): a sub-heading, so
+the ``## `` headings stay :data:`SECTION_TITLES`."""
+FRICTION_HEADING = "## Agent friction log"
+FRICTION_ENV = "AGENTSYNC_FRICTION_LOG"
+"""Overrides the default friction log path (``--friction PATH`` overrides both)."""
+FRICTION_KEYS = ("Prompt", "Agent", "Outcome", "Run")
+"""The header lines read from each attempt of friction.md: ``install.sh --log-start`` (prompt v6; the v5 agent
+itself) writes ``Prompt:`` and ``Agent:`` after the ``Attempt: <time>`` line; ``Outcome:`` and ``Run:``
+(prompt v4) are shown as what the agent said, never used."""
+FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt")
+"""The closed vocabulary of an event line ``<time> | step <n> | <kind> | <what happened> | <fix>`` (setup
+prompt v6, written by ``install.sh --log``)."""
+STEP_KINDS = ("start", "end")
+"""Prompt v5's step bracket kinds (``start`` and ``end`` of each step): still read and counted in a v5 log;
+prompt v6 logs no step lines (install.log times the steps)."""
+TURN_KINDS = ("question", "click", "approval")
+"""The kinds that are a human turn (counted by kind, never by keyword)."""
+PROBLEM_KINDS = ("error", "deviation", "prompt")
+"""The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
+(an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
+PROMPT_VERSION = 6
+"""The setup prompt this module's step numbers are for (README "Set up on a new Mac: one prompt")."""
+PROMPT_STEPS = {
+    1: "preflight",
+    2: "install and start",
+    3: "IT request and report",
+    4: "finish",
+}
+"""Setup prompt v6's steps, as the outcome and the issue form's Outcome options name them."""
+FOLDER_QUESTION_STEP = 1
+"""The step that asks the one question fully one command allows (which folders to sync). Prompt v6 does not
+log it (its ``question`` kind is "something other than which folders to sync"), so every logged question is
+beyond it; in a v5 log it is the first question logged in v5's step 2."""
+ALLOW_CLICK_STEPS = (1, 2)
+"""The steps whose announced Allow click fully one command allows (the terminal's OneDrive access in step 1,
+agentsync-launcher's in step 2). Prompt v6 does not log them (its ``click`` kind is "something other than an
+Allow this prompt announced"); in a v5 log they are the first click logged in each of v5's steps 2 and 3."""
+INSTALL_STEP = 2
+"""The prompt step that runs scripts/install.sh: the installer's failure is a failure of this step."""
+REPORT_STEP = 3
+"""The prompt step every run ends at ("If a command fails ... log it and go to step 3"); its closing
+``install.sh --log-end`` line (``<time> | end | finished``) is its end."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PromptLayout:
+    """The step numbers of one setup prompt version: what an attempt's events and its outcome refer to."""
+
+    version: int
+    steps: dict[int, str]  # step -> title
+    folder_question_step: int
+    allow_click_steps: tuple[int, ...]
+    install_step: int
+    report_step: int
+    logs_expected_turns: bool  # v5 logs the folder question and the Allow clicks; v6 logs only other turns
+    logs_steps: bool  # v5 brackets each step with start and end lines; v6 does not (install.log times them)
+    form_step: dict[int, int]  # this version's step -> the PROMPT_STEPS step (the issue form's options)
+
+
+PROMPT_LAYOUTS = {
+    6: PromptLayout(
+        version=6,
+        steps=PROMPT_STEPS,
+        folder_question_step=FOLDER_QUESTION_STEP,
+        allow_click_steps=ALLOW_CLICK_STEPS,
+        install_step=INSTALL_STEP,
+        report_step=REPORT_STEP,
+        logs_expected_turns=False,
+        logs_steps=False,
+        form_step={1: 1, 2: 2, 3: 3, 4: 4},
+    ),
+    5: PromptLayout(
+        version=5,
+        steps={
+            1: "preflight and code",
+            2: "choose folders",
+            3: "install and start",
+            4: "IT request",
+            5: "report",
+            6: "finish",
+        },
+        folder_question_step=2,
+        allow_click_steps=(2, 3),
+        install_step=3,
+        report_step=5,
+        logs_expected_turns=True,
+        logs_steps=True,
+        form_step={1: 1, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4},
+    ),
+}
+"""Setup prompt v6 (this module's constants) and v5, whose logs are still read with their own step numbers
+(a v4 log is read as v5: its F<n> lines are legacy anyway)."""
+
+
+def prompt_layout(version: int | None) -> PromptLayout:
+    """The layout of setup prompt ``version``: v5 for 5 and earlier, else v6 (also when not stated)."""
+    return PROMPT_LAYOUTS[5] if version is not None and version <= 5 else PROMPT_LAYOUTS[PROMPT_VERSION]
+
+
+SANDBOX_HOMES = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+"""A HOME under one of these is a sandbox run (a throwaway home), whatever the agent says."""
+APPROVAL_HIDDEN_TOOLS = ("claude code", "copilot")
+"""Agent tools (lower-case substrings of the ``Agent:`` line) that ask the person to approve commands without
+telling the model: an approval count of 0 from them is "not observable", not zero."""
+IT_DRAFT = "~/agent-context/it-request-draft.md"
+"""Where prompt step 3 (v5: step 4) has ``agentsync it-request`` write the IT request draft."""
+IT_PERSON_FIELDS = (
+    "<it-contact>",
+    "<requester-name>",
+    "<requester-upn>",
+    "<team>",
+    "<serial>",
+    "<arch>",
+    "<org>",
+    "<wanted-by>",
+)
+"""docs/deploy/it-request.md placeholders the person (or ``agentsync it-request``) fills."""
+IT_ADMIN_FIELDS = ("<it-owner>", "<tenant-id>", "<app-client-id>")
+"""docs/deploy/it-request.md placeholders IT fills."""
+SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
+"""Where ``scripts/install.sh`` appends its per-step log (default ``~/agent-context/setup/install.log``)."""
+INSTALL_OUT_NAME = "install.out"
+"""scripts/install.sh's copy of what each run printed (what the agent saw), next to install.log."""
+INSTALL_OUT_TAIL = 60
+"""The lines of install.out the Installer section embeds (redacted, collapsed)."""
+INSTRUCTION_KINDS = ("NEXT:", "next:", "fix:", "run:")
+"""Instruction-like line kinds counted in install.out: install.sh's own ``NEXT:`` (exactly one per run is
+expected), and any other hint an agent may act on before it (``next:``, ``(fix: ...)``, ``run:``)."""
+TIME_BUDGET_S = 12.0
+"""The whole report's wall-clock budget; external commands get what is left of it (minus a reserve)."""
+_REPO_SLUG = "renchris/agent-context-sync"
+ISSUE_URL = f"https://github.com/{_REPO_SLUG}/issues/new?template=setup-report.yml"
+ISSUE_LINK_LABEL = "issue link (review the report first):"
+"""What ``setup-report --out`` prints before the issue link, as its last stdout line."""
+ISSUE_TITLE = "Setup report: "
+"""The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
+ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent"}
+"""What the report prefills -> the ``id`` of that field in .github/ISSUE_TEMPLATE/setup-report.yml."""
+ISSUE_RUN_TYPES = {
+    "real": "Real Mac",
+    "sandbox": "Sandbox",
+    "simulated launchd": "Sandbox with simulated launchd",
+}
+"""The computed run type -> the form's ``run_type`` dropdown option (prefilled by its exact label)."""
+RECENT_ERROR_LINES = 40
+INSTALL_RUNS_SHOWN = 3
+FRICTION_MAX_BYTES = 256 * 1024
+EXIT_MEANINGS = {
+    0: "ok",
+    1: "failed: a source failed or a blocking lint fired (see Recent errors)",
+    2: "usage error",
+    75: "skipped: another cycle held the lock; launchd retries",
+    77: "sign-in required (agentsync graph login)",
+    78: "configuration invalid (sources.toml or policy.toml)",
+    79: "TCC_PENDING: the launcher waited for the Allow prompt and timed out",
+    80: "TCC_DENIED: access to the synced folder was denied",
+}
+"""agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists the same)."""
+
+_RESERVE_S = 1.0
+_TAIL_BYTES = 64 * 1024
+_LEVEL_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL)\b|^(?:error|fatal):|^Traceback ")
+_LAUNCHD_KEYS = ("state", "runs", "last exit code", "last terminating signal")
+_LAUNCHD_LINE_RE = re.compile(r"^\t([a-z][a-z ]*?) = (.*)$")
+_TCC_RE = re.compile(r"agentsync-launcher\[\d+\]: TCC_")
+_DOCTOR_TAG_RE = re.compile(r"^\[(ok|FAIL|warn|info)\s*\]\s*(\S+)")
+_INSTALL_LINE_RE = re.compile(r"^(?P<at>\S+) run=(?P<run>\S+) (?P<rest>.*)$")
+_KV_RE = re.compile(r"(\w+)=(\S+)")
+_END_RE = re.compile(r"^\S+ run=\S+ end ")
+_SIMULATED_RE = re.compile(r"\blaunchd\s*[=:]\s*simulated\b", re.IGNORECASE)
+_RUN_SIMULATED_RE = re.compile(r"simulated\b.*\blaunchd|\blaunchd\b.*\bsimulated", re.IGNORECASE)
+_EMAIL_RE = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+_GUID_RE = r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+_HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-Fa-f]{16,}(?![0-9A-Za-z])"
+_REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
+_LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
+_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "tmp"})
+_TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
+_GENERIC_FOLDERS = frozenset(
+    {
+        "Apps",
+        "Attachments",
+        "Desktop",
+        "Documents",
+        "Downloads",
+        "Microsoft Copilot Chat Files",
+        "Microsoft Teams Chat Files",
+        "Music",
+        "My Drive",
+        "Notebooks",
+        "Personal Vault",
+        "Pictures",
+        "Recordings",
+        "Shared",
+        "Shared Documents",
+        "Shared drives",
+        "Videos",
+    }
+)
+"""Folder names every OneDrive or Google Drive has: kept when only listed (a configured one is redacted)."""
+_LISTING_MAX = 2000
+_LEGEND = {
+    "home": "~ home folder",
+    "user": "<user> login name",
+    "name": "<name> full name",
+    "org": "<org-N> organisation",
+    "library": "<library-N> SharePoint library",
+    "folder": "<folder-N> folder under ~/Library/CloudStorage",
+    "source": "<source-N> source id",
+    "email": "<email-N> email address",
+    "guid": "<guid-N> GUID",
+    "hash": "<hash-N> hex fingerprint (launcher cdhash, content hash)",
+    "commit": "<commit-N> docs-repo commit",
+    "serial": "<serial> serial number",
+    "host": "<host> host or computer name",
+    "proxy": "<proxy-N> proxy host",
+    "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
+}
+_TEMPLATE_NOTE = (
+    "Unnumbered <org>, <team>, <Org>, <TEAMID>, <serial> and the IT request's other <field> names inside "
+    "doctor fixes or the IT-draft line are template placeholders, not redactions."
+)
+_SEP_RE = re.compile(r"[ \t_-]+")
+_FUZZY_SEP = r"[ \t_-]*"
+_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
+_RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+)>"
+_RESIDUE_RE = re.compile(
+    rf"{_RESIDUE_PLACEHOLDER}[ /_-]+([A-Z][\w&]*)|([A-Z][\w&]*)[ /_-]+(?={_RESIDUE_PLACEHOLDER})"
+)
+_USER_HOME_RE = re.compile(r"(?<![\w.-])/Users/<user>/")  # a login's home in a redacted path: like ~/
+_PATH_COMPONENTS = frozenset(
+    {"Users", "Library", "Application", "Support", "CloudStorage", "Volumes", "Applications"}
+)
+"""Fixed macOS path components (``/Users/<user>/Library/Application Support``): never residue."""
+_RESIDUE_IGNORED = frozenset(
+    {
+        "A",
+        "Allow",
+        "An",
+        "And",
+        "At",
+        "By",
+        "For",
+        "From",
+        "I",
+        "In",
+        "My",
+        "Of",
+        "On",
+        "OneDrive",
+        "Or",
+        "SharedLibraries",
+        "The",
+        "To",
+        "With",
+        *_PATH_COMPONENTS,
+    }
+)
+_INSTRUCTION_RES = (
+    ("NEXT:", re.compile(r"^\s*NEXT:")),
+    ("next:", re.compile(r"^\s*next:")),
+    ("fix:", re.compile(r"\bfix:")),
+    ("run:", re.compile(r"(?:^\s*|\()run:")),
+)
+_OUT_RUN_RE = re.compile(r"^# run=\S+ ")  # install.out's header line of each run
+_CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)")  # install.log's first-sync note
+_CONVERTED_LINE_RE = re.compile(r"\bconverted (\d+), deferred (\d+) online-only\b")  # sync's last line
+_BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
+_APPS = {
+    "OneDrive": ("/Applications/OneDrive.app", "~/Applications/OneDrive.app"),
+    "Company Portal": ("/Applications/Company Portal.app", "~/Applications/Company Portal.app"),
+}
+_REDACTION_MARK = "\x00redaction-summary\x00"
+
+_T = TypeVar("_T")
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ReportHooks:
+    """What the report needs from the CLI (injected, so this module never imports ``agentsync.cli``):
+    ``doctor`` returns every doctor line (no network probe), ``status`` the ``agentsync status`` lines."""
+
+    doctor: Callable[[Config], list[str]] | None = None
+    status: Callable[[Config], list[str]] | None = None
+
+
+def _tokens(value: str) -> list[str]:
+    """The words of ``value``: split at spaces, hyphens and underscores, and at CamelCase boundaries."""
+    out: list[str] = []
+    for chunk in _SEP_RE.split(value):
+        out += [t for t in _CAMEL_RE.split(chunk) if t]
+    return out
+
+
+def _norm(text: str) -> str:
+    """``text`` lower-cased without spaces, hyphens and underscores (what all variants of a value share)."""
+    return _SEP_RE.sub("", text).lower()
+
+
+class Redactor:
+    """Replace known values and email/GUID/hex/temporary-folder patterns with placeholders, the same value
+    always with the same placeholder (``<folder-1>``); counts every replacement per kind. Disabled, it returns
+    text unchanged.
+
+    A value registered ``fuzzy`` (folder, library, organisation and full-name values) also matches its case,
+    space, hyphen, underscore and CamelCase variants: ``Client Alpha`` covers ``client-alpha``,
+    ``CLIENT_ALPHA`` and ``ClientAlpha``."""
+
+    def __init__(self, *, enabled: bool = True) -> None:
+        """An empty redactor; :meth:`add` and :meth:`add_commit` register values."""
+        self.enabled = enabled
+        self.counts: Counter[str] = Counter()
+        self._exact: dict[str, str] = {}  # value -> placeholder (case-sensitive kinds)
+        self._folded: dict[str, str] = {}  # value.lower() -> placeholder (case-insensitive kinds)
+        self._fuzzy: dict[str, str] = {}  # _norm(value) -> placeholder (normalization-aware kinds)
+        self._kind_of: dict[str, str] = {}  # placeholder -> kind
+        self._numbers: Counter[str] = Counter()
+        self._pattern_values: dict[tuple[str, str], str] = {}
+        self._literals: list[tuple[str, str]] = []  # (value, "exact" | "fold" | "fuzzy")
+        self._commits: dict[str, str] = {}  # 7-hex prefix -> placeholder
+        self._used: set[str] = set()
+        self._regex: re.Pattern[str] | None = None
+        self._counting = True
+
+    @property
+    def total(self) -> int:
+        """Every replacement made so far."""
+        return sum(self.counts.values())
+
+    @property
+    def values(self) -> int:
+        """How many distinct values were replaced so far (placeholders that appear in the output)."""
+        return len(self._used)
+
+    def kinds_used(self) -> list[str]:
+        """The kinds with at least one replacement, in legend order."""
+        order = [*_LEGEND, *sorted(k for k in self.counts if k not in _LEGEND)]
+        return [k for k in order if self.counts.get(k)]
+
+    def _placeholder(self, kind: str) -> str:
+        if kind == "home":
+            return "~"
+        if kind in _UNNUMBERED:
+            return f"<{kind}>"
+        self._numbers[kind] += 1
+        return f"<{kind}-{self._numbers[kind]}>"
+
+    def _known(self, value: str) -> str | None:
+        return self._exact.get(value) or self._folded.get(value.lower()) or self._fuzzy.get(_norm(value))
+
+    def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None:
+        """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
+        host, proxy); a value already registered (or a variant of a fuzzy one) keeps its first placeholder.
+        Values under 2 characters are ignored (they would match inside ordinary words). ``fuzzy`` implies
+        ``ignore_case`` and adds the space/hyphen/underscore/CamelCase variants (not for a value whose
+        normalized form is under 3 characters)."""
+        value = (value or "").strip()
+        if len(value) < 2 or value in ("~", "/"):
+            return
+        if self._known(value) is not None:
+            return
+        placeholder = self._placeholder(kind)
+        self._kind_of[placeholder] = kind
+        if fuzzy and len(_norm(value)) >= 3 and _tokens(value):
+            self._fuzzy[_norm(value)] = placeholder
+            self._literals.append((value, "fuzzy"))
+        elif ignore_case or fuzzy:
+            self._folded[value.lower()] = placeholder
+            self._literals.append((value, "fold"))
+        else:
+            self._exact[value] = placeholder
+            self._literals.append((value, "exact"))
+        self._regex = None
+
+    def add_commit(self, sha: str | None) -> None:
+        """Register a git commit id (7 to 40 hex digits): every abbreviation of it that shares its first 7
+        digits becomes the same ``<commit-N>``."""
+        sha = (sha or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{7,40}", sha) or set(sha) == {"0"}:
+            return
+        prefix = sha[:7]
+        if prefix in self._commits:
+            return
+        placeholder = self._placeholder("commit")
+        self._kind_of[placeholder] = "commit"
+        self._commits[prefix] = placeholder
+        self._regex = None
+
+    def _compile(self) -> re.Pattern[str]:
+        if self._regex is None:
+            alts = [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
+            if self._commits:
+                prefixes = "|".join(sorted(self._commits))
+                alts.append(f"(?P<commit>(?<![0-9A-Za-z])(?i:{prefixes})[0-9a-fA-F]{{0,33}}(?![0-9A-Za-z]))")
+            literals = []
+            for value, mode in sorted(self._literals, key=lambda item: -len(item[0])):
+                if mode == "fuzzy":
+                    body = _FUZZY_SEP.join(re.escape(t) for t in _tokens(value))
+                else:
+                    body = re.escape(value)
+                lead = r"(?<![A-Za-z0-9])" if value[0].isalnum() else ""
+                trail = r"(?![A-Za-z0-9._-])" if value.startswith("/") else r"(?![A-Za-z0-9])"
+                if not value[-1].isalnum() and not value.startswith("/"):
+                    trail = ""
+                literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
+            if literals:
+                alts.append("(?P<lit>" + "|".join(literals) + ")")
+            alts.append(f"(?P<tmp>{_TMP_RE})")
+            alts.append(f"(?P<hash>{_HASH_RE})")
+            self._regex = re.compile("|".join(alts))
+        return self._regex
+
+    def _pattern(self, kind: str, value: str) -> str:
+        key = (kind, value.lower())
+        if key not in self._pattern_values:
+            known = self._exact.get(value) or self._folded.get(value.lower())
+            self._pattern_values[key] = known or self._placeholder(kind)
+            self._kind_of.setdefault(self._pattern_values[key], kind)
+        return self._pattern_values[key]
+
+    def _replace(self, m: re.Match[str]) -> str:
+        text = m.group(0)
+        groups = m.groupdict()
+        if groups.get("email") is not None:
+            placeholder = self._pattern("email", text)
+        elif groups.get("guid") is not None:
+            placeholder = self._pattern("guid", text)
+        elif groups.get("commit") is not None:
+            placeholder = self._commits.get(text[:7].lower(), text)
+        elif groups.get("tmp") is not None:
+            placeholder = self._known(text) or self._pattern("tmp", text)
+        elif groups.get("hash") is not None:
+            placeholder = self._pattern("hash", text)
+        else:
+            placeholder = self._known(text) or text
+        if placeholder != text and self._counting:
+            self.counts[self._kind_of.get(placeholder, "other")] += 1
+            self._used.add(placeholder)
+        return placeholder
+
+    def redact(self, text: str) -> str:
+        """``text`` with every registered value and every email address, GUID and long hex string replaced."""
+        if not self.enabled or not text:
+            return text
+        return self._compile().sub(self._replace, text)
+
+    def scrub(self, text: str) -> str:
+        """``text`` redacted even when this redactor is disabled, without counting (for the issue link: it is
+        never allowed to carry an unredacted value)."""
+        if not text:
+            return text
+        self._counting = False
+        try:
+            return self._compile().sub(self._replace, text)
+        finally:
+            self._counting = True
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the friction log (friction.md, written by the setup prompt's agent)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def parse_time(text: str) -> datetime | None:
+    """An ISO-8601 time (``date -u +%FT%TZ``) as an aware UTC datetime; None when it is not one."""
+    text = text.strip().strip("*`").strip()
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace("z", "+00:00"))
+    except ValueError:
+        return None
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class FrictionEvent:
+    """One v5 line ``<time> | step <n> | <kind> | <what happened> | <what would have avoided it>``, or the
+    attempt's closing ``<time> | end | finished`` (step None, kind ``finished``)."""
+
+    line: int  # 1-based line number in friction.md
+    at: datetime | None
+    step: int | None
+    kind: str  # one of FRICTION_KINDS, "finished", or the agent's own word (untyped: not counted)
+    what: str
+    fix: str
+
+    @property
+    def typed(self) -> bool:
+        """Whether the kind is one the prompt defines (untyped lines are shown, never counted)."""
+        return self.kind in FRICTION_KINDS or self.kind in STEP_KINDS or self.kind == "finished"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Attempt:
+    """One run of the setup prompt: the lines from one ``Attempt: <time>`` header (or, in a v4 log, one
+    ``Prompt:`` header block) to the next."""
+
+    number: int
+    started: datetime | None  # the Attempt: line's time
+    header: dict[str, str]  # Prompt, Agent and, from v4 logs, Outcome and Run
+    events: tuple[FrictionEvent, ...]
+    legacy: tuple[str, ...]  # v4 "F<n> | step | status | minutes | what | fix" lines: shown, not counted
+    first_line: int
+    last_line: int
+
+    @property
+    def finished(self) -> bool:
+        """Whether the attempt has its closing ``<time> | end | finished`` line (``install.sh --log-end`` in
+        prompt v6's step 3; the agent's own line in v5's step 5)."""
+        return any(e.kind == "finished" for e in self.events)
+
+    @property
+    def version(self) -> int | None:
+        """The setup prompt version of the ``Prompt:`` line (``v6`` -> 6), None when not stated."""
+        m = re.search(r"\bv?(\d{1,3})\b", self.header.get("Prompt", ""))
+        return int(m.group(1)) if m else None
+
+    @property
+    def layout(self) -> PromptLayout:
+        """The step numbers this attempt's prompt used (:func:`prompt_layout`)."""
+        return prompt_layout(self.version)
+
+    @property
+    def begin(self) -> datetime | None:
+        """The Attempt: time, else the first event's time."""
+        return self.started or next((e.at for e in self.events if e.at is not None), None)
+
+    def of_kind(self, *kinds: str) -> list[FrictionEvent]:
+        """The events of these kinds, in log order."""
+        return [e for e in self.events if e.kind in kinds]
+
+    def kinds(self) -> Counter[str]:
+        """Events per kind (untyped ones under their own word)."""
+        return Counter(e.kind for e in self.events)
+
+    @property
+    def untyped(self) -> list[FrictionEvent]:
+        """Event lines whose kind is not one the prompt defines."""
+        return [e for e in self.events if not e.typed]
+
+    def timestamps(self) -> list[datetime]:
+        """Every time in the attempt (the Attempt: line's and each event's)."""
+        return [t for t in (self.started, *(e.at for e in self.events)) if t is not None]
+
+    def wall_seconds(self) -> float | None:
+        """First to last timestamp (None with fewer than two)."""
+        ts = self.timestamps()
+        return (max(ts) - min(ts)).total_seconds() if len(ts) >= 2 else None
+
+    def step_seconds(self) -> list[tuple[int, float | None]]:
+        """(step, seconds from its first ``start`` to its last ``end``) in the order the steps first appear;
+        None when the step has no start or no end."""
+        order: list[int] = []
+        for e in self.events:
+            if e.step is not None and e.step not in order:
+                order.append(e.step)
+        out: list[tuple[int, float | None]] = []
+        for step in order:
+            starts = [e.at for e in self.events if e.step == step and e.kind == "start" and e.at is not None]
+            ends = [e.at for e in self.events if e.step == step and e.kind == "end" and e.at is not None]
+            span = (max(ends) - min(starts)).total_seconds() if starts and ends else None
+            out.append((step, span if span is None or span >= 0 else None))
+        return out
+
+    def extra_questions(self) -> list[FrictionEvent]:
+        """Questions beyond the folder question: every logged question in prompt v6 (it logs only the
+        others), every one but the first logged in v5's step 2."""
+        questions = self.of_kind("question")
+        if not self.layout.logs_expected_turns:
+            return questions
+        allowed = next((e for e in questions if e.step == self.layout.folder_question_step), None)
+        return [e for e in questions if e is not allowed]
+
+    def extra_clicks(self) -> list[FrictionEvent]:
+        """Clicks beyond the announced Allow clicks: every logged click in prompt v6 (it logs only the
+        others), in v5 every one but the first logged in each of its steps 2 and 3."""
+        clicks = self.of_kind("click")
+        if not self.layout.logs_expected_turns:
+            return clicks
+        allowed = [next((e for e in clicks if e.step == s), None) for s in self.layout.allow_click_steps]
+        return [e for e in clicks if not any(e is a for a in allowed)]
+
+    def expected(self, event: FrictionEvent) -> bool:
+        """Whether ``event`` is the folder question or an Allow click (the turns fully one command allows)."""
+        if event.kind == "question":
+            return not any(event is e for e in self.extra_questions())
+        if event.kind == "click":
+            return not any(event is e for e in self.extra_clicks())
+        return False
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Friction:
+    """A parsed friction log: its attempts (oldest first), the text, and what the report read (the file's
+    modification time and line count, so a reader can tell a later line is missing)."""
+
+    attempts: tuple[Attempt, ...]
+    text: str
+    truncated: bool = False
+    mtime: datetime | None = None
+
+    @property
+    def latest(self) -> Attempt | None:
+        """The last attempt (what the Summary judges)."""
+        return self.attempts[-1] if self.attempts else None
+
+    @property
+    def line_count(self) -> int:
+        """Lines embedded."""
+        return len(self.text.splitlines())
+
+
+_FRICTION_ITEM_RE = re.compile(r"^\s*(?:[-*]\s+)?\**(F\d+)\**\s*\|(.*)$")
+_FRICTION_KEY_RE = re.compile(
+    r"^\s*(?:[-*]\s+)?\**(" + "|".join(FRICTION_KEYS) + r")\**\s*:\s*\**\s*(.*?)\s*$", re.IGNORECASE
+)
+_ATTEMPT_RE = re.compile(r"^\s*(?:[-*]\s+)?\**Attempt\**\s*:\s*\**\s*(.*?)\s*$", re.IGNORECASE)
+_ISO_TIME = r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"
+_EVENT_RE = re.compile(rf"^\s*(?:[-*]\s+)?`?({_ISO_TIME})`?\s*\|(.*)$", re.IGNORECASE)
+_STEP_RE = re.compile(r"^(?:step\s*)?(\d+)$", re.IGNORECASE)
+
+
+def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
+    parts = [p.strip() for p in rest.split("|")]
+    head = parts[0].strip("*` ").lower()
+    moment = parse_time(at)
+    if head in ("end", "finished"):  # the attempt's closing line (no step column)
+        word = parts[1].strip("*` ").lower() if len(parts) > 1 else "finished"
+        kind = "finished" if head == "finished" or word.startswith("finish") or not word else f"end {word}"
+        return FrictionEvent(line_no, moment, None, kind, " | ".join(parts[1:]), "")
+    step_m = _STEP_RE.match(head)
+    if step_m is not None:
+        step: int | None = int(step_m.group(1))
+        rest_parts = parts[1:]
+    else:  # no step column: "<time> | <kind> | ..."
+        step, rest_parts = None, parts
+    kind = rest_parts[0].strip("*` ").lower() if rest_parts else "?"
+    tail = rest_parts[1:]
+    what, fix = (" | ".join(tail[:-1]), tail[-1]) if len(tail) > 1 else ((tail or [""])[0], "")
+    if fix in ("-", "\u2013", "\u2014"):  # a dash: no fix
+        fix = ""
+    return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
+
+
+def parse_friction(text: str) -> Friction:
+    """Parse friction.md into attempts. An attempt starts at each ``Attempt: <time>`` line; lines before the
+    first one (a v4 log) form an attempt of their own, and a second ``Prompt:`` line in one attempt starts
+    another (a v4 re-run that appended a second header). In each attempt: the first ``Prompt:``, ``Agent:``,
+    ``Outcome:``, ``Run:`` lines (a leading ``- `` or ``**`` is tolerated), every
+    ``<time> | step <n> | <kind> | <what> | <fix>`` line (a ``|`` inside the what text is kept: the fix is the
+    text after the last ``|``), the ``<time> | end | finished`` line, and v4 ``F<n> | ...`` lines as legacy.
+    Other lines are kept only in the text."""
+    attempts: list[Attempt] = []
+    cur: dict[str, object] | None = None
+
+    def close() -> None:
+        if cur is not None:
+            attempts.append(
+                Attempt(
+                    number=len(attempts) + 1,
+                    started=cast("datetime | None", cur["started"]),
+                    header=cast("dict[str, str]", cur["header"]),
+                    events=tuple(cast("list[FrictionEvent]", cur["events"])),
+                    legacy=tuple(cast("list[str]", cur["legacy"])),
+                    first_line=cast(int, cur["first"]),
+                    last_line=cast(int, cur["last"]),
+                )
+            )
+
+    def begin(line_no: int, started: datetime | None) -> dict[str, object]:
+        close()
+        return {
+            "started": started,
+            "header": {},
+            "events": [],
+            "legacy": [],
+            "first": line_no,
+            "last": line_no,
+        }
+
+    for n, line in enumerate(text.splitlines(), start=1):
+        attempt = _ATTEMPT_RE.match(line)
+        if attempt is not None:
+            cur = begin(n, parse_time(attempt.group(1)))
+            continue
+        key = _FRICTION_KEY_RE.match(line)
+        event = _EVENT_RE.match(line) if key is None else None
+        legacy = _FRICTION_ITEM_RE.match(line) if key is None and event is None else None
+        if key is None and event is None and legacy is None:
+            if cur is not None and line.strip():
+                cur["last"] = n
+            continue
+        if key is not None:
+            name = key.group(1).capitalize()
+            header = cast("dict[str, str]", cur["header"]) if cur is not None else None
+            if cur is None or (name == "Prompt" and header is not None and "Prompt" in header):
+                cur = begin(n, None)
+            cast("dict[str, str]", cur["header"]).setdefault(name, key.group(2).strip("*").strip())
+        elif cur is None:
+            cur = begin(n, None)
+        if event is not None:
+            cast("list[FrictionEvent]", cur["events"]).append(_parse_event(n, event.group(1), event.group(2)))
+        elif legacy is not None:
+            cast("list[str]", cur["legacy"]).append(line.strip())
+        cur["last"] = n
+    close()
+    return Friction(attempts=tuple(attempts), text=text)
+
+
+def default_friction_path() -> Path:
+    """``$AGENTSYNC_FRICTION_LOG``, else ``~/agent-context/setup/friction.md`` (the setup prompt's file)."""
+    env = os.environ.get(FRICTION_ENV, "").strip()
+    return expand(env) if env else expand("~/agent-context/setup/friction.md")
+
+
+def read_friction(path: Path) -> Friction | None:
+    """The parsed friction log at ``path`` (at most :data:`FRICTION_MAX_BYTES`), with the file's
+    modification time; None when there is none."""
+    target = expand(path)
+    try:
+        with target.open("rb") as fh:
+            mtime = datetime.fromtimestamp(os.fstat(fh.fileno()).st_mtime, UTC)
+            data = fh.read(FRICTION_MAX_BYTES + 1)
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        return None
+    truncated = len(data) > FRICTION_MAX_BYTES
+    text = data[:FRICTION_MAX_BYTES].decode("utf-8", errors="replace")
+    return dataclasses.replace(parse_friction(text), truncated=truncated, mtime=mtime)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# install.log (scripts/install.sh) and the computed verdicts
+# ---------------------------------------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class InstallRun:
+    """One scripts/install.sh run from install.log."""
+
+    run_id: str
+    started: datetime | None
+    rc: int | None  # the end line's exit status; None: no end line (stopped early, or still running)
+    seconds: int | None
+    steps: tuple[tuple[str, dict[str, str]], ...]  # (step name, fields) in log order, the report step too
+    simulated: bool  # a line says launchd=simulated
+    lines: tuple[str, ...]
+
+    def step(self, name: str) -> dict[str, str] | None:
+        """The fields of step ``name``, if the run logged it."""
+        return next((v for k, v in self.steps if k == name), None)
+
+    def failed_step(self) -> tuple[str, dict[str, str]] | None:
+        """The last step with ``result=failed`` (the report step excluded)."""
+        failed = [(k, v) for k, v in self.steps if v.get("result") == "failed" and k != "report"]
+        return failed[-1] if failed else None
+
+    @property
+    def display_id(self) -> str:
+        """The run id without its process-id suffix (a weak fingerprint, of no use to triage)."""
+        return re.sub(r"-\d+$", "", self.run_id)
+
+    @property
+    def report_after_end(self) -> bool:
+        """Whether the ``step=report`` line comes after the run's ``end`` line (install.sh writes the setup
+        report after closing the run: the report step is outside the run's seconds)."""
+        end = next((i for i, ln in enumerate(self.lines) if _END_RE.search(ln)), None)
+        report = next((i for i, ln in enumerate(self.lines) if " step=report " in f"{ln} "), None)
+        return end is not None and report is not None and report > end
+
+    @property
+    def list_only(self) -> bool:
+        """Whether this is an ``install.sh --list-folders`` run (setup prompt step 1), not an install run."""
+        return self.step("list-folders") is not None
+
+
+def install_runs_only(runs: Sequence[InstallRun]) -> list[InstallRun]:
+    """``runs`` without the ``--list-folders`` runs (what the outcome, run type and agent state judge)."""
+    return [r for r in runs if not r.list_only]
+
+
+def read_install_runs(log: Path) -> list[InstallRun]:
+    """install.log's runs, oldest first."""
+    out: list[InstallRun] = []
+    for run_id, fields, lines in _install_runs(log):
+        end = fields.get("end", {})
+        rc_text, secs = end.get("rc", ""), end.get("seconds", "")
+        steps = tuple((k, v) for k, v in fields.items() if k not in ("start", "end"))
+        out.append(
+            InstallRun(
+                run_id=run_id,
+                started=parse_time(fields.get("start", {}).get("at", "")),
+                rc=int(rc_text) if re.fullmatch(r"-?\d+", rc_text) else None,
+                seconds=int(secs) if secs.isdigit() else None,
+                steps=steps,
+                simulated=any(_SIMULATED_RE.search(ln) for ln in lines),
+                lines=tuple(lines),
+            )
+        )
+    return out
+
+
+def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]:
+    """The install.sh runs that started during attempt ``index`` (from its begin time to the next attempt's);
+    every run when there is no friction log, or when the latest attempt has no time at all."""
+    if friction is None or not friction.attempts:
+        return list(runs)
+    attempt = friction.attempts[index]
+    lo = attempt.begin
+    later = [a.begin for a in friction.attempts[index + 1 :] if a.begin is not None]
+    hi = later[0] if later else None
+    if lo is None:
+        return list(runs) if index == len(friction.attempts) - 1 else []
+    return [r for r in runs if r.started is not None and r.started >= lo and (hi is None or r.started < hi)]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Outcome:
+    """The computed outcome of one attempt: never what the agent declared."""
+
+    kind: str  # "fully one command" | "worked with help" | "failed" | "unknown"
+    step: int | None  # the failing prompt step, in the attempt's own prompt's numbering
+    why: tuple[str, ...]
+    version: int = PROMPT_VERSION  # the prompt whose step numbers ``step`` uses
+
+    @property
+    def text(self) -> str:
+        """ "fully one command", "worked with help", "failed at step 2", "failed" or "unknown"."""
+        if self.kind == "failed" and self.step is not None:
+            return f"failed at step {self.step}"
+        return self.kind
+
+    @property
+    def form_label(self) -> str | None:
+        """The issue form's Outcome option (None when there is none to prefill); a v5 attempt's step is
+        mapped to the current prompt's step that does the same work (v5's step 4, the IT request, is 3)."""
+        if self.kind == "fully one command":
+            return "Fully one command"
+        if self.kind == "worked with help":
+            return "Worked with help"
+        if self.kind == "failed" and self.step is not None:
+            step = prompt_layout(self.version).form_step.get(self.step, self.step)
+            step = max(1, min(step, max(PROMPT_STEPS)))
+            return f"Failed at step {step} ({PROMPT_STEPS[step]})"
+        return None
+
+
+def _unresolved_error(attempt: Attempt) -> FrictionEvent | None:
+    """The last error with no later ``end`` of the same step."""
+    events = list(attempt.events)
+    for i in range(len(events) - 1, -1, -1):
+        e = events[i]
+        if e.kind == "error" and not any(x.kind == "end" and x.step == e.step for x in events[i + 1 :]):
+            return e
+    return None
+
+
+def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> FrictionEvent | None:
+    """The last error that stopped the run: logged in a step before the report step (v6: 3, v5: 5), with no
+    later event of a later step before the report (the prompt's "log it and go to step 3") and not resolved.
+    v5 resolves it with a later ``end`` of its step; v6 (no step lines) with a later install.sh run in
+    ``runs`` that ended rc 0: any such run for a step-1 error (a ``--list-folders`` re-run, or the install
+    run that step 2 starts), an install run for an error of the install step."""
+    layout = attempt.layout
+    events = list(attempt.events)
+    last_step = layout.report_step
+    for i in range(len(events) - 1, -1, -1):
+        e = events[i]
+        if e.kind != "error" or e.step is None or e.step >= last_step:
+            continue
+        later = events[i + 1 :]
+        resolved = any(x.kind == "end" and x.step == e.step for x in later)
+        went_on = any(x.step is not None and e.step < x.step < last_step for x in later)
+        if not layout.logs_steps and e.at is not None:
+            after = [r for r in runs if r.started is not None and r.started >= e.at and r.rc == 0]
+            if e.step >= layout.install_step:
+                after = install_runs_only(after)
+            resolved = resolved or bool(after)
+        if not resolved and not went_on:
+            return e
+    return None
+
+
+def compute_outcome(
+    attempt: Attempt | None, runs: Sequence[InstallRun], *, doctor_fails: Sequence[str] = ()
+) -> Outcome:
+    """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
+    attempt's install runs (``--list-folders`` runs are not install runs):
+
+    - fully one command: the last install run ended rc 0, and the attempt has no question beyond the folder
+      question, no click beyond the Allow clicks, no approval, no error that stopped the run
+      (:func:`stopping_error`) and ``doctor_fails`` (unexpected doctor FAIL names) is empty;
+    - worked with help: the last install run ended rc 0 otherwise (also with no friction log, or an attempt
+      with no v5 event line, whose human turns are unknown);
+    - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
+      stopping error's step when install.sh ended rc 0; with no install run, at the step of the last error
+      with no later end of that step (then the last error, then the last step logged).
+
+    Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
+    never change the outcome by themselves, except an error that stopped the run."""
+    installs = install_runs_only(runs)
+    last = installs[-1] if installs else None
+    layout = attempt.layout if attempt is not None else prompt_layout(None)
+    version = layout.version
+    if last is not None and last.rc == 0:
+        why: list[str] = []
+        if attempt is None:
+            why.append("no friction log, so the human turns are unknown")
+        else:
+            stop = stopping_error(attempt, runs)
+            if stop is not None:
+                resolution = (
+                    "no later end of that step"
+                    if layout.logs_steps
+                    else "no later install.sh run of that step ended rc 0"
+                )
+                return Outcome(
+                    "failed",
+                    stop.step,
+                    (
+                        "install.sh exit 0",
+                        f"step {stop.step} logged an error (F{stop.line}) and did not finish: {resolution} "
+                        "and no later step before the report",
+                    ),
+                    version,
+                )
+            if layout.logs_steps and not any(
+                e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
+            ):
+                legacy = f" ({len(attempt.legacy)} legacy v4 line(s))" if attempt.legacy else ""
+                why.append(f"human turns unknown: the attempt has no v5 event line{legacy}")
+            elif not layout.logs_steps and attempt.started is None:
+                why.append("human turns unknown: the attempt has no Attempt: line (install.sh --log-start)")
+            if attempt.extra_questions():
+                why.append(f"{len(attempt.extra_questions())} question(s) beyond the folder question")
+            if attempt.extra_clicks():
+                why.append(f"{len(attempt.extra_clicks())} click(s) beyond the Allow clicks")
+            approvals = len(attempt.of_kind("approval"))
+            if approvals:
+                why.append(f"{approvals} approval(s)")
+        if doctor_fails:
+            why.append(f"{len(doctor_fails)} unexpected doctor FAIL(s): {', '.join(doctor_fails)}")
+        if not why:
+            return Outcome(
+                "fully one command",
+                None,
+                ("install.sh exit 0", "no turn beyond the unavoidable ones"),
+                version,
+            )
+        return Outcome("worked with help", None, ("install.sh exit 0", *why), version)
+    if last is not None:
+        failing = last.failed_step()
+        where = f" at its {failing[0]} step (rc {failing[1].get('rc', '?')})" if failing else ""
+        if last.rc is None:
+            last_failed = f", last failed step {failing[0]}" if failing else ""
+            detail = f"install.sh has no end line (stopped early{last_failed})"
+        else:
+            detail = f"install.sh exited {last.rc}{where}"
+        return Outcome("failed", layout.install_step, (detail,), version)
+    if attempt is None:
+        return Outcome("unknown", None, ("no friction log and no install.sh run in install.log",), version)
+    error = _unresolved_error(attempt) or next(iter(attempt.of_kind("error")[::-1]), None)
+    if error is not None:
+        why_error = f"no install.sh run; step {error.step} logged an error"
+        return Outcome("failed", error.step, (why_error,), version)
+    steps = [e.step for e in attempt.events if e.step is not None]
+    if steps:
+        why_step = f"no install.sh run and no error; the last step logged is {steps[-1]}"
+        return Outcome("failed", steps[-1], (why_step,), version)
+    if runs and not layout.logs_steps:  # v6: only --list-folders ran (step 1), and nothing was logged
+        return Outcome("failed", 1, ("no install run: only install.sh --list-folders ran (step 1)",), version)
+    return Outcome("unknown", None, ("no install.sh run in this attempt and no step logged",), version)
+
+
+def home_path() -> str:
+    """This process's HOME (module-level so tests replace it)."""
+    return str(Path.home())
+
+
+def is_sandbox_home(home: str) -> bool:
+    """Whether ``home`` (or what it resolves to) is under a temporary folder (:data:`SANDBOX_HOMES`)."""
+    candidates = {home}
+    with contextlib.suppress(OSError):
+        candidates.add(str(Path(home).resolve()))
+    return any(c == p or c.startswith(p + "/") for c in candidates for p in SANDBOX_HOMES)
+
+
+def compute_run_type(runs: Sequence[InstallRun], home: str) -> str:
+    """ "simulated launchd" when the attempt's last install run (else its last run) says
+    ``launchd=simulated``, "sandbox" when HOME is under a temporary folder, else "real"."""
+    runs = install_runs_only(runs) or list(runs)
+    if runs and runs[-1].simulated:
+        return "simulated launchd"
+    return "sandbox" if is_sandbox_home(home) else "real"
+
+
+def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
+    """(person fields, IT fields) still unfilled in an IT request draft: the placeholders of
+    :data:`IT_PERSON_FIELDS` and :data:`IT_ADMIN_FIELDS` found in the email (below the draft's first ``---``
+    line, whose header lists the fields as they were when it was written) outside a placeholder-legend row."""
+    parts = re.split(r"^---[ \t]*$", text, maxsplit=1, flags=re.MULTILINE)
+    email = parts[1] if len(parts) > 1 else text
+    body = "\n".join(ln for ln in email.splitlines() if not ln.lstrip().startswith("| `<"))
+    return [f for f in IT_PERSON_FIELDS if f in body], [f for f in IT_ADMIN_FIELDS if f in body]
+
+
+def expected_warn(name: str, detail: str, *, agents_installed: bool) -> str | None:
+    """Why a doctor warn line is expected, or None: the ad hoc launcher's signature and requirement (every
+    build without a Developer ID: a Developer ID build is IT's, docs/deploy/mdm), and a LaunchAgent not
+    installed when this setup has not installed them yet (no agent step, skipped, or simulated)."""
+    if name in ("launcher.signature", "launcher.requirement") and "ad hoc" in detail:
+        return "ad hoc launcher"
+    if name.startswith("launchd.") and "is not installed" in detail and not agents_installed:
+        return "LaunchAgents not installed yet"
+    return None
+
+
+_DOCTOR_NOTES = (
+    " (for IT: Developer ID build (docs/deploy/mdm))",  # doctor.ADHOC_IT_NOTE under AGENTSYNC_NO_NEXT_HINT
+    " (installed by the agent step below)",  # doctor.AGENT_STEP_NOTE under AGENTSYNC_AGENT_STEP_PENDING
+)
+
+
+def _without_fix(line: str) -> str:
+    """A doctor line without its trailing ``(fix: ...)`` or note (the fix text may hold parentheses)."""
+    if " (fix: " in line:
+        return line.split(" (fix: ", 1)[0]
+    for note in _DOCTOR_NOTES:
+        if line.endswith(note):
+            return line[: -len(note)]
+    return line
+
+
+def agents_installed(runs: Sequence[InstallRun]) -> bool:
+    """Whether the last install run installed the LaunchAgents (its agent step done, not simulated)."""
+    runs = install_runs_only(runs)
+    agent = runs[-1].step("agent") if runs else None
+    if agent is None or runs[-1].simulated:
+        return False
+    return agent.get("result") == "done" and agent.get("note") != "simulated"
+
+
+def build_issue_url(
+    *, outcome: str | None, run_type: str | None, prompt: str | None, agent: str | None
+) -> str:
+    """The prefilled "Setup report" issue link: :data:`ISSUE_URL`, a title, and the form fields of
+    :data:`ISSUE_FIELDS`, URL-encoded. Only these four values go in: never the report body."""
+    title = ISSUE_TITLE + " · ".join(v for v in (outcome, run_type, prompt) if v)
+    params: list[tuple[str, str]] = [("title", title)]
+    for key, value in (("outcome", outcome), ("run_type", run_type), ("prompt", prompt), ("agent", agent)):
+        if value:
+            params.append((ISSUE_FIELDS[key], value))
+    return ISSUE_URL + "&" + urlencode(params, quote_via=quote)
+
+
+def issue_link(report: str) -> str | None:
+    """The prefilled issue link a report ends with (what the CLI prints last), or None."""
+    lines = report.rstrip("\n").splitlines()
+    return lines[-1] if lines and lines[-1].startswith(ISSUE_URL) else None
+
+
+# ---------------------------------------------------------------------------------------------------------
+# probes (module-level so tests replace them)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _login_name() -> str:
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
+def _full_name() -> str:
+    """The account's full name (what ``id -F`` prints)."""
+    return pwd.getpwuid(os.getuid()).pw_gecos.split(",", 1)[0].strip()
+
+
+def _serial_number(run: Callable[[Sequence[str], float], tuple[int, str]]) -> str | None:
+    rc, out = run(["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], 3.0)
+    m = re.search(r'"IOPlatformSerialNumber" = "([^"]+)"', out) if rc == 0 else None
+    return m.group(1) if m else None
+
+
+def _host_names() -> list[str]:
+    names = {socket.gethostname(), platform.node()}
+    out: list[str] = []
+    for n in sorted(n for n in names if n):
+        out.append(n)
+        short = n.split(".", 1)[0]
+        if short != n:
+            out.append(short)
+    return [n for n in out if n.lower() not in ("localhost", "local")]
+
+
+def _computer_names(run: Callable[[Sequence[str], float], tuple[int, str]]) -> list[str]:
+    """The ComputerName and LocalHostName (``scutil --get``), which may differ from the host name."""
+    out: list[str] = []
+    for key in ("ComputerName", "LocalHostName"):
+        rc, text = run(["/usr/sbin/scutil", "--get", key], 2.0)
+        if rc == 0 and text.strip() and "\n" not in text.strip():
+            out.append(text.strip())
+    return out
+
+
+def _launchctl_print(run: Callable[[Sequence[str], float], tuple[int, str]], label: str) -> tuple[int, str]:
+    """``launchctl print gui/<uid>/<label>`` (read-only)."""
+    return run(["/bin/launchctl", "print", f"gui/{os.getuid()}/{label}"], 5.0)
+
+
+def default_setup_log() -> Path:
+    """``$AGENTSYNC_SETUP_LOG``, else ``~/agent-context/setup/install.log`` (scripts/install.sh writes it)."""
+    env = os.environ.get(SETUP_LOG_ENV, "").strip()
+    return expand(env) if env else expand("~/agent-context/setup/install.log")
+
+
+def cloud_storage_root() -> Path:
+    """``~/Library/CloudStorage`` (the File Provider roots; listing it reads no provider's files)."""
+    return Path.home() / "Library" / "CloudStorage"
+
+
+def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> list[tuple[str, int, str]]:
+    """(provider folder, depth, name) for every directory under ``root`` (default ~/Library/CloudStorage) at
+    depth 2 and 3, hidden ones skipped and symlinks not followed: what the setup prompt's
+    ``find ~/Library/CloudStorage -mindepth 2 -maxdepth 3 -type d ! -name '.*'`` lists. Names only; no file
+    is opened. At most ``limit`` entries."""
+    base = root if root is not None else cloud_storage_root()
+    out: list[tuple[str, int, str]] = []
+
+    def subdirs(path: Path) -> list[os.DirEntry[str]]:
+        try:
+            with os.scandir(path) as it:
+                entries = [e for e in it if not e.name.startswith(".") and e.is_dir(follow_symlinks=False)]
+        except OSError:
+            return []
+        return sorted(entries, key=lambda e: e.name)
+
+    for provider in subdirs(base):
+        for d2 in subdirs(Path(provider.path)):
+            out.append((provider.name, 2, d2.name))
+            if len(out) >= limit:
+                return out
+            for d3 in subdirs(Path(d2.path)):
+                out.append((provider.name, 3, d3.name))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+_XATTR_NOFOLLOW = 0x0001
+
+
+def file_provider_marker(path: Path) -> str | None:
+    """The name of the first File Provider extended attribute on ``path`` itself (a name containing
+    ``fileprovider`` or ``file-provider``, such as the domain root's ``com.apple.file-provider-domain-id``),
+    None when it has none (a plain folder, as a sandbox's ``mkdir`` makes). ``listxattr`` on the folder only,
+    symlinks not followed: no provider file is opened or read. Raises OSError (ENOSYS off macOS)."""
+    if sys.platform != "darwin":
+        raise OSError(errno.ENOSYS, "listxattr is read through libSystem on macOS only")
+    libc = ctypes.CDLL(None, use_errno=True)
+    fn = libc.listxattr
+    fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
+    fn.restype = ctypes.c_ssize_t
+    raw = os.fsencode(path)
+    size = fn(raw, None, 0, _XATTR_NOFOLLOW)
+    if size < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), str(path))
+    if size == 0:
+        return None
+    buf = ctypes.create_string_buffer(size)
+    size = fn(raw, buf, size, _XATTR_NOFOLLOW)
+    if size < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), str(path))
+    names = [n.decode("utf-8", "replace") for n in buf.raw[:size].split(b"\0") if n]
+    return next((n for n in names if "fileprovider" in n.lower() or "file-provider" in n.lower()), None)
+
+
+def _domain_text(folder: Path) -> str:
+    """Whether a ~/Library/CloudStorage folder is a File Provider domain, from its own extended attributes."""
+    try:
+        marker = file_provider_marker(folder)
+    except OSError as exc:
+        return f"File Provider domain: unknown ({exc.strerror or exc})"
+    if marker is None:
+        return "not a File Provider domain: no File Provider attribute (a plain folder)"
+    return f"File Provider domain ({marker})"
+
+
+def agentsync_on_path(path_env: str | None = None) -> list[str]:
+    """Every executable ``agentsync`` on ``$PATH``, in PATH order, without duplicates."""
+    found: list[str] = []
+    for d in (path_env if path_env is not None else os.environ.get("PATH", "")).split(os.pathsep):
+        if not d:
+            continue
+        candidate = str(Path(d) / "agentsync")
+        if candidate not in found and Path(candidate).is_file() and os.access(candidate, os.X_OK):
+            found.append(candidate)
+    return found
+
+
+def _is_home_agentsync(candidate: str) -> bool:
+    """Whether ``candidate`` is this home folder's ``~/.local/bin/agentsync`` (by path or same file)."""
+    mine = {
+        Path.home() / ".local" / "bin" / "agentsync",
+        Path.home().resolve() / ".local" / "bin" / "agentsync",
+    }
+    if Path(os.path.normpath(candidate)) in mine:
+        return True
+    for m in mine:
+        with contextlib.suppress(OSError):
+            if m.exists() and m.samefile(candidate):
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the report
+# ---------------------------------------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(slots=True)
+class _Facts:
+    """What the sections found that the Summary repeats."""
+
+    install_runs: int = 0
+    install_seconds: int = 0
+    last_install: str | None = None
+    launchd_simulated: bool = False
+    doctor: Counter[str] | None = None
+    doctor_problems: list[tuple[str, str, str]] = dataclasses.field(
+        default_factory=list
+    )  # (tag, name, detail)
+    baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
+    background: list[str] = dataclasses.field(default_factory=list)
+    shadow: str | None = None
+    instructions: tuple[Counter[str], int, int] | None = None  # (per kind, lines read, runs among them)
+    first_sync: tuple[int, int] | None = None  # the last "converted N, deferred M online-only" in install.out
+
+
+class _Run:
+    """One report: the deadline, the loaded config (or why not), and the facts sections share."""
+
+    def __init__(self, config_path: Path | None, hooks: ReportHooks, budget_s: float) -> None:
+        self.t0 = time.monotonic()
+        self.deadline = self.t0 + budget_s
+        self.hooks = hooks
+        self.config_path = expand(config_path) if config_path is not None else default_config_path()
+        self.config: Config | None = None
+        self.config_error: str | None = None
+        try:
+            self.config = load_config(self.config_path)
+        except Exception as exc:  # a missing or invalid config is a finding, not a crash
+            self.config_error = f"{type(exc).__name__}: {exc}"
+        self.system_proxy: net.SystemProxy | None = None
+        with contextlib.suppress(Exception):
+            self.system_proxy = net.system_proxy()
+        self.red = Redactor()
+        self.facts = _Facts()
+        self.friction: Friction | None = None
+        self.friction_path = default_friction_path()
+        self.friction_error: str | None = None
+        self.listing_note: str | None = None
+        self.install_log = default_setup_log()
+        self.install_runs: list[InstallRun] = []
+        with contextlib.suppress(OSError):
+            self.install_runs = read_install_runs(self.install_log)
+        self.outcome: Outcome | None = None  # set by the Summary
+        self.run_type: str | None = None
+
+    def remaining(self) -> float:
+        return self.deadline - time.monotonic()
+
+    def run(self, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        """``argv``'s (exit status, stdout + stderr), bounded by ``timeout`` and the budget; never raises
+        (a missing program, a timeout or a spent budget is exit status 127 / 124 with a note)."""
+        limit = min(timeout, self.remaining() - _RESERVE_S)
+        if limit <= 0.2:
+            return 124, "skipped: the report's time budget is used up"
+        try:
+            cp = subprocess.run(
+                list(argv),
+                capture_output=True,
+                text=True,
+                timeout=limit,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except subprocess.TimeoutExpired:
+            return 124, f"timed out after {limit:.1f}s"
+        except OSError as exc:
+            return 127, f"{type(exc).__name__}: {exc.strerror or exc}"
+        return cp.returncode, (cp.stdout + cp.stderr).strip()
+
+    def call(self, fn: Callable[[], _T], timeout: float) -> _T:
+        """``fn()`` in a daemon thread, bounded by ``timeout`` and the budget (TimeoutError past it; the
+        thread is abandoned, so a hung probe never holds the report)."""
+        limit = min(timeout, self.remaining() - _RESERVE_S)
+        if limit <= 0.2:
+            raise TimeoutError("the report's time budget is used up")
+        box: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+        def target() -> None:
+            try:
+                box.put((True, fn()))
+            except BaseException as exc:
+                box.put((False, exc))
+
+        threading.Thread(target=target, name="setup-report", daemon=True).start()
+        try:
+            ok, value = box.get(timeout=limit)
+        except queue.Empty:
+            raise TimeoutError(f"did not finish within {limit:.1f}s") from None
+        if not ok:
+            assert isinstance(value, BaseException)
+            raise value
+        return cast(_T, value)
+
+    def devtools(self) -> bool:
+        rc, out = self.run(["/usr/bin/xcode-select", "-p"], 3.0)
+        return rc == 0 and Path(out.splitlines()[0] if out else "").is_dir()
+
+    def log_dir(self) -> Path:
+        return expand(self.config.log_dir) if self.config else Path.home() / "Library" / "Logs" / "agentsync"
+
+    def label_prefix(self) -> str:
+        return self.config.launchd_label_prefix if self.config else "com.agentsync"
+
+
+def _fence(lines: Iterable[str]) -> list[str]:
+    """A ``~~~`` code block (a GitHub issue form's ``render: markdown`` wraps the report in backticks, so a
+    backtick fence inside would end it early: both kinds of fence are broken up inside the block)."""
+    body = [ln.replace("~~~", "~ ~ ~").replace("```", "` ` `") for ln in lines]
+    return ["~~~text", *body, "~~~"] if body else ["_(none)_"]
+
+
+def _tail(path: Path, limit: int = _TAIL_BYTES) -> list[str]:
+    with path.open("rb") as fh:
+        size = fh.seek(0, os.SEEK_END)
+        fh.seek(max(0, size - limit))
+        data = fh.read(limit)
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    return lines[1:] if size > limit else lines
+
+
+def _plist_version(app: str) -> str | None:
+    info = expand(app) / "Contents" / "Info.plist"
+    try:
+        data = plistlib.loads(info.read_bytes())
+    except FileNotFoundError:
+        return None
+    short, build = data.get("CFBundleShortVersionString"), data.get("CFBundleVersion")
+    return f"{short} ({build})" if build and build != short else str(short or build or "unknown")
+
+
+def _shorten(text: str, limit: int = 220) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+# ---- facts for redaction --------------------------------------------------------------------------------
+
+
+def _cloud_parts(path: Path) -> tuple[str, list[str]] | None:
+    """(provider folder, components below it) for a path under ~/Library/CloudStorage, else None."""
+    root = cloud_storage_root()
+    for base in (root, root.resolve()):
+        with contextlib.suppress(ValueError):
+            parts = expand(path).relative_to(base).parts
+            if parts:
+                return parts[0], list(parts[1:])
+    return None
+
+
+def _org_of(provider: str) -> str | None:
+    for prefix in ("OneDrive-SharedLibraries-", "OneDrive-"):
+        if provider.startswith(prefix):
+            org = provider[len(prefix) :]
+            return None if org in ("", "Personal") else org
+    return None
+
+
+def _proxy_hosts(r: _Run) -> list[str]:
+    urls = [os.environ.get(k, "") for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")]
+    urls += [os.environ.get(k, "") for k in ("HTTP_PROXY", "http_proxy")]
+    if r.system_proxy is not None:
+        urls += [r.system_proxy.https_proxy or "", r.system_proxy.http_proxy or ""]
+        urls += [r.system_proxy.pac_url or ""]
+    if r.config is not None and r.config.network.proxy:
+        urls.append(r.config.network.proxy)
+    hosts: list[str] = []
+    for url in filter(None, (u.strip() for u in urls)):
+        if url.lower() in ("direct", "none", "off"):
+            continue
+        host = urlsplit(url if "://" in url else f"http://{url}").hostname
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
+def _docs_commits(r: _Run) -> list[str]:
+    """Commit ids the docs repo's HEAD reflog names (read as a file: no git process), newest last."""
+    if r.config is None:
+        return []
+    reflog = expand(r.config.docs_repo) / ".git" / "logs" / "HEAD"
+    shas: list[str] = []
+    with contextlib.suppress(OSError):
+        for line in _tail(reflog):
+            m = _REFLOG_RE.match(line)
+            if m:
+                shas += [s for s in m.groups() if s not in shas]
+    return shas[-500:]
+
+
+def _build_redactor(r: _Run, *, enabled: bool) -> Redactor:
+    """Register everything this Mac's report could name (see the module docstring)."""
+    red = Redactor(enabled=enabled)
+    home = Path.home()
+    for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
+        red.add("home", h)
+    with contextlib.suppress(Exception):  # after the home: a sandbox HOME inside $TMPDIR stays "~"
+        tmpdir = os.environ.get("TMPDIR", "").strip() or tempfile.gettempdir()
+        for t in sorted({tmpdir.rstrip("/"), os.path.realpath(tmpdir).rstrip("/")}, key=len, reverse=True):
+            if t not in ("", "/tmp", "/private/tmp", "/var/tmp"):
+                red.add("tmp", t)
+    # The login first: registered after the fuzzy full name, a login that is the name run together
+    # ("janedoe" for "Jane Doe") would be taken for a variant of the name and shown as <name>.
+    with contextlib.suppress(Exception):
+        red.add("user", _login_name())
+    with contextlib.suppress(Exception):
+        full = _full_name()
+        red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
+        for part in full.split():
+            if len(part.strip(".,")) >= 3:  # a lone first or last name: its written and upper-case forms
+                red.add("name", part.strip(".,"))
+                red.add("name", part.strip(".,").upper())
+    with contextlib.suppress(Exception):
+        red.add("serial", _serial_number(r.run))
+    with contextlib.suppress(Exception):
+        for h in _host_names():
+            red.add("host", h, ignore_case=True)
+    with contextlib.suppress(Exception):
+        for h in _computer_names(r.run):
+            red.add("host", h, ignore_case=True)
+    orgs: list[str] = []
+    with contextlib.suppress(OSError):
+        orgs += [o for o in (_org_of(p.name) for p in sorted(cloud_storage_root().iterdir())) if o]
+    cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
+    if r.config is not None:
+        for src in r.config.sources:
+            parts = _cloud_parts(src.path) if src.path is not None else None
+            if parts is not None:
+                cloud_sources.append((src.id, *parts))
+                org = _org_of(parts[0])
+                if org:
+                    orgs.append(org)
+        tenant = r.config.graph.tenant
+        if tenant and "." in tenant:
+            orgs.append(tenant.split(".", 1)[0])
+        for src in r.config.sources:
+            if src.site:
+                host, _, site_path = src.site.partition(":")
+                if host.endswith(".sharepoint.com"):
+                    orgs.append(host.split(".", 1)[0])
+                name = site_path.rstrip("/").rsplit("/", 1)[-1]
+                red.add("library", unquote(name), fuzzy=True)
+    for org in orgs:
+        red.add("org", org, fuzzy=True)
+    for _sid, provider, comps in cloud_sources:
+        shared = provider.startswith("OneDrive-SharedLibraries-") and bool(comps)
+        if shared:
+            red.add("library", comps[0], fuzzy=True)
+        for c in comps[1:] if shared else comps:
+            red.add("folder", c, fuzzy=True)
+    # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
+    try:
+        listed = r.call(cloud_folder_names, timeout=3.0)
+    except Exception as exc:
+        listed = []
+        r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
+    for provider, depth, name in listed:
+        if name in _GENERIC_FOLDERS:
+            continue
+        shared = provider.startswith("OneDrive-SharedLibraries-")
+        red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
+    for sid, _provider, _comps in cloud_sources:
+        red.add("source", sid)
+    for host in _proxy_hosts(r):
+        red.add("proxy", host, ignore_case=True)
+    with contextlib.suppress(Exception):
+        for sha in _docs_commits(r):
+            red.add_commit(sha)
+    return red
+
+
+# ---- sections -------------------------------------------------------------------------------------------
+
+
+def _install_source(r: _Run) -> str:
+    where = "unknown"
+    directory: Path | None = None
+    with contextlib.suppress(Exception):
+        raw = importlib.metadata.distribution("agentsync").read_text("direct_url.json")
+        if raw:
+            info = json.loads(raw)
+            url = str(info.get("url", ""))
+            path = Path(unquote(urlsplit(url).path)) if url.startswith("file:") else None
+            if path is not None and "dir_info" in info:
+                directory = path
+                editable = " (editable)" if info["dir_info"].get("editable") else ""
+                where = f"checkout {path}{editable}"
+            elif path is not None:
+                where = f"wheel {path.name}"
+            elif url:
+                where = url
+    if directory is not None and (directory / ".git").exists() and r.devtools():
+        where += _checkout_facts(r, directory)
+    with contextlib.suppress(Exception):
+        starts = [
+            (fields["start"], lines)
+            for _id, fields, lines in _install_runs(r.install_log)
+            if "start" in fields
+        ]
+        if starts:
+            start, lines = starts[-1]
+            commit = start.get("commit")
+            if commit:
+                where += f"; last install.sh run: commit {commit}"
+                tree = start.get("tree") or _legacy_tree(lines)
+                if tree:
+                    where += f" tree {tree} (the SHA-256 prefix of `git diff HEAD` in that checkout)"
+    return where
+
+
+def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes]:
+    """``git -C directory args`` read-only (``GIT_OPTIONAL_LOCKS=0``: not even the index's stat cache is
+    rewritten), bounded by ``timeout`` and the report's budget: (exit status, stdout bytes); 124/127 on a
+    timeout or a missing git."""
+    limit = min(timeout, r.remaining() - _RESERVE_S)
+    if limit <= 0.2:
+        return 124, b""
+    try:
+        cp = subprocess.run(
+            ["/usr/bin/git", "-C", str(directory), *args],
+            capture_output=True,
+            timeout=limit,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except subprocess.TimeoutExpired:
+        return 124, b""
+    except OSError:
+        return 127, b""
+    return cp.returncode, cp.stdout
+
+
+def origin_label(url: str) -> str:
+    """The checkout's ``origin`` as the report shows it: ``github.com/renchris/agent-context-sync`` (https,
+    ssh or scp form, with or without ``.git``), else ``other (redacted)`` (a fork or mirror URL may name a
+    person or an organisation), or ``none``."""
+    url = url.strip()
+    if not url:
+        return "none"
+    m = re.fullmatch(
+        r"(?:(?:https?|ssh|git)://(?:[^@/]+@)?|[^@/]+@)github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?", url
+    )
+    if m is not None and (m.group(1).lower(), m.group(2).lower()) == ("renchris", "agent-context-sync"):
+        return f"github.com/{_REPO_SLUG}"
+    return "other (redacted)"
+
+
+def tree_fingerprint(diff: bytes) -> str:
+    """install.sh's local-change fingerprint: the first 12 hex digits of the SHA-256 of ``git diff HEAD``."""
+    return hashlib.sha256(diff).hexdigest()[:12]
+
+
+def _checkout_facts(r: _Run, directory: Path) -> str:
+    """`` @ <sha>[ (uncommitted changes) tree=<fp>] · origin: ... · on origin/main: yes|no|unknown`` for the
+    installed checkout (every git call read-only; the origin URL itself is never shown)."""
+    rc, out = _git_ro(r, directory, "rev-parse", "--short=12", "HEAD")
+    if rc != 0:
+        return ""
+    sha = out.decode("ascii", "replace").strip()
+    text = f" @ {sha}"
+    dirty, _ = _git_ro(r, directory, "diff", "--quiet", "HEAD", "--")
+    if dirty == 1:
+        rc, diff = _git_ro(r, directory, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
+        text += " (uncommitted changes" + (f", tree={tree_fingerprint(diff)})" if rc == 0 else ")")
+    rc, url = _git_ro(r, directory, "remote", "get-url", "origin")
+    text += f" · origin: {origin_label(url.decode('utf-8', 'replace')) if rc == 0 else 'none'}"
+    rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
+    on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
+    return text + f" · on origin/main: {on_main} (as of the checkout's last fetch)"
+
+
+def _legacy_tree(lines: Sequence[str]) -> str | None:
+    """The dirty-tree fingerprint of a start line written before ``tree=<fp>`` (``commit=<sha>-dirty dirty
+    <fp>``), or None."""
+    for line in lines:
+        m = re.search(r"\scommit=\S+-dirty dirty ([0-9a-f]{6,64})\b", line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _environment(r: _Run) -> list[str]:
+    out: list[str] = []
+
+    def fact(label: str, fn: Callable[[], str]) -> None:
+        try:
+            value = fn()
+        except Exception as exc:
+            value = f"(could not read: {type(exc).__name__}: {exc})"
+        out.append(f"- {label}: {value}")
+
+    def sw_vers() -> str:
+        rc, text = r.run(["/usr/bin/sw_vers"], 3.0)
+        if rc != 0:
+            return f"sw_vers exited {rc}: {text}"
+        kv = dict(ln.split(":", 1) for ln in text.splitlines() if ":" in ln)
+        return " ".join(
+            v.strip() for k, v in kv.items() if k.strip() in ("ProductName", "ProductVersion")
+        ) + (f" ({kv['BuildVersion'].strip()})" if "BuildVersion" in kv else "")
+
+    def arch() -> str:
+        machine = platform.machine()
+        rc, translated = r.run(["/usr/sbin/sysctl", "-n", "sysctl.proc_translated"], 2.0)
+        return machine + (" (this Python runs under Rosetta)" if rc == 0 and translated == "1" else "")
+
+    def enrollment() -> str:
+        rc, text = r.run(["/usr/bin/profiles", "status", "-type", "enrollment"], 5.0)
+        joined = "; ".join(ln.strip() for ln in text.splitlines() if ln.strip())
+        return joined if rc == 0 else f"`profiles` exited {rc}: {joined}"
+
+    def clt() -> str:
+        rc, text = r.run(["/usr/bin/xcode-select", "-p"], 3.0)
+        if rc == 0 and text and Path(text.splitlines()[0]).is_dir():
+            return f"present ({text.splitlines()[0]})"
+        return f"not installed (xcode-select -p exited {rc})"
+
+    def shell() -> str:
+        bits = [os.environ.get("SHELL", "unknown")]
+        term = os.environ.get("TERM_PROGRAM")
+        if term:
+            bits.append(f"terminal {term} {os.environ.get('TERM_PROGRAM_VERSION', '')}".rstrip())
+        bundle = os.environ.get("__CFBundleIdentifier")  # noqa: SIM112 - macOS sets it in this case
+        if bundle:
+            bits.append(f"app {bundle}")
+        return " · ".join(bits)
+
+    def uv() -> str:
+        exe = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+        if not os.access(exe, os.X_OK):
+            return "not found"
+        rc, text = r.run([exe, "--version"], 3.0)
+        return f"{text} ({exe})" if rc == 0 else f"{exe} --version exited {rc}: {text}"
+
+    def pandoc() -> str:
+        if r.config is not None and r.config.convert.pandoc_path is not None:
+            exe = r.config.convert.pandoc_path
+        else:
+            import pypandoc  # noqa: PLC0415 - lazy, as in doctor
+
+            exe = Path(pypandoc.__file__).parent / "files" / "pandoc"
+        rc, text = r.run([str(exe), "--version"], 5.0)
+        return text.splitlines()[0] if rc == 0 and text else f"{exe} exited {rc}: {text[:200]}"
+
+    def app(name: str) -> Callable[[], str]:
+        def version() -> str:
+            for candidate in _APPS[name]:
+                found = _plist_version(candidate)
+                if found is not None:
+                    return f"{found} ({candidate})"
+            return "not installed (" + ", ".join(_APPS[name]) + ")"
+
+        return version
+
+    def proxy() -> str:
+        env_set = any(os.environ.get(k) for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"))
+        sysp = r.system_proxy or net.SystemProxy()
+        configured = r.config.network.proxy if r.config is not None else None
+        resolved = net.resolve_proxy(configured, system=sysp)
+        yn = {True: "yes", False: "no"}
+        return (
+            f"HTTPS_PROXY/ALL_PROXY set in this shell: {yn[env_set]} · system manual HTTPS proxy: "
+            f"{yn[bool(sysp.https_proxy)]} · PAC: {yn[sysp.pac_enabled]} · WPAD: {yn[sysp.wpad_enabled]} · "
+            f"[network] proxy: {'set' if configured else 'not set'} · agentsync resolves: "
+            f"{resolved.describe()}"
+        )
+
+    def cloud() -> str:
+        root = cloud_storage_root()
+        if not root.exists():
+            return f"{root} does not exist (no File Provider sync client signed in)"
+        try:
+            names = sorted(p.name for p in root.iterdir() if not p.name.startswith("."))
+        except OSError as exc:
+            return f"this terminal cannot list {root}: {type(exc).__name__}: {exc.strerror or exc}"
+        tagged = [f"{n} ({_domain_text(root / n)})" for n in names]
+        return f"listable, {len(names)} provider folder(s)" + (f": {', '.join(tagged)}" if names else "")
+
+    def bin_on_path() -> str:
+        dirs = os.environ.get("PATH", "").split(os.pathsep)
+        mine = {str(Path.home() / ".local" / "bin"), str(Path.home().resolve() / ".local" / "bin")}
+        return "yes" if mine & set(dirs) else "no"
+
+    def on_path() -> str:
+        found = agentsync_on_path()
+        if not found:
+            return "none"
+        tagged = [f"{p}{' (this home folder)' if _is_home_agentsync(p) else ''}" for p in found]
+        if not _is_home_agentsync(found[0]):
+            r.facts.shadow = found[0]
+            return (
+                "; ".join(tagged) + f" · SHADOW: the first agentsync on PATH is {found[0]}, not this home "
+                "folder's ~/.local/bin/agentsync, so `agentsync` typed alone runs another install"
+            )
+        return "; ".join(tagged)
+
+    fact("macOS", sw_vers)
+    fact("architecture", arch)
+    fact("MDM enrollment (`profiles status -type enrollment`)", enrollment)
+    fact("Xcode Command Line Tools", clt)
+    fact("shell", shell)
+    fact("uv", uv)
+    fact("python (agentsync's)", lambda: f"{platform.python_version()} ({sys.executable})")
+    fact("pandoc", pandoc)
+    fact("OneDrive.app", app("OneDrive"))
+    fact("Company Portal", app("Company Portal"))
+    fact("proxy", proxy)
+    fact("~/Library/CloudStorage", cloud)
+    fact("~/.local/bin on PATH", bin_on_path)
+    fact("agentsync on PATH", on_path)
+    if r.listing_note:
+        out.append(f"- redaction: {r.listing_note}")
+    return out
+
+
+def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[str]]]:
+    """install.log grouped by run id, oldest first: (run id, {"start"/"end"/step name: fields}, lines)."""
+    runs: dict[str, tuple[dict[str, dict[str, str]], list[str]]] = {}
+    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = _INSTALL_LINE_RE.match(line)
+        if m is None:
+            continue
+        fields, lines = runs.setdefault(m["run"], ({}, []))
+        lines.append(line)
+        rest = m["rest"]
+        kv = dict(_KV_RE.findall(rest.split(" args=", 1)[0]))
+        kv["at"] = m["at"]
+        if rest.startswith("start "):
+            kv["args"] = rest.split(" args=", 1)[1] if " args=" in rest else ""
+            fields["start"] = kv
+        elif rest.startswith("end "):
+            fields["end"] = kv
+        elif "step" in kv:
+            fields[kv["step"]] = kv
+    return [(run_id, fields, lines) for run_id, (fields, lines) in runs.items()]
+
+
+def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
+    rows = [("step", "seconds", "result")]
+    for name, v in steps:
+        result = v.get("result", "?")
+        rc = v.get("rc", "0")
+        if rc not in ("0", ""):
+            result += f", rc {rc}"
+        if v.get("note"):
+            result += f" ({v['note']})"
+        rows.append((name, v.get("seconds", "?"), result))
+    widths = [max(len(row[i]) for row in rows) for i in range(3)]
+    out = []
+    for n, (step, seconds, result) in enumerate(rows):
+        out.append(f"| {step.ljust(widths[0])} | {seconds.rjust(widths[1])} | {result.ljust(widths[2])} |")
+        if n == 0:
+            out.append(f"|{'-' * (widths[0] + 2)}|{'-' * (widths[1] + 1)}:|{'-' * (widths[2] + 2)}|")
+    return out
+
+
+def _installer(r: _Run) -> list[str]:
+    return [*_installer_runs(r), "", *_installer_output(r)]
+
+
+def instruction_counts(lines: Iterable[str]) -> Counter[str]:
+    """Instruction-like lines per :data:`INSTRUCTION_KINDS` kind, each line counted once (by its first kind):
+    ``NEXT:`` and ``next:`` at the start of a line, ``fix:`` anywhere (doctor's ``(fix: ...)``), ``run:`` at
+    the start of a line or after ``(``."""
+    counts: Counter[str] = Counter()
+    for line in lines:
+        kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
+        if kind is not None:
+            counts[kind] += 1
+    return counts
+
+
+def install_out_path(log: Path | None = None) -> Path:
+    """install.sh's output copy: :data:`INSTALL_OUT_NAME` next to install.log (:func:`default_setup_log`)."""
+    return (log if log is not None else default_setup_log()).parent / INSTALL_OUT_NAME
+
+
+def _instruction_text(counts: Counter[str], read: int, runs: int) -> str:
+    others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
+    other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
+    in_runs = f" in {runs} run(s)" if runs else ""
+    return (
+        f"{counts['NEXT:']} NEXT: line(s){in_runs} (exactly one per install.sh run is expected) and "
+        f"{other_total} other instruction-like line(s)"
+        + (f" ({', '.join(others)})" if others else "")
+        + f" in the last {read} line(s) of install.out"
+    )
+
+
+def _installer_output(r: _Run) -> list[str]:
+    path = install_out_path(r.install_log)
+    try:
+        lines = _tail(path)
+    except FileNotFoundError:
+        return [
+            f"No installer output at {path} (install.sh keeps a copy of what it printed there; an older "
+            "install.sh does not)."
+        ]
+    except OSError as exc:
+        return [f"Cannot read the installer output at {path}: {type(exc).__name__}: {exc.strerror or exc}"]
+    counts = instruction_counts(lines)
+    runs = sum(1 for ln in lines if _OUT_RUN_RE.match(ln))
+    r.facts.instructions = (counts, len(lines), runs)
+    synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
+    if synced:
+        r.facts.first_sync = (int(synced[-1].group(1)), int(synced[-1].group(2)))
+    shown = lines[-INSTALL_OUT_TAIL:]
+    return [
+        f"Installer output: {_instruction_text(counts, len(lines), runs)}. An instruction-like line other "
+        "than NEXT: is a hint the agent may act on before install.sh's own next step.",
+        "",
+        f"<details><summary>the last {len(shown)} line(s) of {path} (what the agent saw)</summary>",
+        "",
+        *_fence(_PID_SUFFIX_RE.sub(r"\1", ln) for ln in shown),
+        "",
+        "</details>",
+    ]
+
+
+def _installer_runs(r: _Run) -> list[str]:
+    log = r.install_log
+    if not log.exists():
+        return [
+            f"No install log at {log}: scripts/install.sh has not run on this Mac, or it predates the setup "
+            "log (pull the checkout and re-run it)."
+        ]
+    runs = r.install_runs
+    if not runs:
+        return [f"{log} has no install.sh lines."]
+    totals = [run.seconds for run in runs if run.seconds is not None]
+    r.facts.install_runs = len(runs)
+    r.facts.install_seconds = sum(totals)
+    r.facts.launchd_simulated = runs[-1].simulated
+    shown = runs[-INSTALL_RUNS_SHOWN:]
+    out = [
+        f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line); "
+        f"the last {len(shown)} (run ids without their process id):"
+    ]
+    for run in shown:
+        steps = [(k, v) for k, v in run.steps]
+        status = (
+            f"exit {run.rc} after {run.seconds if run.seconds is not None else '?'}s"
+            if run.rc is not None
+            else "no end line (interrupted, or still running)"
+        )
+        if run.simulated:
+            status += " · launchd: simulated"
+        out += ["", f"run {run.display_id}: {status}", ""]
+        out += _step_table(steps) if steps else ["_(no step lines)_"]
+        if run.report_after_end:
+            out += [
+                "",
+                "The report step is logged after this run's end line (install.sh writes the report once the "
+                "run is closed), so the run's seconds do not include it.",
+            ]
+        if run is runs[-1]:
+            r.facts.last_install = status
+    raw = [_PID_SUFFIX_RE.sub(r"\1", ln) for run in shown for ln in run.lines]
+    out += [
+        "",
+        "<details><summary>raw install.log lines of these runs</summary>",
+        "",
+        *_fence(raw),
+        "",
+        "</details>",
+    ]
+    return out
+
+
+def _configuration(r: _Run) -> list[str]:
+    out = [f"- config: {r.config_path} ({'exists' if r.config_path.exists() else 'missing'})"]
+    if r.config is None:
+        out.append(f"- loads: no: {r.config_error}")
+        return out
+    c = r.config
+    out.append("- loads: yes")
+    kinds = Counter(s.kind.value for s in c.sources)
+    states = Counter(s.state.value for s in c.sources)
+    under_cloud = sum(1 for s in c.sources if s.path is not None and _cloud_parts(s.path) is not None)
+    out.append(
+        f"- sources: {len(c.sources)}"
+        + (f" (by kind: {', '.join(f'{k} {n}' for k, n in sorted(kinds.items()))}" if kinds else "")
+        + (f"; by state: {', '.join(f'{k} {n}' for k, n in sorted(states.items()))})" if states else "")
+        + f"; {under_cloud} under ~/Library/CloudStorage"
+    )
+    docs = expand(c.docs_repo)
+    repo = "a git repo" if (docs / ".git").exists() else "not a git repo yet"
+    out.append(f"- docs repo: {docs} ({'exists, ' + repo if docs.is_dir() else 'missing'})")
+    out.append(f"- [graph] client_id: {'set' if c.graph.client_id else 'not set'} (the id is never shown)")
+    tenant = c.graph.tenant not in ("", "organizations", "common")
+    out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
+    out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
+    out.append(
+        f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
+    )
+    return out
+
+
+def _doctor(r: _Run) -> list[str]:
+    if r.config is None:
+        return [f"Not run: the config does not load ({r.config_error})."]
+    if r.hooks.doctor is None:
+        return ["Not run: no doctor hook."]
+    config = r.config
+    doctor_fn = r.hooks.doctor
+    lines = r.call(lambda: doctor_fn(config), timeout=max(1.0, r.remaining() - 2.0))
+    tags: Counter[str] = Counter()
+    ok_names: list[str] = []
+    shown: list[str] = []
+    current_ok = False
+    installed = agents_installed(r.install_runs)
+    annotated = 0
+    for raw in lines:
+        line = raw
+        m = _DOCTOR_TAG_RE.match(raw)
+        if m is not None:
+            tags[m.group(1)] += 1
+            current_ok = m.group(1) == "ok"
+            if current_ok:
+                ok_names.append(m.group(2))
+                continue
+            if m.group(1) in ("warn", "FAIL"):
+                detail = raw.split(" — ", 1)[1] if " — " in raw else raw
+                r.facts.doctor_problems.append((m.group(1), m.group(2), detail))
+                why = (
+                    expected_warn(m.group(2), detail, agents_installed=installed)
+                    if m.group(1) == "warn"
+                    else None
+                )
+                if why is not None:  # expected: its fix is nothing for this setup to do
+                    line = f"{_without_fix(raw)} (expected: {why})"
+                    annotated += 1
+        elif current_ok:
+            continue  # a continuation of an ok line
+        shown.append(line)
+    r.facts.doctor = tags
+    summary = f"{sum(tags.values())} check(s): " + ", ".join(
+        f"{tags.get(t, 0)} {t}" for t in ("ok", "info", "warn", "FAIL")
+    )
+    note = (
+        f" {annotated} expected warn(s) end in (expected: <why>) instead of their fix: nothing for this "
+        "setup to do."
+        if annotated
+        else ""
+    )
+    return [
+        summary + " (run without the Graph network probe: `agentsync doctor --network` does it). "
+        f"Only the lines that are not ok:{note}",
+        "",
+        *_fence(shown),
+        "",
+        f"{len(ok_names)} ok: {', '.join(ok_names) or 'none'}",
+    ]
+
+
+def _status(r: _Run) -> list[str]:
+    if r.config is None:
+        return [f"Not run: the config does not load ({r.config_error})."]
+    if r.hooks.status is None:
+        return ["Not run: no status hook."]
+    config = r.config
+    status_fn = r.hooks.status
+    lines = r.call(lambda: status_fn(config), timeout=4.0)
+    baselines = [m.group(1) for m in (_BASELINE_RE.match(ln) for ln in lines) if m is not None]
+    if baselines:
+        r.facts.baseline = (baselines.count("complete"), len(baselines))
+    for ln in lines:
+        if ln.startswith("last runs:"):
+            for sha in _LAST_RUNS_RE.findall(ln):
+                r.red.add_commit(sha)
+    return _fence(lines)
+
+
+def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]:
+    """(top-level ``key = value`` pairs, the ``arguments`` list) of a ``launchctl print`` service dump."""
+    found: dict[str, str] = {}
+    args: list[str] = []
+    in_args = False
+    for ln in text.splitlines():
+        if in_args:
+            if ln.startswith("\t}"):
+                in_args = False
+            elif ln.startswith("\t\t"):
+                args.append(ln.strip())
+            continue
+        m = _LAUNCHD_LINE_RE.match(ln)
+        if m is None:
+            continue
+        key, value = m.group(1), m.group(2).strip()
+        if key == "arguments" and value == "{":
+            in_args = True
+            continue
+        found.setdefault(key, value)
+    return found, args
+
+
+def decode_exit(value: str) -> str:
+    """A launchd ``last exit code`` value with agentsync's meaning appended (``79`` -> ``79 (TCC_PENDING:
+    ...)``); ``(never exited)`` explained."""
+    value = value.strip()
+    if "never exited" in value:
+        return "(never exited: the first run has not finished, or not started)"
+    m = re.match(r"^(-?\d+)", value)
+    if m is None:
+        return value
+    meaning = EXIT_MEANINGS.get(int(m.group(1)))
+    return f"{value} ({meaning})" if meaning else value
+
+
+def _under_home(path: str) -> bool:
+    homes = {str(Path.home()), str(Path.home().resolve())}
+    return any(path == h or path.startswith(h.rstrip("/") + "/") for h in homes)
+
+
+_HOME_LIKE = ("/Users/", "/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/", "/Volumes/")
+
+
+def _foreign_paths(values: Iterable[str]) -> list[str]:
+    """The absolute paths in ``values`` that are in some user's or temporary folder other than this home."""
+    return [v for v in values if v.startswith(_HOME_LIKE) and not _under_home(v)]
+
+
+def _background(r: _Run) -> list[str]:
+    out: list[str] = []
+    prefix = r.label_prefix()
+    if r.facts.launchd_simulated:
+        out += [
+            "launchd: simulated (the last install.sh run says `launchd=simulated`): no LaunchAgent of this "
+            "setup ran, so a job loaded below is not this setup's.",
+            "",
+        ]
+    for suffix in ("poll", "reconcile"):
+        label = f"{prefix}.{suffix}"
+        plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+        has_plist = plist.exists()
+        rc, text = _launchctl_print(r.run, label)
+        if rc != 0:
+            if has_plist:
+                line = (
+                    f"plist present · NOT loaded (launchctl print exited {rc}; "
+                    "`agentsync install-agent` loads it)"
+                )
+                short = "plist present but not loaded"
+            else:
+                line = f"not installed (no plist, not loaded: launchctl print exited {rc})"
+                short = "not installed"
+            out.append(f"- {label}: {line}")
+            r.facts.background.append(f"{suffix} {short}")
+            continue
+        found, args = parse_launchctl_print(text)
+        loaded_from = found.get("path", "")
+        program = found.get("program", "")
+        foreign = _foreign_paths([loaded_from, program, *args])
+        own_plist = loaded_from in (str(plist), str(plist.resolve())) if loaded_from else has_plist
+        if foreign or (loaded_from and not own_plist and not _under_home(loaded_from)):
+            out.append(
+                f"- {label}: loaded, but the job belongs to another install (its plist or ProgramArguments "
+                "are outside this home folder); its runs and exit codes are not this setup's result"
+                + (
+                    " · this home folder's plist is present"
+                    if has_plist
+                    else " · no plist in this home folder"
+                )
+            )
+            r.facts.background.append(f"{suffix} belongs to another install")
+            continue
+        details = []
+        for key in _LAUNCHD_KEYS:
+            if key in found:
+                value = decode_exit(found[key]) if key == "last exit code" else found[key]
+                details.append(f"{key} = {value}")
+        state = " · ".join(details) or "yes"
+        if not has_plist:
+            out.append(
+                f"- {label}: loaded, but the plist is absent (removed without `launchctl bootout`; "
+                f"`agentsync install-agent` repairs it) · {state}"
+            )
+            r.facts.background.append(f"{suffix} loaded without its plist")
+            continue
+        out.append(f"- {label}: plist present · loaded: {state}")
+        exit_code = found.get("last exit code")
+        r.facts.background.append(
+            f"{suffix} last exit {decode_exit(exit_code)}" if exit_code else f"{suffix} loaded, no run yet"
+        )
+    out += ["", "Last launcher TCC lines (per job, newest last):", ""]
+    tcc: list[str] = []
+    log_dir = r.log_dir()
+    for suffix in ("poll", "reconcile"):
+        path = log_dir / f"{prefix}.{suffix}.err.log"
+        try:
+            hits = [ln for ln in _tail(path) if _TCC_RE.search(ln)]
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            tcc.append(f"{path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
+            continue
+        tcc += [f"{path.name}: {ln}" for ln in hits[-5:]]
+    return out + _fence(tcc)
+
+
+def _recent_errors(r: _Run) -> list[str]:
+    log_dir = r.log_dir()
+    if not log_dir.exists():
+        return [f"{log_dir} does not exist yet (no background run has logged anything)."]
+    files = sorted((p for p in log_dir.iterdir() if p.is_file()), key=lambda p: (p.stat().st_mtime, p.name))
+    hits: list[str] = []
+    problems: list[str] = []
+    for path in files:
+        try:
+            hits += [f"{path.name}: {ln}" for ln in _tail(path) if _LEVEL_RE.search(ln)]
+        except OSError as exc:
+            problems.append(f"- {path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
+    head = f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s) in {log_dir}:"
+    return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
+
+
+def _secs(seconds: float) -> str:
+    """``42s``, ``3m05s``, ``1h02m03s``."""
+    total = round(seconds)
+    if total < 60:
+        return f"{total}s"
+    minutes, sec = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes}m{sec:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m{sec:02d}s"
+
+
+def _iso(moment: datetime | None) -> str:
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ") if moment is not None else "no time"
+
+
+def _prompt_version(attempt: Attempt | None) -> str | None:
+    """``v5`` from the attempt's Prompt: line (only the version: the line is the agent's free text)."""
+    m = re.search(r"\bv?(\d{1,3})\b", attempt.header.get("Prompt", "")) if attempt is not None else None
+    return f"v{int(m.group(1))}" if m else None
+
+
+def _doctor_fails(r: _Run) -> list[str]:
+    """The doctor FAIL check names (every FAIL is unexpected: only warns are ever expected)."""
+    return [name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"]
+
+
+def _attempt_outcome(r: _Run, index: int) -> Outcome:
+    """Attempt ``index``'s outcome; the latest attempt's also counts this Mac's doctor FAILs (doctor shows
+    the state now, which is the latest attempt's)."""
+    fr = r.friction
+    assert fr is not None
+    latest = index == len(fr.attempts) - 1
+    return compute_outcome(
+        fr.attempts[index],
+        runs_for_attempt(fr, index, r.install_runs),
+        doctor_fails=_doctor_fails(r) if latest else (),
+    )
+
+
+def _kind_counts(attempt: Attempt) -> str:
+    """Event lines per kind, every line counted once, so the counts add up to the event line count: v5's
+    step kinds, the prompt's kinds, untyped words, then the closing ``finished`` line."""
+    counts = attempt.kinds()
+    known = (*STEP_KINDS, *FRICTION_KINDS, "finished")
+    order = [*STEP_KINDS, *FRICTION_KINDS, *sorted(k for k in counts if k not in known), "finished"]
+    return ", ".join(f"{counts[k]} {k}" for k in order if counts[k]) or "none"
+
+
+def _friction_section(r: _Run) -> list[str]:
+    if r.friction_error is not None:
+        return [f"Could not read the friction log at {r.friction_path}: {r.friction_error}"]
+    fr = r.friction
+    if fr is None:
+        return [
+            f"No friction log found at {r.friction_path} (setup prompt step 1's `install.sh --log-start` "
+            "creates it; `--friction PATH` names another file)."
+        ]
+    out = [
+        f"Embedded from {r.friction_path} as this report read it: {fr.line_count} line(s), last modified "
+        f"{_iso(fr.mtime)} (a line written after that is not in this report: run setup-report again). "
+        "Redacted with the same placeholders as the rest of the report.",
+        "",
+        f"{len(fr.attempts)} attempt(s):",
+    ]
+    for i, att in enumerate(fr.attempts):
+        outcome = _attempt_outcome(r, i)
+        bits = [
+            f"started {_iso(att.started)}" if att.started else "no Attempt: line (v4 format)",
+            f"prompt {_prompt_version(att) or 'not stated'}",
+            f"agent {att.header.get('Agent') or 'not stated'}",
+        ]
+        tail = [f"{len(att.events)} event line(s): {_kind_counts(att)}"]
+        if att.legacy:
+            tail.append(f"{len(att.legacy)} legacy v4 line(s) (F<n> | ...), shown, not counted")
+        if att.untyped:
+            tail.append(
+                f"{len(att.untyped)} line(s) with a kind outside the prompt's list, shown, not counted"
+            )
+        tail.append("finished" if att.finished else 'no "end | finished" line')
+        out.append(
+            f"- attempt {att.number} (lines {att.first_line}-{att.last_line}; {', '.join(bits)}): "
+            f"{outcome.text}; {'; '.join(tail)}"
+        )
+    if fr.truncated:
+        out.append(f"Only the first {FRICTION_MAX_BYTES // 1024} KiB are shown.")
+    out.append("Each line is shown with its line number: the F<n> ids in the Summary are these numbers.")
+    body = [f"{n:>3}  {ln}" for n, ln in enumerate(fr.text.rstrip("\n").splitlines(), start=1)]
+    return [*out, "", *_fence(body)]
+
+
+def _no_clicks_why(run_type: str) -> str | None:
+    """Why no Allow click is possible in this run type (None on a real Mac)."""
+    return {"simulated launchd": "launchd simulated", "sandbox": "sandbox"}.get(run_type)
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def _turns_line(att: Attempt, run_type: str) -> str:
+    """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
+    folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
+    observable" when none is logged and the agent's tool does not tell it (:data:`APPROVAL_HIDDEN_TOOLS`); the
+    total then counts only what is known. Why no click is possible is on the expected-turns line."""
+    counts = att.kinds()
+    logged_q, c, a = counts["question"], counts["click"], counts["approval"]
+    q = logged_q + (0 if att.layout.logs_expected_turns else 1)  # v6: the folder question is not logged
+    agent = att.header.get("Agent", "").lower()
+    hidden = a == 0 and any(t in agent for t in APPROVAL_HIDDEN_TOOLS)
+    approvals = "approvals: not observable" if hidden else _plural(a, "approval")
+    no_clicks = _no_clicks_why(run_type)
+    if no_clicks is None:
+        clicks = _plural(c, "click")
+        if not att.layout.logs_expected_turns:
+            clicks += " beyond the announced Allow clicks (not logged)"
+    elif c == 0:
+        clicks = "clicks: none possible"
+    else:
+        clicks = f"{_plural(c, 'click')} logged, though none is possible"
+    return f"- human turns: {q + c + a} ({_plural(q, 'question')}; {clicks}; {approvals})"
+
+
+def _expected_turns_line(att: Attempt, run_type: str) -> str:
+    """The turns fully one command allows, on their own line: the folder question and the Allow clicks."""
+    layout = att.layout
+    no_clicks = _no_clicks_why(run_type)
+    if not layout.logs_expected_turns:  # prompt v6 logs neither
+        steps = " and ".join(str(s) for s in layout.allow_click_steps)
+        parts = [f"the folder question (step {layout.folder_question_step}; not logged)"]
+        if no_clicks is not None:
+            parts.append(f"Allow clicks: none possible ({no_clicks})")
+        else:
+            parts.append(f"the announced Allow clicks (steps {steps}; not logged)")
+        return "- expected turns: " + " · ".join(parts)
+    folder = next((e for e in att.of_kind("question") if att.expected(e)), None)
+    parts = [f"the folder question F{folder.line}" if folder else "the folder question: not logged"]
+    clicks = [e for e in att.of_kind("click") if att.expected(e)]
+    if clicks:
+        parts += [f"Allow click F{e.line} (step {e.step})" for e in clicks]
+    elif no_clicks is not None:
+        parts.append(f"Allow clicks: none possible ({no_clicks})")
+    else:
+        parts.append("Allow clicks: none logged")
+    return "- expected turns: " + " · ".join(parts)
+
+
+def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
+    """The agent-side lines (deviation, prompt, error): counted apart from the outcome."""
+    counts = att.kinds()
+    lines = att.of_kind(*PROBLEM_KINDS)
+    ids = f" ({', '.join(f'F{e.line}' for e in lines)})" if lines else ""
+    text = (
+        f"- agent friction: {counts['deviation']} deviation, {counts['prompt']} prompt, {counts['error']} "
+        f"error{ids}"
+    )
+    uncounted = len(att.untyped) + len(att.legacy)
+    if uncounted:
+        text += f"; {uncounted} line(s) without a prompt kind (untyped or v4), shown, not counted"
+    if stop is not None:
+        return text + f"; F{stop.line} stopped the run (the outcome says so)"
+    return text + "; none of these changes the outcome by itself"
+
+
+def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
+    d = r.facts.doctor
+    if d is None:
+        return "- doctor: not run (see Doctor)"
+    installed = agents_installed(r.install_runs)
+    expected: dict[str, list[str]] = {}
+    unexpected: list[str] = []
+    for tag, name, detail in r.facts.doctor_problems:
+        why = expected_warn(name, detail, agents_installed=installed) if tag == "warn" else None
+        if why is None:
+            unexpected.append(f"{name} {tag}")
+        else:
+            expected.setdefault(why, []).append(name)
+    n_expected = sum(len(v) for v in expected.values())
+    parts = [f"{d.get('FAIL', 0)} FAIL, {d.get('warn', 0)} warn ({sum(d.values())} checks)"]
+    if n_expected:
+        parts.append(
+            f"expected {n_expected}: " + "; ".join(f"{', '.join(v)} ({k})" for k, v in expected.items())
+        )
+    parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
+    return "- doctor: " + " · ".join(parts)
+
+
+def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
+    """The installer's first sync: its step from install.log, what it converted and left to background sync
+    (the step's ``converted-N-deferred-M`` note, else the sync's own "converted N, deferred M online-only"
+    line in install.out), and how many sources status lists completely."""
+    pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
+    parts: list[str] = []
+    counts: tuple[int, int] | None = None
+    if pool:
+        v = pool[-1].step("first-sync") or {}
+        text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
+        if v.get("rc", "0") not in ("0", ""):
+            text += f", rc {v['rc']}"
+        note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
+        if note is not None:
+            counts = (int(note.group(1)), int(note.group(2)))
+        elif v.get("note"):
+            text += f" ({v['note']})"
+        parts.append(text + " (install.log)")
+    else:
+        parts.append("no install.sh run with a first-sync step (install.log)")
+    source = "install.log"
+    if counts is None and r.facts.first_sync is not None:
+        counts, source = r.facts.first_sync, "install.out"
+    if counts is not None:
+        converted, deferred = counts
+        later = f"; background sync downloads and converts the {deferred}" if deferred else ""
+        parts.append(f"converted {converted}, deferred {deferred} online-only ({source}{later})")
+    if r.facts.baseline is not None:
+        done, total = r.facts.baseline
+        parts.append(f"{done} of {total} source(s) listed completely (status: baseline complete)")
+    return "- first sync: " + " · ".join(parts)
+
+
+def _it_draft_line(step: int = REPORT_STEP) -> str:
+    """The IT draft (written by prompt ``step``: v6's step 3, v5's step 4): whether it exists and which of its
+    fields are still open."""
+    path = expand(IT_DRAFT)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        command = f"agentsync it-request --out {IT_DRAFT}"
+        return f"- IT draft: {IT_DRAFT} not written (prompt step {step}: `{command}`)"
+    except OSError as exc:
+        return f"- IT draft: {IT_DRAFT} cannot be read: {type(exc).__name__}: {exc.strerror or exc}"
+    person, admin = it_draft_fields(text)
+    mine = f"{len(person)} field(s) left for you" + (f" ({', '.join(person)})" if person else "")
+    return f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
+
+
+def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
+    if not r.install_runs:
+        return "- install.sh: no run in the install log"
+    if scoped and not runs:
+        return f"- install.sh: no run during this attempt ({len(r.install_runs)} earlier in the install log)"
+    pool = list(runs) if scoped else r.install_runs
+    installs = install_runs_only(pool)
+    lists = len(pool) - len(installs)
+    where = f"{len(installs)} install run{'' if len(installs) == 1 else 's'}"
+    where += (f" (+{lists} --list-folders)" if lists else "") + (" during this attempt" if scoped else "")
+    if not installs:
+        return f"- install.sh: {where}"
+    last = installs[-1]
+    status = f"exit {last.rc} after {last.seconds}s" if last.rc is not None else "no end line (stopped early)"
+    steps = " · ".join(f"{k} {v.get('seconds', '?')}s" for k, v in last.steps if k != "report")
+    return f"- install.sh: {where}; the last {status}" + (f" ({steps})" if steps else "")
+
+
+def _installer_step_times(runs: Sequence[InstallRun], layout: PromptLayout) -> list[str]:
+    """Prompt v6's step times from install.log (it logs no step lines): the ``--list-folders`` runs (step 1)
+    and the install runs (the install step), in seconds per run."""
+    out: list[str] = []
+    lists = [run.seconds for run in runs if run.list_only and run.seconds is not None]
+    installs = [run.seconds for run in install_runs_only(runs) if run.seconds is not None]
+    if lists:
+        out.append(
+            f"step {layout.folder_question_step} --list-folders " + " + ".join(_secs(t) for t in lists)
+        )
+    if installs:
+        out.append(f"step {layout.install_step} install " + " + ".join(_secs(t) for t in installs))
+    return out
+
+
+def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
+    fix = f" → {_shorten(r.red.redact(e.fix), 160)}" if e.fix else ""  # redacted, then cut
+    step = f"step {e.step}" if e.step is not None else "no step"
+    return f"- F{e.line} · {step} · {e.kind} · {_shorten(r.red.redact(e.what))}{fix}"
+
+
+def _summary(r: _Run, *, header: list[str]) -> list[str]:
+    fr = r.friction
+    att = fr.latest if fr is not None else None
+    runs = (
+        runs_for_attempt(fr, len(fr.attempts) - 1, r.install_runs) if fr and fr.attempts else r.install_runs
+    )
+    outcome = compute_outcome(att, runs, doctor_fails=_doctor_fails(r))
+    run_type = compute_run_type(runs, home_path())
+    r.outcome, r.run_type = outcome, run_type
+    out: list[str] = [f"- **outcome: {outcome.text}** (computed: {'; '.join(outcome.why)})"]
+    if att is not None and att.header.get("Outcome"):
+        out.append(f"- agent said: {att.header['Outcome']}")
+    if fr is None:
+        out.append(f"- friction log: none at {r.friction_path}")
+    elif att is None:
+        out.append(f"- friction log: {r.friction_path} has no attempt (no Attempt:, Prompt: or event line)")
+    if fr is not None and len(fr.attempts) > 1:
+        earlier = ", ".join(
+            f"attempt {a.number} {_attempt_outcome(r, i).text}" for i, a in enumerate(fr.attempts[:-1])
+        )
+        out.append(f"- attempt: {len(fr.attempts)} of {len(fr.attempts)} (earlier: {earlier})")
+    why_run = {
+        "simulated launchd": "install.log says launchd=simulated",
+        "sandbox": "HOME is under a temporary folder",
+        "real": "HOME is not under a temporary folder and launchd was not simulated",
+    }[run_type]
+    if run_type == "simulated launchd" and is_sandbox_home(home_path()):
+        why_run += "; HOME is also under a temporary folder"
+    agent = (att.header.get("Agent") if att is not None else None) or "not stated"
+    out.append(
+        f"- prompt: {_prompt_version(att) or 'not stated'} · run: {ISSUE_RUN_TYPES[run_type]} (computed: "
+        f"{why_run}) · agent: {agent}"
+    )
+    if att is not None and att.header.get("Run"):
+        out.append(f"- agent said run: {att.header['Run']}")
+    if att is not None and not att.finished:
+        step = att.layout.report_step
+        closer = "install.sh --log-end" if not att.layout.logs_steps else "the agent's end line"
+        out.append(
+            f'- WARNING: attempt {att.number} has no "end | finished" line ({closer}), so this report may be '
+            f"stale: it was written before prompt step {step}, or the agent stopped early. Run "
+            f"`agentsync setup-report` again after step {step}."
+        )
+    stop = stopping_error(att, runs) if att is not None else None
+    if att is not None:
+        out.append(_turns_line(att, run_type))
+        out.append(_expected_turns_line(att, run_type))
+        out.append(_agent_friction_line(att, stop))
+        extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
+        out.append(
+            f"- friction (attempt {att.number}): {len(att.events)} event line(s): {_kind_counts(att)}{extra}"
+        )
+        timing = []
+        wall = att.wall_seconds()
+        timing.append(
+            f"session {_secs(wall)} (first to last timestamp)" if wall is not None else "session: no times"
+        )
+        steps = [f"{n} {_secs(t)}" for n, t in att.step_seconds() if t is not None]
+        if steps:
+            timing.append("steps (start to end): " + " · ".join(steps))
+        elif not att.layout.logs_steps:
+            timed = _installer_step_times(runs, att.layout)
+            if timed:
+                timing.append("install.sh (install.log): " + " · ".join(timed))
+        out.append("- time: " + "; ".join(timing))
+    out.append(_install_line(r, runs, scoped=att is not None and att.begin is not None))
+    if r.facts.instructions is not None:
+        out.append(f"- installer output: {_instruction_text(*r.facts.instructions)}")
+    out.append(_first_sync_line(r, runs))
+    out.append(_doctor_line(r, runs))
+    if run_type == "simulated launchd" or r.facts.launchd_simulated:
+        out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")
+    elif r.facts.background:
+        out.append("- background sync: " + " · ".join(r.facts.background))
+    out.append(_it_draft_line(4 if att is not None and att.layout.version == 5 else REPORT_STEP))
+    if r.facts.shadow:
+        expected = " (expected in a sandbox)" if run_type != "real" else ""
+        out.append(
+            f"- PATH: SHADOW: the first agentsync on PATH is {r.facts.shadow}, not ~/.local/bin/agentsync"
+            f"{expected}"
+        )
+    out.append(f"- redaction: {_REDACTION_MARK}")
+    title = (
+        f"Items that were not one command (attempt {att.number}):"
+        if att
+        else "Items that were not one command:"
+    )
+    out += ["", title, ""]
+    items: list[FrictionEvent] = []
+    if att is not None:
+        items = [stop] if stop is not None else []
+        items += sorted(
+            (e for e in att.of_kind(*TURN_KINDS) if not att.expected(e)),
+            key=lambda e: (TURN_KINDS.index(e.kind), e.line),
+        )
+    if att is not None and items:
+        out += [_item_line(r, att, e) for e in items]
+    else:
+        out.append("- none" + ("" if att is not None else " (no friction log)"))
+    agent_side = [e for e in att.of_kind(*PROBLEM_KINDS) if e is not stop] if att is not None else []
+    agent_side = sorted(agent_side, key=lambda e: (PROBLEM_KINDS.index(e.kind), e.line))
+    if att is not None and (agent_side or att.untyped):
+        out += ["", f"Agent friction (attempt {att.number}; it does not change the outcome by itself):", ""]
+        out += [_item_line(r, att, e) for e in (*agent_side, *att.untyped)]
+    return [*out, "", RUN_METADATA_HEADING, "", *header]
+
+
+def _section(title: str, fn: Callable[[], list[str]]) -> list[str]:
+    try:
+        body = fn()
+    except Exception as exc:  # one broken section never hides the others
+        body = [f"_This section failed: {type(exc).__name__}: {exc}_"]
+    return ["", f"## {title}", "", *body]
+
+
+def residue(text: str) -> list[str]:
+    """Capitalised words right next to a name, organisation, library, folder or source placeholder in
+    ``text`` (redacted text): what redaction may have missed (a project's second word, say). A login's home
+    ``/Users/<user>/`` is a path prefix like ``~/`` (the folder after it is a path component, not a name's
+    second word), and the fixed macOS path components (Users, Library, Application Support, ...) are no
+    hit."""
+    found: list[str] = []
+    for m in _RESIDUE_RE.finditer(_USER_HOME_RE.sub("~/", text)):
+        word = m.group(1) or m.group(2)
+        if word and word not in _RESIDUE_IGNORED and word not in _GENERIC_FOLDERS and word not in found:
+            found.append(word)
+    return found
+
+
+def residue_by_section(report: str) -> list[tuple[str, list[str]]]:
+    """:func:`residue` of each ``## `` section of a redacted report (the text before the first heading as
+    "top"), in report order, only the sections with a hit."""
+    out: list[tuple[str, list[str]]] = []
+    title, body = "top", list[str]()
+    for line in [*report.splitlines(), "## "]:
+        if line.startswith("## "):
+            words = residue("\n".join(body))
+            if words:
+                out.append((title, words))
+            title, body = line[3:].strip(), []
+        else:
+            body.append(line)
+    return out
+
+
+def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list[str]:
+    if not red.enabled:
+        return ["", "## Redaction", "", "Redaction is OFF (`--no-redact`): 0 values replaced."]
+    kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
+    legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
+    words = {w for _title, found in hits for w in found}
+    check = (
+        f"Residue check: {len(words)} capitalised word(s) next to a placeholder in this report ("
+        + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
+        + "); check them."
+        if hits
+        else "Residue check: no capitalised word next to a placeholder in this report."
+    )
+    return [
+        "",
+        "## Redaction",
+        "",
+        f"{red.total} replacement(s) of {red.values} value(s) ({kinds}).",
+        f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
+        "anything else confidential (a project name inside a log line, say) is yours to remove.",
+        check,
+        'Send it: the link on the last line opens a new "Setup report" issue with the Outcome, Run type, '
+        "Prompt and Agent fields filled in (nothing else); paste this report into its Setup report field, or "
+        "send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
+        "automatically.",
+    ]
+
+
+def _redact_lines(red: Redactor, lines: list[str]) -> str:
+    """Redact every line but the report's own headings (a folder named like a section must not break it)."""
+    keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
+    return "\n".join(ln if ln in keep else red.redact(ln) for ln in lines)
+
+
+def _issue_link(r: _Run, red: Redactor) -> str:
+    fr = r.friction
+    att = fr.latest if fr is not None else None
+    agent = att.header.get("Agent", "") if att is not None else ""
+    agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub(" ".join(agent.split())))[:100].strip()
+    outcome = r.outcome or compute_outcome(att, r.install_runs)
+    return build_issue_url(
+        outcome=outcome.form_label,
+        run_type=ISSUE_RUN_TYPES.get(r.run_type or ""),
+        prompt=_prompt_version(att),
+        agent=agent or None,
+    )
+
+
+def build_report(
+    config_path: Path | None = None,
+    *,
+    redact: bool = True,
+    hooks: ReportHooks | None = None,
+    friction_path: Path | None = None,
+    now: datetime | None = None,
+    budget_s: float = TIME_BUDGET_S,
+) -> tuple[str, Redactor]:
+    """The report text and the redactor that produced it (its ``total`` is the redaction count). Never
+    raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
+    agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
+    line is the prefilled issue link (:func:`issue_link` returns it)."""
+    moment = now or datetime.now(UTC)
+    r = _Run(config_path, hooks or ReportHooks(), budget_s)
+    if friction_path is not None:
+        r.friction_path = expand(friction_path)
+    try:
+        red = _build_redactor(r, enabled=redact)
+    except Exception:  # redaction facts are best effort; the patterns (email, GUID, hex) still apply
+        red = Redactor(enabled=redact)
+        red.add("home", str(Path.home()))
+    r.red = red
+    try:
+        r.friction = read_friction(r.friction_path)
+    except Exception as exc:
+        r.friction_error = f"{type(exc).__name__}: {exc}"
+    header: list[str] = [f"- generated at: {moment.strftime('%Y-%m-%dT%H:%M:%SZ')}"]
+    header.append(f"- agentsync: {__version__} (python {platform.python_version()}, {sys.executable})")
+    try:
+        header.append(f"- install source: {_install_source(r)}")
+    except Exception as exc:
+        header.append(f"- install source: (failed: {type(exc).__name__}: {exc})")
+    # Cheap sections first, doctor last (it gets what is left of the budget), then the friction log (the
+    # latest attempt's outcome counts doctor's FAILs); printed in heading order.
+    bodies: dict[str, list[str]] = {}
+    order: tuple[tuple[str, Callable[[_Run], list[str]]], ...] = (
+        ("Environment", _environment),
+        ("Installer", _installer),
+        ("Configuration", _configuration),
+        ("Background runs", _background),
+        ("Recent errors", _recent_errors),
+        ("Status", _status),
+        ("Doctor", _doctor),
+        ("Agent friction log", _friction_section),
+    )
+    for title, fn in order:
+        bodies[title] = _section(title, functools.partial(fn, r))
+    header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
+    bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
+    lines = [REPORT_TITLE]
+    if not redact:
+        lines += [
+            "",
+            "> **NOT REDACTED** (`--no-redact`): this report names people, organisations, folders and ids. "
+            "Do not paste it into a public issue.",
+        ]
+    for title in SECTION_TITLES[:-1]:
+        lines += bodies[title]
+    main = _redact_lines(red, lines)
+    counts = (
+        f"{red.total} replacement(s) of {red.values} value(s) (legend under Redaction)"
+        if red.enabled
+        else "OFF (--no-redact)"
+    )
+    main = main.replace(_REDACTION_MARK, counts)
+    try:
+        link = _issue_link(r, red)
+    except Exception:  # the link is a convenience: the bare form always works
+        link = ISSUE_URL
+    tail = [*_redaction_section(red, residue_by_section(main)), "", link]
+    return main + "\n" + "\n".join(tail) + "\n", red
+
+
+def write_report(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically (temp file in the same directory, mode 0600, ``os.replace``);
+    creates the parent directory. Raises OSError when it cannot be written."""
+    target = expand(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".setup-report.", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        Path(tmp).chmod(0o600)
+        Path(tmp).replace(target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(tmp).unlink()
+        raise

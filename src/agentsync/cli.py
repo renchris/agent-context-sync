@@ -1,12 +1,16 @@
 """``agentsync`` command line (owner: integrator).
 
-Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...] · reconcile
-[--source ID ...] [--accept-deletions] · status · doctor [--network] · lint · refresh-queue · materialise
-[--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level
-login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent
-[--interval SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history ·
-hold · offboard [--purge-data] [--confirm DOCS_REPO] · policy show · add-source PATH [--id ID].
+Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...]
+[--materialise-budget BYTES] · reconcile [--source ID ...] [--accept-deletions] · status · doctor [--network]
+· lint · refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
+login|logout|whoami|discover (also as top-level login · logout · whoami · discover; login [--device-code];
+discover [--url URL ...] [--toml]) · install-agent [--interval SECONDS] [--no-backup-exclusions] ·
+uninstall-agent · purge SELECTOR | --queue · compact-history · hold · offboard [--purge-data] [--confirm
+DOCS_REPO] · policy show · add-source PATH [--id ID] · setup-report [--out PATH] [--friction PATH]
+[--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
+``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops the ``next:`` hint of init and add-source;
+``setup-report --out`` ends with the issue link, never a hint.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
 before any agentsync module imports ``msal``, ``requests`` or ``httpx``; tests/test_cli.py asserts the order.
@@ -33,7 +37,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from agentsync import __version__, curate, gitops, governance, lints, net
+from agentsync import __version__, curate, gitops, governance, it_request, lints, net, setup_report
 from agentsync import policy as content_policy
 from agentsync.config import (
     SOURCE_ID_RE,
@@ -102,6 +106,17 @@ def _out(text: str = "") -> None:
 
 def _err(text: str) -> None:
     sys.stderr.write(text + "\n")
+
+
+NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"
+"""Set to 1 (scripts/install.sh does) and init, add-source and setup-report print no ``next:`` hint: the
+caller prints its own single next step."""
+
+
+def _next_hint(text: str) -> None:
+    """Print ``next: <text>`` unless :data:`NO_NEXT_HINT_ENV` is 1."""
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+        _out(f"next: {text}")
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -200,6 +215,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--source", action="append", default=[], metavar="ID", help="only this source (repeatable)"
     )
+    p.add_argument(
+        "--materialise-budget",
+        metavar="BYTES",
+        help='download budget per source for this run only, e.g. "200MB" (default: each source\'s '
+        "max_materialise_bytes). Only online-only files are charged: files already on this Mac are always "
+        "read and converted. 0 = no downloads this run: every local file is converted, and every changed "
+        "online-only file is left for a later run",
+    )
 
     p = add("reconcile", "run one full-enumeration cycle (every source re-listed)", _cmd_reconcile)
     p.add_argument(
@@ -294,6 +317,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("policy", "content policy (sensitivity labels): show the effective policy", _cmd_policy)
     p.add_argument("action", choices=["show"])
+
+    p = add(
+        "setup-report",
+        "write a redacted Markdown report of this Mac's setup (a summary, the agent's friction log, "
+        "environment, installer, doctor, status, background runs, recent errors) for the setup feedback "
+        f"loop; read-only, no network, under {setup_report.TIME_BUDGET_S:.0f} s",
+        _cmd_setup_report,
+    )
+    p.add_argument("--out", type=Path, metavar="PATH", help="write the report here (default: stdout)")
+    p.add_argument(
+        "--friction",
+        type=Path,
+        metavar="PATH",
+        help="the setup prompt's friction log to embed, redacted (default: "
+        f"${setup_report.FRICTION_ENV}, else ~/agent-context/setup/friction.md)",
+    )
+    p.add_argument(
+        "--no-redact",
+        action="store_true",
+        help="keep names, organisation, folders, emails and ids (the report says so at the top)",
+    )
+
+    p = add(
+        "it-request",
+        "write the IT request (docs/deploy/it-request.md) as an email draft with this Mac's values filled in "
+        "and the fields still open listed first; never sends anything",
+        _cmd_it_request,
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help=f"write the draft here, mode 0600 (e.g. {it_request.DEFAULT_OUT}); never inside the agentsync "
+        "checkout or the docs repo",
+    )
     return parser
 
 
@@ -317,7 +376,14 @@ def _toml_str(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _print_report(report: CycleReport) -> None:
+_OVER_BUDGET = "exceeds the per-cycle budget ("
+
+
+def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None:
+    """Print a cycle's report, ending with one line for the whole run, ``converted N, deferred M online-only``
+    (N files read and converted, M online-only files left for a later run's download budget). With
+    ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are one
+    count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
     _out(
         f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {len(report.changes)} change(s)"
@@ -332,8 +398,15 @@ def _print_report(report: CycleReport) -> None:
             bits.append("BREAKER TRIPPED")
         bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
+        over = [a for a in s.alarms if run_budget is not None and _OVER_BUDGET in a]
         for a in s.alarms:
-            _out(f"    alarm: {a}")
+            if a not in over:
+                _out(f"    alarm: {a}")
+        if over:
+            _out(
+                f"    {len(over)} online-only file(s) left for a later run (over this run's "
+                f"--materialise-budget of {run_budget} bytes)"
+            )
         for e in s.errors:
             _out(f"    error: {e}")
     for f in report.lint_findings:
@@ -342,11 +415,15 @@ def _print_report(report: CycleReport) -> None:
         _out("  note: a stale lock from a dead run was broken; every source ran a full pass")
     if report.auth_required:
         _out("  sign-in required: run `agentsync graph login` (errors above name any IT action)")
+    converted = sum(s.converted for s in report.sources)
+    online = sum(s.deferred_online_only for s in report.sources)
+    _out(f"converted {converted}, deferred {online} online-only")
 
 
 def _run(config: Config, **kwargs: object) -> int:
     report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
-    _print_report(report)
+    budget = kwargs.get("budget_bytes")
+    _print_report(report, run_budget=budget if isinstance(budget, int) else None)
     if kwargs.get("mode") is not CycleMode.DRY_RUN and report.exit_code in (EXIT_OK, EXIT_FAILED):
         # C15 req 42 outside install-agent: exclude mirror/, .git, the cache and the manifest from Time
         # Machine once they exist (a cheap xattr check; tmutil runs only for a path still missing it).
@@ -434,7 +511,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
     _out(f"sources: {', '.join(s.id for s in config.sources) or 'none yet (edit sources.toml)'}")
-    _out("next: agentsync doctor · agentsync sync --once · agentsync install-agent")
+    _next_hint("agentsync doctor · agentsync sync --once · agentsync install-agent")
     return EXIT_FAILED if findings else EXIT_OK
 
 
@@ -480,14 +557,17 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     _out(f"added source {sid!r} to {config.config_path}:")
     _out(table.strip("\n"))
-    _out("next: agentsync doctor · agentsync sync --once")
+    _next_hint("agentsync doctor · agentsync sync --once")
     return EXIT_OK
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     config = _config(args)
     mode = CycleMode.DRY_RUN if args.dry_run else CycleMode(args.mode)
-    return _run(config, mode=mode, only=tuple(args.source))
+    if args.materialise_budget is None:
+        return _run(config, mode=mode, only=tuple(args.source))
+    budget = parse_size(args.materialise_budget, where="--materialise-budget")
+    return _run(config, mode=mode, only=tuple(args.source), budget_bytes=budget)
 
 
 def _cmd_reconcile(args: argparse.Namespace) -> int:
@@ -558,38 +638,39 @@ def _age_text(delta: timedelta) -> str:
     return f"{secs // 86400}d"
 
 
-def _cmd_status(args: argparse.Namespace) -> int:
-    config = _config(args)
-    _out(f"config: {config.config_path}")
-    _out(f"docs repo: {config.docs_repo}")
+def _status_lines(config: Config) -> list[str]:
+    """What ``agentsync status`` prints (read-only); ``setup-report`` embeds the same lines."""
+    out: list[str] = [f"config: {config.config_path}", f"docs repo: {config.docs_repo}"]
     lock_path = config.state_paths.lock
     held = lock_path.exists() and SingleWriterLock.is_held(lock_path)
-    _out(f"lock: {SingleWriterLock.describe(lock_path) if held else 'free'}")
+    out.append(f"lock: {SingleWriterLock.describe(lock_path) if held else 'free'}")
     gov = governance.load_governance(config.config_path)
     for h in governance.active_holds(config.state_paths.root, gov):
-        _out(f"HOLD: {h.describe()} (purge and compaction suspended)")
+        out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
-        _out(f"queued purges: {len(queued)} (run `agentsync purge --queue`)")
+        out.append(f"queued purges: {len(queued)} (run `agentsync purge --queue`)")
     try:
         cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
         cstate, cdetail = "unknown", str(exc)
-    _out(f"retention: {cstate}: {cdetail}")
+    out.append(f"retention: {cstate}: {cdetail}")
     for event in _launcher_events(config):
-        _out(f"launcher: {event}")
+        out.append(f"launcher: {event}")
     db = config.state_paths.db
     if not db.exists():
-        _out("manifest: none yet (run `agentsync sync --once`)")
-        return EXIT_OK
+        out.append("manifest: none yet (run `agentsync sync --once`)")
+        return out
     with Manifest(db) as manifest:
         runs = manifest.last_runs(5)
-        _out("last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none"))
+        out.append(
+            "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
+        )
         statuses = source_statuses(config, manifest, now=datetime.now(UTC))
     heartbeat = read_heartbeat(config.state_paths.heartbeat)
     for st in statuses:
         hb = heartbeat.get(st.source_id, {})
-        _out(
+        out.append(
             f"  {st.source_id} ({st.kind.value}, {st.state}): baseline "
             f"{'complete' if st.baseline_complete else 'INCOMPLETE'} · complete "
             f"{'yes' if st.enumeration_complete else 'no'} · live {st.live} (dataless {st.dataless}) · "
@@ -599,7 +680,13 @@ def _cmd_status(args: argparse.Namespace) -> int:
         )
     state_md = config.layout.state_md
     if state_md.is_file():
-        _out(f"details: {state_md}")
+        out.append(f"details: {state_md}")
+    return out
+
+
+def _cmd_status(args: argparse.Namespace) -> int:
+    for line in _status_lines(_config(args)):
+        _out(line)
     return EXIT_OK
 
 
@@ -646,7 +733,7 @@ def _job_environment(config: Config) -> dict[str, str]:
     return env
 
 
-def _network_checks(config: Config, *, probe: bool) -> list[doctor.CheckResult]:
+def _network_checks(config: Config, *, probe: bool, offline: bool = False) -> list[doctor.CheckResult]:
     live_graph = any(s.kind.is_graph and s.is_live for s in config.sources)
     system = net.system_proxy()
     proxy = net.resolve_proxy(config.network.proxy, system=system)
@@ -677,7 +764,17 @@ def _network_checks(config: Config, *, probe: bool) -> list[doctor.CheckResult]:
     else:
         out.append(_check("network.proxy", True, diag[0], doctor.Severity.INFO))
     out += [_check("network.proxy", False, w, doctor.Severity.WARN) for w in diag[1:]]
-    if probe or live_graph:
+    if offline:  # setup-report: no network, ever
+        if probe or live_graph:
+            out.append(
+                _check(
+                    "network.graph",
+                    False,
+                    "not probed (setup-report makes no network calls; run `agentsync doctor --network`)",
+                    doctor.Severity.INFO,
+                )
+            )
+    elif probe or live_graph:
         reach = net.probe_reachability(config.graph.base_url, proxy)
         if reach.online:
             out.append(
@@ -795,11 +892,12 @@ def _policy_check(config: Config) -> list[doctor.CheckResult]:
     return [_check("policy", True, detail, doctor.Severity.INFO)]
 
 
-def _extra_checks(config: Config, *, probe: bool) -> list[doctor.CheckResult]:
-    """Integrator-owned doctor checks: proxy/TLS reachability, broker, governance and content policy."""
+def _extra_checks(config: Config, *, probe: bool, offline: bool = False) -> list[doctor.CheckResult]:
+    """Integrator-owned doctor checks: proxy/TLS reachability, broker, governance and content policy
+    (``offline``: never the Graph reachability probe, whatever ``probe`` and the sources say)."""
     out: list[doctor.CheckResult] = []
     checks: tuple[tuple[str, Callable[[], list[doctor.CheckResult]]], ...] = (
-        ("network", lambda: _network_checks(config, probe=probe)),
+        ("network", lambda: _network_checks(config, probe=probe, offline=offline)),
         ("graph.broker", lambda: _broker_check(config)),
         ("governance", lambda: _governance_checks(config)),
         ("policy", lambda: _policy_check(config)),
@@ -820,6 +918,95 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     _out(doctor.format_results(results))
     failed = [r for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
     return EXIT_FAILED if failed else EXIT_OK
+
+
+def _doctor_lines_offline(config: Config) -> list[str]:
+    """Every ``agentsync doctor`` line without the Graph network probe (what setup-report embeds)."""
+    results = doctor.run_checks(config) + _extra_checks(config, probe=False, offline=True)
+    return doctor.format_results(results).splitlines()
+
+
+def _cmd_setup_report(args: argparse.Namespace) -> int:
+    """Never fails hard: every section records its own error; exit 1 only when --out cannot be written
+    (the report then goes to stdout instead)."""
+    out: Path | None = expand(args.out) if args.out is not None else None
+    friction: Path = (
+        expand(args.friction) if args.friction is not None else setup_report.default_friction_path()
+    )
+    text, red = setup_report.build_report(
+        getattr(args, "config", None),
+        redact=not args.no_redact,
+        hooks=setup_report.ReportHooks(doctor=_doctor_lines_offline, status=_status_lines),
+        friction_path=friction,
+    )
+    if out is None:
+        sys.stdout.write(text)  # the report's own last line is the bare issue link
+        return EXIT_OK
+    link = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.issue_link(text) or setup_report.ISSUE_URL}"
+    try:
+        setup_report.write_report(out, text)
+    except OSError as exc:
+        _err(f"setup-report: cannot write {out}: {exc.strerror or exc}; the report follows on stdout")
+        sys.stdout.write(text)
+        _out(link)
+        return EXIT_FAILED
+    what = (
+        f"{red.total} replacement(s) of {red.values} value(s)"
+        if red.enabled
+        else "NOT redacted (--no-redact)"
+    )
+    embedded = "friction log embedded" if friction.is_file() else f"no friction log found at {friction}"
+    _out(f"wrote {out} ({what}; {embedded})")
+    _out(link)  # always the last line: setup prompt step 3 (v5: step 5) shows it (no "next:" hint)
+    return EXIT_OK
+
+
+def _cmd_it_request(args: argparse.Namespace) -> int:
+    """Render docs/deploy/it-request.md for this Mac into ``--out`` (0600). Exit 2 when ``--out`` is inside
+    the agentsync checkout or the docs repo, 1 when the page cannot be found or the file cannot be written.
+    An unreadable sources.toml is not an error: the source kinds then stay for the person to fill."""
+    out = expand(args.out)
+    kinds: list[str] | None = None
+    paths: list[Path] = []
+    roots: list[Path] = []
+    checkout = it_request.source_checkout()
+    if checkout is not None:
+        roots.append(checkout)
+    config_path: Path | None = getattr(args, "config", None)
+    try:
+        config = _config(args)
+    except ConfigError as exc:
+        if (expand(config_path) if config_path is not None else default_config_path()).exists():
+            _err(f"it-request: sources.toml not read ({exc}); <arms-today> stays open")
+        else:
+            kinds = []  # nothing configured yet is a fact, not an open field
+    else:
+        kinds = [s.kind.value for s in config.sources]
+        paths = [s.path for s in config.sources if s.path is not None]
+        roots.append(config.docs_repo)
+    inside = it_request.refused_location(out, roots)
+    if inside is not None:
+        _err(f"it-request: {out} is inside {inside}; write it elsewhere (e.g. {it_request.DEFAULT_OUT})")
+        return EXIT_USAGE
+    try:
+        template = it_request.load_template()
+        draft = it_request.render(template, it_request.gather_facts(kinds=kinds, source_paths=paths))
+    except it_request.TemplateError as exc:
+        _err(f"it-request: {exc}")
+        return EXIT_FAILED
+    try:
+        backup = it_request.write_draft(out, draft.text)
+    except OSError as exc:
+        _err(f"it-request: cannot write {out}: {exc.strerror or exc}")
+        return EXIT_FAILED
+    _out(f"wrote {out} (mode 0600; from {template.origin}; nothing was sent)")
+    if backup is not None:
+        _out(f"kept the earlier draft as {backup}")
+    _out(f"You fill: {', '.join(draft.you_fill) or 'nothing'}")
+    _out(f"IT fills: {', '.join(draft.it_fills) or 'nothing'} (leave them)")
+    for note in draft.notes:
+        _out(note)
+    return EXIT_OK
 
 
 def _cmd_lint(args: argparse.Namespace) -> int:
