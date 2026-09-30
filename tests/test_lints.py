@@ -356,6 +356,22 @@ def test_token_lint_on_given_paths_and_skips_cache(repo: Path) -> None:
     assert codes(found) == [("TOKEN", "_sync/STATE.md", True)]
 
 
+def test_third_party_names_never_block_but_cursor_shapes_and_live_cursors_do(repo: Path) -> None:
+    """security-governance-07: file names / mail subjects reach pipeline files verbatim."""
+    write(repo, "_manifest/src.jsonl", '{"rel_path":"Bearer bonds - Q3 memo.txt"}\n')
+    write(repo, "_sync/QUARANTINE.tsv", "src\treset-token=howto.txt\tno converter\n")
+    write(repo, "CHANGELOG/2026-09.md", "- A `mirror/src/your-password-reset-token=8h2k.md`\n")
+    assert [f for f in lints.lint_no_tokens(repo) if f.blocking] == []
+    write(repo, "_sync/QUARANTINE.tsv", "src\tx?$skiptoken=abc\tno converter\n")
+    [hit] = [f for f in lints.lint_no_tokens(repo) if f.blocking]
+    assert hit.path == "_sync/QUARANTINE.tsv"
+    write(repo, "_sync/QUARANTINE.tsv", "src\tfine\tno converter\n")
+    live = "Zm9vYmFyYmF6cXV4cXV1eGNvcmdl"
+    write(repo, "INDEX.md", f"# index {live}\n")
+    [hit] = [f for f in lints.lint_no_tokens(repo, known_secrets=[live]) if f.blocking]
+    assert hit.path == "INDEX.md" and live not in hit.message
+
+
 # ---- secrets -----------------------------------------------------------------------------------------------
 
 AWS_KEY = "AKIA" + "ABCDEFGHIJKLMNOP"
@@ -479,7 +495,7 @@ def test_land_gate_clean_then_catches_unreported_hand_edit(repo: Path) -> None:
 
 def test_land_gate_blocks_symlinks_and_tokens(repo: Path) -> None:
     write(repo, "INDEX.md", "# index\n")
-    write(repo, "CHANGELOG.md", "leak: Bearer abc\n")
+    write(repo, "CHANGELOG.md", "leak: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2ln\n")
     (repo / "topics").mkdir()
     (repo / "topics/link.md").symlink_to(repo / "INDEX.md")
     blocking = {(f.code, f.path) for f in lints.run_land_gate(repo, []) if f.blocking}

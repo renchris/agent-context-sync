@@ -168,6 +168,11 @@ def convert_file(
             reason=reason,
         )
 
+    # Label refusals are decided BEFORE the cache: H1 ignores the label parts, so a cached copy of the same
+    # content must never be served past an excluded label.
+    refusal = _label_refusal(registry, src, name)
+    if refusal is not None:
+        return make(ConversionStatus.REFUSED, reason=refusal)
     try:
         cached = cache.get(key)
     except Exception as exc:  # a cache fault must never fail the file; convert instead
@@ -195,6 +200,25 @@ def convert_file(
     except Exception as exc:  # disk full, permissions: the result is still good for this cycle
         log.warning("converter cache write failed for %s: %s", key, _reason(exc))
     return result
+
+
+def _label_refusal(registry: Registry, src: Path, name: str) -> str | None:
+    """The policy-refusal reason when ``[policy]`` label rules are active and refuse ``src`` (else None).
+
+    Encryption stays with the converter guard (its UNREADABLE result is cached); only REFUSED screenings are
+    decided here, uncached, because the action key cannot see a relabel (C15 section 9 items 27 and 29).
+    """
+    content_policy = getattr(registry, "policy", None)
+    screen = getattr(registry, "screen", None)
+    if content_policy is None or not getattr(content_policy, "labels_active", False) or screen is None:
+        return None
+    try:
+        screening = screen(src, name=name)
+    except OSError:
+        return None  # unreadable bytes: the converter reports it the same way
+    if screening is None or str(getattr(screening, "status", "")) != "refused":
+        return None
+    return str(screening.reason)
 
 
 def _fingerprint(conv: Converter, src: Path, name: str) -> tuple[object, ...]:

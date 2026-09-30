@@ -245,6 +245,7 @@ def test_commit_cycle_does_not_sign_or_run_hooks(repo: Path) -> None:
     git(repo, "config", "--local", "commit.gpgsign", "true")
     git(repo, "config", "--local", "gpg.program", "/usr/bin/false")
     hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(exist_ok=True)  # ensure_repo inits with an empty template: no hooks dir
     hook.write_text("#!/bin/sh\nexit 1\n")
     hook.chmod(0o755)
     write(repo, "INDEX.md", "# i\n")
@@ -360,3 +361,156 @@ def test_push_refuses_a_remote_inside_cloud_storage(repo: Path) -> None:
 def test_push_refuses_an_unborn_branch(repo: Path, tmp_path: Path) -> None:
     git(repo, "remote", "add", "origin", str(tmp_path / "remote.git"))
     assert gitops.push_if_allowed(repo, allow=True) == "refused: nothing committed"
+
+
+# ---- the operator's git configuration cannot drop, rewrite or block pages ----------------------------------
+
+
+@pytest.fixture
+def hostile_global(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """A global git config (via GIT_CONFIG_GLOBAL) that ignores mirror pages, blocks commits and rewrites
+    blobs: the measured ~/.gitignore_global failure (critic-git-global-excludes-drop-mirror) and worse."""
+    h = tmp_path / "hostile"
+    (h / "hooks").mkdir(parents=True)
+    (h / "template" / "hooks").mkdir(parents=True)
+    (h / "template" / "info").mkdir(parents=True)
+    ran = h / "hook-ran"
+    for hooks in (h / "hooks", h / "template" / "hooks"):
+        for name in (
+            "pre-commit",
+            "commit-msg",
+            "prepare-commit-msg",
+            "post-commit",
+            "reference-transaction",
+        ):
+            hook = hooks / name
+            hook.write_text(f"#!/bin/sh\necho {name} >> '{ran}'\nexit 1\n")
+            hook.chmod(0o755)
+    (h / "template" / "info" / "exclude").write_text("*\n")
+    excludes = h / "gitignore_global"
+    excludes.write_text("*.md\nmirror/\n.claude/\nRESEARCH-*.md\n_manifest/\n*.jsonl\n")
+    attributes = h / "gitattributes_global"
+    attributes.write_text("* filter=evil\n")
+    fsmonitor = h / "fsmonitor.sh"
+    fsmonitor.write_text(f"#!/bin/sh\necho fsmonitor >> '{ran}'\nexit 1\n")
+    fsmonitor.chmod(0o755)
+    cfg = h / "gitconfig"
+    cfg.write_text(
+        f"""[core]
+\texcludesFile = {excludes}
+\thooksPath = {h / "hooks"}
+\tattributesFile = {attributes}
+\tfsmonitor = {fsmonitor}
+\tautocrlf = true
+\tsafecrlf = true
+\tcommentChar = s
+[init]
+\ttemplateDir = {h / "template"}
+[filter "evil"]
+\tclean = sed s/secret/REDACTED/
+\tsmudge = cat
+\trequired = true
+[commit]
+\tgpgSign = true
+[tag]
+\tgpgSign = true
+[gpg]
+\tprogram = /usr/bin/false
+[status]
+\tshowUntrackedFiles = no
+[i18n]
+\tcommitEncoding = ISO-8859-1
+[user]
+\tuseConfigOnly = true
+"""
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(excludes))
+    return {"ran": ran, "excludes": excludes}
+
+
+def test_hostile_global_config_cannot_drop_or_rewrite_mirror_pages(
+    tmp_path: Path, hostile_global: dict[str, Path]
+) -> None:
+    repo = tmp_path / "docs"
+    assert gitops.ensure_repo(repo) is True
+    # the hostile config really is in force for a plain git call (so the test proves something)
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "check-ignore", "-q", "mirror/src/research-plan.md"], check=False
+    )
+    assert probe.returncode == 0
+    hostile_global["ran"].unlink(missing_ok=True)  # the plain-git probe itself may run the fsmonitor program
+    assert not (repo / ".git" / "hooks").exists()  # init.templateDir was not copied
+    pages = {
+        "mirror/src/research-plan.md": "secret plan\n",
+        "mirror/src/dot-claude/settings.json.md": "secret\n",
+        "mirror/src/notes.md": "line one\r\nline two\n",
+        "_manifest/src.jsonl": '{"a":1}\n',
+        "INDEX.md": "# index\n",
+    }
+    for rel, text in pages.items():
+        write(repo, rel, text)
+    assert gitops._ignored_generated(repo) == []
+    assert gitops.has_changes(repo) is True
+    sha = gitops.commit_cycle(repo, "sync: 3a 0m 0r 0d src", "src: 3a\nsecond line\n")
+    assert sha is not None
+    assert sorted(gitops.tracked_files(repo)) == sorted(pages)
+    blob = gitops.run_git(repo, "cat-file", "blob", "HEAD:mirror/src/research-plan.md").stdout
+    assert blob == "secret plan\n"  # no clean filter ran
+    message = gitops.run_git(repo, "log", "-1", "--format=%B").stdout
+    assert message.startswith("sync: 3a 0m 0r 0d src\n")  # commentChar 's' did not strip the subject
+    assert "second line" in message
+    gitops.tag_published(repo, sha)  # tag.gpgSign / gpg.program=false did not block the tag
+    assert not hostile_global["ran"].exists()  # no hook and no fsmonitor program ran
+    assert gitops.has_changes(repo) is False
+
+
+def test_info_exclude_is_agentsyncs_own_and_rewritten(tmp_path: Path) -> None:
+    repo = tmp_path / "docs"
+    gitops.ensure_repo(repo)
+    exclude = repo / ".git" / "info" / "exclude"
+    original = exclude.read_text(encoding="utf-8")
+    assert "Managed by agentsync" in original and ".agentsync-*.tmp" in original
+    exclude.write_text("*.md\n", encoding="utf-8")  # an operator edit that would drop every page
+    assert gitops.ensure_repo(repo) is False
+    assert exclude.read_text(encoding="utf-8") == original
+    write(repo, "mirror/src/a.md", "a\n")
+    write(repo, "mirror/src/.agentsync-abc.tmp", "partial\n")  # a crashed write's temp: ignored, not lost
+    write(repo, "mirror/.DS_Store", "finder\n")
+    assert gitops.commit_cycle(repo, "sync: 1a") is not None
+    assert gitops.tracked_files(repo) == ["mirror/src/a.md"]
+
+
+def test_commit_cycle_refuses_while_a_repo_gitignore_hides_a_page(repo: Path) -> None:
+    write(repo, ".gitignore", "_sync/STATE.md\n_manifest/cache/\nresearch-*\n")
+    write(repo, "mirror/src/research-plan.md", "x\n")
+    write(repo, "mirror/src/b.md", "y\n")
+    write(repo, "_manifest/cache/k.json", "{}\n")  # the converter cache is meant to be ignored
+    with pytest.raises(PublishError, match=r"1 generated file\(s\) are ignored .*research-plan\.md"):
+        gitops.commit_cycle(repo, "sync: 2a")
+    assert gitops.head_sha(repo) is None
+
+
+def test_every_git_call_carries_the_safe_overrides(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[list[str]] = []
+    real = subprocess.run
+
+    def spy(argv: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        seen.append(list(argv))
+        return real(argv, **kw)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(gitops.subprocess, "run", spy)
+    write(repo, "INDEX.md", "# i\n")
+    sha = gitops.commit_cycle(repo, "sync: 1a")
+    assert sha is not None
+    gitops.tag_published(repo, sha)
+    gitops.has_changes(repo)
+    assert seen
+    for argv in seen:
+        head = argv[: argv.index("-C")]
+        for key in ("core.excludesFile", "core.hooksPath", "commit.gpgSign", "core.attributesFile"):
+            assert any(a.startswith(key + "=") for a in head), (key, argv)
+    env = gitops._env()
+    assert not any(k.startswith("GIT_CONFIG_KEY_") for k in env)

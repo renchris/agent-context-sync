@@ -260,6 +260,22 @@ class ConverterCache:
         except OSError:
             shutil.rmtree(entry, ignore_errors=True)
 
+    def delete(self, keys: Iterable[str]) -> int:
+        """Delete the entries of ``keys`` now (label escalation, purge); return how many existed."""
+        removed = 0
+        for key in sorted(set(keys)):
+            try:
+                entry = self.path_for(key)
+            except ValueError:
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+            elif entry.exists() or entry.is_symlink():
+                entry.unlink(missing_ok=True)
+                removed += 1
+        return removed
+
     # -- gc -----------------------------------------------------------------------------------------------
 
     def gc(self, live_keys: Iterable[str]) -> int:

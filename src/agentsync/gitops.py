@@ -4,10 +4,19 @@ git is resolved once to an absolute path (launchd has a minimal PATH) and run wi
 ``GIT_TERMINAL_PROMPT=0``, ``GIT_OPTIONAL_LOCKS=0``.  Nothing here fetches, and nothing pushes except
 :func:`push_if_allowed`, which does nothing unless the caller passes ``allow=True`` AND a remote exists
 (the week-0 default is no remote and no push: corporate content never leaves the machine).
+
+The operator's own git configuration can never drop, rewrite or block a mirror page (audit
+critic-git-global-excludes-drop-mirror): every invocation carries ``-c`` overrides (``_SAFE_CONFIG``) for
+global excludes, hooks, global attributes (clean/smudge filters), fsmonitor, signing, CRLF policy, comment
+character and encodings; inherited ``GIT_CONFIG_*`` injection variables are scrubbed; ``git init`` uses an
+empty template (no hooks copied from ``init.templateDir``); the repo-local ``info/exclude`` is rewritten to
+agentsync's own content on every ``ensure_repo``; and ``commit_cycle`` refuses to commit while any generated
+page is ignored.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import functools
 import logging
 import os
@@ -42,6 +51,8 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
     "topics",
     "README.md",
     "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/settings.json",
     "SYNONYMS.tsv",
     ".gitignore",
     ".gitattributes",
@@ -53,7 +64,38 @@ PUBLISHED_TAG = "published"
 _GIT_TIMEOUT_S = 600.0
 _PUSH_TIMEOUT_S = 300.0
 _LOCAL_IDENTITY = (("user.name", "agentsync"), ("user.email", "agentsync@localhost"))
-_CORE_SETTINGS = (("core.precomposeunicode", "true"), ("core.quotepath", "false"))
+# Command-line config (highest precedence) on EVERY git call: the operator's global/system settings must not
+# drop pages (excludesFile), block commits (hooksPath, gpgSign), rewrite blobs (attributesFile -> filters),
+# run programs (fsmonitor), refuse adds (safecrlf) or eat message lines (commentChar with --cleanup=strip).
+_SAFE_CONFIG: tuple[tuple[str, str], ...] = (
+    ("core.excludesFile", "/dev/null"),
+    ("core.hooksPath", "/dev/null"),
+    ("core.attributesFile", "/dev/null"),
+    ("core.fsmonitor", "false"),
+    ("core.autocrlf", "false"),
+    ("core.safecrlf", "false"),
+    ("core.commentChar", "#"),
+    ("commit.gpgSign", "false"),
+    ("tag.gpgSign", "false"),
+    ("log.showSignature", "false"),
+    ("color.ui", "false"),
+    ("i18n.commitEncoding", "UTF-8"),
+    ("i18n.logOutputEncoding", "UTF-8"),
+)
+_SAFE_ARGS: tuple[str, ...] = tuple(arg for key, value in _SAFE_CONFIG for arg in ("-c", f"{key}={value}"))
+_INFO_EXCLUDE_PATTERNS: tuple[str, ...] = (".agentsync-*.tmp", ".DS_Store")
+_INFO_EXCLUDE = (
+    "# Managed by agentsync: rewritten on every run.  Ignore rules for this repo live in the tracked\n"
+    "# .gitignore; global excludes (core.excludesFile) are disabled for every agentsync git call.\n"
+    + "".join(f"{p}\n" for p in _INFO_EXCLUDE_PATTERNS)
+)
+_MUST_TRACK: tuple[str, ...] = ("mirror", "_manifest")
+"""Generated trees in which an ignored file is a lost page (``_manifest/cache/`` excepted)."""
+_CORE_SETTINGS = (
+    ("core.precomposeunicode", "true"),
+    ("core.quotepath", "false"),
+    ("core.sharedRepository", "0600"),  # objects, packs and refs owner-only, whatever the umask
+)
 # Inherited variables that would redirect git away from ``-C repo`` (e.g. when run from a git hook).
 _SCRUBBED_ENV = (
     "GIT_DIR",
@@ -64,6 +106,11 @@ _SCRUBBED_ENV = (
     "GIT_NAMESPACE",
     "GIT_PREFIX",
     "GIT_COMMON_DIR",
+    # config injection: a -c we pass must be the last word
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_TEMPLATE_DIR",
 )
 _XCODE_GIT_CANDIDATES = (
     Path("/Library/Developer/CommandLineTools/usr/bin/git"),
@@ -103,7 +150,11 @@ def git_executable() -> Path:
 
 
 def _env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k not in _SCRUBBED_ENV}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in _SCRUBBED_ENV and not k.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+    }
     env.update(
         {
             "LC_ALL": "C",
@@ -125,7 +176,7 @@ def _run(
     input_text: str | None = None,
     timeout: float = _GIT_TIMEOUT_S,
 ) -> subprocess.CompletedProcess[str]:
-    argv = [str(git_executable()), "-C", str(repo), *args]
+    argv = [str(git_executable()), *_SAFE_ARGS, "-C", str(repo), *args]
     try:
         proc = subprocess.run(
             argv,
@@ -149,7 +200,8 @@ def _run(
 
 
 def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    """Run ``git -C repo *args`` with the fixed env; raises GitError on non-zero exit when ``check``."""
+    """Run ``git <safe -c overrides> -C repo *args`` with the fixed env; raises GitError on non-zero exit when
+    ``check``."""
     return _run(repo, args, check=check)
 
 
@@ -163,9 +215,34 @@ def _config_get(repo: Path, key: str, *, local: bool) -> str | None:
     raise GitError(args, proc.returncode, proc.stderr)
 
 
+def _info_exclude_path(repo: Path) -> Path:
+    out = run_git(repo, "rev-parse", "--git-path", "info/exclude").stdout.strip()
+    path = Path(out)
+    return path if path.is_absolute() else repo / path
+
+
+def _write_info_exclude(repo: Path) -> bool:
+    """Make ``<git-dir>/info/exclude`` hold exactly agentsync's content; True when it was rewritten."""
+    path = _info_exclude_path(repo)
+    try:
+        if path.is_file() and not path.is_symlink() and path.read_text(encoding="utf-8") == _INFO_EXCLUDE:
+            return False
+    except (OSError, UnicodeDecodeError):
+        pass
+    if path.is_symlink():
+        path.unlink()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.agentsync-tmp")
+    tmp.write_text(_INFO_EXCLUDE, encoding="utf-8")
+    tmp.replace(path)
+    log.info("wrote agentsync's info/exclude in %s", repo)
+    return True
+
+
 def ensure_repo(repo: Path) -> bool:
-    """``git init -b main`` if needed; set core.precomposeunicode=true, core.quotepath=false and a local
-    user.name/user.email (``agentsync``/``agentsync@localhost``) only if unset.  Returns True if created.
+    """``git init -b main`` (empty template: no hooks) if needed; set core.precomposeunicode=true,
+    core.quotepath=false and a local user.name/user.email (``agentsync``/``agentsync@localhost``) only if
+    unset; rewrite ``info/exclude`` to agentsync's content.  Returns True if created.
     Refuses (PublishError) a repo under ~/Library/CloudStorage."""
     repo = expand(repo)
     resolved = repo.resolve() if repo.exists() else repo
@@ -176,10 +253,15 @@ def ensure_repo(repo: Path) -> bool:
         )
     if repo.exists() and not repo.is_dir():
         raise PublishError(f"{repo}: exists and is not a directory")
-    repo.mkdir(parents=True, exist_ok=True)
+    if not repo.exists():
+        # The docs repo is a plaintext copy of tenant data: owner-only (0700) whatever the umask.
+        for parent in reversed(repo.parents):
+            if not parent.exists():
+                parent.mkdir(mode=0o700)
+        repo.mkdir(mode=0o700)
     created = not (repo / ".git").exists()
     if created:
-        run_git(repo, "init", "-q", "-b", "main")
+        run_git(repo, "init", "-q", "--template=", "-b", "main")
         log.info("initialised docs repo %s", repo)
     for key, value in _CORE_SETTINGS:
         if _config_get(repo, key, local=True) != value:
@@ -187,6 +269,7 @@ def ensure_repo(repo: Path) -> bool:
     for key, value in _LOCAL_IDENTITY:
         if _config_get(repo, key, local=True) is None:
             run_git(repo, "config", "--local", key, value)
+    _write_info_exclude(repo)
     return created
 
 
@@ -270,6 +353,26 @@ def _stageable_specs(repo: Path, pathspecs: Sequence[str]) -> list[str]:
     return [p for p in pathspecs if p in known or os.path.lexists(repo / p)]
 
 
+def _ignored_generated(repo: Path) -> list[str]:
+    """Generated files (under ``mirror/`` and ``_manifest/``, cache excepted) that git would NOT stage because
+    an ignore rule matches them, excluding agentsync's own temp/Finder patterns; sorted."""
+    present = [p for p in _MUST_TRACK if os.path.lexists(repo / p)]
+    if not present:
+        return []
+    out = run_git(
+        repo, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", *_literal(present)
+    ).stdout
+    lost: list[str] = []
+    for path in (p for p in out.split("\0") if p):
+        if path.startswith("_manifest/cache/"):
+            continue
+        name = path.rsplit("/", 1)[-1]
+        if any(fnmatch.fnmatchcase(name, pat) for pat in _INFO_EXCLUDE_PATTERNS):
+            continue
+        lost.append(path)
+    return sorted(lost)
+
+
 def commit_cycle(
     repo: Path, subject: str, body: str = "", pathspecs: Sequence[str] = COMMIT_PATHSPECS
 ) -> str | None:
@@ -277,6 +380,12 @@ def commit_cycle(
     specs = _stageable_specs(repo, pathspecs)
     if not specs:
         return None
+    lost = _ignored_generated(repo)
+    if lost:
+        raise PublishError(
+            f"{len(lost)} generated file(s) are ignored by a .gitignore rule and would silently not be "
+            f"committed (first: {lost[0]}); remove the rule from docs/.gitignore"
+        )
     literal = _literal(specs)
     run_git(repo, "add", "-A", "--", *literal)
     staged = run_git(repo, "diff", "--cached", "--quiet", "--", *literal, check=False)
@@ -291,8 +400,6 @@ def commit_cycle(
     _run(
         repo,
         [
-            "-c",
-            "commit.gpgsign=false",
             "commit",
             "-q",
             "--no-verify",
@@ -330,7 +437,7 @@ def restore_generated(repo: Path) -> None:
 
 def tag_published(repo: Path, sha: str) -> None:
     """Force-move the lightweight ``published`` tag to ``sha`` (the tree readers should consume)."""
-    run_git(repo, "-c", "tag.gpgSign=false", "tag", "-f", PUBLISHED_TAG, f"{sha}^{{commit}}")
+    run_git(repo, "tag", "-f", PUBLISHED_TAG, f"{sha}^{{commit}}")
 
 
 def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:

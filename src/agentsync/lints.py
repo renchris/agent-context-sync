@@ -33,7 +33,20 @@ from agentsync.model import LintFinding, PageStatus
 log = logging.getLogger(__name__)
 
 TOKEN_PATTERN = re.compile(r"token=|deltatoken=|Bearer ")
-"""No committed file may match this (cursor / bearer token custody, design 4.7)."""
+"""Mirror/topics pages matching this are reported (non-blocking) and routed through the SECRET quarantine."""
+
+PIPELINE_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])\$?(?:delta|skip)token=[^\s&\"'<>]+"
+    r"|https://(?:graph\.microsoft\.(?:com|us)|dod-graph\.microsoft\.us|microsoftgraph\.chinacloudapi\.cn)"
+    r"/[^\s\"'<>]*[?&]\$?(?:delta|skip)?token=[^\s&\"'<>]+"
+    r"|\bBearer\s+eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+)
+"""No pipeline-written file may match this (cursor / bearer token custody, design 4.7): real cursor and token
+shapes only -- a ``$deltatoken=``/``$skiptoken=`` parameter, a Graph URL carrying a token, a JWT bearer.
+Third-party strings (file names, mail subjects: ``Bearer bonds``, ``reset-token=``) reach ``_manifest``,
+``CHANGELOG`` and ``QUARANTINE.tsv`` verbatim, so the broad TOKEN_PATTERN there let any sender halt every
+sync;
+the cycle also passes the actual cursor values (``known_secrets``), which are matched literally."""
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
@@ -182,7 +195,9 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
                 f"restore it with `git checkout -- {path}`",
             )
         )
-    if status is PageStatus.DELETED and not body.lstrip("\n").startswith("# [DELETED UPSTREAM]"):
+    if status is PageStatus.DELETED and not body.lstrip("\n").startswith(
+        ("# [DELETED UPSTREAM]", "# [MOVED OUT OF SCOPE]", "# [RETIRED]")
+    ):
         findings.append(
             LintFinding("FRONTMATTER", path, "status deleted but the body is not a tombstone stub")
         )
@@ -309,22 +324,32 @@ def _pipeline_files(repo: Path) -> list[str]:
     return sorted(out)
 
 
-def _first_token_hit(path: Path) -> tuple[int, str] | None:
+def _first_token_hit(
+    path: Path, pattern: re.Pattern[str], known: Sequence[str] = ()
+) -> tuple[int, str] | None:
     try:
         with path.open("rb") as fh:
             for n, raw in enumerate(fh, start=1):
-                m = TOKEN_PATTERN.search(raw.decode("utf-8", errors="replace"))
+                line = raw.decode("utf-8", errors="replace")
+                if any(k in line for k in known):
+                    return n, "a live cursor value"
+                m = pattern.search(line)
                 if m:
-                    return n, m.group(0).strip()
+                    what = m.group(0).strip()
+                    return n, what.split("=", 1)[0] + "=" if "=" in what else what.split()[0]
     except OSError as exc:
         log.warning("cannot read %s: %s", path, exc.strerror)
     return None
 
 
-def lint_no_tokens(repo: Path, paths: Sequence[str] | None = None) -> list[LintFinding]:
+def lint_no_tokens(
+    repo: Path, paths: Sequence[str] | None = None, *, known_secrets: Sequence[str] = ()
+) -> list[LintFinding]:
     """TOKEN: no pipeline-written file (``_manifest``, ``_sync``, INDEX, CHANGELOG, DEPENDS) matches
-    TOKEN_PATTERN (blocking). Mirror pages matching it are reported non-blocking and go through the SECRET
-    quarantine path, because corporate API docs legitimately contain ``Bearer ``."""
+    PIPELINE_TOKEN_PATTERN or holds one of ``known_secrets`` (the live cursor values; blocking). Mirror pages
+    matching TOKEN_PATTERN are reported non-blocking and go through the SECRET quarantine path, because
+    corporate API docs legitimately contain ``Bearer ``; a mirror page holding a known secret blocks."""
+    known = [k for k in known_secrets if len(k) >= 16]
     if paths is None:
         candidates = [*_pipeline_files(repo), *_walk_files(repo, _MIRROR), *_walk_files(repo, "topics")]
     else:
@@ -337,15 +362,16 @@ def lint_no_tokens(repo: Path, paths: Sequence[str] | None = None) -> list[LintF
         pipeline = _is_pipeline_file(path)
         if not (pipeline or path.startswith((_MIRROR + "/", "topics/"))):
             continue
-        hit = _first_token_hit(full)
+        hit = _first_token_hit(full, PIPELINE_TOKEN_PATTERN if pipeline else TOKEN_PATTERN, known)
         if hit is None:
             continue
         line, what = hit
-        if pipeline:
-            msg = f"pipeline-written file matches {what!r} at line {line}: a cursor or bearer token leaked"
+        leaked = what == "a live cursor value"
+        if pipeline or leaked:
+            msg = f"file holds {what!r} at line {line}: a cursor or bearer token leaked"
         else:
             msg = f"page matches {what!r} at line {line}; route it through the SECRET quarantine"
-        findings.append(LintFinding("TOKEN", path, msg, blocking=pipeline))
+        findings.append(LintFinding("TOKEN", path, msg, blocking=pipeline or leaked))
     return _sorted(findings)
 
 
@@ -527,15 +553,18 @@ def _dirty_mirror_paths(repo: Path) -> list[str]:
     return paths
 
 
-def run_land_gate(repo: Path, changed_paths: Sequence[str]) -> list[LintFinding]:
-    """Run every repo lint (symlinks, frontmatter on changed pages, paths, cache, tokens, index budget)."""
+def run_land_gate(
+    repo: Path, changed_paths: Sequence[str], *, known_secrets: Sequence[str] = ()
+) -> list[LintFinding]:
+    """Run every repo lint (symlinks, frontmatter on changed pages, paths, cache, tokens, index budget);
+    ``known_secrets`` (extension) are live cursor values no committed file may contain."""
     changed = sorted({*changed_paths, *_dirty_mirror_paths(repo)})
     findings: list[LintFinding] = []
     findings += lint_no_symlinks(repo)
     findings += lint_mirror_frontmatter(repo, [p for p in changed if p.startswith(_MIRROR + "/")])
     findings += lint_paths(repo, changed)
     findings += lint_no_cache_in_git(repo)
-    findings += lint_no_tokens(repo, sorted({*_pipeline_files(repo), *changed}))
+    findings += lint_no_tokens(repo, sorted({*_pipeline_files(repo), *changed}), known_secrets=known_secrets)
     findings += lint_index_budget(repo)
     blocking = [f for f in findings if f.blocking]
     if blocking:

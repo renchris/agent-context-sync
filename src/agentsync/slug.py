@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import unicodedata
 
+from agentsync.policy import is_agent_instruction_name, neutralise_name
+
 MAX_PATH_CHARS = 200
 """Cap on any docs-repo-relative path, so a Windows checkout clears MAX_PATH without core.longpaths."""
 
@@ -72,14 +74,41 @@ def _strip_suffix(source_name: str) -> str:
     return source_name
 
 
+def safe_segment(text: str) -> str:
+    """Slug ONE segment, then neutralise it when the slug is an agent instruction name or dot-prefixed.
+
+    Neutralisation is decided on the slug, never on the raw name: slugify folds fullwidth letters, strips
+    diacritics, zero-width characters, brackets and leading whitespace, so fullwidth ``CLAUDE``, ``[CLAUDE]``,
+    `` .claude`` or ``.git`` would otherwise slug to exactly the names agents (or git) treat specially.
+    The result is a fixed point of both ``slugify`` and ``neutralise_name``.
+    """
+    return neutralise_name(slugify(text))
+
+
+def is_safe_segment(segment: str) -> bool:
+    """True when ``segment`` (an already-slugged docs path segment) is neither dot-prefixed nor an agent
+    instruction name (``claude.md``, ``agents.md``, ``.git``, ``.claude`` ...)."""
+    return (
+        bool(segment)
+        and not segment.startswith(".")
+        and not is_agent_instruction_name(segment.removesuffix(".md") if segment.endswith(".md") else segment)
+    )
+
+
+def is_safe_mirror_path(path: str) -> bool:
+    """True when no segment below ``mirror/<source_id>/`` of ``path`` is unsafe (:func:`is_safe_segment`)."""
+    parts = path.split("/")
+    return all(is_safe_segment(p) for p in parts[2:] if p)
+
+
 def mirror_name(source_name: str) -> str:
-    """Return the slugged file name for a WHOLE unit: ``slugify(name)`` + ``.md`` (see STRIP_SUFFIXES)."""
-    return slugify(_strip_suffix(source_name)) + ".md"
+    """Return the slugged file name for a WHOLE unit: ``safe_segment(name)`` + ``.md`` (STRIP_SUFFIXES)."""
+    return safe_segment(_strip_suffix(source_name)) + ".md"
 
 
 def mirror_dir_name(source_name: str) -> str:
-    """Return the slugged directory name for a multi-unit source: ``slugify(name)`` + ``.d``."""
-    return slugify(source_name) + ".d"
+    """Return the slugged directory name for a multi-unit source: ``safe_segment(name)`` + ``.d``."""
+    return safe_segment(source_name) + ".d"
 
 
 def _shorten(prefix: list[str], dirs: list[str], leaf: str, *, leaf_ext: str, reserve: int, key: str) -> str:
@@ -89,12 +118,12 @@ def _shorten(prefix: list[str], dirs: list[str], leaf: str, *, leaf_ext: str, re
     the item, never on the unit, so every unit of one item lands in the same ``.d`` directory.
     """
     h = _hash8(key)
-    dirs = [_clean(slugify(d[:_DIR_SEGMENT_CAP])) for d in dirs]
+    dirs = [_clean(safe_segment(d[:_DIR_SEGMENT_CAP])) for d in dirs]
     base = leaf[: -len(leaf_ext)] if leaf.endswith(leaf_ext) else leaf
     cap = _GENERATED_CAP - reserve
 
     def build(dir_parts: list[str], base_len: int) -> str:
-        name = _clean(slugify(base[:base_len])) if base_len > 0 else "x"
+        name = _clean(safe_segment(base[:base_len])) if base_len > 0 else "x"
         return "/".join([*prefix, *dir_parts, f"{name}-{h}{leaf_ext}"])
 
     # Keep as many leading directories as fit; fold the deeper rest into one hashed segment.
@@ -110,7 +139,7 @@ def _shorten(prefix: list[str], dirs: list[str], leaf: str, *, leaf_ext: str, re
 
 
 def _unit_stem(file_stem: str) -> str:
-    return _clean(slugify(slugify(file_stem)[:_STEM_CAP])) + ".md"
+    return _clean(safe_segment(safe_segment(file_stem)[:_STEM_CAP])) + ".md"
 
 
 def mirror_rel_path(source_id: str, rel_path: str, *, file_stem: str = "") -> str:
@@ -120,6 +149,10 @@ def mirror_rel_path(source_id: str, rel_path: str, *, file_stem: str = "") -> st
     Unit of a multi-unit source: ``mirror/<source_id>/<slug dirs>/<mirror_dir_name(name)>/<slug(stem)>.md``.
     Paths longer than MAX_PATH_CHARS are shortened deterministically (segment truncation + 8-hex hash).
 
+    Every segment is slugged and THEN neutralised (:func:`safe_segment`), so no upstream spelling of
+    ``CLAUDE.md``, ``AGENTS.md``, ``.claude/`` or ``.git/`` lands where an agent auto-loads it or git
+    skips it.
+
     Generated paths are capped at MAX_PATH_CHARS - 9 so a later ``disambiguate`` still fits the cap.  A unit
     stem is capped at 60 characters, and whether (and how) a multi-unit item's directory is shortened is
     decided for that 60-character worst case, so all units of one item always share one ``.d`` directory.
@@ -128,7 +161,7 @@ def mirror_rel_path(source_id: str, rel_path: str, *, file_stem: str = "") -> st
     if not parts:
         parts = ["untitled"]
     prefix = ["mirror", source_id]
-    dirs = [slugify(p) for p in parts[:-1]]
+    dirs = [safe_segment(p) for p in parts[:-1]]
     key = f"{source_id}\0{rel_path}"
     if not file_stem:
         leaf = mirror_name(parts[-1])

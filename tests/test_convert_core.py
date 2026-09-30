@@ -415,7 +415,7 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
         "pandoc-gfm": (".docx", ".odt", ".rtf", ".html", ".htm"),
         "xlsx-openpyxl": (".xlsx", ".xlsm"),
         "pptx-python-pptx": (".pptx",),
-        "pdf-pdfminer": (".pdf",),
+        "pdf-pypdfium2": (".pdf",),
         "markdown-passthrough": (".md", ".markdown"),
         "text-plain": (".txt", ".csv", ".tsv", ".log", ".vtt", ".json", ".xml", ".yaml", ".yml"),
         "eml-stdlib": (".eml",),
