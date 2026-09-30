@@ -241,7 +241,7 @@ def test_materialise_copies_hashes_and_charges_budget(tmp_path: Path, thread_pol
     )
     assert dest.read_bytes() == data
     assert stat.S_IMODE(os.lstat(dest).st_mode) == 0o600  # corporate bytes in staging are owner-only
-    assert (budget.used, budget.files_used) == (len(data), 1)
+    assert (budget.used, budget.files_used) == (0, 1), "a local file downloads nothing: 0 bytes charged"
     after = os.lstat(src)
     assert (after.st_mtime_ns, after.st_size, after.st_ino) == (
         before.st_mtime_ns,
@@ -290,6 +290,7 @@ def test_materialise_reads_under_thread_policy_on(tmp_path: Path, monkeypatch: p
 
 def test_budget_is_charged_before_any_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     src = _write(tmp_path / "big.bin", b"x" * 100)
+    monkeypatch.setattr(m, "is_dataless", lambda st: True)  # an online-only file: reading it downloads it
     monkeypatch.setattr(m, "_copy_once", lambda *a: pytest.fail("read despite exhausted budget"))
     budget = ByteBudget(99, 10)
     dest = tmp_path / "out" / "big.bin"
@@ -297,6 +298,34 @@ def test_budget_is_charged_before_any_read(tmp_path: Path, monkeypatch: pytest.M
         m.materialise(src, dest, budget)
     assert (budget.used, budget.files_used) == (0, 0)
     assert not dest.exists()
+
+
+def test_the_byte_budget_is_charged_only_for_dataless_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L3: the byte budget bounds downloads. An already-local file never consumes it (a budget of 0 still
+    copies it); a file that is dataless (online-only) when materialise lstats it is charged its size."""
+    local = _write(tmp_path / "local.docx", b"L" * 500)
+    online = _write(tmp_path / "online.docx", b"O" * 300)
+    online_ino = os.lstat(online).st_ino
+    real = m.is_dataless
+    monkeypatch.setattr(m, "is_dataless", lambda st: st.st_ino == online_ino or real(st))
+    assert m.download_cost(os.lstat(local)) == 0 and m.download_cost(os.lstat(online)) == 300
+    zero = ByteBudget(0, 10)
+    res = m.materialise(local, tmp_path / "o" / "local.docx", zero)
+    assert (res.size, res.was_dataless) == (500, False)
+    assert (zero.used, zero.files_used) == (0, 1), "a local file never consumes the byte budget"
+    monkeypatch.setattr(m, "_copy_once", lambda *a: pytest.fail("downloaded despite a budget of 0"))
+    with pytest.raises(BudgetExhaustedError):
+        m.materialise(online, tmp_path / "o" / "online.docx", zero)
+    assert (zero.used, zero.files_used) == (0, 1) and not (tmp_path / "o" / "online.docx").exists()
+    monkeypatch.undo()
+    monkeypatch.setattr(m, "is_dataless", lambda st: st.st_ino == online_ino or real(st))
+    enough = ByteBudget(300, 10)
+    res = m.materialise(online, tmp_path / "o" / "online.docx", enough)
+    assert res.was_dataless and (enough.used, enough.files_used) == (300, 1)
+    m.materialise(local, tmp_path / "o" / "again.docx", enough)
+    assert (enough.used, enough.files_used) == (300, 2), "the budget is spent, and a local file still fits"
 
 
 def test_file_budget_is_enforced(tmp_path: Path) -> None:

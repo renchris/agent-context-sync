@@ -158,6 +158,16 @@ def _one_line(text: str, limit: int = 300) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
+def _download_cost(src: SourceConfig, row: ItemRow) -> int:
+    """The bytes fetching ``row`` costs the per-cycle materialise budget: a download only. A Graph item is
+    always a download; a local or inbox file only when the manifest saw it dataless (online-only). An
+    already-local file costs 0, so ``sync --materialise-budget 0`` still converts every local file
+    (``materialise.materialise`` charges again from its own lstat: a file evicted since the scan is caught).
+    """
+    size = max(row.size or 0, 0)
+    return size if src.kind.is_graph or row.dataless else 0
+
+
 def _item_from_row(row: ItemRow) -> SourceItem:
     """Rebuild the SourceItem an arm's ``fetch`` needs from the manifest row (its latest observation)."""
     return SourceItem(
@@ -552,6 +562,8 @@ class _SourceAcc:
     counts: Counter[Verdict] = field(default_factory=Counter)
     materialised_bytes: int = 0
     deferred: int = 0
+    deferred_online_only: int = 0
+    converted: int = 0
     breaker_tripped: bool = False
     staged_cursor: bool = False
     skipped_reason: str | None = None
@@ -575,6 +587,8 @@ class _SourceAcc:
             skipped_reason=self.skipped_reason,
             alarms=tuple(self.alarms),
             errors=tuple(self.errors),
+            converted=self.converted,
+            deferred_online_only=self.deferred_online_only,
         )
 
 
@@ -1494,17 +1508,18 @@ class _Cycle:
             log.info("%s: %s refused: %s", sid, row.rel_path, duplicate)
             self._publish(src, row, stub, acc, quarantine_reason=duplicate)
             return
-        if not budget.can_afford(max(row.size or 0, 0)):
+        if not budget.can_afford(_download_cost(src, row)):
             self._defer(src, row, budget, acc)
             return
         try:
             fetched = arm.fetch(_item_from_row(row), self.staging, budget)
         except BudgetExhaustedError:
-            self._defer(src, row, budget, acc)
+            self._defer(src, row, budget, acc, online_only=True)  # the pre-check passed: bytes refused it
             return
         except DatalessRefusedError as exc:
             self.manifest.set_verdict(sid, stable, Verdict.DEFERRED)
             acc.deferred += 1
+            acc.deferred_online_only += 1
             acc.alarms.append(f"{row.rel_path}: hydration refused by the OS ({exc}); deferred")
             return
         except AuthRequiredError:
@@ -1540,18 +1555,34 @@ class _Cycle:
             reason=reason,
         )
 
-    def _defer(self, src: SourceConfig, row: ItemRow, budget: ByteBudget, acc: _SourceAcc) -> None:
+    def _defer(
+        self,
+        src: SourceConfig,
+        row: ItemRow,
+        budget: ByteBudget,
+        acc: _SourceAcc,
+        *,
+        online_only: bool | None = None,
+    ) -> None:
+        """Leave ``row`` for a later run. It is online-only when reading it needs a download (the budget's
+        byte side refused it); otherwise the file side (``max_files``) did. ``online_only`` None: decided here
+        from the row; a fetch that raised BudgetExhaustedError after the pre-check passed (a file the manifest
+        saw local that materialise found dataless) passes True."""
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
         acc.deferred += 1
         acc.counts[Verdict.DEFERRED] += 1
-        size = row.size or 0
+        cost = _download_cost(src, row)
+        if online_only is None:
+            online_only = cost > 0 and budget.used + cost > budget.max_bytes
+        if online_only:
+            acc.deferred_online_only += 1
+        size = max(row.size or 0, 0)
         cap = self.budget_bytes if self.budget_bytes is not None else src.max_materialise_bytes
-        if size > cap:
+        if online_only and size > cap:
             acc.alarms.append(
-                f"{row.rel_path}: {size} bytes exceeds the per-cycle budget ({cap}); raise "
+                f"{row.rel_path}: online-only, {size} bytes exceeds the per-cycle budget ({cap}); raise "
                 "max_materialise_bytes or run `agentsync materialise --budget BYTES PATH`"
             )
-        del budget
 
     def _after_fetch(self, src: SourceConfig, row: ItemRow, fetched: FetchResult, acc: _SourceAcc) -> None:
         sid, stable = row.source_id, row.stable_id
@@ -1578,6 +1609,7 @@ class _Cycle:
             self._rewrite_if_moved(src, fresh, outs)
             self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
             return
+        acc.converted += 1
         result = convert_file(
             fetched.path,
             name=row.name,
@@ -2007,7 +2039,8 @@ def run_cycle(
     DRY_RUN classifies only: no materialise, no writes under docs/, no commit, no cursor change.
 
     Extensions (keyword-only): ``client`` injects a GraphClient (tests; default built from ``[graph]``);
-    ``budget_bytes`` overrides every source's per-cycle materialise budget; ``materialise_paths`` restricts
+    ``budget_bytes`` overrides every source's per-cycle materialise budget (download bytes: only online-only
+    files and Graph items are charged, so 0 still converts every local file); ``materialise_paths`` restricts
     the work queue to those files (``agentsync materialise``); ``accept_deletions`` lists sources whose
     breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion).
     """

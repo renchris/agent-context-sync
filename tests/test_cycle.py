@@ -463,3 +463,46 @@ def test_inbox_drop_matching_a_graph_file_by_name_and_size_is_refused_unread(
         )
     assert rows["notes.md"].state is RowState.LIVE and rows["other.md"].state is RowState.LIVE
     assert "duplicate-of drive" in (config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the materialise byte budget charges downloads only (L3)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _mark_online_only(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
+    """Mock SF_DATALESS on these files (a test has no File Provider): the local arm lists them as dataless
+    and materialise charges them as a download; every other file stays local."""
+    from agentsync import arm_local, materialise  # noqa: PLC0415
+
+    inos = {p.stat().st_ino for p in paths}
+    real = materialise.is_dataless
+
+    def fake(st: Any) -> bool:
+        return st.st_ino in inos or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+
+
+def test_budget_0_converts_every_local_file_and_defers_only_online_only_ones(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``budget_bytes=0`` (install.sh's first sync): already-local files never consume the byte budget, so
+    all of them are converted; only the online-only files wait for a run whose budget allows the download."""
+    online = [local_source_dir / "projects" / "sample.pptx", local_source_dir / "projects" / "sample.pdf"]
+    _mark_online_only(monkeypatch, *online)
+    first = run(sample_config, budget_bytes=0)
+    [src] = first.sources
+    assert first.exit_code == 0
+    assert (src.deferred, src.deferred_online_only, src.materialised_bytes) == (2, 2, 0)
+    assert src.converted >= 8, "every local fixture is read and converted"
+    assert not any("exceeds the per-cycle budget" in a and "sample.docx" in a for a in src.alarms)
+    mirror = sample_config.docs_repo / "mirror" / SID / "projects"
+    assert (mirror / "sample.docx.md").is_file() and len(list(mirror.iterdir())) >= 6
+    assert not any(mirror.glob("sample.pptx*")) and not any(mirror.glob("sample.pdf*"))
+    second = run(sample_config)  # the per-source budget (50MB): the two downloads fit
+    [src] = second.sources
+    assert (src.converted, src.deferred, src.deferred_online_only) == (2, 0, 0)
+    assert src.materialised_bytes == sum(p.stat().st_size for p in online), "only downloads are charged"
+    assert any(mirror.glob("sample.pptx*")) and (mirror / "sample.pdf.md").is_file()

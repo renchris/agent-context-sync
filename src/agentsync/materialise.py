@@ -116,6 +116,12 @@ def is_dataless(st: os.stat_result) -> bool:
     return bool(getattr(st, "st_flags", 0) & SF_DATALESS)
 
 
+def download_cost(st: os.stat_result) -> int:
+    """The bytes reading this file costs the materialise byte budget: its size when it is dataless
+    (online-only: reading it downloads it), else 0 (already local: no download)."""
+    return max(st.st_size, 0) if is_dataless(st) else 0
+
+
 def get_materialize_policy(scope: int = IOPOL_SCOPE_PROCESS) -> int:
     """Return getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, scope); raises OSError."""
     _check_scope(scope)
@@ -280,20 +286,21 @@ def materialise(
 ) -> MaterialiseResult:
     """Copy ``src`` to ``dest`` (tmp + rename) hashing on the way, under ``materialize_allowed()``.
 
-    Pre: ``src`` is a regular file (lstat, not a symlink). Charges ``budget`` with lstat().st_size BEFORE
-    reading (raises BudgetExhaustedError without reading). EDEADLK -> DatalessRefusedError (no retry);
-    ETIMEDOUT -> retry ``retries`` times with exponential backoff, then ProviderTimeoutError; ENOENT ->
-    FileNotFoundError propagates (vanished between walk and read: re-classify next cycle); size or mtime
-    changed during the copy -> MaterialiseError("unstable"), dest removed. Post: dest holds exactly the bytes
-    hashed into ``content_sha256``; src is never written.
-    """
+    Pre: ``src`` is a regular file (lstat, not a symlink). Charges ``budget`` BEFORE reading (raises
+    BudgetExhaustedError without reading): one file always, and lstat().st_size bytes only when ``src`` is
+    dataless (online-only, SF_DATALESS) at that lstat. The byte budget bounds downloads: an already-local file
+    reads no provider bytes and never consumes it, so a budget of 0 still copies every local file. EDEADLK ->
+    DatalessRefusedError (no retry); ETIMEDOUT -> retry ``retries`` times with exponential backoff, then
+    ProviderTimeoutError; ENOENT -> FileNotFoundError propagates (vanished between walk and read: re-classify
+    next cycle); size or mtime changed during the copy -> MaterialiseError("unstable"), dest removed. Post:
+    dest holds exactly the bytes hashed into ``content_sha256``; src is never written."""
     st0 = os.lstat(src)  # FileNotFoundError propagates
     if stat.S_ISLNK(st0.st_mode):
         raise MaterialiseError(str(src), None, "refusing to read a symlink (never followed)")
     if not stat.S_ISREG(st0.st_mode):
         raise MaterialiseError(str(src), None, "not a regular file")
     was_dataless = is_dataless(st0)
-    budget.charge(st0.st_size)  # BudgetExhaustedError: nothing read
+    budget.charge(download_cost(st0))  # BudgetExhaustedError: nothing read
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp_fd, tmp_name = tempfile.mkstemp(prefix=f".{dest.name[:64]}.", suffix=".part", dir=dest.parent)

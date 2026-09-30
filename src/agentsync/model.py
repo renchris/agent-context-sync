@@ -250,6 +250,10 @@ class SourceArm(Protocol):
 class ByteBudget:
     """Mutable per-cycle, per-source byte/file budget; ``charge`` raises BudgetExhaustedError when exceeded.
 
+    The byte side bounds downloads: callers charge a file's size only when reading it downloads it (a
+    dataless, online-only local file, or any Graph item), and 0 bytes for an already-local file, which still
+    counts one file against ``max_files``.
+
     Deliberately not a frozen dataclass: one instance lives for one source for one cycle.
     """
 
@@ -388,13 +392,15 @@ class SourceReport:
     pass_kind: PassKind | None  # None when the source was skipped (network down, paused, lock, error)
     enumeration_complete: bool
     counts: Mapping[Verdict, int] = field(default_factory=dict, hash=False)
-    materialised_bytes: int = 0
-    deferred: int = 0
+    materialised_bytes: int = 0  # bytes downloaded (online-only files and Graph items), not local reads
+    deferred: int = 0  # items left for a later run (budget or refused hydration)
     breaker_tripped: bool = False
     cursor_advanced: bool = False
     skipped_reason: str | None = None
     alarms: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    converted: int = 0  # files whose bytes were read and converted this run (pages changed or not)
+    deferred_online_only: int = 0  # of ``deferred``: online-only files (a download the budget did not allow)
 
 
 @dataclass(frozen=True, slots=True)

@@ -551,7 +551,7 @@ def test_fetch_stages_exact_bytes(tree: Path, tmp_path: Path) -> None:
     assert res.path.read_bytes() == b"docx bytes"
     assert res.size == 10
     assert res.content_sha256 == hashlib.sha256(b"docx bytes").hexdigest()
-    assert budget.used == 10
+    assert (budget.used, budget.files_used) == (0, 1), "a local file downloads nothing: 0 bytes charged (L3)"
     # distinct items never share a staging path
     other = next(i for i in arm.scan(None, full=True).items if i.rel_path == "a/z.md")
     assert arm.fetch(other, staging, budget).path.parent != res.path.parent
@@ -575,9 +575,13 @@ def test_fetch_of_deleted_file_is_file_not_found(tree: Path, tmp_path: Path) -> 
         arm.fetch(item, tmp_path / "staging", ByteBudget(1000, 10))
 
 
-def test_fetch_respects_the_budget(tree: Path, tmp_path: Path) -> None:
+def test_fetch_respects_the_budget(tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     arm = al.LocalArm(_cfg(tree))
     item = next(i for i in arm.scan(None, full=True).items if i.rel_path == "b.docx")
+    ino = (tree / "b.docx").stat().st_ino
+    real = mat.is_dataless
+    # online-only (a test has no File Provider): only a download is charged against the byte budget (L3)
+    monkeypatch.setattr(mat, "is_dataless", lambda st: st.st_ino == ino or real(st))
     with pytest.raises(BudgetExhaustedError):
         arm.fetch(item, tmp_path / "staging", ByteBudget(5, 10))
     assert not (tmp_path / "staging").exists() or not any((tmp_path / "staging").rglob("*.docx"))

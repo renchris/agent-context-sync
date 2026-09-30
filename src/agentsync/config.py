@@ -183,7 +183,7 @@ class SourceConfig:
     state: SourceState = SourceState.LIVE
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = DEFAULT_EXCLUDES
-    max_materialise_bytes: int = 1024**3
+    max_materialise_bytes: int = 1024**3  # bytes downloaded per cycle: online-only files only
     max_files: int = 5000
     cadence_s: int = 300
     principal: str | None = None
@@ -702,7 +702,7 @@ max_rows_per_sheet = 5000
 # sentinel = "README.txt"                             # positive control: must exist, or the walk is 'unknown'
 # include = []                                        # empty = everything
 # exclude = ["~$*", "*.tmp", ".~lock.*#", ".DS_Store", "._*"]
-# max_materialise_bytes = "1GiB"                      # hydration budget per cycle (online-only files)
+# max_materialise_bytes = "1GiB"                      # download budget per cycle: online-only files only
 # max_files = 5000
 
 # A manual drag-and-drop inbox:
