@@ -7,6 +7,15 @@ logs under Config.log_dir.
 
 Every function that talks to launchd takes a keyword-only ``runner`` (default: run ``/bin/launchctl``), so
 tests and ``--dry-run`` callers can record the exact argv without touching launchd.
+
+The signed launcher (C15 §3, requirements 17-21).  ``ProgramArguments[0]`` is ``agentsync-launcher`` (the
+``launcher/`` app bundle, installed at ``~/Applications/AgentSyncLauncher.app`` or named by
+``$AGENTSYNC_LAUNCHER``) whenever it is present: it is the TCC-responsible process, so one approval (or one
+PPPC ``SystemPolicyAllFiles`` entry) covers the job and never an interpreter that runs any script.  It
+canaries every TCC-protected source root with a 10 s timeout before spawning Python (an unanswered prompt
+exits 79 ``TCC_PENDING``, never an empty folder) and holds a hard wall-clock watchdog over the child.
+Without the launcher, a config whose live local/inbox sources are all outside TCC-protected folders falls
+back to the interpreter (logged); one with a protected source refuses (ConfigError naming the fix).
 """
 
 from __future__ import annotations
@@ -26,11 +35,26 @@ from pathlib import Path
 
 from agentsync.config import Config
 from agentsync.errors import ConfigError
-from agentsync.model import CycleMode
+from agentsync.model import CycleMode, SourceKind
+from agentsync.paths import CLOUD_STORAGE_ROOT, expand, is_cloud_path, is_under
 
 log = logging.getLogger(__name__)
 
 LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+LAUNCHER_ENV = "AGENTSYNC_LAUNCHER"  # path of the launcher .app or executable; "none" disables it
+LAUNCHER_BUNDLE = "AgentSyncLauncher.app"
+LAUNCHER_EXECUTABLE = "agentsync-launcher"
+LAUNCHER_IDENTIFIER = "com.agentsync.launcher"
+EXIT_TCC_PENDING = 79  # launcher: a canary or the watchdog timed out (log token TCC_PENDING)
+EXIT_TCC_DENIED = 80  # launcher --canary-only: EPERM/EACCES (log token TCC_DENIED)
+EXIT_CANARY_MISSING = 66  # launcher --canary-only: ENOENT/ENOTDIR
+EXIT_CANARY_IO = 74  # launcher --canary-only: any other errno
+EXIT_DISCLAIM_UNAVAILABLE = 81  # launcher --self-responsible: responsibility_spawnattrs_setdisclaim missing
+CANARY_TIMEOUT_S = 10  # C15 requirement 17
+WATCHDOG_MIN_S = 1800  # a job's wall-clock limit is max(this, 4 x its interval)
+_WATCHDOG_FACTOR = 4
+_WATCHDOG_GRACE_S = 30
 
 _LAUNCHCTL = "/bin/launchctl"
 _LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$")
@@ -39,6 +63,8 @@ _NOT_LOADED_RCS = frozenset({3, 113})  # "No such process" / "Could not find ser
 _BOOTSTRAP_RETRY_RCS = frozenset({5, 37})  # EIO right after a bootout; "Operation already in progress"
 _BOOTSTRAP_ATTEMPTS = 5
 _BOOTOUT_POLLS = 10
+
+_PLATFORM_INTERPRETERS = frozenset({"/usr/bin/python3", "/usr/bin/python", "/usr/bin/env"})
 
 _Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 """Runs one argv (``argv[0]`` is ``/bin/launchctl``); returns the completed process, never raises on rc."""
@@ -59,6 +85,7 @@ class AgentSpec:
     materialize_dataless_files: bool = False
     throttle_interval_s: int = 60
     low_priority_io: bool = True  # ops extension: throttled disk I/O on top of ProcessType Background
+    umask: int | None = 0o077  # ops extension: launchd ``Umask`` (63): nothing the job creates is group/world
 
 
 def _run_launchctl(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -95,14 +122,21 @@ def _interpreter() -> str:
 
 
 def program_arguments(config: Config, mode: str) -> tuple[str, ...]:
-    """Absolute interpreter + ``-m agentsync sync --mode <mode> --config <abs path>`` (no PATH lookup)."""
+    """Absolute interpreter + ``-I -X utf8 -m agentsync sync --mode <mode> --config <abs path>`` (no PATH
+    lookup; isolated mode ignores PYTHON* variables and the user site, and is the prefix the signed launcher
+    pins, see launcher/Sources/main.swift)."""
     valid = {m.value for m in CycleMode}
     if mode not in valid:
         raise ValueError(f"mode must be one of {sorted(valid)}, got {mode!r}")
     cfg = config.config_path.expanduser()
     if not cfg.is_absolute():
         cfg = Path.cwd() / cfg
-    return (_interpreter(), "-m", "agentsync", "sync", "--mode", str(mode), "--config", str(cfg))
+    return (_interpreter(), *CHILD_PREFIX, "--mode", str(mode), "--config", str(cfg))
+
+
+CHILD_PREFIX: tuple[str, ...] = ("-I", "-X", "utf8", "-m", "agentsync", "sync")
+"""What follows the interpreter in every job's child argv; the launcher's pin (``childPrefix``) is the
+same."""
 
 
 def _environment() -> dict[str, str]:
@@ -110,14 +144,214 @@ def _environment() -> dict[str, str]:
     return {"PATH": LAUNCHD_PATH, "PYTHONUTF8": "1"}
 
 
+LOG_ROTATE_BYTES = 8 * 1024 * 1024
+LOG_ROTATE_KEEP = 2
+
+
+def rotate_logs(
+    log_dir: Path, *, max_bytes: int = LOG_ROTATE_BYTES, keep: int = LOG_ROTATE_KEEP
+) -> list[Path]:
+    """Rotate the LaunchAgent logs (``*.log`` in ``log_dir``) above ``max_bytes``: ``x.log`` -> ``x.log.1``
+    -> ... -> ``x.log.<keep>`` (the oldest is deleted).  launchd opens StandardOut/ErrorPath per spawn and
+    never rotates them, so each cycle calls this first: a job log holds at most (keep + 1) x max_bytes.
+    A run in progress keeps writing to its (renamed) file; the next spawn starts a fresh one.
+    Returns the logs rotated."""
+    rotated: list[Path] = []
+    if not log_dir.is_dir():
+        return rotated
+    for path in sorted(log_dir.glob("*.log")):
+        try:
+            if path.is_symlink() or not path.is_file() or path.stat().st_size <= max_bytes:
+                continue
+            for n in range(keep, 0, -1):
+                older = path.with_name(f"{path.name}.{n}")
+                if n == keep:
+                    older.unlink(missing_ok=True)
+                elif older.exists():
+                    older.replace(path.with_name(f"{path.name}.{n + 1}"))
+            path.replace(path.with_name(f"{path.name}.1"))
+            rotated.append(path)
+        except OSError as exc:
+            log.warning("log rotation of %s failed: %s", path, exc)
+    return rotated
+
+
+def launcher_identifier(launcher: Path | None = None) -> str:
+    """The launcher bundle's own ``CFBundleIdentifier`` (a corporate build sets ``BUNDLE_ID``); the default
+    identifier when there is no bundle or its Info.plist is unreadable.  PPPC and ``tccutil`` name this."""
+    exe = launcher if launcher is not None else _safe_find_launcher()
+    app = launcher_app(exe) if exe is not None else None
+    if app is None and exe is not None and exe.suffix == ".app":
+        app = exe
+    if app is None:
+        return LAUNCHER_IDENTIFIER
+    try:
+        info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return LAUNCHER_IDENTIFIER
+    ident = info.get("CFBundleIdentifier") if isinstance(info, dict) else None
+    return ident if isinstance(ident, str) and ident else LAUNCHER_IDENTIFIER
+
+
+def _safe_find_launcher() -> Path | None:
+    try:
+        return find_launcher()
+    except ConfigError:
+        return None
+
+
+def default_launcher_app() -> Path:
+    """Where ``scripts/install.sh`` installs the launcher: ``~/Applications/AgentSyncLauncher.app``."""
+    return Path.home() / "Applications" / LAUNCHER_BUNDLE
+
+
+def launcher_executable(path: Path) -> Path:
+    """The Mach-O inside ``path`` when it is the .app bundle, else ``path`` itself."""
+    if path.suffix == ".app":
+        return path / "Contents" / "MacOS" / LAUNCHER_EXECUTABLE
+    return path
+
+
+def launcher_app(executable: Path) -> Path | None:
+    """The .app bundle enclosing ``executable`` (what a PPPC payload or the FDA list names), if any."""
+    for parent in executable.parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+def find_launcher() -> Path | None:
+    """The launcher executable to use: ``$AGENTSYNC_LAUNCHER`` (app or binary; ``none`` disables), else the
+    default ``~/Applications`` install; None when absent.
+
+    An explicit but unusable path raises ConfigError.
+    """
+    explicit = os.environ.get(LAUNCHER_ENV)
+    if explicit is not None:
+        if explicit.strip().lower() in ("", "none", "0"):
+            return None
+        exe = launcher_executable(Path(explicit).expanduser())
+        if not exe.is_absolute() or not os.access(exe, os.X_OK):
+            raise ConfigError(
+                f"${LAUNCHER_ENV}={explicit!r} is not an executable launcher ({exe}); build it with "
+                "launcher/build.sh or unset the variable"
+            )
+        return exe
+    exe = launcher_executable(default_launcher_app())
+    return exe if os.access(exe, os.X_OK) else None
+
+
+def tcc_protected(path: Path) -> bool:
+    """True for a path macOS privacy (TCC) gates per responsible process: a File Provider tree, the
+    Documents/Desktop/Downloads folders, iCloud Drive, or a removable/network volume."""
+    p = expand(path)
+    if is_cloud_path(p):
+        return True
+    home = Path.home()
+    gated = (
+        home / "Documents",
+        home / "Desktop",
+        home / "Downloads",
+        home / "Library" / "Mobile Documents",
+        Path("/Volumes"),
+    )
+    return any(is_under(p, g) for g in gated)
+
+
+def canary_paths(config: Config) -> tuple[Path, ...]:
+    """The launcher's canaries: each live local/inbox source root under a TCC-protected folder, then its
+    sentinel when one is configured (config order, deduplicated)."""
+    out: list[Path] = []
+    for src in config.live_sources():
+        if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX) or src.path is None:
+            continue
+        root = expand(src.path)
+        if not tcc_protected(root):
+            continue
+        for p in (root, root / src.sentinel) if src.sentinel else (root,):
+            if p not in out:
+                out.append(p)
+    return tuple(out)
+
+
+def launcher_required(config: Config) -> bool:
+    """True when a live source sits under a TCC-protected folder, so the job must run the signed launcher."""
+    return bool(canary_paths(config))
+
+
+def watchdog_s(interval_s: int) -> int:
+    """The launcher's hard wall-clock limit for one run of a job started every ``interval_s`` seconds."""
+    return max(WATCHDOG_MIN_S, _WATCHDOG_FACTOR * interval_s)
+
+
+def job_arguments(config: Config, mode: str, interval_s: int, launcher: Path | None) -> tuple[str, ...]:
+    """``ProgramArguments`` for one job: the launcher with its watchdog and canaries, then ``--`` and
+    :func:`program_arguments`; just :func:`program_arguments` when ``launcher`` is None."""
+    child = program_arguments(config, mode)
+    if launcher is None:
+        return child
+    if not launcher.is_absolute():
+        raise ConfigError(f"launcher path {launcher} is not absolute")
+    argv = [
+        str(launcher),
+        "--timeout",
+        str(watchdog_s(interval_s)),
+        "--grace",
+        str(_WATCHDOG_GRACE_S),
+        "--canary-timeout",
+        str(CANARY_TIMEOUT_S),
+    ]
+    for p in canary_paths(config):
+        argv += ["--canary", str(p)]
+    return (*argv, "--", *child)
+
+
+def tcc_prompt_text(config: Config) -> str | None:
+    """The exact TCC prompt the user approves on the first launchd run (None when no source needs one).
+
+    The template is TCC's ``REQUEST_ACCESS_SERVICE_kTCCServiceFileProviderDomain`` string (C15 §3.1);
+    the provider name is read from the CloudStorage folder name (``OneDrive-Contoso`` -> ``OneDrive``).
+    """
+    cloud = [p for p in canary_paths(config) if is_cloud_path(p)]
+    if not cloud:
+        return None
+    root = expand(CLOUD_STORAGE_ROOT)
+    providers: list[str] = []
+    for p in cloud:
+        rel = p.relative_to(root).parts
+        name = rel[0].split("-", 1)[0] if rel else "the File Provider"
+        if name not in providers:
+            providers.append(name)
+    q_open, q_close = "\u201c", "\u201d"
+    return " / ".join(
+        f"{q_open}{LAUNCHER_EXECUTABLE}{q_close} wants to access files managed by {q_open}{name}{q_close}."
+        for name in providers
+    )
+
+
 def _spec(config: Config, suffix: str, mode: CycleMode, interval_s: int) -> AgentSpec:
-    """Build the AgentSpec for one mode."""
+    """Build the AgentSpec for one mode (the launcher wraps the interpreter whenever it is installed)."""
     label = f"{config.launchd_label_prefix}.{suffix}"
     _check_label(label)
+    launcher = find_launcher()
+    if launcher is None:
+        if launcher_required(config):
+            protected = ", ".join(str(p) for p in canary_paths(config))
+            raise ConfigError(
+                f"{label}: live sources under TCC-protected folders ({protected}) need the signed "
+                f"{LAUNCHER_EXECUTABLE}: run scripts/install.sh (or launcher/build.sh and copy "
+                f"build/{LAUNCHER_BUNDLE} to {default_launcher_app().parent}/), then install-agent again"
+            )
+        log.warning(
+            "launchd: %s not found; %s runs the interpreter directly (fine only while no source is under a "
+            "TCC-protected folder)",
+            LAUNCHER_EXECUTABLE,
+            label,
+        )
     log_dir = config.log_dir
     return AgentSpec(
         label=label,
-        program_arguments=program_arguments(config, mode.value),
+        program_arguments=job_arguments(config, mode.value, interval_s, launcher),
         stdout_path=log_dir / f"{label}.out.log",
         stderr_path=log_dir / f"{label}.err.log",
         start_interval_s=interval_s,
@@ -159,6 +393,13 @@ def _validate(spec: AgentSpec) -> None:
                 raise ValueError(f"{spec.label}: start_calendar[{k!r}] must be a non-negative int, got {v!r}")
     if spec.throttle_interval_s < 0:
         raise ValueError(f"{spec.label}: throttle_interval_s must be >= 0")
+    if spec.umask is not None and not 0 <= spec.umask <= 0o777:
+        raise ValueError(f"{spec.label}: umask must be within 0..0o777, got {spec.umask!r}")
+    if spec.program_arguments[0] in _PLATFORM_INTERPRETERS:
+        raise ValueError(
+            f"{spec.label}: {spec.program_arguments[0]} is an Apple platform binary: TCC denies it every "
+            f"protected folder with nothing to approve; run the signed {LAUNCHER_EXECUTABLE} instead"
+        )
 
 
 def _plist_dict(spec: AgentSpec) -> dict[str, object]:
@@ -181,6 +422,8 @@ def _plist_dict(spec: AgentSpec) -> dict[str, object]:
         d["StartInterval"] = spec.start_interval_s
     if spec.start_calendar is not None:
         d["StartCalendarInterval"] = dict(spec.start_calendar)
+    if spec.umask is not None:
+        d["Umask"] = spec.umask
     return d
 
 

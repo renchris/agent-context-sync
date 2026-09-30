@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agentsync.config import Config, SourceConfig
+from agentsync.errors import ConfigError
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
@@ -166,6 +167,76 @@ def _process_image() -> Path:
         except (OSError, AttributeError):
             pass
     return Path(os.path.realpath(sys.executable))
+
+
+@dataclass(frozen=True, slots=True)
+class _CodeSignature:
+    """What ``codesign`` says about the launcher (no network, nothing written)."""
+
+    valid: bool
+    verify_detail: str  # codesign --verify output when invalid
+    identifier: str | None
+    team_id: str | None  # None when "not set" (ad hoc)
+    adhoc: bool
+    hardened_runtime: bool
+    requirement: str | None  # the designated requirement (``codesign -d -r-``)
+
+
+def _find_launcher() -> Path | None:
+    """launchd.find_launcher (``$AGENTSYNC_LAUNCHER`` or ~/Applications/AgentSyncLauncher.app)."""
+    return launchd.find_launcher()
+
+
+def _codesign_info(path: Path) -> _CodeSignature:
+    """Verify and describe the signature of ``path`` (an .app bundle or a Mach-O) with /usr/bin/codesign."""
+    codesign = "/usr/bin/codesign"
+    verify = _run([codesign, "--verify", "--strict", "--verbose=1", str(path)], timeout=60)
+    info = _run([codesign, "-d", "--verbose=2", str(path)], timeout=60)
+    req = _run([codesign, "-d", "-r-", str(path)], timeout=60)
+    fields: dict[str, str] = {}
+    for line in (info.stderr + info.stdout).splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key and " " not in key:
+            fields.setdefault(key, value.strip())
+    requirement = None
+    for line in (req.stdout + req.stderr).splitlines():
+        text = line.lstrip("# ").strip()
+        if text.startswith("designated => "):
+            requirement = text[len("designated => ") :]
+    cd_flags = next(
+        (line for line in (info.stderr + info.stdout).splitlines() if line.startswith("CodeDirectory ")), ""
+    )
+    team = fields.get("TeamIdentifier")
+    return _CodeSignature(
+        valid=verify.returncode == 0,
+        verify_detail=(verify.stderr or verify.stdout).strip().splitlines()[-1] if verify.returncode else "",
+        identifier=fields.get("Identifier"),
+        team_id=None if team in (None, "not set") else team,
+        adhoc=fields.get("Signature") == "adhoc" or "adhoc" in cd_flags,
+        hardened_runtime="runtime" in cd_flags,
+        requirement=requirement,
+    )
+
+
+def _launcher_canary(launcher: Path, path: Path, timeout_s: float) -> tuple[int, str]:
+    """Run the launcher's canary on ``path`` *as its own responsible process* (``--self-responsible``), so the
+    answer is the launcher's TCC grant, not this terminal's.  Metadata-only: lstat + one directory entry or an
+    open-and-close; nothing is read, hydrated or written.  Returns (exit code, last log line)."""
+    argv = [
+        str(launcher),
+        "--self-responsible",
+        "--canary-only",
+        "--canary-timeout",
+        str(timeout_s),
+        "--canary",
+        str(path),
+    ]
+    try:
+        cp = _run(argv, timeout=timeout_s + 15)
+    except subprocess.TimeoutExpired:
+        return launchd.EXIT_TCC_PENDING, f"launcher did not return within {timeout_s + 15:.0f}s"
+    lines = [ln for ln in (cp.stderr or "").splitlines() if ln.strip()]
+    return cp.returncode, lines[-1].split("]: ", 1)[-1] if lines else ""
 
 
 def _in_launchd_job(config: Config) -> bool:
@@ -559,11 +630,16 @@ def _check_sources(config: Config) -> list[CheckResult]:
                 _ok("tcc", f"checked inside the LaunchAgent ({image}): results above are authoritative")
             )
         else:
+            try:
+                launcher = _find_launcher()
+            except ConfigError:
+                launcher = None
+            subject = (launchd.launcher_app(launcher) or launcher) if launcher is not None else image
             out.append(
                 _ok(
                     "tcc",
                     f"cloud roots were listed with this terminal's privacy grants; the LaunchAgent runs "
-                    f"{image} and needs its own: {_fda_fix(image)}",
+                    f"{subject} and needs its own (tcc.<source> below probes it): {_fda_fix(subject)}",
                 )
             )
     return out
@@ -602,6 +678,11 @@ def _check_graph(config: Config) -> list[CheckResult]:
         status = _auth_status(config)
     except NotImplementedError:
         out.append(_bad("graph.auth", "not checked: graph.auth is not implemented", Severity.WARN))
+        return out
+    except ConfigError as exc:  # [graph] itself is wrong (e.g. a multi-tenant authority): not a cache fault
+        out.append(
+            _bad("graph.config", str(exc), severity, fix="edit [graph] in sources.toml (see the message)")
+        )
         return out
     except Exception as exc:  # MSAL / Keychain errors are many; each is a diagnosis, not a crash
         out.append(
@@ -651,6 +732,200 @@ def _check_disk(config: Config) -> list[CheckResult]:
     return out
 
 
+_LAUNCHER_FIX = (
+    "scripts/install.sh (builds, signs and installs ~/Applications/AgentSyncLauncher.app), "
+    "then agentsync install-agent"
+)
+_DEVELOPER_ID_FIX = (
+    "SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)' launcher/build.sh, then scripts/install.sh"
+)
+_FP_CANARY_TIMEOUT_S = 15.0
+
+
+def _check_launcher(config: Config) -> list[CheckResult]:
+    """The signed launcher the LaunchAgents run: present, signature valid, identifier, designated requirement
+    (printed for the PPPC profile; WARN when it is an ad-hoc cdhash)."""
+    required = launchd.launcher_required(config)
+    try:
+        exe = _find_launcher()
+    except ConfigError as exc:
+        return [_bad("launcher", str(exc), fix=f"unset {launchd.LAUNCHER_ENV}, or {_LAUNCHER_FIX}")]
+    if exe is None:
+        where = f"{launchd.LAUNCHER_EXECUTABLE} not found at {launchd.default_launcher_app()}"
+        if not required:
+            return [
+                _ok(
+                    "launcher",
+                    f"{where}; not needed while no live source is under a TCC-protected folder (the "
+                    "LaunchAgents run the interpreter directly)",
+                )
+            ]
+        return [
+            _bad(
+                "launcher",
+                f"{where}: live sources sit under TCC-protected folders, so the LaunchAgents cannot be "
+                "installed without it",
+                fix=_LAUNCHER_FIX,
+            )
+        ]
+    target = launchd.launcher_app(exe) or exe
+    out = [_ok("launcher", f"{target}")]
+    sig = _codesign_info(target)
+    if not sig.valid:
+        out.append(
+            _bad(
+                "launcher.signature",
+                f"codesign --verify failed: {sig.verify_detail or 'invalid signature'}",
+                fix=_LAUNCHER_FIX,
+            )
+        )
+    else:
+        kind = "ad hoc" if sig.adhoc else f"TeamIdentifier {sig.team_id or '?'}"
+        runtime = "hardened runtime" if sig.hardened_runtime else "NO hardened runtime"
+        text = f"valid; identifier {sig.identifier}; {kind}; {runtime}"
+        expected = launchd.launcher_identifier(exe)  # the bundle's own CFBundleIdentifier (BUNDLE_ID builds)
+        if sig.identifier != expected:
+            out.append(
+                _bad(
+                    "launcher.signature",
+                    f"{text}; the bundle's Info.plist says {expected}",
+                    Severity.WARN,
+                    fix=_LAUNCHER_FIX,
+                )
+            )
+        elif sig.adhoc:
+            out.append(
+                _bad(
+                    "launcher.signature",
+                    f"{text}: every rebuild is a new TCC subject and PPPC cannot pin it",
+                    Severity.WARN,
+                    fix=_DEVELOPER_ID_FIX,
+                )
+            )
+        else:
+            out.append(_ok("launcher.signature", text))
+    req = sig.requirement or "<none>"
+    if sig.requirement is None or req.startswith("cdhash") or sig.adhoc:
+        out.append(
+            _bad(
+                "launcher.requirement",
+                f"designated => {req} (ad hoc: a PPPC CodeRequirement cannot pin a cdhash)",
+                Severity.WARN,
+                fix=_DEVELOPER_ID_FIX,
+            )
+        )
+    else:
+        pinned = "certificate leaf[subject.OU]" in req
+        out.append(
+            _ok(
+                "launcher.requirement",
+                f"designated => {req}"
+                + ("" if pinned else " (no certificate leaf[subject.OU]: not pinned to a TeamID)"),
+            )
+        )
+    return out
+
+
+def _check_tcc_access(config: Config) -> list[CheckResult]:
+    """Per TCC-protected live source: a timed, metadata-only read through the launcher, judged as the
+    launcher's own responsible process (FDA or the File Provider grant).  Needs the launcher."""
+    paths = launchd.canary_paths(config)
+    if not paths:
+        return []
+    try:
+        exe = _find_launcher()
+    except ConfigError:
+        exe = None
+    if exe is None:
+        return []  # _check_launcher already names the fix
+    target = launchd.launcher_app(exe) or exe
+    prompt = launchd.tcc_prompt_text(config) or "the privacy prompt naming agentsync-launcher"
+    out: list[CheckResult] = []
+    for src in config.live_sources():
+        if src.path is None or src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+            continue
+        root = expand(src.path)
+        if not launchd.tcc_protected(root):
+            continue
+        name = f"tcc.{src.id}"
+        rc, line = _launcher_canary(exe, root, _FP_CANARY_TIMEOUT_S)
+        if rc == 0:
+            out.append(_ok(name, f"{target} can read {root} as its own responsible process"))
+        elif rc == launchd.EXIT_TCC_PENDING:
+            out.append(
+                _bad(
+                    name,
+                    f"TCC_PENDING: {root} did not answer within {_FP_CANARY_TIMEOUT_S:.0f}s; macOS is asking "
+                    f"(or asked) {prompt}",
+                    fix=(
+                        f"click Allow on {prompt} while logged in, then run agentsync doctor again "
+                        "(prefer this per-provider grant over Full Disk Access: see "
+                        "launcher/Sources/main.swift, "
+                        "trust boundary)"
+                    ),
+                )
+            )
+        elif rc == launchd.EXIT_TCC_DENIED:
+            out.append(
+                _bad(
+                    name,
+                    f"TCC_DENIED: {root}: Operation not permitted for {target}",
+                    fix=(
+                        "clear the earlier 'Don't Allow' with tccutil reset All "
+                        f"{launchd.launcher_identifier(exe)} and approve the prompt ({_fda_target(target)} "
+                        "runs only agentsync's pinned interpreter; Full Disk Access is broader than needed)"
+                    ),
+                )
+            )
+        elif rc == launchd.EXIT_CANARY_MISSING:
+            out.append(
+                _bad(
+                    name,
+                    f"{root} does not exist (sync client signed out or folder moved)",
+                    fix=f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client",
+                )
+            )
+        elif rc == launchd.EXIT_DISCLAIM_UNAVAILABLE:
+            out.append(
+                _bad(
+                    name,
+                    "cannot probe as the launcher (responsibility_spawnattrs_setdisclaim unavailable); "
+                    "the tcc note below applies",
+                    Severity.WARN,
+                )
+            )
+        else:
+            out.append(
+                _bad(
+                    name,
+                    f"launcher canary exited {rc}: {line or 'no output'}",
+                    Severity.WARN,
+                    fix=f"{exe} --canary-only --canary '{root}'",
+                )
+            )
+    return out
+
+
+def _job_child(args: Sequence[object]) -> list[str] | None:
+    """The child argv after ``--`` when the job runs the launcher (None otherwise)."""
+    if not args or not isinstance(args[0], str) or Path(args[0]).name != launchd.LAUNCHER_EXECUTABLE:
+        return None
+    rest = [a for a in args if isinstance(a, str)]
+    if "--" not in rest:
+        return None
+    child = rest[rest.index("--") + 1 :]
+    return child or None
+
+
+def _importable(interpreter: str) -> bool:
+    """True when ``interpreter -I -c 'import agentsync'`` succeeds (bounded, no network)."""
+    try:
+        cp = _run([interpreter, "-I", "-c", "import agentsync"], timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return cp.returncode == 0
+
+
 def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
     """One LaunchAgent: installed, current, fail-closed, interpreter present, loaded."""
     name = f"launchd.{suffix}"
@@ -666,8 +941,40 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
     args = installed.get("ProgramArguments")
     program = args[0] if isinstance(args, list) and args and isinstance(args[0], str) else None
     if program is None or not os.access(program, os.X_OK):
+        problems.append((Severity.ERROR, f"job program {program!r} is missing", "agentsync install-agent"))
+    child = _job_child(args if isinstance(args, list) else [])
+    if child is not None:
+        # A launcher job execs the program after "--": a removed .venv / uv tool env means every run ends
+        # SPAWN_FAILED 71 while ProgramArguments[0] (the launcher) looks fine (review deploy-ops).
+        interp = child[0]
+        if not os.access(interp, os.X_OK):
+            problems.append(
+                (
+                    Severity.ERROR,
+                    f"job interpreter {interp} is missing: every run exits 71 (SPAWN_FAILED)",
+                    "agentsync install-agent (from the environment agentsync now runs in)",
+                )
+            )
+        elif "agentsync" in child and not _importable(interp):
+            problems.append(
+                (
+                    Severity.ERROR,
+                    f"job interpreter {interp} cannot import agentsync: every run fails",
+                    "agentsync install-agent (from the environment agentsync now runs in)",
+                )
+            )
+    expected_program = spec.program_arguments[0]
+    if (
+        program is not None
+        and Path(expected_program).name == launchd.LAUNCHER_EXECUTABLE
+        and Path(program).name != launchd.LAUNCHER_EXECUTABLE
+    ):
         problems.append(
-            (Severity.ERROR, f"job interpreter {program!r} is missing", "agentsync install-agent")
+            (
+                Severity.ERROR,
+                f"the job runs {program} directly, not the signed launcher (TCC prompts would hang it)",
+                "agentsync install-agent",
+            )
         )
     if installed.get("MaterializeDatalessFiles") is not False:
         problems.append(
@@ -712,6 +1019,8 @@ def _check_launchd(config: Config) -> list[CheckResult]:
     for suffix, build in builders:
         try:
             out.append(_check_launchd_job(build(config), suffix))
+        except ConfigError as exc:
+            out.append(_bad(f"launchd.{suffix}", str(exc), fix=_LAUNCHER_FIX))
         except Exception as exc:
             out.append(
                 _bad(f"launchd.{suffix}", f"check crashed: {type(exc).__name__}: {exc}", Severity.WARN)
@@ -826,16 +1135,81 @@ def _check_logs(config: Config) -> list[CheckResult]:
     return [_ok("logs", f"{len(files)} log file(s) in {log_dir}")]
 
 
+_PERM_SAMPLE = 500  # files per tree whose mode is checked (a bounded walk, newest pages first is not needed)
+
+
+def _group_other_readable(root: Path) -> list[Path]:
+    """``root`` and up to _PERM_SAMPLE entries below it with any group/other permission bit set."""
+    bad: list[Path] = []
+    if not root.exists() or root.is_symlink():
+        return bad
+    if root.stat().st_mode & 0o077:
+        bad.append(root)
+    if not root.is_dir():
+        return bad
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in [*dirnames, *filenames]:
+            path = Path(dirpath) / name
+            try:
+                mode = path.lstat().st_mode
+            except OSError:
+                continue
+            if not stat.S_ISLNK(mode) and mode & 0o077:
+                bad.append(path)
+            seen += 1
+            if seen >= _PERM_SAMPLE or len(bad) >= 20:
+                return bad
+    return bad
+
+
+def _check_permissions(config: Config) -> list[CheckResult]:
+    """The docs repo (worktree + .git), ~/agent-context, the cache and the logs are owner-only: they hold a
+    plaintext copy of tenant data (audit critic-mirror-world-readable-tcc-downgrade)."""
+    repo = expand(config.docs_repo)
+    roots = [
+        repo,
+        repo / ".git" / "objects",
+        repo / "mirror",
+        expand(config.cache_dir),
+        expand(config.log_dir),
+    ]
+    ctx = expand(config.config_path).parent
+    if ctx != Path.home() and ctx in repo.parents:
+        roots.insert(0, ctx)
+    bad: list[Path] = []
+    for root in roots:
+        if root == ctx:
+            if ctx.is_dir() and ctx.stat().st_mode & 0o077:
+                bad.append(ctx)
+            continue
+        bad += _group_other_readable(root)
+    if bad:
+        shown = ", ".join(str(p) for p in bad[:4]) + (f" (+{len(bad) - 4} more)" if len(bad) > 4 else "")
+        targets = " ".join(f"'{r}'" for r in roots if r.exists())
+        return [
+            _bad(
+                "docs_repo.permissions",
+                f"group/other can read tenant data: {shown}",
+                fix=f"chmod -R go-rwx {targets}; git -C '{repo}' config core.sharedRepository 0600",
+            )
+        ]
+    return [_ok("docs_repo.permissions", "docs repo, cache and logs are owner-only")]
+
+
 _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("python", _check_python),
     ("git", _check_git),
     ("pandoc", _check_pandoc),
     ("docs_repo", _check_docs_repo),
+    ("permissions", _check_permissions),
     ("state_dir", _check_state_dir),
     ("sources", _check_sources),
     ("materialise", _check_materialise),
     ("graph", _check_graph),
     ("disk", _check_disk),
+    ("launcher", _check_launcher),
+    ("tcc", _check_tcc_access),
     ("launchd", _check_launchd),
     ("lock", _check_lock),
     ("heartbeat", _check_heartbeat),
@@ -852,6 +1226,9 @@ def run_checks(config: Config) -> list[CheckResult]:
     sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:
     client id set, token cache backend (Keychain vs file), signed in (no network); disk free >= 2 GiB on state
     and docs volumes; launchd agents loaded (WARN if not).
+
+    Ops extension (C15 §3): the signed launcher's presence, signature, identifier and designated requirement
+    (WARN when ad hoc), and per TCC-protected source a timed metadata-only canary run *as the launcher*.
     """
     results: list[CheckResult] = []
     for group, check in _CHECKS:

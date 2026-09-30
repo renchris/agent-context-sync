@@ -28,6 +28,8 @@ from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_hear
 GIT = shutil.which("git") or "/usr/bin/git"
 REAL_GIT_PATH = doctor._git_path
 REAL_IN_LAUNCHD = doctor._in_launchd_job
+REAL_CODESIGN_INFO = doctor._codesign_info
+REAL_LAUNCHER_CANARY = doctor._launcher_canary
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +45,17 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     )
     monkeypatch.setattr(doctor, "_disk_free", lambda p: 100 * 1024**3)
     monkeypatch.setattr(doctor, "_in_launchd_job", lambda cfg: False)
+    monkeypatch.delenv(launchd.LAUNCHER_ENV, raising=False)
+    monkeypatch.setattr(doctor, "_find_launcher", lambda: None)
+
+    def no_codesign(path: Path) -> doctor._CodeSignature:
+        raise AssertionError(f"reached real codesign: {path}")
+
+    def no_canary(exe: Path, path: Path, timeout_s: float) -> tuple[int, str]:
+        raise AssertionError(f"reached a real launcher canary: {path}")
+
+    monkeypatch.setattr(doctor, "_codesign_info", no_codesign)
+    monkeypatch.setattr(doctor, "_launcher_canary", no_canary)
 
     def refuse(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         raise AssertionError(f"reached real launchctl: {argv}")
@@ -88,6 +101,7 @@ EXPECTED_ORDER = [
     "docs_repo.location",
     "docs_repo.git",
     "docs_repo.symlinks",
+    "docs_repo.permissions",
     "state_dir",
     "state_dir.files",
     "source.local-fixture.listable",
@@ -97,6 +111,7 @@ EXPECTED_ORDER = [
     "graph.client_id",
     "disk.state",
     "disk.docs",
+    "launcher",
     "launchd.poll",
     "launchd.reconcile",
     "lock",
@@ -665,3 +680,192 @@ def test_format_results_alignment_and_tags() -> None:
 def test_format_real_run_is_one_line_per_result(sample_config: Config) -> None:
     results = run_checks(sample_config)
     assert len(format_results(results).split("\n")) == len(results)
+
+
+# ------------------------------------------------------------------------------------------------ launcher
+
+ADHOC = doctor._CodeSignature(
+    valid=True,
+    verify_detail="",
+    identifier="com.agentsync.launcher",
+    team_id=None,
+    adhoc=True,
+    hardened_runtime=True,
+    requirement='cdhash H"44e00e724067ed1cf39c5cdee56c6134bde0128b"',
+)
+DEVELOPER_ID = dataclasses.replace(
+    ADHOC,
+    team_id="ABCDE12345",
+    adhoc=False,
+    requirement=(
+        'identifier "com.agentsync.launcher" and anchor apple generic and certificate '
+        'leaf[subject.OU] = "ABCDE12345"'
+    ),
+)
+
+
+def _launcher(monkeypatch: pytest.MonkeyPatch, sig: doctor._CodeSignature = ADHOC) -> Path:
+    """Install a stand-in launcher app under the tmp HOME and fake its codesign answer."""
+    app = Path.home() / "Applications" / launchd.LAUNCHER_BUNDLE
+    exe = app / "Contents" / "MacOS" / launchd.LAUNCHER_EXECUTABLE
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(doctor, "_find_launcher", launchd.find_launcher)
+    monkeypatch.setattr(doctor, "_codesign_info", lambda path: sig)
+    return exe
+
+
+def _cloud(cfg: Config) -> tuple[Config, Path]:
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    root.mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    src = dataclasses.replace(cfg.sources[0], id="onedrive", path=root, sentinel=None)
+    return dataclasses.replace(cfg, sources=(cfg.sources[0], src)), root
+
+
+def test_launcher_missing_but_required_is_an_error(sample_config: Config) -> None:
+    cfg, _root = _cloud(sample_config)
+    r = by_name(run_checks(cfg))
+    assert not r["launcher"].ok and r["launcher"].severity is Severity.ERROR
+    assert "install.sh" in (r["launcher"].fix or "")
+    assert not r["launchd.poll"].ok and r["launchd.poll"].severity is Severity.ERROR
+    assert "TCC-protected" in r["launchd.poll"].detail
+    assert "tcc.onedrive" not in r, "no launcher: no canary"
+
+
+def test_launcher_adhoc_signature_warns_and_prints_requirement(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C15 requirement 20: doctor prints codesign -d -r- and warns on a cdhash/ad-hoc requirement."""
+    exe = _launcher(monkeypatch)
+    r = by_name(run_checks(sample_config))
+    assert r["launcher"].ok and r["launcher"].detail == str(exe.parents[2])
+    sig = r["launcher.signature"]
+    assert not sig.ok and sig.severity is Severity.WARN
+    assert "com.agentsync.launcher" in sig.detail and "ad hoc" in sig.detail and "hardened" in sig.detail
+    assert "Developer ID" in (sig.fix or "")
+    req = r["launcher.requirement"]
+    assert not req.ok and req.severity is Severity.WARN
+    assert req.detail.startswith('designated => cdhash H"44e00e72')
+    assert errors(run_checks(sample_config)) == []
+    names = [x.name for x in run_checks(sample_config)]
+    assert names.index("launcher") < names.index("launcher.signature") < names.index("launchd.poll")
+
+
+def test_launcher_developer_id_is_ok(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _launcher(monkeypatch, DEVELOPER_ID)
+    r = by_name(run_checks(sample_config))
+    assert r["launcher.signature"].ok and "TeamIdentifier ABCDE12345" in r["launcher.signature"].detail
+    assert r["launcher.requirement"].ok
+    assert "certificate leaf[subject.OU]" in r["launcher.requirement"].detail
+
+
+def test_launcher_bad_signature_or_identifier(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _launcher(monkeypatch, dataclasses.replace(ADHOC, valid=False, verify_detail="code object is not signed"))
+    r = by_name(run_checks(sample_config))["launcher.signature"]
+    assert not r.ok and r.severity is Severity.ERROR and "not signed" in r.detail
+    monkeypatch.setattr(
+        doctor, "_codesign_info", lambda p: dataclasses.replace(DEVELOPER_ID, identifier="com.other")
+    )
+    r = by_name(run_checks(sample_config))["launcher.signature"]
+    assert not r.ok and r.severity is Severity.WARN and "Info.plist says com.agentsync.launcher" in r.detail
+
+
+def test_launcher_env_pointing_nowhere(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(doctor, "_find_launcher", launchd.find_launcher)
+    monkeypatch.setenv(launchd.LAUNCHER_ENV, "/nonexistent/AgentSyncLauncher.app")
+    r = by_name(run_checks(sample_config))["launcher"]
+    assert not r.ok and r.severity is Severity.ERROR and launchd.LAUNCHER_ENV in (r.fix or "")
+
+
+@pytest.mark.parametrize(
+    ("rc", "ok", "severity", "needle"),
+    [
+        (0, True, Severity.INFO, "as its own responsible process"),
+        (launchd.EXIT_TCC_PENDING, False, Severity.ERROR, "TCC_PENDING"),
+        (launchd.EXIT_TCC_DENIED, False, Severity.ERROR, "TCC_DENIED"),
+        (launchd.EXIT_CANARY_MISSING, False, Severity.ERROR, "does not exist"),
+        (launchd.EXIT_DISCLAIM_UNAVAILABLE, False, Severity.WARN, "disclaim"),
+        (74, False, Severity.WARN, "exited 74"),
+    ],
+)
+def test_tcc_canary_through_the_launcher(
+    sample_config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    rc: int,
+    ok: bool,
+    severity: Severity,
+    needle: str,
+) -> None:
+    exe = _launcher(monkeypatch)
+    cfg, root = _cloud(sample_config)
+    calls: list[tuple[Path, Path, float]] = []
+
+    def canary(launcher: Path, path: Path, timeout_s: float) -> tuple[int, str]:
+        calls.append((launcher, path, timeout_s))
+        return rc, "CANARY_ERROR errno=5" if rc == 74 else ""
+
+    monkeypatch.setattr(doctor, "_launcher_canary", canary)
+    r = by_name(run_checks(cfg))
+    assert calls == [(exe, root, 15.0)], "one timed canary per protected source, none for the tmp source"
+    t = r["tcc.onedrive"]
+    assert t.ok is ok and needle in t.detail
+    if not ok:
+        assert t.severity is severity
+    if rc == launchd.EXIT_TCC_PENDING:
+        assert "wants to access files managed by “OneDrive”" in t.detail
+        assert "click Allow" in (t.fix or "") and "Full Disk Access" in (t.fix or "")
+    if rc == launchd.EXIT_TCC_DENIED:
+        fix = t.fix or ""
+        assert "Full Disk Access" in fix and "tccutil reset All com.agentsync.launcher" in fix
+    assert "AgentSyncLauncher.app" in r["tcc"].detail, "the note names the launcher, not the interpreter"
+
+
+def test_launcher_canary_probe_argv(tmp_path: Path) -> None:
+    """The real probe runs the launcher as its own responsible process, canary-only, never a program."""
+    log = tmp_path / "argv.txt"
+    stub = tmp_path / "agentsync-launcher"
+    stub.write_text(
+        f'#!/bin/sh\nprintf "%s\\n" "$@" > "{log}"\n'
+        'echo "2026-09-29T00:00:00Z agentsync-launcher[1]: TCC_PENDING reason=canary" >&2\nexit 79\n'
+    )
+    stub.chmod(0o755)
+    rc, line = REAL_LAUNCHER_CANARY(stub, tmp_path / "root", 2.0)
+    assert rc == 79 and line == "TCC_PENDING reason=canary"
+    assert log.read_text().splitlines() == [
+        "--self-responsible",
+        "--canary-only",
+        "--canary-timeout",
+        "2.0",
+        "--canary",
+        str(tmp_path / "root"),
+    ]
+
+
+def test_launcher_canary_probe_hard_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def hang(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(list(argv), timeout)
+
+    monkeypatch.setattr(doctor, "_run", hang)
+    rc, line = REAL_LAUNCHER_CANARY(tmp_path / "x", tmp_path, 1.0)
+    assert rc == launchd.EXIT_TCC_PENDING and "did not return" in line
+
+
+@pytest.mark.skipif(not Path("/usr/bin/codesign").exists(), reason="macOS only")
+def test_codesign_info_reads_a_platform_binary() -> None:
+    sig = REAL_CODESIGN_INFO(Path("/bin/ls"))
+    assert sig.valid and sig.identifier == "com.apple.ls" and not sig.adhoc
+    assert sig.requirement is not None and "anchor apple" in sig.requirement
+
+
+def test_installed_job_bypassing_the_launcher_is_an_error(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    install_agents(sample_config, loaded)  # no launcher yet: the plist runs the interpreter
+    _launcher(monkeypatch, DEVELOPER_ID)
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert not r.ok and r.severity is Severity.ERROR and "not the signed launcher" in r.detail
+    install_agents(sample_config, loaded)
+    assert by_name(run_checks(sample_config))["launchd.poll"].ok

@@ -91,6 +91,11 @@ def _no_real_launchctl(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(launchd, "_run_launchctl", refuse)
 
 
+@pytest.fixture(autouse=True)
+def _no_launcher_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(launchd.LAUNCHER_ENV, raising=False)
+
+
 @pytest.fixture
 def fake() -> FakeLaunchctl:
     return FakeLaunchctl()
@@ -99,7 +104,17 @@ def fake() -> FakeLaunchctl:
 def _spec(tmp_path: Path, **kw: object) -> AgentSpec:
     base: dict[str, object] = {
         "label": "com.agentsync.test",
-        "program_arguments": (sys.executable, "-m", "agentsync", "sync", "--mode", "poll"),
+        "program_arguments": (
+            sys.executable,
+            "-I",
+            "-X",
+            "utf8",
+            "-m",
+            "agentsync",
+            "sync",
+            "--mode",
+            "poll",
+        ),
         "stdout_path": tmp_path / "logs" / "test.out.log",
         "stderr_path": tmp_path / "logs" / "test.err.log",
         "start_interval_s": 300,
@@ -116,6 +131,9 @@ def test_program_arguments_use_unresolved_absolute_interpreter(sample_config: Co
     args = program_arguments(sample_config, "poll")
     assert args == (
         sys.executable,
+        "-I",
+        "-X",
+        "utf8",
         "-m",
         "agentsync",
         "sync",
@@ -128,8 +146,8 @@ def test_program_arguments_use_unresolved_absolute_interpreter(sample_config: Co
     # a venv's python is a symlink; resolving it would drop the venv's site-packages
     assert args[0] == sys.executable
     assert Path(args[-1]).is_absolute()
-    assert program_arguments(sample_config, CycleMode.RECONCILE)[5] == "reconcile"
-    assert program_arguments(sample_config, "dry_run")[5] == "dry_run"
+    assert program_arguments(sample_config, CycleMode.RECONCILE)[8] == "reconcile"
+    assert program_arguments(sample_config, "dry_run")[8] == "dry_run"
 
 
 def test_program_arguments_reject_unknown_mode(sample_config: Config) -> None:
@@ -151,7 +169,7 @@ def test_poll_and_reconcile_specs(sample_config: Config) -> None:
     assert rec.label == "com.agentsync.reconcile"
     assert poll.start_interval_s == sample_config.poll_interval_s == 300
     assert rec.start_interval_s == sample_config.reconcile_interval_s == 3600
-    assert poll.program_arguments[5] == "poll" and rec.program_arguments[5] == "reconcile"
+    assert poll.program_arguments[8] == "poll" and rec.program_arguments[8] == "reconcile"
     for spec in (poll, rec):
         assert spec.stdout_path.parent == sample_config.log_dir
         assert spec.stderr_path.parent == sample_config.log_dir
@@ -197,6 +215,7 @@ def test_render_plist_keys_and_determinism(sample_config: Config) -> None:
         "MaterializeDatalessFiles": False,
         "EnvironmentVariables": {"PATH": LAUNCHD_PATH, "PYTHONUTF8": "1"},
         "StartInterval": 300,
+        "Umask": 0o077,
     }
     keys = [line.strip() for line in data.decode().splitlines() if line.strip().startswith("<key>")]
     top = [k for k in keys if k[5:-6] in d]
@@ -454,3 +473,134 @@ def test_installed_plist_helper(tmp_path: Path, fake: FakeLaunchctl) -> None:
 @pytest.mark.skipif(shutil.which("launchctl") is None, reason="macOS only")
 def test_launchctl_binary_path_exists() -> None:
     assert Path("/bin/launchctl").exists()
+
+
+# ------------------------------------------------------------------------------------------------ launcher
+
+
+def _fake_launcher_app(root: Path) -> Path:
+    """A stand-in AgentSyncLauncher.app whose executable is a shell script (plist tests never run it)."""
+    exe = root / launchd.LAUNCHER_BUNDLE / "Contents" / "MacOS" / launchd.LAUNCHER_EXECUTABLE
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    return root / launchd.LAUNCHER_BUNDLE
+
+
+def _with_cloud_source(cfg: Config, *, sentinel: str | None = "Sentinel.txt") -> tuple[Config, Path]:
+    """Add a live local source under (tmp HOME's) ~/Library/CloudStorage/OneDrive-Test."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    src = dataclasses.replace(cfg.sources[0], id="onedrive", path=root, sentinel=sentinel)
+    return dataclasses.replace(cfg, sources=(*cfg.sources, src)), root
+
+
+def test_find_launcher_default_env_and_disable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert launchd.find_launcher() is None
+    default = _fake_launcher_app(Path.home() / "Applications")
+    exe = default / "Contents" / "MacOS" / "agentsync-launcher"
+    assert launchd.default_launcher_app() == default
+    assert launchd.find_launcher() == exe
+    other = _fake_launcher_app(tmp_path / "elsewhere")
+    monkeypatch.setenv(launchd.LAUNCHER_ENV, str(other))
+    assert launchd.find_launcher() == other / "Contents" / "MacOS" / "agentsync-launcher"
+    monkeypatch.setenv(launchd.LAUNCHER_ENV, str(other / "Contents" / "MacOS" / "agentsync-launcher"))
+    assert launchd.find_launcher() == other / "Contents" / "MacOS" / "agentsync-launcher"
+    monkeypatch.setenv(launchd.LAUNCHER_ENV, "none")
+    assert launchd.find_launcher() is None
+    monkeypatch.setenv(launchd.LAUNCHER_ENV, str(tmp_path / "missing.app"))
+    with pytest.raises(ConfigError, match="not an executable launcher"):
+        launchd.find_launcher()
+    assert launchd.launcher_app(exe) == default
+    assert launchd.launcher_app(Path("/usr/bin/true")) is None
+
+
+def test_program_arguments_zero_is_the_launcher(sample_config: Config) -> None:
+    """C15 requirement 19: the LaunchAgent execs the signed launcher, which spawns the interpreter."""
+    exe = _fake_launcher_app(Path.home() / "Applications") / "Contents" / "MacOS" / "agentsync-launcher"
+    for spec, interval, mode in (
+        (poll_spec(sample_config), 300, "poll"),
+        (reconcile_spec(sample_config), 3600, "reconcile"),
+    ):
+        args = spec.program_arguments
+        assert args[0] == str(exe)
+        assert args[0] not in ("/usr/bin/python3", sys.executable)
+        assert "/opt/homebrew" not in args[0] and "/.venv/" not in args[0]
+        sep = args.index("--")
+        assert args[sep + 1 :] == program_arguments(sample_config, mode)
+        opts = args[1:sep]
+        assert opts[opts.index("--timeout") + 1] == str(launchd.watchdog_s(interval))
+        assert opts[opts.index("--canary-timeout") + 1] == "10"
+        assert "--canary" not in opts, "the fixture source is not TCC-protected"
+        d = plistlib.loads(render_plist(spec))
+        assert d["ProgramArguments"][0] == str(exe)
+    assert launchd.watchdog_s(300) == 1800 and launchd.watchdog_s(3600) == 14400
+
+
+def test_launcher_canaries_protected_sources(sample_config: Config) -> None:
+    _fake_launcher_app(Path.home() / "Applications")
+    cfg, root = _with_cloud_source(sample_config)
+    assert launchd.canary_paths(cfg) == (root, root / "Sentinel.txt")
+    assert launchd.launcher_required(cfg)
+    args = poll_spec(cfg).program_arguments
+    opts = args[: args.index("--")]
+    canaries = [opts[i + 1] for i, a in enumerate(opts) if a == "--canary"]
+    assert canaries == [str(root), str(root / "Sentinel.txt")]
+    paused = dataclasses.replace(
+        cfg, sources=(cfg.sources[0], dataclasses.replace(cfg.sources[1], state=cfg.sources[1].state.PAUSED))
+    )
+    assert launchd.canary_paths(paused) == ()
+
+
+def test_protected_source_without_launcher_refuses(sample_config: Config) -> None:
+    cfg, root = _with_cloud_source(sample_config, sentinel=None)
+    with pytest.raises(ConfigError, match=r"install\.sh") as ei:
+        poll_spec(cfg)
+    assert str(root) in str(ei.value)
+    # without a protected source the interpreter fallback stays available (logged)
+    assert poll_spec(sample_config).program_arguments[0] == sys.executable
+
+
+def test_tcc_protected_locations(tmp_path: Path) -> None:
+    home = Path.home()
+    for p in (
+        home / "Library" / "CloudStorage" / "OneDrive-Contoso",
+        home / "Documents" / "x",
+        home / "Desktop",
+        home / "Downloads" / "a" / "b",
+        home / "Library" / "Mobile Documents" / "com~apple~CloudDocs",
+        Path("/Volumes/USB/stuff"),
+    ):
+        assert launchd.tcc_protected(p), p
+    for p in (tmp_path / "source", home / "agent-context", home / "DocumentsNot"):
+        assert not launchd.tcc_protected(p), p
+
+
+def test_tcc_prompt_text_names_the_provider(sample_config: Config) -> None:
+    assert launchd.tcc_prompt_text(sample_config) is None
+    cfg, _root = _with_cloud_source(sample_config)
+    assert launchd.tcc_prompt_text(cfg) == (
+        "\u201cagentsync-launcher\u201d wants to access files managed by \u201cOneDrive\u201d."
+    )
+
+
+def test_render_plist_rejects_platform_python(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="platform binary"):
+        render_plist(_spec(tmp_path, program_arguments=("/usr/bin/python3", "-m", "agentsync")))
+
+
+def test_render_plist_umask(tmp_path: Path) -> None:
+    assert plistlib.loads(render_plist(_spec(tmp_path)))["Umask"] == 63
+    assert "Umask" not in plistlib.loads(render_plist(_spec(tmp_path, umask=None)))
+    with pytest.raises(ValueError, match="umask"):
+        render_plist(_spec(tmp_path, umask=0o1000))
+
+
+@pytest.mark.skipif(not Path(PLUTIL).exists(), reason="plutil is macOS-only")
+def test_launcher_plist_passes_plutil_lint(sample_config: Config, tmp_path: Path) -> None:
+    _fake_launcher_app(Path.home() / "Applications")
+    cfg, _root = _with_cloud_source(sample_config)
+    spec = reconcile_spec(cfg)
+    path = tmp_path / f"{spec.label}.plist"
+    path.write_bytes(render_plist(spec))
+    cp = subprocess.run([PLUTIL, "-lint", str(path)], capture_output=True, text=True, check=False)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
