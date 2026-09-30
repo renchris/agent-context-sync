@@ -17,7 +17,7 @@ import unicodedata
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import quote, unquote, urlsplit
 
 from agentsync.config import SourceConfig
@@ -38,19 +38,28 @@ from agentsync.paths import is_included
 
 DRIVE_SELECT = (
     "id,name,size,eTag,cTag,file,folder,package,root,parentReference,deleted,lastModifiedDateTime,"
-    "createdDateTime,webUrl,remoteItem,publication"
+    "createdDateTime,webUrl,remoteItem,publication,pendingOperations,malware,lastModifiedBy"
 )
-"""$select for drive delta: ``file`` MUST be present or quickXorHash is dropped for every item."""
+"""$select for drive delta: ``file`` MUST be present or quickXorHash is dropped for every item.
 
-DELTA_HEADERS: dict[str, str] = {"Prefer": "deltaExcludeParent"}
+Every top-level field the arm, the classifier, the quiescence gate and the frontmatter consume is listed
+(design 4.2 CORRECTED; audit design-correctness-04): ``cTag`` (classifier rung 2), ``package`` (OneNote),
+``publication`` and ``pendingOperations`` (quiescence / quarantine; ``publication`` "isn't returned by
+default"), ``malware`` (quarantine), ``createdDateTime`` (arm precedence), ``lastModifiedBy`` and ``webUrl``
+(frontmatter), ``remoteItem`` (shortcuts). ``tests/test_graph_drive.py`` fails when the mapping reads a
+top-level field that is not selected. Query options are encoded into the deltaLink, so a change here only
+reaches an existing source after its next FULL re-enumeration.
+
+``driveItem`` has NO sensitivity-label property (C15 section 4): a label is read only through the per-item
+``POST .../extractSensitivityLabels`` action, never selected here.
+"""
+
+DELTA_HEADERS: dict[str, str] = {"deltaExcludeParent": "true"}
+"""Request headers of every drive delta call. ``deltaExcludeParent`` is a request header of its own (the
+driveItem:delta "Request headers" table; receipt B1), not a ``Prefer`` value (audit design-correctness-17)."""
 
 log = logging.getLogger(__name__)
 
-# The driveItem-delta reference (updated 2026-06-06) lists ``deltaExcludeParent`` as a request header of its
-# own ("If this request header is included ..."), while the contract constant sends it as a Prefer value.
-# Both are sent: the service ignores an unknown Prefer token and an unknown header, so whichever form the
-# tenant honours takes effect and neither can fail the request.
-_EXCLUDE_PARENT_HEADER = "deltaExcludeParent"
 _MAX_ROUND_ATTEMPTS = 3  # the round + at most two 410/400 recoveries (never loop)
 _MAX_ANCESTOR_FETCHES = 256  # per scan: unknown parents resolved by GET /items/{id}
 _MAX_PATH_DEPTH = 512  # cycle guard for the id -> parent walk
@@ -181,6 +190,29 @@ def _derive_path(parent_id: str | None, name: str, lookup: TreeLookup, root_id: 
         current = up
 
 
+def _path_scope(parent_id: str | None, lookup: TreeLookup, root_id: str | None) -> str:
+    """Where ``parent_id`` lies relative to the scope root: ``inside``, ``outside`` (the chain reaches a
+    root that is not the scope: positive evidence of a move out) or ``unknown`` (an ancestor is not known,
+    refused or the chain loops: no evidence either way).  Same walk as :func:`_derive_path`."""
+    current = parent_id
+    seen: set[str] = set()
+    while True:
+        if current is None:
+            return "inside" if root_id is None else "outside"
+        if current == root_id:
+            return "inside"
+        if current in seen or len(seen) > _MAX_PATH_DEPTH:
+            return "unknown"
+        seen.add(current)
+        entry = lookup(current)
+        if entry is None:
+            return "unknown"
+        up, _name = entry
+        if up is None:
+            return "inside" if root_id is None else "outside"
+        current = up
+
+
 def item_from_graph(
     source_id: str, raw: JsonObject, lookup: TreeLookup, *, root_id: str | None = None
 ) -> SourceItem:
@@ -190,6 +222,13 @@ def item_from_graph(
     extra carries web_url, package type, publication level, sensitivity label when present.
 
     ``root_id`` (extension) makes rel_path relative to a scope folder; None = relative to the drive root.
+
+    Labels (C15 section 4, audit design-correctness-05): delta carries no label property, so
+    ``sensitivity_label`` is never set here. A label change on an Office file rewrites package parts
+    (``docMetadata/LabelInfo.xml``, ``docProps/custom.xml``), so its ``quickXorHash`` moves along with the
+    eTag: the item reaches the classifier as a content change (MAYBE_CHANGED), never METADATA_ONLY.
+    Also mapped (extension): ``last_modified_by`` (frontmatter), ``pending_operations`` (quiescence gate:
+    a pending content change means the served bytes are not final yet), ``malware`` (quarantine).
     """
     stable_id = raw.get("id")
     if not isinstance(stable_id, str) or not stable_id:
@@ -224,10 +263,17 @@ def item_from_graph(
     publication_level = _opt_str(_obj(raw, "publication"), "level")
     if publication_level:
         extra["publication_level"] = publication_level
-    label = _obj(raw, "sensitivityLabel")
-    label_name = _opt_str(label, "displayName") or _opt_str(label, "labelId")
-    if label_name:
-        extra["sensitivity_label"] = label_name
+    modified_by = _obj(raw, "lastModifiedBy")
+    for key in ("user", "application", "device"):
+        who = _opt_str(_obj(modified_by, key), "displayName")
+        if who:
+            extra["last_modified_by"] = _nfc(who)
+            break
+    pending = _obj(raw, "pendingOperations")
+    if pending:
+        extra["pending_operations"] = ",".join(sorted(pending))
+    if raw.get("malware") is not None:  # a selected facet may come back as null: only an object counts
+        extra["malware"] = _opt_str(_obj(raw, "malware"), "description") or "detected"
     drive_id = _opt_str(_obj(raw, "parentReference"), "driveId")
     if drive_id:
         extra["drive_id"] = drive_id
@@ -261,12 +307,50 @@ def item_from_graph(
 # ---------------------------------------------------------------------------------------------------------
 
 
+_DRIVE_IT_ACTION = (
+    "ask IT for tenant admin consent to Files.Read.All (or Sites.Read.All) on the agentsync app "
+    "registration, or a Sites.Selected grant on this site (C15 section 2)"
+)
+
+
+def _drive_access_error(exc: GraphError, what: str) -> GraphError:
+    """Re-raise a drive-level 403 / 404 as a named, actionable error (never read as an empty drive).
+
+    Design 4.2 CORRECTED: lost access is ``access-unknown``, not a tombstone. Raising (instead of returning
+    an empty pass) keeps every row, stops the cursor and puts the IT action in STATE.md.
+    """
+    if exc.status == 403:
+        return GraphError(
+            403, "drive-access-denied", f"{what}: access denied; {_DRIVE_IT_ACTION}", exc.request_id
+        )
+    if exc.status == 404:
+        return GraphNotFound(
+            404,
+            "drive-not-found",
+            f"{what}: not found (deleted, renamed or no longer shared with you): check the source in "
+            "sources.toml (agentsync discover lists what this account can see)",
+            exc.request_id,
+        )
+    return exc
+
+
+def _raise_access(exc: GraphError, what: str) -> NoReturn:
+    """Raise the named form of ``exc`` (chained), or ``exc`` itself when it is not a 403 / 404."""
+    named = _drive_access_error(exc, what)
+    if named is exc:
+        raise exc
+    raise named from exc
+
+
 def resolve_drive_id(client: GraphClient, cfg: SourceConfig) -> str:
     """``drive_id="me"`` -> GET /me/drive; ``site`` -> GET /sites/{host}:/{path} then /sites/{id}/drive."""
     if cfg.drive_id:
         if cfg.drive_id != "me":
             return cfg.drive_id
-        return _require_id(client.get_json("/me/drive", params={"$select": "id"}), "/me/drive")
+        try:
+            return _require_id(client.get_json("/me/drive", params={"$select": "id"}), "/me/drive")
+        except GraphError as exc:
+            _raise_access(exc, f"source {cfg.id!r}: your OneDrive (/me/drive)")
     if not cfg.site:
         raise GraphError(0, "config", f"source {cfg.id!r}: graph_drive needs drive_id or site")
     site = cfg.site.strip()
@@ -275,21 +359,34 @@ def resolve_drive_id(client: GraphClient, cfg: SourceConfig) -> str:
         site_path = f"/sites/{host.strip()}:{quote('/' + path.strip().strip('/'), safe='/')}"
     else:
         site_path = f"/sites/{_quote_segment(site)}"  # a site id ("host,guid,guid") or "root"
-    site_id = _require_id(client.get_json(site_path, params={"$select": "id"}), f"site {site!r}")
-    drive = client.get_json(f"/sites/{_quote_segment(site_id)}/drive", params={"$select": "id"})
+    try:
+        site_id = _require_id(client.get_json(site_path, params={"$select": "id"}), f"site {site!r}")
+        drive = client.get_json(f"/sites/{_quote_segment(site_id)}/drive", params={"$select": "id"})
+    except GraphError as exc:
+        _raise_access(exc, f"source {cfg.id!r}: site {site!r}")
     return _require_id(drive, f"default library of site {site!r}")
 
 
 @dataclass(frozen=True, slots=True)
 class DiscoveredScope:
-    """One candidate source found by ``discover`` (printed for a human to accept into sources.toml)."""
+    """One candidate source found by ``discover`` (printed for a human to accept into sources.toml).
+
+    Extension (defaults keep the contract's six-field form valid): ``folder`` (drive subtree, or the mail
+    folder id), ``mailbox`` (graph_mail), ``team_id`` / ``channel_id`` (graph_teams; ``team_id = "chats"``
+    marks a 1:1 / group chat) and ``configured`` (the id of an existing source already covering it).
+    """
 
     kind: SourceKind
     name: str
     drive_id: str | None
     site: str | None
     web_url: str | None
-    note: str  # e.g. "sharedWithMe remoteItem: needs its own cursor against the owning drive"
+    note: str  # e.g. "shortcut in My files: needs its own source against the owning drive"
+    folder: str | None = None
+    mailbox: str | None = None
+    team_id: str | None = None
+    channel_id: str | None = None
+    configured: str | None = None
 
 
 def _site_param(web_url: str | None) -> str | None:
@@ -302,103 +399,17 @@ def _site_param(web_url: str | None) -> str | None:
     return f"{parts.netloc}:{unquote(parts.path) or '/'}"
 
 
-def _discover_me(client: GraphClient) -> list[DiscoveredScope]:
-    """The signed-in user's own OneDrive."""
-    me = client.get_json("/me/drive", params={"$select": "id,name,driveType,webUrl"})
-    return [
-        DiscoveredScope(
-            kind=SourceKind.GRAPH_DRIVE,
-            name=str(me.get("name") or "OneDrive"),
-            drive_id="me",
-            site=None,
-            web_url=_opt_str(me, "webUrl"),
-            note=f'your own OneDrive ({me.get("driveType") or "unknown type"}); drive_id = "me"',
-        )
-    ]
-
-
-def _discover_shared(client: GraphClient) -> list[DiscoveredScope]:
-    """Items shared into the user's OneDrive (remoteItems: each needs its own cursor on the owning drive)."""
-    out: list[DiscoveredScope] = []
-    for raw in _pages(client, "/me/drive/sharedWithMe"):
-        remote = _obj(raw, "remoteItem")
-        owner_drive = _opt_str(_obj(remote, "parentReference"), "driveId")
-        kind_word = "folder" if "folder" in remote or "folder" in raw else "file"
-        out.append(
-            DiscoveredScope(
-                kind=SourceKind.GRAPH_DRIVE,
-                name=str(raw.get("name") or remote.get("name") or "(unnamed)"),
-                drive_id=owner_drive,
-                site=None,
-                web_url=_opt_str(remote, "webUrl") or _opt_str(raw, "webUrl"),
-                note=(
-                    f"sharedWithMe remoteItem ({kind_word}): needs its own cursor against the owning drive "
-                    "(your OneDrive's root delta never enumerates it)"
-                ),
-            )
-        )
-    return out
-
-
-def _discover_sites(client: GraphClient) -> list[DiscoveredScope]:
-    """Every document library of every site the user can find."""
-    out: list[DiscoveredScope] = []
-    sites = list(_pages(client, "/sites", params={"search": "*", "$select": "id,displayName,name,webUrl"}))
-    for site in sites:
-        site_id = _opt_str(site, "id")
-        if not site_id:
-            continue
-        site_name = str(site.get("displayName") or site.get("name") or site_id)
-        site_url = _opt_str(site, "webUrl")
-        try:
-            drives = list(
-                _pages(
-                    client,
-                    f"/sites/{_quote_segment(site_id)}/drives",
-                    params={"$select": "id,name,driveType,webUrl"},
-                )
-            )
-        except GraphError as exc:
-            log.warning("discover: libraries of site %r unavailable: %s", site_name, exc)
-            continue
-        for drive in drives:
-            drive_id = _opt_str(drive, "id")
-            if not drive_id:
-                continue
-            out.append(
-                DiscoveredScope(
-                    kind=SourceKind.GRAPH_DRIVE,
-                    name=f"{site_name} / {drive.get('name') or drive_id}",
-                    drive_id=drive_id,
-                    site=_site_param(site_url),
-                    web_url=_opt_str(drive, "webUrl") or site_url,
-                    note="document library; prefer drive_id (site = resolves the default library only)",
-                )
-            )
-    return out
-
-
 def discover(client: GraphClient) -> list[DiscoveredScope]:
-    """Enumerate /me/drive, /me/drive/sharedWithMe, /sites?search=* and each site's /drives (Arm 0
-    discover)."""
-    found: list[DiscoveredScope] = []
-    for label, step in (
-        ("/me/drive", _discover_me),
-        ("/me/drive/sharedWithMe", _discover_shared),
-        ("/sites?search=*", _discover_sites),
-    ):
-        try:
-            found.extend(step(client))
-        except GraphError as exc:  # one refused endpoint (403, 404) must not hide the others
-            log.warning("discover: %s failed: %s", label, exc)
-    found.sort(key=lambda s: (s.kind.value, s.name.casefold(), s.drive_id or "", s.web_url or ""))
-    unique: list[DiscoveredScope] = []
-    seen: set[tuple[str | None, str]] = set()
-    for scope in found:
-        if (scope.drive_id, scope.name) not in seen:
-            seen.add((scope.drive_id, scope.name))
-            unique.append(scope)
-    return unique
+    """Enumerate /me/drive, /me/drives, /me/followedSites and their libraries, shortcuts in My files,
+    /me/joinedTeams channels, /me/chats and /me/mailFolders (Arm 0 discover).
+
+    Thin wrapper over :func:`agentsync.graph.discover.discover_sources` (which also reports refused
+    endpoints with their IT action and renders a sources.toml snippet). The deprecated shared-with-me
+    listing is never called: it stops returning data after November 2026 (C15 section 2).
+    """
+    from agentsync.graph.discover import discover_sources  # noqa: PLC0415 - discover imports this module
+
+    return list(discover_sources(client).scopes)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -481,6 +492,8 @@ class DriveArm:
                 "(renamed or moved? update sources.toml)",
                 exc.request_id,
             ) from exc
+        except GraphError as exc:
+            _raise_access(exc, f"source {self.source_id!r}: folder {self._folder!r}")
         self._scope_id = _require_id(body, f"folder {self._folder!r}")
         return self._scope_id
 
@@ -508,9 +521,7 @@ class DriveArm:
     # ---- delta rounds ------------------------------------------------------------------------------------
     def _headers(self) -> dict[str, str]:
         """Headers for every delta request (a fresh dict: the module constant is never mutated)."""
-        headers = dict(DELTA_HEADERS)
-        headers[_EXCLUDE_PARENT_HEADER] = "true"
-        return headers
+        return dict(DELTA_HEADERS)
 
     def _on_page(self, page: GraphPage) -> None:
         """Persist the resume point of an in-flight FULL enumeration (its value is never logged)."""
@@ -543,7 +554,11 @@ class DriveArm:
                     return _Round(result, PassKind.DELTA, False, cursor_reset, tuple(alarms))
                 result = self._full_round(start)
                 if resumed:
-                    alarms.append("resumed an interrupted enumeration: absence-based deletion off this pass")
+                    alarms.append(
+                        "resumed an interrupted enumeration: absence-based deletion off this pass; its "
+                        "cursor "
+                        "is not kept (the next cycle enumerates again from the start)"
+                    )
                 return _Round(result, PassKind.FULL, not resumed, cursor_reset, tuple(alarms))
             except GraphGone as exc:
                 log.warning("source %s: delta 410 (%s): full re-enumeration", self.source_id, exc.code)
@@ -558,6 +573,10 @@ class DriveArm:
                 )
                 alarms.append(f"{what}: dropped")
                 delta_link, start, resumed = None, None, False
+            except GraphError as exc:
+                # Drive-level 403 / 404 (401 arrives as AuthRequiredError): the whole scope is
+                # access-unknown. Raise, never return an empty pass that absence-based deletion would read.
+                _raise_access(exc, f"source {self.source_id!r}: drive delta")
             cursor_reset = True
             if self._save_page_link is not None:
                 self._save_page_link(None)
@@ -616,6 +635,7 @@ class DriveArm:
         shortcuts: list[str] = []
         new_dirs: list[str] = []
         underivable = 0
+        held_known: list[str] = []  # known items whose new place cannot be derived: left untouched
         candidates = [(i, r, True) for i, r in batch.items()]
         candidates += [(i, r, False) for i, r in fetched.items() if i not in batch]
         for ident, raw, from_feed in candidates:
@@ -628,10 +648,19 @@ class DriveArm:
                 continue
             item = item_from_graph(self.source_id, raw, combined, root_id=scope_id)
             if not item.rel_path:
-                if known and not is_full:
-                    # Moved out of scope: explicit evidence, so a DELTA pass may delete (FULL uses absence).
-                    items[ident] = self._tombstone(ident, raw, "moved-out-of-scope")
-                elif not known and not self._hint_outside_scope(raw) and self._folder == "/":
+                if known:
+                    where = _path_scope(_parent_id(raw), combined, scope_id)
+                    if where == "unknown" and self._root_id is None and self._resolve_root(tree):
+                        where = _path_scope(_parent_id(raw), combined, scope_id)  # the root may end it
+                    if where == "outside" or (where == "unknown" and self._hint_outside_scope(raw)):
+                        # Derivably outside the scope: positive evidence of a move (in a FULL pass too,
+                        # where absence would otherwise read as an upstream deletion and queue a purge).
+                        items[ident] = self._tombstone(ident, raw, "moved-out-of-scope")
+                    else:
+                        # Underivable (an ancestor refused, unknown or past the lookup cap): no evidence
+                        # of anything; the row keeps its last path, and a FULL pass is not complete.
+                        held_known.append(ident)
+                elif not self._hint_outside_scope(raw) and self._folder == "/":
                     underivable += 1
                 continue
             if "remoteItem" in raw:
@@ -639,7 +668,7 @@ class DriveArm:
                 unknown_dirs.append(item.rel_path)
                 continue
             if not item.is_dir and not is_included(item.rel_path, self._cfg.include, self._cfg.exclude):
-                if known and not is_full:
+                if known:  # excluded by the (new) globs: a scope decision, never an upstream deletion
                     items[ident] = self._tombstone(ident, raw, "excluded")
                 continue
             if item.is_dir and not known and not is_full:
@@ -648,8 +677,9 @@ class DriveArm:
 
         # A folder new to us in a DELTA pass may have been moved in from outside the scope; its descendants
         # produce no delta records, so list them (the next FULL pass reconciles anything this misses).
+        refused: list[str] = []
         for folder_id in sorted(new_dirs):
-            for child in self._walk_children(folder_id, tree):
+            for child in self._walk_children(folder_id, tree, refused):
                 cid = str(child["id"])
                 if cid in items or cid in batch:
                     continue
@@ -664,11 +694,25 @@ class DriveArm:
                 ):
                     items[cid] = child_item
 
+        for folder_id in refused:
+            known_entry = combined(folder_id)
+            path = _derive_path(known_entry[0], known_entry[1], combined, scope_id) if known_entry else None
+            unknown_dirs.append(_nfc(path) if path else folder_id)
+        if refused:
+            alarms.append(
+                f"{len(refused)} folder listing(s) refused (403, item-level permissions): contents unknown"
+            )
         if shortcuts:
             listed = ", ".join(sorted(shortcuts)[:_ALARM_LIST_LIMIT])
             alarms.append(f"{len(shortcuts)} shortcut/remoteItem entries need their own source: {listed}")
         if underivable:
             alarms.append(f"{underivable} item(s) with an underivable path were skipped until the next FULL")
+        if held_known:
+            alarms.append(
+                f"{len(held_known)} known item(s) moved where their path cannot be derived (unreadable or "
+                "unknown ancestor): left as they were, nothing removed"
+                + ("; enumeration incomplete" if is_full else "")
+            )
 
         ordered = tuple(sorted(items.values(), key=lambda i: (i.rel_path, i.stable_id)))
         log.info(
@@ -683,8 +727,12 @@ class DriveArm:
             source_id=self.source_id,
             pass_kind=rnd.pass_kind,
             items=ordered,
-            new_cursor=rnd.result.delta_link,
-            enumeration_complete=rnd.complete and is_full,
+            # A resumed FULL round never stages its deltaLink: the pages before the interruption were
+            # consumed but never applied, so promoting it would skip their items until some later
+            # uninterrupted FULL (review correctness-resumed-enumeration).  Without it the next cycle runs a
+            # fresh token-less FULL (no cursor) or hits the old link's 410 and resyncs.
+            new_cursor=rnd.result.delta_link if (rnd.complete or not is_full) else None,
+            enumeration_complete=rnd.complete and is_full and not held_known,
             cursor_reset=rnd.cursor_reset,
             unknown_dirs=tuple(sorted(set(unknown_dirs))),
             alarms=tuple(alarms),
@@ -702,6 +750,7 @@ class DriveArm:
         fetched: dict[str, JsonObject] = {}
         budget = _MAX_ANCESTOR_FETCHES
         exhausted = False
+        denied: set[str] = set()
         for ident in sorted(batch):
             raw = batch[ident]
             if "deleted" in raw or "root" in raw or self._hint_outside_scope(raw):
@@ -718,7 +767,13 @@ class DriveArm:
                     parent = self._client.get_json(
                         f"{self._drive_path()}/items/{_quote_segment(pid)}", params={"$select": DRIVE_SELECT}
                     )
-                except GraphNotFound:
+                except GraphError as exc:
+                    # Per item, not per drive: a vanished (404) or unreadable (403: item-level permission,
+                    # broken inheritance) ancestor leaves this item underivable; the drive stays readable.
+                    if exc.status == 403:
+                        denied.add(pid)
+                    elif exc.status != 404:
+                        raise
                     break
                 fetched[pid] = parent
                 remember(pid, parent)
@@ -729,7 +784,24 @@ class DriveArm:
                 pid = _parent_id(parent)
         if exhausted:
             alarms.append("ancestor lookups capped: some paths stay underivable until the next FULL")
+        if denied:
+            alarms.append(
+                f"{len(denied)} ancestor folder(s) refused (403, item-level permissions): their items stay "
+                "underivable and are not published"
+            )
         return fetched
+
+    def _resolve_root(self, tree: dict[str, tuple[str | None, str]]) -> bool:
+        """Learn the drive root's id (one GET) so a chain that climbs out of a folder scope ends there;
+        False when it cannot be read (the item then stays underivable, never removed)."""
+        try:
+            body = self._client.get_json(f"{self._drive_path()}/root", params={"$select": "id"})
+            self._root_id = _require_id(body, "drive root")
+        except GraphError as exc:
+            log.info("source %s: drive root unreadable (%s)", self.source_id, exc.code)
+            return False
+        tree[self._root_id] = (None, "")
+        return True
 
     def _tombstone(self, ident: str, raw: Mapping[str, Any], reason: str) -> SourceItem:
         """An explicit ``deleted=True`` item carrying the last known path/name from the manifest."""
@@ -754,8 +826,14 @@ class DriveArm:
             extra={"removed": reason},
         )
 
-    def _walk_children(self, folder_id: str, tree: dict[str, tuple[str | None, str]]) -> Iterator[JsonObject]:
-        """Yield every descendant of ``folder_id`` via /children paging (breadth-first; registers names)."""
+    def _walk_children(
+        self, folder_id: str, tree: dict[str, tuple[str | None, str]], denied: list[str]
+    ) -> Iterator[JsonObject]:
+        """Yield every descendant of ``folder_id`` via /children paging (breadth-first; registers names).
+
+        A folder whose listing is refused (403) is appended to ``denied``: its content is unknown, never
+        empty. A vanished one (404) is skipped (the next delta carries its tombstone).
+        """
         queue = [folder_id]
         visited: set[str] = set()
         while queue:
@@ -766,7 +844,11 @@ class DriveArm:
             path = f"{self._drive_path()}/items/{_quote_segment(current)}/children"
             try:
                 children = list(_pages(self._client, path, params={"$select": DRIVE_SELECT}))
-            except GraphNotFound:
+            except GraphError as exc:
+                if exc.status == 403:
+                    denied.append(current)
+                elif exc.status != 404:
+                    raise
                 continue
             for listed in children:
                 cid = listed.get("id")
@@ -797,6 +879,27 @@ class DriveArm:
         url = f"{self._drive_path()}/items/{_quote_segment(item.stable_id)}/content"
         try:
             size, sha = self._client.download(url, dest, max_bytes=headroom)
+        except GraphError as exc:
+            _refund(budget, item.size)
+            # Per item: the cycle turns this into one ERROR row (retried next cycle); the drive goes on.
+            if exc.status == 403:
+                raise GraphError(
+                    403,
+                    "item-access-denied",
+                    f"{item.rel_path or item.stable_id}: access denied on this item (item-level "
+                    "permission, broken inheritance or a label that blocks download); the rest of the drive "
+                    "is unaffected",
+                    exc.request_id,
+                ) from exc
+            if exc.status == 404:
+                raise GraphNotFound(
+                    404,
+                    "item-not-found",
+                    f"{item.rel_path or item.stable_id}: gone upstream since the scan; the next delta pass "
+                    "carries its tombstone",
+                    exc.request_id,
+                ) from exc
+            raise
         except Exception:
             _refund(budget, item.size)
             raise

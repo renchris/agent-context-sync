@@ -11,7 +11,7 @@ import unicodedata
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -223,7 +223,9 @@ def test_item_from_graph_file_fields() -> None:
         "Budget.xlsx",
         "F1",
         publication={"level": "checkout"},
-        sensitivityLabel={"displayName": "Confidential"},
+        lastModifiedBy={"user": {"displayName": "Dana Q"}},
+        pendingOperations={"pendingContentUpdate": {"queuedDateTime": "2026-09-02T11:22:00Z"}},
+        malware={"description": "Trojan:Win32/Test"},
     )
     raw["file"]["hashes"].update({"sha1Hash": "ABC", "sha256Hash": "DEF"})
     item = item_from_graph("fin", raw, lookup_from(rows))
@@ -241,7 +243,10 @@ def test_item_from_graph_file_fields() -> None:
     assert item.content_type == "application/octet-stream"
     assert item.extra["web_url"] == "https://contoso.sharepoint.com/Budget.xlsx"
     assert item.extra["publication_level"] == "checkout"
-    assert item.extra["sensitivity_label"] == "Confidential"
+    assert "sensitivity_label" not in item.extra  # driveItem has no label property (C15 section 4)
+    assert item.extra["last_modified_by"] == "Dana Q"
+    assert item.extra["pending_operations"] == "pendingContentUpdate"
+    assert item.extra["malware"] == "Trojan:Win32/Test"
     assert item.extra["drive_id"] == "D"
     assert "hash_absent" not in item.extra
 
@@ -374,9 +379,10 @@ def test_first_scan_is_a_tokenless_full_enumeration() -> None:
     _, path, params, headers = next(c for c in client.calls if c[0] == "delta")
     assert path == DELTA_PATH  # never token=latest
     assert params == {"$select": DRIVE_SELECT}
-    assert headers is not None and headers["Prefer"] == DELTA_HEADERS["Prefer"]
-    assert headers["deltaExcludeParent"] == "true"
-    assert DELTA_HEADERS == {"Prefer": "deltaExcludeParent"}  # the module constant is never mutated
+    # deltaExcludeParent is a request header of its own, never a Prefer value (audit design-correctness-17)
+    assert headers == {"deltaExcludeParent": "true"}
+    assert "Prefer" not in headers
+    assert DELTA_HEADERS == {"deltaExcludeParent": "true"}  # the module constant is never mutated
 
     assert result.pass_kind is PassKind.FULL
     assert result.enumeration_complete
@@ -479,7 +485,7 @@ def test_resumed_enumeration_is_never_complete() -> None:
     assert client.called("delta") == [resume]
     assert result.pass_kind is PassKind.FULL
     assert not result.enumeration_complete  # earlier pages' items are missing: absence proves nothing
-    assert result.new_cursor is not None
+    assert result.new_cursor is None  # never staged: the next cycle enumerates again from the start
     assert any("resumed" in a for a in result.alarms)
     assert by_id(result.items)["I2"].rel_path == "late.txt"
 
@@ -543,7 +549,7 @@ def test_delta_child_of_renamed_folder_uses_the_new_name() -> None:
 def test_delta_move_out_of_scope_is_an_explicit_delete() -> None:
     rows = {"S": ("ROOT", "Shared"), "I1": ("S", "a.docx"), "O": ("ROOT", "Other")}
     client = FakeClient(
-        json={"/drives/D/root:/Shared": {"id": "S"}},
+        json={"/drives/D/root:/Shared": {"id": "S"}, "/drives/D/root": {"id": "ROOT"}},
         deltas={CURSOR: [Round([[file("I1", "a.docx", "O")]])]},
     )
     arm = DriveArm(client, cfg("/Shared"), lookup_from(rows))  # type: ignore[arg-type]
@@ -553,14 +559,29 @@ def test_delta_move_out_of_scope_is_an_explicit_delete() -> None:
     assert items["I1"].rel_path == "a.docx"  # the last in-scope path
 
 
-def test_full_pass_leaves_moved_out_items_to_absence() -> None:
+def test_full_pass_tombstones_moved_out_items_as_moved() -> None:
+    """correctness-folder-move: a FULL listing that shows a known id alive outside the scope is positive
+    evidence of a move, never an absence that would read as an upstream deletion (and queue a purge)."""
     rows = {"S": ("ROOT", "Shared"), "I1": ("S", "a.docx")}
     pages = [[root(), folder("S", "Shared", "ROOT"), folder("O", "Other", "ROOT"), file("I1", "a.docx", "O")]]
     client = FakeClient(json={"/drives/D/root:/Shared": {"id": "S"}}, deltas={DELTA_PATH: [Round(pages)]})
     arm = DriveArm(client, cfg("/Shared"), lookup_from(rows))  # type: ignore[arg-type]
     result = arm.scan(None, full=True)
-    assert result.items == ()  # absent from a complete FULL pass: a breaker-guarded deletion candidate
+    [item] = result.items
+    assert item.stable_id == "I1" and item.deleted and item.extra["removed"] == "moved-out-of-scope"
     assert result.enumeration_complete
+
+
+def test_known_item_under_an_unreadable_ancestor_is_left_alone() -> None:
+    """correctness-underivable-known-item-tombstoned: no evidence, no removal."""
+    client = delta_client(
+        [[file("I1", "Budget.xlsx", "SECRET")]],
+        **{"/drives/D/items/SECRET": GraphError(403, "accessDenied", "item-level permissions")},
+    )
+    arm = DriveArm(client, cfg(), lookup_from(MANIFEST))  # type: ignore[arg-type]
+    result = arm.scan(CURSOR, full=False)
+    assert result.items == ()
+    assert any("cannot be derived" in a for a in result.alarms)
 
 
 def test_delta_newly_excluded_known_file_is_tombstoned() -> None:
@@ -840,61 +861,246 @@ def test_arm_exposes_protocol_attributes() -> None:
 # ---------------------------------------------------------------------------------------------------------
 
 
-def test_discover_lists_every_candidate_deterministically() -> None:
-    client = FakeClient(
+class _AnyPathClient(FakeClient):
+    """Unknown paths answer an empty collection / 404, so the full discovery can run against a few stubs."""
+
+    def get_json(
+        self, path: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None
+    ) -> dict[str, Any]:
+        if path not in self.json:
+            self.calls.append(("get_json", path, params, headers))
+            raise GraphNotFound(404, "itemNotFound", path)
+        return super().get_json(path, params=params, headers=headers)
+
+    def iter_pages(
+        self, path: str, *, params: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None
+    ) -> Iterator[GraphPage]:
+        if path not in self.collections:
+            self.calls.append(("iter_pages", path, params, headers))
+            return iter([GraphPage(value=(), next_link=None, delta_link=None)])
+        return super().iter_pages(path, params=params, headers=headers)
+
+
+def test_discover_wrapper_uses_supported_endpoints_only() -> None:
+    client = _AnyPathClient(
         json={"/me/drive": {"id": "ME", "name": "OneDrive", "driveType": "business", "webUrl": "https://me"}},
         collections={
-            "/me/drive/sharedWithMe": [
-                [
-                    {
-                        "id": "S1",
-                        "name": "Board Pack",
-                        "remoteItem": {
-                            "id": "R1",
-                            "folder": {},
-                            "parentReference": {"driveId": "b!OWNER"},
-                            "webUrl": "https://share",
-                        },
-                    }
-                ]
+            "/me/followedSites": [
+                [{"id": "SITE1", "displayName": "Finance", "webUrl": "https://c/sites/fin"}]
             ],
-            "/sites": [
-                [
-                    {
-                        "id": "SITE1",
-                        "displayName": "Finance",
-                        "webUrl": "https://contoso.sharepoint.com/sites/fin",
-                    }
-                ]
-            ],
-            "/sites/SITE1/drives": [
-                [{"id": "b!DOCS", "name": "Documents"}, {"id": "b!ARCH", "name": "Archive"}],
-            ],
+            "/sites/SITE1/drives": [[{"id": "b!DOCS", "name": "Documents"}]],
         },
     )
     found = discover(client)  # type: ignore[arg-type]
-    names = [s.name for s in found]
-    assert names == sorted(names, key=str.casefold)
-    by_name = {s.name: s for s in found}
-    assert by_name["OneDrive"].drive_id == "me"
-    shared = by_name["Board Pack"]
-    assert shared.drive_id == "b!OWNER" and "own cursor" in shared.note
-    lib = by_name["Finance / Documents"]
-    assert lib.drive_id == "b!DOCS" and lib.site == "contoso.sharepoint.com:/sites/fin"
-    assert all(s.kind is SourceKind.GRAPH_DRIVE for s in found)
-    _, _, params, _ = next(c for c in client.calls if c[1] == "/sites")
-    assert params is not None and params["search"] == "*"
+    assert [(s.name, s.drive_id) for s in found] == [
+        ("Finance / Documents", "b!DOCS"),
+        ("OneDrive (OneDrive)", "me"),
+    ]
+    deprecated = "shared" + "WithMe"  # spelled split so the endpoint lint never matches this test
+    assert not any(deprecated in c[1] or "insights/shared" in c[1] for c in client.calls)
+    assert not any(c[1] == "/sites" for c in client.calls)  # no tenant-wide site search either
 
 
-def test_discover_survives_a_refused_endpoint() -> None:
-    client = FakeClient(
-        json={"/me/drive": GraphError(403, "accessDenied", "no")},
-        collections={
-            "/me/drive/sharedWithMe": GraphError(403, "accessDenied", "no"),
-            "/sites": [[{"id": "SITE1", "displayName": "Ops"}, {"id": "SITE2", "displayName": "Locked"}]],
-            "/sites/SITE1/drives": [[{"id": "b!OPS", "name": "Documents"}]],
-            "/sites/SITE2/drives": GraphError(403, "accessDenied", "no"),
-        },
+# ---------------------------------------------------------------------------------------------------------
+# $select lint: every top-level field the arm reads must be selected (audit design-correctness-04)
+# ---------------------------------------------------------------------------------------------------------
+
+
+class _Recording(dict[str, Any]):
+    """A driveItem that records every top-level key the arm reads."""
+
+    seen: ClassVar[set[str]] = set()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        _Recording.seen.add(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        _Recording.seen.add(key)
+        return super().__getitem__(key)
+
+    def __contains__(self, key: object) -> bool:
+        if isinstance(key, str):
+            _Recording.seen.add(key)
+        return super().__contains__(key)
+
+
+def test_drive_select_covers_every_field_the_arm_reads() -> None:
+    selected = set(DRIVE_SELECT.split(","))
+    for needed in (
+        "cTag",
+        "package",
+        "pendingOperations",
+        "publication",
+        "malware",
+        "createdDateTime",
+        "lastModifiedBy",
+        "webUrl",
+        "remoteItem",
+        "file",
+        "deleted",
+        "root",
+    ):
+        assert needed in selected, needed
+    assert "sensitivityLabel" not in selected  # not a driveItem property: selecting it would 400
+    _Recording.seen = set()
+    rich = file(
+        "I1",
+        "a.docx",
+        "F1",
+        publication={"level": "published"},
+        lastModifiedBy={"user": {"displayName": "D"}},
+        pendingOperations={"pendingContentUpdate": {}},
+        malware={"description": "x"},
     )
-    found = discover(client)  # type: ignore[arg-type]
-    assert [s.drive_id for s in found] == ["b!OPS"]
+    pages = [
+        [
+            _Recording(root()),
+            _Recording(folder("F1", "Finance", "ROOT")),
+            _Recording(rich),
+            _Recording(
+                {
+                    "id": "NB",
+                    "name": "Notes",
+                    "package": {"type": "oneNote"},
+                    "parentReference": {"id": "ROOT"},
+                }
+            ),
+            _Recording(
+                {"id": "SC", "name": "Short", "remoteItem": {"id": "R"}, "parentReference": {"id": "ROOT"}}
+            ),
+            _Recording(deleted("GONE", "F1")),
+        ]
+    ]
+    client = FakeClient(deltas={DELTA_PATH: [Round(list(map(list, pages)))]})
+    arm = DriveArm(client, cfg(), lookup_from({"GONE": ("F1", "old.txt")}))  # type: ignore[arg-type]
+    arm.scan(None, full=True)
+    item_from_graph("fin", _Recording(rich), lookup_from({"F1": ("ROOT", "Finance"), "ROOT": (None, "")}))
+    read = {k for k in _Recording.seen if not k.startswith("@")}
+    assert read - selected == set(), f"read but not selected: {sorted(read - selected)}"
+
+
+def test_relabel_moves_quickxor_so_it_is_a_content_change_not_metadata_only() -> None:
+    # C15 section 4 / audit design-correctness-05: the label lives in docMetadata/LabelInfo.xml inside the
+    # package, so a relabel moves eTag, cTag AND quickXorHash. The arm must surface the new hash (the
+    # classifier's hash rung then says MAYBE_CHANGED -> fetch), and must not invent a label from delta.
+    rows = {"F1": ("ROOT", "Finance"), "ROOT": (None, "")}
+    before = item_from_graph("fin", file("I1", "Budget.docx", "F1", qx="OLD=="), lookup_from(rows))
+    relabelled = file("I1", "Budget.docx", "F1", qx="NEW==")
+    relabelled["eTag"], relabelled["cTag"] = '"{I1},3"', '"c:{I1},3"'
+    after = item_from_graph("fin", relabelled, lookup_from(rows))
+    assert before.size == after.size and before.mtime_ns == after.mtime_ns
+    assert after.remote_hashes.quickxor != before.remote_hashes.quickxor
+    assert after.ctag != before.ctag
+    assert "sensitivity_label" not in after.extra
+
+
+# ---------------------------------------------------------------------------------------------------------
+# 401 / 403 / 404: per drive (raise, never an empty pass) vs per item (skip / one ERROR row)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_drive_level_403_is_a_named_it_action_not_an_empty_pass() -> None:
+    client = FakeClient(deltas={CURSOR: [GraphError(403, "accessDenied", "Access denied")]})
+    arm = DriveArm(client, cfg(), lookup_from(MANIFEST))  # type: ignore[arg-type]
+    with pytest.raises(GraphError) as info:
+        arm.scan(CURSOR, full=False)
+    assert info.value.status == 403 and info.value.code == "drive-access-denied"
+    assert "Files.Read.All" in str(info.value) and "Sites.Selected" in str(info.value)
+
+
+def test_drive_level_404_names_the_missing_drive() -> None:
+    client = FakeClient(deltas={DELTA_PATH: [GraphNotFound(404, "itemNotFound", "no drive")]})
+    arm = DriveArm(client, cfg(), lookup_from({}))  # type: ignore[arg-type]
+    with pytest.raises(GraphNotFound) as info:
+        arm.scan(None, full=True)
+    assert info.value.code == "drive-not-found" and "agentsync discover" in str(info.value)
+
+
+def test_drive_level_401_stays_auth_required() -> None:
+    client = FakeClient(deltas={DELTA_PATH: [AuthRequiredError("REAUTH_REQUIRED")]})
+    with pytest.raises(AuthRequiredError):
+        DriveArm(client, cfg(), lookup_from({})).scan(None, full=True)  # type: ignore[arg-type]
+
+
+def test_drive_level_other_errors_propagate_unchanged() -> None:
+    boom = GraphError(500, "generalException", "boom")
+    client = FakeClient(deltas={DELTA_PATH: [boom]})
+    with pytest.raises(GraphError) as info:
+        DriveArm(client, cfg(), lookup_from({})).scan(None, full=True)  # type: ignore[arg-type]
+    assert info.value is boom
+
+
+@pytest.mark.parametrize(
+    ("source", "path"),
+    [
+        (SourceConfig(id="me", kind=SourceKind.GRAPH_DRIVE, drive_id="me", folder="/"), "/me/drive"),
+        (
+            SourceConfig(
+                id="s", kind=SourceKind.GRAPH_DRIVE, site="contoso.sharepoint.com:/sites/x", folder="/"
+            ),
+            "/sites/contoso.sharepoint.com:/sites/x",
+        ),
+    ],
+)
+def test_resolve_403_is_named(source: SourceConfig, path: str) -> None:
+    client = FakeClient(json={path: GraphError(403, "accessDenied", "no")})
+    with pytest.raises(GraphError) as info:
+        resolve_drive_id(client, source)  # type: ignore[arg-type]
+    assert info.value.code == "drive-access-denied"
+
+
+def test_scope_folder_403_is_named() -> None:
+    client = FakeClient(json={"/drives/D/root:/Secret": GraphError(403, "accessDenied", "no")})
+    arm = DriveArm(client, cfg("/Secret"), lookup_from({}))  # type: ignore[arg-type]
+    with pytest.raises(GraphError) as info:
+        arm.scope_root()
+    assert info.value.code == "drive-access-denied"
+
+
+def test_item_level_403_on_an_ancestor_skips_only_that_item() -> None:
+    client = delta_client(
+        [[file("I7", "deep.txt", "LOCKED"), file("I1", "Budget.xlsx", "F1", qx="N==")]],
+        **{"/drives/D/items/LOCKED": GraphError(403, "accessDenied", "broken inheritance")},
+    )
+    arm = DriveArm(client, cfg(), lookup_from(MANIFEST))  # type: ignore[arg-type]
+    result = arm.scan(CURSOR, full=False)
+    assert set(by_id(result.items)) == {"I1"}  # the readable item still flows
+    assert any("403" in a and "ancestor" in a for a in result.alarms)
+
+
+def test_item_level_500_on_an_ancestor_propagates() -> None:
+    client = delta_client(
+        [[file("I7", "deep.txt", "P")]], **{"/drives/D/items/P": GraphError(500, "boom", "server")}
+    )
+    with pytest.raises(GraphError):
+        DriveArm(client, cfg(), lookup_from(MANIFEST)).scan(CURSOR, full=False)  # type: ignore[arg-type]
+
+
+def test_item_level_403_on_a_moved_in_folder_listing_is_unknown_not_empty() -> None:
+    client = delta_client([[folder("NEW", "Imported", "F1")]])
+    client.collections["/drives/D/items/NEW/children"] = GraphError(403, "accessDenied", "no")
+    arm = DriveArm(client, cfg(), lookup_from(MANIFEST))  # type: ignore[arg-type]
+    result = arm.scan(CURSOR, full=False)
+    assert "NEW" in by_id(result.items)
+    assert result.unknown_dirs == ("Finance/Imported",)
+    assert any("refused" in a and "403" in a for a in result.alarms)
+
+
+@pytest.mark.parametrize(
+    ("error", "kind", "code"),
+    [
+        (GraphError(403, "accessDenied", "no"), GraphError, "item-access-denied"),
+        (GraphNotFound(404, "itemNotFound", "gone"), GraphNotFound, "item-not-found"),
+    ],
+)
+def test_fetch_403_404_are_per_item_errors(
+    tmp_path: Path, error: GraphError, kind: type[GraphError], code: str
+) -> None:
+    client = FakeClient(downloads={"/drives/D/items/I1/content": error})
+    arm = DriveArm(client, cfg(), lookup_from({}))  # type: ignore[arg-type]
+    budget = ByteBudget(max_bytes=100, max_files=10)
+    with pytest.raises(kind) as info:
+        arm.fetch(a_file_item(), tmp_path, budget)
+    assert info.value.code == code and "Finance/Budget.xlsx" in str(info.value)
+    assert budget.used == 0 and budget.files_used == 0  # refunded: the row retries next cycle

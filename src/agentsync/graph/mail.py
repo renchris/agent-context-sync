@@ -3,6 +3,21 @@
 Phase 1 (detect): ``/{mailbox}/mailFolders/{folder}/messages/delta`` with ``$select=MAIL_SELECT`` only (no
 body). Phase 2 (fetch): ``/{mailbox}/messages/{id}/$value`` (full MIME incl. attachments) for the diff only.
 ``@removed`` means deleted OR moved out of the folder: ``confirm_removed`` does the cross-folder check.
+
+C15 section 2 / section 9 items 9-10 and audit design-correctness-11:
+
+- Every request of this arm (delta, its nextLink/deltaLink follow-ups, folder and message GETs, the MIME
+  download) carries ``Prefer: IdType="ImmutableId"``: "This header only applies to the request it is
+  included with", and an immutable id "will NOT change if the item is moved to a different folder", so the
+  stable id survives moves and the cross-folder check can find a moved message by the id it had.
+- Delta is per folder ("Delta query is a per-folder operation"): one source = one folder = one cursor; the
+  arm never calls a mailbox-wide message delta.
+- Outlook delta tokens expire with an internal cache: "a 40X-series error with error codes such as
+  ``syncStateNotFound``" resyncs the folder (a WARNING, never "cursor store corrupt"); 410 follows its
+  Location into a full resync.
+- A shared mailbox (``mailbox`` = a UPN) is UNVERIFIED: ``Mail.Read.Shared`` is not listed on the
+  message-delta permissions table (C15 section 8 probe 6). Every scan says so in its alarms and in each
+  item's ``extra["mailbox_verified"] = False`` until the probe is recorded.
 """
 
 from __future__ import annotations
@@ -10,8 +25,10 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import hashlib
+import inspect
 import logging
 import re
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from agentsync.config import SourceConfig
@@ -38,6 +55,11 @@ MAIL_SELECT = ",".join(
 log = logging.getLogger(__name__)
 
 _PAGE_SIZE = 100  # Prefer: odata.maxpagesize (message delta defaults to 10 per page)
+_IMMUTABLE_ID = 'IdType="ImmutableId"'
+_SHARED_UNVERIFIED = (
+    "shared mailbox {box}: message delta under Mail.Read.Shared is UNVERIFIED (not on the delta "
+    "permissions table; C15 section 8 probe 6)"
+)
 _MAX_ROUND_ATTEMPTS = 3
 _FROM_MAX = 60
 _SUBJECT_MAX = 120
@@ -139,6 +161,26 @@ def item_from_message(source_id: str, raw: JsonObject) -> SourceItem:
     )
 
 
+def _is_sync_state_error(exc: GraphError) -> bool:
+    """True for Outlook's expired-delta-token family (``syncStateNotFound`` and kin) on a 40X."""
+    return 400 <= exc.status < 500 and "syncstate" in exc.code.casefold()
+
+
+def _download(
+    client: GraphClient, url: str, dest: Path, *, max_bytes: int, headers: Mapping[str, str]
+) -> tuple[int, str]:
+    """``client.download`` with ``headers`` when the client accepts them (contract gap: see module notes)."""
+    try:
+        accepts = "headers" in inspect.signature(client.download).parameters
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts:
+        download: Callable[..., tuple[int, str]] = client.download
+        return download(url, dest, max_bytes=max_bytes, headers=headers)
+    log.debug("GraphClient.download takes no headers: the MIME GET goes without Prefer (id is in the URL)")
+    return client.download(url, dest, max_bytes=max_bytes)
+
+
 class MailArm:
     """SourceArm for kind ``graph_mail`` (one folder, one cursor)."""
 
@@ -156,17 +198,62 @@ class MailArm:
         self._client = client
         self._cfg = cfg
         self._root = mailbox_root(cfg)
+        self._shared = self._root != "/me"
         self._folder = cfg.folder.strip().strip("/")
         self._folder_id: str | None = None
+
+    @property
+    def shared(self) -> bool:
+        """True when the source is a shared mailbox (``/users/{upn}``): unverified until C15 probe 6."""
+        return self._shared
 
     def _folder_path(self) -> str:
         """``/{mailbox}/mailFolders/{folder}`` (a well-known name or a folder id)."""
         return f"{self._root}/mailFolders/{_quote_segment(self._folder)}"
 
+    def _get_headers(self) -> dict[str, str]:
+        """Headers of every non-delta request: immutable ids."""
+        return {"Prefer": _IMMUTABLE_ID}
+
+    def _headers(self) -> dict[str, str]:
+        """Headers of every delta request and its follow-ups: immutable ids plus the page size."""
+        return {"Prefer": f"{_IMMUTABLE_ID}, odata.maxpagesize={_PAGE_SIZE}"}
+
+    def _access_error(self, exc: GraphError, what: str) -> GraphError:
+        """A 403 / 404 on the folder itself, named with the IT action (never read as an empty folder)."""
+        box = self._cfg.mailbox if self._shared else "your mailbox"
+        if exc.status == 403:
+            if self._shared:
+                action = (
+                    f"ask IT for admin consent to Mail.Read.Shared and for Read (Full Access) permission on "
+                    f"{box}; shared-mailbox delta is unverified (C15 section 8 probe 6)"
+                )
+            else:
+                action = "ask IT for tenant admin consent to Mail.Read on the agentsync app (C15 section 2)"
+            return GraphError(
+                403, "mail-access-denied", f"{what} in {box}: access denied; {action}", exc.request_id
+            )
+        if exc.status == 404:
+            return GraphNotFound(
+                404,
+                "mail-folder-not-found",
+                f"{what} in {box}: not found (deleted or renamed?): agentsync discover lists the folders",
+                exc.request_id,
+            )
+        return exc
+
     def folder_id(self) -> str:
         """The watched folder's id (well-known names resolved once via GET)."""
         if self._folder_id is None:
-            body = self._client.get_json(self._folder_path(), params={"$select": "id"})
+            try:
+                body = self._client.get_json(
+                    self._folder_path(), params={"$select": "id"}, headers=self._get_headers()
+                )
+            except GraphError as exc:
+                named = self._access_error(exc, f"mail folder {self._folder!r}")
+                if named is exc:
+                    raise
+                raise named from exc
             ident = body.get("id")
             if not isinstance(ident, str) or not ident:
                 raise GraphError(0, "no-id", f"mail folder {self._folder!r}: response carried no id")
@@ -177,7 +264,9 @@ class MailArm:
         """Phase-1 metadata of one message anywhere in the mailbox; None on 404 (hard-deleted)."""
         try:
             return self._client.get_json(
-                f"{self._root}/messages/{_quote_segment(message_id)}", params={"$select": MAIL_SELECT}
+                f"{self._root}/messages/{_quote_segment(message_id)}",
+                params={"$select": MAIL_SELECT},
+                headers=self._get_headers(),
             )
         except GraphNotFound:
             return None
@@ -190,12 +279,8 @@ class MailArm:
             return "deleted"
         return f"moved:{_opt_str(found, 'parentFolderId') or 'unknown'}"
 
-    def _headers(self) -> dict[str, str]:
-        """Page-size preference for every delta request."""
-        return {"Prefer": f"odata.maxpagesize={_PAGE_SIZE}"}
-
     def _run_round(self, cursor: str | None, *, full: bool) -> tuple[DeltaResult, PassKind, bool, list[str]]:
-        """Drain one round: (result, pass kind, cursor_reset, alarms) with the 410 / 400 recovery ladder."""
+        """Drain one round: (result, pass kind, cursor_reset, alarms) with the 410 / 40X / 400 ladder."""
         alarms: list[str] = []
         cursor_reset = False
         delta_link: str | None = None if (full or cursor is None) else cursor
@@ -215,14 +300,32 @@ class MailArm:
                     )
                 return result, PassKind.FULL, cursor_reset, alarms
             except GraphGone as exc:
-                log.warning("source %s: mail delta 410 (%s): full re-enumeration", self.source_id, exc.code)
-                alarms.append(f"cursor expired (410 {exc.code}): full re-enumeration")
+                log.warning(
+                    "source %s: mail delta 410 (%s): full resync of the folder", self.source_id, exc.code
+                )
+                alarms.append(f"cursor expired (410 {exc.code}): full resync of the folder")
                 delta_link, start = None, exc.location
-            except GraphBadCursor:
-                if delta_link is None and start is None:
-                    raise  # a token-less round carries no cursor of ours: never loop on it
-                log.error("source %s: 400 on a stored mail link: dropped, full enumeration", self.source_id)
-                alarms.append("cursor store corrupt: dropped")
+            except GraphError as exc:
+                on_our_link = delta_link is not None or start is not None
+                if on_our_link and _is_sync_state_error(exc):
+                    # Documented token expiry (Outlook's delta-token cache), not corruption: resync quietly.
+                    log.warning(
+                        "source %s: mail delta token expired (%d %s): full resync of the folder",
+                        self.source_id,
+                        exc.status,
+                        exc.code,
+                    )
+                    alarms.append(f"delta token expired ({exc.status} {exc.code}): full resync of the folder")
+                elif on_our_link and isinstance(exc, GraphBadCursor):
+                    log.error(
+                        "source %s: 400 on a stored mail link: dropped, full enumeration", self.source_id
+                    )
+                    alarms.append("cursor store corrupt: dropped")
+                else:
+                    named = self._access_error(exc, f"mail folder {self._folder!r}")
+                    if named is exc:
+                        raise
+                    raise named from exc
                 delta_link, start = None, None
             cursor_reset = True
         raise GraphError(0, "resync-loop", f"source {self.source_id}: delta kept failing after recovery")
@@ -232,6 +335,8 @@ class MailArm:
         through ``confirm_removed`` and is emitted deleted=True with extra["removed"] = "deleted" |
         "moved:<id>"."""
         result, pass_kind, cursor_reset, alarms = self._run_round(cursor, full=full)
+        if self._shared:
+            alarms.append(_SHARED_UNVERIFIED.format(box=self._cfg.mailbox))
         latest: dict[str, JsonObject] = {}  # last occurrence of an id wins
         for raw in result.items:
             ident = raw.get("id")
@@ -243,13 +348,13 @@ class MailArm:
         for ident in sorted(latest):
             raw = latest[ident]
             if "@removed" not in raw:
-                items.append(item_from_message(self.source_id, raw))
+                items.append(self._mark(item_from_message(self.source_id, raw)))
                 continue
             found = self._get_message(ident)
             if found is not None and _opt_str(found, "parentFolderId") == self.folder_id():
                 # Still in this folder: delta noise (collection-level tracking), keep it live.
                 noise += 1
-                items.append(item_from_message(self.source_id, found))
+                items.append(self._mark(item_from_message(self.source_id, found)))
                 continue
             verdict = (
                 "deleted" if found is None else f"moved:{_opt_str(found, 'parentFolderId') or 'unknown'}"
@@ -259,7 +364,7 @@ class MailArm:
             else:
                 moved += 1
             tomb = item_from_message(self.source_id, raw)
-            items.append(dataclasses.replace(tomb, extra={**tomb.extra, "removed": verdict}))
+            items.append(self._mark(dataclasses.replace(tomb, extra={**tomb.extra, "removed": verdict})))
         log.info(
             "source %s: %s pass, %d page(s), %d message(s), %d deleted, %d moved out, %d removal noise",
             self.source_id,
@@ -280,6 +385,12 @@ class MailArm:
             alarms=tuple(alarms),
         )
 
+    def _mark(self, item: SourceItem) -> SourceItem:
+        """Tag items of a shared mailbox as unverified (the delta permission is not documented)."""
+        if not self._shared:
+            return item
+        return dataclasses.replace(item, extra={**item.extra, "mailbox_verified": False})
+
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:
         """Phase 2: download MIME to ``<dest_dir>/<id-hash>.eml`` with max_bytes = budget.remaining_bytes,
         then charge the actual size."""
@@ -293,7 +404,9 @@ class MailArm:
         dest = dest_dir / f"{digest}.eml"
         url = f"{self._root}/messages/{_quote_segment(item.stable_id)}/$value"
         try:
-            size, sha = self._client.download(url, dest, max_bytes=budget.remaining_bytes)
+            size, sha = _download(
+                self._client, url, dest, max_bytes=budget.remaining_bytes, headers=self._get_headers()
+            )
         except Exception:
             _refund(budget, 0)
             raise

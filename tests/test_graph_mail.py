@@ -19,6 +19,7 @@ from agentsync.graph.mail import MAIL_SELECT, MailArm, item_from_message, mailbo
 from agentsync.model import ByteBudget, PassKind, SourceItem, SourceKind
 
 BASE = "https://graph.microsoft.com/v1.0"
+IMMUTABLE = 'IdType="ImmutableId"'
 DELTA_PATH = "/me/mailFolders/Inbox/messages/delta"
 CURSOR = f"{BASE}/me/mailFolders('AQMk')/messages/delta?$deltatoken=CUR"
 NEXT = f"{BASE}/me/mailFolders('AQMk')/messages/delta?$deltatoken=NEXT"
@@ -187,7 +188,7 @@ def test_first_scan_is_a_full_metadata_only_round() -> None:
     _, path, params, headers = client.calls[0]
     assert path == DELTA_PATH
     assert params == {"$select": MAIL_SELECT}  # never the bodies during detection
-    assert headers == {"Prefer": "odata.maxpagesize=100"}
+    assert headers == {"Prefer": f"{IMMUTABLE}, odata.maxpagesize=100"}
     assert result.pass_kind is PassKind.FULL and result.enumeration_complete
     assert result.new_cursor == NEXT
     assert [i.stable_id for i in result.items] == ["M1", "M2"]
@@ -388,3 +389,143 @@ def test_arm_validates_its_config() -> None:
         MailArm(FakeClient(), SourceConfig(id="m", kind=SourceKind.GRAPH_MAIL))  # type: ignore[arg-type]
     arm = MailArm(FakeClient(), cfg())  # type: ignore[arg-type]
     assert arm.source_id == "mail" and arm.kind is SourceKind.GRAPH_MAIL
+
+
+# ---------------------------------------------------------------------------------------------------------
+# C15 section 9 items 9-10, audit design-correctness-11: immutable ids, token expiry, per-folder, shared
+# ---------------------------------------------------------------------------------------------------------
+
+
+class HeaderedClient(FakeClient):
+    """A client whose download accepts request headers (the shape graph-core may add)."""
+
+    def download(
+        self, path: str, dest: Path, *, max_bytes: int | None = None, headers: Mapping[str, str] | None = None
+    ) -> tuple[int, str]:
+        self.calls.append(("download-headers", path, None, headers))
+        return super().download(path, dest, max_bytes=max_bytes)
+
+
+def test_every_mail_request_carries_immutable_id(tmp_path: Path) -> None:
+    location = f"{BASE}/me/mailFolders('AQMk')/messages/delta?$skiptoken=RESYNC"
+    client = HeaderedClient(
+        json={
+            "/me/messages/M9": msg("M9", parentFolderId="ARCHIVE"),
+            "/me/mailFolders/Inbox": {"id": "INBOX-ID"},
+        },
+        deltas={
+            CURSOR: [GraphGone("resyncRequired", "gone", location)],
+            location: [[removed("M9"), msg("M1")]],
+        },
+        downloads={"/me/messages/M1/$value": MIME},
+    )
+    arm = MailArm(client, cfg())  # type: ignore[arg-type]
+    result = arm.scan(CURSOR, full=False)  # stored link, then the Location follow-up
+    arm.confirm_removed("M9")
+    arm.fetch(by_id(result.items)["M1"], tmp_path, ByteBudget(1000, 5))
+    kinds = {c[0] for c in client.calls}
+    assert kinds == {"delta", "get_json", "download-headers", "download"}
+    for method, path, _, headers in client.calls:
+        if method == "download":
+            continue  # the FakeClient base records the inner call without headers
+        assert headers is not None and IMMUTABLE in headers["Prefer"], (method, path)
+
+
+def test_fetch_works_with_a_client_that_takes_no_headers(tmp_path: Path) -> None:
+    client = FakeClient(downloads={"/me/messages/M1/$value": MIME})  # contract download: no headers param
+    got = MailArm(client, cfg()).fetch(  # type: ignore[arg-type]
+        item_from_message("mail", msg("M1")), tmp_path, ByteBudget(1000, 5)
+    )
+    assert got.path.read_bytes() == MIME
+
+
+def test_immutable_id_survives_a_move_so_the_cross_folder_check_finds_it() -> None:
+    # With ImmutableId the id in @removed is the id the moved message still has: GET finds it.
+    client = FakeClient(
+        json={
+            "/me/messages/IMM-1": msg("IMM-1", parentFolderId="ARCHIVE"),
+            "/me/mailFolders/Inbox": {"id": "INBOX-ID"},
+        },
+        deltas={CURSOR: [[removed("IMM-1")]]},
+    )
+    item = by_id(MailArm(client, cfg()).scan(CURSOR, full=False).items)["IMM-1"]  # type: ignore[arg-type]
+    assert item.extra["removed"] == "moved:ARCHIVE"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        GraphBadCursor(400, "syncStateNotFound", "The sync state cannot be found"),
+        GraphNotFound(404, "SyncStateNotFound", "expired"),
+        GraphError(409, "ErrorSyncStateInvalid", "invalid"),
+    ],
+)
+def test_sync_state_40x_resyncs_the_folder_and_is_not_corruption(
+    error: GraphError, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = FakeClient(deltas={CURSOR: [error], DELTA_PATH: [[msg("M1")]]})
+    with caplog.at_level(logging.DEBUG, logger="agentsync"):
+        result = MailArm(client, cfg()).scan(CURSOR, full=False)  # type: ignore[arg-type]
+    assert client.called("delta") == [CURSOR, DELTA_PATH]
+    assert result.pass_kind is PassKind.FULL and result.cursor_reset and result.enumeration_complete
+    assert any("delta token expired" in a for a in result.alarms)
+    assert not any("corrupt" in a for a in result.alarms)
+    assert "corrupt" not in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_sync_state_error_on_a_tokenless_round_propagates() -> None:
+    client = FakeClient(deltas={DELTA_PATH: [GraphBadCursor(400, "syncStateNotFound", "odd")]})
+    with pytest.raises(GraphBadCursor):
+        MailArm(client, cfg()).scan(None, full=False)  # type: ignore[arg-type]
+
+
+def test_repeated_sync_state_errors_never_loop() -> None:
+    err = GraphBadCursor(400, "syncStateNotFound", "x")
+    location = f"{BASE}/me/mailFolders('AQMk')/messages/delta?$skiptoken=L"
+    client = FakeClient(deltas={CURSOR: [GraphGone("x", "gone", location)], location: [err]})
+    client.deltas[DELTA_PATH] = [GraphGone("x", "gone", location)]
+    with pytest.raises(GraphError, match="kept failing"):
+        MailArm(client, cfg()).scan(CURSOR, full=False)  # type: ignore[arg-type]
+
+
+def test_delta_is_per_folder_never_mailbox_wide() -> None:
+    folder_delta = "/me/mailFolders/AAMkFOLDER=/messages/delta"  # one folder, one cursor
+    client = FakeClient(deltas={folder_delta: [[msg("M1")]]})
+    MailArm(client, cfg(folder="AAMkFOLDER=")).scan(None, full=True)  # type: ignore[arg-type]
+    assert client.called("delta") == [folder_delta]
+
+
+@pytest.mark.parametrize(
+    ("mailbox", "scope"), [("me", "Mail.Read "), ("finance@contoso.com", "Mail.Read.Shared")]
+)
+def test_mail_403_names_the_it_action(mailbox: str, scope: str) -> None:
+    root = mailbox_root(cfg(mailbox=mailbox))
+    client = FakeClient(
+        deltas={f"{root}/mailFolders/Inbox/messages/delta": [GraphError(403, "ErrorAccessDenied", "no")]}
+    )
+    with pytest.raises(GraphError) as info:
+        MailArm(client, cfg(mailbox=mailbox)).scan(None, full=True)  # type: ignore[arg-type]
+    assert info.value.code == "mail-access-denied" and scope in str(info.value)
+
+
+def test_mail_folder_404_is_named() -> None:
+    client = FakeClient(json={"/me/mailFolders/Gone": GraphNotFound(404, "ErrorItemNotFound", "no")})
+    with pytest.raises(GraphNotFound) as info:
+        MailArm(client, cfg(folder="Gone")).folder_id()  # type: ignore[arg-type]
+    assert info.value.code == "mail-folder-not-found"
+
+
+def test_shared_mailbox_is_marked_unverified() -> None:
+    root = "/users/finance@contoso.com"
+    client = FakeClient(deltas={f"{root}/mailFolders/Inbox/messages/delta": [[msg("M1")]]})
+    arm = MailArm(client, cfg(mailbox="finance@contoso.com"))  # type: ignore[arg-type]
+    assert arm.shared
+    result = arm.scan(None, full=True)
+    assert any("UNVERIFIED" in a and "probe 6" in a for a in result.alarms)
+    assert by_id(result.items)["M1"].extra["mailbox_verified"] is False
+
+    own = FakeClient(deltas={DELTA_PATH: [[msg("M1")]]})
+    own_result = MailArm(own, cfg()).scan(None, full=True)  # type: ignore[arg-type]
+    assert not MailArm(own, cfg()).shared  # type: ignore[arg-type]
+    assert own_result.alarms == () and "mailbox_verified" not in by_id(own_result.items)["M1"].extra

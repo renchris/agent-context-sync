@@ -1,8 +1,26 @@
-"""Graph Teams channel message delta arm -> monthly rollup items (owner: graph-arms).
+"""Graph Teams arm: channel and chat messages -> monthly rollup items (owner: graph-arms).
 
-Channel delta returns top-level messages; replies come from ``/messages/{id}/replies`` for each changed
-message. Messages are merged into a per-channel store ``<state_dir>/teams/<source_id>/<YYYY-MM>.json`` (schema
-``model.TEAMS_MONTH_SCHEMA``, written tmp + rename, keys sorted). Each touched month is one SourceItem.
+No delta. v1.0 documents no channel message delta and the chat delta is application-only (C15 section 2,
+audit design-correctness-06/07), so both read paths are delegated HIGH-WATER walks:
+
+- **Channel** (``ChannelMessage.Read.All``): ``GET /teams/{t}/channels/{c}/messages?$top=50&$expand=replies``.
+  The list "is sorted by the last modified date of the entire reply chain", newest first, so the walk
+  computes each chain's modified time as ``max(root, replies[*]).lastModifiedDateTime`` (following
+  ``replies@odata.nextLink`` past the inline replies) and stops at the first chain older than
+  ``HWM - 5 min``. Without a high-water mark (bootstrap, ``full``) it walks to the end of the channel
+  (there is no documented 8-month cap on this endpoint).
+- **Chat** (``Chat.Read``; configured as ``team_id = "chats"``, ``channel_id = <chat id>``):
+  ``GET /me/chats/{id}/messages?$top=50&$orderby=lastModifiedDateTime desc&$filter=lastModifiedDateTime gt
+  <HWM - 5 min>`` (the filter is honoured only when ``$orderby`` names the same property; the walk also
+  stops client-side in case it is ignored).
+
+Every request of one arm is paced to at most one per second (Teams: "A maximum of one request per second
+per app per tenant can be issued on a given channel or chat"). The cursor is ``hwm:<ISO-8601 UTC>`` (not a
+secret, not a URL); a cursor of any other form (an older build's delta link) is replaced by a full walk.
+
+Messages are merged into a per-conversation store ``<state_dir>/teams/<source_id>/<YYYY-MM>.json`` (schema
+``model.TEAMS_MONTH_SCHEMA``, written tmp + rename, keys sorted). A thread lives in its root's month. Each
+touched month is one SourceItem; a FULL walk also emits every stored month (so absence works).
 """
 
 from __future__ import annotations
@@ -14,13 +32,15 @@ import json
 import logging
 import os
 import re
-from collections.abc import Iterable, Mapping
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from agentsync.config import SourceConfig
-from agentsync.errors import GraphBadCursor, GraphError, GraphGone, GraphNotFound
-from agentsync.graph.client import DeltaResult, GraphClient, JsonObject
+from agentsync.errors import GraphError, GraphNotFound
+from agentsync.graph.client import GraphClient, GraphPage, JsonObject
 from agentsync.graph.drive import _obj, _opt_str, _parse_graph_time_ns, _quote_segment, _refund
 from agentsync.model import (
     TEAMS_MONTH_SCHEMA,
@@ -37,7 +57,11 @@ from agentsync.model import (
 log = logging.getLogger(__name__)
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
-_MAX_ROUND_ATTEMPTS = 3
+_CHATS_TEAM_ID = "chats"  # sources.toml: team_id = "chats" + channel_id = <chat id> selects the chat reader
+_CURSOR_PREFIX = "hwm:"
+_SKEW_NS = 5 * 60 * 1_000_000_000  # HWM - 5 min: tolerate server-side commit lag (C15 section 9 item 12)
+_PAGE_TOP = "50"  # the documented maximum for both channel and chat message lists
+_MIN_INTERVAL_S = 1.0  # at most one request per second per channel or chat
 _SUFFIX = ".teams.json"
 _CONTENT_MESSAGE_TYPES = frozenset({"message"})  # system events (member added, renamed ...) carry no content
 
@@ -129,14 +153,66 @@ def _write_atomic(path: Path, data: bytes) -> None:
         raise
 
 
+@dataclass
+class _Pacer:
+    """At most one request per ``interval_s`` (monotonic clock; injectable for tests)."""
+
+    interval_s: float
+    clock: Callable[[], float]
+    sleep: Callable[[float], None]
+    _next: float | None = None
+
+    def wait(self) -> None:
+        """Block until the next request may go, then reserve the slot after it."""
+        now = self.clock()
+        if self._next is not None and now < self._next:
+            self.sleep(self._next - now)
+            now = max(self.clock(), self._next)
+        self._next = now + self.interval_s
+
+
+def _cursor_hwm(cursor: str | None) -> int | None:
+    """``hwm:<iso>`` -> ns; None for no cursor or any other form."""
+    if cursor is None or not cursor.startswith(_CURSOR_PREFIX):
+        return None
+    return _parse_graph_time_ns(cursor[len(_CURSOR_PREFIX) :])
+
+
+def _modified_ns(raw: Mapping[str, Any]) -> int | None:
+    """A message's lastModifiedDateTime (else createdDateTime) in ns."""
+    return _parse_graph_time_ns(raw.get("lastModifiedDateTime")) or _parse_graph_time_ns(
+        raw.get("createdDateTime")
+    )
+
+
+@dataclass
+class _Walk:
+    """What one high-water walk saw."""
+
+    messages: list[tuple[str, JsonObject]]  # (root id or own id for chats, message)
+    newest_ns: int | None
+    reached_end: bool
+    requests: int
+
+
 class TeamsArm:
-    """SourceArm for kind ``graph_teams`` (one channel, one cursor)."""
+    """SourceArm for kind ``graph_teams`` (one channel or one chat, one high-water cursor)."""
 
     source_id: str
     kind: SourceKind
 
-    def __init__(self, client: GraphClient, cfg: SourceConfig, store_dir: Path) -> None:
-        """Bind to one channel; ``store_dir`` = StatePaths.teams_store / source_id."""
+    def __init__(
+        self,
+        client: GraphClient,
+        cfg: SourceConfig,
+        store_dir: Path,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+        min_interval_s: float = _MIN_INTERVAL_S,
+    ) -> None:
+        """Bind to one channel (or chat: ``team_id = "chats"``); ``store_dir`` = StatePaths.teams_store /
+        source_id. ``clock``/``sleep`` pace requests (tests inject a fake clock)."""
         if cfg.kind is not SourceKind.GRAPH_TEAMS:
             raise ValueError(f"source {cfg.id!r} is {cfg.kind.value}, not graph_teams")
         if not cfg.team_id or not cfg.channel_id:
@@ -146,17 +222,46 @@ class TeamsArm:
         self._client = client
         self._team_id = cfg.team_id
         self._channel_id = cfg.channel_id
+        self._is_chat = cfg.team_id.strip().casefold() == _CHATS_TEAM_ID
         self._store = store_dir
         self._names: tuple[str | None, str | None] | None = None
+        self._pacer = _Pacer(min_interval_s, clock, sleep)
+
+    @property
+    def is_chat(self) -> bool:
+        """True when this source is a 1:1 / group chat (``team_id = "chats"``) rather than a channel."""
+        return self._is_chat
 
     # ---- paths ------------------------------------------------------------------------------------------
     def _channel_path(self) -> str:
-        """``/teams/{t}/channels/{c}``."""
+        """``/teams/{t}/channels/{c}`` or ``/me/chats/{id}``."""
+        if self._is_chat:
+            return f"/me/chats/{_quote_segment(self._channel_id)}"
         return f"/teams/{_quote_segment(self._team_id)}/channels/{_quote_segment(self._channel_id)}"
 
     def _month_path(self, month: str) -> Path:
         """Store file of one month."""
         return self._store / f"{month}.json"
+
+    # ---- paced Graph access ------------------------------------------------------------------------------
+    def _get(self, path: str, params: Mapping[str, str] | None = None) -> JsonObject:
+        """One paced GET."""
+        self._pacer.wait()
+        return self._client.get_json(path, params=params)
+
+    def _pages(self, path: str, params: Mapping[str, str] | None = None) -> Iterator[GraphPage]:
+        """Paced pages: one pacer slot before every page request, none after the last page."""
+        self._pacer.wait()
+        pages = self._client.iter_pages(path, params=params)
+        while True:
+            try:
+                page = next(pages)
+            except StopIteration:
+                return
+            yield page
+            if page.next_link is None:
+                return
+            self._pacer.wait()
 
     # ---- store ------------------------------------------------------------------------------------------
     def _load(self, month: str, alarms: list[str]) -> JsonObject | None:
@@ -197,15 +302,17 @@ class TeamsArm:
         if self._names is None:
             team = channel = None
             try:
-                team_path = f"/teams/{_quote_segment(self._team_id)}"
-                team = _opt_str(
-                    self._client.get_json(team_path, params={"$select": "displayName"}), "displayName"
-                )
-                channel = _opt_str(
-                    self._client.get_json(self._channel_path(), params={"$select": "displayName"}),
-                    "displayName",
-                )
-            except GraphError as exc:  # e.g. no Team.ReadBasic.All consent: names are cosmetic
+                if self._is_chat:
+                    chat = self._get(self._channel_path(), params={"$select": "topic,chatType"})
+                    team = "Chats"
+                    channel = _opt_str(chat, "topic") or f"{_opt_str(chat, 'chatType') or 'chat'} chat"
+                else:
+                    team_path = f"/teams/{_quote_segment(self._team_id)}"
+                    team = _opt_str(self._get(team_path, params={"$select": "displayName"}), "displayName")
+                    channel = _opt_str(
+                        self._get(self._channel_path(), params={"$select": "displayName"}), "displayName"
+                    )
+            except GraphError as exc:  # e.g. no Team.ReadBasic.All / Chat.ReadBasic: names are cosmetic
                 log.info("source %s: team/channel names unavailable (%s)", self.source_id, exc)
             self._names = (team, channel)
         return self._names
@@ -291,55 +398,68 @@ class TeamsArm:
             extra=extra,
         )
 
-    # ---- Graph ------------------------------------------------------------------------------------------
-    def _run_round(self, cursor: str | None, *, full: bool) -> tuple[DeltaResult, PassKind, bool, list[str]]:
-        """Drain one round: (result, pass kind, cursor_reset, alarms) with the 410 / 400 recovery ladder."""
-        alarms: list[str] = []
-        cursor_reset = False
-        delta_link: str | None = None if (full or cursor is None) else cursor
-        start: str | None = None
-        for _attempt in range(_MAX_ROUND_ATTEMPTS):
+    # ---- Graph walks ------------------------------------------------------------------------------------
+    def _chain_replies(self, root: Mapping[str, Any]) -> list[JsonObject]:
+        """Inline ``replies`` of an expanded root plus every page behind ``replies@odata.nextLink``."""
+        replies = [r for r in root.get("replies") or [] if isinstance(r, dict)]
+        more = root.get("replies@odata.nextLink")
+        if isinstance(more, str) and more:
             try:
-                if delta_link is not None:
-                    return self._client.delta(delta_link), PassKind.DELTA, False, alarms
-                if start is not None:
-                    result = self._client.delta(start)
-                else:
-                    result = self._client.delta(f"{self._channel_path()}/messages/delta")
-                return result, PassKind.FULL, cursor_reset, alarms
-            except GraphGone as exc:
-                log.warning(
-                    "source %s: channel delta 410 (%s): full re-enumeration", self.source_id, exc.code
-                )
-                alarms.append(f"cursor expired (410 {exc.code}): full re-enumeration")
-                delta_link, start = None, exc.location
-            except GraphBadCursor:
-                if delta_link is None and start is None:
-                    raise
-                log.error(
-                    "source %s: 400 on a stored channel link: dropped, full enumeration", self.source_id
-                )
-                alarms.append("cursor store corrupt: dropped")
-                delta_link, start = None, None
-            cursor_reset = True
-        raise GraphError(0, "resync-loop", f"source {self.source_id}: delta kept failing after recovery")
+                for page in self._pages(more):
+                    replies.extend(page.value)
+            except GraphNotFound:  # the thread vanished between the two calls
+                pass
+        return replies
 
-    def _replies(self, root_id: str) -> list[JsonObject]:
-        """Every reply of one root message ([] when the thread is gone)."""
-        out: list[JsonObject] = []
-        try:
-            for page in self._client.iter_pages(
-                f"{self._channel_path()}/messages/{_quote_segment(root_id)}/replies"
-            ):
-                out.extend(page.value)
-        except GraphNotFound:
-            return []
-        return out
+    def _walk_channel(self, stop_below_ns: int | None) -> _Walk:
+        """Newest-first chain walk; stops at the first chain whose newest change is below the threshold."""
+        out: list[tuple[str, JsonObject]] = []
+        newest: int | None = None
+        requests = 0
+        params = {"$top": _PAGE_TOP, "$expand": "replies"}
+        for page in self._pages(f"{self._channel_path()}/messages", params):
+            requests += 1
+            for root in page.value:
+                root_id = _opt_str(root, "id")
+                if root_id is None:
+                    continue
+                replies = self._chain_replies(root)
+                times = [t for t in (_modified_ns(m) for m in [root, *replies]) if t is not None]
+                chain_ns = max(times) if times else None
+                if stop_below_ns is not None and chain_ns is not None and chain_ns < stop_below_ns:
+                    return _Walk(out, newest, False, requests)
+                if chain_ns is not None:
+                    newest = chain_ns if newest is None else max(newest, chain_ns)
+                out.append((root_id, {k: v for k, v in root.items() if not k.startswith("replies")}))
+                out.extend((root_id, r) for r in replies)
+        return _Walk(out, newest, True, requests)
+
+    def _walk_chat(self, stop_below_ns: int | None) -> _Walk:
+        """Newest-first chat walk with the server-side lastModifiedDateTime filter (and a client stop)."""
+        out: list[tuple[str, JsonObject]] = []
+        newest: int | None = None
+        requests = 0
+        params = {"$top": _PAGE_TOP, "$orderby": "lastModifiedDateTime desc"}
+        if stop_below_ns is not None:
+            params["$filter"] = f"lastModifiedDateTime gt {_iso(stop_below_ns)}"
+        for page in self._pages(f"{self._channel_path()}/messages", params):
+            requests += 1
+            for msg in page.value:
+                ident = _opt_str(msg, "id")
+                if ident is None:
+                    continue
+                mod = _modified_ns(msg)
+                if stop_below_ns is not None and mod is not None and mod < stop_below_ns:
+                    return _Walk(out, newest, False, requests)  # the filter was ignored: stop anyway
+                if mod is not None:
+                    newest = mod if newest is None else max(newest, mod)
+                out.append((_opt_str(msg, "replyToId") or ident, msg))
+        return _Walk(out, newest, True, requests)
 
     def _root_month(self, root_id: str) -> str | None:
-        """Month of a root message not in this round (GET it); None when it no longer exists."""
+        """Month of a root message not in this walk (GET it); None when it no longer exists."""
         try:
-            root = self._client.get_json(
+            root = self._get(
                 f"{self._channel_path()}/messages/{_quote_segment(root_id)}",
                 params={"$select": "id,createdDateTime"},
             )
@@ -350,51 +470,43 @@ class TeamsArm:
 
     # ---- SourceArm --------------------------------------------------------------------------------------
     def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
-        """Delta round over ``/teams/{t}/channels/{c}/messages/delta``; merge messages + replies into month
-        files; emit one item per touched month: name ``YYYY-MM.teams.json``, rel_path = name, size = file
-        size, remote_hashes.sha256 = sha256 of the month file (comparable only to itself), mtime_ns = max
-        lastModifiedDateTime. A FULL round also emits every stored month (so absence works)."""
-        result, pass_kind, cursor_reset, alarms = self._run_round(cursor, full=full)
-        latest: dict[str, JsonObject] = {}
-        for raw in result.items:
-            ident = raw.get("id")
-            if isinstance(ident, str) and ident:
-                latest[ident] = raw
+        """High-water walk (channel: ``messages?$top=50&$expand=replies``; chat: ``$orderby``/``$filter`` on
+        lastModifiedDateTime); merge messages + replies into month files; emit one item per touched month:
+        name ``YYYY-MM.teams.json``, rel_path = name, size = file size, remote_hashes.sha256 = sha256 of the
+        month file (comparable only to itself), mtime_ns = max lastModifiedDateTime. A FULL walk (no
+        cursor, ``full``, or a cursor from an older build) also emits every stored month."""
+        alarms: list[str] = []
+        hwm = None if full else _cursor_hwm(cursor)
+        cursor_reset = False
+        if cursor is not None and _cursor_hwm(cursor) is None:
+            cursor_reset = True
+            alarms.append("stored Teams cursor is not a high-water mark (older delta build): full walk")
+        stop_below = None if hwm is None else hwm - _SKEW_NS
+        walk = self._walk_chat(stop_below) if self._is_chat else self._walk_channel(stop_below)
+        pass_kind = PassKind.FULL if hwm is None else PassKind.DELTA
+        if pass_kind is PassKind.FULL and not walk.reached_end:  # cannot happen without a threshold
+            raise GraphError(0, "walk-incomplete", f"source {self.source_id}: full walk stopped early")
 
         by_month: dict[str, dict[str, _Record]] = {}
         root_month: dict[str, str] = {}
         skipped = 0
-
-        def add(month: str, raw: Mapping[str, Any]) -> None:
-            nonlocal skipped
+        for thread_id, raw in walk.messages:
+            month = root_month.get(thread_id)
+            if month is None:
+                if _opt_str(raw, "id") == thread_id:
+                    created = _parse_graph_time_ns(raw.get("createdDateTime"))
+                    month = None if created is None else _month_of(created)
+                else:
+                    month = self._root_month(thread_id)
+                if month is None:
+                    skipped += 1
+                    continue
+                root_month[thread_id] = month
             rec = _record(raw)
             if rec is None:
                 skipped += 1
-                return
+                continue
             by_month.setdefault(month, {})[rec["id"]] = rec
-
-        roots = sorted((i for i, raw in latest.items() if not _opt_str(raw, "replyToId")))
-        for ident in roots:
-            raw = latest[ident]
-            created = _parse_graph_time_ns(raw.get("createdDateTime"))
-            if created is None:
-                skipped += 1
-                continue
-            month = _month_of(created)  # a thread lives in its root's month, replies included
-            root_month[ident] = month
-            add(month, raw)
-            for reply in self._replies(ident):
-                add(month, reply)
-
-        for ident in sorted(i for i in latest if i not in root_month and _opt_str(latest[i], "replyToId")):
-            raw = latest[ident]
-            parent = str(raw["replyToId"])
-            reply_month = root_month.get(parent) or self._root_month(parent)
-            if reply_month is None:
-                skipped += 1
-                continue
-            root_month[parent] = reply_month
-            add(reply_month, raw)
 
         changed = [
             month for month in sorted(by_month) if self._merge(month, by_month[month].values(), alarms)
@@ -408,21 +520,22 @@ class TeamsArm:
             elif self._month_path(month).exists():
                 # Not emitted means "absent" to a FULL pass: say why, so a deletion candidate is explainable.
                 alarms.append(f"teams month {month} store file unreadable or foreign: not emitted")
-        items = tuple(emitted)
+        marks = [t for t in (hwm, walk.newest_ns) if t is not None]
+        new_hwm = max(marks) if marks else None  # never moves backwards; None only for an empty channel
         log.info(
-            "source %s: %s pass, %d page(s), %d message(s), %d month file(s) rewritten, %d skipped",
+            "source %s: %s walk, %d page(s), %d message(s), %d month file(s) rewritten, %d skipped",
             self.source_id,
             pass_kind.value,
-            result.pages,
-            len(latest),
+            walk.requests,
+            len(walk.messages),
             len(changed),
             skipped,
         )
         return ScanResult(
             source_id=self.source_id,
             pass_kind=pass_kind,
-            items=items,
-            new_cursor=result.delta_link,
+            items=tuple(emitted),
+            new_cursor=None if new_hwm is None else f"{_CURSOR_PREFIX}{_iso(new_hwm)}",
             enumeration_complete=pass_kind is PassKind.FULL,
             cursor_reset=cursor_reset,
             alarms=tuple(alarms),
