@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  agentsync PPPC + managed login items: a TEMPLATE. Fill every __PLACEHOLDER__ before upload (docs/deploy/mdm/README.md).
+
+  1. SystemPolicyAllFiles (Full Disk Access) for the signed launcher com.agentsync.launcher. The LaunchAgent's
+     ProgramArguments[0] is that launcher, and Python runs as its child. PPPC has no key for the File Provider
+     service (kTCCServiceFileProviderDomain) that guards ~/Library/CloudStorage, but TCC checks Full Disk Access on
+     the responsible process first, so this grant replaces the one-time user prompt (C15 §3.2).
+     CodeRequirement: replace the whole string with the "designated =>" line of
+       codesign -d -r- ~/Applications/AgentSyncLauncher.app
+     run AFTER IT re-signs the launcher with its Developer ID (launcher/build.sh SIGN_IDENTITY=...). It must contain
+     certificate leaf[subject.OU] = "<TEAMID>"; an ad-hoc "cdhash H..." requirement cannot be pinned.
+  2. Managed login items for the com.agentsync.* LaunchAgents (macOS 13+), so the user cannot switch them off in
+     Login Items and no "Background Items Added" notice appears.
+  Device channel only; the profile must come from user-approved MDM (Apple: userapprovedmdm true, manual install false).
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadDescription</key>
+			<string>Full Disk Access for the agentsync launcher so the background sync can read the OneDrive / SharePoint sync folders</string>
+			<key>PayloadDisplayName</key>
+			<string>agentsync launcher: Privacy Preferences</string>
+			<key>PayloadIdentifier</key>
+			<string>com.agentsync.pppc.tcc</string>
+			<key>PayloadType</key>
+			<string>com.apple.TCC.configuration-profile-policy</string>
+			<key>PayloadUUID</key>
+			<string>5C9AE1AB-4261-48CD-9F78-CBA6A0530B31</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>Services</key>
+			<dict>
+				<key>SystemPolicyAllFiles</key>
+				<array>
+					<dict>
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>CodeRequirement</key>
+						<string>identifier "com.agentsync.launcher" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = "__TEAMID__"</string>
+						<key>Comment</key>
+						<string>agentsync-launcher (LaunchAgents com.agentsync.poll / com.agentsync.reconcile); reads ~/Library/CloudStorage sync folders</string>
+						<key>Identifier</key>
+						<string>com.agentsync.launcher</string>
+						<key>IdentifierType</key>
+						<string>bundleID</string>
+						<key>StaticCode</key>
+						<false/>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>PayloadDescription</key>
+			<string>Keeps the agentsync LaunchAgents enabled</string>
+			<key>PayloadDisplayName</key>
+			<string>agentsync: Managed Login Items</string>
+			<key>PayloadIdentifier</key>
+			<string>com.agentsync.pppc.servicemanagement</string>
+			<key>PayloadType</key>
+			<string>com.apple.servicemanagement</string>
+			<key>PayloadUUID</key>
+			<string>B15C386A-4768-40B3-AE8A-472F33DC97C3</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>Rules</key>
+			<array>
+				<dict>
+					<key>Comment</key>
+					<string>com.agentsync.poll and com.agentsync.reconcile (default [agentsync] launchd_label_prefix)</string>
+					<key>RuleType</key>
+					<string>LabelPrefix</string>
+					<key>RuleValue</key>
+					<string>com.agentsync.</string>
+				</dict>
+				<dict>
+					<key>Comment</key>
+					<string>the signed launcher the LaunchAgents run, only when signed by the IT Team ID</string>
+					<key>RuleType</key>
+					<string>BundleIdentifier</string>
+					<key>RuleValue</key>
+					<string>com.agentsync.launcher</string>
+					<key>TeamIdentifier</key>
+					<string>__TEAMID__</string>
+				</dict>
+			</array>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>agentsync: Full Disk Access for the signed launcher and managed LaunchAgents. Template: see docs/deploy/mdm/README.md.</string>
+	<key>PayloadDisplayName</key>
+	<string>agentsync (__ORG__)</string>
+	<key>PayloadIdentifier</key>
+	<string>com.agentsync.pppc</string>
+	<key>PayloadOrganization</key>
+	<string>__ORG__</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>17E9290B-C800-41E6-88D0-0E1F35FE93E7</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

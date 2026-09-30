@@ -1,0 +1,32 @@
+{
+  "displayName": "agentsync (<org>)",
+  "signInAudience": "AzureADMyOrg",
+  "isFallbackPublicClient": false,
+  "notes": "Public client for agentsync on managed Macs. Delegated, read-only Microsoft Graph scopes; no secrets or certificates. Owner: <team>. Remove scopes for arms not in use (docs/deploy/it-request.md).",
+  "publicClient": {
+    "redirectUris": [
+      "http://localhost",
+      "msauth.com.msauth.unsignedapp://auth"
+    ]
+  },
+  "requiredResourceAccess": [
+    {
+      "resourceAppId": "00000003-0000-0000-c000-000000000000",
+      "resourceAccess": [
+        { "id": "37f7f235-527c-4136-accd-4a02d197296e", "type": "Scope" },
+        { "id": "14dad69e-099b-42c9-810b-d002981feec1", "type": "Scope" },
+        { "id": "7427e0e9-2fba-42fe-b0c0-848c9e6a8182", "type": "Scope" },
+        { "id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d", "type": "Scope" },
+        { "id": "df85f4d6-205c-4ac5-a5ea-6bf408dba283", "type": "Scope" },
+        { "id": "205e70e5-aba6-4c52-a976-6d2d46c48043", "type": "Scope" },
+        { "id": "570282fd-fa5c-430d-a7fd-fc8dc98a9dca", "type": "Scope" },
+        { "id": "7b9103a5-4610-446b-9670-80643382c1fa", "type": "Scope" },
+        { "id": "485be79e-c497-4b35-9400-0e3fa7f2a5d4", "type": "Scope" },
+        { "id": "9d8982ae-4365-4f57-95e9-d6032a4c0b87", "type": "Scope" },
+        { "id": "767156cb-16ae-4d10-8f8b-41b657c8c8c8", "type": "Scope" },
+        { "id": "9547fcb5-d03f-419d-9948-5928bbf71b0f", "type": "Scope" },
+        { "id": "f501c180-9344-439a-bca0-6cbf209fd270", "type": "Scope" }
+      ]
+    }
+  ]
+}
