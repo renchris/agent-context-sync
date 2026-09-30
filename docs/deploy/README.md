@@ -32,14 +32,21 @@ reads. It runs as you, needs **no admin rights**, and keeps everything on the Ma
 
 Prerequisite: the Xcode Command Line Tools (`xcode-select -p` prints a path). They provide `git` and the compiler
 that builds the launcher. If they are missing, ask IT through Self Service, because installing them may need admin.
+A coding agent can run every step below for you: paste the block in the top-level README's
+[one-prompt setup](../../README.md#set-up-on-a-new-mac-one-prompt).
+
+Pick the folders to sync (`ls -d ~/Library/CloudStorage/*/*/` lists the OneDrive and SharePoint folders this Mac
+syncs), then pass one `--source-local` per folder:
 
 ```sh
-git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync && ~/src/agent-context-sync/scripts/install.sh
+git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
+~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
 ```
 
 The script is safe to re-run and never prompts; `--dry-run` shows every step first. It installs uv and agentsync,
-builds and ad-hoc signs the launcher, writes `sources.toml`, runs `agentsync doctor`, and ends with one `NEXT:`
-line. Uncomment your sources in `~/agent-context/sources.toml`, then start background sync:
+builds and ad-hoc signs the launcher, writes `sources.toml` with one live `kind = "local"` source per folder (on a
+re-run it adds only folders not yet there, through `agentsync add-source`), runs `agentsync doctor`, and ends with
+one `NEXT:` line. Check a first cycle with `agentsync sync --once`, then start background sync:
 
 ```sh
 ~/src/agent-context-sync/scripts/install.sh --confirm-install-agent
