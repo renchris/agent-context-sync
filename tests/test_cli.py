@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli
+from agentsync import cli, governance, net
 from agentsync.config import Config, load_config
+from agentsync.errors import AuthError
+from agentsync.graph import auth as graph_auth
+from agentsync.graph import discover
+from agentsync.graph.auth import AuthStatus
+from agentsync.graph.drive import DiscoveredScope
+from agentsync.graph.errors import AuthBlockedError
+from agentsync.manifest import Manifest
+from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock
 
@@ -41,9 +51,12 @@ def initialised(tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFi
 def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["--help"]) == 0
     out = capsys.readouterr().out
-    for code in ("0 ", "1 ", "2 ", "75", "77", "78"):
+    for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
-    for command in ("init", "sync", "status", "doctor", "reconcile", "materialise", "graph", "install-agent"):
+    for command in (
+        "init", "sync", "status", "doctor", "reconcile", "materialise", "graph", "install-agent", "purge",
+        "compact-history", "hold", "offboard", "policy",
+    ):  # fmt: skip
         assert command in out
     assert cli.main(["sync", "--help"]) == 0
     assert "75  skipped" in capsys.readouterr().out
@@ -58,8 +71,8 @@ def test_usage_errors_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_parser_accepts_the_launchd_argv(initialised: Config) -> None:
     argv = launchd.program_arguments(initialised, "poll")
-    assert argv[1:4] == ("-m", "agentsync", "sync")
-    args = cli.build_parser().parse_args(list(argv[3:]))
+    assert argv[1:7] == ("-I", "-X", "utf8", "-m", "agentsync", "sync")
+    args = cli.build_parser().parse_args(list(argv[6:]))
     assert args.mode == "poll" and args.config == initialised.config_path
 
 
@@ -206,10 +219,17 @@ def test_install_and_uninstall_agent_call_launchd(
         removed.append(label)
         return True
 
+    excluded: list[Config] = []
     monkeypatch.setattr(launchd, "install", fake_install)
     monkeypatch.setattr(launchd, "uninstall", fake_uninstall)
+    monkeypatch.setattr(
+        governance, "apply_time_machine_exclusions", lambda c, **_k: excluded.append(c) or ["excluded x"]
+    )
     cfg = str(initialised.config_path)
     assert cli.main(["install-agent", "--interval", "120", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "time machine: excluded x" in out and len(excluded) == 1  # C15 req 42, once at install
+    assert f"launchd runs: {installed[0].program_arguments[0]}" in out
     assert [(s.label, s.start_interval_s) for s in installed] == [
         ("com.agentsync.poll", 120),
         ("com.agentsync.reconcile", 3600),
@@ -246,3 +266,318 @@ def test_python_dash_m_entry_point(initialised: Config) -> None:
     )
     assert proc.returncode == 0, proc.stderr
     assert "run 1 · mode poll · commit " in proc.stdout
+
+
+# ---------------------------------------------------------------------------------------------------------
+# hardening wiring (C15 section 9): trust store, sign-in ladder, discovery, governance, policy, doctor
+# ---------------------------------------------------------------------------------------------------------
+
+_IMPORT_SPY = """
+import importlib.abc, json, ssl, sys
+seen = {}
+class Spy(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name in ("msal", "requests", "urllib3", "httpx") and name not in seen:
+            seen[name] = ssl.SSLContext.__module__
+        return None
+sys.meta_path.insert(0, Spy())
+import %s
+print(json.dumps(seen, sort_keys=True))
+"""
+
+
+def _import_order(module: str) -> dict[str, str]:
+    proc = subprocess.run(
+        [sys.executable, "-c", _IMPORT_SPY % module], capture_output=True, text=True, check=True, timeout=120
+    )
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_trust_store_is_injected_before_msal_and_requests_are_imported() -> None:
+    """C15 req 32: the CLI entry point injects truststore before msal/requests/urllib3/httpx load."""
+    seen = _import_order("agentsync.cli")
+    assert {"msal", "requests", "urllib3", "httpx"} <= set(seen)
+    assert all(v.startswith("truststore") for v in seen.values()), seen
+    # control: without the CLI entry point the same libraries load against the stdlib SSLContext
+    control = _import_order("agentsync.cycle")
+    assert control["msal"] == "ssl" and control["requests"] == "ssl"
+
+
+def _graph_config(initialised: Config) -> str:
+    path = initialised.config_path
+    text = path.read_text(encoding="utf-8")
+    text = text.replace('tenant = "organizations"', 'tenant = "contoso.onmicrosoft.com"', 1)
+    text = text.replace(
+        '# client_id = "00000000-0000-0000-0000-000000000000"',
+        'client_id = "00000000-0000-0000-0000-000000000001"',
+        1,
+    )
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+class FakeAuth:
+    """MsalAuth stand-in: never touches MSAL, the broker, a browser or the Keychain."""
+
+    calls: ClassVar[list[str]] = []
+    blocked: ClassVar[bool] = False
+
+    def __init__(self, settings: Any) -> None:
+        self.settings = settings
+        self.last_token_source: str | None = None
+
+    def _status(self) -> AuthStatus:
+        return AuthStatus(True, "ada@contoso.com", "tid-1", "keychain", ("User.Read",), "broker")
+
+    def login(self, emit: Callable[[str], None]) -> AuthStatus:
+        FakeAuth.calls.append("ladder")
+        if FakeAuth.blocked:
+            raise AuthBlockedError(
+                "blocked: consent",
+                "AADSTS65001",
+                "REAUTH_REQUIRED (blocked: consent): ask IT to grant consent",
+            )
+        emit("signing in through the macOS broker")
+        self.last_token_source = "broker"
+        return self._status()
+
+    def login_device_code(self, emit: Callable[[str], None]) -> AuthStatus:
+        FakeAuth.calls.append("device-code")
+        raise AuthError("device-code sign-in is off: set [graph] allow_device_code = true")
+
+    def status(self) -> AuthStatus:
+        return self._status()
+
+    def logout(self) -> None:
+        FakeAuth.calls.append("logout")
+
+    def get_token(self) -> str:
+        return "token"
+
+
+@pytest.fixture
+def fake_auth(monkeypatch: pytest.MonkeyPatch) -> type[FakeAuth]:
+    monkeypatch.setattr(graph_auth, "MsalAuth", FakeAuth)
+    FakeAuth.calls = []
+    FakeAuth.blocked = False
+    return FakeAuth
+
+
+def test_login_runs_the_sign_in_ladder_and_reports_the_method(
+    initialised: Config, fake_auth: type[FakeAuth], capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _graph_config(initialised)
+    assert cli.main(["graph", "login", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert fake_auth.calls == ["ladder"]  # broker -> loopback -> device code lives in MsalAuth.login
+    assert "signed in as ada@contoso.com" in out and "method broker" in out and "token source broker" in out
+    assert cli.main(["whoami", "--config", cfg]) == cli.EXIT_OK
+    assert "method broker" in capsys.readouterr().out
+    # --device-code goes straight to the last rung, which MsalAuth refuses unless allowed
+    assert cli.main(["login", "--device-code", "--config", cfg]) == cli.EXIT_FAILED
+    assert fake_auth.calls[-1] == "device-code"
+    assert "allow_device_code" in capsys.readouterr().err
+
+
+def test_blocked_sign_in_exits_77_naming_the_state(
+    initialised: Config, fake_auth: type[FakeAuth], capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake_auth.blocked = True
+    assert cli.main(["login", "--config", _graph_config(initialised)]) == cli.EXIT_REAUTH
+    err = capsys.readouterr().err
+    assert (
+        "sign-in blocked (blocked: consent, AADSTS65001)" in err and "run `agentsync graph login`" not in err
+    )
+
+
+def test_multi_tenant_authority_is_a_config_error(initialised: Config, fake_auth: type[FakeAuth]) -> None:
+    cfg = _graph_config(initialised)
+    path = Path(cfg)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("contoso.onmicrosoft.com", "common"), encoding="utf-8"
+    )
+    assert cli.main(["login", "--config", cfg]) == cli.EXIT_CONFIG  # AADSTS50194, never tried
+    assert fake_auth.calls == []
+
+
+def test_discover_prints_the_snippet_and_fails_when_incomplete(
+    initialised: Config,
+    fake_auth: type[FakeAuth],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = _graph_config(initialised)
+    scope = DiscoveredScope(SourceKind.GRAPH_DRIVE, "OneDrive", "b!abc", None, None, "your OneDrive")
+    denied = discover.DiscoveryFailure("/me/joinedTeams", 403, "Forbidden", "ask IT for Team.ReadBasic.All")
+    seen: list[str] = []
+
+    def fake_discover(client: Any, *, known: Any = ()) -> discover.DiscoveryReport:
+        seen.append("all")
+        return discover.DiscoveryReport((scope,), (denied,))
+
+    def fake_resolve(client: Any, url: str, *, known: Any = ()) -> discover.DiscoveryReport:
+        seen.append(url)
+        return discover.DiscoveryReport((scope,))
+
+    monkeypatch.setattr(discover, "discover_sources", fake_discover)
+    monkeypatch.setattr(discover, "resolve_url", fake_resolve)
+    assert cli.main(["discover", "--config", cfg]) == cli.EXIT_FAILED
+    captured = capsys.readouterr()
+    assert "[[source]]" in captured.out and 'drive_id = "b!abc"' in captured.out
+    assert "DISCOVERY INCOMPLETE" in captured.out
+    assert "discovery incomplete: /me/joinedTeams -> HTTP 403" in captured.err
+    url = "https://contoso.sharepoint.com/sites/finance"
+    assert cli.main(["graph", "discover", "--toml", "--url", url, "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.startswith("# agentsync discover") and seen == ["all", url]
+
+
+def _synced(initialised: Config) -> str:
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    return cfg
+
+
+def _stable_id(config: Config, rel_path: str) -> str:
+    with Manifest(config.state_paths.db) as m:
+        return next(r.stable_id for r in m.iter_items("source") if r.rel_path == rel_path)
+
+
+def test_purge_removes_every_blob_and_the_item_never_comes_back(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C15 req 37 + 41 through the CLI, then the cycle's suppression list keeps it purged."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    blob = git(repo, "rev-parse", f"HEAD:{page}").strip()
+    sid = _stable_id(initialised, "projects/sample.txt")
+    capsys.readouterr()
+    assert cli.main(["purge", f"id={sid}", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    assert "dry run" in capsys.readouterr().out and (repo / page).is_file()
+    rc = cli.main(
+        ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
+    )
+    out = capsys.readouterr().out
+    assert rc == cli.EXIT_OK, out
+    assert "VERIFIED" in out and page in out
+    gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
+    assert gone.returncode != 0  # the blob is unreadable afterwards
+    audit = governance.read_audit(initialised.state_paths.root)
+    assert any(a.get("reason") == "erasure-request" for a in audit)
+    assert "sample.txt" not in json.dumps(audit)  # hashes only, never the path or content
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # the source file still exists upstream
+    assert not (repo / page).exists()
+    assert "sample.txt.md" not in git(repo, "log", "--all", "--name-only", "--format=")
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["purge", "--config", cfg]) == cli.EXIT_USAGE
+
+
+def test_hold_suspends_purge_and_compaction_and_shows_in_status(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    assert cli.main(["hold", "all", "--reason", "litigation 42", "--config", cfg]) == cli.EXIT_USAGE  # owner
+    assert cli.main(["hold", "all", "--reason", "litigation 42", "--owner", "legal", "--config", cfg]) == 0
+    capsys.readouterr()
+    sid = _stable_id(initialised, "projects/sample.txt")
+    assert cli.main(["purge", f"id={sid}", "--config", cfg]) == cli.EXIT_FAILED
+    assert "suspended by legal/records hold" in capsys.readouterr().err
+    assert cli.main(["compact-history", "--keep-days", "0", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    assert "HOLD: hold all (state): litigation 42" in capsys.readouterr().out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    state_md = (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "HOLD `all`: litigation 42" in state_md  # C15 req 40: shown until released
+    assert cli.main(["hold", "--list", "--config", cfg]) == cli.EXIT_OK
+    assert "1 active hold(s)" in capsys.readouterr().out
+    assert cli.main(["hold", "all", "--release", "--owner", "legal", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["compact-history", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_offboard_is_a_dry_run_unless_confirmed(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))  # `security dump-keychain` lists nothing: the real Keychain is untouched
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
+
+    monkeypatch.setattr(governance, "_run", fake_run)
+    monkeypatch.setattr(launchd, "uninstall", lambda label: False)
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    assert cli.main(["offboard", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "state-dir\texists" in out and "dry run: nothing removed" in out
+    assert initialised.state_paths.root.is_dir()
+    assert all("delete-generic-password" not in c for c in calls)
+    rc = cli.main(["offboard", "--confirm", str(initialised.docs_repo), "--config", cfg])
+    assert rc == cli.EXIT_OK
+    assert not initialised.state_paths.root.exists() and initialised.docs_repo.is_dir()  # docs kept
+
+
+def test_policy_show_and_a_broken_policy_is_a_config_error(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    guid = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"
+    with initialised.config_path.open("a", encoding="utf-8") as fh:
+        fh.write(f'\n[policy]\nexclude_label_ids = ["{guid.upper()}"]\n')
+    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert f"exclude_label_ids: {guid}" in out and "labels_active: true" in out
+    (initialised.config_path.parent / "policy.toml").write_text("[policy]\nnope = 1\n", encoding="utf-8")
+    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_CONFIG
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG  # a broken policy never means "allow"
+
+
+def test_remote_on_the_docs_repo_is_refused(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C15 req 36: no remote unless [governance] names a tenant-owned one."""
+    cfg = str(initialised.config_path)
+    git(initialised.docs_repo, "remote", "add", "origin", "https://github.com/someone/docs.git")
+    monkeypatch.setattr(launchd, "install", lambda spec: pytest.fail("installed despite a remote"))
+    assert cli.main(["install-agent", "--config", cfg]) == cli.EXIT_FAILED
+    assert "allow_remote = false" in capsys.readouterr().err
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+
+
+def test_doctor_reports_network_broker_governance_and_policy(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    probes: list[str] = []
+
+    def fake_probe(url: str, settings: net.ProxySettings, **_k: Any) -> net.Reachability:
+        probes.append(url)
+        return net.Reachability(net.POLICY_TLS, "certificate verify failed", "direct")
+
+    monkeypatch.setattr(net, "probe_reachability", fake_probe)
+    cfg = str(initialised.config_path)
+    rc = cli.main(["doctor", "--network", "--config", cfg])
+    out = capsys.readouterr().out
+    assert "network.proxy" in out and "governance.remote" in out and "] policy" in out
+    assert "failed: network-policy: TLS" in out and rc == cli.EXIT_FAILED  # TLS is failed, never skipped
+    assert probes == [initialised.graph.base_url]
+    git(initialised.docs_repo, "remote", "add", "origin", "https://github.com/someone/docs.git")
+    cli.main(["doctor", "--config", cfg])
+    assert "[FAIL] governance.remote" in capsys.readouterr().out
+
+
+def test_status_surfaces_the_launchers_tcc_tokens(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log_dir = initialised.log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "com.agentsync.poll.err.log").write_text(
+        "2026-09-29T10:00:00Z agentsync-launcher[1]: CANARY_OK path=/x\n"
+        "2026-09-29T10:00:10Z agentsync-launcher[1]: TCC_PENDING reason=canary path=/y\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["status", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    assert (
+        "launcher: poll: 2026-09-29T10:00:10Z agentsync-launcher[1]: TCC_PENDING" in capsys.readouterr().out
+    )

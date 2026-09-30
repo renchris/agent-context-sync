@@ -43,3 +43,27 @@ def test_module_imports_and_is_in_contract(module_name: str) -> None:
         assert f"`{module_name}`" in text, f"{module_name} has no section in CONTRACTS.md"
     missing = [n for n in names if n not in text]
     assert not missing, f"{module_name}: undocumented public names {missing}"
+
+
+def test_every_cli_subcommand_is_in_the_contract() -> None:
+    """The CLI table (§16.10 and the cli section) names every subcommand the parser accepts."""
+    import argparse  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    missing = [name for name in sub.choices if name not in text]
+    assert not missing, f"CLI subcommands missing from CONTRACTS.md: {missing}"
+
+
+def test_superseded_markers_point_at_existing_amendments() -> None:
+    """History is kept: every SUPERSEDED marker names a §16 subsection that exists."""
+    import re  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    refs = set(re.findall(r"SUPERSEDED \(2026-09-29, §(16\.\d+)\)", text))
+    assert refs, "no SUPERSEDED markers"
+    for ref in sorted(refs):
+        assert f"### {ref} " in text, f"§{ref} is referenced but missing"

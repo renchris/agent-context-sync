@@ -325,6 +325,8 @@ def test_e_directory_rename_moves_every_page_without_reading_bytes(
 def test_f_delete_writes_a_tombstone(synced: Config, local_source_dir: Path) -> None:
     repo = synced.docs_repo
     (local_source_dir / "projects" / "sample.csv").unlink()
+    first = run(synced)  # a local file must be absent from two complete passes (an Office save in flight)
+    assert first.changes == () and any("absent" in a for a in source_report(first).alarms)
     report = run(synced)
     rel = mirror("projects/sample.csv.md")
     assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.DELETED, rel)]
@@ -610,7 +612,12 @@ def test_h_graph_drive_full_cycle_410_resync_delta_edit_and_delete(graph_env: An
     )
     assert rep.cursor_advanced
     fm, body = page(repo, "mirror/drive/projects/notes.md")
-    assert fm["source_etag"] == '"{I1},1"' and fm["source_web_url"].endswith("/notes.md")
+    # audit design-correctness-01: the eTag lives in the manifest, never on the page (a no-op Office save
+    # moves it without changing content)
+    assert "source_etag" not in fm and fm["source_web_url"].endswith("/notes.md")
+    with Manifest(config.state_paths.db) as m:
+        notes = m.get_item("drive", "I1")
+        assert notes is not None and notes.etag == '"{I1},1"'
     assert "purchase order" in body
     assert (repo / "mirror/drive/projects/budget.xlsx.d/00-index.md").is_file()
     with Manifest(config.state_paths.db) as m:
@@ -689,3 +696,162 @@ def test_outputs_rows_match_pages_after_the_whole_story(synced: Config, local_so
             if out.status is OutputStatus.TOMBSTONE:
                 assert m.get_tombstone(out.output_path) is not None
     assert gitops.has_changes(repo) is False
+
+
+# ---------------------------------------------------------------------------------------------------------
+# hardening wiring (C15 section 9) through run_cycle: network gate, blocked sign-in, labels, governance
+# ---------------------------------------------------------------------------------------------------------
+
+LABEL = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"
+SITE = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+
+
+def label_ooxml(src: Path, dest: Path, label_id: str = LABEL, name: str = "Highly Confidential") -> Path:
+    """Copy an OOXML package and add a docProps/custom.xml carrying an MSIP label (the pre-LabelInfo form)."""
+    fmtid = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}"
+    props = "".join(
+        f'<property fmtid="{fmtid}" pid="{i}" name="MSIP_Label_{label_id}_{k}">'
+        f"<vt:lpwstr>{v}</vt:lpwstr></property>"
+        for i, (k, v) in enumerate((("Enabled", "true"), ("SiteId", SITE), ("Name", name)), start=2)
+    )
+    custom = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+        + props
+        + "</Properties>"
+    )
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            if info.filename != "docProps/custom.xml":
+                zout.writestr(info, zin.read(info.filename))
+        zout.writestr("docProps/custom.xml", custom)
+    return dest
+
+
+def test_label_policy_refuses_a_labelled_file_and_converts_the_rest(
+    tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path]
+) -> None:
+    """C15 req 27 end to end: [policy] exclude_label_ids -> a REFUSED stub, row REFUSED, never converted."""
+    label_ooxml(fixture_files["sample.docx"], local_source_dir / "projects" / "Board Pack.docx")
+    config = config_with(tmp_path, local_source_dir, f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n')
+    report = run(config)
+    assert report.exit_code == 0, report
+    assert counts(report).get(Verdict.REFUSED) == 1
+    fm, body = page(config.docs_repo, mirror("projects/board-pack.docx.md"))
+    assert fm["status"] == "refused" and "Highly Confidential" not in body.split("refused:")[0]
+    assert "excluded by [policy]" in body and "Kickoff" not in body
+    fm_ok, body_ok = page(config.docs_repo, mirror("projects/sample.docx.md"))
+    assert fm_ok["status"] != "refused" and len(body_ok) > 200  # the same content, unlabelled, converts
+    with Manifest(config.state_paths.db) as m:
+        row = next(r for r in m.iter_items(SID) if r.rel_path == "projects/Board Pack.docx")
+        assert row.state is RowState.REFUSED
+    assert run(config).commit_sha is None  # settled: the refusal is not retried every cycle
+
+
+class _GateAuth:
+    """MsalAuth stand-in for the cycle's own client (no MSAL, no Keychain)."""
+
+    def __init__(self, settings: Any) -> None:
+        self.last_token_source: str | None = None
+
+    def get_token(self) -> str:
+        return "token"
+
+    def status(self) -> Any:
+        return type("S", (), {"sign_in_method": "loopback"})()
+
+
+@pytest.mark.parametrize(
+    ("state", "failed"), [("network-policy: TLS", True), ("network-policy: proxy", True), ("offline", False)]
+)
+def test_reachability_gate_fails_on_network_policy_and_skips_when_offline(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, state: str, failed: bool
+) -> None:
+    """C15 req 34: a certificate/proxy failure is ``failed: network-policy (...)``, never ``skipped``."""
+    from agentsync import cycle, net  # noqa: PLC0415
+
+    config = config_with(
+        tmp_path, local_source_dir, GRAPH_SOURCE.replace("[graph]\n", '[graph]\ntenant = "contoso.com"\n')
+    )
+    probes: list[str] = []
+
+    def fake_probe(url: str, settings: net.ProxySettings) -> net.Reachability:
+        probes.append(url)
+        return net.Reachability(state, "certificate verify failed" if failed else "ConnectError", "direct")
+
+    monkeypatch.setattr(cycle, "MsalAuth", _GateAuth)
+    monkeypatch.setattr(net, "probe_reachability", fake_probe)
+    report = run(config)
+    drive = source_report(report, "drive")
+    assert probes == [config.graph.base_url]
+    assert drive.pass_kind is None and not drive.cursor_advanced
+    assert report.commit_sha is not None  # the local source still published
+    if failed:
+        assert report.exit_code == 1 and any(e.startswith(f"failed: {state}") for e in drive.errors)
+    else:
+        assert report.exit_code == 0 and drive.skipped_reason is not None
+        assert drive.skipped_reason.startswith("offline") and not drive.errors
+    state_md = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "## Graph sign-in" in state_md and "sign_in_method: loopback" in state_md
+    assert (
+        "token_source: none this run" in state_md
+        and f"network: {'failed' if failed else 'offline'}" in state_md
+    )
+
+
+def drive_errors(report: CycleReport) -> tuple[str, ...]:
+    return tuple(source_report(report, "drive").errors)
+
+
+def test_blocked_sign_in_is_named_in_the_manifest_and_state(graph_env: Any) -> None:
+    """C15 1.5: a tenant decision is REAUTH_REQUIRED (blocked: ...) and holds the cursor (exit 77)."""
+    from agentsync.graph.errors import AuthBlockedError  # noqa: PLC0415
+
+    config, _drive, tokens, client = graph_env
+
+    def blocked() -> str:
+        raise AuthBlockedError("blocked: device", "AADSTS53000", "REAUTH_REQUIRED (blocked: device): enrol")
+
+    tokens.get_token = blocked
+    report = run(config, client=client, only=["drive"])
+    assert report.exit_code == 77 and report.auth_required
+    with Manifest(config.state_paths.db) as m:
+        src = m.get_source("drive")
+        assert src is not None and src.auth_state == "REAUTH_REQUIRED"
+    assert any(
+        e.startswith("auth REAUTH_REQUIRED (blocked: device, AADSTS53000)") for e in drive_errors(report)
+    )
+    state_md = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "auth: REAUTH_REQUIRED" in state_md
+    assert "error: `auth REAUTH_REQUIRED (blocked: device, AADSTS53000)" in state_md
+
+
+def test_confirmed_deletion_queues_a_purge_that_removes_the_tombstone(
+    synced: Config, local_source_dir: Path
+) -> None:
+    """C15 req 38: a confirmed upstream deletion enqueues a purge; running it leaves no page, no blob and no
+    `git show` recovery hint for the item, and the queue is empty afterwards."""
+    from agentsync import governance  # noqa: PLC0415
+
+    repo = synced.docs_repo
+    rel = mirror("projects/sample.csv.md")
+    blob = git(repo, "rev-parse", f"HEAD:{rel}").strip()
+    (local_source_dir / "projects" / "sample.csv").unlink()
+    assert run(synced).changes == ()  # first absence: held one pass
+    assert governance.pending_purges(synced.state_paths.root) == []
+    report = run(synced)
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.DELETED, rel)]
+    queued = governance.pending_purges(synced.state_paths.root)
+    assert [(q.selector.source_id, q.reason) for q in queued] == [
+        (SID, governance.PurgeReason.UPSTREAM_DELETED)
+    ]
+    assert "## Queued purges" in (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    (rep,) = governance.run_purge_queue(synced, now=NOW)
+    assert rep.verified and rel in rep.docs_paths
+    assert governance.pending_purges(synced.state_paths.root) == []
+    assert not (repo / rel).exists()
+    gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
+    assert gone.returncode != 0
+    assert "sample.csv" not in git(repo, "log", "--all", "-p")
+    assert run(synced).exit_code == 0 and porcelain(repo) == ""
