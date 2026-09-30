@@ -4,6 +4,7 @@ item 7 asks for the manifest check; the rest keeps the pack an IT admin receives
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import plistlib
@@ -27,6 +28,9 @@ REDIRECT_URIS = ["http://localhost", "msauth.com.msauth.unsignedapp://auth"]
 hard-codes the unsigned-app URI for any Python app)."""
 
 on_macos = pytest.mark.skipif(sys.platform != "darwin", reason="plutil is macOS-only")
+
+_SHELLS = [s for s in ("bash", "zsh") if shutil.which(s)]
+"""The shells a user's coding agent most likely runs the README's commands in."""
 
 
 def entra() -> dict[str, Any]:
@@ -263,34 +267,1129 @@ def _one_prompt_block() -> str:
     return match.group(1)
 
 
+def _prompt_steps() -> dict[int, str]:
+    """The block's numbered steps, number -> text (continuation lines joined with single spaces)."""
+    parts = re.split(r"^(\d+)\. ", _one_prompt_block(), flags=re.MULTILINE)
+    steps = {int(n): " ".join(body.split()) for n, body in zip(parts[1::2], parts[2::2], strict=True)}
+    assert list(steps) == list(range(1, len(steps) + 1)), f"steps are numbered 1..N: {list(steps)}"
+    return steps
+
+
+def _preamble() -> str:
+    return " ".join(re.split(r"^1\. ", _one_prompt_block(), maxsplit=1, flags=re.MULTILINE)[0].split())
+
+
+def _prompt_version() -> int:
+    [version] = re.findall(r"\(setup prompt v(\d+)\)", _one_prompt_block())
+    return int(version)
+
+
+def _spans(text: str) -> list[str]:
+    return re.findall(r"`([^`]+)`", text)
+
+
+_COMMAND_RE = re.compile(r"^(?:~/|git |mkdir |umask |sw_vers|xcode-select |test |printf |date )")
+"""A code span that is a command the agent runs (not a path, a value or a line format)."""
+
+
+def _commands(text: str) -> list[str]:
+    return [s for s in _spans(text) if _COMMAND_RE.match(s)]
+
+
+def _installer_help() -> str:
+    """install.sh's --help text, read from its header comment (what show_help prints) without running it."""
+    lines = SCRIPTS[0].read_text(encoding="utf-8").splitlines()[1:]
+    return "\n".join(ln for ln in itertools.takewhile(lambda ln: ln.startswith("#"), lines))
+
+
+def _installer_compat() -> int | None:
+    """The prompt-compatibility number ``install.sh --version`` prints ("setup-prompt-compat <N>"), read from
+    the script's text: a ``*COMPAT*=<N>`` assignment or a literal "setup-prompt-compat <N>". None when neither
+    exists."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    if "setup-prompt-compat" not in script:
+        return None
+    assigned = re.findall(
+        r"""^\s*(?:readonly\s+|declare\s+-r\s+)?\w*COMPAT\w*=["']?(\d+)["']?\s*(?:#.*)?$""",
+        script,
+        flags=re.MULTILINE,
+    )
+    literal = re.findall(r"setup-prompt-compat (\d+)\b", script)
+    values = {int(v) for v in assigned + literal}
+    if not values:
+        return None
+    assert len(values) == 1, f"scripts/install.sh states more than one setup-prompt-compat number: {values}"
+    return values.pop()
+
+
+STEP_TITLES = [
+    "preflight, code and folders",
+    "install and start",
+    "it request and report",
+    "finish with five lines",
+]
+"""Setup prompt v6's four steps, by their opening words (the form's Failed-at options and the feedback page's
+computed-outcome rules follow them)."""
+
+INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+
+STEP1_COMMAND = (
+    "sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then"
+    " git -C ~/src/agent-context-sync pull --ff-only; else"
+    " git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; }"
+    f" && {INSTALL_SH} --version && {INSTALL_SH} --log-start '<agent>' && {INSTALL_SH} --list-folders"
+)
+"""Setup prompt v6 step 1: preflight, clone or pull, the installer's compat line, the friction log's attempt
+header and the folder list, in one command (one tool call, v5b review L5)."""
+
+FRICTION_LOG_TEMPLATE = (
+    f"{INSTALL_SH} --log '<step>' '<kind>' '<what happened>' '<what would have avoided it, or ->'"
+)
+"""The one command the agent logs each friction line with: install.sh appends it (0600), so no command in the
+block redirects to a ``~`` path (v5b review L4), and the four values are single-quoted, so a backtick or
+``$(...)`` in the agent's words is text, not a command (K7)."""
+
+STEP3_COMMAND = (
+    "~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md;"
+    f" {INSTALL_SH} --log-end && {INSTALL_SH} --report-only"
+)
+"""Setup prompt v6 step 3: the IT draft, the friction log's end line and the report in one command; the ``;``
+keeps a missing agentsync from skipping the end line and the report."""
+
+FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt")
+"""Setup prompt v6's closed list of friction line kinds (judge findings J1, J2); the steps are timed by the
+installer, so there is no start or end kind (v5b review V2, L9)."""
+
+FRICTION_LOG = Path("agent-context") / "setup" / "friction.md"
+"""The friction log install.sh --log-start, --log and --log-end append to, relative to HOME."""
+
+
+def _report_step() -> int:
+    """The step that runs the report (install.sh --report-only)."""
+    [n] = [n for n, text in _prompt_steps().items() if any("--report-only" in c for c in _commands(text))]
+    return n
+
+
+def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None:
+    block = _one_prompt_block()
+    assert block.startswith("Set up agentsync on this Mac (setup prompt v"), (
+        "the version tag is in the first line"
+    )
+    version = _prompt_version()
+    assert version == 6, "update this pin together with the prompt's wording tests when the prompt changes"
+    steps = _prompt_steps()
+    assert len(steps) == len(STEP_TITLES) == 4
+    for text, title in zip(steps.values(), STEP_TITLES, strict=True):
+        assert text.lower().startswith(title), (title, text)
+    step1 = steps[1]
+    [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', step1)
+    assert int(required) == version, (
+        "v6 depends on --log, --log-start and --log-end, so it needs the v6 installer"
+    )
+    assert 'If --version does not end with "setup-prompt-compat ' in step1, "the compat check reads --version"
+    assert f"go to step {_report_step()}" in step1.split("--version does not end", 1)[1], (
+        "a failed folder listing ends at the report"
+    )
+
+
+def test_readme_prompt_compat_matches_the_installer() -> None:
+    """The number the prompt requires is the one the installer in the same commit prints: a prompt that starts
+    using a newer installer feature without a bump fails here, not on a new Mac (judge finding I2)."""
+    [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', _prompt_steps()[1])
+    compat = _installer_compat()
+    assert compat is not None, "scripts/install.sh has no setup-prompt-compat constant"
+    assert compat == int(required), (
+        f"README requires setup-prompt-compat {required}, install.sh prints {compat}"
+    )
+
+
+def test_readme_step1_is_one_command() -> None:
+    """Step 1 is one line the agent runs as given (one approval at most): preflight, code, the friction log's
+    attempt header and the folder list. The only other command it names is the one it tells the person to run
+    when the Command Line Tools are missing, and the preamble names only the per-line --log template (no
+    separate header command: v5b review L5)."""
+    step1 = _prompt_steps()[1]
+    assert step1.startswith(
+        "Preflight, code and folders, in one command (replace <agent> with your tool and model id):"
+    )
+    assert _commands(step1) == [STEP1_COMMAND, "xcode-select --install"]
+    assert 'tell me: "Install the Xcode Command Line Tools with `xcode-select --install`' in step1
+    assert "If --list-folders printed no folder paths (only a NEXT: line)" in step1
+    assert "ask which to sync" in step1, "the folder question is step 1's, after the list"
+    assert _commands(_preamble()) == [FRICTION_LOG_TEMPLATE]
+
+
+def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
+    """Stand-ins for sw_vers, xcode-select and git that log their argv; the fake clone copies this tree's
+    install.sh into the destination, so the real ``install.sh --version``, ``--log-start`` and
+    ``--list-folders`` run from it."""
+    bin_dir.mkdir()
+    stubs = {
+        "sw_vers": 'echo "15.5"',
+        "xcode-select": 'echo "/Library/Developer/CommandLineTools"',
+        "git": (
+            'if [ "$1" = clone ]; then mkdir -p "$3/.git" "$3/scripts" && '
+            f'cp "{SCRIPTS[0]}" "$3/scripts/install.sh" && chmod +x "$3/scripts/install.sh"; '
+            'else echo "Already up to date."; fi'
+        ),
+    }
+    for name, body in stubs.items():
+        stub = bin_dir / name
+        stub.write_text(f'#!/bin/sh\necho "{name} $*" >> "{calls}"\n{body}\n', encoding="utf-8")
+        stub.chmod(0o755)
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_readme_step1_command_clones_then_pulls(tmp_path: Path, shell: str) -> None:
+    """The exact step 1 line under the user's likely shells, with stub tools: the first run clones and the
+    second pulls (the if/else inside braces parses in both); each prints the compat line, appends an attempt
+    header naming the agent and the prompt version, and lists the synced folders. Nothing is fetched from the
+    network."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    projects = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    projects.mkdir(parents=True)
+    calls = tmp_path / "calls.log"
+    _fake_step1_tools(tmp_path / "bin", calls)
+    env = tmp_home_env(home) | {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin"}
+    command = STEP1_COMMAND.replace("'<agent>'", "'Test Agent (model-1)'")
+    for _ in range(2):
+        proc = subprocess.run(
+            [shell, "-c", command], cwd=home, env=env, capture_output=True, text=True, check=False, timeout=60
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        out = proc.stdout.splitlines()
+        assert f"setup-prompt-compat {_installer_compat()}" in out, proc.stdout
+        assert any(ln.rstrip().endswith(str(projects)) for ln in out), proc.stdout
+    checkout = home / "src" / "agent-context-sync"
+    ours = [
+        c
+        for c in calls.read_text(encoding="utf-8").splitlines()
+        if not c.startswith("git ") or c.startswith(("git clone ", f"git -C {checkout} pull"))
+    ]
+    assert ours == [
+        "sw_vers -productVersion",
+        "xcode-select -p",
+        f"git clone https://github.com/renchris/agent-context-sync.git {checkout}",
+        "sw_vers -productVersion",
+        "xcode-select -p",
+        f"git -C {checkout} pull --ff-only",
+    ]
+    friction = setup_report.parse_friction((home / FRICTION_LOG).read_text(encoding="utf-8"))
+    assert len(friction.attempts) == 2, "each run of step 1 starts a new attempt; the first is kept"
+    for attempt in friction.attempts:
+        assert attempt.header.get("Prompt") == f"v{_prompt_version()}"
+        assert attempt.header.get("Agent") == "Test Agent (model-1)"
+
+
+def _intro() -> str:
+    """The README prose between the one-prompt heading and its block, whitespace-normalised."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1]
+    return " ".join(section.split("```text\n", 1)[0].split())
+
+
+def test_readme_intro_says_what_the_prompt_does() -> None:
+    """The text above the block matches what the block does (K14): it lists the folders, asks one question,
+    runs one install command, and the person clicks Allow at most twice (the terminal in step 1, the
+    launcher in step 2), not "one installer command" and "one macOS prompt"."""
+    intro = _intro()
+    for phrase in (
+        "lists your synced folders",
+        "asks you one question (which to sync)",
+        "runs one install command",
+        "You click Allow at most twice: once if macOS asks about this terminal app, and once for "
+        "agentsync-launcher.",
+        "writes the IT request as a draft it never sends",
+        "redacted setup report",
+    ):
+        assert phrase in intro, phrase
+    assert "one installer command" not in intro and "one macOS prompt" not in intro
+    steps = _prompt_steps()
+    assert "macOS may ask whether this terminal app can access files managed by OneDrive" in steps[1]
+    assert '"macOS will ask whether agentsync-launcher may access files managed by OneDrive.' in steps[2]
+    assert len([c for c in _commands(steps[2]) if "scripts/install.sh" in c]) == 1
+
+
+# ---- step 1's folder list: install.sh --list-folders (judge finding J9) ------------------------------------
+
+
+_LIST_FOLDERS = f"{INSTALL_SH} --list-folders"
+
+
+def test_list_folders_is_step_1s_only_listing() -> None:
+    step1 = _prompt_steps()[1]
+    listings = [s for c in _commands(step1) for s in _split_top(c) if "--list-folders" in s or "ls " in s]
+    assert listings == [_LIST_FOLDERS], "one command lists the folders (J9, J18)"
+    assert "find " not in step1 and "ls -d" not in step1, "no hand-written listing to misread (K1)"
+    assert "Allow" in step1 and "NEXT:" in step1, "a denied terminal is named, not read as 'not signed in'"
+
+
+def _list_folders(home: Path) -> subprocess.CompletedProcess[str]:
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
+    return subprocess.run(
+        ["bash", str(SCRIPTS[0]), "--list-folders"],
+        cwd=home,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+
+def _written_outside_setup_log(home: Path, before: list[str]) -> list[str]:
+    """New paths under ``home`` other than the setup log (--list-folders may log its step there)."""
+    setup = home / "agent-context"
+    return [p for p in _tree(home) if p not in before and not Path(p).is_relative_to(setup)]
+
+
+@pytest.mark.parametrize("depth3", [True, False], ids=["with-depth-3", "depth-2-only"])
+def test_list_folders_on_fixtures(tmp_path: Path, depth3: bool) -> None:
+    """On a fake ~/Library/CloudStorage it prints each library folder (depth 2) and its subfolders (depth 3)
+    as full paths, nothing hidden, no file and nothing deeper, and it still lists when no depth-3 folder
+    exists (the v3 glob exited 1 there: K1). It installs nothing."""
+    cloud = tmp_path / "Library" / "CloudStorage"
+    projects = cloud / "OneDrive-Contoso" / "Projects"
+    projects.mkdir(parents=True)
+    (cloud / "OneDrive-Contoso" / ".hidden").mkdir()
+    (cloud / "OneDrive-SharedLibraries-Contoso" / "Team Site - Documents").mkdir(parents=True)
+    (cloud / "OneDrive-Contoso" / "notes.txt").write_text("a file, not a folder\n", encoding="utf-8")
+    expected = {projects, cloud / "OneDrive-SharedLibraries-Contoso" / "Team Site - Documents"}
+    if depth3:
+        (projects / "FY26" / "too deep").mkdir(parents=True)
+        (projects / ".git").mkdir()
+        expected.add(projects / "FY26")
+    before = _tree(tmp_path)
+    proc = _list_folders(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    root = str(cloud)
+    listed = {Path(ln[ln.index(root) :].rstrip()) for ln in proc.stdout.splitlines() if root in ln}
+    assert listed == expected, proc.stdout
+    assert _written_outside_setup_log(tmp_path, before) == []
+
+
+def test_list_folders_without_cloud_storage_exits_3_with_a_next_line(tmp_path: Path) -> None:
+    """Not signed in: exit 3 and a NEXT: line, which step 1 shows the person (a denied terminal is exit 4)."""
+    proc = _list_folders(tmp_path)
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert proc.stdout.rstrip().splitlines()[-1].startswith("NEXT:"), proc.stdout
+    assert not [ln for ln in proc.stdout.splitlines() if ln.startswith("/")], proc.stdout
+
+
+# ---- steps 2 to 4 ----------------------------------------------------------------------------------------
+
+
+def test_readme_step2_is_the_one_install_command() -> None:
+    step2 = _prompt_steps()[2]
+    [cmd] = _commands(step2)
+    assert cmd == f'{INSTALL_SH} --source-local "<folder>" --confirm-install-agent'
+    assert "10 minutes" in step2 and "run the same command again" in step2, "J11: a timeout and a safe re-run"
+    assert "NEXT:" in step2
+    assert (
+        "If your tool cannot wait that long in the foreground, run it in the background and read its output"
+        " until the NEXT: line appears; that is expected, not a deviation." in step2
+    ), "a background run is blessed, so it is not logged as a deviation"
+
+
+def test_readme_names_the_it_request_command() -> None:
+    """Step 3 runs `agentsync it-request` (J10) first in its one command, and the finish shows the draft's
+    "You fill:" line, which the draft really has as its first line."""
+    from agentsync import it_request  # noqa: PLC0415
+
+    steps = _prompt_steps()
+    report = _report_step()
+    assert _commands(steps[report]) == [STEP3_COMMAND]
+    assert _split_top(STEP3_COMMAND)[0] == f"~/.local/bin/agentsync it-request --out {it_request.DEFAULT_OUT}"
+    assert "The IT draft is never sent." in steps[report]
+    finish = steps[len(steps)]
+    assert f'{it_request.DEFAULT_OUT} and its "You fill:" line' in finish
+    source = Path(it_request.__file__).read_text(encoding="utf-8")
+    assert 'f"You fill: ' in source, "the draft's first line is the one the finish names"
+
+
+def test_readme_report_step_after_any_failure() -> None:
+    """Every failure path goes to the report step, which runs even after a failure, before the code exists
+    (it says what to tell the person then), and hands over to the finish."""
+    steps = _prompt_steps()
+    report = _report_step()
+    text = steps[report]
+    assert text.startswith(
+        "IT request and report, always, even after a failure; this is the last command you run:"
+    )
+    assert (
+        "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
+        in text
+    )
+    assert "Do not send or upload anything" in text
+    assert "outcome" in text and "run type" in text, "the report computes them (J3, J14)"
+    assert "its last lines are an issue link and a NEXT: line" in text
+    assert len(steps) == 4 and report == len(steps) - 1, "the report step is the one before the finish"
+    elsewhere = _preamble() + " ".join(t for n, t in steps.items() if n != report)
+    targets = {int(n) for n in re.findall(r"go to step (\d+)", elsewhere)}
+    assert targets == {report}, f"every failure path goes to the report step {report}: {targets}"
+
+
+def test_readme_report_is_the_last_command() -> None:
+    """Nothing is logged after the report (J4): step 3's one command writes the IT draft, appends the
+    friction log's end line, then writes the report; a missing agentsync (``;``) skips neither, and the finish
+    runs nothing. --log-start and --log-end each appear once, in steps 1 and 3."""
+    steps = _prompt_steps()
+    assert _commands(_one_prompt_block())[-1] == STEP3_COMMAND
+    assert _commands(steps[len(steps)]) == []
+    parts = _split_top(STEP3_COMMAND)
+    assert parts[1:] == [f"{INSTALL_SH} --log-end", f"{INSTALL_SH} --report-only"]
+    assert STEP3_COMMAND.index("; ") < STEP3_COMMAND.index("--log-end") < STEP3_COMMAND.index(" && ")
+    block = _one_prompt_block()
+    assert block.count("--log-start") == 1 and block.count("--log-end") == 1
+    assert "--log-start" in steps[1] and "--log-end" in steps[_report_step()]
+
+
+def _checkout_home(tmp_path: Path) -> Path:
+    """A HOME holding only ~/src/agent-context-sync/scripts/install.sh (this tree's), as step 1 leaves it."""
+    home = tmp_path / "home"
+    scripts = home / "src" / "agent-context-sync" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(SCRIPTS[0], scripts / "install.sh")
+    return home
+
+
+STEP1_START_ONLY = f"{INSTALL_SH} --log-start 'Test Agent (model-1)'"
+"""Step 1's --log-start part alone, filled in (the rest of step 1 is tested above)."""
+
+
+def test_readme_friction_line_format_and_kinds() -> None:
+    """One exact command per friction line (the per-line template), the single-quote rule that keeps it safe,
+    and the closed list of kinds, which setup-report and the feedback page share."""
+    pre = _preamble()
+    intro = "Friction log: from step 1 on, whenever something happens that is not in this prompt, log it with"
+    assert f"{intro} `{FRICTION_LOG_TEMPLATE}`" in pre
+    assert "Keep the single quotes and write \u2019 instead of ' inside them." in pre
+    assert "Do not log the steps themselves; the installer times them." in pre
+    listed = pre.split("<kind> is one of:", 1)[1].split(". Do not log", 1)[0]
+    kinds = [k.strip() for k in re.split(r"[;,.]", re.sub(r"\([^)]*\)", "", listed)) if k.strip()]
+    assert tuple(kinds) == FRICTION_KINDS
+    from agentsync import setup_report  # noqa: PLC0415
+
+    code_kinds = getattr(setup_report, "FRICTION_KINDS", None)
+    if code_kinds is not None:
+        assert set(code_kinds) == set(FRICTION_KINDS), "setup-report counts the kinds the prompt names"
+    table = _feedback_page().split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
+    documented = re.findall(r"`([a-z]+)`", " ".join(re.findall(r"^\| (.+?) \|", table, flags=re.MULTILINE)))
+    assert tuple(documented) == FRICTION_KINDS, "setup-feedback.md triages every kind, in the prompt's order"
+
+
+def _fill_line(step: int, kind: str, what: str, fix: str) -> str:
+    """The per-line template with its four values filled the way the prompt says: inside the single quotes."""
+    for placeholder, value in (
+        ("'<step>'", str(step)),
+        ("'<kind>'", kind),
+        ("'<what happened>'", what),
+        ("'<what would have avoided it, or ->'", fix),
+    ):
+        assert "'" not in value, "the prompt says to write \u2019 instead of ' inside a value"
+        assert placeholder in FRICTION_LOG_TEMPLATE
+    return (
+        FRICTION_LOG_TEMPLATE.replace("'<step>'", f"'{step}'")
+        .replace("'<kind>'", f"'{kind}'")
+        .replace("'<what happened>'", f"'{what}'")
+        .replace("'<what would have avoided it, or ->'", f"'{fix}'")
+    )
+
+
+def _run_shell(shell: str, cmd: str, home: Path) -> None:
+    proc = subprocess.run(
+        [shell, "-c", cmd],
+        cwd=home,
+        env=tmp_home_env(home) | {"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "NEXT:" not in proc.stdout, "a friction command is not a run: it prints no NEXT: line"
+    assert not (home / "agent-context" / "setup-report.md").exists(), "only step 3 writes the report"
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_readme_step3_command_runs_without_agentsync(tmp_path: Path, shell: str) -> None:
+    """The exact step 3 line on a Mac where setup stopped before agentsync was installed: the missing
+    it-request fails, the friction log's attempt still gets its end line, and install.sh --report-only still
+    writes the report and ends with the issue link and a NEXT: line."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    home = _checkout_home(tmp_path)
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
+    _run_shell(shell, STEP1_START_ONLY, home)
+    proc = subprocess.run(
+        [shell, "-c", STEP3_COMMAND],
+        cwd=home,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "agentsync" in proc.stderr, "the missing it-request is reported, not hidden"
+    out = proc.stdout.rstrip().splitlines()
+    assert out[-1].startswith("NEXT:") and out[-2].startswith(setup_report.ISSUE_LINK_LABEL), out[-3:]
+    assert (home / "agent-context" / "setup-report.md").is_file()
+    [attempt] = setup_report.parse_friction((home / FRICTION_LOG).read_text(encoding="utf-8")).attempts
+    assert attempt.finished
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_readme_friction_log_two_attempts(tmp_path: Path, shell: str) -> None:
+    """The prompt's exact friction commands (install.sh --log-start, --log and --log-end), as an agent runs
+    them over two attempts under the user's likely shells. The file is private (0600 in a 0700 folder), keeps
+    both attempts, and setup-report parses every line into the step and kind the agent gave."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    home = _checkout_home(tmp_path)
+    for _ in range(2):
+        _run_shell(shell, STEP1_START_ONLY, home)
+        _run_shell(
+            shell, _fill_line(1, "question", "asked which folders to sync | and whether all", "-"), home
+        )
+        _run_shell(shell, _fill_line(2, "error", "install.sh exited 3", "click Allow sooner"), home)
+        _run_shell(shell, f"{INSTALL_SH} --log-end", home)
+    log = home / FRICTION_LOG
+    assert log.stat().st_mode & 0o777 == 0o600 and log.parent.stat().st_mode & 0o777 == 0o700
+    friction = setup_report.parse_friction(log.read_text(encoding="utf-8"))
+    assert len(friction.attempts) == 2
+    for attempt in friction.attempts:
+        assert attempt.header.get("Prompt") == f"v{_prompt_version()}"
+        assert attempt.header.get("Agent") == "Test Agent (model-1)" and attempt.finished
+        assert [(e.step, e.kind) for e in attempt.events if e.kind != "finished"] == [
+            (1, "question"),
+            (2, "error"),
+        ]
+        assert attempt.events[0].what == "asked which folders to sync | and whether all"
+        assert attempt.events[1].fix == "click Allow sooner"
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_readme_friction_line_never_runs_the_agents_words(tmp_path: Path, shell: str) -> None:
+    """K7: an agent quotes commands in backticks and ``$(...)``. Filled into the --log template as the prompt
+    says, they are written to the log as text and nothing runs, under bash and zsh; a typographic apostrophe
+    (the prompt's replacement for a straight one), ``${HOME}``, ``|`` and ``;`` survive unchanged."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    home = _checkout_home(tmp_path)
+    witness = tmp_path / "ran"
+    what = f"hint said `touch {witness}-backtick` and $(touch {witness}-subst) and ${{HOME}}; a | b"
+    fix = f"don\u2019t print `touch {witness}-fix`; use $(touch {witness}-fix2)"
+    _run_shell(shell, STEP1_START_ONLY, home)
+    _run_shell(shell, _fill_line(2, "deviation", what, fix), home)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["home"], "no witness file was created"
+    text = (home / FRICTION_LOG).read_text(encoding="utf-8")
+    assert what in text and fix in text, text
+    [attempt] = setup_report.parse_friction(text).attempts
+    [event] = attempt.events
+    assert (event.step, event.kind, event.what, event.fix) == (2, "deviation", what, fix)
+
+
 def test_every_command_the_readme_one_prompt_names_exists() -> None:
     """The block a user pastes into a coding agent only names install.sh flags and agentsync subcommands and
-    options that exist (a renamed flag would otherwise fail on the new Mac, not here)."""
+    options that exist (a renamed flag would otherwise fail on the new Mac, not here).  install.sh is read,
+    not run: each flag needs a case arm and a line in the header comment that --help prints."""
     import argparse  # noqa: PLC0415
 
     from agentsync import cli  # noqa: PLC0415
 
-    spans = re.findall(r"`([^`]+)`", _one_prompt_block())
+    spans = _spans(_one_prompt_block())
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    help_text = subprocess.run(
-        ["bash", str(SCRIPTS[0]), "--help"], capture_output=True, text=True, check=True, timeout=60
-    ).stdout
+    help_text = _installer_help()
     parser = cli.build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     install_flags: set[str] = set()
     commands: set[tuple[str, str]] = set()
     for span in spans:
-        if "install.sh" in span:
-            install_flags |= set(re.findall(r"(?<!\S)(--[a-z][a-z-]*)", span.split("install.sh", 1)[1]))
+        for part in span.split("install.sh")[1:]:
+            install_flags |= set(
+                re.findall(r"(?<!\S)(--[a-z][a-z-]*)", part.split("&&", 1)[0].split(";", 1)[0])
+            )
         for m in re.finditer(r"(?:^|[\s/])agentsync\s+([a-z][a-z-]*)((?:\s+--[a-z][a-z-]*)*)", span):
             commands |= {(m.group(1), flag) for flag in m.group(2).split()} | {(m.group(1), "")}
-    assert {"--source-local", "--confirm-install-agent"} <= install_flags
-    assert {"doctor", "sync", "status"} <= {c for c, _ in commands}
+    assert install_flags == {
+        "--version",
+        "--log-start",
+        "--list-folders",
+        "--log",
+        "--source-local",
+        "--confirm-install-agent",
+        "--log-end",
+        "--report-only",
+    }
+    assert commands == {("it-request", ""), ("it-request", "--out")}
+    missing: list[str] = []
     for flag in sorted(install_flags):
-        assert re.search(rf"^\s*(?:-h \| )?{re.escape(flag)}\)", script, flags=re.MULTILINE), flag
-        assert flag in help_text, f"install.sh --help does not document {flag}"
+        if not re.search(rf"^\s*(?:-\S+ \| )*{re.escape(flag)}(?: \| -\S+)*\)", script, flags=re.MULTILINE):
+            missing.append(f"install.sh has no case arm for {flag}")
+        if not re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", help_text):
+            missing.append(f"install.sh --help does not document {flag}")
     for command, flag in sorted(commands):
-        assert command in sub.choices, f"agentsync has no subcommand {command!r}"
-        if flag:
-            options = {o for a in sub.choices[command]._actions for o in a.option_strings}
-            assert flag in options, f"agentsync {command} has no option {flag}"
+        if command not in sub.choices:
+            missing.append(f"agentsync has no subcommand {command!r}")
+        elif flag and flag not in {o for a in sub.choices[command]._actions for o in a.option_strings}:
+            missing.append(f"agentsync {command} has no option {flag}")
+    assert missing == [], "; ".join(missing)
+
+
+# ---- "Fewer approval prompts": the optional pre-allow rules under the block (judge finding K11) -----------
+
+
+def _approval_section() -> str:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
+    after = section.split(_one_prompt_block(), 1)[1]
+    match = re.search(
+        r"<details>\n<summary><b>Fewer approval prompts</b>.*?</details>", after, flags=re.DOTALL
+    )
+    assert match, "README.md: no 'Fewer approval prompts' part after the one-prompt block"
+    return match.group(0)
+
+
+def _claude_code_rules() -> list[str]:
+    [block] = re.findall(r"```json\n(.*?)```", _approval_section(), flags=re.DOTALL)
+    settings = json.loads(block)
+    assert set(settings) == {"permissions"} and set(settings["permissions"]) == {"allow"}
+    rules: list[str] = settings["permissions"]["allow"]
+    return rules
+
+
+def _copilot_rules() -> list[str]:
+    [block] = re.findall(r"```sh\n(.*?)```", _approval_section(), flags=re.DOTALL)
+    [flag] = re.findall(r"--allow-tool='([^']*)'", block)
+    assert block.startswith("cd ~ && copilot --allow-tool=")
+    rules = [r.strip() for r in flag.split(",")]
+    assert all(re.fullmatch(r"shell\([^()]+\)", r) for r in rules), rules
+    return [r[len("shell(") : -1] for r in rules]
+
+
+def _split_top(cmd: str) -> list[str]:
+    """``cmd`` split at the shell separators Claude Code's documentation names (&&, ||, ;, |, |&, &, newline)
+    outside quotes and ``$(...)``; braces and if/then/else/fi keywords dropped, so each piece is one simple
+    command."""
+    pieces: list[str] = []
+    cur: list[str] = []
+    quote = ""
+    depth = 0
+    i = 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif cmd.startswith("$(", i):
+            depth += 1
+            cur.append("$(")
+            i += 2
+            continue
+        elif ch == ")" and depth:
+            depth -= 1
+        elif not depth and ch in ";|&\n":
+            pieces.append("".join(cur))
+            cur = []
+            i += 2 if cmd[i : i + 2] in ("&&", "||", "|&") else 1
+            continue
+        cur.append(ch)
+        i += 1
+    pieces.append("".join(cur))
+    simple: list[str] = []
+    for piece in pieces:
+        text = piece.strip()
+        while text.startswith(("{ ", "if ", "then ", "else ")):
+            text = text.split(" ", 1)[1].lstrip()
+        text = text.removesuffix(" }").strip()
+        if text not in ("", "{", "}", "fi"):
+            simple.append(text)
+    return simple
+
+
+def _subcommands(cmd: str) -> list[str]:
+    """Every simple command in ``cmd``, including those inside a ``$(...)`` outside single quotes (a deny or
+    ask rule applies inside a command substitution too, so an allow list is only complete when it covers
+    them)."""
+    out: list[str] = []
+    for part in _split_top(cmd):
+        out.append(part)
+        unquoted = re.sub(r"'[^']*'", "''", part)  # no substitution runs inside single quotes
+        out += [s for inner in re.findall(r"\$\(([^()]*)\)", unquoted) for s in _subcommands(inner)]
+    return out
+
+
+def _claude_code_rule_matches(rule: str, command: str) -> bool:
+    """Claude Code's documented Bash rule matching: the rule text matches the whole command, ``*`` stands for
+    any text (spaces included), ``:*`` at the end is the same as `` *``, and a trailing `` *`` that is the
+    rule's only wildcard also matches the bare command."""
+    m = re.fullmatch(r"Bash\((.+)\)", rule)
+    assert m, rule
+    pattern = m.group(1)
+    if pattern.endswith(":*"):
+        pattern = pattern[:-2] + " *"
+    if pattern.endswith(" *") and pattern.count("*") == 1 and command == pattern[:-2]:
+        return True
+    regex = ".*".join(re.escape(part) for part in pattern.split("*"))
+    return re.fullmatch(regex, command, flags=re.DOTALL) is not None
+
+
+def _copilot_rule_matches(rule: str, command: str) -> bool:
+    """Copilot CLI's documented ``:*`` form: the text before it, alone or followed by a space and more text;
+    without ``:*`` the command must be the text exactly."""
+    if rule.endswith(":*"):
+        stem = rule[:-2]
+        return command == stem or command.startswith(stem + " ")
+    return command == rule
+
+
+def _agent_commands() -> list[str]:
+    """Every command the block has the agent run (``xcode-select --install`` is the person's to run)."""
+    commands = [c for c in _commands(_one_prompt_block()) if c != "xcode-select --install"]
+    assert commands == [
+        FRICTION_LOG_TEMPLATE,
+        STEP1_COMMAND,
+        f'{INSTALL_SH} --source-local "<folder>" --confirm-install-agent',
+        STEP3_COMMAND,
+    ], commands
+    return commands
+
+
+def test_split_top_follows_the_documented_separators() -> None:
+    assert _subcommands(STEP1_COMMAND) == [
+        "sw_vers -productVersion",
+        "xcode-select -p",
+        "[ -d ~/src/agent-context-sync/.git ]",
+        "git -C ~/src/agent-context-sync pull --ff-only",
+        "git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync",
+        f"{INSTALL_SH} --version",
+        f"{INSTALL_SH} --log-start '<agent>'",
+        f"{INSTALL_SH} --list-folders",
+    ]
+    assert _subcommands(STEP3_COMMAND) == [
+        "~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md",
+        f"{INSTALL_SH} --log-end",
+        f"{INSTALL_SH} --report-only",
+    ]
+    assert _subcommands(FRICTION_LOG_TEMPLATE) == [FRICTION_LOG_TEMPLATE]
+    assert _subcommands("a 'x; y' && b \"$(c; d)\" | e") == ["a 'x; y'", 'b "$(c; d)"', "c", "d", "e"]
+
+
+def test_claude_code_rule_matching_follows_the_documented_examples() -> None:
+    """The matcher reproduces the rows of Claude Code's permissions page (code.claude.com/docs/en/permissions,
+    'Wildcard patterns'), so the coverage test below means what the tool does."""
+    rows = [
+        ("Bash(npm run build)", ["npm run build"], ["npm run build --watch"]),
+        ("Bash(npm run *)", ["npm run build", "npm run test --watch", "npm run"], ["npm install"]),
+        (
+            "Bash(git log * main)",
+            ["git log --oneline main", "git log -5 main"],
+            ["git log main", "git push origin main"],
+        ),
+        ("Bash(* --version)", ["node --version"], ["node -v"]),
+        ("Bash(ls *)", ["ls -la", "ls"], ["lsof"]),
+        ("Bash(ls*)", ["ls -la", "lsof"], []),
+        ("Bash(* --help *)", ["npm --help x"], ["npm --help"]),
+        ("Bash(ls:*)", ["ls -la", "ls"], ["lsof"]),
+    ]
+    for rule, yes, no in rows:
+        assert all(_claude_code_rule_matches(rule, c) for c in yes), (rule, yes)
+        assert not any(_claude_code_rule_matches(rule, c) for c in no), (rule, no)
+
+
+def test_readme_pre_allow_rules_cover_every_command() -> None:
+    """Each simple command in every command the block has the agent run, the friction-log template filled with
+    an agent's words included, matches at least one Claude Code rule under the documented semantics, and at
+    least one Copilot CLI pattern (except the read-only ``[`` test). No rule is broader than the program
+    and its subcommand: no bare ``Bash``, and a ``*`` only at the end (Claude Code warns about a wildcard
+    before the subcommand). Every rule of either tool is needed by some command in the block."""
+    claude = _claude_code_rules()
+    copilot = _copilot_rules()
+    assert all(re.fullmatch(r"Bash\([^*]+( \*)?\)", r) for r in claude), claude
+    assert not any(r.startswith(("git:*", "git *")) or r in ("*", "git") for r in copilot), copilot
+    filled = _fill_line(2, "deviation", "ran `ls` and $(pwd); then | a pipe", "don\u2019t && stop")
+    subs = [s for c in [*_agent_commands(), filled] for s in _subcommands(c)]
+    assert f"{INSTALL_SH} --log-start '<agent>'" in subs and filled in subs
+    uncovered: list[str] = []
+    for sub in subs:
+        if not any(_claude_code_rule_matches(r, sub) for r in claude):
+            uncovered.append(f"Claude Code: {sub}")
+        if not sub.startswith("[ ") and not any(_copilot_rule_matches(r, sub) for r in copilot):
+            uncovered.append(f"Copilot CLI: {sub}")
+    assert uncovered == []
+    unused = [r for r in claude if not any(_claude_code_rule_matches(r, s) for s in subs)]
+    unused += [r for r in copilot if not any(_copilot_rule_matches(r, s) for s in subs)]
+    assert unused == [], "every rule is needed by a command in the block"
+
+
+def _redirects(cmd: str) -> list[str]:
+    """The ``>`` and ``<`` characters in ``cmd`` outside quotes (a redirect, which Claude Code checks as a
+    file write or read on top of the Bash rules)."""
+    found: list[str] = []
+    quote = ""
+    for ch in cmd:
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "<>":
+            found.append(ch)
+    return found
+
+
+def test_readme_block_redirects_to_no_file() -> None:
+    """v5b review L4: Claude Code asks for every redirect whose target starts with ``~``, whatever the allow
+    rules say, so the block has no redirect at all: every friction line goes through install.sh --log."""
+    assert {c: _redirects(c) for c in _agent_commands()} == {c: [] for c in _agent_commands()}
+    assert ">>" not in _one_prompt_block() and "printf" not in _one_prompt_block()
+
+
+def test_readme_pre_allow_part_is_optional_and_honest() -> None:
+    """The part says it is optional and the person's to add, sits right after the block, says why the block
+    has no redirect, and says which rules step 1 needs."""
+    part = " ".join(_approval_section().split())
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme.index(_one_prompt_block()) < readme.index("<summary><b>Fewer approval prompts</b>")
+    assert (
+        "optional" in part
+        and "only you add them" in part
+        and "never asks the agent to change its tool" in part
+    )
+    assert "`~/.claude/settings.json`" in part and "https://code.claude.com/docs/en/permissions" in part
+    assert "a `>>` target that starts with `~` always needs approval" in part
+    assert "`install.sh --log`" in part and "never with a `>>` redirect" in part
+    assert "#tool-permission-patterns" in part
+    first = f"Bash({INSTALL_SH} *)"
+    step1_rules = _claude_code_rules()[: _claude_code_rules().index(first) + 1]
+    assert f"step 1 needs the first {len(step1_rules)} rules" in part.replace("six", "6")
+    assert all(any(_claude_code_rule_matches(r, s) for r in step1_rules) for s in _subcommands(STEP1_COMMAND))
+
+
+# ---- the setup feedback loop: issue form, feedback page, README steps 3 and 4 --------------------------
+
+
+ISSUE_TEMPLATES = ROOT / ".github" / "ISSUE_TEMPLATE"
+_FORM_TYPES = {"markdown", "textarea", "input", "dropdown", "checkboxes"}
+FORM_IDS = ["outcome", "run_type", "prompt_version", "agent", "report", "review"]
+"""The form's field ids, stable because setup-report's pre-filled link names them (J23)."""
+PREFILLED_IDS = ["outcome", "run_type", "prompt_version", "agent"]
+RUN_TYPES = ["Real Mac", "Sandbox", "Sandbox with simulated launchd"]
+
+
+def _form() -> dict[str, Any]:
+    import yaml  # noqa: PLC0415
+
+    form = yaml.safe_load((ISSUE_TEMPLATES / "setup-report.yml").read_text(encoding="utf-8"))
+    assert isinstance(form, dict)
+    return form
+
+
+def _field(field_id: str) -> dict[str, Any]:
+    item: dict[str, Any] = next(i for i in _form()["body"] if i.get("id") == field_id)
+    return item
+
+
+def test_setup_report_issue_form_structure() -> None:
+    """GitHub's issue-form schema, as far as a typo would silently break the form (GitHub falls back to a
+    blank issue on an invalid template)."""
+    form = _form()
+    assert {"name", "description", "body"} <= set(form) <= {"name", "description", "title", "labels", "body"}
+    assert form["title"] == "Setup report: " and form["labels"] == ["setup-report"]
+    ids: list[str] = []
+    for item in form["body"]:
+        assert item["type"] in _FORM_TYPES
+        attrs = item["attributes"]
+        if item["type"] == "markdown":
+            assert attrs["value"].strip()
+            continue
+        ids.append(item["id"])
+        assert re.fullmatch(r"[a-z][a-z0-9_-]*", item["id"]) and attrs["label"].strip()
+        assert isinstance(item.get("validations", {}).get("required", False), bool)
+        if item["type"] == "dropdown":
+            options = attrs["options"]
+            assert len(options) == len(set(options)) and all(isinstance(o, str) and o for o in options)
+    assert len(ids) == len(set(ids)), "field ids are unique"
+    assert ids == FORM_IDS
+
+    report = _field("report")
+    assert report["type"] == "textarea" and report["attributes"]["render"] == "markdown"
+    assert report["validations"]["required"] is True
+    assert _field("agent")["type"] == "input"
+    prompt = _field("prompt_version")
+    assert prompt["type"] == "input" and prompt["validations"]["required"] is True
+    assert prompt["attributes"]["placeholder"] == f"v{_prompt_version()}"
+    [review] = _field("review")["attributes"]["options"]
+    assert _field("review")["type"] == "checkboxes"
+    assert review["label"] == "I reviewed this report and it contains no confidential names"
+    assert review["required"] is True
+    [intro] = [item["attributes"]["value"] for item in form["body"] if item["type"] == "markdown"]
+    assert "pre-filled" in intro and "Summary" in intro, "the form says setup-report's link fills it"
+    from agentsync import setup_report  # noqa: PLC0415
+
+    label = getattr(setup_report, "ISSUE_LINK_LABEL", None)
+    if label is not None:  # the line setup-report --out ends with (judge finding K3)
+        assert f"`{label} <link>`" in _feedback_page().split("## 3. Send", 1)[1].split("\n## ", 1)[0]
+
+
+def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
+    """Fully one command, worked with help, and one 'Failed at step N (<step title>)' per README step, so the
+    computed outcome maps to exactly one option."""
+    outcome = _field("outcome")
+    assert outcome["type"] == "dropdown" and outcome["validations"]["required"] is True
+    options: list[str] = outcome["attributes"]["options"]
+    assert options[:2] == ["Fully one command", "Worked with help"]
+    steps = _prompt_steps()
+    failed = [re.fullmatch(r"Failed at step (\d+) \(([^)]+)\)", o) for o in options[2:]]
+    assert all(failed), options
+    assert [int(m.group(1)) for m in failed if m] == list(range(1, len(steps) + 1)), (
+        "one option per README step"
+    )
+    for m in failed:
+        assert m and steps[int(m.group(1))].lower().startswith(m.group(2).lower()), (m, steps)
+
+
+def test_setup_report_form_has_a_run_type() -> None:
+    """Sandbox runs, with or without simulated launchd, are told apart, so they never count as a success
+    (judge findings I18, J14)."""
+    run = _field("run_type")
+    assert run["type"] == "dropdown" and run["validations"]["required"] is True
+    assert run["attributes"]["options"] == RUN_TYPES
+
+
+def test_setup_report_form_field_ids_are_documented_for_the_prefilled_link() -> None:
+    """setup-feedback.md lists every field id with its type, the link's query keys are the four Summary
+    fields, and the documented outcome and run type values are the form's options."""
+    send = _feedback_page().split("## 3. Send", 1)[1].split("\n## ", 1)[0]
+    rows = dict(re.findall(r"^\| `([a-z_]+)` \| ([a-z]+) \|", send, flags=re.MULTILINE))
+    assert list(rows) == FORM_IDS
+    assert rows == {i: _field(i)["type"] for i in FORM_IDS}
+    [link] = re.findall(r"https://github\.com/\S+/issues/new\?template=setup-report\.yml&\S+", send)
+    assert re.findall(r"&([a-z_]+)=", link) == ["title", *PREFILLED_IDS]
+    for value in RUN_TYPES:
+        assert f"`{value}`" in send
+    assert "`Fully one command`" in send and "`Worked with help`" in send
+
+
+def test_setup_report_prefills_the_forms_ids_and_labels() -> None:
+    """What setup-report puts in its pre-filled link is what the form has: the field ids, the run type labels
+    and one Outcome option per prompt step (J23). Checked only for the names the module defines."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    fields = getattr(setup_report, "ISSUE_FIELDS", None)
+    if fields is not None:
+        assert list(fields.values()) == PREFILLED_IDS
+    run_types = getattr(setup_report, "ISSUE_RUN_TYPES", None)
+    if run_types is not None:
+        assert sorted(run_types.values()) == sorted(RUN_TYPES)
+    steps = getattr(setup_report, "PROMPT_STEPS", None)
+    if steps is not None:
+        labels = [f"Failed at step {n} ({title})" for n, title in sorted(steps.items())]
+        assert labels == _field("outcome")["attributes"]["options"][2:]
+
+
+def test_issue_template_config_links_the_private_route() -> None:
+    """J17: a private route that needs no contact with the maintainer, plus the maintainer's GitHub profile as
+    an optional one; no email address is published."""
+    import yaml  # noqa: PLC0415
+
+    text = (ISSUE_TEMPLATES / "config.yml").read_text(encoding="utf-8")
+    config = yaml.safe_load(text)
+    assert config["blank_issues_enabled"] is True
+    private, profile = config["contact_links"]
+    for link in (private, profile):
+        assert set(link) == {"name", "url", "about"} and all(isinstance(v, str) and v for v in link.values())
+    prefix = "https://github.com/renchris/agent-context-sync/blob/main/docs/deploy/"
+    assert private["url"].startswith(prefix)
+    page, _, anchor = private["url"].removeprefix(prefix).partition("#")
+    assert anchor in _anchors(DEPLOY / page), private["url"]
+    assert "machine you administer" in private["about"]
+    assert profile["url"] == "https://github.com/renchris"
+
+
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [ISSUE_TEMPLATES / "config.yml", ISSUE_TEMPLATES / "setup-report.yml", DEPLOY / "setup-feedback.md"],
+    ids=lambda p: p.name,
+)
+def test_feedback_loop_publishes_no_email_address(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert _EMAIL_RE.findall(text) == [] and "mailto:" not in text
+
+
+def test_readme_setup_report_steps_match_the_code() -> None:
+    """The report step runs install.sh --report-only, which writes ~/agent-context/setup-report.md with or
+    without agentsync and embeds friction.md (no heading for the agent to write, so none is duplicated: I4);
+    the report's own link opens this issue form, and the finish names the report and the link."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    block = _one_prompt_block()
+    steps = _prompt_steps()
+    assert f"{INSTALL_SH} --report-only" in _subcommands(STEP3_COMMAND)
+    assert "append a section" not in block and setup_report.FRICTION_HEADING not in block
+    assert "~/agent-context/setup-report.md with the issue link" in steps[len(steps)]
+    assert "~/agent-context/setup-report.md" in SCRIPTS[0].read_text(encoding="utf-8"), (
+        "--report-only's default"
+    )
+    assert setup_report.ISSUE_URL.startswith("https://github.com/renchris/agent-context-sync/issues/new?")
+    assert (ISSUE_TEMPLATES / setup_report.ISSUE_URL.rsplit("=", 1)[1]).is_file()
+    assert setup_report.ISSUE_URL in _feedback_page()
+
+
+def _feedback_page() -> str:
+    return (DEPLOY / "setup-feedback.md").read_text(encoding="utf-8")
+
+
+def test_setup_feedback_page_is_linked_and_covers_the_fix_classes() -> None:
+    page = _feedback_page()
+    assert "(setup-feedback.md)" in (DEPLOY / "README.md").read_text(encoding="utf-8")
+    for fix_class in (
+        "prompt wording",
+        "installer automation",
+        "agentsync code",
+        "IT pack",
+        "unavoidable OS step",
+    ):
+        assert fix_class in page, fix_class
+    assert "setup-report.yml" in page
+    assert "needed help" not in page.split("### Known friction", 1)[0], "v5 triages by kind, not status"
+
+
+def test_setup_feedback_page_defines_the_computed_outcome() -> None:
+    """The page defines each computed outcome and run type (J3, J14) with the rules setup-report applies: the
+    installer's step, the kinds that count, the unavoidable turns and the sandbox homes."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    section = _feedback_page().split("### The computed outcome", 1)[1].split("\n### ", 1)[0]
+    flat = " ".join(section.split())
+    for outcome in ("**Fully one command**", "**Worked with help**", "**Failed at step N**"):
+        assert outcome in flat
+    assert "**Failed at step 4 (finish)** is never computed" in flat
+    for run_type in RUN_TYPES:
+        assert f"**{run_type}**" in flat
+    assert "`launchd=simulated`" in flat
+    for name, expected in (
+        ("PROBLEM_KINDS", ("error", "deviation", "prompt")),
+        ("INSTALL_STEP", 2),
+        ("FOLDER_QUESTION_STEP", 1),
+        ("ALLOW_CLICK_STEPS", (1, 2)),
+        ("SANDBOX_HOMES", ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")),
+    ):
+        value = getattr(setup_report, name, expected)
+        assert value == expected, f"setup_report.{name} changed: update setup-feedback.md section 4"
+    assert "no `approval` line, no error that stopped the run, and doctor shows no `[FAIL]`" in flat
+    assert "are agent friction" in flat and "they do not change the outcome" in flat and "N is 2" in flat
+    assert "no `question` line and no `click` line" in flat, (
+        "v6 logs neither the folder question nor an Allow"
+    )
+    assert "the folder question in step 1 nor the Allow clicks it announces in steps 1 and 2" in flat
+    assert "`Prompt: v5` is judged with v5's six steps" in flat, "a v5 log is still read with its own steps"
+    assert all(
+        f"`{home}`" in flat for home in ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+    )
+
+
+def test_setup_feedback_page_triages_by_friction_id() -> None:
+    """Triage by F<n>, a closing comment mapping each id to a fix class and a commit/test or 'unavoidable:
+    <evidence>', the sandbox rule, the private route and the unavoidable list (judge findings I15, I18,
+    I19, J17)."""
+    page = _feedback_page()
+    [comment] = [
+        b for b in re.findall(r"^```text\n(.*?)^```$", page, flags=re.DOTALL | re.MULTILINE) if "F1:" in b
+    ]
+    lines = comment.splitlines()
+    assert lines[0].startswith(f"Prompt v<N>, run <{' | '.join(RUN_TYPES)}>, outcome")
+    assert any(re.match(r"F\d+: prompt wording -> <commit>, test <", ln) for ln in lines)
+    assert any(re.match(r"F\d+: unavoidable: <", ln) for ln in lines)
+    assert "**A sandbox or simulated run never counts as a success metric.**" in page
+    send = page.split("## 3. Send", 1)[1].split("\n## ", 1)[0]
+    assert "no public post needed" in send and "back to the machine you administer" in send
+    assert "no contact with the agentsync maintainer" in send
+    unavoidable = page.split("## 5. ", 1)[1]
+    for step in ("Choosing the folders", "TCC Allow click", "Agent-tool approvals", "IT consent"):
+        assert step in unavoidable, step
+    assert "Full Disk Access to the" in unavoidable and "pre-allows" in unavoidable
+    assert "for the terminal (step 1)" in unavoidable and "`agentsync-launcher` (step 2)" in unavoidable
+    assert "within 12 s" in page  # setup_report.TIME_BUDGET_S (judge finding I20)
+
+
+def test_setup_feedback_names_every_installer_step() -> None:
+    """Section 1 lists the steps install.sh logs (step_start NAME), the report step included (K13)."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    logged = list(dict.fromkeys(re.findall(r"^\s*step_start ([a-z-]+)\b", script, flags=re.MULTILINE)))
+    section = _feedback_page().split("## 1. How a report is produced", 1)[1].split("\n## ", 1)[0]
+    [listed] = re.findall(r"per step \(([^)]*); list-folders for a `--list-folders` run\)", section)
+    assert sorted([*listed.split(", "), "list-folders"]) == sorted(logged)
+
+
+_DENIAL_REMEDY = "System Settings > Privacy & Security > Files and Folders"
+
+
+def test_denied_access_remedy_is_the_files_and_folders_toggle() -> None:
+    """A denied Allow (exit 80, TCC_DENIED, or a denied terminal) is fixed by the person's toggle in System
+    Settings, as install.sh's NEXT lines say; no page tells the person to run tccutil (K13)."""
+    assert _DENIAL_REMEDY in SCRIPTS[0].read_text(encoding="utf-8")
+    for page in (DEPLOY / "README.md", DEPLOY / "setup-feedback.md", ROOT / "README.md"):
+        text = page.read_text(encoding="utf-8")
+        assert "tccutil" not in text, page.name
+    deploy = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    denied = deploy.split("**Denied or missed:**", 1)[1].split(" - **", 1)[0]
+    exit80 = deploy.split("`80`", 1)[1].split("Logs are in", 1)[0]
+    unavoidable = " ".join(_feedback_page().split("## 5. ", 1)[1].split())
+    for text in (denied, exit80, unavoidable):
+        assert _DENIAL_REMEDY in text, text
+
+
+def test_known_friction_register_names_real_tests() -> None:
+    """Every test the feedback page's Known friction table cites exists in this file (a glob '*' matches at
+    least one), so a renamed test cannot leave a stale proof behind."""
+    page = _feedback_page()
+    table = page.split("### Known friction", 1)[1]
+    cited = re.findall(r"`(test_[\w*]+)`", table)
+    assert cited, "the register cites its tests"
+    names = set(
+        re.findall(r"^def (test_\w+)", Path(__file__).read_text(encoding="utf-8"), flags=re.MULTILINE)
+    )
+    for name in cited:
+        assert any(re.fullmatch(name.replace("*", r"\w*"), n) for n in names), name
+    ids = re.findall(r"^\| (K\d+) \|", table, flags=re.MULTILINE)
+    assert ids == [f"K{i}" for i in range(1, len(ids) + 1)]
+
+
+# ---- the IT request's placeholders ----------------------------------------------------------------------
+
+_PLACEHOLDER_RE = re.compile(r"<[A-Za-z][A-Za-z0-9 _-]*>")
+
+
+def test_it_request_placeholders_are_in_its_top_table() -> None:
+    """One spelling per placeholder, every one (including entra-app.json's) in the table before the request's
+    first section, with where its value comes from (judge finding I10)."""
+    text = (DEPLOY / "it-request.md").read_text(encoding="utf-8")
+    top = text.split("\n## ", 1)[0]
+    rows = re.findall(r"^\| (`<.+?) \| (.+?) \| (.+?) \|$", top, flags=re.MULTILINE)
+    table: dict[str, str] = {}
+    for names, meaning, source in rows:
+        assert meaning.strip() and source.strip()
+        for name in re.findall(r"`(<[^`]+>)`", names):
+            assert name not in table, f"{name} is listed twice"
+            table[name] = source
+    used = set(_PLACEHOLDER_RE.findall(text)) | set(
+        _PLACEHOLDER_RE.findall(ENTRA.read_text(encoding="utf-8"))
+    )
+    assert used == set(table), f"not in the table: {used - set(table)}; unused rows: {set(table) - used}"
+    assert all(re.fullmatch(r"<[a-z][a-z0-9-]*>", p) for p in table), "lower-case, hyphenated spellings"
+    assert {"<it-contact>", "<tenant-id>", "<app-client-id>", "<org>", "<team>"} <= set(table)
+    assert table["<it-contact>"] == "you fill in", "no IT contact is invented"
+    commands = {p: s for p, s in table.items() if s.startswith("`")}
+    assert set(commands) == {"<requester-name>", "<serial>", "<arch>", "<org>", "<arms-today>", "<date>"}
+    assert (
+        "`id -F`" in table["<requester-name>"] and "`system_profiler SPHardwareDataType`" in table["<serial>"]
+    )
+    assert "**To:** `<it-contact>`" in text
+    assert "`agentsync it-request --out ~/agent-context/it-request-draft.md`" in top

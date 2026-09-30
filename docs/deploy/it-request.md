@@ -1,12 +1,42 @@
 # IT request: agentsync on a managed Mac
 
-**Requester:** `<name>`, `<UPN>`, `<team>`. **Device:** `<serial>` (arm64 Mac). **Wanted by:** Fri 2026-10-09.
+Placeholders, one spelling each. Fill a copy of this page outside the repository and send it yourself. The
+one-prompt setup writes that copy with `agentsync it-request --out ~/agent-context/it-request-draft.md` (mode 0600;
+it never sends anything). The command fills every value this table says a command gives, lists the ones still open
+at the top of the copy ("You fill: ..."), makes the links absolute and leaves out this table and the operator
+section. The manifest block below is a copy of [`entra-app.json`](entra-app.json), so its two placeholders are
+filled in the copy too.
+
+| Placeholder | Meaning | Where the value comes from |
+|---|---|---|
+| `<it-contact>` | the IT address or queue this request goes to | you fill in |
+| `<requester-name>` | the person asking | `id -F` (the Mac's user; you fill in if you ask for someone else) |
+| `<requester-upn>` | the requester's work sign-in address, which IT assigns to the app | you fill in |
+| `<team>` | the requester's team, also the owner note in `entra-app.json` | you fill in |
+| `<serial>` | the Mac's serial number | `system_profiler SPHardwareDataType`, its `Serial Number` line |
+| `<arch>` | the Mac's CPU (`arm64` or `x86_64`) | `uname -m` |
+| `<org>` | the organisation name, also the app's display name in `entra-app.json` | `ls ~/Library/CloudStorage`: the name after `OneDrive-` or `OneDrive-SharedLibraries-`, never `Personal` (you choose if there are two) |
+| `<arms-today>` | the sources this Mac already syncs without IT | `grep '^kind' ~/agent-context/sources.toml`: each `kind` and how many sources have it |
+| `<date>` | the day the request is written | `date +%F` |
+| `<wanted-by>` | the date you need it by | you fill in |
+| `<it-owner>` | the IT co-owner of the app registration | IT fills in (leave it) |
+| `<tenant-id>` | the Directory (tenant) ID | IT fills in (leave it; IT replies with it) |
+| `<app-client-id>` | the Application (client) ID, created when IT registers the app | IT fills in (leave it; IT replies with it) |
+| `<company>`, `<version>`, `<shared-mailbox-upn>` | parts of a format or an example, not values to fill | leave them |
+
+---
+
+**To:** `<it-contact>`. **Subject:** agentsync on a managed Mac: Entra app registration and admin consent.
+
+**Requester:** `<requester-name>`, `<requester-upn>`, `<team>`. **Device:** `<serial>` (`<arch>` Mac).
+**Written:** `<date>`. **Wanted by:** `<wanted-by>`.
 
 agentsync is a command-line tool that runs as the signed-in user. It keeps a local, read-only markdown copy of
 chosen OneDrive/SharePoint libraries, mail folders and Teams channels and chats in a git repository on the
 Mac, so a coding agent can read them. It uses **delegated, read-only** Microsoft Graph permissions only: no
 application permissions, no client secret or certificate, and no server. **No data leaves the Mac** (see the
-last section). The local-folder part already runs without IT. This request covers the Graph part.
+last section). The local-folder part already runs without IT (on this Mac: `<arms-today>`). This request covers the
+Graph part.
 
 ## What we ask for (no meeting needed)
 
@@ -14,7 +44,7 @@ last section). The local-folder part already runs without IT. This request cover
    Graph `application` body, and the ids in it are checked (see "Permission ids").
 2. **Grant tenant-wide admin consent** for the delegated scopes of the arms we use (matrix below). Remove the
    rows we do not need before you consent.
-3. **Set "Assignment required" = Yes** on the enterprise application and assign `<UPN>` (or a pilot group).
+3. **Set "Assignment required" = Yes** on the enterprise application and assign `<requester-upn>` (or a pilot group).
 4. **Optional, if MDM blocks the one-time privacy prompt:** deploy the PPPC profile in [`mdm/`](mdm/README.md).
 5. **Reply with** the Application (client) ID and the Directory (tenant) ID. Neither is a secret.
 
@@ -28,7 +58,7 @@ last section). The local-folder part already runs without IT. This request cover
 | Certificates & secrets | none | public client; delegated only |
 | Enterprise app, **Assignment required** (`appRoleAssignmentRequired`) | **Yes**, pilot users assigned | consent then reaches only assigned users; anyone else gets AADSTS50105 |
 | API permissions | delegated Microsoft Graph only, trimmed to the rows below | |
-| Owners | `<requester>` + `<IT owner>` | |
+| Owners | `<requester-upn>` + `<it-owner>` | |
 
 The manifest, byte-identical to [`entra-app.json`](entra-app.json). Paste it into a new registration's manifest
 (Download, edit, Upload), or post it with `az` as shown below:
@@ -72,9 +102,9 @@ From the CLI, using standard `az` verbs (trim the file first):
 
 ```sh
 az rest --method POST --url https://graph.microsoft.com/v1.0/applications --body @entra-app.json
-az ad sp create --id <appId>
-az ad sp update --id <appId> --set appRoleAssignmentRequired=true
-az ad app permission admin-consent --id <appId>
+az ad sp create --id <app-client-id>
+az ad sp update --id <app-client-id> --set appRoleAssignmentRequired=true
+az ad app permission admin-consent --id <app-client-id>
 ```
 
 ## Delegated permissions, per source kind
@@ -89,7 +119,7 @@ flag them. In practice every content scope here needs you.
 | OneDrive / SharePoint library (`graph_drive`) | `Files.Read.All` | `GET /drives/{id}/root/delta` on the user's own drive and on libraries shared with them | **yes** (default policy) |
 | SharePoint site by URL, library discovery | `Sites.Read.All` | `GET /sites/{host}:/{path}`, `/sites/{id}/drive`, `/me/followedSites` | **yes** (default policy) |
 | Outlook folder (`graph_mail`, `mailbox = "me"`) | `Mail.Read` | `GET /me/mailFolders/delta` and per-folder `messages/delta`, plus the MIME body of each changed message | **yes** (default policy) |
-| shared mailbox (`graph_mail`, `mailbox = "<upn>"`) | `Mail.Read.Shared` | the same calls under `/users/{shared}/…`, only for mailboxes the user can already open | **yes** (default policy) |
+| shared mailbox (`graph_mail`, `mailbox = "<shared-mailbox-upn>"`) | `Mail.Read.Shared` | the same calls under `/users/{shared}/…`, only for mailboxes the user can already open | **yes** (default policy) |
 | Teams channel (`graph_teams`) | `Team.ReadBasic.All`, `Channel.ReadBasic.All` | list joined teams and channels (discovery, names) | no |
 | Teams channel (`graph_teams`) | `ChannelMessage.Read.All` | `GET /teams/{t}/channels/{c}/messages?$expand=replies`, paced to 1 request/s per channel | **yes** (always) |
 | Teams 1:1 / group chat (`graph_teams`, `team_id = "chats"`) | `Chat.ReadBasic`, `Chat.Read` | list chats; read the messages of the chats the user picks | list: no; messages: **yes** (default policy) |
@@ -116,11 +146,11 @@ reference: `concepts/permissions-reference.md` in `microsoftgraph/microsoft-grap
 ## Admin consent
 
 Use **Entra admin center › App registrations › agentsync (`<org>`) › API permissions › Grant admin consent for
-`<tenant>`**, or open this URL signed in as a Cloud Application Administrator or Application Administrator. Those
+`<org>`**, or open this URL signed in as a Cloud Application Administrator or Application Administrator. Those
 roles suffice for delegated Microsoft Graph permissions.
 
 ```text
-https://login.microsoftonline.com/<tenant-id>/adminconsent?client_id=<application-client-id>
+https://login.microsoftonline.com/<tenant-id>/adminconsent?client_id=<app-client-id>
 ```
 
 Sovereign clouds use their own login host: `login.microsoftonline.us` for GCC High and DoD, and
@@ -164,7 +194,8 @@ What the user reports, and what IT does about it:
   telemetry.
 - **Network:** HTTPS to `login.microsoftonline.com`, `graph.microsoft.com` and the tenant's `*.sharepoint.com`
   download redirects. Installation also fetches `astral.sh`/`github.com` (uv) and `pypi.org`/`files.pythonhosted.org`
-  (packages). The User-Agent is `NONISV|<company>|agentsync/<version>`, so SharePoint logs identify the traffic.
+  (packages). The User-Agent is `NONISV|<company>|agentsync/<version>` (`<company>` is `[graph] company` in
+  `sources.toml`), so SharePoint logs identify the traffic.
 - **Credentials:** the MSAL token cache is kept in the user's login Keychain (service `agentsync`), or by the broker.
   Nothing lands on disk in plaintext unless the Keychain is unavailable, in which case a 0600 file is used and a
   warning is logged.
@@ -175,7 +206,7 @@ What the user reports, and what IT does about it:
 ## After IT replies (operator)
 
 ```sh
-# ~/agent-context/sources.toml, [graph]: client_id = "<app id>", tenant = "<tenant id>", and the consented scopes, e.g.
+# ~/agent-context/sources.toml, [graph]: client_id = "<app-client-id>", tenant = "<tenant-id>", and the consented scopes, e.g.
 #   scopes = ["User.Read", "Files.Read.All", "Sites.Read.All", "Mail.Read", "Team.ReadBasic.All", "Chat.ReadBasic"]
 mkdir -p "$HOME/Library/Application Support/agentsync/probes"
 agentsync graph login 2>&1 | tee "$HOME/Library/Application Support/agentsync/probes/login-$(date +%Y%m%d).txt"

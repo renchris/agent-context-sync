@@ -25,6 +25,7 @@ reads. It runs as you, needs **no admin rights**, and keeps everything on the Ma
 | `~/Library/Caches/agentsync/`, `~/Library/Logs/agentsync/` | converter cache (rebuildable), job logs | `agentsync offboard` |
 | `~/Library/LaunchAgents/com.agentsync.{poll,reconcile}.plist` | every 5 min (poll) and hourly (reconcile), only with `--confirm-install-agent` | `agentsync uninstall-agent` / `offboard` |
 | login Keychain, service `agentsync` | the Graph token cache (only after `agentsync graph login`) | `agentsync graph logout` / `offboard` |
+| `~/agent-context/setup/`, `setup-report.md`, `it-request-draft.md` | the setup log and friction log, the setup report, the IT request draft (all 0600) | you |
 
 `init` and `install-agent` exclude `mirror/`, the docs repo's `.git`, the cache and the manifest from Time Machine (all re-derivable from their sources; curated `topics/` is backed up).
 
@@ -35,11 +36,13 @@ that builds the launcher. If they are missing, ask IT through Self Service, beca
 A coding agent can run every step below for you: paste the block in the top-level README's
 [one-prompt setup](../../README.md#set-up-on-a-new-mac-one-prompt).
 
-Pick the folders to sync (`ls -d ~/Library/CloudStorage/*/*/` lists the OneDrive and SharePoint folders this Mac
-syncs), then pass one `--source-local` per folder:
+Get the code, pick the folders to sync (`install.sh --list-folders` prints the OneDrive and SharePoint folders this
+Mac syncs, one full path per line; it exits 3 when there are none and 4 when macOS denied this terminal access, and
+its `NEXT:` line says which), then pass one `--source-local` per folder:
 
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
+~/src/agent-context-sync/scripts/install.sh --list-folders
 ~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
 ```
 
@@ -51,6 +54,10 @@ one `NEXT:` line. Check a first cycle with `agentsync sync --once`, then start b
 ```sh
 ~/src/agent-context-sync/scripts/install.sh --confirm-install-agent
 ```
+
+The one-prompt setup does both in one run: `install.sh --source-local "<folder>" --confirm-install-agent` also
+syncs once, starts background sync and waits up to 3 minutes for the first background run and your Allow click, so
+give a coding tool's command a 10-minute timeout.
 
 Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,
@@ -75,6 +82,11 @@ so set `[network] proxy`. `agentsync doctor --network` checks the whole path.
 | background reads with nobody to click Allow | a Developer-ID re-sign of the launcher + the PPPC profile | [mdm/README.md](mdm/README.md) |
 | the Command Line Tools | Self Service or a ticket | — |
 
+`agentsync it-request --out ~/agent-context/it-request-draft.md` writes [it-request.md](it-request.md) as an email
+draft for this Mac: your name, the serial number, the CPU, the organisation and the sources you already sync are
+filled in, the links point at this repository on GitHub, and the first line lists what you still fill ("You fill:
+..."). It never sends anything; you send it.
+
 ## The one-time "Allow" click
 
 On the first background run while you are logged in (`install.sh --confirm-install-agent` starts one), macOS asks:
@@ -86,8 +98,9 @@ does not count: a Terminal run grants Terminal, not the background job. Until so
 most 10 s and exits **79** (`TCC_PENDING`); it never reads the folder as empty. `agentsync status` shows the
 launcher's `TCC_*` tokens.
 
-- **Denied or missed:** run `tccutil reset All com.agentsync.launcher`, then
-  `launchctl kickstart -k gui/$(id -u)/com.agentsync.poll`, and answer the prompt.
+- **Denied or missed:** turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders
+  (a click, not a command), then re-run the install command (`install.sh ... --confirm-install-agent`); its
+  `NEXT:` line names the exact command.
 - **MDM suppresses or blocks the prompt:** ask IT for the PPPC profile ([mdm/README.md](mdm/README.md)). Until then,
   `agentsync sync --once` from Terminal runs under Terminal's own grant, and inbox sources need no grant at all.
 - **Rebuilding the launcher** ad hoc creates a new identity, so macOS asks again. `install.sh` skips identical
@@ -96,11 +109,26 @@ launcher's `TCC_*` tokens.
 ## Exit codes the jobs report
 
 `0` ok · `1` a source or lint failed · `75` another cycle holds the lock · `77` sign-in needed or blocked (the
-message names the IT action) · `78` bad `sources.toml` · `79` waiting for the Allow click. Logs are in
-`~/Library/Logs/agentsync/`.
+message names the IT action) · `78` bad `sources.toml` · `79` waiting for the Allow click · `80` (the launcher's
+canary check) access was denied, `TCC_DENIED`: you, not an agent, turn on agentsync-launcher in System Settings >
+Privacy & Security > Files and Folders, then re-run the install command. Logs are in `~/Library/Logs/agentsync/`.
 
 ## Leaving
 
 `agentsync offboard` lists every copy. `agentsync offboard --confirm ~/agent-context/docs [--purge-data]` removes
 them, including the Keychain item, the LaunchAgents, the launcher and its TCC grant. See
 [data-governance.md](data-governance.md#offboarding).
+
+## Setup feedback
+
+Every real `install.sh` run appends one line per step to `~/agent-context/setup/install.log` (0600; set
+`AGENTSYNC_SETUP_LOG` to move it; `--dry-run` writes nothing). `agentsync setup-report --out
+~/agent-context/setup-report.md` turns that log, doctor, status, the background runs and recent log errors into one
+redacted report with a summary first. It is read-only, makes no network calls and takes under 12 s. The coding agent
+logs what the prompt did not foresee as it goes, with `scripts/install.sh --log` (`--log-start` and `--log-end` open
+and close each attempt), into `~/agent-context/setup/friction.md` (0600); the report embeds it with the same
+redaction, and works out the outcome and run type itself. It prints a link that opens a pre-filled setup-report
+issue; nothing is sent. `install.sh` also writes the report at every exit, and `scripts/install.sh --report-only`
+(step 3 of the prompt) writes it whether or not agentsync got installed. [setup-feedback.md](setup-feedback.md) covers how to review it,
+send it (publicly, or privately to the machine you administer this setup from) and turn each friction line into a
+fix.

@@ -40,65 +40,96 @@ whether that change costs anything. Git carries the result, so "what changed sin
 
 ## Set up on a new Mac: one prompt
 
-Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. It
-installs, asks you which folders to sync, waits while you click Allow on one macOS prompt, verifies every step, and
-writes the IT request as a draft file that it never sends. You fill in the IT contact and send it yourself. Doing it
-by hand instead: [Install](#install).
+Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. The
+agent lists your synced folders, asks you one question (which to sync), and runs one install command, which installs,
+syncs once, starts background sync and waits for you. You click Allow at most twice: once if macOS asks about this
+terminal app, and once for agentsync-launcher. It writes the IT request as a draft it never sends, and it ends with a redacted setup report (outcome, timings and every point that was not one command)
+for you to review and bring back ([how reports are used](docs/deploy/setup-feedback.md)). Doing it by hand instead: [Install](#install).
 
 ```text
-Set up agentsync on this Mac. agentsync keeps a local, agent-readable git repo (~/agent-context/docs) in sync with
-the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
+Set up agentsync on this Mac (setup prompt v6). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
 System Settings or privacy (TCC) settings; do not delete, reset or stash anything; do not open or read the files
-inside my OneDrive folders (listing folder names is fine). If a command fails and this prompt does not say what to
-do, show me the output and stop. If your tool refuses to run a command, show it to me and I will run it myself.
+inside my OneDrive folders. If a command fails and this prompt does not say what to do, log it and go to step 3. If
+your tool refuses a command, show it to me to run myself.
+Friction log: from step 1 on, whenever something happens that is not in this prompt, log it with
+`~/src/agent-context-sync/scripts/install.sh --log '<step>' '<kind>' '<what happened>' '<what would have avoided it, or ->'`
+Keep the single quotes and write ’ instead of ' inside them. <kind> is one of: question (you asked me something
+other than which folders to sync); click (I clicked something other than an Allow this prompt announced); approval
+(your tool asked me to approve a command, if you can see that); deviation (you did something this prompt did not
+say, or worked around a problem); error (a command failed; include its exit code); prompt (this prompt was wrong or
+unclear; include better wording). Do not log the steps themselves; the installer times them.
 
-1. Preflight. Run `sw_vers` and `xcode-select -p`. If xcode-select prints no path, stop and tell me: "Install the
-   Xcode Command Line Tools with `xcode-select --install`, or request them from IT through Self Service if that asks
-   for an admin password; then paste this prompt again." Run
-   `git ls-remote https://github.com/renchris/agent-context-sync.git HEAD`; if it fails, show me the error (a
-   corporate proxy may need HTTPS_PROXY set) and stop.
-2. Get the code. If ~/src/agent-context-sync exists, run `git -C ~/src/agent-context-sync pull --ff-only`;
-   otherwise run `git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync`. Then run
-   `~/src/agent-context-sync/scripts/install.sh --help | grep -c -- --source-local`; if it prints 0, stop and tell
-   me the published installer is older than this prompt.
-3. Choose what to sync. Tell me that macOS may ask once whether this terminal app can access files managed by
-   OneDrive, and that I should click Allow. Run `ls -d ~/Library/CloudStorage/*/*/ ~/Library/CloudStorage/*/*/*/`.
-   If it prints "no matches found" or "No such file or directory", stop: OneDrive is not signed in on this Mac.
-   Show me the list and ask which folders to sync, suggesting project folders rather than a whole library. Online-
-   only files in them are downloaded up to 1 GiB per folder per sync, so large folders take several syncs.
-4. Install (no admin rights). Tell me: "macOS may now ask whether agentsync-launcher may access files managed by
-   OneDrive. Click Allow." Run `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`, one
-   --source-local per folder I chose, each a full path starting with $HOME/Library/CloudStorage/. It is safe to
-   re-run. If it exits non-zero, show me the output and stop. Ignore its "next:" and PATH hints: this prompt
-   covers the next steps, and every command below uses the full path ~/.local/bin/agentsync.
-5. Check. Run `~/.local/bin/agentsync doctor`. These [warn] lines are expected and need nothing now:
-   launcher.signature and launcher.requirement (ad-hoc signature), launchd.poll and launchd.reconcile (not installed
-   until step 7). If a tcc line says TCC_PENDING, ask me to click Allow, then re-run doctor. For any other [FAIL],
-   apply its fix only if it is an agentsync or install.sh command, then re-run doctor; show me anything that remains.
-6. First sync by hand. Run `~/.local/bin/agentsync sync --once`, then `~/.local/bin/agentsync status` and
-   `git -C ~/agent-context/docs log --oneline -3`. It worked if sync exits 0, status shows "baseline complete" and a
-   "last success" time for every folder, and the log shows a "sync:" commit. Otherwise show me and stop.
-7. Background sync. Tell me: "macOS may ask again whether agentsync-launcher may access files managed by OneDrive.
-   Click Allow." Run `~/src/agent-context-sync/scripts/install.sh --confirm-install-agent`; if it exits non-zero,
-   show me the output and stop. Wait until I say I clicked Allow or that no prompt appeared. Then run
-   `launchctl kickstart -k gui/$(id -u)/com.agentsync.poll`, wait 60 seconds, and run
-   `launchctl print gui/$(id -u)/com.agentsync.poll | grep -E "runs|last exit code"` and
-   `~/.local/bin/agentsync status`. Done means "last exit code = 0" and no TCC_PENDING line in status. If the exit
-   code is 79 or status shows TCC_PENDING, ask me to click Allow (or to turn on agentsync-launcher under System
-   Settings > Privacy & Security > Files and Folders), then repeat the kickstart check.
-8. IT request, for Outlook, Teams and SharePoint sites this Mac does not sync. Read
-   ~/src/agent-context-sync/docs/deploy/it-request.md and write an email draft from it to
-   ~/agent-context/it-request-draft.md (not inside the repo, which you must not change). Fill <name> with the output
-   of `id -F`, <serial> from `system_profiler SPHardwareDataType | grep "Serial Number"`, and <org> from the name
-   after "OneDrive-" in ~/Library/CloudStorage. Leave <UPN>, <team> and the IT contact as placeholders and list them
-   at the top of the draft for me to fill in. Name ~/src/agent-context-sync/docs/deploy/entra-app.json as the
-   attachment. Do not send anything.
-9. Finish with five lines: the folders synced (full paths); the docs repo path and its latest commit; the
-   background sync result from step 7 (last exit code); the doctor result (how many FAIL and warn lines); and
-   ~/agent-context/it-request-draft.md with the placeholders I still have to fill.
+1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
+   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start '<agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
+   that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
+   `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
+   paste this prompt again", and stop. If git failed, show me its error (a corporate proxy may need HTTPS_PROXY set)
+   and stop. If --version does not end with "setup-prompt-compat 6" or higher, tell me the published installer is
+   older than this prompt and stop. If --list-folders printed no folder paths (only a NEXT: line), do what that line
+   says if it is a click for me, otherwise show it to me and go to step 3. Otherwise show me the folders and ask which to
+   sync, suggesting project folders rather than a whole library, and tell me that online-only files in them are
+   downloaded by background sync, up to 1 GiB per folder per run.
+2. Install and start. Tell me: "macOS will ask whether agentsync-launcher may access files managed by OneDrive.
+   Click Allow when it appears." Then run, with one --source-local per folder I chose (full paths), using the
+   longest command timeout your tool allows (10 minutes if you can set it):
+   `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>" --confirm-install-agent`
+   It installs, runs doctor, converts the files already on this Mac, starts background sync and waits until the
+   background job is running. It is safe to re-run: if your tool stopped it early, run the same command again. If
+   your tool cannot wait that long in the foreground, run it in the background and read its output until the NEXT:
+   line appears; that is expected, not a deviation. If it exits non-zero, do what NEXT: says only if it is an
+   install.sh or agentsync command or a click for me; otherwise log it and go to step 3.
+3. IT request and report, always, even after a failure; this is the last command you run:
+   `~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md; ~/src/agent-context-sync/scripts/install.sh --log-end && ~/src/agent-context-sync/scripts/install.sh --report-only`
+   (if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code was downloaded).
+   The IT draft is never sent. The report works out the outcome, times and run type itself, redacts names, and its
+   last lines are an issue link and a NEXT: line. Do not send or upload anything.
+4. Finish with five lines: the folders synced (full paths); the background sync result; the doctor result;
+   ~/agent-context/it-request-draft.md and its "You fill:" line; and ~/agent-context/setup-report.md with the issue
+   link, which I review before pasting the report there or copying it back privately.
 ```
+
+<details>
+<summary><b>Fewer approval prompts</b> (optional: rules you add yourself, before pasting the block)</summary>
+
+Your coding tool asks before it runs most commands, and each ask is an approval. These rules let the block's
+commands, exactly as written above, run without asking. They are optional and only you add them (the block never
+asks the agent to change its tool's settings); remove them after setup if you like. Start the tool in your home
+folder, so the files the block writes are inside its working folder.
+
+**Claude Code:** merge this into `~/.claude/settings.json` ([permission rules](https://code.claude.com/docs/en/permissions)).
+Claude Code checks each part of a compound command (`&&`, `;`) on its own, so step 1 needs the first six rules.
+The block logs every friction line with `install.sh --log`, never with a `>>` redirect, because Claude Code's
+documentation says a `>>` target that starts with `~` always needs approval, whatever the rules say.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(sw_vers -productVersion)",
+      "Bash(xcode-select -p)",
+      "Bash([ -d ~/src/agent-context-sync/.git ])",
+      "Bash(git -C ~/src/agent-context-sync pull --ff-only)",
+      "Bash(git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync)",
+      "Bash(~/src/agent-context-sync/scripts/install.sh *)",
+      "Bash(~/.local/bin/agentsync it-request *)"
+    ]
+  }
+}
+```
+
+**GitHub Copilot CLI:** start it with these flags ([tool permission patterns](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#tool-permission-patterns)).
+Its documentation does not say how it matches a command run by its path or one part of a compound command, so
+it may still ask for some of them.
+
+```sh
+cd ~ && copilot --allow-tool='shell(sw_vers:*), shell(xcode-select -p), shell(git clone:*), shell(git -C ~/src/agent-context-sync pull:*), shell(~/src/agent-context-sync/scripts/install.sh:*), shell(~/.local/bin/agentsync it-request:*)'
+```
+
+</details>
 
 Coding agents answer best from a folder of markdown they can read and grep. A company's knowledge lives somewhere
 else: tens of thousands of Office files, PDFs, mail and chat in Microsoft 365, changing in place under the same name,
@@ -404,20 +435,23 @@ agent do all of this for you, paste the block in [Set up on a new Mac: one promp
 
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
-ls -d ~/Library/CloudStorage/*/*/                # the OneDrive and SharePoint folders this Mac syncs
-# uv, agentsync, the signed launcher, sources.toml with one live source per folder; ends with a NEXT: line
-~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
-agentsync sync --once                            # a first cycle by hand, then start background sync:
-~/src/agent-context-sync/scripts/install.sh --confirm-install-agent
+~/src/agent-context-sync/scripts/install.sh --list-folders   # the OneDrive and SharePoint folders this Mac syncs
+# one command: uv, agentsync, the signed launcher, sources.toml with one live source per folder, doctor, a first
+# sync, background sync started and its first run waited for; ends with a NEXT: line
+~/src/agent-context-sync/scripts/install.sh \
+  --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects" --confirm-install-agent
 ```
 
-The installer is safe to re-run and never prompts, and `--dry-run` prints every step first. Repeat
-`--source-local` for each folder. On a Mac that already has `sources.toml`, it adds only the folders not yet in it
-(`agentsync add-source FOLDER` does the same for one folder). `--confirm-install-agent`
-installs two LaunchAgents: a poll every 5 minutes and an hourly reconcile. On the first background run, macOS asks
-once for permission for the launcher to read OneDrive files. `agentsync sync --once` and `agentsync status` check a
-cycle by hand. [`docs/deploy/README.md`](docs/deploy/README.md) covers the rest: every installed path, the one-time
-Allow click, the exit codes, what needs IT, and `agentsync offboard`.
+The installer is safe to re-run and never prompts, and `--dry-run` prints every step first. `--list-folders` prints
+one full path per line; it exits 3 when OneDrive is not signed in or syncs no folder yet and 4 when macOS denied
+this terminal access, and its `NEXT:` line says which. Repeat `--source-local` for each folder. On a Mac that
+already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
+one folder). `--confirm-install-agent` installs two LaunchAgents: a poll every 5 minutes and an hourly reconcile. On
+the first background run, macOS asks once for permission for the launcher to read OneDrive files; the installer
+waits up to 3 minutes for it, so give a coding tool's command a 10-minute timeout. Without `--confirm-install-agent`
+it stops after doctor, so you can check a cycle by hand first (`agentsync sync --once`, then `agentsync status`) and
+re-run with the flag. [`docs/deploy/README.md`](docs/deploy/README.md) covers the rest: every installed path, the
+one-time Allow click, the exit codes, what needs IT, and `agentsync offboard`.
 
 ## Everything behind these numbers is in this repository
 

@@ -1,0 +1,87 @@
+name: Setup report
+description: How setting up agentsync on a Mac went, from `agentsync setup-report` and the agent's friction log.
+title: "Setup report: "
+labels: ["setup-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Every step that was not one command is a bug in the setup, and this report is how it gets fixed:
+        [docs/deploy/setup-feedback.md](https://github.com/renchris/agent-context-sync/blob/main/docs/deploy/setup-feedback.md)
+        explains what happens to it.
+
+        This issue is **public**. Paste the redacted report (`~/agent-context/setup-report.md`, not one written with
+        `--no-redact`) and read it once more first. To send it privately instead, see that page: copying the file
+        back to the machine you administer this setup from is enough.
+
+        The report command (`install.sh --report-only`, step 3 of the prompt, or `agentsync setup-report --out`) ends
+        with an "issue link" line that opens this form pre-filled with the report's Summary values (outcome, run
+        type, prompt version, agent). Opened another way, copy them from the Summary at the top of the
+        report. The field ids are stable: setup-feedback.md lists them.
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      description: >-
+        The Summary's computed outcome (setup-report works it out from the installer, doctor, first sync, background
+        run and friction log; setup-feedback.md defines each value). Steps are numbered as in the README's
+        one-prompt block (setup prompt v6: four steps). "Fully one command" means no human turn beyond the
+        unavoidable steps listed there; the agent's own friction (deviation and prompt lines) is counted on the
+        Summary's "agent friction" line and does not change the outcome.
+      options:
+        - Fully one command
+        - Worked with help
+        - Failed at step 1 (preflight)
+        - Failed at step 2 (install and start)
+        - Failed at step 3 (IT request and report)
+        - Failed at step 4 (finish)
+    validations:
+      required: true
+  - type: dropdown
+    id: run_type
+    attributes:
+      label: Run type
+      description: >-
+        The Summary's computed run type. Real Mac: the account's own home folder and real LaunchAgents. Sandbox: a
+        throwaway HOME, user account or VM. Sandbox with simulated launchd: a sandbox whose LaunchAgents were
+        simulated or skipped (any run with launchd simulated is reported this way). Only a real Mac counts toward
+        the one-command success rate; sandbox runs improve the wording and the installer only.
+      options:
+        - Real Mac
+        - Sandbox
+        - Sandbox with simulated launchd
+    validations:
+      required: true
+  - type: input
+    id: prompt_version
+    attributes:
+      label: Prompt version
+      description: The Summary's prompt version, the vN in the prompt's first line ("setup prompt vN").
+      placeholder: "v6"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent tool and model
+      description: The Summary's agent, the coding agent that ran the prompt.
+      placeholder: "Claude Code (model id), GitHub Copilot CLI, ..., or: by hand"
+    validations:
+      required: false
+  - type: textarea
+    id: report
+    attributes:
+      label: Setup report
+      description: >-
+        The whole of ~/agent-context/setup-report.md, from its Summary to the embedded friction log. It uses ~~~
+        fences, which stay intact inside this field.
+      render: markdown
+    validations:
+      required: true
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Review
+      options:
+        - label: I reviewed this report and it contains no confidential names
+          required: true

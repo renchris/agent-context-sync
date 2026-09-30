@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Send a setup report privately
+    url: https://github.com/renchris/agent-context-sync/blob/main/docs/deploy/setup-feedback.md#3-send
+    about: >-
+      No public post needed. Copy ~/agent-context/setup-report.md back to the machine you administer this setup
+      from, and triage it there with that page.
+  - name: Reach the maintainer without a public post (optional)
+    url: https://github.com/renchris
+    about: >-
+      The maintainer's GitHub profile, for arranging a private handover of a report. No email address is
+      published in this repository.
