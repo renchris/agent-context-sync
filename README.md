@@ -5,7 +5,7 @@
   <img src="docs/media/hero-light.webp" width="100%" alt="Keep an agent-readable docs/ folder in sync with OneDrive, SharePoint, Outlook and Teams by processing only what changed. Four steps: 1, ask each source what changed, and make expiry cheap; 2, decide with three hashes before reading a byte; 3, read bytes only on purpose; 4, publish a pure function of the source, in git. The picture: a company's files as four lanes of real, named documents running to the horizon, one lane per source (Word pages, spreadsheets, decks and PDFs, emails, chat messages), beside a fifth lane, docs/, of converted markdown pages with a git line down it. After one sync, two documents stand up in amber among thousands lying flat: proposal.docx from OneDrive and forecast.xlsx from SharePoint, the spreadsheet banded green as a no-op save. The camera flies over them to the next stretch of the field, where the sources report eight changed files; six are decided unchanged before a byte is read. It comes down to the other two, which stand up and turn amber as their bytes arrive, then follows the converted proposal page to docs/, where it lands as one commit, and flies back to the start.">
 </picture></a>
 <br>
-<sub><a href="docs/media/launch-film.md">▶ Watch the 26-second launch film</a> · a design with measured probes, not yet an implementation</sub>
+<sub><a href="docs/media/launch-film.md">▶ Watch the 26-second launch film</a> · a design with measured probes, implemented as <code>agentsync</code></sub>
 </div>
 
 # agent-context-sync
@@ -15,9 +15,28 @@ A since-token per source says *what* changed. A manifest with three hashes decid
 whether that change costs anything. Git carries the result, so "what changed since Tuesday" is `git log`.
 
 > [!NOTE]
-> **Status: a design with measured probes. There is no implementation yet.** The build order is
-> [§10 of the design](docs/design/agent-context-sync.md#10-build-order). It starts once a target corporate tenant is
-> chosen, because five of the probes can only be measured there ([what is measured](#four-probes-are-measured-five-still-need-a-corporate-tenant)).
+> **Status: implemented.** The design's build order ([§10](docs/design/agent-context-sync.md#10-build-order), weeks
+> 1–3) is built as [`src/agentsync/`](src/agentsync/), the command-line tool `agentsync`. It has the local walk and
+> inbox arms, the SQLite manifest with the H0/H1/H2 classifier, converters with a write-once cache, `docs/mirror/` with
+> one git commit per cycle, the Graph drive, mail and Teams arms, the curation map with its STALE lint, and a
+> single-writer LaunchAgent. It was built and measured on this Mac, including runs against a live OneDrive File
+> Provider mount: a no-op cycle over the live OneDrive source fell from 12.9 s to 0.51 s in commit `209bc80`.
+>
+> - **Works with zero IT involvement:** a `local` source over the OneDrive sync folder, plus a manual `inbox`
+>   ([day 1](docs/deploy/README.md#day-1-with-zero-it-involvement)). [Install](#install) needs no admin rights.
+> - **Needs the tenant:** the Graph arms (libraries you do not sync, Outlook folders, Teams channels and chats)
+>   need an Entra app registration and admin consent from IT ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)).
+>   Five probes can still only be measured on the target tenant
+>   ([what is measured](#four-probes-are-measured-five-still-need-a-corporate-tenant)). After sign-in,
+>   `scripts/tenant-probes.sh` runs probes 1, 2, 4b and 9, and probe 8 is run by hand.
+> - **Rollout:** [the dated rollout](docs/plans/implementation.md#rollout--dated) names an owner and a proof command
+>   for each step. Its readiness table lists what is still open.
+>
+> **CORRECTED (2026-09-29):** this note said "**Status: a design with measured probes. There is no implementation
+> yet.** The build order is §10 of the design. It starts once a target corporate tenant is chosen, because five of
+> the probes can only be measured there." The hero line said "a design with measured probes, not yet an
+> implementation". The implementation landed on 2026-09-29, and it did not wait for the tenant. The arms that need no
+> tenant run today, and the Graph arms wait only on the IT request.
 
 Coding agents answer best from a folder of markdown they can read and grep. A company's knowledge lives somewhere
 else: tens of thousands of Office files, PDFs, mail and chat in Microsoft 365, changing in place under the same name,
@@ -315,6 +334,25 @@ open probes, listed at the end of
 in-place edit on File Provider, the launchd access matrix, device-code sign-in under Conditional Access, Teams channel
 delta, and shared-mailbox delta.
 
+## Install
+
+`agentsync` runs as you on a Mac and needs no admin rights. You need the Xcode Command Line Tools first
+(`xcode-select -p` prints a path). They provide `git` and the compiler that builds the launcher.
+
+```sh
+git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
+~/src/agent-context-sync/scripts/install.sh      # uv, agentsync, the signed launcher, sources.toml; ends with a NEXT: line
+agentsync doctor                                 # preflight checks, each failure with its fix
+# uncomment your sources in ~/agent-context/sources.toml, then start background sync:
+~/src/agent-context-sync/scripts/install.sh --confirm-install-agent
+```
+
+The installer is safe to re-run and never prompts, and `--dry-run` prints every step first. `--confirm-install-agent`
+installs two LaunchAgents: a poll every 5 minutes and an hourly reconcile. On the first background run, macOS asks
+once for permission for the launcher to read OneDrive files. `agentsync sync --once` and `agentsync status` check a
+cycle by hand. [`docs/deploy/README.md`](docs/deploy/README.md) covers the rest: every installed path, the one-time
+Allow click, the exit codes, what needs IT, and `agentsync offboard`.
+
 ## Everything behind these numbers is in this repository
 
 **CORRECTED (2026-09-29):** three exceptions. The H2 comparison in
@@ -326,9 +364,12 @@ all-fresh run and a two-row fixture.
 | Path | What it holds |
 |---|---|
 | [`docs/design/agent-context-sync.md`](docs/design/agent-context-sync.md) | The full design: layers L0–L6, seven invariants, 25 ranked failure modes with the element that closes each, rejected alternatives, and the build order |
-| [`docs/design/receipts/`](docs/design/receipts/) | 14 research-axis reports, 14 verifier reports and 4 review lenses, with the commands behind each number |
+| [`docs/design/receipts/`](docs/design/receipts/) | 14 research-axis reports, 15 verifier reports and 4 review lenses, with the commands behind each number. **CORRECTED (2026-09-29):** this said 14 verifier reports; [C15](docs/design/receipts/verify/C15-corporate-controls.md) (corporate controls: sign-in, Graph scopes, TCC, labels, TLS, PDF route, retention) is the fifteenth |
 | [`probes/`](probes/) | The macOS probes in C and Swift, plus the Office re-save script. `make -C probes`, then [`probes/README.md`](probes/README.md) |
 | [`docs/diagrams/`](docs/diagrams/) | Mermaid sources for the diagrams. `npm run diagrams` re-renders them, and CI fails when a render is stale |
+| [`src/agentsync/`](src/agentsync/), [`tests/`](tests/) | The implementation and its test suite (`uv run pytest -q`). The last measured run is recorded in the [dated rollout](docs/plans/implementation.md#rollout--dated) |
+| [`docs/deploy/`](docs/deploy/README.md), [`scripts/install.sh`](scripts/install.sh) | The corporate pack: the no-admin install, the IT request, the Entra app manifest, the PPPC profile, data governance and the tenant probes |
+| [`docs/plans/implementation.md`](docs/plans/implementation.md) | The implementation plan, the dated rollout, and the readiness table that says what is closed and who owns what is still open |
 
 The receipts were published with account names, tenant ids, file names and local paths replaced by placeholders
 (Contoso, `user@example.com`, `~/`). Every measurement is unchanged.

@@ -33,7 +33,7 @@ whose only open items are named operator or IT actions.
 |---|---|---|
 | Single writer | The Mac that runs `agentsync install-agent`; a `flock` on the state dir enforces one | Design §4.7 |
 | Where `docs/` lives | Its own git repo, `~/agent-context/docs`, outside any cloud-synced path, **no remote** | Corporate content never leaves the machine unless IT names a tenant-owned remote |
-| AGPL (PyMuPDF) | Not used. PDF text via `pdfminer.six` (MIT) | Avoids a licence review in a corporate rollout |
+| AGPL (PyMuPDF) | Not used. PDF text via `pdfminer.six` (MIT). CORRECTED (2026-09-29): via `pypdfium2` (Apache-2.0/BSD-3), with pdfminer.six as fallback — the design's own converter evidence supports pypdfium2 (C15 §6, commit d6a12d2) | Avoids a licence review in a corporate rollout |
 | Converters | pandoc via `pypandoc_binary` (docx, html, rtf, odt), `openpyxl` emitter (xlsx), `python-pptx` (pptx), `pdfminer.six` (pdf) | All permissive licences; `pypandoc_binary` needs no Homebrew or admin |
 | In-scope set | `~/agent-context/sources.toml`, written by `agentsync init` | Design §10 week 0 |
 | Graph client id | Configurable; defaults to none, so the local arm works with zero IT involvement | The local arm needs no consent at all |
