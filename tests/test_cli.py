@@ -581,3 +581,78 @@ def test_status_surfaces_the_launchers_tcc_tokens(
     assert (
         "launcher: poll: 2026-09-29T10:00:10Z agentsync-launcher[1]: TCC_PENDING" in capsys.readouterr().out
     )
+
+
+# ---- add-source ------------------------------------------------------------------------------------------
+
+
+def test_add_source_appends_a_live_local_source_and_is_idempotent(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    before = initialised.config_path.read_text(encoding="utf-8")
+    folder = tmp_path / "Shared" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "added source 'fy26-projects'" in out and '[[source]]\nid = "fy26-projects"\nkind = "local"' in out
+    after = initialised.config_path.read_text(encoding="utf-8")
+    assert after.startswith(before)  # every existing byte, comments included, is kept
+    assert "# ---- sources ----" in after and "# A manual drag-and-drop inbox:" in after
+    config = load_config(initialised.config_path)
+    added = config.source("fy26-projects")
+    assert added.kind is SourceKind.LOCAL and added.is_live and added.path == folder.resolve()
+    assert added.exclude == initialised.sources[0].exclude  # the same defaults init --source-local writes
+    assert added.max_materialise_bytes == initialised.sources[0].max_materialise_bytes
+    assert initialised.config_path.stat().st_mode & 0o777 == 0o600
+
+    # Same folder again, spelled differently (trailing slash, a symlink): nothing is written.
+    link = tmp_path / "link-to-projects"
+    link.symlink_to(folder)
+    for spelling in (f"{folder}/", str(link)):
+        assert cli.main(["add-source", spelling, "--config", cfg]) == cli.EXIT_OK
+        assert "already configured: source 'fy26-projects'" in capsys.readouterr().out
+    assert cli.main(["add-source", str(initialised.sources[0].path), "--config", cfg]) == cli.EXIT_OK
+    assert "already configured: source 'source'" in capsys.readouterr().out
+    assert initialised.config_path.read_text(encoding="utf-8") == after
+
+
+def test_add_source_derives_a_unique_id_and_honours_id(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    other = tmp_path / "elsewhere" / "source"  # same folder name as the initialised source ("source")
+    other.mkdir(parents=True)
+    assert cli.main(["add-source", str(other), "--config", cfg]) == cli.EXIT_OK
+    assert [s.id for s in load_config(initialised.config_path).sources] == ["source", "source-2"]
+    third = tmp_path / "third"
+    third.mkdir()
+    assert cli.main(["add-source", str(third), "--id", "source", "--config", cfg]) == cli.EXIT_USAGE
+    assert cli.main(["add-source", str(third), "--id", "Not An Id", "--config", cfg]) == cli.EXIT_USAGE
+    assert cli.main(["add-source", str(third), "--id", "team-notes", "--config", cfg]) == cli.EXIT_OK
+    assert [s.id for s in load_config(initialised.config_path).sources] == [
+        "source",
+        "source-2",
+        "team-notes",
+    ]
+    capsys.readouterr()
+
+
+def test_add_source_refuses_bad_paths_and_writes_nothing(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    before = initialised.config_path.read_text(encoding="utf-8")
+    a_file = tmp_path / "a-file.txt"
+    a_file.write_text("x", encoding="utf-8")
+    docs = initialised.docs_repo
+    for bad in (tmp_path / "no-such-folder", a_file, docs, docs / "mirror", docs.parent):
+        assert cli.main(["add-source", str(bad), "--config", cfg]) == cli.EXIT_USAGE, bad
+    err = capsys.readouterr().err
+    assert "no such folder" in err and "not a directory" in err and "must not contain each other" in err
+    assert initialised.config_path.read_text(encoding="utf-8") == before
+    # A missing or broken sources.toml is a config error (78), never a new file.
+    missing = tmp_path / "none" / "sources.toml"
+    assert cli.main(["add-source", str(tmp_path), "--config", str(missing)]) == cli.EXIT_CONFIG
+    assert not missing.exists()
+    capsys.readouterr()

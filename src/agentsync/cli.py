@@ -5,7 +5,7 @@ Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [
 [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level
 login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent
 [--interval SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history ·
-hold · offboard [--purge-data] [--confirm DOCS_REPO] · policy show.
+hold · offboard [--purge-data] [--confirm DOCS_REPO] · policy show · add-source PATH [--id ID].
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
@@ -27,7 +27,6 @@ import dataclasses
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -37,10 +36,14 @@ from pathlib import Path
 from agentsync import __version__, curate, gitops, governance, lints, net
 from agentsync import policy as content_policy
 from agentsync.config import (
+    SOURCE_ID_RE,
     Config,
+    append_to_config,
     canonical_source_root,
     default_config_text,
+    derive_source_id,
     load_config,
+    local_source_table,
     parse_config,
     parse_size,
 )
@@ -59,7 +62,7 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
-from agentsync.paths import default_config_path, expand
+from agentsync.paths import default_config_path, expand, is_under
 from agentsync.publish import Publisher
 
 EXIT_OK = 0
@@ -88,7 +91,6 @@ files: ~/agent-context/sources.toml (config) · ~/agent-context/docs (the docs g
 """
 
 _log = logging.getLogger("agentsync.cli")
-_ID_BAD = re.compile(r"[^a-z0-9-]+")
 _TCC_TOKENS = ("TCC_PENDING", "TCC_DENIED")
 
 Handler = Callable[[argparse.Namespace], int]
@@ -178,6 +180,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="add a live local source for this folder (repeatable)",
     )
     p.add_argument("--force", action="store_true", help="overwrite an existing sources.toml")
+
+    p = add(
+        "add-source",
+        "append a live local source for a folder to an existing sources.toml (idempotent)",
+        _cmd_add_source,
+    )
+    p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
+    p.add_argument(
+        "--id", metavar="ID", help="source id (default: derived from the folder name, made unique)"
+    )
 
     p = add("sync", "run one sync cycle (what the launchd agents run)", _cmd_sync)
     p.add_argument("--once", action="store_true", help="run exactly one cycle (the default; for scripts)")
@@ -296,12 +308,7 @@ def _config(args: argparse.Namespace) -> Config:
 
 
 def _source_id_for(path: Path, taken: set[str]) -> str:
-    base = _ID_BAD.sub("-", path.name.lower()).strip("-")[:56] or "local"
-    if not base[0].isalnum():
-        base = "s" + base
-    candidate, n = base, 2
-    while candidate in taken:
-        candidate, n = f"{base}-{n}", n + 1
+    candidate = derive_source_id(path, taken)
     taken.add(candidate)
     return candidate
 
@@ -400,11 +407,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
             if not path.is_dir():
                 _err(f"--source-local {raw}: not a directory")
                 return EXIT_USAGE
-            sid = _source_id_for(path, taken)
-            blocks.append(
-                f'\n[[source]]\nid = "{sid}"\nkind = "local"\npath = {_toml_str(str(path))}\n'
-                '# sentinel = "README.txt"   # recommended: a file that must always exist under path\n'
-            )
+            blocks.append(local_source_table(_source_id_for(path, taken), path))
         text = text.rstrip("\n") + "\n" + "".join(blocks)
         config = parse_config(text, config_path=cfg_path)  # validate before writing anything
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
@@ -433,6 +436,52 @@ def _cmd_init(args: argparse.Namespace) -> int:
     _out(f"sources: {', '.join(s.id for s in config.sources) or 'none yet (edit sources.toml)'}")
     _out("next: agentsync doctor · agentsync sync --once · agentsync install-agent")
     return EXIT_FAILED if findings else EXIT_OK
+
+
+def _cmd_add_source(args: argparse.Namespace) -> int:
+    config = _config(args)  # a missing or invalid sources.toml exits 78 before anything is written
+    raw: Path = args.path
+    path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected, as in init
+    if not path.exists():
+        _err(f"add-source {raw}: no such folder")
+        return EXIT_USAGE
+    if not path.is_dir():
+        _err(f"add-source {raw}: not a directory")
+        return EXIT_USAGE
+    docs = expand(config.docs_repo)
+    # Compared as written and canonical: the source path is canonical, docs_repo is not (e.g. /var vs
+    # /private/var, or a symlinked ~/agent-context).
+    if any(is_under(path, d) or is_under(d, path) for d in {docs, canonical_source_root(docs)}):
+        _err(f"add-source {raw}: {path} and the docs repo {docs} must not contain each other")
+        return EXIT_USAGE
+    for s in config.sources:
+        if s.path is not None and s.path == path:
+            _out(
+                f"already configured: source {s.id!r} ({s.kind.value}, {s.state.value}) has path {path} "
+                f"in {config.config_path}"
+            )
+            return EXIT_OK
+    taken = {s.id for s in config.sources}
+    if args.id is not None:
+        sid = str(args.id)
+        if not SOURCE_ID_RE.match(sid):
+            _err(f"add-source --id {sid!r}: must match {SOURCE_ID_RE.pattern} (lowercase, digits, '-')")
+            return EXIT_USAGE
+        if sid in taken:
+            _err(f"add-source --id {sid!r}: another source in {config.config_path} already has this id")
+            return EXIT_USAGE
+    else:
+        sid = derive_source_id(path, taken)
+    table = local_source_table(sid, path)
+    try:
+        append_to_config(config.config_path, table)  # validated before anything is written
+    except ConfigError as exc:
+        _err(f"add-source {raw}: refused, sources.toml would not load: {exc}")
+        return EXIT_USAGE
+    _out(f"added source {sid!r} to {config.config_path}:")
+    _out(table.strip("\n"))
+    _out("next: agentsync doctor · agentsync sync --once")
+    return EXIT_OK
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:

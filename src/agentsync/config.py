@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
+import tempfile
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -573,6 +576,67 @@ def load_config(path: Path | None = None) -> Config:
 def default_config_text() -> str:
     """Return the commented sources.toml template that ``agentsync init`` writes."""
     return _TEMPLATE
+
+
+_ID_BAD = re.compile(r"[^a-z0-9-]+")
+
+
+def derive_source_id(path: Path, taken: Collection[str]) -> str:
+    """A deterministic source id for a folder: its name slugged to ``SOURCE_ID_RE``, with ``-2``, ``-3`` …
+    appended until it is not in ``taken`` (``init --source-local`` and ``add-source`` both use it)."""
+    base = _ID_BAD.sub("-", path.name.lower()).strip("-")[:56] or "local"
+    if not base[0].isalnum():
+        base = "s" + base
+    candidate, n = base, 2
+    while candidate in taken:
+        candidate, n = f"{base}-{n}", n + 1
+    return candidate
+
+
+def local_source_table(source_id: str, path: Path) -> str:
+    """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder: a live
+    ``kind = "local"`` source with every other key at its default (excludes ``DEFAULT_EXCLUDES``, budget
+    1 GiB and 5000 files per cycle) and the sentinel left as a commented recommendation.  Starts with a blank
+    line, ends with a newline."""
+    return (
+        f'\n[[source]]\nid = "{source_id}"\nkind = "local"\n'
+        f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
+        '# sentinel = "README.txt"   # recommended: a file that must always exist under path\n'
+    )
+
+
+def append_to_config(config_path: Path, table: str) -> Config:
+    """Append ``table`` (TOML text) to the sources.toml at ``config_path``, keeping every existing byte and
+    comment; the result is validated with :func:`parse_config` BEFORE anything is written, then replaces the
+    file atomically (same directory, fsync, ``os.replace``) with the file's mode kept.  Returns the new
+    Config; raises ConfigError (and writes nothing) when the result would not load."""
+    p = expand(config_path)
+    target = p.resolve()  # a symlinked sources.toml keeps its link
+    try:
+        text = target.read_text(encoding="utf-8")
+        mode = target.stat().st_mode & 0o777
+    except FileNotFoundError:
+        raise ConfigError(f"{p}: not found; run `agentsync init` to write a commented template") from None
+    except OSError as exc:
+        raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
+    if text and not text.endswith("\n"):
+        text += "\n"
+    new_text = text + table if table.endswith("\n") else text + table + "\n"
+    config = parse_config(new_text, config_path=p)  # validate before writing anything
+    fd, tmp_name = tempfile.mkstemp(prefix=".sources.", suffix=".toml.tmp", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(new_text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        tmp = Path(tmp_name)
+        tmp.chmod(mode or 0o600)
+        tmp.replace(target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            Path(tmp_name).unlink()
+        raise
+    return config
 
 
 _TEMPLATE = """\

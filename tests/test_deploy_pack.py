@@ -190,3 +190,107 @@ def test_deploy_page_relative_links_resolve(page: Path) -> None:
 def test_deploy_pages_were_found() -> None:
     names = {p.name for p in DEPLOY_PAGES}
     assert {"README.md", "it-request.md", "data-governance.md", "tenant-probes.md"} <= names
+
+
+# ---- install.sh --source-local and the README one-prompt block ------------------------------------------
+
+
+def _install_dry_run(home: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """install.sh --dry-run with HOME = ``home`` and no uv on PATH (so no real uv is ever invoked)."""
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
+    return subprocess.run(
+        ["bash", str(SCRIPTS[0]), "--dry-run", *args],
+        cwd=home,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+
+def _tree(root: Path) -> list[str]:
+    return sorted(str(p) for p in root.rglob("*"))
+
+
+def test_install_dry_run_passes_source_local_to_init(tmp_path: Path) -> None:
+    one = tmp_path / "OneDrive-Contoso" / "FY26 Projects"
+    two = tmp_path / "notes"
+    one.mkdir(parents=True)
+    two.mkdir()
+    before = _tree(tmp_path)
+    proc = _install_dry_run(tmp_path, "--source-local", str(one), "--source-local", "~/notes")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = proc.stdout
+    assert f"source-local: {one}\n" in out and f"source-local: {two}\n" in out  # ~/ is expanded
+    [init] = [ln for ln in out.splitlines() if ln.startswith("[dry-run]") and " init " in ln]
+    config = tmp_path / "agent-context" / "sources.toml"
+    assert init.endswith(
+        f" init --config {config} --source-local {str(one).replace(' ', chr(92) + ' ')} --source-local {two}"
+    )
+    assert "add-source" not in out
+    assert out.rstrip().splitlines()[-1] == "NEXT: re-run without --dry-run to apply the steps above"
+    assert _tree(tmp_path) == before  # a dry run changes nothing
+
+
+def test_install_dry_run_adds_sources_to_an_existing_config(tmp_path: Path) -> None:
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    config = tmp_path / "agent-context" / "sources.toml"
+    config.parent.mkdir()
+    config.write_text("# existing\n", encoding="utf-8")
+    before = _tree(tmp_path)
+    proc = _install_dry_run(tmp_path, "--source-local", str(folder))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    runs = [ln for ln in proc.stdout.splitlines() if ln.startswith("[dry-run]")]
+    assert any(ln.endswith(f"agentsync add-source {folder} --config {config}") for ln in runs), runs
+    assert not any(" init " in ln for ln in runs)
+    assert config.read_text(encoding="utf-8") == "# existing\n" and _tree(tmp_path) == before
+
+
+def test_install_source_local_usage_errors_exit_2_before_any_step(tmp_path: Path) -> None:
+    for args in (("--source-local", str(tmp_path / "missing")), ("--source-local",)):
+        proc = _install_dry_run(tmp_path, *args)
+        assert proc.returncode == 2, proc.stdout + proc.stderr
+        assert "usage error: --source-local" in proc.stderr and "uv:" not in proc.stdout
+
+
+def _one_prompt_block() -> str:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
+    match = re.search(r"^```text\n(.*?)^```$", section, flags=re.DOTALL | re.MULTILINE)
+    assert match, "README.md: the one-prompt section has no ```text block"
+    return match.group(1)
+
+
+def test_every_command_the_readme_one_prompt_names_exists() -> None:
+    """The block a user pastes into a coding agent only names install.sh flags and agentsync subcommands and
+    options that exist (a renamed flag would otherwise fail on the new Mac, not here)."""
+    import argparse  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+
+    spans = re.findall(r"`([^`]+)`", _one_prompt_block())
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    help_text = subprocess.run(
+        ["bash", str(SCRIPTS[0]), "--help"], capture_output=True, text=True, check=True, timeout=60
+    ).stdout
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    install_flags: set[str] = set()
+    commands: set[tuple[str, str]] = set()
+    for span in spans:
+        if "install.sh" in span:
+            install_flags |= set(re.findall(r"(?<!\S)(--[a-z][a-z-]*)", span.split("install.sh", 1)[1]))
+        for m in re.finditer(r"(?:^|[\s/])agentsync\s+([a-z][a-z-]*)((?:\s+--[a-z][a-z-]*)*)", span):
+            commands |= {(m.group(1), flag) for flag in m.group(2).split()} | {(m.group(1), "")}
+    assert {"--source-local", "--confirm-install-agent"} <= install_flags
+    assert {"doctor", "sync", "status"} <= {c for c, _ in commands}
+    for flag in sorted(install_flags):
+        assert re.search(rf"^\s*(?:-h \| )?{re.escape(flag)}\)", script, flags=re.MULTILINE), flag
+        assert flag in help_text, f"install.sh --help does not document {flag}"
+    for command, flag in sorted(commands):
+        assert command in sub.choices, f"agentsync has no subcommand {command!r}"
+        if flag:
+            options = {o for a in sub.choices[command]._actions for o in a.option_strings}
+            assert flag in options, f"agentsync {command} has no option {flag}"

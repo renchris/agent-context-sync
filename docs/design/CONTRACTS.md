@@ -3298,9 +3298,9 @@ Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] 
 [--dry-run] [--source ID ...] · reconcile [--source ID ...] [--accept-deletions] · status · doctor · lint ·
 refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
-SECONDS] [--reconcile-interval SECONDS] · uninstall-agent.  ``sync`` is always one cycle (the launchd agents
-run ``sync --mode <m> --config <abs>``).  Every subcommand accepts ``--config PATH`` (default
-~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand.
+SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
+always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
+``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand.
 
 ```python
 EXIT_OK = 0
@@ -4205,6 +4205,7 @@ class AgentSpec:
 | `policy show` | `policy.load_policy` | 0 · 78 invalid policy |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote | 0 · 1 · 2 · 78 |
+| `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line | 0 |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks | 0 · 1 |
 
@@ -4323,3 +4324,38 @@ shim (`uv-tool-env`, `uv-tool-shim`, removed last). install.sh: a failed uv step
 
 Dependency direction additions: `policy` ← `slug`; {`model`, `ops.launchd`, `policy`} ← `governance`;
 `ops.launchd` ← `cycle`.
+
+### 16.13 `add-source` and `install.sh --source-local` (2026-09-29, integrator)
+
+Additive. `agentsync add-source PATH [--id ID] [--config PATH]` appends one live `kind = "local"` `[[source]]` table
+to an existing sources.toml, byte-for-byte after the current text (every comment kept). PATH goes through
+`canonical_source_root` (as in `init --source-local`), must exist (else exit 2, "no such folder") and be a
+directory (exit 2), and must neither be inside the docs repo nor contain it (exit 2; compared both as written and
+canonical, so `/var` vs `/private/var` or a symlinked `~/agent-context` cannot slip past). A source (any kind)
+whose canonical `path` equals PATH is "already configured": exit 0, nothing written. The id is
+`derive_source_id(PATH, existing ids)` (the folder name slugged, `-2`, `-3` … until unique); `--id` overrides it
+and must match `SOURCE_ID_RE` and be unused (exit 2). The whole new text is validated with `parse_config`
+before the file is replaced atomically (temp file in the same directory, fsync, `os.replace`, mode kept);
+a result that would not load exits 2 and writes nothing. A missing or invalid sources.toml exits 78. The table
+written is `local_source_table`, the same one `init --source-local` writes (defaults: `DEFAULT_EXCLUDES`, 1 GiB
+and 5000 files per cycle, the sentinel as a commented recommendation).
+
+`scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
+passes them all to `agentsync init --source-local …` when the config does not exist, or runs
+`agentsync add-source FOLDER --config …` for each when it does. A quoted `~/…` is expanded; `--dry-run` prints
+`source-local:` lines and the `init`/`add-source` commands. With folders given and no LaunchAgent installed, the
+`NEXT:` line is `agentsync sync --once`, then a re-run with `--confirm-install-agent` (without the
+`--source-local` flags, which are in the config by then). Without folders, the `NEXT:` lines are unchanged.
+
+```python
+def derive_source_id(path: Path, taken: Collection[str]) -> str:
+    """A deterministic source id for a folder: its name slugged to ``SOURCE_ID_RE``, with ``-2``, ``-3`` …
+    appended until it is not in ``taken`` (``init --source-local`` and ``add-source`` both use it)."""
+
+def local_source_table(source_id: str, path: Path) -> str:
+    """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder."""
+
+def append_to_config(config_path: Path, table: str) -> Config:
+    """Append ``table`` to sources.toml keeping every existing byte; validated with parse_config before an
+    atomic replace (mode kept). Raises ConfigError, writing nothing, when the result would not load."""
+```

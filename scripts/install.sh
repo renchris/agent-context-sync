@@ -1,11 +1,13 @@
 #!/bin/bash
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
-# Usage: scripts/install.sh [--dry-run] [--confirm-install-agent] [--launcher PATH] [--rebuild-launcher]
-#                           [--config PATH] [SOURCE]
+# Usage: scripts/install.sh [--dry-run] [--source-local FOLDER ...] [--confirm-install-agent] [--launcher PATH]
+#                           [--rebuild-launcher] [--config PATH] [--help] [SOURCE]
 #
 #   SOURCE                  a local agentsync checkout (default: the checkout holding this script) or a wheel
 #   --dry-run               print every step that would change something; change nothing
+#   --source-local FOLDER   sync this folder (e.g. one inside ~/Library/CloudStorage/OneDrive-<Org>) as a live
+#                           local source; repeatable, and already-configured folders are left as they are
 #   --confirm-install-agent also install and start the two LaunchAgents (agentsync install-agent)
 #   --launcher PATH         use this prebuilt, signed AgentSyncLauncher.app instead of building one
 #   --rebuild-launcher      rebuild the launcher even when the installed one matches its sources
@@ -18,7 +20,8 @@
 #      developer tools exist (SIGN_IDENTITY passes through for a Developer ID build), else --launcher PATH or
 #      a prebuilt AgentSyncLauncher.app next to the wheel; an up-to-date one is never rebuilt, because an
 #      ad-hoc rebuild is a new TCC identity and macOS would ask again
-#   4. agentsync init when the config does not exist
+#   4. agentsync init when the config does not exist (with every --source-local folder), else
+#      agentsync add-source for each --source-local folder (idempotent)
 #   5. agentsync doctor (its TCC probe may raise the one-time "wants to access files managed by" prompt)
 #   6. with --confirm-install-agent: agentsync install-agent
 # and finally one line starting "NEXT:" with the single next step.
@@ -28,11 +31,25 @@
 # the LaunchAgents). Every exit after argument parsing ends with one "NEXT:" line.
 set -euo pipefail
 
-ORIG_ARGS=""
+ORIG_ARGS="" # every flag given, for a re-run after a failure
+BASE_ARGS="" # the same without --source-local FOLDER, for a re-run once the folders are in the config
+skip_next=0
 for a in "$@"; do
+	if [ "$skip_next" -eq 1 ]; then
+		skip_next=0
+		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		continue
+	fi
 	case "$a" in
 	--dry-run) ;; # the NEXT line is for the real run
-	*) ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")" ;;
+	--source-local)
+		skip_next=1
+		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		;;
+	*)
+		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		BASE_ARGS="$BASE_ARGS $(printf '%q' "$a")"
+		;;
 	esac
 done
 
@@ -44,6 +61,7 @@ INSTALL_AGENT=0
 REBUILD=0
 LAUNCHER_SRC=""
 SOURCE=""
+SOURCE_LOCALS=()
 CONFIG="${AGENTSYNC_CONFIG:-$HOME/agent-context/sources.toml}"
 APP_NAME="AgentSyncLauncher.app"
 APP_DEST="$HOME/Applications/$APP_NAME"
@@ -89,6 +107,11 @@ while [ $# -gt 0 ]; do
 		CONFIG="$2"
 		shift
 		;;
+	--source-local)
+		[ $# -ge 2 ] && [ -n "$2" ] || usage_error "--source-local needs a folder"
+		SOURCE_LOCALS+=("$2")
+		shift
+		;;
 	-h | --help)
 		show_help
 		exit 0
@@ -125,10 +148,26 @@ case "$CONFIG" in
 /*) ;;
 *) CONFIG="$PWD/$CONFIG" ;;
 esac
+# Each --source-local folder: absolute (a quoted "~/..." expanded), and an existing directory, checked before
+# anything is installed. agentsync resolves symlinks and derives the source id.
+FOLDERS=()
+for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
+	case "$f" in
+	\~) f="$HOME" ;;
+	\~/*) f="$HOME/${f#\~/}" ;;
+	/*) ;;
+	*) f="$PWD/$f" ;;
+	esac
+	[ -d "$f" ] || usage_error "--source-local is not an existing folder: $f"
+	FOLDERS+=("$f")
+done
 
 [ "$DRY_RUN" -eq 1 ] && say "dry run: nothing below is changed"
 say "source: $SOURCE ($SOURCE_KIND)"
 say "config: $CONFIG"
+for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
+	say "source-local: $f"
+done
 
 # Corporate TLS inspection: let uv trust the macOS keychain (a no-op where the network is not inspected).
 if [ -z "${UV_SYSTEM_CERTS:-}" ] && [ -z "${UV_NATIVE_TLS:-}" ]; then
@@ -252,10 +291,20 @@ fi
 
 # ------------------------------------------------------------------------------------------------ 4. config
 if [ -f "$CONFIG" ]; then
-	say "config: $CONFIG exists (not touched)"
+	if [ "${#FOLDERS[@]}" -eq 0 ]; then
+		say "config: $CONFIG exists (not touched)"
+	fi
+	for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
+		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null ||
+			fail "agentsync add-source $f failed (see the error above)"
+	done
 	CONFIG_STATE="present"
 else
-	run "$AGENTSYNC" init --config "$CONFIG" </dev/null
+	init_args=(init --config "$CONFIG")
+	for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
+		init_args+=(--source-local "$f")
+	done
+	run "$AGENTSYNC" "${init_args[@]}" </dev/null || fail "agentsync init failed (see the error above)"
 	CONFIG_STATE="created"
 fi
 
@@ -298,14 +347,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
 	next="re-run without --dry-run to apply the steps above"
 elif [ "$LAUNCHER_STATE" != "installed" ]; then
 	next="get a signed $APP_NAME (ask IT, or install the Xcode Command Line Tools) and re-run with --launcher PATH"
-elif [ "$CONFIG_STATE" = "created" ]; then
+elif [ "$CONFIG_STATE" = "created" ] && [ "${#FOLDERS[@]}" -eq 0 ]; then
 	next="add your sources to $CONFIG, then re-run scripts/install.sh$ORIG_ARGS"
 elif [ "$DOCTOR_RC" -ne 0 ]; then
 	next="fix the [FAIL] lines above (each names its fix), then re-run scripts/install.sh$ORIG_ARGS"
 elif [ "$AGENT_RC" -ne 0 ]; then
 	next="read the install-agent error above, then re-run scripts/install.sh$ORIG_ARGS"
+elif [ "$INSTALL_AGENT" -eq 0 ] && [ ! -f "$agent_plist" ] && [ "${#FOLDERS[@]}" -gt 0 ]; then
+	next="check a first cycle by hand with: agentsync sync --once$CONFIG_FLAG; then re-run scripts/install.sh$BASE_ARGS --confirm-install-agent to start background sync"
 elif [ "$INSTALL_AGENT" -eq 0 ] && [ ! -f "$agent_plist" ]; then
-	next="re-run scripts/install.sh$ORIG_ARGS --confirm-install-agent to start background sync"
+	next="re-run scripts/install.sh$BASE_ARGS --confirm-install-agent to start background sync"
 else
 	next="if macOS asks $PROMPT_TEXT, click Allow; then check progress with: agentsync status$CONFIG_FLAG"
 fi

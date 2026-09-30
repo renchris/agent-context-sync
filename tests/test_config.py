@@ -6,11 +6,15 @@ import pytest
 
 from agentsync.config import (
     DEFAULT_EXCLUDES,
+    SOURCE_ID_RE,
     TEAMS_SCOPE,
     BreakerConfig,
     Config,
+    append_to_config,
     default_config_text,
+    derive_source_id,
     load_config,
+    local_source_table,
     parse_config,
     parse_size,
 )
@@ -164,3 +168,54 @@ def test_breaker_threshold_is_floored_and_scoped() -> None:
     b = BreakerConfig()
     assert b.threshold(40) == 25  # a 40-row pilot does not trip on three real deletions
     assert b.threshold(1000) == 200
+
+
+@pytest.mark.parametrize(
+    ("name", "taken", "expected"),
+    [
+        ("Projects", set(), "projects"),
+        ("My Projects (FY26)", set(), "my-projects-fy26"),
+        ("Projects", {"projects"}, "projects-2"),
+        ("Projects", {"projects", "projects-2"}, "projects-3"),
+        ("!!!", set(), "local"),
+        ("Ünïcode Déck", set(), "n-code-d-ck"),
+    ],
+)
+def test_derive_source_id_is_deterministic_and_unique(name: str, taken: set[str], expected: str) -> None:
+    sid = derive_source_id(Path("/x") / name, taken)
+    assert sid == expected and SOURCE_ID_RE.match(sid)
+    assert derive_source_id(Path("/x") / name, taken) == sid  # same input, same id
+
+
+def test_local_source_table_uses_the_init_defaults(tmp_path: Path) -> None:
+    folder = tmp_path / 'we"ird \\ name'
+    folder.mkdir()
+    cfg = parse(default_config_text() + local_source_table("weird", folder), tmp_path)
+    (src,) = cfg.sources
+    assert src.id == "weird" and src.kind is SourceKind.LOCAL and src.state is SourceState.LIVE
+    assert src.path == folder and src.sentinel is None
+    assert src.exclude == DEFAULT_EXCLUDES and src.max_materialise_bytes == 1024**3 and src.max_files == 5000
+
+
+def test_append_to_config_keeps_every_byte_and_validates_first(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "sources.toml"
+    original = (
+        default_config_text() + '# my own comment, kept\n[network]\nproxy = "direct"'
+    )  # no final newline
+    cfg_path.write_text(original, encoding="utf-8")
+    cfg_path.chmod(0o640)
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    cfg = append_to_config(cfg_path, local_source_table("projects", folder))
+    text = cfg_path.read_text(encoding="utf-8")
+    assert text.startswith(original + "\n") and "# my own comment, kept" in text
+    assert [s.id for s in cfg.sources] == ["projects"] and cfg.network.proxy == "direct"
+    assert load_config(cfg_path) == cfg
+    assert cfg_path.stat().st_mode & 0o777 == 0o640  # the file's mode is kept
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["Projects", "sources.toml"]  # no temp file left
+
+    with pytest.raises(ConfigError, match="duplicate source id"):
+        append_to_config(cfg_path, local_source_table("projects", folder))
+    assert cfg_path.read_text(encoding="utf-8") == text  # an invalid result is never written
+    with pytest.raises(ConfigError, match="not found"):
+        append_to_config(tmp_path / "missing.toml", local_source_table("x", folder))
