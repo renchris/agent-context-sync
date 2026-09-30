@@ -347,15 +347,132 @@ def test_pdf_scanned_page_marker_and_markdown_neutralised(tmp_path: Path) -> Non
 
 def test_pdf_password_protected_is_unreadable(tmp_path: Path) -> None:
     src = build_pdf(tmp_path / "locked.pdf", [["secret"]], encrypt=True)
-    with pytest.raises(UnreadableSourceError, match="password-protected"):
+    with pytest.raises(UnreadableSourceError, match=r"^encrypted-pdf \(password-protected\)$"):
         PdfConverter(CFG).convert(src, name="locked.pdf")
+
+
+def _rc4(key: bytes, data: bytes) -> bytes:
+    s = list(range(256))
+    j = 0
+    for i in range(256):
+        j = (j + s[i] + key[i % len(key)]) % 256
+        s[i], s[j] = s[j], s[i]
+    out = bytearray()
+    i = j = 0
+    for byte in data:
+        i = (i + 1) % 256
+        j = (j + s[i]) % 256
+        s[i], s[j] = s[j], s[i]
+        out.append(byte ^ s[(s[i] + s[j]) % 256])
+    return bytes(out)
+
+
+def _owner_only_encrypted_pdf(path: Path) -> Path:
+    """A PDF with /Encrypt (Standard, R2, 40-bit RC4) whose USER password is empty: it opens without a
+    password (the permission-restricted "no copy" statement case), yet the trailer names /Encrypt.
+
+    Built from ``build_pdf(encrypt=True)`` by replacing its placeholder /O and /U strings (same lengths, so
+    the xref stays valid) with values computed per ISO 32000-1 algorithms 3.2-3.4 for owner "owner", user "".
+    """
+    import hashlib  # noqa: PLC0415
+
+    pad = bytes.fromhex("28bf4e5e4e758a4164004e56fffa01082e2e00b6d0683e802f0ca9fe6453697a")
+    file_id = bytes.fromhex("ab" * 16)  # build_pdf's /ID
+    owner = _rc4(hashlib.md5((b"owner" + pad)[:32]).digest()[:5], pad)
+    perms = (-4).to_bytes(4, "little", signed=True)  # build_pdf's /P -4
+    key = hashlib.md5(pad + owner + perms + file_id).digest()[:5]
+    user = _rc4(key, pad)
+    body = build_pdf(path, [["readable only with the owner's leave"]], encrypt=True).read_bytes()
+    body = body.replace(b"/O <" + b"11" * 32 + b">", b"/O <" + owner.hex().encode() + b">")
+    body = body.replace(b"/U <" + b"22" * 32 + b">", b"/U <" + user.hex().encode() + b">")
+    path.write_bytes(body)
+    return path
+
+
+def test_pdf_with_encrypt_but_empty_user_password_is_still_refused(tmp_path: Path) -> None:
+    import pypdfium2  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    src = _owner_only_encrypted_pdf(tmp_path / "restricted.pdf")
+    doc = pypdfium2.PdfDocument(str(src))  # PDFium opens it: no password is needed ...
+    doc.close()
+    with pytest.raises(UnreadableSourceError, match=r"^encrypted-pdf \(/Encrypt in the trailer\)$"):
+        PdfConverter(CFG).convert(src, name="restricted.pdf")  # ... but /Encrypt is refused (C15 item 25)
 
 
 def test_pdf_garbage_is_a_conversion_error(tmp_path: Path) -> None:
     with pytest.raises(ConversionError, match="not a PDF"):
         PdfConverter(CFG).convert(_write(tmp_path, "x.pdf", b"hello"), name="x.pdf")
+    # PDFium cannot load it either, so the pdfminer fallback runs and reports the damage.
     with pytest.raises(ConversionError, match="pdfminer"):
         PdfConverter(CFG).convert(_write(tmp_path, "y.pdf", b"%PDF-1.4\n1 0 obj << /Broken"), name="y.pdf")
+
+
+def test_pdf_is_pypdfium2_and_says_so() -> None:
+    conv = PdfConverter(CFG)
+    assert conv.converter_id == "pdf-pypdfium2"
+    assert Registry.default(CFG).for_name("Statement.PDF") is not None
+    assert Registry.default(CFG).for_name("Statement.PDF").converter_id == "pdf-pypdfium2"  # type: ignore[union-attr]
+    assert re.fullmatch(r"2\.0\.0\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
+    opts = conv.options()
+    assert opts["engine"] == "pypdfium2:text-range" and opts["fallback"] == "pdfminer.six"
+
+
+def test_pdf_falls_back_to_pdfminer_only_when_pdfium_cannot_load(
+    fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentsync.convert import pdf as pdf_mod  # noqa: PLC0415
+
+    primary = _one(PdfConverter(CFG).convert(fixture_files["sample.pdf"], name="sample.pdf"))
+
+    def broken(_src: Path) -> list[str]:
+        raise pdf_mod._EngineUnavailableError("PDFium cannot load the PDF: Data format error")
+
+    monkeypatch.setattr(pdf_mod, "_pdfium_pages", broken)
+    fallback = _one(PdfConverter(CFG).convert(fixture_files["sample.pdf"], name="sample.pdf"))
+    assert fallback.body == primary.body  # same page anchors and text on a simple born-digital PDF
+    assert fallback.summary.endswith("; text by the pdfminer.six fallback (PDFium could not load it)")
+    assert "fallback" not in primary.summary
+
+
+def test_pdf_without_importable_pypdfium2_uses_pdfminer(
+    fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys  # noqa: PLC0415
+
+    monkeypatch.setitem(sys.modules, "pypdfium2", None)  # import raises ImportError
+    conv = PdfConverter(CFG)
+    assert "pypdfium2-unavailable" in conv.version()
+    u = _one(conv.convert(fixture_files["sample.pdf"], name="sample.pdf"))
+    assert "Budget - page 2" in u.body and "pdfminer.six fallback" in u.summary
+
+
+def test_pdf_with_no_text_on_any_page_is_unreadable_not_empty(tmp_path: Path) -> None:
+    with pytest.raises(UnreadableSourceError, match="no text layer"):
+        PdfConverter(CFG).convert(build_pdf(tmp_path / "scan.pdf", [[], []]), name="scan.pdf")
+    with pytest.raises(UnreadableSourceError, match="no pages"):
+        PdfConverter(CFG).convert(build_pdf(tmp_path / "none.pdf", []), name="none.pdf")
+
+
+def test_pdf_page_text_cleaning() -> None:
+    from agentsync.convert.pdf import _clean  # noqa: PLC0415
+
+    assert _clean("co\x02operate\r\nnext\x0cpage\rend\x00") == "cooperate\nnext\npage\nend"
+    assert _clean("Café") == "Café"  # NFC
+
+
+def test_pdf_conversion_is_deterministic_x3(fixture_files: dict[str, Path], tmp_path: Path) -> None:
+    """C15 item 35's determinism half: three conversions, one sha256 (the receipt run is separate)."""
+    import hashlib  # noqa: PLC0415
+
+    src = build_pdf(
+        tmp_path / "t.pdf", [[f"row {i}: North {i * 3} South {i * 7}" for i in range(30)] for _ in range(3)]
+    )
+    for pdf in (fixture_files["sample.pdf"], src):
+        digests = {
+            hashlib.sha256(_one(PdfConverter(CFG).convert(pdf, name=pdf.name)).body.encode()).hexdigest()
+            for _ in range(3)
+        }
+        assert len(digests) == 1
 
 
 def test_pdf_cap_keeps_the_full_text_in_a_sidecar(tmp_path: Path) -> None:

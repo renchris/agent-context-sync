@@ -751,3 +751,85 @@ def test_fileprovider_walk_is_metadata_only() -> None:
     assert is_dataless(os.lstat(probe / "fresh" / "Document.docx")) == bool(
         before["fresh/Document.docx"] & SF_DATALESS
     )
+
+
+# ---------------------------------------------------------------------------------------------------------
+# performance paths: getattrlist only where needed, globs compiled once (results must not move)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _count_attrs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+    real = al._file_attrs
+
+    def spy(path: Path) -> object:
+        calls.append(Path(path).name)
+        return real(path)
+
+    monkeypatch.setattr(al, "_file_attrs", spy)
+    return calls
+
+
+def test_walk_with_known_h0_skips_getattrlist_only_for_unmoved_stat_tuples(
+    tree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, _ = _walk(tree, exclude=DEFAULT_EXCLUDES)
+    known = {i.stable_id: i for i in first}  # a SourceItem carries every field a stored row does
+    calls = _count_attrs(monkeypatch)
+    again, _ = _walk(tree, exclude=DEFAULT_EXCLUDES, known=known)
+    assert again == first and calls == []  # identical items, zero getattrlist calls
+    time.sleep(0.01)
+    (tree / "b.docx").write_bytes(b"docx bytes, edited")  # stat tuple moves
+    _write(tree / "new.txt", b"new")  # unknown id
+    stale = dict(known)
+    readme = next(i for i in first if i.rel_path == "README.txt")
+    stale[readme.stable_id] = dataclasses.replace(readme, gen_count=None)  # stored gen unknown: re-read
+    calls.clear()
+    third, _ = _walk(tree, exclude=DEFAULT_EXCLUDES, known=stale)
+    assert sorted(calls) == ["README.txt", "b.docx", "new.txt"]
+    fresh, _ = _walk(tree, exclude=DEFAULT_EXCLUDES)
+    assert third == fresh  # the reused values are exactly what getattrlist returns
+
+
+def test_walk_known_values_are_reused_verbatim(tree: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    first, _ = _walk(tree)
+    target = first[0]
+    known = {target.stable_id: dataclasses.replace(target, gen_count=4242, created_ns=17)}
+    _count_attrs(monkeypatch)
+    again, _ = _walk(tree, known=known)
+    got = next(i for i in again if i.stable_id == target.stable_id)
+    assert (got.gen_count, got.created_ns) == (4242, 17)
+    assert _walk(tree, known=known, with_gen_count=False)[0] == _walk(tree, with_gen_count=False)[0]
+
+
+def test_local_arm_scan_passes_its_known_index_to_the_walk(
+    tree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arm = al.LocalArm(_cfg(tree))
+    first = arm.scan(None, full=True).items
+    arm.known_h0 = {i.stable_id: i for i in first}
+    calls = _count_attrs(monkeypatch)
+    assert arm.scan(None, full=True).items == first and calls == []
+
+
+@pytest.mark.parametrize(
+    ("include", "exclude"),
+    [
+        ((), DEFAULT_EXCLUDES),
+        (("*.md", "a/**"), ()),
+        (("docs/", "**/*.XLSX"), ("~$*", "a/deep/")),
+        (("a/*.md",), ("*.tmp", "._*", "b*")),
+    ],
+)
+def test_compiled_matcher_equals_paths_is_included(
+    include: tuple[str, ...], exclude: tuple[str, ...]
+) -> None:
+    from agentsync.paths import is_included  # noqa: PLC0415
+
+    rels = [
+        "README.txt", "b.docx", "a/z.md", "a/deep/y.xlsx", "a/deep/Y.XLSX", "~$b.docx", "x/~$b.docx",
+        ".DS_Store", "docs/a.txt", "sub/docs/a.txt", "a.tmp", "._x", "é/ü.md", "Icon\r", "a/b/c/d.md",
+        "bb/x.md",
+    ]  # fmt: skip
+    match = al._file_matcher(include, exclude)
+    assert [match(r) for r in rels] == [is_included(r, include, exclude) for r in rels]

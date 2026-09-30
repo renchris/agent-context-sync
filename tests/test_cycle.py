@@ -342,3 +342,124 @@ def test_git_log_holds_only_real_change(sample_config: Config, local_source_dir:
     body = git(repo, "log", "-1", "--format=%B")
     assert "Agentsync-Run: 4" in body and "Agentsync-Mode: poll" in body
     assert subprocess.run(["git", "-C", str(repo), "diff", "--quiet", "HEAD"], check=False).returncode == 0
+
+
+# ---------------------------------------------------------------------------------------------------------
+# performance paths: H0 fast path, batched writes, the land gate on a clean tree; inbox (name, size) dedup
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_noop_cycle_takes_the_h0_fast_path_for_every_file(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert run(sample_config).commit_sha is not None
+    upserted: list[int] = []
+    touched: list[int] = []
+    real_many, real_touch = Manifest.upsert_observed_many, Manifest.touch_observed
+
+    def many(self: Manifest, observations: Any, **kw: Any) -> None:
+        upserted.append(len(observations))
+        real_many(self, observations, **kw)
+
+    def touch(self: Manifest, source_id: str, ids: Any, **kw: Any) -> int:
+        n = real_touch(self, source_id, ids, **kw)
+        touched.append(n)
+        return n
+
+    monkeypatch.setattr(Manifest, "upsert_observed_many", many)
+    monkeypatch.setattr(Manifest, "touch_observed", touch)
+    noop = run(sample_config)
+    assert noop.exit_code == 0 and noop.commit_sha is None
+    files = sum(1 for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("~$"))
+    assert upserted == [0] and touched == [files]  # nothing decoded or rewritten, every row stamped
+    with Manifest(sample_config.state_paths.db) as m:
+        rows = [r for r in m.iter_items(SID) if not r.is_dir]
+        run_id = m.last_runs(1)[0][0]
+    assert {r.last_seen_run for r in rows} == {run_id} and {r.last_verdict for r in rows} == {
+        Verdict.UNCHANGED
+    }
+    # an edit after the fast pass is still seen (stat tuple moved) and published
+    (local_source_dir / "projects" / "sample.md").write_text("# Sample\n\nedited after a fast pass\n")
+    edited = run(sample_config)
+    assert edited.commit_sha is not None and upserted[-1] == 1
+
+
+def test_land_gate_is_skipped_only_when_nothing_can_land(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentsync import lints  # noqa: PLC0415
+
+    gates: list[int] = []
+    real = lints.run_land_gate
+
+    def spy(repo: Path, changed: Any, **kwargs: Any) -> Any:
+        gates.append(len(changed))
+        return real(repo, changed, **kwargs)
+
+    monkeypatch.setattr(lints, "run_land_gate", spy)
+    run(sample_config)
+    assert len(gates) == 1  # first sync: content to land
+    run(sample_config)
+    assert len(gates) == 1  # clean POLL: nothing would be committed, no gate
+    run(sample_config, mode=CycleMode.RECONCILE)
+    assert len(gates) == 2  # RECONCILE always runs it
+    (sample_config.docs_repo / "mirror" / "hand-edit.md").write_text("x\n")  # dirty tree, no change reported
+    report = run(sample_config)
+    assert len(gates) == 3 and report.commit_sha is None
+
+
+INBOX_SOURCE = """
+[[source]]
+id = "inbox"
+kind = "inbox"
+path = "{path}"
+quiescence_s = 0
+"""
+
+
+def test_inbox_drop_matching_a_graph_file_by_name_and_size_is_refused_unread(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentsync.arm_local import InboxArm  # noqa: PLC0415
+    from agentsync.model import RowState  # noqa: PLC0415
+
+    notes = b"# Notes\n\nThe purchase order is approved.\n"
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "notes (1).md").write_bytes(b"#" * len(notes))  # same size, other bytes: H1 differs
+    (inbox / "NOTES - Copy.md").write_bytes(b"x" * len(notes))  # case + Windows copy suffix
+    (inbox / "notes.md").write_bytes(notes + b"more")  # same name, other size: not a duplicate
+    (inbox / "other.md").write_bytes(b"#" * len(notes))  # same size, other name
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE + INBOX_SOURCE.format(path=inbox))
+    drive = FakeDrive({"I1": ("notes.md", notes)})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    fetched: list[str] = []
+    real_fetch = InboxArm.fetch
+
+    def spy(self: InboxArm, item: Any, dest: Path, budget: Any) -> Any:
+        fetched.append(item.rel_path)
+        return real_fetch(self, item, dest, budget)
+
+    monkeypatch.setattr(InboxArm, "fetch", spy)
+    try:
+        report = run(config, client=client, only=["drive", "inbox"])
+    finally:
+        client.close()
+    assert report.exit_code == 0, report
+    assert sorted(fetched) == ["notes.md", "other.md"]  # the two duplicates were never read
+    with Manifest(config.state_paths.db) as m:
+        rows = {r.rel_path: r for r in m.iter_items("inbox")}
+    want = "duplicate-of drive (mirror/drive/projects/notes.md)"
+    for rel in ("notes (1).md", "NOTES - Copy.md"):
+        assert (rows[rel].state, rows[rel].state_reason, rows[rel].last_verdict) == (
+            RowState.QUARANTINED,
+            want,
+            Verdict.QUARANTINED,
+        )
+    assert rows["notes.md"].state is RowState.LIVE and rows["other.md"].state is RowState.LIVE
+    assert "duplicate-of drive" in (config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")

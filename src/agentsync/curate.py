@@ -416,11 +416,12 @@ def generate_depends(layout: DocsLayout) -> tuple[list[DependsRow], list[tuple[s
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    """Replace ``path`` with ``data`` via a same-directory temp file (mode kept, 0644 when new)."""
+    """Replace ``path`` with ``data`` via a same-directory temp file (owner bits kept, 0600 when new: the docs
+    repo holds tenant data and is owner-only)."""
     try:
-        mode = stat.S_IMODE(path.stat().st_mode)
+        mode = stat.S_IMODE(path.stat().st_mode) & 0o700
     except FileNotFoundError:
-        mode = 0o644
+        mode = 0o600
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp = Path(tmp_name)

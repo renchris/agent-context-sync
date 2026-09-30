@@ -433,9 +433,10 @@ def test_write_depends_exact_bytes_and_idempotent(layout: DocsLayout) -> None:
 
 def test_write_depends_keeps_mode_and_rejects_unrepresentable(layout: DocsLayout) -> None:
     write_depends(layout, [])
-    layout.depends_tsv.chmod(0o640)
+    assert stat.S_IMODE(layout.depends_tsv.stat().st_mode) == 0o600  # new generated files: owner-only
+    layout.depends_tsv.chmod(0o740)
     write_depends(layout, [DependsRow("topics/a.md", "mirror/a.md", H, "primary")])
-    assert stat.S_IMODE(layout.depends_tsv.stat().st_mode) == 0o640
+    assert stat.S_IMODE(layout.depends_tsv.stat().st_mode) == 0o700  # owner bits kept, group/other dropped
     with pytest.raises(CurateError):
         write_depends(layout, [DependsRow("topics/a.md", "mirror/a\tb.md", H, "primary")])
     with pytest.raises(CurateError):

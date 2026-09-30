@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -24,9 +25,17 @@ def default_agent_context_dir() -> Path:
     return expand("~/agent-context")
 
 
+CONFIG_ENV = "AGENTSYNC_CONFIG"
+"""Environment variable naming the sources.toml every command uses when ``--config`` is not given."""
+
+
 def default_config_path() -> Path:
-    """Return the default sources.toml path (``~/agent-context/sources.toml``)."""
-    return default_agent_context_dir() / "sources.toml"
+    """Return the default sources.toml path: ``$AGENTSYNC_CONFIG`` when set (scripts/install.sh honours the
+    same variable), else ``~/agent-context/sources.toml``."""
+    env = os.environ.get(CONFIG_ENV, "").strip()
+    if env:
+        return expand(env)
+    return expand("~/agent-context/sources.toml")
 
 
 def default_docs_repo() -> Path:

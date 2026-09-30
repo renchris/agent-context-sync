@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import logging
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from typing import Protocol
 
 from agentsync.config import BreakerConfig
 from agentsync.manifest import ItemRow, OutputRow
@@ -33,6 +34,7 @@ from agentsync.model import (
     Classification,
     ConversionResult,
     ConversionStatus,
+    ExtraValue,
     OutputStatus,
     PassKind,
     RowState,
@@ -51,6 +53,65 @@ _QUIET: frozenset[Verdict] = frozenset({Verdict.UNCHANGED, Verdict.METADATA_ONLY
 """Phase-1 outcomes that trigger no fetch; a pending row must never be silenced by one of them."""
 
 
+class _H0Row(Protocol):
+    """What the zero-byte content rungs read from a stored row (``ItemRow`` or the manifest's light
+    observation tuple)."""
+
+    @property
+    def size(self) -> int | None: ...
+    @property
+    def mtime_ns(self) -> int | None: ...
+    @property
+    def ctime_ns(self) -> int | None: ...
+    @property
+    def ino(self) -> int | None: ...
+    @property
+    def mode(self) -> int | None: ...
+    @property
+    def gen_count(self) -> int | None: ...
+    @property
+    def quickxor(self) -> str | None: ...
+    @property
+    def sha1_remote(self) -> str | None: ...
+    @property
+    def etag(self) -> str | None: ...
+    @property
+    def ctag(self) -> str | None: ...
+
+
+class _ObservedLike(_H0Row, Protocol):
+    """Everything ``ClassifyContext.h0_unchanged`` compares: the columns ``upsert_observed`` would write."""
+
+    @property
+    def parent_id(self) -> str | None: ...
+    @property
+    def name(self) -> str: ...
+    @property
+    def rel_path(self) -> str: ...
+    @property
+    def is_dir(self) -> bool: ...
+    @property
+    def created_ns(self) -> int | None: ...
+    @property
+    def dataless(self) -> bool: ...
+    @property
+    def sha256_remote(self) -> str | None: ...
+    @property
+    def content_type(self) -> str | None: ...
+    @property
+    def content_sha256(self) -> str | None: ...
+    @property
+    def state(self) -> RowState: ...
+    @property
+    def last_verdict(self) -> Verdict | None: ...
+    @property
+    def extra(self) -> Mapping[str, ExtraValue]: ...
+
+
+_FAST_STATES: frozenset[RowState] = frozenset({RowState.LIVE, RowState.QUARANTINED, RowState.REFUSED})
+"""Row states an unchanged, non-dataless observation keeps as they are (``cycle._observed_state``)."""
+
+
 @dataclass(frozen=True, slots=True)
 class ClassifyContext:
     """Inputs every phase-1 decision needs besides the item and its row."""
@@ -60,6 +121,45 @@ class ClassifyContext:
     written_at_ns: (
         int  # manifest's last write time: racily-clean guard (row.mtime_ns >= this => MAYBE_CHANGED)
     )
+
+    def h0_unchanged(self, item: SourceItem, row: _ObservedLike | None) -> bool:
+        """The H0 fast path: True only when ``classify_observed`` would say UNCHANGED with no rename AND
+        ``upsert_observed`` would rewrite nothing but ``last_seen_run``/``last_verdict``.
+
+        Every column the upsert writes must already hold the observed value (so the row is stamped with
+        ``Manifest.touch_observed`` and never decoded or rewritten), the row must carry no pending work, have
+        content, keep its state, and the ordinary content rungs (provider hash / cTag / eTag / stat tuple +
+        gen_count + racily-clean guard) must yield UNCHANGED.  Anything else returns False and takes the full
+        path, so the fast path can only ever skip work the full path would not have done.
+        """
+        if row is None or item.deleted or item.is_dir or item.dataless or row.is_dir or row.dataless:
+            return False
+        if row.state not in _FAST_STATES or row.last_verdict in _PENDING:
+            return False
+        if row.content_sha256 is None and row.state is RowState.LIVE:
+            return False  # never materialised
+        if (
+            item.rel_path != row.rel_path
+            or item.name != row.name
+            or item.size != row.size
+            or item.mtime_ns != row.mtime_ns
+            or item.ctime_ns != row.ctime_ns
+            or item.ino != row.ino
+            or item.mode != row.mode
+            or item.gen_count != row.gen_count
+            or item.created_ns != row.created_ns
+            or item.parent_id != row.parent_id
+            or item.etag != row.etag
+            or item.ctag != row.ctag
+            or item.content_type != row.content_type
+            or item.remote_hashes.quickxor != row.quickxor
+            or item.remote_hashes.sha1 != row.sha1_remote
+            or item.remote_hashes.sha256 != row.sha256_remote
+            or dict(item.extra) != dict(row.extra)
+        ):
+            return False
+        verdict, _reason = _content_rungs(item, row, self)
+        return verdict is Verdict.UNCHANGED
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +176,7 @@ def _nfc(text: str) -> str:
     return unicodedata.normalize("NFC", text)
 
 
-def _provider_hash(item: SourceItem, row: ItemRow) -> tuple[str, bool] | None:
+def _provider_hash(item: SourceItem, row: _H0Row) -> tuple[str, bool] | None:
     """(kind, equal) for the first provider hash present on BOTH sides (quickxor, then sha1); else None.
 
     Provider hashes are comparable only to themselves.  ``sha256Hash`` is documented "isn't supported. Don't
@@ -92,7 +192,7 @@ def _provider_hash(item: SourceItem, row: ItemRow) -> tuple[str, bool] | None:
     return None
 
 
-def _stat_difference(item: SourceItem, row: ItemRow) -> str | None:
+def _stat_difference(item: SourceItem, row: _H0Row) -> str | None:
     """Name of the first H0 stat field that differs (mtime compared for inequality only), else None."""
     fields = (
         ("size", item.size, row.size),
@@ -107,7 +207,7 @@ def _stat_difference(item: SourceItem, row: ItemRow) -> str | None:
     return None
 
 
-def _content_rungs(item: SourceItem, row: ItemRow, ctx: ClassifyContext) -> tuple[Verdict, str]:
+def _content_rungs(item: SourceItem, row: _H0Row, ctx: ClassifyContext) -> tuple[Verdict, str]:
     """The zero-byte content rungs of design 4.3 for an existing, non-deleted file row."""
     if item.dataless:
         return Verdict.DATALESS, "dataless"
@@ -320,6 +420,7 @@ def classify_pass(
     live_rows: int,
     breaker: BreakerConfig,
     breaker_active: bool,
+    unchanged: Sequence[SourceItem] = (),
 ) -> PassClassification:
     """Run phase 1 over a whole pass: per-item verdicts, safe-save pairing, deletion candidates, breaker.
 
@@ -330,17 +431,27 @@ def classify_pass(
     ``unseen`` may be computed before or after this run's upserts: rows observed in this pass are ignored.
     A paired safe-save's new id becomes MAYBE_CHANGED (``safe-save``, ``replaces_id`` set) so phase 2 compares
     H1 against the old row's hash once ``Manifest.rekey`` has moved it (the Office no-op save stops there).
+
+    ``unchanged`` (keyword, optional) lists observations the caller already proved unchanged with
+    ``ClassifyContext.h0_unchanged`` and left out of ``items``/``rows``: each gets UNCHANGED (``h0-equal``),
+    counts as observed (never missing, never a safe-save partner) and needs no row.
     """
     latest: dict[str, SourceItem] = {}
     for item in items:
         latest[item.stable_id] = item
     ordered = [latest[sid] for sid in sorted(latest)]
     verdicts = {it.stable_id: classify_observed(it, rows.get(it.stable_id), ctx) for it in ordered}
+    fast = {it.stable_id for it in unchanged if it.stable_id not in latest}
+    for it in unchanged:
+        if it.stable_id in fast:
+            verdicts[it.stable_id] = Classification(it.source_id, it.stable_id, Verdict.UNCHANGED, "h0-equal")
 
-    missing = [r for r in unseen if r.stable_id not in latest]
-    complete_full = ctx.pass_kind is PassKind.FULL and enumeration_complete
+    missing = [r for r in unseen if r.stable_id not in latest and r.stable_id not in fast]
     safe_saves: list[tuple[str, str]] = []
-    if complete_full:
+    # Any FULL pass pairs, complete or not: the new id was listed AT the path, so that directory was walked
+    # and the old id is provably not there any more (an unrelated unreadable folder, or a File Provider
+    # tree's empty cloud folder, must not split a document into [DELETED UPSTREAM] + a disambiguated twin).
+    if ctx.pass_kind is PassKind.FULL:
         created = [it for it in ordered if verdicts[it.stable_id].verdict is Verdict.CREATED]
         safe_saves = match_safe_saves(created, missing)
         for new_id, old_id in safe_saves:
@@ -361,7 +472,7 @@ def classify_pass(
             live_rows,
         )
     return PassClassification(
-        verdicts=tuple(verdicts[it.stable_id] for it in ordered),
+        verdicts=tuple(verdicts[sid] for sid in sorted(verdicts)),
         safe_saves=tuple(safe_saves),
         deletion_candidates=tuple(r.stable_id for r in candidates),
         breaker_tripped=tripped,

@@ -12,6 +12,7 @@ Secrets: cursor values (delta links) are never logged; ``cursor_fingerprint`` is
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import json
 import logging
@@ -24,14 +25,16 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
-from types import TracebackType
-from typing import Any
+from types import MappingProxyType, TracebackType
+from typing import Any, NamedTuple
 
 from agentsync.config import SourceConfig
 from agentsync.errors import ConfigError, ManifestSchemaError
 from agentsync.model import (
+    ChangeOp,
     CycleMode,
     ExtraValue,
+    MirrorChange,
     OutputStatus,
     PassKind,
     RowState,
@@ -310,6 +313,14 @@ class DependsRow:
     role: str
 
 
+REDACTED_PREFIX = "[redacted: credential in name] "
+
+
+def redacted_path(rel_path: str) -> str:
+    """The form an item path that carries a credential takes in every committed file (a 12-hex digest)."""
+    return REDACTED_PREFIX + hashlib.sha256(rel_path.encode("utf-8")).hexdigest()[:12]
+
+
 def cursor_fingerprint(cursor: str | None) -> str:
     """Return the 12-hex sha256 prefix of a cursor for STATE.md (never the token itself); "-" for None."""
     if cursor is None:
@@ -320,6 +331,37 @@ def cursor_fingerprint(cursor: str | None) -> str:
 # ---------------------------------------------------------------------------------------------------------
 # private helpers and constants
 # ---------------------------------------------------------------------------------------------------------
+
+ALIASES_SQL = """
+CREATE TABLE IF NOT EXISTS item_aliases (              -- retired stable ids (safe-save / re-identification)
+  source_id  TEXT NOT NULL,
+  alias_id   TEXT NOT NULL,                            -- an id the item carried before a rekey
+  stable_id  TEXT NOT NULL,                            -- the item's current id
+  origin     INTEGER NOT NULL DEFAULT 0,               -- 1 = the item's first id: its durable key
+  PRIMARY KEY (source_id, alias_id)
+);
+CREATE INDEX IF NOT EXISTS item_aliases_by_item ON item_aliases(source_id, stable_id);
+CREATE TABLE IF NOT EXISTS redacted_items (            -- items whose NAME/path carries a credential
+  source_id  TEXT NOT NULL,
+  stable_id  TEXT NOT NULL,
+  PRIMARY KEY (source_id, stable_id)
+);
+CREATE TABLE IF NOT EXISTS run_changes (               -- a run's mirror changes, durable as they happen
+  run_id     INTEGER NOT NULL,
+  seq        INTEGER NOT NULL,
+  op         TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  source_id  TEXT NOT NULL,
+  stable_id  TEXT NOT NULL,
+  prev_path  TEXT,
+  PRIMARY KEY (run_id, seq)
+);
+"""
+"""Additive table (created on open, no schema-version bump; an older build ignores it).
+
+``Manifest.rekey`` records every retired id here, so a purge by any id the item ever carried reaches every
+version in history, and the durable key (``origin`` = 1, else the current id) is what pages and shards name:
+a same-content safe-save or a volume-UUID change moves no committed byte (design 4.1 #2, contract 5.1)."""
 
 _MIGRATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -362,6 +404,7 @@ _PRESENT_STATES: tuple[RowState, ...] = (
 _EXPORT_STATES: tuple[RowState, ...] = (*_PRESENT_STATES, RowState.TOMBSTONE)
 
 _AUTH_STATES = frozenset({"ok", "REAUTH_REQUIRED"})
+_REMOVAL_KEYS = ("removed", "removed_reason")
 _RUN_FINAL_STATUSES = frozenset({"ok", "partial", "failed", "aborted"})
 
 _ITEM_COLUMNS = (
@@ -385,6 +428,24 @@ _SOURCE_COLUMNS = (
 )
 
 _FOLD_SQL_FUNCTION = "agentsync_fold"
+_RESET_HASHES_SQL = (
+    "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
+    "canonical_parts = NULL WHERE source_id = ? AND stable_id = ?"
+)
+_UPDATE_ITEM_SQL = (
+    "UPDATE items SET parent_id = ?, name = ?, rel_path = ?, prev_path = ?, is_dir = ?, size = ?, "
+    "mtime_ns = ?, ctime_ns = ?, ino = ?, mode = ?, gen_count = ?, created_ns = ?, dataless = ?, "
+    "quickxor = ?, sha1_remote = ?, sha256_remote = ?, etag = ?, ctag = ?, content_type = ?, "
+    "state = ?, state_reason = {reason}, last_verdict = ?, last_seen_run = ?, extra_json = ? "
+    "WHERE source_id = ? AND stable_id = ?"
+)
+_INSERT_ITEM_SQL = (
+    "INSERT INTO items (source_id, stable_id, parent_id, name, rel_path, prev_path, is_dir, "
+    "size, mtime_ns, ctime_ns, created_ns, ino, mode, gen_count, dataless, quickxor, "
+    "sha1_remote, sha256_remote, etag, ctag, content_type, state, last_verdict, first_seen_run, "
+    "last_seen_run, extra_json) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+    "?, ?, ?, ?, ?, ?, ?, ?)"
+)
 
 
 def _key_schema_version() -> int:
@@ -431,12 +492,66 @@ def _check_sha256(value: str, what: str) -> None:
         raise ValueError(f"{what} must be 64 lowercase hex chars")
 
 
+@functools.cache
+def _encoder() -> json.JSONEncoder:
+    """One deterministic encoder: ``json.dumps`` with non-default options builds a new one per call."""
+    return json.JSONEncoder(sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
 def _json_dumps(obj: object) -> str:
-    return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return _encoder().encode(obj)
 
 
 def _opt_bool(value: Any) -> bool:
     return bool(value)
+
+
+_VERDICT_BY_VALUE: Mapping[str, Verdict] = MappingProxyType({v.value: v for v in Verdict})
+_STATE_BY_VALUE: Mapping[str, RowState] = MappingProxyType({s.value: s for s in RowState})
+_EMPTY_JSON = frozenset({"", "{}", "[]"})
+_ID_CHUNK = (
+    900  # stable ids per ``IN (...)`` query (SQLite's default host-parameter limit is 999 on old builds)
+)
+
+
+def _extra_from_json(raw: str | None) -> dict[str, ExtraValue]:
+    if raw is None or raw in _EMPTY_JSON:
+        return {}
+    value: dict[str, ExtraValue] = json.loads(raw)
+    return value
+
+
+class _ObservedRow(NamedTuple):
+    """The columns phase 1 compares an observation against (``Manifest.observation_index``).
+
+    Field names match ``ItemRow`` so the classifier reads either; building one costs a fraction of an
+    ``ItemRow`` (no JSON parts, no enum construction beyond two dict lookups), which is what lets a no-op
+    pass over 100k rows skip the full row decode.
+    """
+
+    stable_id: str
+    parent_id: str | None
+    name: str
+    rel_path: str
+    is_dir: bool
+    size: int | None
+    mtime_ns: int | None
+    ctime_ns: int | None
+    created_ns: int | None
+    ino: int | None
+    mode: int | None
+    gen_count: int | None
+    dataless: bool
+    quickxor: str | None
+    sha1_remote: str | None
+    sha256_remote: str | None
+    etag: str | None
+    ctag: str | None
+    content_type: str | None
+    content_sha256: str | None
+    state: RowState
+    last_verdict: Verdict | None
+    extra: Mapping[str, ExtraValue]
 
 
 def _scope_fingerprint(src: SourceConfig) -> str:
@@ -463,44 +578,116 @@ def _scope_fingerprint(src: SourceConfig) -> str:
 
 
 def _item_from_row(r: sqlite3.Row) -> ItemRow:
-    parts_raw = json.loads(r["canonical_parts"]) if r["canonical_parts"] else []
-    parts = tuple((str(p[0]), str(p[1])) for p in parts_raw)
-    extra: dict[str, ExtraValue] = json.loads(r["extra_json"] or "{}")
-    verdict = Verdict(r["last_verdict"]) if r["last_verdict"] is not None else None
+    """Decode one ``SELECT {_ITEM_COLUMNS}`` row (positional: name lookups on sqlite3.Row are O(columns))."""
+    (
+        source_id,
+        stable_id,
+        parent_id,
+        name,
+        rel_path,
+        prev_path,
+        is_dir,
+        size,
+        mtime_ns,
+        ctime_ns,
+        created_ns,
+        ino,
+        mode,
+        gen_count,
+        dataless,
+        quickxor,
+        sha1_remote,
+        sha256_remote,
+        etag,
+        ctag,
+        content_type,
+        content_sha256,
+        canonical_sha256,
+        canonical_method,
+        canonical_parts,
+        state,
+        state_reason,
+        last_verdict,
+        first_seen_run,
+        last_seen_run,
+        principal,
+        sensitivity_label,
+        extra_json,
+    ) = tuple(r)
+    if canonical_parts is None or canonical_parts in _EMPTY_JSON:
+        parts: tuple[tuple[str, str], ...] = ()
+    else:
+        parts = tuple((str(p[0]), str(p[1])) for p in json.loads(canonical_parts))
     return ItemRow(
-        source_id=r["source_id"],
-        stable_id=r["stable_id"],
-        parent_id=r["parent_id"],
-        name=r["name"],
-        rel_path=r["rel_path"],
-        prev_path=r["prev_path"],
-        is_dir=_opt_bool(r["is_dir"]),
-        size=r["size"],
-        mtime_ns=r["mtime_ns"],
-        ctime_ns=r["ctime_ns"],
-        created_ns=r["created_ns"],
-        ino=r["ino"],
-        mode=r["mode"],
-        gen_count=r["gen_count"],
-        dataless=_opt_bool(r["dataless"]),
-        quickxor=r["quickxor"],
-        sha1_remote=r["sha1_remote"],
-        sha256_remote=r["sha256_remote"],
-        etag=r["etag"],
-        ctag=r["ctag"],
-        content_type=r["content_type"],
-        content_sha256=r["content_sha256"],
-        canonical_sha256=r["canonical_sha256"],
-        canonical_method=r["canonical_method"],
-        canonical_parts=parts,
-        state=RowState(r["state"]),
-        state_reason=r["state_reason"],
-        last_verdict=verdict,
-        first_seen_run=r["first_seen_run"],
-        last_seen_run=r["last_seen_run"],
-        principal=r["principal"],
-        sensitivity_label=r["sensitivity_label"],
-        extra=extra,
+        source_id,
+        stable_id,
+        parent_id,
+        name,
+        rel_path,
+        prev_path,
+        bool(is_dir),
+        size,
+        mtime_ns,
+        ctime_ns,
+        created_ns,
+        ino,
+        mode,
+        gen_count,
+        bool(dataless),
+        quickxor,
+        sha1_remote,
+        sha256_remote,
+        etag,
+        ctag,
+        content_type,
+        content_sha256,
+        canonical_sha256,
+        canonical_method,
+        parts,
+        _STATE_BY_VALUE[state],
+        state_reason,
+        None if last_verdict is None else _VERDICT_BY_VALUE[last_verdict],
+        first_seen_run,
+        last_seen_run,
+        principal,
+        sensitivity_label,
+        _extra_from_json(extra_json),
+    )
+
+
+_OBSERVED_COLUMNS = (
+    "stable_id, parent_id, name, rel_path, is_dir, size, mtime_ns, ctime_ns, created_ns, ino, mode, "
+    "gen_count, dataless, quickxor, sha1_remote, sha256_remote, etag, ctag, content_type, content_sha256, "
+    "state, last_verdict, extra_json"
+)
+
+
+def _observed_from_tuple(t: tuple[Any, ...]) -> _ObservedRow:
+    verdict = t[21]
+    return _ObservedRow(
+        t[0],
+        t[1],
+        t[2],
+        t[3],
+        bool(t[4]),
+        t[5],
+        t[6],
+        t[7],
+        t[8],
+        t[9],
+        t[10],
+        t[11],
+        bool(t[12]),
+        t[13],
+        t[14],
+        t[15],
+        t[16],
+        t[17],
+        t[18],
+        t[19],
+        _STATE_BY_VALUE[t[20]],
+        None if verdict is None else _VERDICT_BY_VALUE[verdict],
+        _extra_from_json(t[22]),
     )
 
 
@@ -568,6 +755,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=30000")
+    # A pass reads the whole items table twice (observation index, shard export) and stamps every row: a
+    # 64 MiB page cache (default 2 MiB) keeps a 100k-file manifest resident (memory only; durable as before).
+    conn.execute("PRAGMA cache_size=-65536")
     conn.create_function(_FOLD_SQL_FUNCTION, 1, _fold, deterministic=True)
     return conn
 
@@ -654,6 +844,10 @@ class Manifest:
         self._path = db_path
         self._in_tx = False
         self._savepoint_seq = 0
+        # fold(output_path) -> output paths: output_by_path's case/NFC-insensitive lookup without a full-table
+        # scan per miss (every new page misses).  Built lazily, updated by replace_outputs, dropped on any
+        # rollback; hits are re-read from the table, so a superset is harmless.
+        self._fold_paths: dict[str, set[str]] | None = None
         self._conn: sqlite3.Connection | None = _connect(db_path)
         try:
             self._initialise_or_check()
@@ -682,6 +876,7 @@ class Manifest:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
+            self._ensure_aliases()
             _log.info("created manifest %s at schema version %s", self._path, applied[-1] if applied else 0)
             return
         if "meta" not in tables:
@@ -706,6 +901,8 @@ class Manifest:
                 f"{self._path}: converter key schema version {key_stored}, this build uses {key_build}; "
                 "run `agentsync migrate` (Manifest.migrate) to re-index the converter cache"
             )
+        if not {"item_aliases", "redacted_items", "run_changes"} <= tables:
+            self._ensure_aliases()
         if "schema_migrations" not in tables:
             # A version-1 manifest created before the migrations ledger existed: record its baseline.
             conn.execute(_MIGRATIONS_TABLE_SQL.strip())
@@ -713,6 +910,10 @@ class Manifest:
                 "INSERT OR IGNORE INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
                 (stored, "baseline (ledger backfilled)", _utc_now_iso()),
             )
+
+    def _ensure_aliases(self) -> None:
+        for statement in _split_sql(ALIASES_SQL):
+            self._db.execute(statement)
 
     @classmethod
     def migrate(cls, db_path: Path) -> list[int]:
@@ -793,6 +994,7 @@ class Manifest:
             yield
         except BaseException:
             self._in_tx = False
+            self._fold_paths = None
             with contextlib.suppress(sqlite3.OperationalError):  # already rolled back by sqlite itself
                 conn.execute("ROLLBACK")
             raise
@@ -810,6 +1012,7 @@ class Manifest:
             try:
                 yield
             except BaseException:
+                self._fold_paths = None
                 conn.execute(f"ROLLBACK TO {name}")
                 conn.execute(f"RELEASE {name}")
                 raise
@@ -819,6 +1022,7 @@ class Manifest:
         try:
             yield
         except BaseException:
+            self._fold_paths = None
             conn.execute("ROLLBACK")
             raise
         conn.execute("COMMIT")
@@ -1072,6 +1276,58 @@ class Manifest:
         for r in rows:
             yield _item_from_row(r)
 
+    def get_items(self, source_id: str, stable_ids: Iterable[str]) -> dict[str, ItemRow]:
+        """Rows of one source for the given ids (absent ids are simply missing), in batched queries."""
+        ids = sorted(set(stable_ids))
+        out: dict[str, ItemRow] = {}
+        for start in range(0, len(ids), _ID_CHUNK):
+            chunk = ids[start : start + _ID_CHUNK]
+            rows = self._db.execute(
+                f"SELECT {_ITEM_COLUMNS} FROM items WHERE source_id = ? "
+                f"AND stable_id IN ({', '.join('?' for _ in chunk)})",
+                (source_id, *chunk),
+            ).fetchall()
+            for r in rows:
+                row = _item_from_row(r)
+                out[row.stable_id] = row
+        return out
+
+    def observation_index(self, source_id: str) -> dict[str, _ObservedRow]:
+        """Every row of one source (tombstones and directories included) as the light tuple phase 1 compares.
+
+        One query and no per-row JSON/enum decoding beyond two dict lookups: the H0 fast path of a pass
+        (``ClassifyContext.h0_unchanged``, the local walk's getattrlist skip) reads this instead of decoding
+        a full ``ItemRow`` per file.  Also the source of "which known ids were not observed" for a pass.
+        """
+        cur = self._db.cursor()
+        cur.row_factory = None  # plain tuples: no sqlite3.Row wrapper per row
+        rows = cur.execute(
+            f"SELECT {_OBSERVED_COLUMNS} FROM items WHERE source_id = ?", (source_id,)
+        ).fetchall()
+        return {str(t[0]): _observed_from_tuple(t) for t in rows}
+
+    def state_counts(self, source_id: str) -> tuple[dict[RowState, int], int]:
+        """(file rows per state, file rows whose last_verdict is DEFERRED) of one source (STATE.md)."""
+        by_state: dict[RowState, int] = {}
+        deferred = 0
+        for state, count, n_deferred in self._db.execute(
+            "SELECT state, COUNT(*), SUM(last_verdict = ?) FROM items WHERE source_id = ? AND is_dir = 0 "
+            "GROUP BY state ORDER BY state",
+            (Verdict.DEFERRED.value, source_id),
+        ).fetchall():
+            by_state[_STATE_BY_VALUE[state]] = int(count)
+            deferred += int(n_deferred or 0)
+        return by_state, deferred
+
+    def find_by_size(self, size: int) -> list[ItemRow]:
+        """Live/dataless file rows (any source) of exactly ``size`` bytes: the inbox (name, size) dedup."""
+        rows = self._db.execute(
+            f"SELECT {_ITEM_COLUMNS} FROM items WHERE size = ? AND is_dir = 0 "
+            "AND state IN ('live', 'dataless') ORDER BY source_id, stable_id",
+            (size,),
+        ).fetchall()
+        return [_item_from_row(r) for r in rows]
+
     def live_count(self, source_id: str) -> int:
         """Count rows in state live|dataless (the breaker denominator), files only."""
         r = self._db.execute(
@@ -1104,56 +1360,130 @@ class Manifest:
         forgets its content/canonical hashes, so phase 2 says CHANGED and its pages are rebuilt instead of
         staying tombstone stubs (the conversion itself is still a converter-cache hit).
         """
+        self._apply_upsert(
+            self._upsert_plan(item, run_id, verdict, state, self.get_item(item.source_id, item.stable_id))
+        )
+
+    def upsert_observed_many(
+        self,
+        observations: Sequence[tuple[SourceItem, Verdict, RowState]],
+        *,
+        run_id: int,
+        existing: Mapping[str, ItemRow] | None = None,
+    ) -> None:
+        """``upsert_observed`` for a whole pass, batched: one ``executemany`` per statement shape.
+
+        ``existing`` maps stable_id -> the row as read before this call (ids of one source); ids absent from
+        it are looked up in one batched query.  Same result as calling ``upsert_observed`` in order: an id
+        observed twice is applied record by record.
+        """
+        if not observations:
+            return
+        by_source: dict[str, set[str]] = {}
+        for item, _v, _s in observations:
+            by_source.setdefault(item.source_id, set()).add(item.stable_id)
+        rows: dict[tuple[str, str], ItemRow] = {}
+        for sid, ids in by_source.items():
+            known = {} if existing is None else existing
+            missing = sorted(i for i in ids if i not in known)
+            for stable_id, row in self.get_items(sid, missing).items():
+                rows[(sid, stable_id)] = row
+            for stable_id in ids:
+                if stable_id in known:
+                    rows[(sid, stable_id)] = known[stable_id]
+        with self._atomic():
+            batches: dict[str, list[tuple[object, ...]]] = {}
+            done: set[tuple[str, str]] = set()
+            for item, verdict, state in observations:
+                key = (item.source_id, item.stable_id)
+                if key in done:  # observed twice: apply what is batched so far, then re-read the row
+                    self._flush(batches)
+                    fresh = self.get_item(*key)
+                    self._apply_upsert(self._upsert_plan(item, run_id, verdict, state, fresh))
+                    continue
+                done.add(key)
+                for sql, params in self._upsert_plan(item, run_id, verdict, state, rows.get(key)):
+                    batches.setdefault(sql, []).append(params)
+            self._flush(batches)
+
+    def _flush(self, batches: dict[str, list[tuple[object, ...]]]) -> None:
+        # Statement shapes are independent (one row each), but the reappearance reset must precede the
+        # UPDATE of the same row: sort so the hash-reset statement runs first.
+        for sql in sorted(batches, key=lambda q: (not q.startswith(_RESET_HASHES_SQL), q)):
+            self._db.executemany(sql, batches[sql])
+        batches.clear()
+
+    def _apply_upsert(self, plan: Sequence[tuple[str, tuple[object, ...]]]) -> None:
+        for sql, params in plan:
+            self._db.execute(sql, params)
+
+    @staticmethod
+    def _upsert_plan(
+        item: SourceItem, run_id: int, verdict: Verdict, state: RowState, existing: ItemRow | None
+    ) -> list[tuple[str, tuple[object, ...]]]:
+        """The statements ``upsert_observed`` runs for one observation (pure: no I/O)."""
         verdict = Verdict(verdict)
         state = RowState(state)
         rel_path = _nfc(item.rel_path)
         name = _nfc(item.name)
         extra_json = _json_dumps(dict(item.extra))
-        existing = self.get_item(item.source_id, item.stable_id)
         if existing is None:
-            self._db.execute(
-                "INSERT INTO items (source_id, stable_id, parent_id, name, rel_path, prev_path, is_dir, "
-                "size, mtime_ns, ctime_ns, created_ns, ino, mode, gen_count, dataless, quickxor, "
-                "sha1_remote, sha256_remote, etag, ctag, content_type, state, last_verdict, first_seen_run, "
-                "last_seen_run, extra_json) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "?, ?, ?, ?, ?, ?, ?, ?)",
+            return [
                 (
-                    item.source_id,
-                    item.stable_id,
-                    item.parent_id,
-                    name,
-                    rel_path,
-                    int(item.is_dir),
-                    item.size,
-                    item.mtime_ns,
-                    item.ctime_ns,
-                    item.created_ns,
-                    item.ino,
-                    item.mode,
-                    item.gen_count,
-                    int(item.dataless),
-                    item.remote_hashes.quickxor,
-                    item.remote_hashes.sha1,
-                    item.remote_hashes.sha256,
-                    item.etag,
-                    item.ctag,
-                    item.content_type,
-                    state.value,
-                    verdict.value,
-                    run_id,
-                    run_id,
-                    extra_json,
-                ),
-            )
-            return
+                    _INSERT_ITEM_SQL,
+                    (
+                        item.source_id,
+                        item.stable_id,
+                        item.parent_id,
+                        name,
+                        rel_path,
+                        int(item.is_dir),
+                        item.size,
+                        item.mtime_ns,
+                        item.ctime_ns,
+                        item.created_ns,
+                        item.ino,
+                        item.mode,
+                        item.gen_count,
+                        int(item.dataless),
+                        item.remote_hashes.quickxor,
+                        item.remote_hashes.sha1,
+                        item.remote_hashes.sha256,
+                        item.etag,
+                        item.ctag,
+                        item.content_type,
+                        state.value,
+                        verdict.value,
+                        run_id,
+                        run_id,
+                        extra_json,
+                    ),
+                )
+            ]
         reason_sql = "state_reason" if existing.state is state else "NULL"
         if item.deleted:
-            self._db.execute(
-                f"UPDATE items SET state = ?, state_reason = {reason_sql}, last_verdict = ?, "
-                "last_seen_run = ? WHERE source_id = ? AND stable_id = ?",
-                (state.value, verdict.value, run_id, item.source_id, item.stable_id),
-            )
-            return
+            # A provider tombstone carries no trustworthy path or stat, but it does carry WHY the item left
+            # the scope (extra "removed" / "removed_reason": deleted, moved:<folder>, moved-out-of-scope,
+            # excluded).  Keep that on the row: the cycle's removal step tells a move (tombstone "moved", no
+            # purge) from a real upstream deletion (review correctness-removal-reason-dropped).
+            why = {k: item.extra[k] for k in _REMOVAL_KEYS if k in item.extra}
+            if why:
+                merged = _json_dumps({**dict(existing.extra), **why})
+                return [
+                    (
+                        f"UPDATE items SET state = ?, state_reason = {reason_sql}, last_verdict = ?, "
+                        "last_seen_run = ?, extra_json = ? WHERE source_id = ? AND stable_id = ?",
+                        (state.value, verdict.value, run_id, merged, item.source_id, item.stable_id),
+                    )
+                ]
+            return [
+                (
+                    f"UPDATE items SET state = ?, state_reason = {reason_sql}, last_verdict = ?, "
+                    "last_seen_run = ? WHERE source_id = ? AND stable_id = ?",
+                    (state.value, verdict.value, run_id, item.source_id, item.stable_id),
+                )
+            ]
+        plan: list[tuple[str, tuple[object, ...]]] = []
         prev_path = existing.rel_path if rel_path != existing.rel_path else existing.prev_path
         keep_h0 = verdict is Verdict.DATALESS
         h0: tuple[int | None, ...] = (
@@ -1170,40 +1500,77 @@ class Manifest:
         )
         created_ns = existing.created_ns if keep_h0 and item.created_ns is None else item.created_ns
         if existing.state is RowState.TOMBSTONE and state is not RowState.TOMBSTONE:
-            self._db.execute(
-                "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
-                "canonical_parts = NULL WHERE source_id = ? AND stable_id = ?",
-                (item.source_id, item.stable_id),
-            )
-        self._db.execute(
-            "UPDATE items SET parent_id = ?, name = ?, rel_path = ?, prev_path = ?, is_dir = ?, size = ?, "
-            "mtime_ns = ?, ctime_ns = ?, ino = ?, mode = ?, gen_count = ?, created_ns = ?, dataless = ?, "
-            "quickxor = ?, sha1_remote = ?, sha256_remote = ?, etag = ?, ctag = ?, content_type = ?, "
-            f"state = ?, state_reason = {reason_sql}, last_verdict = ?, last_seen_run = ?, extra_json = ? "
-            "WHERE source_id = ? AND stable_id = ?",
+            plan.append((_RESET_HASHES_SQL, (item.source_id, item.stable_id)))
+        plan.append(
             (
-                item.parent_id,
-                name,
-                rel_path,
-                prev_path,
-                int(item.is_dir),
-                *h0,
-                created_ns,
-                int(item.dataless),
-                item.remote_hashes.quickxor,
-                item.remote_hashes.sha1,
-                item.remote_hashes.sha256,
-                item.etag,
-                item.ctag,
-                item.content_type,
-                state.value,
-                verdict.value,
-                run_id,
-                extra_json,
-                item.source_id,
-                item.stable_id,
-            ),
+                _UPDATE_ITEM_SQL.format(reason=reason_sql),
+                (
+                    item.parent_id,
+                    name,
+                    rel_path,
+                    prev_path,
+                    int(item.is_dir),
+                    *h0,
+                    created_ns,
+                    int(item.dataless),
+                    item.remote_hashes.quickxor,
+                    item.remote_hashes.sha1,
+                    item.remote_hashes.sha256,
+                    item.etag,
+                    item.ctag,
+                    item.content_type,
+                    state.value,
+                    verdict.value,
+                    run_id,
+                    extra_json,
+                    item.source_id,
+                    item.stable_id,
+                ),
+            )
         )
+        return plan
+
+    def touch_observed(
+        self,
+        source_id: str,
+        stable_ids: Iterable[str],
+        *,
+        run_id: int,
+        verdict_changed: Iterable[str] | None = None,
+    ) -> int:
+        """H0 fast path: stamp rows seen unchanged this pass (last_seen_run, last_verdict=unchanged).
+
+        For observations the classifier proved identical to their row (``ClassifyContext.h0_unchanged``):
+        ``upsert_observed`` would rewrite every column with the value it already holds, so only the two
+        per-pass columns change.  One statement for the whole pass; returns the number of rows stamped.
+        ``verdict_changed`` (optional) names the subset whose stored last_verdict is not already UNCHANGED:
+        only those get the verdict written (last_verdict is indexed, so skipping it for the rest saves index
+        writes); None writes it for every row.
+        """
+        ids = sorted(set(stable_ids))
+        if not ids:
+            return 0
+        if verdict_changed is None:
+            cur = self._db.execute(
+                "UPDATE items SET last_seen_run = ?, last_verdict = ? WHERE source_id = ? "
+                "AND stable_id IN (SELECT value FROM json_each(?))",
+                (run_id, Verdict.UNCHANGED.value, source_id, _json_dumps(ids)),
+            )
+            return int(cur.rowcount)
+        with self._atomic():
+            cur = self._db.execute(
+                "UPDATE items SET last_seen_run = ? WHERE source_id = ? "
+                "AND stable_id IN (SELECT value FROM json_each(?))",
+                (run_id, source_id, _json_dumps(ids)),
+            )
+            restamp = sorted(set(verdict_changed) & set(ids))
+            if restamp:
+                self._db.execute(
+                    "UPDATE items SET last_verdict = ? WHERE source_id = ? "
+                    "AND stable_id IN (SELECT value FROM json_each(?))",
+                    (Verdict.UNCHANGED.value, source_id, _json_dumps(restamp)),
+                )
+        return int(cur.rowcount)
 
     def _update_item(self, sql: str, params: Sequence[object], source_id: str, stable_id: str) -> None:
         cur = self._db.execute(sql, (*params, source_id, stable_id))
@@ -1295,6 +1662,11 @@ class Manifest:
             old = self.get_item(source_id, old_id)
             if old is None:
                 raise KeyError(f"no item {source_id}/{old_id} to rekey")
+            self._record_alias(source_id, old_id, new_id)
+            self._db.execute(
+                "UPDATE OR IGNORE redacted_items SET stable_id = ? WHERE source_id = ? AND stable_id = ?",
+                (new_id, source_id, old_id),
+            )
             new = self.get_item(source_id, new_id)
             if new is None:
                 self._db.execute(
@@ -1347,6 +1719,222 @@ class Manifest:
                 "UPDATE items SET parent_id = ? WHERE source_id = ? AND parent_id = ?",
                 (new_id, source_id, old_id),
             )
+
+    def _record_alias(self, source_id: str, old_id: str, new_id: str) -> None:
+        """Retire ``old_id`` into ``item_aliases`` (the chain follows the item; the first id stays origin)."""
+        origin = self._db.execute(
+            "SELECT 1 FROM item_aliases WHERE source_id = ? AND stable_id = ? AND origin = 1",
+            (source_id, old_id),
+        ).fetchone()
+        self._db.execute(
+            "UPDATE item_aliases SET stable_id = ? WHERE source_id = ? AND stable_id = ?",
+            (new_id, source_id, old_id),
+        )
+        self._db.execute(
+            "INSERT OR REPLACE INTO item_aliases (source_id, alias_id, stable_id, origin) "
+            "VALUES (?, ?, ?, ?)",
+            (source_id, old_id, new_id, 0 if origin is not None else 1),
+        )
+
+    def durable_id(self, source_id: str, stable_id: str) -> str:
+        """The item's durable key: its first stable id (kept across safe-save rekeys), else ``stable_id``.
+
+        Pages (frontmatter ``stable_id``) and shards name items by this key, so a rekey moves no committed
+        byte; ``aliases_of`` / ``resolve_alias`` map between it and the current id."""
+        r = self._db.execute(
+            "SELECT alias_id FROM item_aliases WHERE source_id = ? AND stable_id = ? AND origin = 1",
+            (source_id, stable_id),
+        ).fetchone()
+        return str(r[0]) if r is not None else stable_id
+
+    def aliases_of(self, source_id: str, stable_id: str) -> list[str]:
+        """Every retired id of the item whose current id is ``stable_id`` (sorted; empty = never rekeyed)."""
+        return sorted(
+            str(r[0])
+            for r in self._db.execute(
+                "SELECT alias_id FROM item_aliases WHERE source_id = ? AND stable_id = ?",
+                (source_id, stable_id),
+            ).fetchall()
+        )
+
+    def resolve_alias(self, source_id: str, any_id: str) -> str | None:
+        """The current id of the item that once carried ``any_id`` (None when it is no retired id)."""
+        r = self._db.execute(
+            "SELECT stable_id FROM item_aliases WHERE source_id = ? AND alias_id = ?", (source_id, any_id)
+        ).fetchone()
+        return str(r[0]) if r is not None else None
+
+    def mark_for_rescreen(self, suffixes: Sequence[str]) -> int:
+        """Queue every published or policy-refused file named with one of ``suffixes`` for a re-screen.
+
+        A ``[policy]`` change must re-decide label-capable files already in the mirror: their content
+        hashes are forgotten (phase 2 then says CHANGED, so the converter runs again under the new policy
+        and the label screen decides) and their verdict becomes MAYBE_CHANGED.  Returns the row count."""
+        like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
+        cur = self._db.execute(
+            "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
+            "canonical_parts = NULL, last_verdict = ? WHERE is_dir = 0 "
+            "AND (state IN ('live', 'dataless') OR (state = 'refused' AND state_reason LIKE 'refused: %')) "
+            f"AND ({like})",
+            (Verdict.MAYBE_CHANGED.value, *(f"%{s.lower()}" for s in suffixes)),
+        )
+        return int(cur.rowcount)
+
+    def pending_named(self, suffixes: Sequence[str]) -> int:
+        """How many rows named with one of ``suffixes`` are pending work (the re-screen backlog)."""
+        like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
+        pending = [v.value for v in _PENDING_VERDICTS]
+        r = self._db.execute(
+            f"SELECT COUNT(*) FROM items WHERE is_dir = 0 AND state != 'tombstone' AND ({like}) "
+            f"AND last_verdict IN ({', '.join('?' for _ in pending)})",
+            (*(f"%{s.lower()}" for s in suffixes), *pending),
+        ).fetchone()
+        return int(r[0])
+
+    def set_redacted(self, source_id: str, stable_id: str) -> None:
+        """Record that the item's name/path carries a credential: pages, shards and QUARANTINE.tsv show a
+        redacted, hashed form of its path from now on (``redacted_path``)."""
+        self._db.execute(
+            "INSERT OR IGNORE INTO redacted_items (source_id, stable_id) VALUES (?, ?)",
+            (source_id, stable_id),
+        )
+
+    def is_redacted(self, source_id: str, stable_id: str) -> bool:
+        """True when the item's path must never be written in clear (see ``set_redacted``)."""
+        r = self._db.execute(
+            "SELECT 1 FROM redacted_items WHERE source_id = ? AND stable_id = ?", (source_id, stable_id)
+        ).fetchone()
+        return r is not None
+
+    def redacted_ids(self, source_id: str) -> set[str]:
+        """Stable ids of one source whose paths are redacted."""
+        return {
+            str(r[0])
+            for r in self._db.execute(
+                "SELECT stable_id FROM redacted_items WHERE source_id = ?", (source_id,)
+            ).fetchall()
+        }
+
+    def record_run_changes(
+        self, run_id: int, changes: Sequence[MirrorChange], *, replace: bool = False
+    ) -> None:
+        """Append (or with ``replace``, rewrite) the mirror changes of ``run_id``, durably and in the
+        caller's transaction: a crash before the commit leaves them for the next cycle to describe (its
+        subject, body and CHANGELOG), instead of a bare ``sync: 0a 0m 0r 0d`` (design 4.7)."""
+        with self._atomic():
+            if replace:
+                self._db.execute("DELETE FROM run_changes WHERE run_id = ?", (run_id,))
+            r = self._db.execute(
+                "SELECT COALESCE(MAX(seq), -1) FROM run_changes WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            start = int(r[0]) + 1
+            self._db.executemany(
+                "INSERT INTO run_changes (run_id, seq, op, path, source_id, stable_id, prev_path) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (run_id, start + n, c.op.value, c.path, c.source_id, c.stable_id, c.prev_path)
+                    for n, c in enumerate(changes)
+                ],
+            )
+
+    def run_changes(self, run_id: int) -> list[MirrorChange]:
+        """The mirror changes recorded for ``run_id``, in production order."""
+        return [
+            MirrorChange(ChangeOp(r[0]), str(r[1]), str(r[2]), str(r[3]), r[4])
+            for r in self._db.execute(
+                "SELECT op, path, source_id, stable_id, prev_path FROM run_changes WHERE run_id = ? "
+                "ORDER BY seq",
+                (run_id,),
+            ).fetchall()
+        ]
+
+    def clear_run_changes(self, up_to_run: int) -> None:
+        """Forget the recorded changes of ``up_to_run`` and every earlier run (their commit landed)."""
+        self._db.execute("DELETE FROM run_changes WHERE run_id <= ?", (up_to_run,))
+
+    def mark_absent(self, source_id: str, stable_ids: Iterable[str], run_id: int) -> None:
+        """Record the first complete pass that did not list these rows (``extra.absent_since_run``).
+
+        The next observation of a row rewrites ``extra_json`` and so clears the mark; a row still absent in
+        a later complete pass is a real deletion candidate (local/inbox two-pass rule, see the cycle)."""
+        ids = sorted(set(stable_ids))
+        for start in range(0, len(ids), _ID_CHUNK):
+            chunk = ids[start : start + _ID_CHUNK]
+            self._db.execute(
+                "UPDATE items SET extra_json = json_set(extra_json, '$.absent_since_run', ?) "
+                f"WHERE source_id = ? AND stable_id IN ({', '.join('?' for _ in chunk)}) "
+                "AND json_extract(extra_json, '$.absent_since_run') IS NULL",
+                (run_id, source_id, *chunk),
+            )
+
+    def present_counts(self) -> dict[str, int]:
+        """source_id -> number of non-directory rows that exist upstream (every source the manifest knows)."""
+        states = [st.value for st in _PRESENT_STATES]
+        return {
+            str(r[0]): int(r[1])
+            for r in self._db.execute(
+                "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+                f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
+                states,
+            ).fetchall()
+        }
+
+    def clear_absent_marks(self, source_id: str, run_id: int) -> int:
+        """Drop ``extra.absent_since_run`` from rows observed in ``run_id`` (the H0 fast path does not
+        rewrite ``extra_json``, so a file that came back unchanged would otherwise keep its old mark)."""
+        probe = self._db.execute(
+            "SELECT 1 FROM items WHERE source_id = ? AND extra_json LIKE '%absent_since_run%' LIMIT 1",
+            (source_id,),
+        ).fetchone()
+        if probe is None:
+            return 0
+        cur = self._db.execute(
+            "UPDATE items SET extra_json = json_remove(extra_json, '$.absent_since_run') "
+            "WHERE source_id = ? AND last_seen_run = ? "
+            "AND json_extract(extra_json, '$.absent_since_run') IS NOT NULL",
+            (source_id, run_id),
+        )
+        return int(cur.rowcount)
+
+    def descendants(self, source_id: str, dir_id: str) -> list[ItemRow]:
+        """Every row below the directory ``dir_id`` (by parent_id, breadth-first; tombstones included)."""
+        out: list[ItemRow] = []
+        queue = [dir_id]
+        seen = {dir_id}
+        while queue:
+            parent = queue.pop(0)
+            rows = self._db.execute(
+                f"SELECT {_ITEM_COLUMNS} FROM items WHERE source_id = ? AND parent_id = ? ORDER BY stable_id",
+                (source_id, parent),
+            ).fetchall()
+            for r in rows:
+                row = _item_from_row(r)
+                if row.stable_id in seen:
+                    continue
+                seen.add(row.stable_id)
+                out.append(row)
+                if row.is_dir:
+                    queue.append(row.stable_id)
+        return out
+
+    def forget_item(self, source_id: str, stable_id: str) -> None:
+        """Delete every manifest trace of one item (row, outputs, tombstones, aliases); pages are the
+        caller's."""
+        with self._atomic():
+            self._db.execute(
+                "DELETE FROM redacted_items WHERE source_id = ? AND stable_id = ?", (source_id, stable_id)
+            )
+            for table in ("outputs", "tombstones"):
+                self._db.execute(
+                    f"DELETE FROM {table} WHERE source_id = ? AND stable_id = ?", (source_id, stable_id)
+                )
+            self._db.execute(
+                "DELETE FROM item_aliases WHERE source_id = ? AND stable_id = ?", (source_id, stable_id)
+            )
+            self._db.execute(
+                "DELETE FROM items WHERE source_id = ? AND stable_id = ?", (source_id, stable_id)
+            )
+            self._fold_paths = None
 
     def rederive_paths(self, source_id: str, root_id: str | None) -> list[tuple[str, str, str]]:
         """Recompute rel_path from the id->(parent, name) tree; return (stable_id, old, new) that changed.
@@ -1456,12 +2044,21 @@ class Manifest:
         ).fetchone()
         if exact is not None:
             return _output_from_row(exact)
-        r = self._db.execute(
-            f"SELECT {_OUTPUT_COLUMNS} FROM outputs WHERE {_FOLD_SQL_FUNCTION}(output_path) = ? "
-            "ORDER BY output_path LIMIT 1",
-            (_fold(output_path),),
-        ).fetchone()
-        return None if r is None else _output_from_row(r)
+        for path in sorted(self._fold_index().get(_fold(output_path) or "", ())):
+            r = self._db.execute(
+                f"SELECT {_OUTPUT_COLUMNS} FROM outputs WHERE output_path = ?", (path,)
+            ).fetchone()
+            if r is not None:
+                return _output_from_row(r)
+        return None
+
+    def _fold_index(self) -> dict[str, set[str]]:
+        if self._fold_paths is None:
+            index: dict[str, set[str]] = {}
+            for (path,) in self._db.execute("SELECT output_path FROM outputs").fetchall():
+                index.setdefault(_fold(str(path)) or "", set()).add(str(path))
+            self._fold_paths = index
+        return self._fold_paths
 
     def replace_outputs(self, source_id: str, stable_id: str, rows: Sequence[OutputRow]) -> list[OutputRow]:
         """Replace an item's output rows; return the previous rows whose unit_id is no longer present."""
@@ -1495,6 +2092,13 @@ class Manifest:
                         row.built_run,
                     ),
                 )
+        if self._fold_paths is not None:
+            for p in previous:
+                paths = self._fold_paths.get(_fold(p.output_path) or "")
+                if paths is not None:
+                    paths.discard(p.output_path)
+            for row in rows:
+                self._fold_paths.setdefault(_fold(row.output_path) or "", set()).add(row.output_path)
         return [p for p in previous if p.unit_id not in units]
 
     def live_action_keys(self) -> set[str]:
@@ -1703,33 +2307,48 @@ class Manifest:
         refused/tombstone, sorted by stable_id; the publisher joins them with LF plus a trailing LF.
         """
         states = [s.value for s in _EXPORT_STATES]
-        items = self._db.execute(
-            "SELECT stable_id, rel_path, state, state_reason FROM items WHERE source_id = ? AND is_dir = 0 "
-            f"AND state IN ({', '.join('?' for _ in states)}) ORDER BY stable_id",
+        # Each line is a fixed template of JSON-quoted fields: byte-for-byte ``json.dumps(obj, sort_keys=True,
+        # ensure_ascii=False, separators=(",", ":"))`` (keys already in sorted order) without a dict per row.
+        # SQLite's json_quote does the quoting (it escapes exactly as the stdlib encoder does, NULL -> null);
+        # tests/test_manifest.py checks the equality against json.dumps, control characters included.
+        # 'dataless' is this Mac's File Provider cache state (the OS evicts files under storage pressure), not
+        # a fact about the source: exported as 'live' so an eviction commits nothing.
+        cur = self._db.cursor()
+        cur.row_factory = None
+        # The exported stable_id is the durable key (the item's first id, kept across safe-save rekeys), so
+        # a same-content safe-save or a volume-UUID change exports the same line (contract 5.1: no volatile
+        # field); the page frontmatter names the same key.
+        items = cur.execute(
+            "SELECT i.stable_id, '],\"rel_path\":' || json_quote(i.rel_path) || ',\"source_id\":' "
+            "|| json_quote(i.source_id) || ',\"stable_id\":' "
+            "|| json_quote(COALESCE(a.alias_id, i.stable_id)) "
+            "|| ',\"state\":' "
+            "|| json_quote(CASE i.state WHEN 'dataless' THEN 'live' ELSE i.state END) "
+            "|| ',\"state_reason\":' || json_quote(i.state_reason) || '}' "
+            "FROM items i LEFT JOIN item_aliases a "
+            "ON a.source_id = i.source_id AND a.stable_id = i.stable_id "
+            "AND a.origin = 1 WHERE i.source_id = ? AND i.is_dir = 0 "
+            f"AND i.state IN ({', '.join('?' for _ in states)}) "
+            "ORDER BY COALESCE(a.alias_id, i.stable_id), i.stable_id",
             (source_id, *states),
         ).fetchall()
-        outs: dict[str, list[dict[str, str | None]]] = {}
-        for r in self._db.execute(
-            "SELECT stable_id, output_path, rendered_sha256, unit_id FROM outputs WHERE source_id = ? "
-            "ORDER BY stable_id, unit_id",
+        outs: dict[str, list[str]] = {}
+        for sid, obj in cur.execute(
+            "SELECT stable_id, '{\"path\":' || json_quote(output_path) || ',\"rendered_sha256\":' "
+            "|| json_quote(rendered_sha256) || ',\"unit_id\":' || json_quote(unit_id) || '}' "
+            "FROM outputs WHERE source_id = ? ORDER BY stable_id, unit_id",
             (source_id,),
         ).fetchall():
-            outs.setdefault(str(r[0]), []).append({"path": r[1], "rendered_sha256": r[2], "unit_id": r[3]})
-        lines: list[str] = []
-        for r in items:
-            sid = str(r[0])
-            # 'dataless' is this Mac's File Provider cache state (the OS evicts files under storage
-            # pressure), not a fact about the source: exported as 'live' so an eviction commits nothing.
-            state = RowState.LIVE.value if r[2] == RowState.DATALESS.value else r[2]
-            obj = {
-                "outputs": outs.get(sid, []),
-                "rel_path": r[1],
-                "source_id": source_id,
-                "stable_id": sid,
-                "state": state,
-                "state_reason": r[3],
-            }
-            lines.append(_json_dumps(obj))
+            outs.setdefault(sid, []).append(obj)
+        head = '{"outputs":['
+        lines = [head + ",".join(outs.get(sid, ())) + tail for sid, tail in items]
+        redacted = self.redacted_ids(source_id)
+        if redacted:
+            for n, (sid, _tail) in enumerate(items):
+                if sid in redacted:
+                    obj = json.loads(lines[n])
+                    obj["rel_path"] = redacted_path(str(obj["rel_path"]))
+                    lines[n] = json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return lines
 
     def tree_sha(self) -> str | None:

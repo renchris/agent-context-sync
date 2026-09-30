@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+import gc
 import hashlib
 import logging
 import os
@@ -33,20 +34,21 @@ import shutil
 import socket
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from agentsync import __version__, curate, gitops, lints, materialise
-from agentsync.arm_local import InboxArm, LocalArm
+from agentsync import __version__, curate, gitops, governance, lints, materialise, net
+from agentsync import policy as content_policy
+from agentsync.arm_local import InboxArm, LocalArm, fold_conflict_suffix
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
-from agentsync.config import BreakerConfig, Config, SourceConfig
+from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
 from agentsync.convert import convert_file
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.canonical import canonical_hash
-from agentsync.convert.registry import Registry
+from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
 from agentsync.errors import (
     AgentSyncError,
     AuthRequiredError,
@@ -60,11 +62,13 @@ from agentsync.frontmatter import FrontmatterError, parse_frontmatter
 from agentsync.graph.auth import MsalAuth, settings_from_config
 from agentsync.graph.client import GraphClient, user_agent
 from agentsync.graph.drive import DriveArm
+from agentsync.graph.errors import AuthBlockedError
 from agentsync.graph.mail import MailArm
 from agentsync.graph.teams import TeamsArm
-from agentsync.manifest import ItemRow, Manifest, OutputRow, cursor_fingerprint
+from agentsync.manifest import ItemRow, Manifest, OutputRow, cursor_fingerprint, redacted_path
 from agentsync.model import (
     ByteBudget,
+    ChangeOp,
     ConversionResult,
     ConversionStatus,
     CycleMode,
@@ -84,8 +88,9 @@ from agentsync.model import (
     SourceState,
     Verdict,
 )
+from agentsync.ops.launchd import rotate_logs
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat, write_heartbeat
-from agentsync.publish import Publisher, SourceStatus, render_tombstone
+from agentsync.publish import Publisher, SourceStatus, render_tombstone, sidecar_rel
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +98,13 @@ _RUN_TRAILER = re.compile(r"^Agentsync-Run:\s*(\d+)\s*$", re.MULTILINE)
 _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED would be pending work again
 _PRESENT = (RowState.LIVE, RowState.DATALESS, RowState.QUARANTINED, RowState.REFUSED)
 _NEVER_TRIPS = BreakerConfig(fraction=1.0, floor=10**12, hold_days=0)
+_WORK_BATCH = 256  # work-queue rows per manifest transaction (one commit + fsync per batch)
+_LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml")
+"""Names whose content can carry a sensitivity label: re-screened when the effective [policy] changes."""
+_POLICY_META = "policy_fingerprint"
+_SCOPE_CHANGE_META = "scope_change:"
+_SCOPE_CHANGE_REASON = "retired:scope-change"
+_RESCREEN_META = "policy_rescreen_pending"
 
 
 class RecoveryAction(enum.StrEnum):
@@ -192,13 +204,34 @@ def _pages_intact(repo: Path, outputs: Sequence[OutputRow]) -> bool:
         path = repo / out.output_path
         if path.is_symlink() or not path.is_file():
             return False
-        if out.page_sha256 is not None and _sha256_file(path) != out.page_sha256:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return False
+        if out.page_sha256 is not None and hashlib.sha256(data).hexdigest() != out.page_sha256:
+            return False
+        if _SIDECAR_MARK in data and not _sidecars_intact(repo, out.output_path, data):
             return False
     return True
 
 
-def _page_provenance_matches(repo: Path, item: ItemRow, outputs: Sequence[OutputRow], graph: bool) -> bool:
-    """True when every live page's frontmatter still names the item's current path (and eTag for Graph)."""
+_SIDECAR_MARK = f"\n{SIDECAR_DIGEST_PREFIX}`".encode()
+
+
+def _sidecars_intact(repo: Path, page_path: str, data: bytes) -> bool:
+    """True when every sidecar the page body lists exists and hashes to the listed sha256."""
+    for name, digest in sidecar_digest_lines(data.decode("utf-8", errors="replace")):
+        side = repo / sidecar_rel(page_path, name)
+        if side.is_symlink() or not side.is_file() or _sha256_file(side) != digest:
+            return False
+    return True
+
+
+def _page_provenance_matches(
+    repo: Path, item: ItemRow, outputs: Sequence[OutputRow], graph: bool, durable_id: str | None = None
+) -> bool:
+    """True when every live page's frontmatter still names the item's current path (and eTag for Graph) and,
+    when ``durable_id`` is given, the item's durable key (``Manifest.durable_id``) as its ``stable_id``."""
     for out in outputs:
         if out.status is OutputStatus.TOMBSTONE:
             continue
@@ -206,11 +239,31 @@ def _page_provenance_matches(repo: Path, item: ItemRow, outputs: Sequence[Output
             data, _ = parse_frontmatter((repo / out.output_path).read_text(encoding="utf-8"))
         except (OSError, FrontmatterError, UnicodeDecodeError):
             return False
-        if data.get("source_path") != item.rel_path:
+        if data.get("source_path") not in (item.rel_path, redacted_path(item.rel_path)):
+            return False
+        if durable_id is not None and data.get("stable_id") != durable_id:
             return False
         if graph and item.etag is not None and data.get("source_etag") not in (None, item.etag):
             return False
     return True
+
+
+@contextlib.contextmanager
+def _gc_paused() -> Iterator[None]:
+    """Pause the cyclic garbage collector for one allocation-heavy, cycle-free phase.
+
+    A pass allocates several objects per file (the walk's items, the observation index, verdicts) and keeps
+    them alive until the pass ends, so the generational collector's full collections re-traverse an ever
+    larger live set: measured at 20k files, about 0.3 s of a no-op pass went to collections.  Nothing in the
+    phase creates reference cycles that must be reclaimed before it ends; the previous state is restored.
+    """
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 def _clear_staging(staging: Path) -> None:
@@ -271,20 +324,54 @@ def build_arms(
     return arms
 
 
-def _make_client(config: Config, sources: Sequence[SourceConfig]) -> tuple[GraphClient | None, str | None]:
-    """A Graph client when a selected live Graph source exists and ``[graph] client_id`` is set."""
+NETWORK_POLICY_FAILED = "failed: "
+"""Prefix of a client problem that FAILS the Graph sources (network policy), rather than skipping them."""
+
+
+def _proxy_setting(config: Config) -> str | None:
+    network = getattr(config, "network", None)
+    value = getattr(network, "proxy", None) if network is not None else None
+    return value if isinstance(value, str) else None
+
+
+def _make_client(
+    config: Config,
+    sources: Sequence[SourceConfig],
+    *,
+    probe: Callable[[str, net.ProxySettings], net.Reachability] | None = None,
+) -> tuple[GraphClient | None, str | None, MsalAuth | None]:
+    """A Graph client when a selected live Graph source exists and ``[graph] client_id`` is set.
+
+    The reachability gate (C15 section 9 item 34) runs first: one HTTPS HEAD to the Graph host through the
+    resolved proxy with truststore TLS.  Offline -> the Graph sources are *skipped*; a certificate, proxy or
+    PAC failure -> ``failed: network-policy (...)`` (the problem starts with :data:`NETWORK_POLICY_FAILED`),
+    never skipped, because waiting does not fix it.
+    """
     if not any(s.kind.is_graph and s.is_live for s in sources):
-        return None, None
+        return None, None, None
     if not config.graph.client_id:
-        return None, "Graph source configured but [graph] client_id is unset (IT app registration pending)"
+        return (
+            None,
+            "Graph source configured but [graph] client_id is unset (IT app registration pending)",
+            None,
+        )
     try:
         auth = MsalAuth(settings_from_config(config))
     except AgentSyncError as exc:
-        return None, f"Graph auth unavailable: {exc}"
+        return None, f"Graph auth unavailable: {exc}", None
+    proxy = net.resolve_proxy(_proxy_setting(config))
+    reach = (probe or net.probe_reachability)(config.graph.base_url, proxy)
+    if reach.failed:
+        return None, f"{NETWORK_POLICY_FAILED}{reach.state} ({_one_line(reach.detail, 200)})", auth
+    if reach.skipped:
+        return None, f"offline: {_one_line(reach.detail, 200)}", auth
     client = GraphClient(
-        auth, base_url=config.graph.base_url, user_agent=user_agent(config.graph.company, __version__)
+        auth,
+        base_url=config.graph.base_url,
+        user_agent=user_agent(config.graph.company, __version__),
+        proxy=proxy,
     )
-    return client, None
+    return client, None, auth
 
 
 def _republish_from_cache(
@@ -340,15 +427,22 @@ def _repair_outputs(config: Config, manifest: Manifest, run_id: int) -> list[Mir
                     t = manifest.get_tombstone(out.output_path)
                     path = repo / out.output_path
                     if t is not None and (not path.is_file() or _sha256_file(path) != out.page_sha256):
+                        hidden = manifest.is_redacted(src.id, stable_id)
                         text = render_tombstone(
-                            t, title=item.name, source_kind=src.kind.value, source_path=item.rel_path
+                            t,
+                            title=redacted_path(item.rel_path) if hidden else item.name,
+                            source_kind=src.kind.value,
+                            source_path=redacted_path(item.rel_path) if hidden else item.rel_path,
+                            durable_id=manifest.durable_id(src.id, stable_id),
                         )
                         _write_atomic(path, text)
             live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
             if not live:
                 continue
             if _pages_intact(repo, outs):
-                if not _page_provenance_matches(repo, item, outs, graph):
+                if not _page_provenance_matches(
+                    repo, item, outs, graph, manifest.durable_id(src.id, stable_id)
+                ):
                     try:
                         changes += publisher.rewrite_frontmatter(item, run_id)
                     except PublishError as exc:
@@ -404,7 +498,8 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
     now_iso = _iso(datetime.now(UTC))
     action = RecoveryAction.NONE
     repair = crashed is not None
-    head_run = _head_run_id(repo) if head_tree is not None else None
+    # The HEAD trailer only matters when there is a pending cursor or a crashed run to attribute it to.
+    head_run = _head_run_id(repo) if head_tree is not None and (pending_runs or crashed) else None
     if head_run is not None and head_run in pending_runs:
         # The commit of the run that staged these cursors landed (crash after commit, before promotion).
         promoted = manifest.promote_cursors(head_run, now_iso)
@@ -501,6 +596,7 @@ class _Cycle:
         budget_bytes: int | None,
         forced_paths: dict[str, set[str]],
         accept_deletions: frozenset[str],
+        auth: MsalAuth | None = None,
     ) -> None:
         self.config = config
         self.manifest = manifest
@@ -516,16 +612,26 @@ class _Cycle:
         self.accept_deletions = accept_deletions
         self.repo = config.docs_repo
         self.dry = mode is CycleMode.DRY_RUN
-        self.registry = Registry.default(config.convert)
-        self.cache = ConverterCache(config.cache_dir)
+        self.auth = auth
+        # [policy] (sources.toml + policy.toml): a broken policy raises ConfigError (exit 78), never "allow"
         self.publisher = Publisher(config, manifest, clock=clock)
+        self.registry = Registry.default(config.convert, policy=self.publisher.content_policy)
+        self.cache = ConverterCache(config.cache_dir)
+        self.gov = governance.load_governance(config.config_path)
+        self.suppressions = governance.load_suppressions(config.state_paths.root)
         self.staging = config.state_paths.staging
         self.run_id = 0
         self.changes: list[MirrorChange] = []
-        self.ok_pages: set[str] = set()  # mirror pages written this cycle with real content (secret scan)
+        self._recorded = 0  # how many of self.changes are durable in run_changes
+        self.ok_pages: set[str] = (
+            set()
+        )  # mirror pages + sidecars written this cycle with content (secret scan)
+        self.stub_pages: set[str] = set()  # stub pages written this cycle (metadata only: name, path)
+        self.sidecar_page: dict[str, str] = {}  # sidecar path -> its page (a hit there stubs the page)
         self.findings: list[LintFinding] = []
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
+        self.retention_lines: list[str] = []  # STATE.md "## Retention" (compaction ran / held / failed)
 
     # ---- time ---------------------------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -542,23 +648,33 @@ class _Cycle:
         if self.dry:
             return self._run_dry()
         gitops.ensure_repo(self.repo)
+        last = self.manifest.last_runs(1)
+        crashed = last[0][0] if last and last[0][2] == "running" else None
         recovery = recover(self.config, self.manifest)
         if recovery is not RecoveryAction.NONE:
             log.warning("recovery: %s", recovery.value)
+        self._refuse_vanished_sources()
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
+        if crashed is not None:
+            self._carry_crashed_changes(crashed)
         commit_sha: str | None = None
         status = "ok"
         blocked = False
         try:
             fp_changed = set(self.manifest.sync_sources(self.config.sources))
+            for sid in sorted(fp_changed):  # until one complete pass: absence = the operator's scope change
+                self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
+            self._check_policy_change()
             self.publisher.ensure_scaffold()
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
             for src in self.selected:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
+                self._flush_changes()
             self.lock.beat("secrets")
             self._quarantine_secrets()
+            self._flush_changes(rewrite=True)
             self.lock.beat("curate")
             self._curate()
             self.lock.beat("surface")
@@ -570,10 +686,16 @@ class _Cycle:
             if self.changes:
                 self.publisher.append_changelog(self.run_id, self.today(), self.changes, self._report(None))
             self.lock.beat("land-gate")
-            changed_paths = sorted(
-                {c.path for c in self.changes} | {c.prev_path for c in self.changes if c.prev_path}
-            )
-            self.findings += lints.run_land_gate(self.repo, changed_paths)
+            dirty = gitops.has_changes(self.repo)
+            if dirty or self.mode is CycleMode.RECONCILE:
+                changed_paths = sorted(
+                    {c.path for c in self.changes} | {c.prev_path for c in self.changes if c.prev_path}
+                )
+                self.findings += lints.run_land_gate(
+                    self.repo, changed_paths, known_secrets=self._cursor_secrets()
+                )
+            else:  # nothing would land: the gate guards a commit, and a clean tree makes none
+                log.info("clean worktree: nothing to land; land gate skipped (RECONCILE always runs it)")
             blocked = any(f.blocking for f in self.findings)
             if blocked:
                 log.error("land gate blocked the commit: %d blocking finding(s)", self._blocking_count())
@@ -581,12 +703,16 @@ class _Cycle:
                 status = "failed"
             else:
                 self.lock.beat("commit")
-                commit_sha = self._commit(statuses)
+                commit_sha = self._commit(statuses, dirty=dirty)
+                self._retag_published()
+                self.manifest.clear_run_changes(self.run_id)
                 self.manifest.promote_cursors(self.run_id, _iso(self.now()))
                 if self.mode is CycleMode.RECONCILE:
                     removed = self.cache.gc(self.manifest.live_action_keys())
                     if removed:
                         log.info("converter cache: %d dead key(s) removed", removed)
+                    self.lock.beat("retention")
+                    commit_sha = self._retention(commit_sha)
         except Exception as exc:  # a cycle-level failure: nothing is promoted, the report says why
             log.exception("cycle %d failed", self.run_id)
             self.manifest.discard_pending(self.run_id)
@@ -600,6 +726,159 @@ class _Cycle:
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
         return report
+
+    def _retention(self, commit_sha: str | None) -> str | None:
+        """Scheduled compaction (C15 section 9 item 39): in a RECONCILE, squash history older than
+        ``[governance] history_days`` once it is due; a hold suspends it (STATE.md says which)."""
+        try:
+            due = governance.compaction_due(self.repo, self.gov, now=self.now())
+        except AgentSyncError as exc:
+            self.retention_lines.append(f"- compaction check failed: {_one_line(str(exc))}")
+            return commit_sha
+        if not due:
+            return commit_sha
+        holds = governance.blocking_holds(
+            governance.active_holds(self.config.state_paths.root, self.gov), None
+        )
+        if holds:
+            self.retention_lines += [
+                f"- compaction due (history_days {self.gov.history_days}) but SUSPENDED by hold: "
+                f"{h.describe()}"
+                for h in holds
+            ]
+            return commit_sha
+        try:
+            rep = governance.compact_history(self.config, gov=self.gov, lock=False, now=self.now())
+        except AgentSyncError as exc:
+            log.error("retention compaction failed: %s", exc)
+            self.retention_lines.append(f"- compaction FAILED: {_one_line(str(exc))}")
+            return commit_sha
+        if not rep.verified:
+            self.retention_lines.append(
+                f"- compaction NOT verified: {len(rep.survivors)} object(s) survive; run "
+                "`agentsync compact-history` and check"
+            )
+        elif rep.squashed:
+            self.retention_lines.append(
+                f"- compacted {rep.squashed} commit(s) older than {rep.cutoff} (history_days "
+                f"{self.gov.history_days})"
+            )
+            log.warning("retention: %d commit(s) squashed (cutoff %s)", rep.squashed, rep.cutoff)
+        return gitops.head_sha(self.repo) if commit_sha is not None else commit_sha
+
+    def _check_policy_change(self) -> None:
+        """Re-screen label-capable files when the effective ``[policy]`` (sources.toml + policy.toml) moved.
+
+        Tightening must refuse (and queue a purge of) files already published under the old rules;
+        loosening must re-publish files refused under them.  The fingerprint lives in the manifest's meta
+        table; a manifest without one re-screens once when label rules are active."""
+        policy = self.publisher.content_policy
+        current = policy.fingerprint()
+        stored = self.manifest.get_meta(_POLICY_META)
+        if stored == current:
+            return
+        if stored is not None or policy.labels_active:
+            marked = self.manifest.mark_for_rescreen(_LABEL_CAPABLE)
+            if marked:
+                self.manifest.set_meta(_RESCREEN_META, current)
+                log.warning("[policy] changed: %d label-capable file(s) queued for a re-screen", marked)
+        self.manifest.set_meta(_POLICY_META, current)
+
+    def _rescreen_lines(self) -> list[str]:
+        """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left)."""
+        if self.manifest.get_meta(_RESCREEN_META) is None:
+            return []
+        left = self.manifest.pending_named(_LABEL_CAPABLE)
+        if left == 0:
+            self.manifest.set_meta(_RESCREEN_META, "")
+            return []
+        return [
+            "## Content policy",
+            "",
+            f"- [policy] changed: {left} label-capable file(s) not yet re-screened (fetched and screened as "
+            "the byte budget allows); until then their mirror pages reflect the previous policy",
+            "",
+        ]
+
+    def _refuse_vanished_sources(self) -> None:
+        """Retirement is an explicit verb, not an absence: a source whose [[source]] block was deleted while
+        its pages are still mirrored would keep them ``status: current`` forever.  Refuse (exit 78) and name
+        the fix, before anything is written."""
+        configured = {s.id for s in self.config.sources}
+        vanished = {
+            sid: n for sid, n in self.manifest.present_counts().items() if sid not in configured and n
+        }
+        if vanished:
+            names = ", ".join(f"{sid!r} ({n} file(s))" for sid, n in sorted(vanished.items()))
+            raise ConfigError(
+                f"source(s) {names} are mirrored but no longer in sources.toml; retirement is explicit: put "
+                'the [[source]] block back with state = "retired" (its pages become tombstones in one '
+                "labelled commit), or restore it"
+            )
+
+    def _retag_published(self) -> None:
+        """Keep ``published`` on HEAD when HEAD is an agentsync commit: a crash between commit_cycle and
+        tag_published (or a no-op cycle after it) must not leave readers and pushes on the previous tree."""
+        head = gitops.head_sha(self.repo)
+        if head is None or _head_run_id(self.repo) is None:
+            return
+        tagged = gitops.run_git(
+            self.repo,
+            "rev-parse",
+            "--verify",
+            "-q",
+            f"refs/tags/{gitops.PUBLISHED_TAG}^{{commit}}",
+            check=False,
+        ).stdout.strip()
+        if tagged != head:
+            gitops.tag_published(self.repo, head)
+            log.warning("published tag moved to HEAD %s (it lagged at %s)", head[:12], tagged[:12] or "none")
+
+    def _carry_crashed_changes(self, crashed: int) -> None:
+        """A crashed run's recorded changes whose pages are still uncommitted become part of this cycle's
+        change set, so its commit subject, body and CHANGELOG describe them (design 4.7: never commit a
+        dirty tree anonymously).  Changes of a run whose commit landed are simply forgotten."""
+        carried = self.manifest.run_changes(crashed)
+        if not carried:
+            return
+        dirty = _dirty_paths(
+            self.repo, sorted({c.path for c in carried} | {c.prev_path for c in carried if c.prev_path})
+        )
+        keep = [c for c in carried if c.path in dirty or (c.prev_path is not None and c.prev_path in dirty)]
+        if keep:
+            log.warning(
+                "recovery: %d change(s) of crashed run %d carried into run %d",
+                len(keep),
+                crashed,
+                self.run_id,
+            )
+            self.changes = [*keep, *self.changes]
+            self._flush_changes()
+        self.manifest.clear_run_changes(crashed)
+
+    def _flush_changes(self, *, rewrite: bool = False) -> None:
+        """Record the changes produced since the last flush (all of them with ``rewrite``) in the manifest."""
+        if self.dry:
+            return
+        if rewrite:
+            self.manifest.record_run_changes(self.run_id, self.changes, replace=True)
+        elif len(self.changes) > self._recorded:
+            self.manifest.record_run_changes(self.run_id, self.changes[self._recorded :])
+        self._recorded = len(self.changes)
+
+    def _cursor_secrets(self) -> list[str]:
+        """The live cursor values (and their token parameters): no committed file may contain one."""
+        out: set[str] = set()
+        for src in self.config.sources:
+            row = self.manifest.get_cursor(src.id)
+            if row is None:
+                continue
+            for value in (row.current, row.pending, row.page_link):
+                if not value or value.startswith("hwm:"):
+                    continue
+                out.add(value)
+                out.update(m.group(1) for m in re.finditer(r"token=([^&\s]{16,})", value))
+        return sorted(out)
 
     def _blocking_count(self) -> int:
         return sum(1 for f in self.findings if f.blocking)
@@ -652,12 +931,60 @@ class _Cycle:
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
             self.publisher.write_state(report, self._statuses(self.config.sources))
+            self._append_state(self._state_extras())
         except (OSError, AgentSyncError) as exc:
             log.warning("STATE.md not written: %s", exc)
 
+    def _state_extras(self) -> list[str]:
+        """STATE.md sections the publisher does not render: Graph sign-in and token source (C15 section 9
+        item 4), the network gate, legal/records holds (item 40) and queued purges (item 38)."""
+        lines: list[str] = []
+        graph_live = [s.id for s in self.selected if s.kind.is_graph and s.is_live]
+        if graph_live:
+            lines += ["## Graph sign-in", ""]
+            if self.auth is not None:
+                try:
+                    method = self.auth.status().sign_in_method or "unknown"
+                except Exception as exc:  # the cache may be unreadable; STATE.md still says so
+                    method = f"unknown ({type(exc).__name__})"
+                lines.append(f"sign_in_method: {method}")
+                lines.append(f"token_source: {self.auth.last_token_source or 'none this run'}")
+                if self.auth.last_token_source not in (None, "broker", "cache") and method == "broker":
+                    lines.append("alarm: the broker account's token did not come from the broker")
+            lines.append(f"network: {self.client_problem or 'online'}")
+            lines.append("")
+        lines += self._rescreen_lines()
+        retention = list(self.retention_lines)
+        if not retention:
+            try:
+                state, detail = governance.compaction_state(self.repo, self.gov, now=self.now())
+            except AgentSyncError:
+                state, detail = "ok", ""
+            if state != "ok":
+                retention.append(f"- {state}: {detail}")
+        if retention:
+            lines += ["## Retention", "", *retention, ""]
+        lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
+        queued = governance.pending_purges(self.config.state_paths.root)
+        if queued:
+            lines += [
+                "## Queued purges",
+                "",
+                f"- {len(queued)} purge request(s) waiting; run `agentsync purge --queue` (rewrites history)",
+                "",
+            ]
+        return lines
+
+    def _append_state(self, lines: Sequence[str]) -> None:
+        if not lines:
+            return
+        path = self.config.layout.state_md
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        _write_atomic(path, text.rstrip("\n") + "\n\n" + "\n".join(lines).rstrip("\n") + "\n")
+
     # ---- commit -------------------------------------------------------------------------------------------
-    def _commit(self, statuses: Sequence[SourceStatus]) -> str | None:
-        if not gitops.has_changes(self.repo):
+    def _commit(self, statuses: Sequence[SourceStatus], *, dirty: bool | None = None) -> str | None:
+        if not (gitops.has_changes(self.repo) if dirty is None else dirty):
             log.info("no content change: no commit")
             return None
         self.publisher.write_state_snapshot(statuses)
@@ -684,7 +1011,8 @@ class _Cycle:
                 acc.skipped_reason = src.state.value if not src.is_live else (self.client_problem or "no arm")
                 continue
             try:
-                scan, pc, _rows = self._scan_and_classify(src, arm, set())
+                with _gc_paused():
+                    scan, pc, _rows, _fast, _restamp = self._scan_and_classify(src, arm, set())
             except AuthRequiredError as exc:
                 acc.auth_required = True
                 acc.errors.append(f"auth: {exc}")
@@ -718,6 +1046,9 @@ class _Cycle:
         if arm is None:
             acc.skipped_reason = self.client_problem or "no Graph client this cycle"
             acc.alarms.append(acc.skipped_reason)
+            if acc.skipped_reason.startswith(NETWORK_POLICY_FAILED):  # TLS / proxy / PAC: failed, not skipped
+                acc.failed = True
+                acc.errors.append(acc.skipped_reason)
             self.manifest.record_source_pass(
                 self.run_id, src.id, pass_kind=None, enumeration_complete=False, cursor_reset=False,
                 counts={}, skipped_reason=acc.skipped_reason,
@@ -731,11 +1062,14 @@ class _Cycle:
                     self.manifest.set_auth_state("ok", [src.id])
         except AuthRequiredError as exc:
             log.error("source %s: sign-in required: %s", src.id, exc)
+            state = "REAUTH_REQUIRED"
+            if isinstance(exc, AuthBlockedError):  # C15 1.5: name the tenant decision, not just "sign in"
+                state = f"REAUTH_REQUIRED ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''})"
             acc.auth_required = True
-            acc.errors.append(f"auth REAUTH_REQUIRED: {_one_line(str(exc))}")
+            acc.errors.append(f"auth {state}: {_one_line(str(exc))}")
             self.manifest.stage_cursor(src.id, None, self.run_id)
-            self.manifest.set_auth_state("REAUTH_REQUIRED", [src.id])
-            self._record_error(src, acc, "REAUTH_REQUIRED")
+            self.manifest.set_auth_state("REAUTH_REQUIRED", [src.id])  # the manifest keeps the coarse state
+            self._record_error(src, acc, state)
         except GraphThrottled as exc:
             acc.failed = True
             acc.errors.append(f"throttled: retry after {exc.retry_after:.0f}s")
@@ -764,30 +1098,67 @@ class _Cycle:
 
     def _scan_and_classify(
         self, src: SourceConfig, arm: SourceArm, fp_changed: set[str]
-    ) -> tuple[ScanResult, PassClassification, dict[str, ItemRow]]:
+    ) -> tuple[ScanResult, PassClassification, dict[str, ItemRow], frozenset[str], frozenset[str]]:
+        """Scan, then phase 1 with the H0 fast path.
+
+        Returns (scan, classification, rows read, ids proved unchanged by the fast path, the subset of those
+        whose stored last_verdict is not already UNCHANGED).  The source's rows
+        are read once as light observation tuples; an observation identical to its row
+        (``ClassifyContext.h0_unchanged``) is classified UNCHANGED without decoding its ``ItemRow``, and full
+        rows are read only for the other observations and for known ids the pass did not observe (the
+        deletion/safe-save candidates ``unseen_live`` used to return).  The local walk reuses the same index
+        to skip getattrlist for files whose stat tuple did not move.
+        """
         acc = self._acc(src)
         cursor_row = self.manifest.get_cursor(src.id)
         current = cursor_row.current if cursor_row is not None else None
+        srow = self.manifest.get_source(src.id)
         full = (
             self.mode is CycleMode.RECONCILE
             or current is None
             or self.broke_stale
             or src.id in fp_changed
             or src.kind in (SourceKind.LOCAL, SourceKind.INBOX)
+            # a drive whose first complete enumeration never finished (e.g. a resumed bootstrap) is not
+            # baselined: its cursor may skip items, so keep enumerating in full until one pass completes
+            or (src.kind is SourceKind.GRAPH_DRIVE and srow is not None and not srow.baseline_complete)
         )
-        scan = arm.scan(current, full=full)
+        index = self.manifest.observation_index(src.id)
+        if isinstance(arm, LocalArm):
+            arm.known_h0 = index
+        try:
+            scan = arm.scan(current, full=full)
+        finally:
+            if isinstance(arm, LocalArm):
+                arm.known_h0 = None
         acc.pass_kind = scan.pass_kind
         acc.enumeration_complete = scan.enumeration_complete
         acc.alarms += list(scan.alarms)
-        rows = {r.stable_id: r for r in self.manifest.iter_items(src.id)}
-        unseen = self.manifest.unseen_live(src.id, self.run_id)
-        accepting = src.id in self.accept_deletions
-        active = not accepting and self.manifest.breaker_active(src.id, _iso(self.now()))
+        if self.suppressions.items or self.suppressions.globs:  # purged items must never come back (C15 7)
+            kept = tuple(
+                it for it in scan.items if not self.suppressions.matches(src.id, it.stable_id, it.rel_path)
+            )
+            if len(kept) != len(scan.items):
+                log.info("%s: %d purged item(s) suppressed", src.id, len(scan.items) - len(kept))
+                scan = dataclasses.replace(scan, items=kept)
         ctx = ClassifyContext(
             run_id=self.run_id, pass_kind=scan.pass_kind, written_at_ns=self.manifest.written_at_ns()
         )
+        latest: dict[str, SourceItem] = {}
+        for it in scan.items:
+            latest[it.stable_id] = it
+        fast = [it for sid, it in latest.items() if ctx.h0_unchanged(it, index.get(sid))]
+        fast_ids = frozenset(it.stable_id for it in fast)
+        slow = [it for it in scan.items if it.stable_id not in fast_ids]
+        missing = sorted(
+            sid for sid, r in index.items() if sid not in latest and not r.is_dir and r.state in _PRESENT
+        )
+        rows = self.manifest.get_items(src.id, [*(it.stable_id for it in slow), *missing])
+        unseen = [rows[sid] for sid in missing if sid in rows]
+        accepting = src.id in self.accept_deletions
+        active = not accepting and self.manifest.breaker_active(src.id, _iso(self.now()))
         pc = _classify_pass(
-            scan.items,
+            slow,
             rows,
             unseen,
             ctx,
@@ -795,13 +1166,20 @@ class _Cycle:
             live_rows=self.manifest.live_count(src.id),
             breaker=_NEVER_TRIPS if accepting else self.config.breaker,
             breaker_active=active,
+            unchanged=fast,
         )
         for c in pc.verdicts:
             acc.counts[c.verdict] += 1
         if pc.deletion_candidates:
             acc.counts[Verdict.DELETION_CANDIDATE] += len(pc.deletion_candidates)
         acc.breaker_tripped = pc.breaker_tripped and bool(pc.deletion_candidates or active)
-        return scan, pc, rows
+        log.debug("%s: %d observation(s), %d via the H0 fast path", src.id, len(latest), len(fast_ids))
+        restamp = frozenset(
+            sid
+            for sid in fast_ids
+            if (r := index.get(sid)) is not None and r.last_verdict is not Verdict.UNCHANGED
+        )
+        return scan, pc, rows, fast_ids, restamp
 
     @staticmethod
     def _observed_state(item: SourceItem, row: ItemRow | None) -> RowState:
@@ -811,47 +1189,55 @@ class _Cycle:
         return RowState.DATALESS if item.dataless else RowState.LIVE
 
     def _sync_source(self, src: SourceConfig, arm: SourceArm, acc: _SourceAcc, fp_changed: set[str]) -> None:
-        scan, pc, rows = self._scan_and_classify(src, arm, fp_changed)
-        items = {it.stable_id: it for it in scan.items}
-        verdicts = {c.stable_id: c for c in pc.verdicts}
-        rows_before: dict[str, ItemRow | None] = {sid: rows.get(sid) for sid in verdicts}
-        moved: set[str] = set()
-        # ---- one transaction: observations, safe-save rekeys, derived paths, pending cursor ---------------
-        with self.manifest.transaction():
-            for c in pc.verdicts:
-                item = items[c.stable_id]
-                row = rows_before[c.stable_id]
-                if c.verdict is Verdict.DELETED:
-                    if row is None:
-                        continue  # a tombstone for an id we never had
-                    state = row.state
-                else:
-                    state = self._observed_state(item, row)
-                self.manifest.upsert_observed(item, run_id=self.run_id, verdict=c.verdict, state=state)
-                if c.prev_path is not None or c.verdict is Verdict.METADATA_ONLY:
-                    moved.add(c.stable_id)
-            for new_id, old_id in pc.safe_saves:
-                self.manifest.rekey(src.id, old_id, new_id)
-            scope_root = getattr(arm, "scope_root", None)
-            if src.kind is SourceKind.GRAPH_DRIVE and callable(scope_root):
-                root_id = scope_root()
-                for stable_id, _old, _new in self.manifest.rederive_paths(
-                    src.id, root_id if isinstance(root_id, str) else None
-                ):
-                    moved.add(stable_id)
-            self.manifest.stage_cursor(src.id, scan.new_cursor, self.run_id)
-            acc.staged_cursor = scan.new_cursor is not None
-            self.manifest.set_page_link(src.id, None)
-            if scan.pass_kind is PassKind.FULL:
-                self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
-            self.manifest.record_source_pass(
-                self.run_id,
-                src.id,
-                pass_kind=scan.pass_kind,
-                enumeration_complete=scan.enumeration_complete,
-                cursor_reset=scan.cursor_reset,
-                counts={k.value: v for k, v in acc.counts.items()},
+        with _gc_paused():
+            scan, pc, rows, fast_ids, restamp = self._scan_and_classify(src, arm, fp_changed)
+            items = {it.stable_id: it for it in scan.items}
+            slow_verdicts = (
+                [c for c in pc.verdicts if c.stable_id not in fast_ids] if fast_ids else pc.verdicts
             )
+            rows_before: dict[str, ItemRow | None] = {
+                c.stable_id: rows.get(c.stable_id) for c in slow_verdicts
+            }
+            moved: set[str] = set()
+            # ---- one transaction: observations, safe-save rekeys, derived paths, pending cursor -----------
+            with self.manifest.transaction():
+                self.manifest.touch_observed(src.id, fast_ids, run_id=self.run_id, verdict_changed=restamp)
+                observations: list[tuple[SourceItem, Verdict, RowState]] = []
+                for c in slow_verdicts:
+                    item = items[c.stable_id]
+                    row = rows_before[c.stable_id]
+                    if c.verdict is Verdict.DELETED:
+                        if row is None:
+                            continue  # a tombstone for an id we never had
+                        state = row.state
+                    else:
+                        state = self._observed_state(item, row)
+                    observations.append((item, c.verdict, state))
+                    if c.prev_path is not None or c.verdict is Verdict.METADATA_ONLY:
+                        moved.add(c.stable_id)
+                self.manifest.upsert_observed_many(observations, run_id=self.run_id, existing=rows)
+                for new_id, old_id in pc.safe_saves:
+                    self.manifest.rekey(src.id, old_id, new_id)
+                scope_root = getattr(arm, "scope_root", None)
+                if src.kind is SourceKind.GRAPH_DRIVE and callable(scope_root):
+                    root_id = scope_root()
+                    for stable_id, _old, _new in self.manifest.rederive_paths(
+                        src.id, root_id if isinstance(root_id, str) else None
+                    ):
+                        moved.add(stable_id)
+                self.manifest.stage_cursor(src.id, scan.new_cursor, self.run_id)
+                acc.staged_cursor = scan.new_cursor is not None
+                self.manifest.set_page_link(src.id, None)
+                if scan.pass_kind is PassKind.FULL:
+                    self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
+                self.manifest.record_source_pass(
+                    self.run_id,
+                    src.id,
+                    pass_kind=scan.pass_kind,
+                    enumeration_complete=scan.enumeration_complete,
+                    cursor_reset=scan.cursor_reset,
+                    counts={k.value: v for k, v in acc.counts.items()},
+                )
         # ---- work queue: fetch -> H1 -> convert -> H2 -> publish ------------------------------------------
         self.lock.beat(f"work:{src.id}")
         queue = self.manifest.pending_work(src.id)
@@ -865,10 +1251,10 @@ class _Cycle:
             self.budget_bytes if self.budget_bytes is not None else src.max_materialise_bytes, src.max_files
         )
         queued = {r.stable_id for r in queue}
-        for row in queue:
-            if complete_full and row.last_seen_run < self.run_id:
-                continue  # absent from a complete listing: a deletion candidate, not work
-            self._process(src, arm, row, budget, acc)
+        work = [r for r in queue if not (complete_full and r.last_seen_run < self.run_id)]
+        # (a row absent from a complete listing is a deletion candidate, not work)
+        for start in range(0, len(work), _WORK_BATCH):
+            self._process_batch(src, arm, work[start : start + _WORK_BATCH], budget, acc)
         acc.materialised_bytes = budget.used
         # ---- renames / metadata-only rows that needed no bytes --------------------------------------------
         for stable_id in sorted(moved - queued):
@@ -877,7 +1263,33 @@ class _Cycle:
                 continue
             self._rewrite(row)
         # ---- removals -------------------------------------------------------------------------------------
-        self._removals(src, pc, rows_before, acc)
+        self._removals(src, pc, rows_before, acc, items, complete_full=complete_full)
+
+    def _process_batch(
+        self, src: SourceConfig, arm: SourceArm, rows: Sequence[ItemRow], budget: ByteBudget, acc: _SourceAcc
+    ) -> None:
+        """Process up to ``_WORK_BATCH`` rows with their manifest writes in ONE transaction.
+
+        Every row used to commit (and fsync, ``synchronous=FULL``) each of its five-odd writes on its own; a
+        batch commits once.  Durability is unchanged in kind: the rows finished before an exception are
+        committed before it propagates (as they were one statement at a time), and a process death loses at
+        most one batch of manifest writes, whose pages ``recover`` verifies against the manifest next cycle
+        (the rows are still pending work there, so they are processed again).
+        """
+        if not rows:
+            return
+        self.lock.beat(f"work:{src.id}")
+        failure: BaseException | None = None
+        with self.manifest.transaction():
+            for row in rows:
+                try:
+                    self._process(src, arm, row, budget, acc)
+                except BaseException as exc:  # commit what finished, then re-raise outside the transaction
+                    failure = exc
+                    break
+            self._flush_changes()  # the batch's changes are durable with its outputs rows
+        if failure is not None:
+            raise failure
 
     def _forced_ids(self, src: SourceConfig) -> set[str] | None:
         """Stable ids named by ``agentsync materialise PATH`` for this source (None = no restriction)."""
@@ -909,9 +1321,16 @@ class _Cycle:
         pc: PassClassification,
         rows_before: dict[str, ItemRow | None],
         acc: _SourceAcc,
+        scan_items: dict[str, SourceItem] | None = None,
+        *,
+        complete_full: bool = False,
     ) -> None:
+        scan_items = scan_items or {}
         today = self.today()
-        last_commit = gitops.head_sha(self.repo)
+        if src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
+            self.manifest.clear_absent_marks(src.id, self.run_id)
+        scope_key = _SCOPE_CHANGE_META + src.id
+        scope_changed = self.manifest.get_meta(scope_key) not in (None, "")
         removals: list[tuple[str, str]] = []
         for c in pc.verdicts:
             if c.verdict is not Verdict.DELETED or c.reason != "provider-tombstone":
@@ -919,14 +1338,31 @@ class _Cycle:
             row = self.manifest.get_item(src.id, c.stable_id)
             if row is None or row.state is RowState.TOMBSTONE or rows_before.get(c.stable_id) is None:
                 continue
-            why = str(row.extra.get("removed") or row.extra.get("removed_reason") or "")
-            reason = (
-                "moved"
-                if why.startswith("moved") or why in ("moved-out-of-scope", "excluded")
-                else ("deleted-upstream")
-            )
+            item = scan_items.get(c.stable_id)
+            extra = {**dict(row.extra), **(dict(item.extra) if item is not None else {})}
+            why = str(extra.get("removed") or extra.get("removed_reason") or "")
+            reason = _removal_reason(why)
             removals.append((c.stable_id, reason))
-        if pc.deletion_candidates:
+            if row.is_dir:
+                # A folder moved out of scope (or deleted) arrives as ONE delta record; its descendants
+                # produce none.  They left with it: same reason, or they would stay live until a FULL pass
+                # read their absence as an upstream deletion and queued purges (review correctness-folder).
+                removals += [
+                    (d.stable_id, reason)
+                    for d in self.manifest.descendants(src.id, c.stable_id)
+                    if d.state in _PRESENT and d.stable_id not in scan_items
+                ]
+        if pc.deletion_candidates and scope_changed:
+            # sources.toml narrowed this source (path/folder, include/exclude): the files still exist
+            # upstream, the operator took them out of scope.  Retire their pages (exempt from the breaker, as
+            # retirement is), never "deleted upstream", never a purge (review correctness-scope-change).
+            removals += [(sid, _SCOPE_CHANGE_REASON) for sid in pc.deletion_candidates]
+            acc.alarms.append(
+                f"scope changed in sources.toml: {len(pc.deletion_candidates)} file(s) now outside it "
+                "retired "
+                "(not deleted upstream; no purge queued)"
+            )
+        elif pc.deletion_candidates:
             if pc.breaker_tripped:
                 now = self.now()
                 if not self.manifest.breaker_active(src.id, _iso(now)):
@@ -941,7 +1377,8 @@ class _Cycle:
                     f"{src.id} --accept-deletions` or retire the source"
                 )
             else:
-                removals += [(sid, "deleted-upstream") for sid in pc.deletion_candidates]
+                confirmed = self._confirmed_absent(src, pc.deletion_candidates, rows_before, acc)
+                removals += [(sid, "deleted-upstream") for sid in confirmed]
                 srow = self.manifest.get_source(src.id)
                 if srow is not None and srow.breaker_tripped_at is not None:
                     self.manifest.clear_breaker(src.id)
@@ -949,11 +1386,54 @@ class _Cycle:
             srow = self.manifest.get_source(src.id)
             if srow is not None and srow.breaker_tripped_at is not None:
                 self.manifest.clear_breaker(src.id)
+        if scope_changed and complete_full:
+            self.manifest.set_meta(scope_key, "")
+        last_commit = gitops.head_sha(self.repo) if removals else None
         for stable_id, reason in sorted(set(removals)):
             self.changes += self.publisher.tombstone(
                 src.id, stable_id, reason=reason, run_id=self.run_id, today=today, last_commit=last_commit
             )
+            if reason == "deleted-upstream" and self.gov.purge_on_upstream_delete:
+                # C15 req 38: a confirmed deletion (explicit, or absent past the breaker) queues a purge; the
+                # history rewrite itself runs only from `agentsync purge --queue` (operator-scheduled).
+                governance.enqueue_purge(
+                    self.config.state_paths.root,
+                    governance.PurgeSelector(source_id=src.id, stable_id=stable_id),
+                    governance.PurgeReason.UPSTREAM_DELETED,
+                    now=self.now(),
+                )
         self.changes += self.publisher.reap(today)
+
+    def _confirmed_absent(
+        self,
+        src: SourceConfig,
+        candidates: Sequence[str],
+        rows_before: dict[str, ItemRow | None],
+        acc: _SourceAcc,
+    ) -> list[str]:
+        """Local/inbox: a file must be absent from TWO complete passes before it is tombstoned (and its purge
+        queued).  One walk can land inside an Office save sequence (the original renamed to an excluded
+        ``~WRL*.tmp``, its replacement not yet in place); the next pass then pairs the new inode with the
+        old row as a safe-save instead of splitting the document.  Graph sources delete on one pass (their
+        ids are stable; absence there is not a save artefact)."""
+        if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX) or src.id in self.accept_deletions:
+            return list(candidates)
+        rows = self.manifest.get_items(src.id, candidates)
+        confirmed: list[str] = []
+        first: list[str] = []
+        for sid in candidates:
+            row = rows.get(sid) or rows_before.get(sid)
+            seen_absent = row.extra.get("absent_since_run") if row is not None else None
+            if isinstance(seen_absent, int) and seen_absent < self.run_id:
+                confirmed.append(sid)
+            else:
+                first.append(sid)
+        if first:
+            self.manifest.mark_absent(src.id, first, self.run_id)
+            acc.alarms.append(
+                f"{len(first)} file(s) absent from this complete pass: removed only if still absent next pass"
+            )
+        return confirmed
 
     def _retire(self, src: SourceConfig, acc: _SourceAcc) -> None:
         """Retirement: tombstone the whole source in this (labelled) commit, exempt from the breaker."""
@@ -994,6 +1474,26 @@ class _Cycle:
         if refused is not None:  # no bytes are needed to refuse a type: never download it
             self._publish(src, row, refused, acc)
             return
+        screening = self.publisher.policy_refusal(row)
+        if screening is not None:  # an excluded item label: never download it (C15 section 9 item 27)
+            self._publish(src, row, self._stub(row, ConversionStatus.REFUSED, screening.reason), acc)
+            return
+        duplicate = self._inbox_name_size_duplicate(src, row)
+        if duplicate is not None:  # the Graph arm is authoritative: never read the drop's bytes
+            stub = ConversionResult(
+                status=ConversionStatus.REFUSED,
+                converter_id="",
+                converter_version="",
+                options_hash="",
+                action_key="",
+                content_sha256=row.content_sha256 or "",
+                canonical_sha256=row.canonical_sha256 or "",
+                units=(),
+                reason=duplicate,
+            )
+            log.info("%s: %s refused: %s", sid, row.rel_path, duplicate)
+            self._publish(src, row, stub, acc, quarantine_reason=duplicate)
+            return
         if not budget.can_afford(max(row.size or 0, 0)):
             self._defer(src, row, budget, acc)
             return
@@ -1025,6 +1525,21 @@ class _Cycle:
         finally:
             _discard_staged(fetched, self.staging)
 
+    @staticmethod
+    def _stub(row: ItemRow, status: ConversionStatus, reason: str) -> ConversionResult:
+        """A converter-less result (no bytes read) carrying ``reason``."""
+        return ConversionResult(
+            status=status,
+            converter_id="",
+            converter_version="",
+            options_hash="",
+            action_key="",
+            content_sha256=row.content_sha256 or "",
+            canonical_sha256=row.canonical_sha256 or "",
+            units=(),
+            reason=reason,
+        )
+
     def _defer(self, src: SourceConfig, row: ItemRow, budget: ByteBudget, acc: _SourceAcc) -> None:
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
         acc.deferred += 1
@@ -1041,6 +1556,9 @@ class _Cycle:
     def _after_fetch(self, src: SourceConfig, row: ItemRow, fetched: FetchResult, acc: _SourceAcc) -> None:
         sid, stable = row.source_id, row.stable_id
         h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
+        if self.suppressions.matches_content(h1.sha256):
+            self._suppress_purged_content(src, row, acc)
+            return
         c2 = classify_content(row, h1)
         if c2.changed_parts:
             log.info("%s/%s changed parts: %s", sid, row.rel_path, ", ".join(c2.changed_parts))
@@ -1082,9 +1600,7 @@ class _Cycle:
             )
         duplicate = self._inbox_duplicate(src, h1.sha256)
         if duplicate is not None:
-            result = dataclasses.replace(
-                result, status=ConversionStatus.REFUSED, units=(), reason=f"duplicate-of {duplicate}"
-            )
+            result = dataclasses.replace(result, status=ConversionStatus.REFUSED, units=(), reason=duplicate)
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
             acc.counts[Verdict.OUTPUT_UNCHANGED] += 1
@@ -1105,22 +1621,66 @@ class _Cycle:
         acc.counts[Verdict.CHANGED] += 1
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
 
+    def _suppress_purged_content(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
+        """The fetched bytes are content purged for erasure/DLP/label reasons (a copy, or a re-upload under
+        a new id): never publish it.  The item's pages leave the tree, its manifest row is forgotten and its
+        id joins the suppression list, so later scans drop it before any fetch."""
+        for out in self.manifest.outputs_for(row.source_id, row.stable_id):
+            if self.publisher.remove_output_page(out.output_path):
+                self.changes.append(
+                    MirrorChange(ChangeOp.DELETED, out.output_path, row.source_id, row.stable_id)
+                )
+        self.manifest.forget_item(row.source_id, row.stable_id)
+        governance.suppress_items(self.config.state_paths.root, [(row.source_id, row.stable_id)])
+        self.suppressions = governance.load_suppressions(self.config.state_paths.root)
+        acc.alarms.append(f"an item matched purged content and was suppressed (never published): {src.id}")
+        log.warning("%s: fetched content matches a purged item; suppressed", src.id)
+
+    def _duplicate_reason(self, other: ItemRow) -> str:
+        """``duplicate-of <source_id>`` plus the Graph row's mirror path, if any (design 4.2, arm C)."""
+        pages = sorted(
+            o.output_path
+            for o in self.manifest.outputs_for(other.source_id, other.stable_id)
+            if o.status is not OutputStatus.TOMBSTONE
+        )
+        return f"duplicate-of {other.source_id}" + (f" ({pages[0]})" if pages else "")
+
+    def _is_live_graph_row(self, src: SourceConfig, other: ItemRow) -> bool:
+        if other.source_id == src.id or other.state not in (RowState.LIVE, RowState.DATALESS):
+            return False
+        try:
+            return self.config.source(other.source_id).kind.is_graph
+        except ConfigError:
+            return False
+
     def _inbox_duplicate(self, src: SourceConfig, canonical: str) -> str | None:
+        """Arm precedence by canonical hash: the quarantine reason when a live Graph row has the same H1."""
         if src.kind is not SourceKind.INBOX:
             return None
         for other in self.manifest.find_by_canonical(canonical):
-            if other.source_id == src.id:
-                continue
-            try:
-                kind = self.config.source(other.source_id).kind
-            except ConfigError:
-                continue
-            if kind.is_graph and other.state in (RowState.LIVE, RowState.DATALESS):
-                return other.source_id
+            if self._is_live_graph_row(src, other):
+                return self._duplicate_reason(other)
+        return None
+
+    def _inbox_name_size_duplicate(self, src: SourceConfig, row: ItemRow) -> str | None:
+        """Arm precedence by (normalised name, size), decided from zero bytes before any fetch.
+
+        The drop's name is NFC-normalised with its conflict suffixes folded (``-<COMPUTERNAME>``, `` (1)``,
+        `` - Copy``, Finder `` copy``) and case-folded; so is each live Graph row's name of exactly the same
+        size.  A match refuses the drop (quarantined ``duplicate-of <source_id> (<mirror path>)``).
+        """
+        if src.kind is not SourceKind.INBOX or row.size is None:
+            return None
+        raw = row.extra.get("dedup_name")
+        key = _dedup_key(raw if isinstance(raw, str) and raw else row.name)
+        for other in self.manifest.find_by_size(row.size):
+            if self._is_live_graph_row(src, other) and _dedup_key(other.name) == key:
+                return self._duplicate_reason(other)
         return None
 
     def _rewrite_if_moved(self, src: SourceConfig, row: ItemRow, outs: Sequence[OutputRow]) -> None:
-        if not _page_provenance_matches(self.repo, row, outs, src.kind.is_graph):
+        durable = self.manifest.durable_id(row.source_id, row.stable_id)
+        if not _page_provenance_matches(self.repo, row, outs, src.kind.is_graph, durable):
             self._rewrite(row)
 
     def _publish(
@@ -1133,18 +1693,29 @@ class _Cycle:
         quarantine_reason: str | None = None,
     ) -> None:
         sid, stable = row.source_id, row.stable_id
+        prior_ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
         pages = self.publisher.plan_pages(src, row, result)
         self.changes += self.publisher.write_pages(row, pages, self.run_id)
+        if prior_ok and any(p.refusal for p in pages) and quarantine_reason is None:
+            self._label_escalation(row, prior_ok)
         if result.status is ConversionStatus.OK:
             self.ok_pages.update(p.output_path for p in pages)
+            for p in pages:  # sidecars carry the full text past the page cap: scan them too
+                for rel, _data in p.sidecars:
+                    self.ok_pages.add(rel)
+                    self.sidecar_page[rel] = p.output_path
             if row.state is not RowState.LIVE and row.state is not RowState.DATALESS:
                 self.manifest.set_state(
                     sid, stable, RowState.DATALESS if row.dataless else RowState.LIVE, None
                 )
             self.manifest.set_verdict(sid, stable, _SETTLED_PUBLISHED)
             return
+        self.stub_pages.update(p.output_path for p in pages)
         reason = _one_line(quarantine_reason or result.reason or result.status.value, 200)
-        if result.status is ConversionStatus.REFUSED and quarantine_reason is None:
+        refused = result.status is ConversionStatus.REFUSED or (
+            result.status is ConversionStatus.UNREADABLE and content_policy.is_refusal_reason(result.reason)
+        )
+        if refused and quarantine_reason is None:
             self.manifest.set_state(sid, stable, RowState.REFUSED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
             acc.counts[Verdict.REFUSED] += 1
@@ -1158,35 +1729,106 @@ class _Cycle:
             self.manifest.set_verdict(sid, stable, Verdict.QUARANTINED)
             acc.counts[Verdict.QUARANTINED] += 1
 
+    def _label_escalation(self, row: ItemRow, prior_ok: Sequence[OutputRow]) -> None:
+        """A published item is now refused by the label policy (relabel, or a tightened [policy]): drop the
+        plaintext conversions of its earlier content from the cache at once and queue a history purge
+        (C15 section 9 item 38; the rewrite itself runs from ``agentsync purge --queue``)."""
+        keys = {o.action_key for o in prior_ok if o.action_key}
+        removed = self.cache.delete(keys)
+        queued = governance.enqueue_purge(
+            self.config.state_paths.root,
+            governance.PurgeSelector(source_id=row.source_id, stable_id=row.stable_id),
+            governance.PurgeReason.LABEL_ESCALATION,
+            now=self.now(),
+        )
+        self._acc(self.config.source(row.source_id)).alarms.append(
+            f"label escalation: a published file is now refused by the label policy; {removed} cached "
+            f"conversion(s) deleted{', purge queued' if queued else ''} (run `agentsync purge --queue`)"
+        )
+        log.warning("%s: label escalation of %s; purge queued", row.source_id, row.stable_id)
+
     # ---- secrets, curation, statuses ----------------------------------------------------------------------
     def _quarantine_secrets(self) -> None:
-        pages = sorted(p for p in self.ok_pages if (self.repo / p).is_file())
+        """Secret scan over every page and sidecar written this cycle (C15; design 4.7).
+
+        A hit in content (a page or one of its ``.files/`` sidecars) re-publishes the item as a ``contains a
+        credential`` stub (the sidecars go with the page).  The stubs are scanned again: a hit there comes
+        from the item's metadata (its file name / mail subject), so the item's path is redacted everywhere
+        it would be committed (stub, shard, QUARANTINE.tsv, CHANGELOG, commit body) and its page moves to a
+        hashed name.  A credential that survives even that blocks the commit."""
+        pages = sorted(p for p in self.ok_pages | self.stub_pages if (self.repo / p).is_file())
         if not pages:
             return
         hits = lints.lint_secrets(self.repo, pages)
         self.findings += hits
-        for stable_ids in _owners(self.manifest, [h.path for h in hits]):
-            sid, stable = stable_ids
-            row = self.manifest.get_item(sid, stable)
-            if row is None:
-                continue
-            try:
-                src = self.config.source(sid)
-            except ConfigError:
-                continue
-            stub = ConversionResult(
-                status=ConversionStatus.UNREADABLE,
-                converter_id="",
-                converter_version="",
-                options_hash="",
-                action_key="",
-                content_sha256=row.content_sha256 or "",
-                canonical_sha256=row.canonical_sha256 or "",
-                units=(),
-                reason="contains a credential",
+        hit_pages = sorted({self.sidecar_page.get(h.path, h.path) for h in hits})
+        stubbed: list[tuple[str, str]] = []
+        for sid, stable in _owners(self.manifest, hit_pages):
+            pages_of = {o.output_path for o in self.manifest.outputs_for(sid, stable)}
+            if pages_of and pages_of <= (self.stub_pages - self.ok_pages):
+                self._redact(sid, stable)  # already a stub: the credential is in the name
+            elif self._stub_credential(sid, stable):
+                stubbed.append((sid, stable))
+        stub_paths = sorted(
+            o.output_path
+            for sid, stable in stubbed
+            for o in self.manifest.outputs_for(sid, stable)
+            if (self.repo / o.output_path).is_file()
+        )
+        for sid, stable in _owners(
+            self.manifest, [h.path for h in lints.lint_secrets(self.repo, stub_paths)]
+        ):
+            self._redact(sid, stable)
+        redacted = sorted(
+            o.output_path
+            for c in self.changes
+            if self.manifest.is_redacted(c.source_id, c.stable_id)
+            for o in self.manifest.outputs_for(c.source_id, c.stable_id)
+            if (self.repo / o.output_path).is_file()
+        )
+        for left in lints.lint_secrets(self.repo, sorted(set(redacted))):
+            self.findings.append(
+                LintFinding(
+                    "SECRET", left.path, "a credential survives redaction; not committing", blocking=True
+                )
             )
-            self._publish(src, row, stub, self._acc(src), quarantine_reason="contains a credential")
-            log.warning("%s: %s quarantined: the converted page contains a credential", sid, row.rel_path)
+
+    def _stub_credential(self, sid: str, stable: str) -> bool:
+        row = self.manifest.get_item(sid, stable)
+        if row is None:
+            return False
+        try:
+            src = self.config.source(sid)
+        except ConfigError:
+            return False
+        stub = self._stub(row, ConversionStatus.UNREADABLE, _CREDENTIAL)
+        self._publish(src, row, stub, self._acc(src), quarantine_reason=_CREDENTIAL)
+        log.warning("%s/%s quarantined: the converted page contains a credential", sid, stable)
+        return True
+
+    def _redact(self, sid: str, stable: str) -> None:
+        """The item's name/path carries a credential: redact it everywhere it would be committed."""
+        if self.manifest.is_redacted(sid, stable):
+            return
+        self.manifest.set_redacted(sid, stable)
+        old_paths = {o.output_path for o in self.manifest.outputs_for(sid, stable)}
+        head_paths = {p for p in old_paths if _in_head(self.repo, p)}
+        mine = [c for c in self.changes if (c.source_id, c.stable_id) == (sid, stable)]
+        self.changes = [c for c in self.changes if (c.source_id, c.stable_id) != (sid, stable)]
+        self._stub_credential(sid, stable)
+        new = [c for c in self.changes if (c.source_id, c.stable_id) == (sid, stable)]
+        self.changes = [c for c in self.changes if (c.source_id, c.stable_id) != (sid, stable)]
+        for path in sorted({c.path for c in new} | {c.path for c in mine if c.path not in old_paths}):
+            if self.manifest.output_by_path(path) is None:
+                continue
+            op = ChangeOp.MODIFIED if path in head_paths else ChangeOp.ADDED
+            self.changes.append(MirrorChange(op, path, sid, stable))
+        if head_paths - {c.path for c in self.changes}:
+            # the committed page under the credential-bearing name is removed (named nowhere in CHANGELOG)
+            self._acc(self.config.source(sid)).alarms.append(
+                "a page named after a credential was removed from the tree; `agentsync purge` it from history"
+            )
+        log.warning("%s/%s: the name carries a credential; its path is redacted", sid, stable)
 
     def _curate(self) -> None:
         layout = self.config.layout
@@ -1207,9 +1849,51 @@ class _Cycle:
         return source_statuses(self.config, self.manifest, now=self.now(), reports=self.accs)
 
 
+def _dedup_key(name: str) -> str:
+    """Inbox dedup key of a file name: NFC, conflict suffixes folded, case-folded (APFS/NTFS sameness)."""
+    return unicodedata.normalize("NFC", fold_conflict_suffix(name).casefold())
+
+
 def _row_ids(row: ItemRow) -> tuple[str, str]:
     """(source_id, stable_id) of a row (log helper)."""
     return row.source_id, row.stable_id
+
+
+_CREDENTIAL = "contains a credential"
+
+
+def _removal_reason(why: str) -> str:
+    """Tombstone reason for an explicit provider removal: a move out of the scope (``moved:<folder>``,
+    ``moved-out-of-scope``, ``excluded``) is ``moved`` (the item still exists: no purge is queued); anything
+    else is ``deleted-upstream``."""
+    return "moved" if why.startswith("moved") or why == "excluded" else "deleted-upstream"
+
+
+def _dirty_paths(repo: Path, paths: Sequence[str]) -> set[str]:
+    """The subset of ``paths`` whose worktree state differs from HEAD (modified, added, deleted)."""
+    if not paths:
+        return set()
+    try:
+        out = gitops.run_git(
+            repo,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--no-renames",
+            "--",
+            *(f":(literal){p}" for p in paths),
+        ).stdout
+    except AgentSyncError:
+        return set(paths)
+    return {rec[3:] for rec in out.split("\0") if len(rec) > 3}
+
+
+def _in_head(repo: Path, path: str) -> bool:
+    try:
+        return gitops.run_git(repo, "cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
+    except AgentSyncError:
+        return False
 
 
 def _owners(manifest: Manifest, paths: Sequence[str]) -> list[tuple[str, str]]:
@@ -1240,14 +1924,8 @@ def source_statuses(
         cursor = manifest.get_cursor(src.id)
         set_at = _parse_iso(cursor.current_set_at) if cursor is not None else None
         age = int((now - set_at).total_seconds()) if set_at is not None else None
-        counts: Counter[str] = Counter()
-        deferred = 0
-        for item in manifest.iter_items(src.id):
-            if item.is_dir:
-                continue
-            counts[item.state.value] += 1
-            if item.last_verdict is Verdict.DEFERRED:
-                deferred += 1
+        by_state, deferred = manifest.state_counts(src.id)
+        counts: Counter[str] = Counter({state.value: n for state, n in by_state.items()})
         acc = (reports or {}).get(src.id)
         breaker = "ok"
         if row is not None and row.breaker_tripped_at is not None:
@@ -1296,7 +1974,8 @@ def _map_paths(config: Config, paths: Sequence[Path]) -> dict[str, set[str]]:
     """Map ``agentsync materialise`` paths to (source id -> rel paths) of local/inbox sources."""
     out: dict[str, set[str]] = {}
     for raw in paths:
-        path = Path(os.path.abspath(Path(raw).expanduser()))  # noqa: PTH100 - lexical, never resolves symlinks
+        # source roots are canonical (config resolves symlinks outside CloudStorage): so is the argument
+        path = canonical_source_root(Path(os.path.abspath(Path(raw).expanduser())))  # noqa: PTH100
         for src in config.sources:
             if src.path is None or src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
                 continue
@@ -1343,8 +2022,14 @@ def run_cycle(
         selected = [s for s in selected if s.id in forced]
     lock = SingleWriterLock(config.state_paths.lock, mode.value)
     acquisition = lock.acquire()
+    if mode is not CycleMode.DRY_RUN:
+        rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
     own_client = client is None
-    graph_client, problem = (client, None) if client is not None else _make_client(config, selected)
+    auth: MsalAuth | None = None
+    graph_client: GraphClient | None = client
+    problem: str | None = None
+    if client is None:  # DRY_RUN too: classifying still reads Graph metadata behind the same gate
+        graph_client, problem, auth = _make_client(config, selected)
     try:
         config.state_paths.root.mkdir(parents=True, exist_ok=True)
         with Manifest(config.state_paths.db) as manifest:
@@ -1361,6 +2046,7 @@ def run_cycle(
                 budget_bytes=budget_bytes,
                 forced_paths=forced,
                 accept_deletions=frozenset(accept_deletions),
+                auth=auth,
             )
             return cycle.run()
     finally:

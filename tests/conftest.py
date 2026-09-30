@@ -39,6 +39,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(pytest.mark.skip(reason=reason))
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _owner_only_umask() -> Iterator[None]:
+    """Tests run under the umask production runs under (LaunchAgent ``Umask = 63``, ``cli.main`` 077)."""
+    previous = os.umask(0o077)
+    yield
+    os.umask(previous)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path_factory.mktemp("home")
@@ -50,6 +58,8 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setenv("LC_ALL", "C")
+    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "0")  # never run the (slow, sticky) real tmutil from tests
+    monkeypatch.delenv("AGENTSYNC_CONFIG", raising=False)
     return home
 
 

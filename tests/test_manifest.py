@@ -1094,3 +1094,175 @@ def test_upsert_resurrecting_a_tombstone_forgets_content_hashes(m: Manifest) -> 
         None,
         (),
     )
+
+
+# ---------------------------------------------------------------------------------------------------------
+# batched pass writes, the H0 observation index, counters (perf work; semantics must not move)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _all_rows(m: Manifest) -> list[tuple[object, ...]]:
+    return [tuple(r) for r in m._db.execute("SELECT * FROM items ORDER BY source_id, stable_id").fetchall()]
+
+
+def _seed_for_upserts(man: Manifest) -> None:
+    man.upsert_observed(item("keep", "a/keep.docx"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    man.upsert_observed(item("mv", "a/old.docx"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    man.upsert_observed(
+        item("dl", "a/dl.docx", gen_count=4, ino=9), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE
+    )
+    man.upsert_observed(item("tomb", "a/t.docx"), run_id=1, verdict=Verdict.CREATED, state=RowState.TOMBSTONE)
+    man.set_content(
+        "src", "tomb", content_sha256=H, canonical_sha256=H2, canonical_method="m", canonical_parts=[]
+    )
+    man.upsert_observed(item("gone", "a/g.docx"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    man.upsert_observed(item("q", "a/q.docx"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    man.set_state("src", "q", RowState.QUARANTINED, "encrypted")
+
+
+def _pass_observations() -> list[tuple[SourceItem, Verdict, RowState]]:
+    return [
+        (item("new", "b/new.txt", extra={"dedup_name": "new.txt"}), Verdict.CREATED, RowState.LIVE),
+        (item("keep", "a/keep.docx", mtime_ns=5), Verdict.MAYBE_CHANGED, RowState.LIVE),
+        (item("mv", "a/renamed.docx"), Verdict.METADATA_ONLY, RowState.LIVE),
+        (item("dl", "a/dl.docx", dataless=True, mtime_ns=77), Verdict.DATALESS, RowState.DATALESS),
+        (item("tomb", "a/t.docx"), Verdict.MAYBE_CHANGED, RowState.LIVE),
+        (item("gone", "a/g.docx", deleted=True), Verdict.DELETED, RowState.TOMBSTONE),
+        (item("q", "a/q.docx"), Verdict.UNCHANGED, RowState.QUARANTINED),
+        (item("keep", "a/keep2.docx", mtime_ns=6), Verdict.MAYBE_CHANGED, RowState.LIVE),  # listed twice
+    ]
+
+
+def test_upsert_observed_many_equals_one_by_one(tmp_path: Path) -> None:
+    one, many = Manifest(tmp_path / "one.sqlite"), Manifest(tmp_path / "many.sqlite")
+    for man in (one, many):
+        man.sync_sources([local_source()])
+        _seed_for_upserts(man)
+    obs = _pass_observations()
+    for it, verdict, state in obs:
+        one.upsert_observed(it, run_id=2, verdict=verdict, state=state)
+    before = {r.stable_id: r for r in many.iter_items("src")}
+    with many.transaction():
+        many.upsert_observed_many(obs, run_id=2, existing={k: v for k, v in before.items() if k != "mv"})
+    assert _all_rows(many) == _all_rows(one)
+    row = many.get_item("src", "keep")
+    assert row is not None and row.rel_path == "a/keep2.docx" and row.prev_path == "a/keep.docx"
+    tomb = many.get_item("src", "tomb")
+    assert tomb is not None and tomb.content_sha256 is None  # reappearance forgot the hashes
+    one.close()
+    many.close()
+
+
+def test_upsert_observed_many_outside_a_transaction_is_atomic(m: Manifest) -> None:
+    m.upsert_observed_many([], run_id=1)  # nothing to do
+    bad = [(item("ok", "a/ok.md"), Verdict.CREATED, RowState.LIVE), (item("x", "a/x.md", source_id="ghost"),
+           Verdict.CREATED, RowState.LIVE)]  # fmt: skip
+    with pytest.raises(sqlite3.IntegrityError):
+        m.upsert_observed_many(bad, run_id=1)
+    assert m.get_item("src", "ok") is None  # rolled back as one unit
+
+
+def test_touch_observed_stamps_only_the_pass_columns(m: Manifest) -> None:
+    m.upsert_observed(item("a", "a.md", gen_count=3), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    m.upsert_observed(item("b", "b.md"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    m.set_verdict("src", "a", Verdict.OUTPUT_UNCHANGED)
+    before = {r.stable_id: r for r in m.iter_items("src")}
+    assert m.touch_observed("src", ["a", "a", "nope"], run_id=7) == 1
+    assert m.touch_observed("src", [], run_id=8) == 0
+    after = {r.stable_id: r for r in m.iter_items("src")}
+    assert after["a"] == replace(before["a"], last_seen_run=7, last_verdict=Verdict.UNCHANGED)
+    assert after["b"] == before["b"]  # not listed: untouched
+
+
+def test_observation_index_matches_item_rows(m: Manifest) -> None:
+    m.upsert_observed(
+        item("a", "x/é.md", etag="e", gen_count=2, ino=5, mode=0o100644, created_ns=3, extra={"k": "v"},
+             remote_hashes=RemoteHashes(quickxor="q", sha1="s1", sha256="s2"), content_type="text/markdown"),
+        run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE,
+    )  # fmt: skip
+    m.upsert_observed(item("d", "x", is_dir=True), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    m.upsert_observed(
+        item("t", "t.md", dataless=True), run_id=1, verdict=Verdict.DATALESS, state=RowState.TOMBSTONE
+    )
+    m.set_content("src", "a", content_sha256=H, canonical_sha256=H2, canonical_method="m", canonical_parts=[])
+    index = m.observation_index("src")
+    assert sorted(index) == ["a", "d", "t"]
+    for sid, light in index.items():
+        full = m.get_item("src", sid)
+        assert full is not None
+        for name in light._fields:
+            assert getattr(light, name) == getattr(full, name), name
+        assert type(light.state) is RowState and type(light.is_dir) is bool and type(light.dataless) is bool
+    assert index["a"].extra == {"k": "v"} and index["a"].last_verdict is Verdict.CREATED
+    assert m.observation_index("other") == {}
+
+
+def test_get_items_batches_beyond_the_parameter_chunk(m: Manifest) -> None:
+    ids = [f"vol:{i:05d}" for i in range(manifest_mod._ID_CHUNK * 2 + 5)]
+    m.upsert_observed_many([(item(i, f"f/{i}.md"), Verdict.CREATED, RowState.LIVE) for i in ids], run_id=1)
+    got = m.get_items("src", [*ids, "missing", ids[0]])
+    assert sorted(got) == ids and got[ids[7]] == m.get_item("src", ids[7])
+    assert m.get_items("src", []) == {}
+
+
+def test_state_counts_and_find_by_size(m: Manifest) -> None:
+    m.sync_sources([local_source(), local_source("inbox", "/tmp/inbox")])
+    m.upsert_observed(item("a", "a.md", size=5), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    m.upsert_observed(item("b", "b.md", size=5), run_id=1, verdict=Verdict.CREATED, state=RowState.DATALESS)
+    m.upsert_observed(item("c", "c.md", size=5), run_id=1, verdict=Verdict.CREATED, state=RowState.TOMBSTONE)
+    m.upsert_observed(
+        item("d", "d", size=5, is_dir=True), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE
+    )
+    m.upsert_observed(
+        item("e", "e.md", size=6, source_id="inbox"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE
+    )
+    m.set_verdict("src", "a", Verdict.DEFERRED)
+    counts, deferred = m.state_counts("src")
+    assert counts == {RowState.LIVE: 1, RowState.DATALESS: 1, RowState.TOMBSTONE: 1} and deferred == 1
+    assert m.state_counts("nobody") == ({}, 0)
+    assert [(r.source_id, r.stable_id) for r in m.find_by_size(5)] == [("src", "a"), ("src", "b")]
+    assert [r.stable_id for r in m.find_by_size(6)] == ["e"] and m.find_by_size(7) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "plain",
+        "é/ünïcødé",
+        'quote " and \\ backslash',
+        "tab\tnewline\nbell\x07 del\x7f",
+        chr(0x2028) + chr(0x2029),
+        "😀/x",
+    ],
+)
+def test_export_shard_lines_are_byte_identical_to_json_dumps(m: Manifest, text: str) -> None:
+    m.upsert_observed(item("s", text), run_id=1, verdict=Verdict.CREATED, state=RowState.DATALESS)
+    m.set_state("src", "s", RowState.DATALESS, text)
+    m.replace_outputs("src", "s", [output(f"mirror/{text}.md", stable_id="s", sha=None),
+                                  output("mirror/b.md", "index", stable_id="s")])  # fmt: skip
+    (line,) = m.export_shard("src")
+    reference = {
+        "outputs": [
+            {"path": "mirror/b.md", "rendered_sha256": H, "unit_id": "index"},
+            {"path": f"mirror/{text}.md", "rendered_sha256": None, "unit_id": "whole"},
+        ],
+        "rel_path": text,
+        "source_id": "src",
+        "stable_id": "s",
+        "state": "live",
+        "state_reason": text,
+    }
+    assert line == json.dumps(reference, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def test_touch_observed_writes_the_verdict_only_where_it_changes(m: Manifest) -> None:
+    for sid in ("a", "b"):
+        m.upsert_observed(item(sid, f"{sid}.md"), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    m.set_verdict("src", "a", Verdict.OUTPUT_UNCHANGED)
+    m.set_verdict("src", "b", Verdict.TOUCHED_NOT_CHANGED)
+    assert m.touch_observed("src", ["a", "b"], run_id=5, verdict_changed=["b", "zz"]) == 2
+    rows = {r.stable_id: r for r in m.iter_items("src")}
+    assert (rows["a"].last_seen_run, rows["a"].last_verdict) == (5, Verdict.OUTPUT_UNCHANGED)
+    assert (rows["b"].last_seen_run, rows["b"].last_verdict) == (5, Verdict.UNCHANGED)
+    assert m.touch_observed("src", ["a"], run_id=6, verdict_changed=[]) == 1
+    assert m.get_item("src", "a").last_verdict is Verdict.OUTPUT_UNCHANGED  # type: ignore[union-attr]

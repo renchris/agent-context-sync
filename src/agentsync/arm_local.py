@@ -28,15 +28,26 @@ import sys
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
+from typing import Protocol
 
 from agentsync.config import SourceConfig
 from agentsync.errors import ConfigError, MaterialiseError
 from agentsync.materialise import is_dataless, materialise, materialize_allowed, sha256_file
-from agentsync.model import ByteBudget, FetchResult, PassKind, ScanResult, SourceItem, SourceKind
-from agentsync.paths import CLOUD_STORAGE_ROOT, expand, glob_match, is_included, is_under
+from agentsync.model import (
+    ByteBudget,
+    ExtraValue,
+    FetchResult,
+    PassKind,
+    RemoteHashes,
+    ScanResult,
+    SourceItem,
+    SourceKind,
+)
+from agentsync.paths import CLOUD_STORAGE_ROOT, _glob_regex, expand, glob_match, is_under
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +89,32 @@ _COPY_SUFFIX_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r" - Copy(?: \(\d+\))?$", re.IGNORECASE),  # Windows "Report - Copy", "Report - Copy (2)"
     re.compile(r" copy(?: \d+)?$", re.IGNORECASE),  # Finder "Report copy", "Report copy 2"
 )
+
+_S_IFMT = stat.S_IFMT(0o177777)
+_S_IFLNK = stat.S_IFLNK
+_S_IFDIR = stat.S_IFDIR
+_S_IFREG = stat.S_IFREG
+_NO_HASHES = RemoteHashes()  # frozen: shared by every local item (a local file has no provider hash)
+_NO_EXTRA: Mapping[str, ExtraValue] = MappingProxyType({})
+
+
+class _KnownStat(Protocol):
+    """The stored H0 of a file row (``Manifest.observation_index`` values; ``ItemRow`` fits too)."""
+
+    @property
+    def size(self) -> int | None: ...
+    @property
+    def mtime_ns(self) -> int | None: ...
+    @property
+    def ctime_ns(self) -> int | None: ...
+    @property
+    def ino(self) -> int | None: ...
+    @property
+    def mode(self) -> int | None: ...
+    @property
+    def gen_count(self) -> int | None: ...
+    @property
+    def created_ns(self) -> int | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +339,30 @@ def _list_dir(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
         return list(it)
 
 
+def _file_matcher(include: Sequence[str], exclude: Sequence[str]) -> Callable[[str], bool]:
+    """``paths.is_included`` with each glob compiled once per walk (it recompiles and re-parses per call).
+
+    Same regexes as ``paths.glob_match``; walk-built rel paths are already POSIX (no empty or dot parts), so
+    ``PurePosixPath(rel).as_posix() == rel`` and the result is identical.
+    """
+    inc = _any_of(include)
+    exc = _any_of(exclude)
+
+    def included(rel: str) -> bool:
+        if inc is not None and inc.match(rel) is None:
+            return False
+        return exc is None or exc.match(rel) is None
+
+    return included
+
+
+def _any_of(patterns: Sequence[str]) -> re.Pattern[str] | None:
+    """One alternation of the globs' anchored, case-insensitive regexes (one match call per path)."""
+    if not patterns:
+        return None
+    return re.compile("|".join(f"(?:{_glob_regex(p).pattern})" for p in patterns), re.IGNORECASE)
+
+
 def walk(
     root: Path,
     *,
@@ -310,6 +371,7 @@ def walk(
     include: Sequence[str],
     exclude: Sequence[str],
     with_gen_count: bool = True,
+    known: Mapping[str, _KnownStat] | None = None,
 ) -> tuple[list[SourceItem], WalkStats]:
     """Walk ``root`` with os.scandir + lstat: never follows symlinks, never opens or reads a file.
 
@@ -318,6 +380,13 @@ def walk(
     size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
     A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
     ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist.
+
+    ``known`` (stable_id -> stored H0, from ``Manifest.observation_index``) makes getattrlist conditional:
+    a file whose lstat tuple ``(size, mtime_ns, ctime_ns, ino, mode)`` equals its stored row, and whose row
+    holds a gen_count and creation time, reuses them instead of a per-file getattrlist.  Any write, chmod,
+    rename or link change moves ctime, which APFS (and File Provider) cannot preserve, so an equal tuple
+    means the inode was not modified since the row was stamped; gen_count is re-read for every file whose
+    tuple moved and for every new file, where it is the change token the next pass compares.
     """
     root_st = os.lstat(root)  # FileNotFoundError propagates
     if stat.S_ISLNK(root_st.st_mode):
@@ -329,6 +398,10 @@ def walk(
 
     state = _WalkState()
     cloud_roots = _cloud_roots()
+    included = _file_matcher(include, exclude)
+    root_dev = root_st.st_dev
+    known_get = known.get if known else None
+    append = state.items.append
     # (absolute dir, rel prefix, lstat of the dir)
     stack: list[tuple[Path, str, os.stat_result]] = [(root, "", root_st)]
     while stack:
@@ -353,15 +426,18 @@ def walk(
                 "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
             )
             continue
+        prefix = f"{rel_dir}/" if rel_dir else ""
         for entry in entries:
-            name = _nfc(entry.name)
-            try:
-                name.encode("utf-8")
-            except UnicodeEncodeError:
-                state.excluded += 1
-                log.warning("%s: skipping undecodable name %r in %r", source_id, entry.name, shown)
-                continue
-            rel = f"{rel_dir}/{name}" if rel_dir else name
+            name = entry.name
+            if not name.isascii():
+                name = _nfc(name)
+                try:
+                    name.encode("utf-8")
+                except UnicodeEncodeError:
+                    state.excluded += 1
+                    log.warning("%s: skipping undecodable name %r in %r", source_id, entry.name, shown)
+                    continue
+            rel = prefix + name
             try:
                 st = entry.stat(follow_symlinks=False)
             except FileNotFoundError:
@@ -372,25 +448,48 @@ def walk(
                 log.warning("%s: cannot lstat %r (%s); %r is unknown", source_id, rel, exc.strerror, shown)
                 continue
             mode = st.st_mode
-            if stat.S_ISLNK(mode):
+            fmt = mode & _S_IFMT
+            if fmt == _S_IFLNK:
                 state.symlinks += 1
                 continue
-            if stat.S_ISDIR(mode):
+            if fmt == _S_IFDIR:
                 if _dir_excluded(rel, exclude):
                     state.excluded += 1
                     continue
-                if st.st_dev != root_st.st_dev:
+                if st.st_dev != root_dev:
                     state.excluded += 1
                     log.warning("%s: not crossing into another volume at %r", source_id, rel)
                     continue
                 stack.append((Path(entry.path), rel, st))
                 continue
-            if not stat.S_ISREG(mode) or not is_included(rel, include, exclude):
+            if fmt != _S_IFREG or not included(rel):
                 state.excluded += 1
+                continue
+            prior = known_get(stable_id_for(volume, st.st_ino)) if known_get is not None else None
+            if with_gen_count and prior is not None and _reusable(prior, st):
+                # The common no-op case: the stored gen_count/creation time stand (see the docstring).
+                append(
+                    SourceItem(
+                        source_id=source_id,
+                        stable_id=stable_id_for(volume, st.st_ino),
+                        rel_path=rel,
+                        name=name,
+                        size=st.st_size,
+                        mtime_ns=st.st_mtime_ns,
+                        ctime_ns=st.st_ctime_ns,
+                        dataless=is_dataless(st),
+                        gen_count=prior.gen_count,
+                        remote_hashes=_NO_HASHES,
+                        created_ns=prior.created_ns,
+                        ino=st.st_ino,
+                        mode=mode,
+                        extra=_NO_EXTRA,
+                    )
+                )
                 continue
             _emit(
                 state,
-                Path(entry.path),
+                entry.path,
                 rel,
                 name,
                 st,
@@ -412,9 +511,22 @@ def walk(
     return items, stats
 
 
+def _reusable(prior: _KnownStat, st: os.stat_result) -> bool:
+    """True when the stored row's stat tuple equals this lstat and it holds gen_count + creation time."""
+    return (
+        bool(prior.gen_count)
+        and prior.created_ns is not None
+        and prior.ctime_ns == st.st_ctime_ns
+        and prior.mtime_ns == st.st_mtime_ns
+        and prior.size == st.st_size
+        and prior.ino == st.st_ino
+        and prior.mode == st.st_mode
+    )
+
+
 def _emit(
     state: _WalkState,
-    path: Path,
+    path: str,
     rel: str,
     name: str,
     st: os.stat_result,
@@ -423,11 +535,13 @@ def _emit(
     volume: str,
     with_gen_count: bool,
 ) -> None:
+    """Append one file read in full: gen_count and creation time from getattrlist (never opens it)."""
+    stable_id = stable_id_for(volume, st.st_ino)
     gen: int | None = None
     created = _birthtime_ns(st)
     if with_gen_count:
         try:
-            attrs = _file_attrs(path)
+            attrs = _file_attrs(Path(path))
         except FileNotFoundError:
             log.debug("%s: %r vanished during the walk", source_id, rel)
             return
@@ -440,18 +554,19 @@ def _emit(
     state.items.append(
         SourceItem(
             source_id=source_id,
-            stable_id=stable_id_for(volume, st.st_ino),
+            stable_id=stable_id,
             rel_path=rel,
             name=name,
             size=st.st_size,
             mtime_ns=st.st_mtime_ns,
             ctime_ns=st.st_ctime_ns,
-            is_dir=False,
             dataless=is_dataless(st),
             gen_count=gen,
+            remote_hashes=_NO_HASHES,
             created_ns=created,
             ino=st.st_ino,
             mode=st.st_mode,
+            extra=_NO_EXTRA,
         )
     )
 
@@ -539,6 +654,9 @@ class LocalArm:
         self.kind = cfg.kind
         self.root = cfg.path
         self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
+        # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
+        # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
+        self.known_h0: Mapping[str, _KnownStat] | None = None
         self._volume: str | None = None
 
     # -- helpers -------------------------------------------------------------------------------------------
@@ -574,6 +692,16 @@ class LocalArm:
         except OSError:
             return False
 
+    def _known_file_count(self) -> int:
+        """Files the manifest holds for this source (from ``known_h0``, the cycle's observation index)."""
+        if not self.known_h0:
+            return 0
+        return sum(
+            1
+            for row in self.known_h0.values()
+            if not getattr(row, "is_dir", False) and str(getattr(row, "state", "live")) != "tombstone"
+        )
+
     def _walk_scan(self) -> tuple[list[SourceItem], WalkStats, list[str]] | ScanResult:
         """Walk the root; returns (items, stats, alarms) or an incomplete, empty ScanResult."""
         try:
@@ -597,6 +725,7 @@ class LocalArm:
                 volume=volume,
                 include=self.cfg.include,
                 exclude=self._exclude(),
+                known=self.known_h0,
             )
         except FileNotFoundError:
             return self._incomplete(f"source root vanished during the walk: {self.root}")
@@ -605,6 +734,17 @@ class LocalArm:
         sentinel = self._sentinel_present(items)
         stats = dataclasses.replace(stats, sentinel_present=sentinel)
         alarms: list[str] = []
+        known_files = self._known_file_count()
+        if not items and stats.dirs <= 1 and not stats.unknown_dirs and not stats.excluded and known_files:
+            # An existing but EMPTY root (an unmounted volume's mount point, a sync client that has not
+            # populated it yet) while files are mirrored: a scope with zero children is unknown, never
+            # "everything was deleted" (design 4.7), sentinel or not.
+            stats = dataclasses.replace(stats, unknown_dirs=(".",))
+            alarms.append(
+                f"source root {self.root} is empty but {known_files} file(s) are mirrored "
+                "(unmounted volume?): "
+                "enumeration incomplete, nothing is deleted"
+            )
         if sentinel is False:
             alarms.append(
                 f"sentinel {self.cfg.sentinel!r} missing under {self.root}: enumeration treated as incomplete"

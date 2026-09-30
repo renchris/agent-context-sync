@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import tomllib
 from collections.abc import Mapping
@@ -13,6 +14,7 @@ from typing import Any
 from agentsync.errors import ConfigError
 from agentsync.model import SourceKind, SourceState
 from agentsync.paths import (
+    CLOUD_STORAGE_ROOT,
     DocsLayout,
     StatePaths,
     default_cache_dir,
@@ -24,6 +26,7 @@ from agentsync.paths import (
     is_cloud_path,
     is_under,
 )
+from agentsync.policy import PolicyConfig, parse_policy_table
 
 SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
@@ -54,7 +57,12 @@ _SIZE_UNITS = {
     "tib": 1024**4,
 }
 
-_TOP_KEYS = frozenset({"agentsync", "graph", "breaker", "convert", "source"})
+_TOP_KEYS = frozenset(
+    {"agentsync", "graph", "breaker", "convert", "source", "network", "policy", "governance"}
+)
+# [policy] is validated here (policy.parse_policy_table); [governance] by governance.load_governance, which
+# imports config (so config cannot import it): a bad [governance] table fails `agentsync doctor`/purge.
+_NETWORK_KEYS = frozenset({"proxy"})
 _AGENTSYNC_KEYS = frozenset(
     {
         "docs_repo",
@@ -68,7 +76,10 @@ _AGENTSYNC_KEYS = frozenset(
         "launchd_label_prefix",
     }
 )
-_GRAPH_KEYS = frozenset({"client_id", "tenant", "scopes", "company", "base_url"})
+_GRAPH_KEYS = frozenset(
+    {"client_id", "tenant", "scopes", "company", "base_url", "cloud", "allow_device_code", "broker"}
+)
+_CLOUDS = frozenset({"global", "usgov", "usgov-dod", "china"})
 _BREAKER_KEYS = frozenset({"fraction", "floor", "hold_days"})
 _CONVERT_KEYS = frozenset(
     {"xlsx_stream_threshold_bytes", "max_rows_per_sheet", "max_page_bytes", "pandoc_path"}
@@ -133,11 +144,21 @@ class GraphConfig:
     scopes: tuple[str, ...] = DEFAULT_GRAPH_SCOPES
     company: str = "agentsync"  # User-Agent: NONISV|<company>|agentsync/<version>
     base_url: str = DEFAULT_GRAPH_BASE_URL
+    cloud: str | None = None  # global | usgov | usgov-dod | china; None = inferred from base_url (graph.auth)
+    allow_device_code: bool = False  # C15 1.4: device code is the last rung, off unless IT allows it
+    broker: bool = True  # C15 1.1: try the macOS broker (Company Portal SSO extension) first
 
     @property
     def authority(self) -> str:
         """MSAL authority URL for ``tenant``."""
         return f"https://login.microsoftonline.com/{self.tenant}"
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkConfig:
+    """``[network]``: ``proxy`` = an http(s) proxy URL, or ``"direct"`` to ignore env/system proxies."""
+
+    proxy: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +218,8 @@ class Config:
     graph: GraphConfig = field(default_factory=GraphConfig)
     breaker: BreakerConfig = field(default_factory=BreakerConfig)
     convert: ConvertConfig = field(default_factory=ConvertConfig)
+    network: NetworkConfig = field(default_factory=NetworkConfig)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)  # [policy]; load_policy adds policy.toml
     reconcile_interval_s: int = 3600
     poll_interval_s: int = 300
     tombstone_reap_days: int = 180
@@ -294,6 +317,13 @@ def _int(t: Mapping[str, Any], key: str, where: str, default: int, minimum: int 
     return v
 
 
+def _bool(t: Mapping[str, Any], key: str, where: str, default: bool) -> bool:
+    v = t.get(key, default)
+    if not isinstance(v, bool):
+        raise ConfigError(f"{where}: {key!r} must be true or false, got {v!r}")
+    return v
+
+
 def _str_list(t: Mapping[str, Any], key: str, where: str, default: tuple[str, ...]) -> tuple[str, ...]:
     v = t.get(key)
     if v is None:
@@ -301,6 +331,31 @@ def _str_list(t: Mapping[str, Any], key: str, where: str, default: tuple[str, ..
     if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
         raise ConfigError(f"{where}: {key!r} must be a list of strings")
     return tuple(x for x in v if x.strip())
+
+
+def canonical_source_root(path: Path, _depth: int = 0) -> Path:
+    """Resolve the symlinks in ``path`` up to, never inside, ``~/Library/CloudStorage``.
+
+    ``~/OneDrive - Contoso`` (the link OneDrive creates) becomes ``~/Library/CloudStorage/OneDrive-Contoso``
+    so every File Provider safeguard applies, while nothing inside a File Provider tree is touched at config
+    load (an lstat there may need a TCC grant; the launcher's canary runs first)."""
+    cloud = expand(CLOUD_STORAGE_ROOT)
+    parts = path.parts
+    current = Path(parts[0])
+    for n, part in enumerate(parts[1:], start=1):
+        candidate = current / part
+        if is_under(current, cloud) or candidate == cloud:
+            return Path(candidate, *parts[n + 1 :])
+        try:
+            if candidate.is_symlink() and _depth < 40:
+                target = candidate.readlink()
+                resolved = target if target.is_absolute() else candidate.parent / target
+                rest = Path(os.path.normpath(resolved), *parts[n + 1 :])
+                return canonical_source_root(rest, _depth + 1)
+        except OSError:
+            return Path(candidate, *parts[n + 1 :])
+        current = candidate
+    return current
 
 
 def _path(t: Mapping[str, Any], key: str, where: str, default: Path) -> Path:
@@ -352,7 +407,10 @@ def _parse_source(raw: object, n: int, cfg_where: str) -> SourceConfig:
 
     path: Path | None = None
     if kind in (SourceKind.LOCAL, SourceKind.INBOX):
-        path = expand(_str(raw, "path", where) or "")
+        # Resolved: a root reached through a symlink (OneDrive's own ``~/OneDrive - <Org>`` link to
+        # ~/Library/CloudStorage/OneDrive-<Org>) must get every File Provider safeguard -- the launcher, the
+        # TCC canary, the zero-children rule -- which all test the canonical path (review deploy-ops).
+        path = canonical_source_root(expand(_str(raw, "path", where) or ""))
     sentinel = _str(raw, "sentinel", where)
     if sentinel is not None and (sentinel.startswith("/") or ".." in Path(sentinel).parts):
         raise ConfigError(f"{where}: 'sentinel' must be a path relative to the source root")
@@ -421,7 +479,20 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         scopes=_str_list(g, "scopes", gw, DEFAULT_GRAPH_SCOPES),
         company=_str(g, "company", gw, "agentsync") or "agentsync",
         base_url=(_str(g, "base_url", gw, DEFAULT_GRAPH_BASE_URL) or DEFAULT_GRAPH_BASE_URL).rstrip("/"),
+        cloud=_str(g, "cloud", gw),
+        allow_device_code=_bool(g, "allow_device_code", gw, False),
+        broker=_bool(g, "broker", gw, True),
     )
+    if graph.cloud is not None and graph.cloud not in _CLOUDS:
+        raise ConfigError(f"{gw}: 'cloud' must be one of {', '.join(sorted(_CLOUDS))}, got {graph.cloud!r}")
+
+    n = _table(doc, "network", where)
+    nw = f"{where}: [network]"
+    _check_keys(n, _NETWORK_KEYS, nw)
+    network = NetworkConfig(proxy=_str(n, "proxy", nw))
+
+    content_policy = parse_policy_table(_table(doc, "policy", where), where=f"{where}: [policy]")
+    _table(doc, "governance", where)  # must be a table; its keys are validated by governance.load_governance
 
     b = _table(doc, "breaker", where)
     bw = f"{where}: [breaker]"
@@ -477,6 +548,8 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         graph=graph,
         breaker=breaker,
         convert=convert,
+        network=network,
+        policy=content_policy,
         reconcile_interval_s=_int(a, "reconcile_interval_s", aw, 3600, minimum=60),
         poll_interval_s=_int(a, "poll_interval_s", aw, 300, minimum=30),
         tombstone_reap_days=_int(a, "tombstone_reap_days", aw, 180, minimum=1),
@@ -519,11 +592,29 @@ tombstone_reap_days = 180
 # principal = "you@example.com"                       # which signed-in identity this mirror is a view of
 
 [graph]
-# client_id = "00000000-0000-0000-0000-000000000000"  # Entra app registration (public client, device code)
+# client_id = "00000000-0000-0000-0000-000000000000"  # Entra app registration (single-tenant public client)
 #                                                     # unset = no Graph arms; local sources still work
-tenant = "organizations"                              # or your tenant id / domain
+tenant = "organizations"                              # Graph NEEDS your tenant id (GUID) or verified domain:
+#                                                     # organizations/common are refused (AADSTS50194)
 # scopes = ["Files.Read.All", "Sites.Read.All", "Mail.Read", "User.Read"]
 company = "agentsync"                                 # User-Agent: NONISV|<company>|agentsync/<version>
+# cloud = "global"                                    # global | usgov | usgov-dod | china (default: base_url)
+# broker = true                                       # sign in via the macOS broker (Company Portal) first
+# allow_device_code = false                           # last-resort device-code sign-in, only if IT allows it
+
+# [network]
+#   proxy = "http://proxy.example.com:8080"           # default: HTTPS_PROXY, then the macOS manual proxy;
+#                                                     # "direct" ignores both.  PAC/WPAD are not evaluated.
+
+# [policy]                                            # sensitivity-label gate (C15 section 4)
+#   exclude_label_ids = ["00000000-0000-0000-0000-000000000000"]   # label GUIDs never converted
+#   exclude_label_names = ["Highly Confidential"]
+#   refuse_unlabelled = false
+
+# [governance]                                        # retention, purge, legal hold (C15 section 7)
+#   history_days = 30                                 # compact-history squashes older mirror history
+#   allow_remote = false                              # every clone is a copy no purge can reach
+#   hold = false                                      # legal/records hold: suspends purge and compaction
 
 [breaker]                                             # deletion circuit breaker, per source
 fraction = 0.20                                       # trip when deletions > max(fraction * live rows, floor)

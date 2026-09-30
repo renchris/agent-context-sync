@@ -899,12 +899,15 @@ def test_pass_office_safe_save_is_continuity_not_delete_create() -> None:
     assert not res.breaker_tripped
 
 
-def test_pass_safe_save_needs_a_complete_full_pass() -> None:
+def test_pass_safe_save_needs_a_full_pass_complete_or_not() -> None:
+    """correctness-safe-save-split: the path was walked, so an incomplete FULL pass pairs too."""
     old, new = local("vol:1", "a/R.docx"), local("vol:2", "a/R.docx", ino=2)
-    for ctx, complete in ((CTX, True), (FULL, False)):
-        res = run_pass([new], [row_of(old)], ctx, complete=complete)
-        assert res.safe_saves == () and res.deletion_candidates == ()
-        assert res.verdicts[0].verdict is Verdict.CREATED
+    res = run_pass([new], [row_of(old)], CTX, complete=True)
+    assert res.safe_saves == () and res.deletion_candidates == ()
+    assert res.verdicts[0].verdict is Verdict.CREATED
+    res = run_pass([new], [row_of(old)], FULL, complete=False)
+    assert res.safe_saves == (("vol:2", "vol:1"),) and res.deletion_candidates == ()
+    assert res.verdicts[0].verdict is Verdict.MAYBE_CHANGED
 
 
 def test_pass_deletions_only_from_complete_listing_and_breaker() -> None:
@@ -962,7 +965,9 @@ def test_pass_properties(seed: int) -> None:
         ids = [c.stable_id for c in res.verdicts]
         assert ids == sorted(set(ids)) == sorted({o.stable_id for o in observed})
         if ctx.pass_kind is PassKind.DELTA or not complete:
-            assert res.deletion_candidates == () and res.safe_saves == ()
+            assert res.deletion_candidates == ()
+        if ctx.pass_kind is PassKind.DELTA:
+            assert res.safe_saves == ()
         seen = {o.stable_id for o in observed}
         replaced = {old for _, old in res.safe_saves}
         assert not (set(res.deletion_candidates) & (seen | replaced))
@@ -977,7 +982,8 @@ def test_pass_properties(seed: int) -> None:
 class Harness:
     """A minimal stand-in for the cycle's phase-1 persistence + phase-2/3 bookkeeping (no publish)."""
 
-    def __init__(self, tmp: Path) -> None:
+    def __init__(self, tmp: Path, *, fast: bool = False) -> None:
+        self.fast = fast  # classify + persist the way cycle.py does: H0 fast path + batched writes
         self.m = Manifest(tmp / "manifest.sqlite")
         self.m.sync_sources([SourceConfig(id="src", kind=SourceKind.LOCAL, path=tmp / "src")])
         self.outputs: dict[str, list[RenderedUnit]] = {}
@@ -987,20 +993,42 @@ class Harness:
     ) -> PassClassification:
         run = self.m.begin_run(CycleMode.RECONCILE if full else CycleMode.POLL, host="h", pid=1)
         ctx = ClassifyContext(run, PassKind.FULL if full else PassKind.DELTA, self.m.written_at_ns())
-        rows = {r.stable_id: r for r in self.m.iter_items("src")}
+        fast: list[SourceItem] = []
+        if self.fast:
+            index = self.m.observation_index("src")
+            latest = {i.stable_id: i for i in items}
+            fast = [i for sid, i in sorted(latest.items()) if ctx.h0_unchanged(i, index.get(sid))]
+            fast_ids = {i.stable_id for i in fast}
+            slow = [i for i in items if i.stable_id not in fast_ids]
+            present = (RowState.LIVE, RowState.DATALESS, RowState.QUARANTINED, RowState.REFUSED)
+            missing = sorted(
+                sid for sid, r in index.items() if sid not in latest and not r.is_dir and r.state in present
+            )
+            rows = self.m.get_items("src", [*(i.stable_id for i in slow), *missing])
+            unseen = [rows[sid] for sid in missing]
+        else:
+            slow = items
+            rows = {r.stable_id: r for r in self.m.iter_items("src")}
+            unseen = self.m.unseen_live("src", run)
         res = classify_pass(
-            items,
+            slow,
             rows,
-            self.m.unseen_live("src", run),
+            unseen,
             ctx,
             enumeration_complete=complete,
             live_rows=self.m.live_count("src"),
             breaker=BreakerConfig(),
             breaker_active=self.m.breaker_active("src", "2026-09-29T00:00:00Z"),
+            unchanged=fast,
         )
         by_id = {i.stable_id: i for i in items}
+        fast_ids = {i.stable_id for i in fast}
         with self.m.transaction():
+            self.m.touch_observed("src", fast_ids, run_id=run)
+            observations: list[tuple[SourceItem, Verdict, RowState]] = []
             for c in res.verdicts:
+                if c.stable_id in fast_ids:
+                    continue
                 it = by_id[c.stable_id]
                 row = rows.get(c.stable_id)
                 if c.verdict is Verdict.DELETED:
@@ -1013,7 +1041,11 @@ class Harness:
                     state = row.state
                 else:
                     state = RowState.LIVE
-                self.m.upsert_observed(it, run_id=run, verdict=c.verdict, state=state)
+                if self.fast:
+                    observations.append((it, c.verdict, state))
+                else:
+                    self.m.upsert_observed(it, run_id=run, verdict=c.verdict, state=state)
+            self.m.upsert_observed_many(observations, run_id=run, existing=rows)
             for new_id, old_id in res.safe_saves:
                 self.m.rekey("src", old_id, new_id)
             self.m.stage_cursor("src", None, run)
@@ -1082,9 +1114,10 @@ class Harness:
         return outcome
 
 
-@pytest.fixture
-def hx(tmp_path: Path) -> Harness:
-    return Harness(tmp_path)
+@pytest.fixture(params=["one-by-one", "h0-fast-path"])
+def hx(tmp_path: Path, request: pytest.FixtureRequest) -> Harness:
+    """Every scenario runs twice: the reference persistence, and the cycle's H0 fast path + batching."""
+    return Harness(tmp_path, fast=request.param == "h0-fast-path")
 
 
 def old_local(stable_id: str, rel: str, ino: int, **kw: object) -> SourceItem:
@@ -1232,3 +1265,152 @@ def test_scenario_never_materialised_dataless_is_pending_work(hx: Harness) -> No
     assert [r.stable_id for r in hx.m.pending_work("src")] == ["vol:1"]
     assert hx.process({"vol:1": (h("1"), [unit("whole", "pdf")])}) == {"vol:1": Verdict.CHANGED}
     assert hx.m.pending_work("src") == []
+
+
+# ---- the H0 fast path (ClassifyContext.h0_unchanged + classify_pass(unchanged=...)) -----------------
+
+_UPSERT_FIELDS = (
+    "parent_id", "name", "rel_path", "is_dir", "size", "mtime_ns", "ctime_ns", "created_ns", "ino", "mode",
+    "gen_count", "dataless", "etag", "ctag", "content_type",
+)  # fmt: skip
+
+
+def _upsert_would_rewrite_nothing(it: SourceItem, row: ItemRow) -> bool:
+    same = all(getattr(it, f) == getattr(row, f) for f in _UPSERT_FIELDS)
+    hashes = (it.remote_hashes.quickxor, it.remote_hashes.sha1, it.remote_hashes.sha256)
+    return (
+        same and hashes == (row.quickxor, row.sha1_remote, row.sha256_remote) and dict(it.extra) == row.extra
+    )
+
+
+@pytest.mark.parametrize("make", [local, graph])
+@pytest.mark.parametrize("last", SETTLED)
+def test_h0_fast_path_accepts_an_identical_settled_observation(make: object, last: Verdict | None) -> None:
+    it = make()  # type: ignore[operator]
+    row = row_of(it, last_verdict=last)
+    assert CTX.h0_unchanged(it, row)
+    assert classify_observed(it, row, CTX).verdict is Verdict.UNCHANGED
+    for state in (RowState.QUARANTINED, RowState.REFUSED):  # a stub row with no content keeps its stub
+        assert CTX.h0_unchanged(it, row_of(it, state=state, content_sha256=None, last_verdict=last))
+
+
+@pytest.mark.parametrize(
+    ("item_kw", "row_kw"),
+    [
+        ({"dataless": True}, {}),
+        ({"deleted": True}, {}),
+        ({"is_dir": True}, {"is_dir": True}),
+        ({}, {"dataless": True}),
+        ({}, {"state": RowState.DATALESS}),
+        ({}, {"state": RowState.TOMBSTONE}),
+        ({}, {"content_sha256": None}),  # never materialised
+        ({}, {"mtime_ns": WRITTEN_AT, "ctime_ns": WRITTEN_AT}),  # racily clean
+        ({"mtime_ns": WRITTEN_AT, "ctime_ns": WRITTEN_AT}, {}),
+        ({"gen_count": None}, {"gen_count": None}),  # unknown change token
+        ({"rel_path": "b/Report.docx"}, {}),
+        ({"name": "Other.docx"}, {}),
+        ({"size": 101}, {}),
+        ({"mtime_ns": OLD_MTIME + 1}, {}),
+        ({"ctime_ns": OLD_MTIME + 1}, {}),
+        ({"ino": 2}, {}),
+        ({"mode": 0o100600}, {}),
+        ({"gen_count": 4}, {}),
+        ({"created_ns": 9}, {}),
+        ({"parent_id": "p"}, {}),
+        ({"etag": "e2"}, {}),
+        ({"ctag": "c2"}, {}),
+        ({"content_type": "text/plain"}, {}),
+        ({"remote_hashes": RemoteHashes(quickxor="q")}, {}),
+        ({"extra": {"dedup_name": "x"}}, {}),
+    ],
+)
+def test_h0_fast_path_declines_anything_the_full_path_would_touch(
+    item_kw: dict[str, object], row_kw: dict[str, object]
+) -> None:
+    base = local()
+    row = row_of(base, **row_kw)
+    it = replace(base, **item_kw)  # type: ignore[arg-type]
+    assert not CTX.h0_unchanged(it, row)
+    assert not CTX.h0_unchanged(it, None)
+    for last in PENDING:
+        assert not CTX.h0_unchanged(base, row_of(base, last_verdict=last))
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_h0_fast_path_property_implies_unchanged_and_a_noop_upsert(seed: int) -> None:
+    rng = random.Random(seed)
+    for _ in range(200):
+        it = rng.choice([local, graph])()
+        perturb = rng.choice(
+            [{}, {"size": 1}, {"mtime_ns": 1}, {"gen_count": rng.choice([None, 0, 3, 4])}, {"etag": "x"},
+             {"remote_hashes": RemoteHashes(quickxor=rng.choice(["qx1", "qx2"]))},
+             {"rel_path": "z/Report.docx"}, {"dataless": rng.random() < 0.5},
+             {"ctag": rng.choice([None, '"c:{E},1"'])}]
+        )  # fmt: skip
+        row = row_of(
+            replace(it, **perturb),  # type: ignore[arg-type]
+            last_verdict=rng.choice([*SETTLED, *PENDING]),
+            state=rng.choice([RowState.LIVE, RowState.QUARANTINED, RowState.DATALESS]),
+            content_sha256=rng.choice([None, h("c")]),
+        )
+        ctx = rng.choice([CTX, FULL])
+        if ctx.h0_unchanged(it, row):
+            c = classify_observed(it, row, ctx)
+            assert (c.verdict, c.prev_path) == (Verdict.UNCHANGED, None)
+            assert _upsert_would_rewrite_nothing(it, row)
+
+
+def test_h0_fast_path_reads_the_manifest_observation_index(tmp_path: Path) -> None:
+    m = Manifest(tmp_path / "m.sqlite")
+    m.sync_sources([SourceConfig(id="src", kind=SourceKind.LOCAL, path=tmp_path / "src")])
+    it = local(created_ns=4, extra={"dedup_name": "Report.docx"})
+    m.upsert_observed(it, run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
+    index = m.observation_index("src")
+    assert not CTX.h0_unchanged(it, index["vol:1"])  # created, never materialised
+    m.set_content("src", "vol:1", content_sha256=h("c"), canonical_sha256=h("1"), canonical_method="m",
+                  canonical_parts=[])  # fmt: skip
+    m.set_verdict("src", "vol:1", Verdict.UNCHANGED)
+    index = m.observation_index("src")
+    assert CTX.h0_unchanged(it, index["vol:1"])
+    assert CTX.h0_unchanged(it, m.get_item("src", "vol:1")) is CTX.h0_unchanged(it, index["vol:1"])
+    m.close()
+
+
+def test_pass_with_fast_path_ids_matches_the_full_pass() -> None:
+    items = [local(f"vol:{i}", f"a/{i}.docx", ino=i) for i in range(6)]
+    rows = {it.stable_id: row_of(it) for it in items}
+    gone = row_of(local("vol:9", "a/9.docx", ino=9))
+    rows["vol:9"] = gone
+    fast = [it for it in items if FULL.h0_unchanged(it, rows[it.stable_id])]
+    assert len(fast) == 6
+    full = classify_pass(items, rows, [*rows.values()], FULL, enumeration_complete=True, live_rows=7,
+                         breaker=BreakerConfig(), breaker_active=False)  # fmt: skip
+    quick = classify_pass(
+        items[4:], {k: v for k, v in rows.items() if k in ("vol:4", "vol:5", "vol:9")}, [gone], FULL,
+        enumeration_complete=True, live_rows=7, breaker=BreakerConfig(), breaker_active=False,
+        unchanged=fast[:4],
+    )  # fmt: skip
+    assert [(c.stable_id, c.verdict) for c in quick.verdicts] == [
+        (c.stable_id, c.verdict) for c in full.verdicts
+    ]
+    assert {c.reason for c in quick.verdicts[:4]} == {"h0-equal"}
+    assert quick.deletion_candidates == full.deletion_candidates == ("vol:9",)
+    # an id both proved unchanged and listed in unseen is observed: never a deletion candidate
+    both = classify_pass([], {}, [rows["vol:0"]], FULL, enumeration_complete=True, live_rows=7,
+                         breaker=BreakerConfig(), breaker_active=False, unchanged=[items[0]])  # fmt: skip
+    assert both.deletion_candidates == () and both.verdicts[0].verdict is Verdict.UNCHANGED
+    # a fast id that also appears in items is classified from items (items win)
+    dup = classify_pass([replace(items[0], size=5)], rows, [], FULL, enumeration_complete=True, live_rows=7,
+                        breaker=BreakerConfig(), breaker_active=False, unchanged=[items[0]])  # fmt: skip
+    assert [(c.verdict, c.reason) for c in dup.verdicts] == [(Verdict.MAYBE_CHANGED, "stat-differs:size")]
+
+
+def test_fast_harness_really_takes_the_fast_path(tmp_path: Path) -> None:
+    hx = Harness(tmp_path, fast=True)
+    doc = old_local("vol:1", "a/Plan.docx", 1)
+    hx.scan([doc])
+    hx.process({"vol:1": (h("1"), [unit("whole", "# Plan\n")])})
+    res = hx.scan([doc])
+    assert [(c.verdict, c.reason) for c in res.verdicts] == [(Verdict.UNCHANGED, "h0-equal")]
+    row = hx.m.get_item("src", "vol:1")
+    assert row is not None and row.last_seen_run == hx.run and row.last_verdict is Verdict.UNCHANGED
