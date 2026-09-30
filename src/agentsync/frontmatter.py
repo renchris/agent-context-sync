@@ -130,6 +130,7 @@ MIRROR_KEY_ORDER: tuple[str, ...] = (
     "converter",
     "options_hash",
     "sensitivity_label",
+    "content_trust",
     "status",
     "reason",
     "superseded_by",
@@ -181,6 +182,7 @@ class MirrorFrontmatter:
     converter: str | None = None  # "<converter_id>@<converter_version>"
     options_hash: str | None = None  # "sha256:<hex>"
     sensitivity_label: str | None = None
+    content_trust: str | None = None  # constant policy.CONTENT_TRUST_VALUE on every page publish writes
     reason: str | None = None  # unreadable/refused/failed stubs
     superseded_by: str | None = None
     deleted_at: str | None = None
@@ -221,6 +223,7 @@ class MirrorFrontmatter:
             "converter": self.converter,
             "options_hash": bare(self.options_hash),
             "sensitivity_label": self.sensitivity_label,
+            "content_trust": bare(self.content_trust),
             "status": Bare(self.status.value),
             "reason": self.reason,
             "superseded_by": self.superseded_by,
@@ -267,6 +270,9 @@ def validate_mirror_frontmatter(data: Mapping[str, Any]) -> list[str]:
     for k in ("content_sha256", "canonical_sha256", "rendered_sha256", "last_rendered_sha256"):
         if k in data and not HEX64_RE.match(str(data[k])):
             problems.append(f"{k} is not 64 lowercase hex")
+    ct = data.get("content_trust")
+    if ct is not None and not (isinstance(ct, str) and ct):
+        problems.append("content_trust is not a non-empty string")
     oh = data.get("options_hash")
     if oh is not None and not (isinstance(oh, str) and oh.startswith("sha256:") and HEX64_RE.match(oh[7:])):
         problems.append("options_hash is not 'sha256:<64 hex>'")
@@ -305,6 +311,7 @@ def parse_mirror_page(text: str) -> tuple[MirrorFrontmatter, str]:
             converter=s("converter"),
             options_hash=s("options_hash"),
             sensitivity_label=s("sensitivity_label"),
+            content_trust=s("content_trust"),
             reason=s("reason"),
             superseded_by=s("superseded_by"),
             deleted_at=s("deleted_at"),

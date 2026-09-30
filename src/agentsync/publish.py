@@ -35,7 +35,6 @@ from agentsync.curate import REFRESH_QUEUE_SH
 from agentsync.errors import ConfigError, GitError, PublishError
 from agentsync.frontmatter import (
     HEX64_RE,
-    MIRROR_KEY_ORDER,
     FrontmatterError,
     MirrorFrontmatter,
     parse_frontmatter,
@@ -341,13 +340,11 @@ def _tombstone_body(row: TombstoneRow, title: str) -> str:
 
 
 def _with_trust(fm: MirrorFrontmatter) -> MirrorFrontmatter:
-    """Add the ``content_trust`` frontmatter field once the frontmatter contract admits it (contract gap:
-    ``frontmatter.MIRROR_KEY_ORDER`` is closed and owned by the architect; see policy.CONTENT_TRUST_KEY)."""
-    key = policy.CONTENT_TRUST_KEY
-    if key in MIRROR_KEY_ORDER and key in {f.name for f in dataclasses.fields(MirrorFrontmatter)}:
-        changes: dict[str, Any] = {key: policy.CONTENT_TRUST_VALUE}
-        return dataclasses.replace(fm, **changes)
-    return fm
+    """Stamp the constant ``content_trust`` frontmatter field (``policy.CONTENT_TRUST_VALUE``) on a page.
+
+    The value never varies, so it changes no H2 (``rendered_sha256`` hashes the body only) and a no-op save
+    still renders a byte-identical page; the refresh-queue awk reads only ``rendered_sha256:``/``status:``."""
+    return dataclasses.replace(fm, content_trust=policy.CONTENT_TRUST_VALUE)
 
 
 def render_tombstone(

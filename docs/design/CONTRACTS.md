@@ -3697,7 +3697,9 @@ def suggest_source_id(scope: DiscoveredScope, taken: set[str]) -> str:
 - **§6:** mirror pages no longer carry `source_etag` or `source_version` (both stay in the manifest), so a no-op
   Office save changes no page (audit design-correctness-01). The keys stay in `MIRROR_KEY_ORDER` (unused).
   `content_trust` is **not** in the frontmatter contract yet (open gap; `test_content_trust_frontmatter_field`
-  is an xfail).
+  is an xfail). CORRECTED (2026-09-29): it is now — `MIRROR_KEY_ORDER` admits `content_trust` (between
+  `sensitivity_label` and `status`) and publish writes `content_trust: untrusted-third-party-data` on every
+  mirror page, stub and tombstone; the field is optional on read, and H2 hashes the body only.
 - Every mirror page body starts with `policy.UNTRUSTED_BANNER` (H2 covers it; the default registry's guard adds
   it, options `untrusted_banner`, and `label_policy` when label rules are active, so every action key moved once).
 - Instruction-file names (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, every leading-dot segment, …) are mirrored
@@ -4213,6 +4215,7 @@ EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher retu
 ### 16.11 Open contract gaps (recorded, not implemented)
 
 - `frontmatter.MIRROR_KEY_ORDER` has no `content_trust` key (the body banner and AGENTS.md carry the boundary).
+  CORRECTED (2026-09-29): it has one now; see §16.6.
 - C15 req 28 (`extractSensitivityLabels`, 423 codes) needs `GraphClient.post_json` and a label slot on
   `FetchResult`; `GraphClient.download` has no `headers` argument (mail MIME GETs fall back without the
   ImmutableId header).
@@ -4281,7 +4284,10 @@ QUARANTINE.tsv and new CHANGELOG month files start with an untrusted-names line;
 gov) -> ("ok" | "due" | "overdue", str)` feeds the new doctor check `governance.compaction` (warn due, fail
 overdue) and `agentsync status` (`retention:`). `time_machine_exclusions` adds the docs repo's `.git` and the
 manifest's `-wal`/`-shm`; `governance.time_machine_status`, `ensure_time_machine_exclusions` (xattr
-`TM_EXCLUDE_XATTR`; `AGENTSYNC_TM_EXCLUDE=0` disables it; called by `init` and after each CLI cycle) and doctor
+`TM_EXCLUDE_XATTR`; `AGENTSYNC_TM_EXCLUDE=0` disables it; called by `init` and after each CLI cycle; the
+xattr is read with getxattr(2) and a missing one is written directly with setxattr(2) using `TM_EXCLUDE_VALUE`,
+the exact bytes `tmutil addexclusion` writes, falling back to `tmutil` — `staging/` is recreated every cycle,
+and a `tmutil` call costs ~11 s) and doctor
 `governance.time_machine`. `remote_allowed` parses both URLs (scheme, userinfo, host equal; path at a `/`
 boundary); `parse_governance` rejects a prefix that is not a URL or carries a password.
 

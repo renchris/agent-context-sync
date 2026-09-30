@@ -8,6 +8,7 @@ import pytest
 
 from agentsync.curate import REFRESH_QUEUE_SH
 from agentsync.frontmatter import (
+    MIRROR_KEY_ORDER,
     Bare,
     FrontmatterError,
     MirrorFrontmatter,
@@ -19,6 +20,7 @@ from agentsync.frontmatter import (
     validate_mirror_frontmatter,
 )
 from agentsync.model import PageStatus
+from agentsync.policy import CONTENT_TRUST_KEY, CONTENT_TRUST_VALUE
 
 H = "a" * 64
 
@@ -43,6 +45,7 @@ def current(body: str = "# Title\n\nbody\n", **kw: object) -> MirrorFrontmatter:
         "unit_of": 2,
         "converter": "xlsx-openpyxl@1.0.0+openpyxl-3.1.5",
         "options_hash": "sha256:" + "c" * 64,
+        "content_trust": CONTENT_TRUST_VALUE,
         "source_title": "FY26 Budget — Q3",
         "summary": 'Q3 budget: "spend", forecast',
         "tokens_estimate": 42,
@@ -62,7 +65,23 @@ def test_render_is_deterministic_and_awk_readable() -> None:
     assert "status: current" in lines
     assert 'part: {kind: sheet, name: "Q3 Budget", index: 1, of: 2}' in lines
     assert 'source_title: "FY26 Budget — Q3"' in lines  # unicode kept, JSON-quoted
+    assert f"content_trust: {CONTENT_TRUST_VALUE}" in lines  # bare, one spelling
     assert a.endswith(body)
+
+
+def test_content_trust_is_in_the_contract_and_optional() -> None:
+    assert CONTENT_TRUST_KEY == "content_trust"
+    order = MIRROR_KEY_ORDER
+    assert order.index("sensitivity_label") < order.index("content_trust") < order.index("status")
+    body = "# T\n"
+    with_trust = render_mirror_page(current(body), body)
+    without = render_mirror_page(current(body, content_trust=None), body)
+    assert "content_trust" not in without  # pages written before the field existed stay valid
+    assert parse_mirror_page(without)[0].content_trust is None
+    assert with_trust.split("---\n", 2)[2] == without.split("---\n", 2)[2]  # the body (H2 input) is unchanged
+    assert validate_mirror_frontmatter(parse_frontmatter(with_trust)[0]) == []
+    bad = with_trust.replace(f"content_trust: {CONTENT_TRUST_VALUE}", "content_trust: 3")
+    assert "content_trust is not a non-empty string" in validate_mirror_frontmatter(parse_frontmatter(bad)[0])
 
 
 def test_round_trip() -> None:
@@ -128,6 +147,7 @@ def test_refresh_queue_script_reads_rendered_pages(tmp_path: Path) -> None:
         status=PageStatus.DELETED,
         deleted_at="2026-09-29",
         last_rendered_sha256=H,
+        content_trust=CONTENT_TRUST_VALUE,
     )
     (repo / "mirror/s/gone.md").write_text(render_mirror_page(tomb, "# [DELETED UPSTREAM] gone\n"))
     old_pin = sha("# old\n")

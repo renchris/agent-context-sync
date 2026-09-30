@@ -646,7 +646,7 @@ BANNER_VERSION = 1
 
 CONTENT_TRUST_KEY = "content_trust"
 CONTENT_TRUST_VALUE = "untrusted-third-party-data"
-"""The frontmatter field every mirror page carries once ``frontmatter.MIRROR_KEY_ORDER`` admits it."""
+"""The ``content_trust`` frontmatter value every mirror page, stub and tombstone carries."""
 
 _BANNER_SCAN_LINES = 8
 

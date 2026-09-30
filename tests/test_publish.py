@@ -1040,12 +1040,30 @@ def test_generated_guides_state_the_untrusted_boundary(env: Env) -> None:
 def test_content_trust_frontmatter_field(env: Env) -> None:
     from agentsync.frontmatter import MIRROR_KEY_ORDER  # noqa: PLC0415
 
+    assert policy.CONTENT_TRUST_KEY in MIRROR_KEY_ORDER
+    line = f"{policy.CONTENT_TRUST_KEY}: {policy.CONTENT_TRUST_VALUE}\n"  # bare: one spelling, awk-readable
     item = env.observe("vol:1", "a.docx")
-    [p] = env.pub.plan_pages(env.config.source("src"), item, result(unit()))
+    body = "# A\n\nhello\n"
+    [p] = env.pub.plan_pages(env.config.source("src"), item, result(unit(body)))
     data, _ = parse_frontmatter(p.text)
-    if policy.CONTENT_TRUST_KEY not in MIRROR_KEY_ORDER:
-        pytest.xfail("contract gap: frontmatter.MIRROR_KEY_ORDER does not admit content_trust yet")
-    assert data[policy.CONTENT_TRUST_KEY] == policy.CONTENT_TRUST_VALUE
+    assert data[policy.CONTENT_TRUST_KEY] == policy.CONTENT_TRUST_VALUE and line in p.text
+    assert p.rendered_sha256 == sha(B(body))  # H2 hashes the body only; the constant field moves nothing
+    env.pub.write_pages(item, [p], env.run_id)
+    [again] = env.pub.plan_pages(env.config.source("src"), item, result(unit(body)))
+    assert again.text == p.text and env.pub.write_pages(item, [again], env.run_id) == []
+    assert env.pub.rewrite_frontmatter(item, env.run_id) == []
+    stub_item = env.observe("vol:2", "locked.docx")
+    [stub] = env.pub.plan_pages(
+        env.config.source("src"), stub_item, result(status=ConversionStatus.UNREADABLE, reason="x")
+    )
+    assert line in stub.text
+    env.pub.tombstone(
+        "src", "vol:1", reason="deleted-upstream", run_id=env.run_id, today=TODAY, last_commit=None
+    )
+    tomb = env.text(p.output_path)
+    fm, _ = parse_mirror_page(tomb)
+    assert fm.status is PageStatus.DELETED and fm.content_trust == policy.CONTENT_TRUST_VALUE and line in tomb
+    assert_pages_valid(env)
 
 
 def labelled_env(env: Env, *names: str) -> Publisher:
