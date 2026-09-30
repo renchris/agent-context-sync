@@ -2328,15 +2328,61 @@ TM_EXCLUDE_XATTR = "com.apple.metadata:com_apple_backup_excludeItem"
 _TM_TRANSIENT = ("-wal", "-shm")
 
 
+def _libc_xattr() -> Any:
+    """libc with getxattr(2)/setxattr(2) typed (macOS signatures: position and options arguments)."""
+    import ctypes  # noqa: PLC0415 — macOS-only, kept off the import path of every other command
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    common: list[Any] = [
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_int,
+    ]
+    libc.getxattr.restype = ctypes.c_ssize_t
+    libc.getxattr.argtypes = common
+    libc.setxattr.restype = ctypes.c_int
+    libc.setxattr.argtypes = common
+    return libc
+
+
+def _has_xattr(path: Path, name: str) -> bool:
+    """Whether ``path`` carries xattr ``name``, via getxattr(2) (``/usr/bin/xattr`` is a Python script that
+    costs ~1.8 s per call, measured 2026-09-29; that made every sync cycle ~11 s slower)."""
+    return int(_libc_xattr().getxattr(os.fsencode(path), name.encode(), None, 0, 0, 0x0001)) >= 0
+
+
+TM_EXCLUDE_VALUE = bytes.fromhex(
+    "62706C69737430305F1011636F6D2E6170706C652E6261636B75706408000000000000010100000000000000010000000000000000"
+    "000000000000001C"
+)
+"""The value ``tmutil addexclusion`` writes: bplist string ``com.apple.backupd`` (read back 2026-09-29)."""
+
+
+def _set_tm_exclusion(path: Path) -> bool:
+    """Write the sticky exclusion xattr directly with setxattr(2): instant, where ``tmutil`` takes ~11 s.
+
+    ``staging/`` is recreated every cycle, so without this each cycle paid one ``tmutil`` call."""
+    buf = TM_EXCLUDE_VALUE
+    rc = _libc_xattr().setxattr(os.fsencode(path), TM_EXCLUDE_XATTR.encode(), buf, len(buf), 0, 0x0001)
+    return int(rc) == 0 and _has_xattr(path, TM_EXCLUDE_XATTR)
+
+
 def time_machine_status(config: Config, *, runner: Runner | None = None) -> list[tuple[Path, bool | None]]:
-    """(path, excluded?) per exclusion path; None when the path does not exist (read via ``xattr -p``)."""
-    run = runner or _run
+    """(path, excluded?) per exclusion path; None when the path does not exist.
+
+    Read with getxattr(2); an injected ``runner`` (tests) is asked ``xattr -p`` instead."""
     out: list[tuple[Path, bool | None]] = []
     for p in time_machine_exclusions(config):
         if not p.exists():
             out.append((p, None))
             continue
-        cp = run(["/usr/bin/xattr", "-p", TM_EXCLUDE_XATTR, str(p)])
+        if runner is None:
+            out.append((p, _has_xattr(p, TM_EXCLUDE_XATTR)))
+            continue
+        cp = runner(["/usr/bin/xattr", "-p", TM_EXCLUDE_XATTR, str(p)])
         out.append((p, cp.returncode == 0))
     return out
 
@@ -2352,9 +2398,11 @@ def ensure_time_machine_exclusions(config: Config, *, runner: Runner | None = No
     run = runner or _run
     missing = [
         p
-        for p, excluded in time_machine_status(config, runner=run)
+        for p, excluded in time_machine_status(config, runner=runner)
         if excluded is False and not p.name.endswith(_TM_TRANSIENT)
     ]
+    if runner is None:
+        missing = [p for p in missing if not _set_tm_exclusion(p)]
     if not missing:
         return []
     cp = run([_TMUTIL, "addexclusion", *map(str, missing)])
