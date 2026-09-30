@@ -19,6 +19,13 @@ Details beyond the contract table:
 - A 401 carrying a CAE ``claims=`` challenge passes the decoded claims to the provider's optional
   ``refresh_token(claims_challenge)`` (``MsalAuth`` has one); otherwise ``get_token()`` is asked again.
 - httpx logs every request URL at INFO; a filter on the ``httpx`` logger redacts those URLs too.
+- TLS and proxies (C15 §5): the client verifies with ``truststore.SSLContext`` (macOS keychain roots, so a
+  corporate TLS-inspection CA is trusted) and routes through :func:`agentsync.net.resolve_proxy`'s proxy
+  (config > HTTPS_PROXY > macOS manual system proxy, NO_PROXY and the system ExceptionsList honoured), never
+  through httpx's own environment lookup.  A certificate failure or a proxy refusal is not retried: it raises
+  ``NetworkPolicyError`` (``code="network-policy"``, *failed*, never *skipped*).  A PAC-only system proxy
+  makes every request raise ``NetworkPolicyError("PAC")`` instead of silently going direct.  Only
+  DNS/connect/timeout failures stay ``GraphError(status=0, code="network")`` (offline, transient).
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ import logging
 import os
 import random
 import re
+import ssl
 import tempfile
 import time
 import uuid
@@ -46,6 +54,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 
 import httpx
 
+from agentsync import net
 from agentsync.errors import (
     AuthRequiredError,
     BudgetExhaustedError,
@@ -56,6 +65,7 @@ from agentsync.errors import (
     GraphThrottled,
 )
 from agentsync.graph.auth import TokenProvider
+from agentsync.graph.errors import NetworkPolicyError
 
 logger = logging.getLogger(__name__)
 
@@ -261,8 +271,14 @@ class GraphClient:
         max_retries: int = 6,
         max_backoff_s: float = 300.0,
         sleep: Callable[[float], None] = time.sleep,
+        proxy: net.ProxySettings | None = None,
+        verify: ssl.SSLContext | None = None,
     ) -> None:
-        """Create the httpx.Client (``transport`` lets tests inject respx/MockTransport)."""
+        """Create the httpx.Client (``transport`` lets tests inject respx/MockTransport).
+
+        ``verify`` defaults to :func:`agentsync.net.ssl_context` (truststore); ``proxy`` defaults to
+        :func:`agentsync.net.resolve_proxy` (env, then the macOS system proxy) unless ``transport`` is given.
+        """
         if max_retries < 0:
             raise ValueError("max_retries must be >= 0")
         if max_backoff_s <= 0:
@@ -279,12 +295,29 @@ class GraphClient:
         self._blocked_until = 0.0  # time.monotonic(): requests fail fast with GraphThrottled until then
         self._blocked_status = 429
         _install_httpx_log_redaction()
+        self._ssl_context = verify if verify is not None else net.ssl_context()
+        if proxy is None:
+            proxy = net.ProxySettings.direct() if transport is not None else net.resolve_proxy()
+        self._proxy = proxy
+        self._policy_block: NetworkPolicyError | None = (
+            NetworkPolicyError("PAC", proxy.policy_error) if proxy.policy_error else None
+        )
+        mounts = net.httpx_mounts(proxy, self._ssl_context) if transport is None else {}
         self._http = httpx.Client(
             transport=transport,
+            verify=self._ssl_context,
+            trust_env=False,
+            mounts=mounts or None,
             timeout=httpx.Timeout(timeout_s),
             follow_redirects=False,
             headers={"User-Agent": user_agent},
         )
+        logger.debug("Graph client TLS via truststore; proxy %s", proxy.describe())
+
+    @property
+    def proxy(self) -> net.ProxySettings:
+        """The resolved proxy this client routes through (credentials never logged)."""
+        return self._proxy
 
     def close(self) -> None:
         """Close the underlying httpx client."""
@@ -331,6 +364,8 @@ class GraphClient:
 
     def _wait_for_pause(self) -> None:
         """Honour a global pause (sleep) or block (fail fast) before sending anything."""
+        if self._policy_block is not None:
+            raise self._policy_block
         now = time.monotonic()
         if now < self._blocked_until:
             remaining = self._blocked_until - now
@@ -380,6 +415,9 @@ class GraphClient:
             try:
                 response = self._http.send(request, stream=stream)
             except httpx.TransportError as exc:
+                policy = net.classify_transport_error(exc)
+                if policy is not None:
+                    raise self._policy_error(policy, exc, safe_url) from None
                 attempt += 1
                 if attempt > self._max_retries:
                     raise GraphError(
@@ -467,6 +505,14 @@ class GraphClient:
                 continue
 
             raise self._map_error(response, body, str(request.url), rid, auth=auth)
+
+    def _policy_error(self, policy: str, exc: Exception, safe_url: str) -> NetworkPolicyError:
+        """A never-retried network-policy failure (certificate not trusted, proxy refused the CONNECT)."""
+        kind = "TLS" if policy == net.POLICY_TLS else "proxy"
+        hint = net.TLS_HINT if kind == "TLS" else net.PROXY_HINT
+        via = net.redact_proxy(self._proxy.proxy_for(safe_url))
+        logger.error("network-policy (%s) on GET %s via %s: %s", kind, safe_url, via, type(exc).__name__)
+        return NetworkPolicyError(kind, f"{hint}; GET {safe_url} via {via} ({type(exc).__name__})")
 
     def _map_error(
         self, response: httpx.Response, body: JsonObject | None, url: str, rid: str | None, *, auth: bool

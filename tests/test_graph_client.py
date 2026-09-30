@@ -5,15 +5,19 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import ssl
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from pathlib import Path
 
+import httpcore
 import httpx
 import pytest
 import respx
+import truststore
 
+from agentsync import net
 from agentsync.errors import (
     AuthRequiredError,
     BudgetExhaustedError,
@@ -61,6 +65,19 @@ class PlainTokens:
     def get_token(self) -> str:
         self.calls += 1
         return TOKEN
+
+
+@pytest.fixture(autouse=True)
+def _no_machine_proxy(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Deterministic: GraphClient's default proxy resolution sees no env/system proxy on any dev machine."""
+    calls: list[int] = []
+
+    def direct(config_proxy: str | None = None, **_kw: object) -> net.ProxySettings:
+        calls.append(1)
+        return net.ProxySettings.direct()
+
+    monkeypatch.setattr(client_mod.net, "resolve_proxy", direct)
+    return calls
 
 
 @pytest.fixture
@@ -724,3 +741,104 @@ def test_pause_is_served_once(tokens: FakeTokens, sleeps: list[float]) -> None:
     c._wait_for_pause()
     c._wait_for_pause()
     assert len(sleeps) == 1 and 0.9 <= sleeps[0] <= 1.0
+
+
+# --- TLS and proxies (C15 §5, §9.31, §9.33, §9.34) ----------
+
+
+def test_default_client_verifies_with_truststore(tokens: FakeTokens) -> None:
+    """C15 §9.31: httpx.Client(verify=truststore.SSLContext(PROTOCOL_TLS_CLIENT))."""
+    with GraphClient(tokens, user_agent=UA) as c:
+        transport = c._http._transport
+        assert isinstance(transport, httpx.HTTPTransport)
+        ctx = transport._pool._ssl_context
+        assert isinstance(ctx, truststore.SSLContext)
+        assert ctx.protocol == ssl.PROTOCOL_TLS_CLIENT
+
+
+def test_client_ignores_httpx_env_lookup(tokens: FakeTokens, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Proxy precedence is ours (net.resolve_proxy); httpx must not re-read HTTPS_PROXY behind it."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.invalid:1")
+    with GraphClient(tokens, user_agent=UA, proxy=net.ProxySettings.direct()) as c:
+        assert c._http._mounts == {}
+        assert c._http._trust_env is False
+
+
+def test_default_proxy_is_resolved_unless_a_transport_is_injected(
+    tokens: FakeTokens, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proxied = net.ProxySettings(url="http://proxy.corp:3128", source="system", no_proxy=("*.local",))
+    monkeypatch.setattr(client_mod.net, "resolve_proxy", lambda config_proxy=None, **kw: proxied)
+    with GraphClient(tokens, user_agent=UA) as c:
+        assert c.proxy is proxied
+        pool = c._http._transport_for_url(httpx.URL(f"{BASE}/me"))._pool  # type: ignore[attr-defined]
+        assert isinstance(pool, httpcore.HTTPProxy)
+        assert isinstance(pool._ssl_context, truststore.SSLContext)
+        assert c._http._transport_for_url(httpx.URL("https://printer.local/")) is c._http._transport
+
+    def must_not_resolve(config_proxy: str | None = None, **kw: object) -> net.ProxySettings:
+        raise AssertionError("resolved")
+
+    monkeypatch.setattr(client_mod.net, "resolve_proxy", must_not_resolve)
+    with GraphClient(
+        tokens, user_agent=UA, transport=httpx.MockTransport(lambda r: httpx.Response(200))
+    ) as c:
+        assert c.proxy == net.ProxySettings.direct()
+
+
+def test_proxied_client_still_works_under_respx(router: respx.MockRouter, tokens: FakeTokens) -> None:
+    route = router.get(f"{BASE}/me").mock(return_value=httpx.Response(200, json={"id": "me"}))
+    proxied = net.ProxySettings(url="http://proxy.corp:3128", source="env")
+    with GraphClient(tokens, user_agent=UA, proxy=proxied) as c:
+        assert c.get_json("me") == {"id": "me"}
+    assert route.call_count == 1
+
+
+def test_pac_only_network_fails_closed_without_sending(router: respx.MockRouter, tokens: FakeTokens) -> None:
+    """C15 §9.33: `network-policy: PAC`, never a direct attempt."""
+    route = router.get(f"{BASE}/me").mock(return_value=httpx.Response(200, json={}))
+    pac = net.ProxySettings(policy_error="network-policy: PAC: the system proxy is a PAC file")
+    with (
+        GraphClient(tokens, user_agent=UA, proxy=pac) as c,
+        pytest.raises(graph_errors.NetworkPolicyError) as ei,
+    ):
+        c.get_json("me")
+    assert ei.value.policy == "PAC" and ei.value.status == 0 and ei.value.code == "network-policy"
+    assert route.call_count == 0 and tokens.get_calls == 0
+
+
+def test_certificate_failure_is_network_policy_tls_not_retried(
+    router: respx.MockRouter, client: GraphClient, sleeps: list[float]
+) -> None:
+    """C15 §9.34: a certificate failure is `failed: network-policy (TLS)`, never `skipped`/offline."""
+    route = router.get(f"{BASE}/me").mock(
+        side_effect=httpx.ConnectError(
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer"
+        )
+    )
+    with pytest.raises(graph_errors.NetworkPolicyError) as ei:
+        client.get_json("me")
+    assert ei.value.policy == "TLS"
+    assert "keychain" in str(ei.value)
+    assert route.call_count == 1 and sleeps == []
+
+
+def test_proxy_refusal_is_network_policy_proxy_not_retried(
+    router: respx.MockRouter, client: GraphClient, sleeps: list[float]
+) -> None:
+    route = router.get(f"{BASE}/me").mock(side_effect=httpx.ProxyError("407 Proxy Authentication Required"))
+    with pytest.raises(graph_errors.NetworkPolicyError) as ei:
+        client.get_json("me")
+    assert ei.value.policy == "proxy"
+    assert route.call_count == 1 and sleeps == []
+
+
+def test_offline_stays_transient_network_error(
+    router: respx.MockRouter, client: GraphClient, sleeps: list[float]
+) -> None:
+    router.get(f"{BASE}/me").mock(side_effect=httpx.ConnectError("[Errno 8] nodename nor servname provided"))
+    with pytest.raises(GraphError) as ei:
+        client.get_json("me")
+    assert not isinstance(ei.value, graph_errors.NetworkPolicyError)
+    assert (ei.value.status, ei.value.code) == (0, "network")
+    assert len(sleeps) == 3
