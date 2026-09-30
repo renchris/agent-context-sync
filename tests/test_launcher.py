@@ -4,13 +4,17 @@ The launcher is built once per session with launcher/build.sh (native arch, ad h
 against /bin/echo, /bin/sh and /bin/sleep children: exit codes, environment, signals, the wall-clock watchdog
 and the canaries.  A canary that must *block* uses a FIFO (open(O_RDONLY) waits for a writer), which stands in
 for an unanswered TCC prompt without touching ~/Library/CloudStorage or raising any dialog.  launchd is never
-touched: install.sh runs with a tmp HOME and stub ``uv``/``agentsync`` executables.
+touched: install.sh runs with a tmp HOME, stub ``uv``/``agentsync`` executables and a stub ``launchctl``
+(AGENTSYNC_LAUNCHCTL) (its setup log, which ``agentsync setup-report`` reads, is checked the same way);
+tests/test_install_oneshot.py covers the one-shot run, the wait and the setup report in depth.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import plistlib
+import re
 import shutil
 import signal
 import subprocess
@@ -20,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from agentsync import setup_report
 from agentsync.config import Config
 from agentsync.ops import doctor, launchd
 
@@ -426,26 +431,48 @@ if [ "$1 $2" = "tool install" ]; then
   if [ -n "${STUB_UV_INSTALL_RC:-}" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
   fi
-  mkdir -p "$HOME/.local/bin"
+  mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
   cp "$STUB_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/bin/agentsync"
-elif [ "$1 $2" = "tool dir" ]; then
+elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
+elif [ "$1 $2" = "tool dir" ]; then
+  echo "$HOME/.local/share/uv/tools"
 fi
 """
 
 STUB_AGENTSYNC = """#!/bin/bash
 echo "agentsync $*" >> "$STUB_LOG"
-cfg=""
+cfg="" out="" pos="" sources=""
+sub="$1"
+shift
 while [ $# -gt 0 ]; do
-  if [ "$1" = "--config" ]; then cfg="$2"; fi
+  case "$1" in
+    --config) cfg="$2"; shift ;;
+    --out) out="$2"; shift ;;
+    --source-local) sources="$sources[[source]]\n"; shift ;;
+    --*) ;;
+    *) pos="$1" ;;
+  esac
   shift
 done
-case "$(tail -1 "$STUB_LOG" | cut -d' ' -f2)" in
-  init) mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg" ;;
+case "$sub" in
+  init) mkdir -p "$(dirname "$cfg")"; printf "# stub\n$sources" > "$cfg" ;;
+  add-source) [ -z "$pos" ] || echo "[[source]]" >> "$cfg" ;;
   doctor) exit "${STUB_DOCTOR_RC:-0}" ;;
+  setup-report) mkdir -p "$(dirname "$out")"; echo "# agentsync setup report" > "$out" ;;
 esac
 exit 0
+"""
+
+STUB_LAUNCHCTL = """#!/bin/bash
+echo "launchctl $*" >> "$STUB_LOG"
+n="$(cat "$STUB_LOG.runs" 2>/dev/null || echo 0)"
+case "$1" in
+  print) printf '%s = {\\n\\tstate = not running\\n\\truns = %s\\n\\tlast exit code = 0\\n}\\n' "$2" "$n" ;;
+  kickstart) echo $((n + 1)) > "$STUB_LOG.runs" ;;
+  *) exit 64 ;;
+esac
 """
 
 
@@ -461,11 +488,16 @@ def stubs(tmp_path: Path) -> dict[str, str]:
     agentsync = tmp_path / "agentsync-stub"
     agentsync.write_text(STUB_AGENTSYNC)
     agentsync.chmod(0o755)
+    launchctl = tmp_path / "launchctl-stub"  # every run gets it: no test can reach /bin/launchctl
+    launchctl.write_text(STUB_LAUNCHCTL)
+    launchctl.chmod(0o755)
     return {
         "HOME": str(home),
         "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin",
         "STUB_LOG": str(tmp_path / "calls.log"),
         "STUB_AGENTSYNC": str(agentsync),
+        "AGENTSYNC_LAUNCHCTL": str(launchctl),
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.05",
         "LC_ALL": "C",
     }
 
@@ -494,7 +526,8 @@ def test_install_sh_help_and_usage_errors(stubs: dict[str, str], tmp_path: Path)
     assert install_sh(stubs, str(tmp_path / "nowhere")).returncode == 2
     assert install_sh(stubs, str(tmp_path / "missing.whl")).returncode == 2
     assert install_sh(stubs, "--launcher").returncode == 2
-    assert calls(stubs) == []
+    # no step ran; the setup report written at a post-parse usage error only reads launchd
+    assert [c for c in calls(stubs) if not c.startswith("launchctl print ")] == []
 
 
 def test_install_sh_dry_run_changes_nothing(stubs: dict[str, str]) -> None:
@@ -527,6 +560,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     home = Path(stubs["HOME"])
     dest = home / "Applications" / "AgentSyncLauncher.app"
     cfg = home / "agent-context" / "sources.toml"
+    report = f" [setup report: {home}/agent-context/setup-report.md]"
 
     first = install_sh(stubs, "--launcher", str(launcher_app))
     assert first.returncode == 0, first.stderr
@@ -537,13 +571,14 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert cfg.is_file()
     assert "designated requirement: cdhash H" in first.stdout
     log1 = calls(stubs)
-    assert log1[0].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
-    assert log1[0].endswith(str(REPO))
+    assert log1[:2] == ["uv tool dir --bin", "uv tool dir"], "read before the install (is it current?)"
+    assert log1[2].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
+    assert log1[2].endswith(str(REPO))
     assert f"agentsync init --config {cfg}" in log1 and f"agentsync doctor --config {cfg}" in log1
     assert not any("install-agent" in c for c in log1), "no LaunchAgent without --confirm-install-agent"
     assert (
         first.stdout.strip().splitlines()[-1]
-        == f"NEXT: add your sources to {cfg}, then re-run scripts/install.sh --launcher {launcher_app}"
+        == f"NEXT: add your sources to {cfg}, then re-run: {INSTALL_SH} --launcher {launcher_app}{report}"
     )
 
     mtime = (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns
@@ -554,30 +589,46 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     log2 = calls(stubs)[len(log1) :]
     assert not any(c.startswith("agentsync init") for c in log2)
     assert second.stdout.strip().splitlines()[-1] == (
-        f"NEXT: re-run scripts/install.sh --launcher {launcher_app} --confirm-install-agent to start "
-        "background sync"
+        f"NEXT: re-run: {INSTALL_SH} --launcher {launcher_app} --confirm-install-agent to start "
+        f"background sync{report}"
     )
 
-    third = install_sh(stubs, "--launcher", str(launcher_app), "--confirm-install-agent")
+    no_source = install_sh(stubs, "--launcher", str(launcher_app), "--confirm-install-agent")
+    assert no_source.returncode == 1, "asked for background sync of nothing"
+    assert not any("install-agent" in c for c in calls(stubs))
+    assert (
+        no_source.stdout.strip().splitlines()[-1].startswith("NEXT: choose a folder to sync, then re-run: ")
+    )
+
+    folder = home / "Projects"
+    folder.mkdir()
+    third = install_sh(
+        stubs, "--launcher", str(launcher_app), "--source-local", str(folder), "--confirm-install-agent"
+    )
     assert third.returncode == 0, third.stderr
-    assert f"agentsync install-agent --config {cfg}" in calls(stubs)
+    log3 = calls(stubs)
+    assert f"agentsync sync --once --config {cfg}" in log3
+    assert f"agentsync install-agent --config {cfg}" in log3
+    assert f"launchctl kickstart gui/{os.getuid()}/com.agentsync.poll" in log3
     assert "wants to access files managed by" in third.stdout
-    assert third.stdout.strip().splitlines()[-1].startswith("NEXT: if macOS asks")
+    assert third.stdout.strip().splitlines()[-1].startswith("NEXT: nothing is left: background sync is on")
 
 
 @needs_build
 def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launcher_app: Path) -> None:
     cfg = Path(stubs["HOME"]) / "agent-context" / "sources.toml"
     cfg.parent.mkdir(parents=True)
-    cfg.write_text("# existing\n")
+    cfg.write_text("# existing\n[[source]]\n")
     env = {**stubs, "STUB_DOCTOR_RC": "1"}
     cp = install_sh(env, "--launcher", str(launcher_app), "--confirm-install-agent")
     assert cp.returncode == 1  # asked for the agents, did not get them: an MDM script must see a failure
-    assert not any("install-agent" in c for c in calls(env))
+    assert not any(
+        c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
+    )
     assert "not installing the LaunchAgents" in cp.stderr
     assert cp.stdout.strip().splitlines()[-1].startswith("NEXT: fix the [FAIL] lines above")
     assert "--confirm-install-agent" in cp.stdout.strip().splitlines()[-1]  # the NEXT line repeats the flags
-    assert cfg.read_text() == "# existing\n"
+    assert cfg.read_text() == "# existing\n[[source]]\n"
 
 
 def test_install_sh_network_failure_exits_1_with_a_next_line(stubs: dict[str, str]) -> None:
@@ -596,3 +647,131 @@ def test_install_sh_rejects_an_unsigned_launcher(stubs: dict[str, str], tmp_path
     cp = install_sh(stubs, "--launcher", str(fake))
     assert cp.returncode == 1 and "codesign --verify" in cp.stderr
     assert not (Path(stubs["HOME"]) / "Applications").exists()
+
+
+# ---- the setup log `agentsync setup-report` reads -------------------------------------------------------
+
+_LOG_LINE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ run=(?P<run>\d{8}T\d{6}Z-\d+) (?P<rest>.*)$")
+
+
+def _setup_log_lines(path: Path) -> list[tuple[str, str]]:
+    """(run id, the rest) per line; every line must match the documented shape."""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = _LOG_LINE.match(line)
+        assert m, f"malformed setup log line: {line!r}"
+        out.append((m["run"], m["rest"]))
+    return out
+
+
+def _steps(lines: list[tuple[str, str]]) -> list[tuple[str, str, str, str]]:
+    """(step, result, rc, note) of the step lines."""
+    got = []
+    for _run, rest in lines:
+        kv = dict(re.findall(r"(\w+)=(\S+)", rest))
+        if "step" in kv:
+            assert kv["seconds"].isdigit()
+            got.append((kv["step"], kv["result"], kv["rc"], kv.get("note", "")))
+    return got
+
+
+def _wheel(tmp_path: Path) -> Path:
+    wheel = tmp_path / "agentsync-0.1.0-py3-none-any.whl"  # the stub uv never opens it
+    wheel.write_text("")
+    return wheel
+
+
+def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tmp_path: Path) -> None:
+    home = Path(stubs["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    wheel = _wheel(tmp_path)
+    cp = install_sh(stubs, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stderr
+    assert "install.log" not in cp.stdout + cp.stderr, "the setup log is never printed"
+    assert cp.stdout.strip().splitlines()[-1].startswith("NEXT: get a signed AgentSyncLauncher.app")
+    log = home / "agent-context" / "setup" / "install.log"
+    assert (log.parent.stat().st_mode & 0o777) == 0o700 and (log.stat().st_mode & 0o777) == 0o600
+    assert (log.parent.parent.stat().st_mode & 0o777) == 0o700, "a ~/agent-context it creates is 0700"
+    lines = _setup_log_lines(log)
+    assert len({run for run, _ in lines}) == 1 and len(lines) == 11
+    start, end = lines[0][1], lines[-1][1]
+    head = f"start install.sh compat=6 commit=- kind=wheel source={wheel} args={wheel} --source-local "
+    assert start.startswith(head)
+    assert start.endswith("FY26\\ Projects"), "folder paths are kept (setup-report redacts them)"
+    assert re.fullmatch(r"end rc=0 seconds=\d+", end)
+    assert _steps(lines) == [
+        ("uv", "skipped", "0", "present"),
+        ("agentsync", "done", "0", ""),
+        ("launcher", "skipped", "0", "no-launcher"),
+        ("config", "done", "0", "created"),
+        ("doctor", "done", "0", ""),
+        ("first-sync", "skipped", "0", "not-requested"),
+        ("agent", "skipped", "0", "not-requested"),
+        ("wait", "skipped", "0", "not-requested"),
+        ("report", "done", "0", "agentsync"),  # before the end line (the report read a provisional one)
+    ]
+
+    again = install_sh({**stubs, "STUB_DOCTOR_RC": "1"}, str(wheel), "--source-local", str(folder))
+    assert again.returncode == 0, again.stderr
+    lines = _setup_log_lines(log)
+    assert len(lines) == 22 and len({run for run, _ in lines}) == 2, "appended, one run id per run"
+    assert ("config", "done", "0", "add-source") in _steps(lines[11:])
+    assert ("doctor", "done", "1", "fail-lines") in _steps(lines[11:])
+
+
+def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp_path: Path) -> None:
+    log = tmp_path / "elsewhere" / "install.log"
+    report = tmp_path / "elsewhere" / "setup-report.md"
+    env = {
+        **stubs,
+        "STUB_UV_INSTALL_RC": "2",
+        "AGENTSYNC_SETUP_LOG": str(log),
+        "AGENTSYNC_SETUP_REPORT": str(report),
+    }
+    cp = install_sh(env, "--config", str(Path(stubs["HOME"]) / "x.toml"))
+    assert cp.returncode == 1
+    lines = _setup_log_lines(log)
+    assert not (Path(stubs["HOME"]) / "agent-context").exists(), "AGENTSYNC_SETUP_LOG moves the log"
+    assert report.is_file(), "the shell report (agentsync never got installed)"
+    start = lines[0][1]
+    commit = "-"
+    if _have_devtools():
+        git = ["/usr/bin/git", "-C", str(REPO)]
+        ro = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}  # read-only: the index's stat cache stays as it is
+        sha = subprocess.run(
+            [*git, "rev-parse", "--short=12", "HEAD"], capture_output=True, text=True, check=True, env=ro
+        ).stdout.strip()
+        diff = subprocess.run([*git, "diff", "HEAD", "--"], capture_output=True, check=True, env=ro).stdout
+        # a dirty checkout names its local changes: the first 12 hex of the SHA-256 of `git diff HEAD`
+        commit = f"{sha}-dirty tree={hashlib.sha256(diff).hexdigest()[:12]}" if diff else sha
+    assert (
+        start.startswith(f"start install.sh compat=6 commit={commit} kind=checkout")
+        and f"kind=checkout source={REPO}" in start
+    )
+    assert _steps(lines) == [
+        ("uv", "skipped", "0", "present"),
+        ("agentsync", "failed", "2", ""),
+        ("report", "done", "0", "fallback"),
+    ]
+    assert lines[-1][1].startswith("end rc=1 ") and lines[-2][1].startswith("step=report ")
+
+
+def test_install_sh_dry_run_writes_no_setup_log(stubs: dict[str, str], tmp_path: Path) -> None:
+    log = tmp_path / "dry" / "install.log"
+    cp = install_sh({**stubs, "AGENTSYNC_SETUP_LOG": str(log)}, "--dry-run", "--confirm-install-agent")
+    assert cp.returncode == 0, cp.stderr
+    assert not log.parent.exists()
+    assert list(Path(stubs["HOME"]).iterdir()) == []
+
+
+def test_setup_report_reads_the_install_sh_log(
+    stubs: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cp = install_sh(stubs, str(_wheel(tmp_path)))
+    assert cp.returncode == 0, cp.stderr
+    monkeypatch.setenv("HOME", stubs["HOME"])
+    text, _red = setup_report.build_report(Path(stubs["HOME"]) / "agent-context" / "sources.toml")
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    assert "1 install.sh run(s)" in installer and "exit 0 after" in installer
+    assert "step=launcher" in installer and "step=report" in installer
