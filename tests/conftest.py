@@ -21,7 +21,19 @@ from agentsync.config import Config, parse_config
 from fixtures.make_fixtures import make_fixtures
 
 REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
-FILEPROVIDER_ROOT = REAL_HOME / "Library" / "CloudStorage" / "OneDrive-Contoso"
+
+
+def _fileprovider_root() -> Path:
+    """The OneDrive File Provider mount for opt-in live tests: ``AGENTSYNC_FP_ROOT``, else the first
+    ``~/Library/CloudStorage/OneDrive-*`` folder (no tenant name is hardcoded in this public repo)."""
+    env = os.environ.get("AGENTSYNC_FP_ROOT")
+    if env:
+        return Path(env).expanduser()
+    found = sorted((REAL_HOME / "Library" / "CloudStorage").glob("OneDrive-*"))
+    return found[0] if found else REAL_HOME / "Library" / "CloudStorage" / "OneDrive-Contoso"
+
+
+FILEPROVIDER_ROOT = _fileprovider_root()
 E2E_SUBDIR = "agentsync-e2e"  # the ONLY place tests may write inside the File Provider mount
 
 requires_macos = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only syscalls")

@@ -9,7 +9,6 @@ import errno
 import hashlib
 import io
 import os
-import pwd
 import re
 import stat
 import sys
@@ -703,13 +702,9 @@ def test_inbox_fetch_two_reads_disagree(tmp_path: Path, monkeypatch: pytest.Monk
     os.environ.get("AGENTSYNC_FP_TEST") != "1", reason="set AGENTSYNC_FP_TEST=1 (reads OneDrive)"
 )
 def test_fileprovider_walk_is_metadata_only() -> None:
-    probe = (
-        Path(pwd.getpwuid(os.getuid()).pw_dir)
-        / "Library"
-        / "CloudStorage"
-        / "OneDrive-Contoso"
-        / "agentsync-probe"
-    )
+    from conftest import FILEPROVIDER_ROOT  # noqa: PLC0415 — the shared mount discovery
+
+    probe = FILEPROVIDER_ROOT / "agentsync-probe"
     if not probe.is_dir():
         pytest.skip(f"File Provider probe folder not present: {probe}")
 
