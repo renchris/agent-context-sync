@@ -38,6 +38,55 @@ whether that change costs anything. Git carries the result, so "what changed sin
 > implementation". The implementation landed on 2026-09-29, and it did not wait for the tenant. The arms that need no
 > tenant run today, and the Graph arms wait only on the IT request.
 
+## What it does: five features, one loop
+
+agentsync turns the Microsoft 365 files, mail and chat a Mac can reach into a folder of markdown that a coding agent
+can read and grep, and keeps that folder current by itself. Four of the five features run with no one involved once
+setup is done. The fifth, organizing pages by subject, is written by your coding agent; agentsync tells it which pages
+are out of date but does not write them.
+
+| # | Feature | What you get | Who runs it | Commands | Where the result lands |
+|---|---|---|---|---|---|
+| 1 | **Set up** | The tool, its signed launcher, the knowledge folder and two background jobs, installed in one command with no admin rights | You, once | `scripts/install.sh --source-local "<folder>" --confirm-install-agent` ([Install](#install)) | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
+| 2 | **Connect sources** | A say over what feeds the knowledge folder, now and later | You, when the list changes | Folders this Mac syncs (no IT): `install.sh --list-folders`, then `agentsync add-source FOLDER`. A drop folder for files you save by hand (no IT): uncomment the `inbox` block in `sources.toml`. Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac: need IT approval ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)), then `agentsync graph login` and `agentsync graph discover --toml`, pasted into `sources.toml` with `state = "live"` | `sources.toml` |
+| 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Automatic: every 5 minutes, plus a full re-check every hour | none (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
+| 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what and marks stale pages on every run | `agentsync refresh-queue` (stale pages), `agentsync lint`, `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
+| 5 | **Run it safely** | Health checks, a guard against mass deletion, and erasure on request | Mostly automatic; a few commands by hand | `agentsync doctor`, `status`, `reconcile --accept-deletions`, `purge`, `hold`, `offboard` | `docs/_sync/STATE.md` (is every source complete?), `~/Library/Logs/agentsync` |
+
+**The diff is part of feature 3, not a separate step.** Each run lists every source, decides from metadata alone
+which files changed, downloads only those, converts them and commits. The commit and the `CHANGELOG` entry are the
+diff; nothing else needs fetching. Only a OneDrive or SharePoint library connected through Microsoft Graph has a
+change token. A folder on the Mac is re-listed in full each run (metadata only, no file is opened), and a Teams channel
+or chat is read back to the newest message already seen.
+
+### What happens after install
+
+1. The installer writes `sources.toml`, creates `~/agent-context/docs`, and converts the files already on the Mac.
+   It downloads nothing, so online-only files are left for the background runs.
+2. Every 5 minutes a background run checks each source. It downloads at most 1 GiB or 5,000 online-only files per
+   source per run, so on a Mac with mostly online-only files the mirror fills in over several runs.
+   `docs/_sync/STATE.md` says which sources are still incomplete.
+3. Each run rewrites the changed pages in `docs/mirror/`, updates `INDEX.md` and `CHANGELOG/`, refreshes the citation
+   map, marks stale subject pages, and makes one git commit.
+4. **Automation stops here.** Open your coding agent in `~/agent-context/docs` and have it read `CLAUDE.md` (or
+   `AGENTS.md`), which the installer wrote, then:
+   - read `_sync/STATE.md`, to know which sources are incomplete;
+   - run `git log --since=<date> --stat -- mirror topics`, or read `CHANGELOG.md`, to see what changed;
+   - run `agentsync refresh-queue` to list subject pages whose sources changed;
+   - write or rewrite pages under `topics/<area>/`, following `topics/CLAUDE.md`: each page pins the mirror pages it
+     cites in its `sources:` header and names its subject in `entity:`.
+5. The next background run commits the agent's pages and adds them to the citation map, so later source changes mark
+   them stale.
+
+**Not built yet:** nothing writes or refreshes the subject pages on a schedule, and an agent started in any other folder
+is not told the knowledge folder exists (the planned Claude Code skill for that is open in
+[`docs/plans/implementation.md`](docs/plans/implementation.md)). Microsoft Graph sources start paused and are skipped
+until `agentsync graph login` has run.
+
+<sub>The design calls the raw inbox `/docs-source`. The implementation reads each source where it already is, so there
+is no `docs-source` folder; `docs/mirror/` holds the converted copy, and `docs/topics/` is the design's subject-organized
+`/docs`.</sub>
+
 ## Set up on a new Mac: one prompt
 
 Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. The
@@ -213,6 +262,12 @@ changes since that token, instead of looking at the files:
 | OneDrive, SharePoint, Outlook folders, Teams channels | Microsoft Graph `deltaLink` | 1 resource unit per poll: a drive polled every 60 s uses 0.12 % of the smallest per-app daily budget (Microsoft's published defaults). **CORRECTED (2026-09-29):** the resource-unit figure holds for OneDrive and SharePoint drives only. Outlook and Teams are throttled under their own Graph service limits, not resource units (Outlook: 10,000 requests per 10 min and 4 concurrent requests per app per mailbox), and neither budget is modelled yet. Under auth rung (ii) the per-app bucket belongs to the first-party Microsoft Graph PowerShell app and is shared with every user of that app in the tenant |
 | A folder synced by the OneDrive client | FSEvents event id, backed by a `getattrlistbulk` metadata walk | 0.13–0.31 s per 100,000 files on local APFS ([C11](docs/design/receipts/verify/C11-local-walk.md)); a 2,000-file walk costs the same on OneDrive's File Provider as on local disk ([C14 §3](docs/design/receipts/verify/C14-file-provider.md)). **CORRECTED (2026-09-29):** that holds for directories the provider had already listed; the first walk of a never-listed directory is a provider round trip whose cost has no receipt |
 | A manual drop folder | the same walk | the same |
+
+**CORRECTED (2026-10-01):** two rows describe the design, not the code. Teams has no Graph change token: the code
+reads each channel or chat back to the newest message it has already seen (`src/agentsync/graph/teams.py`). Drives
+and Outlook folders do use `deltaLink`. And the local arm does not use FSEvents: every run re-lists the folder with
+`scandir`, `lstat` and one `getattrlist` per file for `GEN_COUNT`, opening no file (`src/agentsync/arm_local.py`).
+The step 1 summary above and the pipeline diagram's arm B label carry the same design-level wording.
 
 **Every token expires by design:** a 410 from Graph, a wrapped FSEvents journal, a changed volume UUID. So the part that
 carries the load is the fallback, not the token: list the metadata again, diff it against the manifest, and read no file
@@ -392,6 +447,11 @@ questions an agent asks are each one command:
 git log --since=2026-09-01 --stat -- docs/mirror   # what changed upstream
 sh refresh-queue.sh docs/DEPENDS.tsv               # which curated pages are now stale, and why
 ```
+
+**CORRECTED (2026-10-01):** in the implementation the docs folder is its own git repo, so the commands are
+`git -C ~/agent-context/docs log --since=2026-09-01 --stat -- mirror topics` and `agentsync refresh-queue` (exit
+code 1 when any page needs action). The same refresh-queue script is also written into the docs repo's own
+`README.md`.
 
 The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s over 1,600 rows
 ([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
