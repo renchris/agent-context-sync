@@ -43,6 +43,23 @@ whose only open items are named operator or IT actions.
 The corporate pack is [`docs/deploy/`](../deploy/README.md). Every step names its owner and the command that
 proves it. Test counts are **measured** unless marked otherwise.
 
+**Operator ruling (2026-10-01): the corporate Mac runs with no IT involvement.** Every row below owned by IT (the
+Entra app and admin consent, Developer ID signing, the MDM pack) is out of scope, and so is the Graph-arms row that
+depends on them. What that leaves:
+
+- **Files: complete with no IT.** `local` sources over the OneDrive client's sync folder. That covers OneDrive, any
+  SharePoint library or Teams channel's Files tab synced with **Sync** or **Add shortcut to My files**, Teams chat
+  attachments (the sender's OneDrive "Microsoft Teams Chat Files" folder, shared with you), and meeting recordings
+  and transcripts stored in OneDrive or SharePoint.
+- **Mail and Teams messages: no automatic route.** Microsoft's default user-consent policy excludes `Mail.Read*`,
+  `Chat.Read`, `Files.Read.All` and `Sites.Read.All` from user consent (C15, line 237), and channel messages always
+  need an admin. The zero-IT route is the `inbox` source: drag messages out of Outlook as `.eml` files (converted by
+  `convert/eml.py`), and share Teams messages to Outlook first. Signing in to Graph under another app's identity, such
+  as the Microsoft Graph PowerShell client id (design rung (ii)), would get around the company's app-approval
+  control, so it is not used.
+- **Launcher:** the installer builds and ad-hoc signs it on the Mac. That needs the one Allow click and no IT,
+  unless the company's device policy blocks unsigned apps or the Allow prompt (C15 §8 probe 7, measured on the Mac).
+
 | Date | Step | Owner | Proof |
 |---|---|---|---|
 | **Tue 2026-09-29** (done) | Build and local verification on the dev Mac: the full suite, strict typing, lint, and the deploy pack's own checks | agent | `uv run pytest -q` → 1628 passed, 2 skipped (opt-in File Provider walk, perf budget), 1 xfailed (`content_trust`, CONTRACTS §16.11), 474.6 s, measured 2026-09-30T01:21Z while other agents were editing; `uv run mypy src` → no issues in 47 files; `uv run ruff check src tests` → clean; `scripts/install.sh --dry-run` → every step printed, `NEXT:` line; `plutil -lint docs/deploy/mdm/agentsync-pppc.mobileconfig` → OK; `shellcheck scripts/tenant-probes.sh` and `/bin/bash -n` → clean; `scripts/tenant-probes.sh --selftest` → ok (QuickXorHash also checked against all 70 rclone vectors). Not re-run by the deploy pack: the opt-in live-mount suites (`AGENTSYNC_E2E_FILEPROVIDER=1`, `AGENTSYNC_FP_TEST=1`) |
