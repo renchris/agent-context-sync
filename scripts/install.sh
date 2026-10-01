@@ -56,7 +56,8 @@
 #      a prebuilt AgentSyncLauncher.app next to the wheel; an up-to-date one is never rebuilt, because an
 #      ad-hoc rebuild is a new TCC identity and macOS would ask again
 #   4. agentsync init when the config does not exist (with every --source-local folder), else
-#      agentsync add-source for each --source-local folder (idempotent)
+#      agentsync add-source for each --source-local folder (idempotent), then agentsync migrate (an upgrade
+#      may bring a newer manifest schema; "already current" otherwise)
 #   5. agentsync doctor (its TCC probe may raise the one-time "wants to access files managed by" prompt; a
 #      doctor whose only [FAIL] lines are TCC_PENDING does not stop steps 6-8, which wait for the Allow)
 #   With --confirm-install-agent and at least one [[source]] in the config:
@@ -1321,6 +1322,10 @@ if [ -f "$CONFIG" ]; then
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null ||
 			fail "agentsync add-source $f failed (see the error above)"
 	done
+	# An upgrade (step 2) may ship a newer manifest schema; until it is applied every background run fails.
+	# Idempotent: an up-to-date manifest prints "already current".
+	run "$AGENTSYNC" migrate --config "$CONFIG" </dev/null ||
+		fail "agentsync migrate failed (see the error above)"
 	CONFIG_STATE="present"
 	step_end "done" 0 add-source
 else
