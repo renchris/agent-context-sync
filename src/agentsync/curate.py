@@ -700,6 +700,33 @@ def apply_retired_banners(
     return _apply_retired_banners(layout, rows, retired)
 
 
+_NOT_CURATABLE_STATUSES = frozenset({b"deleted", b"superseded", b"unreadable", b"refused"})
+
+
+def uncovered_mirror_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[str]:
+    """Docs-repo-relative paths of every current mirror page that no curated page cites in ``rows``: the
+    curation backlog beside the refresh queue.  A page counts when its frontmatter carries
+    ``rendered_sha256:`` and a ``status:`` other than deleted/superseded/unreadable/refused (sidecars and the
+    guide files have no ``rendered_sha256:``).  Sorted, C-locale byte order."""
+    root = layout.mirror
+    if not root.is_dir():
+        return []
+    cited = {r.source for r in rows}
+    out: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames.sort()
+        for name in filenames:
+            if not name.endswith(".md") or name in _EXCLUDED_PAGE_NAMES:
+                continue
+            rel = layout.rel(Path(dirpath) / name)
+            if rel in cited:
+                continue
+            _sha, status, ok = _read_mirror_head(expand(layout.root), os.fsencode(rel))
+            if ok and status not in _NOT_CURATABLE_STATUSES:
+                out.append(rel)
+    return sorted(out, key=lambda p: p.encode("utf-8", "surrogateescape"))
+
+
 def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[LintFinding]:
     """UNLISTED: every curated page that is not ``provenance: hand-written`` appears in DEPENDS.tsv
     (blocking=False for the sync; the ``agentsync lint`` command reports it as an error)."""

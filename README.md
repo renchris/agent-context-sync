@@ -50,7 +50,7 @@ are out of date but does not write them.
 | 1 | **Set up** | The tool, its signed launcher, the knowledge folder and two background jobs, installed in one command with no admin rights | You, once | `scripts/install.sh --source-local "<folder>" --confirm-install-agent` ([Install](#install)) | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
 | 2 | **Connect sources** | A say over what feeds the knowledge folder, now and later | You, when the list changes | Folders this Mac syncs (no IT): `install.sh --list-folders`, then `agentsync add-source FOLDER`. A drop folder for files you save by hand, such as emails dragged out of Outlook as `.eml` (no IT): `agentsync add-source --inbox`. Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac: need IT approval ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)), then `agentsync graph login` and `agentsync graph discover --toml`, pasted into `sources.toml` with `state = "live"` | `sources.toml` |
 | 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Automatic: every 5 minutes, plus a full re-check every hour | none (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
-| 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what and marks stale pages on every run | `agentsync refresh-queue` (stale pages), `agentsync lint`, `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
+| 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what and marks stale pages on every run | `agentsync curate-queue` (stale pages, then files no page covers yet), `agentsync lint`, `agentsync install-skill` (tells your agent, in any folder, where the knowledge folder is and how to curate it), `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
 | 5 | **Run it safely** | Health checks, a guard against mass deletion, and erasure on request | Mostly automatic; a few commands by hand | `agentsync doctor`, `status`, `reconcile --accept-deletions`, `purge`, `hold`, `offboard` | `docs/_sync/STATE.md` (is every source complete?), `~/Library/Logs/agentsync` |
 
 **The diff is part of feature 3, not a separate step.** Each run lists every source, decides from metadata alone
@@ -72,16 +72,24 @@ or chat is read back to the newest message already seen.
    `AGENTS.md`), which the installer wrote, then:
    - read `_sync/STATE.md`, to know which sources are incomplete;
    - run `git log --since=<date> --stat -- mirror topics`, or read `CHANGELOG.md`, to see what changed;
-   - run `agentsync refresh-queue` to list subject pages whose sources changed;
+   - run `agentsync curate-queue` for the work list: subject pages whose sources changed (`STALE`), then mirror
+     pages no subject page covers yet (`UNCOVERED`);
    - write or rewrite pages under `topics/<area>/`, following `topics/CLAUDE.md`: each page pins the mirror pages it
-     cites in its `sources:` header and names its subject in `entity:`.
+     cites in its `sources:` header and names its subject in `entity:`. Write each page under a temporary
+     `.agentsync-<name>.tmp` name and rename it when done, so a background run never commits half a page.
+
+   `agentsync install-skill` puts these steps in a Claude Code skill, so an agent started in any folder knows the
+   knowledge folder exists.
 5. The next background run commits the agent's pages and adds them to the citation map, so later source changes mark
    them stale.
 
-**Not built yet:** nothing writes or refreshes the subject pages on a schedule, and an agent started in any other folder
-is not told the knowledge folder exists (the planned Claude Code skill for that is open in
-[`docs/plans/implementation.md`](docs/plans/implementation.md)). Microsoft Graph sources start paused and are skipped
-until `agentsync graph login` has run.
+**Not built yet:** nothing writes or refreshes the subject pages on a schedule; an unattended nightly run waits on a
+20-page pilot and a guard against rewriting one page many times
+([`docs/plans/implementation.md`](docs/plans/implementation.md)). Microsoft Graph sources start paused and are
+skipped until `agentsync graph login` has run.
+
+**CORRECTED (2026-10-01):** this said an agent started in any other folder is not told the knowledge folder exists;
+`agentsync install-skill` now does that.
 
 <sub>The design calls the raw inbox `/docs-source`. The implementation reads each source where it already is, so there
 is no `docs-source` folder; `docs/mirror/` holds the converted copy, and `docs/topics/` is the design's subject-organized

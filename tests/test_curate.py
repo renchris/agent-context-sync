@@ -1034,3 +1034,31 @@ def test_week3_loop_generate_write_queue_banner(layout: DocsLayout, tmp_path: Pa
     assert rows2 == rows
     assert not write_depends(layout, rows2) and not write_by_entity(layout, entities2)
     assert apply_stale_banners(layout, refresh_queue(layout)[1], "2026-09-30") == []
+
+
+def test_uncovered_mirror_pages_lists_current_pages_no_topic_cites(layout: DocsLayout) -> None:
+    pin = mirror_page(layout, "mirror/s/cited.md")
+    mirror_page(layout, "mirror/s/uncovered.md", body="# other\n")
+    mirror_page(layout, "mirror/s/deep/also-uncovered.md", body="# deep\n")
+    mirror_page(layout, "mirror/s/gone.md", status=PageStatus.DELETED)
+    mirror_page(layout, "mirror/s/old.md", status=PageStatus.SUPERSEDED)
+    mirror_page(layout, "mirror/s/locked.md", status=PageStatus.REFUSED)
+    (layout.root / "mirror" / "CLAUDE.md").write_text("# guide\n", encoding="utf-8")
+    sidecar = layout.root / "mirror" / "s" / "cited.md.d"
+    sidecar.mkdir()
+    (sidecar / "note.md").write_text("no frontmatter\n", encoding="utf-8")
+    topic_page(layout, "topics/p.md", "entity: e\n" + sources_yaml(("../mirror/s/cited.md", pin, "primary")))
+    rows, _entities, _findings = curate.generate_depends(layout)
+    assert curate.uncovered_mirror_pages(layout, rows) == [
+        "mirror/s/deep/also-uncovered.md",
+        "mirror/s/uncovered.md",
+    ]
+    assert curate.uncovered_mirror_pages(layout, []) == [
+        "mirror/s/cited.md",
+        "mirror/s/deep/also-uncovered.md",
+        "mirror/s/uncovered.md",
+    ]
+
+
+def test_uncovered_mirror_pages_without_mirror_dir(tmp_path: Path) -> None:
+    assert curate.uncovered_mirror_pages(DocsLayout(root=tmp_path / "none"), []) == []

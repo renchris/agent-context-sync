@@ -83,6 +83,9 @@ Every claim cites a docs/mirror/... page in the `sources:` frontmatter as
 current.  Run the refresh queue (docs/README.md) before trusting a STALE page.
 Read docs/_sync/STATE.md first: incomplete sources mean a negative answer is "not found in docs/,
 and source X was incomplete", never a bare "nothing found".
+`agentsync curate-queue` lists the work: STALE pages, then UNCOVERED mirror pages no page cites yet.
+Write a page as `.agentsync-<name>.tmp` beside its target and rename it when complete: those names are
+never committed, so a sync cannot commit half a page.  `agentsync lint` checks the pins.
 """
 
 ROOT_CLAUDE_MD = (
@@ -90,6 +93,7 @@ ROOT_CLAUDE_MD = (
 docs/INDEX.md is the map; read docs/_sync/STATE.md first.
 docs/mirror/ is generated (never edit it); docs/topics/ is curated.
 What changed: git -C docs log --since=<date> --stat -- mirror topics
+Curation work list: agentsync curate-queue (stale pages, then uncovered mirror pages); see topics/CLAUDE.md
 
 """
     + policy.BOUNDARY_TEXT

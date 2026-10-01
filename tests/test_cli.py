@@ -146,6 +146,45 @@ def test_refresh_queue_exit_codes(initialised: Config, capsys: pytest.CaptureFix
     assert "STALE\ttopics/a.md" in capsys.readouterr().out
 
 
+def test_curate_queue_lists_stale_then_uncovered(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    assert cli.main(["curate-queue", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "UNCOVERED\tmirror/source/projects/sample.txt.md" in out
+    assert out.rstrip().endswith("uncovered mirror page(s)")
+    repo = initialised.docs_repo
+    (repo / "topics" / "a.md").write_text(
+        "---\nentity: acme\nsources:\n  - path: ../mirror/source/projects/sample.txt.md\n"
+        f"    at_rendered_sha256: {'ab' * 32}\n    role: primary\n---\n# A\n",
+        encoding="utf-8",
+    )
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    assert cli.main(["curate-queue", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "STALE\ttopics/a.md" in out and "UNCOVERED\tmirror/source/projects/sample.txt.md" not in out
+
+
+def test_install_skill_writes_once_and_names_the_docs_repo(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    skills = tmp_path / "skills"
+    assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
+    skill = skills / cli.SKILL_NAME / "SKILL.md"
+    text = skill.read_text(encoding="utf-8")
+    assert text.startswith(f"---\nname: {cli.SKILL_NAME}\n")
+    assert str(initialised.docs_repo) in text and "agentsync curate-queue" in text
+    assert ".agentsync-<page>.tmp" in text
+    assert "wrote skill" in capsys.readouterr().out
+    assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
+    assert "skill up to date" in capsys.readouterr().out
+
+
 def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["sync", "--config", str(tmp_path / "missing.toml")]) == cli.EXIT_CONFIG
     bad = tmp_path / "bad.toml"

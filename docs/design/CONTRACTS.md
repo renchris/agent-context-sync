@@ -4910,3 +4910,32 @@ def write_draft(path: Path, text: str, *, now: datetime | None = None) -> Path |
 
 The module `agentsync.it_request` (`src/agentsync/it_request.py`) is owned by the integrator and imports nothing
 from `agentsync.cli` or `agentsync.setup_report`.
+
+### 16.16 `curate-queue` and `install-skill`: the curation loop for agents (2026-10-01, integrator)
+
+Additive. The sync stops at `mirror/`; these two commands give an agent the work list and tell agents in any
+folder where the knowledge folder is (decision packet `eae0934f7b51`: manual curation now, these pieces are
+needed under either ruling).
+
+| Command | Calls | Exit |
+|---|---|---|
+| `curate-queue` | `curate.refresh_queue` (printed as the refresh-queue lines), then `curate.generate_depends` (live, so pages written since the last sync count) → `curate.uncovered_mirror_pages`, one `UNCOVERED\t<mirror path>` line each, then one count line | 0 nothing listed · 1 any row · an unusable DEPENDS.tsv is a stderr warning, and the uncovered list still prints |
+| `install-skill` [`--dir PATH`] | writes `skill_text(docs_repo)` to `<PATH>/agentsync-docs/SKILL.md` (default `~/.claude/skills`) via a same-directory temp file and rename; unchanged text is not rewritten | 0 written or up to date · 1 not writable |
+
+A page is uncovered when its frontmatter has `rendered_sha256:`, its `status:` is not deleted, superseded,
+unreadable or refused, and no DEPENDS row cites it. Guide files (`CLAUDE.md`, `INDEX.md`) and sidecars (no
+`rendered_sha256:`) never appear. A page is committed safely by writing `.agentsync-<name>.tmp` and renaming it,
+because `_INFO_EXCLUDE_PATTERNS` already keeps those names out of every cycle commit; the skill and
+`topics/CLAUDE.md` (new docs repos) say so, and the root `CLAUDE.md`/`AGENTS.md` name `agentsync curate-queue`.
+
+```python
+# agentsync.curate
+def uncovered_mirror_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[str]:
+    """Current mirror pages that no curated page cites in ``rows``; sorted, C-locale byte order."""
+
+# agentsync.cli
+DEFAULT_SKILLS_DIR = "~/.claude/skills"
+SKILL_NAME = "agentsync-docs"
+def skill_text(docs_repo: Path) -> str:
+    """The SKILL.md ``install-skill`` writes: where the docs repo is, how to look things up, how to curate."""
+```
