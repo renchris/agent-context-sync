@@ -126,3 +126,25 @@ implementation resolves it". "Closed" names the commit area and the test that pr
 | §4.7 TCC per binary + per-call timeout (478) | closed in code | as for corporate-macos-tcc-file-provider-unresolved |
 | §4.7 git isolation (480) | closed | as for critic-git-global-excludes-drop-mirror |
 | §5 label change is content (515) | partly | as for design-correctness-05 |
+
+## One-prompt setup and the setup-report loop (2026-09-30, completed)
+
+Scope (grown, 2026-09-29): +a copy-paste setup prompt for a new Mac (README "Set up on a new Mac: one prompt"),
++a redacted setup report that measures everything that was not one command and comes back as a GitHub issue.
+
+- **State:** prompt v6, installer `setup-prompt-compat 6`, live on `origin/main` at `35c2b5f`; issue form
+  `.github/ISSUE_TEMPLATE/setup-report.yml` and label `setup-report` exist. 1,849 tests green at the land.
+- **Happy path (measured, sandbox, literal agent):** 3 tool calls, 1 human turn (the folder question), install 19.6 s,
+  local files converted in the first sync, report outcome computed as "fully one command".
+- **How it got there:** five validate→judge rounds (careful + literal agents in sandboxes, a maintainer agent judging
+  the reports). Decisions that stick: the outcome is computed from person-facing facts, never the agent's own claim;
+  friction goes through `install.sh --log` (a `~` redirect costs a Claude Code approval per line); the first sync
+  downloads nothing (`--materialise-budget 0` now charges only online-only files); sandbox runs must set
+  `AGENTSYNC_SIMULATE_LAUNCHD=1`, because launchd's gui domain is shared across `HOME`s.
+- **Commits:** `3428997` add-source · `53824b3` prompt v3 · `977bc3f` budget fix · `3055724` setup-report/it-request ·
+  `fb9305f` one-shot installer · `35c2b5f` prompt v6 + loop.
+- **Open (minor, left for real reports to settle):** whether the step-1 compound command is covered by the
+  pre-allow rules in a live Claude Code session (judge M6); step 3 could fold into step 2 (M5); the launcher build's
+  Developer-ID hint still prints on install (P2).
+- **Next:** the operator runs the prompt on the corporate Mac and brings the report back; each friction line becomes a
+  fix or a documented unavoidable step (docs/deploy/setup-feedback.md).
