@@ -56,7 +56,10 @@ depends on them. What that leaves:
   need an admin. The zero-IT route is the `inbox` source: drag messages out of Outlook as `.eml` files (converted by
   `convert/eml.py`), and share Teams messages to Outlook first. Signing in to Graph under another app's identity, such
   as the Microsoft Graph PowerShell client id (design rung (ii)), would get around the company's app-approval
-  control, so it is not used.
+  control, so it is not used. **Measured on the corporate tenant (2026-10-01):** signing in to the Softeria
+  ms-365-mcp-server app with mail scopes through the browser (`--org-mode --login --auth-browser`) showed "Need admin
+  approval". The device-code route looped back to an empty code page without completing. So the inbox is the mail
+  route, and `agentsync add-source --inbox` now creates it.
 - **Launcher:** the installer builds and ad-hoc signs it on the Mac. That needs the one Allow click and no IT,
   unless the company's device policy blocks unsigned apps or the Allow prompt (C15 §8 probe 7, measured on the Mac).
 
