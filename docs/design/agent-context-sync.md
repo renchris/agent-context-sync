@@ -48,6 +48,23 @@
 | **ninja / Shake / Bazel** | `restat` early cutoff (hash the output, stop if identical); `cleandead` (delete outputs whose rule is gone); action key = digest(inputs, tool + version, normalized args, sorted env) | All three verbs. | A build system. DVC is disqualified: outputs deleted at `repro` start, 343 per-file stages cost ~4 min of bookkeeping, deletion needs three manual steps. |
 | **Time Machine / FSEvents** | fseventsd per-volume journal event ids "guaranteed to always be increasing … even across system reboots", valid only with a matching device UUID; `MustScanSubDirs` demands a rescan | The three-tier ladder: live stream → resume-from-stored-id → full metadata walk. | Watchman as the token (its clock encodes daemon pid + start time; any restart is a fresh instance and a full recrawl; journal resync defaulted off in 2021). fswatch (hardcodes SinceNow). |
 
+**UPDATED (2026-10-01): both vector-search references above have since moved further toward this design's grep-first
+choice. Do not reintroduce an embedding index on their strength.**
+
+- **Cursor no longer embeds codebases.** Its search docs now say: "Cursor does not upload file paths or code to build a
+  search index, and it does not store embeddings of your codebase for search." Agents use Instant Grep, "a custom search
+  engine that outperforms ripgrep on large codebases", which "builds and queries its index on your machine"
+  ([cursor.com/docs/agent/tools/search](https://cursor.com/docs/agent/tools/search)). Staff gave the reason on the
+  forum: models got good enough at grep that the semantic path stopped helping
+  ([forum 165899](https://forum.cursor.com/t/what-do-you-think-about-cursor-removing-the-codebase-indexing-settings/165899)).
+  The Merkle-tree and embedding-cache description in the Cursor row covers the earlier version of the product.
+- **turbopuffer v3 demotes its vector index** from the primary key of every document to "just another" secondary index,
+  beside full-text, attribute and aggregation indexes, because a vector-keyed layout inflated storage and writes for
+  every query that was not a vector query (["RIP vector database"](https://turbopuffer.com/blog/rip-vector-database),
+  2026-09-30; v3 passes CI but is not yet performance-tuned). Vector search is not removed.
+- **What this repo took from turbopuffer is unaffected:** one batched write per sync cycle (one git commit) and
+  freshness as an observable (`docs/_sync/STATE.md`). Neither depends on its index layout.
+
 ---
 
 ## 3. The symlink question, settled
