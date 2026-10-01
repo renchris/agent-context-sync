@@ -4369,6 +4369,10 @@ a result that would not load exits 2 and writes nothing. A missing or invalid so
 written is `local_source_table`, the same one `init --source-local` writes (defaults: `DEFAULT_EXCLUDES`, 1 GiB
 and 5000 files per cycle, the sentinel as a commented recommendation).
 
+`add-source --inbox [PATH]` (2026-10-01) writes `inbox_source_table` instead: a live `kind = "inbox"` drop folder.
+PATH defaults to `inbox` beside the docs repo (`~/agent-context/inbox`) and is created (mode 0700) when missing;
+every other rule above applies unchanged. `add-source` with neither PATH nor `--inbox` exits 2.
+
 `scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
 passes them all to `agentsync init --source-local …` when the config does not exist, or runs
 `agentsync add-source FOLDER --config …` for each when it does. A quoted `~/…` is expanded; `--dry-run` prints
@@ -4383,6 +4387,9 @@ def derive_source_id(path: Path, taken: Collection[str]) -> str:
 
 def local_source_table(source_id: str, path: Path) -> str:
     """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder."""
+
+def inbox_source_table(source_id: str, path: Path) -> str:
+    """The ``[[source]]`` table ``add-source --inbox`` writes: a live ``kind = "inbox"`` drop folder."""
 
 def append_to_config(config_path: Path, table: str) -> Config:
     """Append ``table`` to sources.toml keeping every existing byte; validated with parse_config before an

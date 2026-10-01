@@ -605,6 +605,17 @@ def local_source_table(source_id: str, path: Path) -> str:
     )
 
 
+def inbox_source_table(source_id: str, path: Path) -> str:
+    """The ``[[source]]`` table ``add-source --inbox`` writes: a live ``kind = "inbox"`` drop folder for files
+    saved by hand (``.eml`` dragged out of Outlook, exports), every other key at its default.  Starts with a
+    blank line, ends with a newline."""
+    return (
+        f'\n[[source]]\nid = "{source_id}"\nkind = "inbox"\n'
+        f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
+        "# quiescence_s = 60   # files still being written are skipped until they settle\n"
+    )
+
+
 def append_to_config(config_path: Path, table: str) -> Config:
     """Append ``table`` (TOML text) to the sources.toml at ``config_path``, keeping every existing byte and
     comment; the result is validated with :func:`parse_config` BEFORE anything is written, then replaces the

@@ -69,8 +69,11 @@ so set `[network] proxy`. `agentsync doctor --network` checks the whole path.
   `~/Library/CloudStorage/OneDrive-<Org>/`, for example a synced SharePoint library or a "shortcut to My files". It
   sees what the sync client syncs. Online-only files are downloaded within `max_materialise_bytes` per cycle, and
   the rest stay `pending` and are never read as deleted.
-- **Manual inbox.** A `kind = "inbox"` source at `~/agent-context/inbox`. Drag in exports, attachments or PDFs, and
-  they are converted once they stop changing (`quiescence_s`).
+- **Manual inbox.** `agentsync add-source --inbox` adds a `kind = "inbox"` source at `~/agent-context/inbox` and
+  creates the folder. Drag in exports, attachments, PDFs or emails (drag a message out of Outlook to save it as
+  `.eml`), and they are converted once they stop changing (`quiescence_s`). Without IT this is the only route for
+  mail and Teams messages: a tenant on Microsoft's default consent policy shows "Need admin approval" for any app
+  that asks to read mail (measured on the corporate tenant, 2026-10-01).
 - **Check it:** `agentsync sync --once`, then `agentsync status`, then open `~/agent-context/docs/INDEX.md`.
 
 ## What needs IT

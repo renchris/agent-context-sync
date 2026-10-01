@@ -618,6 +618,25 @@ def test_add_source_appends_a_live_local_source_and_is_idempotent(
     assert initialised.config_path.read_text(encoding="utf-8") == after
 
 
+def test_add_source_inbox_creates_the_drop_folder_beside_the_docs_repo_and_is_idempotent(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    inbox = initialised.docs_repo.parent / "inbox"
+    assert not inbox.exists()
+    assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert '[[source]]\nid = "inbox"\nkind = "inbox"' in out
+    assert inbox.is_dir() and inbox.stat().st_mode & 0o777 == 0o700
+    added = load_config(initialised.config_path).source("inbox")
+    assert added.kind is SourceKind.INBOX and added.is_live and added.path == inbox.resolve()
+    after = initialised.config_path.read_text(encoding="utf-8")
+    assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_OK
+    assert "already configured: source 'inbox'" in capsys.readouterr().out
+    assert initialised.config_path.read_text(encoding="utf-8") == after
+    assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # no PATH and no --inbox
+
+
 def test_add_source_derives_a_unique_id_and_honours_id(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

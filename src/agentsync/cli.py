@@ -46,6 +46,7 @@ from agentsync.config import (
     canonical_source_root,
     default_config_text,
     derive_source_id,
+    inbox_source_table,
     load_config,
     local_source_table,
     parse_config,
@@ -201,7 +202,18 @@ def build_parser() -> argparse.ArgumentParser:
         "append a live local source for a folder to an existing sources.toml (idempotent)",
         _cmd_add_source,
     )
-    p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
+    p.add_argument(
+        "path",
+        type=Path,
+        nargs="?",
+        metavar="PATH",
+        help="the folder to sync (it must exist; with --inbox it is created, default <docs repo>/../inbox)",
+    )
+    p.add_argument(
+        "--inbox",
+        action="store_true",
+        help="add a drop folder for files you save by hand (e.g. .eml dragged out of Outlook) instead",
+    )
     p.add_argument(
         "--id", metavar="ID", help="source id (default: derived from the folder name, made unique)"
     )
@@ -517,7 +529,12 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_add_source(args: argparse.Namespace) -> int:
     config = _config(args)  # a missing or invalid sources.toml exits 78 before anything is written
-    raw: Path = args.path
+    if args.path is None and not args.inbox:
+        _err("add-source: PATH is required (or use --inbox for a drop folder)")
+        return EXIT_USAGE
+    raw: Path = args.path if args.path is not None else expand(config.docs_repo).parent / "inbox"
+    if args.inbox:
+        expand(raw).mkdir(mode=0o700, parents=True, exist_ok=True)
     path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected, as in init
     if not path.exists():
         _err(f"add-source {raw}: no such folder")
@@ -549,7 +566,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             return EXIT_USAGE
     else:
         sid = derive_source_id(path, taken)
-    table = local_source_table(sid, path)
+    table = inbox_source_table(sid, path) if args.inbox else local_source_table(sid, path)
     try:
         append_to_config(config.config_path, table)  # validated before anything is written
     except ConfigError as exc:
