@@ -1191,7 +1191,8 @@ sync is already running: wait for it to finish.
 ## Look something up
 
 1. Read `{docs}/_sync/STATE.md` first. If a source is incomplete, "not found" is not a final answer.
-2. Start at `{docs}/INDEX.md` and `topics/`, then search `mirror/` with `rg`.
+2. Start at `{docs}/INDEX.md`. Expand the term with `SYNONYMS.tsv`, then `rg -i <term> topics/` (this matches
+   pages' `aliases:` and `purpose:` lines), then search `mirror/` with `rg`.
 3. What changed: `git -C {docs} log --since=<date> --stat -- mirror topics`, or `CHANGELOG.md`.
 4. Something a source deleted: search `archive/` (present when `[governance] archive = true`), which keeps
    the last full page of every deleted file. A past state: `git -C {docs} tag -l 'snapshot/*'`, then
@@ -1207,7 +1208,17 @@ sync is already running: wait for it to finish.
    pages whose sources changed, then `UNCOVERED` mirror pages that no subject page cites yet.
 2. Write or rewrite `topics/<area>/<page>.md` as `topics/CLAUDE.md` says: frontmatter `entity:` and `sources:`
    entries `{{path: <path relative to the page>, at_rendered_sha256: <the cited page's rendered_sha256>,
-   role: primary|corroborating}}`.
+   role: primary|corroborating}}`, plus `purpose:` (one line: what the page answers and what it does not) and
+   `aliases:` (the phrases a user would type).
+   - Before writing a page, look the entity up in `_index/by-entity.tsv` and `rg -i '<term>' topics/`. If a
+     page exists, extend it; never write -v2, -new or -final copies. Link to the page that owns a fact
+     instead of restating it. One subject per page, under 400 lines / 25 KB.
+   - Subject pages are edited in place (git keeps history). A `decisions/<yyyy-mm-dd>-<slug>.md` page is not
+     edited once committed; a later decision gets a new dated page.
+   - When cited sources disagree, say in the body which one the page follows and why, and keep the other in
+     `sources:`.
+   - `reviewed_at:` is set only when the operator says they checked the page; any edit you make to a reviewed
+     page removes it in the same write.
 3. Write each page as `topics/<area>/.agentsync-<page>.tmp`, then rename it to `<page>.md` when it is
    complete. Files named `.agentsync-*.tmp` are never committed, so a sync running meanwhile cannot commit
    half a page.

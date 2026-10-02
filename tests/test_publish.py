@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import gitops, lints, policy, slug
+from agentsync import gitops, lints, policy, publish, slug
 from agentsync.config import Config, parse_config
 from agentsync.curate import REFRESH_QUEUE_SH
 from agentsync.errors import PublishError
@@ -253,6 +253,23 @@ def test_scaffold_keeps_curated_and_operator_content(env: Env) -> None:
     assert "PO\tpurchase order" in (repo / "SYNONYMS.tsv").read_text()
     assert (repo / ".gitignore").read_text() == "*.swp\n" + GITIGNORE
     assert (repo / "mirror/CLAUDE.md").read_text() == MIRROR_CLAUDE_MD
+
+
+def test_scaffold_upgrades_an_unedited_earlier_topics_seed(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = env.repo
+    old_seed = "# docs/topics — curated synthesis\n\nan earlier seed\n"
+    prior = frozenset({hashlib.sha256(old_seed.encode()).hexdigest()})
+    monkeypatch.setattr(publish, "_TOPICS_CLAUDE_MD_PRIOR_SHA256", prior)
+    (repo / "topics/CLAUDE.md").write_text(old_seed)
+    assert env.pub.ensure_scaffold() == ["topics/CLAUDE.md"]
+    assert (repo / "topics/CLAUDE.md").read_text() == TOPICS_CLAUDE_MD
+    assert env.pub.ensure_scaffold() == []
+
+
+def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:
+    current = hashlib.sha256(TOPICS_CLAUDE_MD.encode()).hexdigest()
+    assert current not in publish._TOPICS_CLAUDE_MD_PRIOR_SHA256
+    assert "_index/by-entity.tsv" in TOPICS_CLAUDE_MD and "purpose:" in TOPICS_CLAUDE_MD
 
 
 # ---- path allocation ---------------------------------------------------------------------------------------
@@ -800,6 +817,15 @@ def test_index_lists_sources_and_topics_by_entity(env: Env) -> None:
     assert text.index("## Topics: acme") < text.index("## Topics: jo") < text.index("## Adopted")
     assert "mirror/src/" in text and "a.docx" not in text
     assert lints.lint_index_budget(env.repo) == []
+
+
+def test_index_marks_reviewed_pages(env: Env) -> None:
+    topic(env, "topics/a/checked.md", "entity: a\npurpose: Terms.\nreviewed_at: 2026-10-01")
+    topic(env, "topics/a/bad-date.md", "entity: a\npurpose: Scope.\nreviewed_at: soon")
+    env.pub.write_index([status("src")])
+    text = env.text("INDEX.md")
+    assert "- [checked](topics/a/checked.md): [reviewed 2026-10-01] Terms." in text
+    assert "- [bad-date](topics/a/bad-date.md): Scope." in text
 
 
 def test_index_degrades_to_area_indexes_past_its_budget(env: Env) -> None:

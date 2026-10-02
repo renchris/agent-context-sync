@@ -98,6 +98,8 @@ _STALE_PREFIX = STALE_BANNER.split("{date}", 1)[0]
 _RETIRED_PREFIX = RETIRED_BANNER.split("{reason}", 1)[0]
 _BOM = "﻿"
 _MAX_REPORTED_PROBLEMS = 50
+_PAGE_MAX_LINES = 400  # design 4.6 page budget: one subject per page, read whole
+_PAGE_MAX_BYTES = 25_000
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -126,6 +128,7 @@ class TopicPage:
     aliases: tuple[str, ...]
     provenance: str | None  # "hand-written" for adopted pages (exempt from STALE, absent from DEPENDS.tsv)
     adopted_at: str | None
+    purpose: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +277,7 @@ def _parse_topic_text(rel_path: str, text: str) -> TopicPage:
         aliases=_str_list(data.get("aliases"), f"{rel_path}: aliases"),
         provenance=_scalar_str(data.get("provenance"), f"{rel_path}: provenance"),
         adopted_at=_scalar_str(data.get("adopted_at"), f"{rel_path}: adopted_at"),
+        purpose=_scalar_str(data.get("purpose"), f"{rel_path}: purpose"),
     )
 
 
@@ -373,10 +377,29 @@ def _page_findings_and_rows(
     return rows, findings
 
 
+def _budget_findings(layout: DocsLayout, rel: str) -> list[LintFinding]:
+    """TOPIC-BUDGET when a page outgrows the design's read-whole budget (non-blocking, like every finding)."""
+    try:
+        raw = (layout.root / rel).read_bytes()
+    except OSError:
+        return []
+    lines = raw.count(b"\n") + (0 if raw.endswith(b"\n") or not raw else 1)
+    if lines <= _PAGE_MAX_LINES and len(raw) <= _PAGE_MAX_BYTES:
+        return []
+    return [
+        _finding(
+            "TOPIC-BUDGET",
+            rel,
+            f"{lines} lines / {len(raw)} bytes exceeds {_PAGE_MAX_LINES} lines / {_PAGE_MAX_BYTES} bytes: "
+            "split it into one page per subject",
+        )
+    ]
+
+
 def generate_depends(layout: DocsLayout) -> tuple[list[DependsRow], list[tuple[str, str]], list[LintFinding]]:
     """Parse every curated page -> (DEPENDS rows sorted by (page, source), (entity, page) rows sorted, lint
-    findings: CURATE-PARSE, MISSING-ENTITY, BAD-ROLE, UNPINNED/BAD-PIN rows are still emitted for the
-    queue)."""
+    findings: CURATE-PARSE, MISSING-ENTITY, MISSING-PURPOSE, TOPIC-BUDGET, BAD-ROLE, UNPINNED/BAD-PIN rows are
+    still emitted for the queue)."""
     rows: list[DependsRow] = []
     entities: set[tuple[str, str]] = set()
     findings: list[LintFinding] = []
@@ -391,6 +414,13 @@ def generate_depends(layout: DocsLayout) -> tuple[list[DependsRow], list[tuple[s
             entities.add((page.entity, rel))
         elif not hand_written:
             findings.append(_finding("MISSING-ENTITY", rel, "curated page has no 'entity:'"))
+        if page.purpose is None and not hand_written:
+            findings.append(
+                _finding(
+                    "MISSING-PURPOSE", rel, "curated page has no 'purpose:' (what it answers and what not)"
+                )
+            )
+        findings.extend(_budget_findings(layout, rel))
         if hand_written:
             if page.sources:
                 findings.append(

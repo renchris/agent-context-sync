@@ -220,6 +220,7 @@ def test_install_skill_writes_once_and_names_the_docs_repo(
     assert text.startswith(f"---\nname: {cli.SKILL_NAME}\n")
     assert str(initialised.docs_repo) in text and "agentsync curate-queue" in text
     assert ".agentsync-<page>.tmp" in text
+    assert "_index/by-entity.tsv" in text and "`purpose:`" in text and "SYNONYMS.tsv" in text
     assert "search `archive/`" in text and "show snapshot/<date>:<path>" in text  # [governance] archive
     assert "wrote skill" in capsys.readouterr().out
     assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK

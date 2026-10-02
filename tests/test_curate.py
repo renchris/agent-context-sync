@@ -313,7 +313,7 @@ def build_corpus(layout: DocsLayout) -> dict[str, str]:
     topic_page(
         layout,
         "topics/clients/acme/commercial.md",
-        "kind: topic\nentity: acme\n"
+        "kind: topic\nentity: acme\npurpose: Acme terms.\n"
         + sources_yaml(
             ("../../../mirror/s/fresh.md", pins["fresh"], "primary"),
             ("../../../mirror/s/stale.md", sha("# before\n"), "primary"),
@@ -324,12 +324,13 @@ def build_corpus(layout: DocsLayout) -> dict[str, str]:
     topic_page(
         layout,
         "topics/clients/acme/scope.md",
-        "entity: acme\n" + sources_yaml(("../../../mirror/s/bad.md", H, "primary")),
+        "entity: acme\npurpose: Acme scope.\n" + sources_yaml(("../../../mirror/s/bad.md", H, "primary")),
     )
     topic_page(
         layout,
         "topics/decisions/d1.md",
-        "entity: platform\n" + sources_yaml(("../../mirror/s/fresh.md", pins["fresh"], "primary")),
+        "entity: platform\npurpose: A decision.\n"
+        + sources_yaml(("../../mirror/s/fresh.md", pins["fresh"], "primary")),
     )
     topic_page(layout, "topics/legacy.md", "provenance: hand-written\nadopted_at: 2026-09-29\nsources: []\n")
     return pins
@@ -396,6 +397,7 @@ def test_generate_depends_findings(layout: DocsLayout) -> None:
         ("topics/adopted.md", "HAND-WRITTEN-WITH-SOURCES"),
         ("topics/broken.md", "CURATE-PARSE"),
         ("topics/noentity.md", "MISSING-ENTITY"),
+        ("topics/noentity.md", "MISSING-PURPOSE"),
         ("topics/p.md", "BAD-PIN"),
         ("topics/p.md", "BAD-PIN"),
         ("topics/p.md", "BAD-ROLE"),
@@ -403,6 +405,7 @@ def test_generate_depends_findings(layout: DocsLayout) -> None:
         ("topics/p.md", "BROKEN-PAGE-EDGE"),
         ("topics/p.md", "CURATE-PARSE"),
         ("topics/p.md", "DUPLICATE-SOURCE"),
+        ("topics/p.md", "MISSING-PURPOSE"),
         ("topics/p.md", "SOURCE-NOT-MIRROR"),
         ("topics/p.md", "UNPINNED"),
     ]
@@ -641,7 +644,7 @@ def test_generator_never_emits_a_directory_source(layout: DocsLayout, tmp_path: 
     topic_page(
         layout,
         "topics/p.md",
-        "entity: e\n"
+        "entity: e\npurpose: Q3.\n"
         + sources_yaml(
             ("../mirror/s/book.xlsx.d", H, "primary"), ("../mirror/s/book.xlsx.d/01-q3.md", pin, "primary")
         ),
@@ -1062,3 +1065,18 @@ def test_uncovered_mirror_pages_lists_current_pages_no_topic_cites(layout: DocsL
 
 def test_uncovered_mirror_pages_without_mirror_dir(tmp_path: Path) -> None:
     assert curate.uncovered_mirror_pages(DocsLayout(root=tmp_path / "none"), []) == []
+
+
+def test_missing_purpose_and_page_budget_are_warnings(layout: DocsLayout) -> None:
+    topic_page(layout, "topics/a/ok.md", "entity: a\npurpose: Terms; not pricing.\n")
+    topic_page(layout, "topics/a/nopurpose.md", "entity: a\n")
+    topic_page(layout, "topics/a/huge.md", "entity: a\npurpose: Everything.\n", "line\n" * 401)
+    topic_page(layout, "topics/a/adopted.md", "provenance: hand-written\nsources: []\n", "x" * 25_001)
+    _rows, _entities, findings = generate_depends(layout)
+    assert [(f.path, f.code) for f in findings] == [
+        ("topics/a/adopted.md", "TOPIC-BUDGET"),
+        ("topics/a/huge.md", "TOPIC-BUDGET"),
+        ("topics/a/nopurpose.md", "MISSING-PURPOSE"),
+    ]
+    assert not any(f.blocking for f in findings)
+    assert "split it" in findings[1].message

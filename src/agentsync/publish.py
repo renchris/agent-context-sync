@@ -86,7 +86,27 @@ and source X was incomplete", never a bare "nothing found".
 `agentsync curate-queue` lists the work: STALE pages, then UNCOVERED mirror pages no page cites yet.
 Write a page as `.agentsync-<name>.tmp` beside its target and rename it when complete: those names are
 never committed, so a sync cannot commit half a page.  `agentsync lint` checks the pins.
+
+Before writing a page, look the entity up in `_index/by-entity.tsv` and `rg -i '<term>' topics/`; if a
+page exists, extend it.  Never write -v2, -new or -final copies.  Link to the page that owns a fact
+instead of restating it.  One subject per page, read whole: keep it under 400 lines / 25 KB.
+`purpose:` is required: one line saying what the page answers and what it does not.  `aliases:` lists
+the abbreviations and phrases a user would type (`PO`, `Acme pricing`), in their words.
+Subject pages are edited in place; git keeps their history.  A `decisions/<yyyy-mm-dd>-<slug>.md` page
+is not edited once committed: a later decision gets a new dated page.
+When cited sources disagree, say in the body which one the page follows and why, and keep the other in
+`sources:`.
+`reviewed_at: <yyyy-mm-dd>` is set only when the operator says they checked the page.  Any edit you
+make to a reviewed page removes `reviewed_at:` in the same write.
 """
+_TOPICS_CLAUDE_MD_PRIOR_SHA256 = frozenset(
+    {
+        "0fb18bb9239fe610c8377b9562c24d654884abec2a9f036c0b422355e06833ea",  # cc66fcc .. d413d8f
+        "e79d138aa9a5aea7e143d816d84cc0051749db842b217cea972f8092bd76dcd4",  # 3d4b211 .. 2953b10
+    }
+)
+"""sha256 of every earlier ``TOPICS_CLAUDE_MD``: a topics/CLAUDE.md still byte-identical to one of them was
+never edited, so the scaffold upgrades it; any other content is the editors' and is kept."""
 
 ROOT_CLAUDE_MD = (
     """\
@@ -663,11 +683,25 @@ class Publisher:
         if settings is not None:
             files[CLAUDE_SETTINGS_PATH] = settings
         written = [rel for rel, text in files.items() if self._write_text(rel, text)]
-        # Curated layer: seeded once, then owned by its editors (the aspect vocabulary lives there).
+        # Curated layer: seeded once, then owned by its editors (the aspect vocabulary lives there).  An
+        # unedited earlier topics/CLAUDE.md seed is upgraded, so a new curation rule reaches existing repos.
         for rel, text in (("topics/CLAUDE.md", TOPICS_CLAUDE_MD), ("SYNONYMS.tsv", _SYNONYMS_HEADER)):
             if not self._abs(rel).exists() and self._write_text(rel, text):
                 written.append(rel)
+        if self._is_prior_topics_seed() and self._write_text("topics/CLAUDE.md", TOPICS_CLAUDE_MD):
+            written.append("topics/CLAUDE.md")
         return sorted(written)
+
+    def _is_prior_topics_seed(self) -> bool:
+        try:
+            data = self._abs("topics/CLAUDE.md").read_bytes()
+        except OSError:
+            return False
+        if hashlib.sha256(data).hexdigest() in _TOPICS_CLAUDE_MD_PRIOR_SHA256:
+            return True
+        if data != TOPICS_CLAUDE_MD.encode():
+            log.info("topics/CLAUDE.md is hand-edited; not upgrading it to the current seed")
+        return False
 
     # ---- paths -----------------------------------------------------------------------------------------
     def _owner_elsewhere(self, path: str, me: tuple[str, str]) -> bool:
@@ -1331,6 +1365,9 @@ class Publisher:
                     elif data.get("entity"):
                         group = f"Topics: {_one_line(str(data['entity']), 60)}"
                     desc = _one_line(str(data.get("purpose") or data.get("kind") or ""), 110)
+                    reviewed = str(data.get("reviewed_at") or "")
+                    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", reviewed):
+                        desc = f"[reviewed {reviewed}] {desc}".rstrip()
                 except FrontmatterError:
                     group, desc = (
                         "Unparseable frontmatter",

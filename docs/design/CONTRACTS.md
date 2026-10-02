@@ -3056,8 +3056,8 @@ def normalise_source_path(page_rel: str, source_rel_to_page: str) -> str:
 
 def generate_depends(layout: DocsLayout) -> tuple[list[DependsRow], list[tuple[str, str]], list[LintFinding]]:
     """Parse every curated page -> (DEPENDS rows sorted by (page, source), (entity, page) rows sorted, lint
-    findings: CURATE-PARSE, MISSING-ENTITY, BAD-ROLE, UNPINNED/BAD-PIN rows are still emitted for the
-    queue)."""
+    findings: CURATE-PARSE, MISSING-ENTITY, MISSING-PURPOSE, TOPIC-BUDGET, BAD-ROLE, UNPINNED/BAD-PIN rows are
+    still emitted for the queue)."""
 
 def write_depends(layout: DocsLayout, rows: Sequence[DependsRow]) -> bool:
     """Write DEPENDS.tsv (header + rows, LF, trailing newline) if different; return True if written."""
