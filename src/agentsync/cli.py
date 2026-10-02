@@ -259,9 +259,14 @@ def build_parser() -> argparse.ArgumentParser:
     add("refresh-queue", "print curated pages whose pinned sources changed (rc 1 when any)", _cmd_refresh)
     add(
         "curate-queue",
-        "the curation work list: the refresh queue, then UNCOVERED mirror pages no curated page cites "
-        "(rc 1 when any)",
+        "the curation work list: mirror changes since the last checkpoint, the refresh queue, then "
+        "UNCOVERED mirror pages no curated page cites (rc 1 when any refresh or uncovered row)",
         _cmd_curate_queue,
+    )
+    add(
+        "checkpoint",
+        "end a build session: tag the committed docs repo so the next curate-queue lists changes since here",
+        _cmd_checkpoint,
     )
     p = add(
         "install-skill",
@@ -1073,9 +1078,34 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     return rc
 
 
+_CHANGE_WORDS = {"A": "ADDED", "M": "CHANGED", "D": "REMOVED"}
+
+
+def _print_changes_since_checkpoint(repo: Path) -> None:
+    """What the mirror gained, changed and lost since the last build session's checkpoint."""
+    checkpoint = gitops.curated_checkpoint(repo) if gitops.head_sha(repo) else None
+    if checkpoint is None:
+        _out(
+            "no build-session checkpoint yet: every mirror page is new (agentsync checkpoint ends a session)"
+        )
+        return
+    sha, date = checkpoint
+    changes = gitops.changes_since(repo, sha)
+    counts = {
+        word: sum(1 for st, _ in changes if _CHANGE_WORDS.get(st) == word) for word in _CHANGE_WORDS.values()
+    }
+    for status, path in changes:
+        _out(f"{_CHANGE_WORDS.get(status, status)}\t{path}")
+    _out(
+        f"since the last build session ({date}, {sha[:12]}): {counts['ADDED']} added, {counts['CHANGED']} "
+        f"changed, {counts['REMOVED']} removed under mirror/"
+    )
+
+
 def _cmd_curate_queue(args: argparse.Namespace) -> int:
     config = _config(args)
     layout = config.layout
+    _print_changes_since_checkpoint(config.docs_repo)
     rc, verdicts = curate.refresh_queue(layout)
     for v in verdicts:
         _out(v.line())
@@ -1087,6 +1117,27 @@ def _cmd_curate_queue(args: argparse.Namespace) -> int:
         _out(f"UNCOVERED\t{rel}")
     _out(f"{len(verdicts)} refresh-queue row(s), {len(uncovered)} uncovered mirror page(s)")
     return EXIT_FAILED if verdicts or uncovered else EXIT_OK
+
+
+def _cmd_checkpoint(args: argparse.Namespace) -> int:
+    config = _config(args)
+    repo, layout = config.docs_repo, config.layout
+    head = gitops.head_sha(repo)
+    if head is None:
+        _err("checkpoint: the docs repo has no commit yet (run agentsync sync --once first)")
+        return EXIT_FAILED
+    if gitops.has_changes(repo):
+        _err("checkpoint: the docs repo has uncommitted pages; run agentsync sync --once, then checkpoint")
+        return EXIT_FAILED
+    previous = gitops.curated_checkpoint(repo)
+    gitops.tag_curated(repo, head)
+    _rc, verdicts = curate.refresh_queue(layout)
+    rows, _entities, _findings = curate.generate_depends(layout)
+    left = len(verdicts) + len(curate.uncovered_mirror_pages(layout, rows))
+    since = f"previous {previous[0][:12]} ({previous[1]})" if previous else "the first checkpoint"
+    _out(f"checkpoint {head[:12]}: the next curate-queue lists changes since here; {since}")
+    _out(f"{left} item(s) still in the curate queue")
+    return EXIT_OK
 
 
 DEFAULT_SKILLS_DIR = "~/.claude/skills"
@@ -1105,8 +1156,14 @@ description: Company knowledge (OneDrive, SharePoint and Teams files, saved mail
 
 # Company knowledge folder (agentsync)
 
-`{docs}` is a git repo that agentsync updates every 5 minutes. `mirror/` holds one converted page per source
-file and is never edited by hand. `topics/` holds subject pages that agents write.
+`{docs}` is a git repo that agentsync updates when a work session starts, not on a timer. `mirror/` holds one
+converted page per source file and is never edited by hand. `topics/` holds subject pages that agents write.
+
+## Start of a session
+
+Run `agentsync sync --once` before anything else. It converts everything that changed in the sources since the
+last run, in one pass; after a long gap that is a large catch-up, which is expected. Exit 75 means another
+sync is already running: wait for it to finish.
 
 ## Look something up
 
@@ -1118,8 +1175,9 @@ file and is never edited by hand. `topics/` holds subject pages that agents writ
 
 ## Curate subject pages
 
-1. `agentsync curate-queue` lists the work: `STALE` pages whose sources changed, then `UNCOVERED` mirror pages
-   that no subject page cites yet.
+1. `agentsync curate-queue` lists the work. First, `ADDED`, `CHANGED` and `REMOVED` mirror pages since the
+   last build session's checkpoint (read those with `git -C {docs} diff curated -- <path>`). Then `STALE`
+   pages whose sources changed, then `UNCOVERED` mirror pages that no subject page cites yet.
 2. Write or rewrite `topics/<area>/<page>.md` as `topics/CLAUDE.md` says: frontmatter `entity:` and `sources:`
    entries `{{path: <path relative to the page>, at_rendered_sha256: <the cited page's rendered_sha256>,
    role: primary|corroborating}}`.
@@ -1127,8 +1185,10 @@ file and is never edited by hand. `topics/` holds subject pages that agents writ
    complete. Files named `.agentsync-*.tmp` are never committed, so a sync running meanwhile cannot commit
    half a page.
 4. `agentsync lint`, and fix every `ERROR` line.
-5. The next background sync commits the pages. To commit now, run `agentsync sync --once` (exit 75 means a
-   sync is already running and will commit them).
+5. Commit the pages with `agentsync sync --once` (exit 75 means a sync is already running and will commit
+   them).
+6. End the session with `agentsync checkpoint`. It records where this build stopped, so the next session's
+   `curate-queue` starts from the diff since here. It refuses while pages are uncommitted.
 """
 
 

@@ -60,6 +60,7 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
 """Paths a cycle commit stages (``git add -A -- <these>``); ``_sync/STATE.md`` is gitignored."""
 
 PUBLISHED_TAG = "published"
+CURATED_TAG = "curated"
 
 _GIT_TIMEOUT_S = 600.0
 _PUSH_TIMEOUT_S = 300.0
@@ -438,6 +439,47 @@ def restore_generated(repo: Path) -> None:
 def tag_published(repo: Path, sha: str) -> None:
     """Force-move the lightweight ``published`` tag to ``sha`` (the tree readers should consume)."""
     run_git(repo, "tag", "-f", PUBLISHED_TAG, f"{sha}^{{commit}}")
+
+
+def tag_curated(repo: Path, sha: str) -> None:
+    """Force-move the annotated ``curated`` tag to ``sha``: the build-session checkpoint (its tagger date is
+    when the session ended, not when the commit was made)."""
+    run_git(
+        repo, "tag", "-f", "-a", CURATED_TAG, "-m", "agentsync build-session checkpoint", f"{sha}^{{commit}}"
+    )
+
+
+def curated_checkpoint(repo: Path) -> tuple[str, str] | None:
+    """``(commit sha, checkpoint date ISO 8601)`` of the ``curated`` tag; None before the first one."""
+    sha = _rev_parse(repo, f"refs/tags/{CURATED_TAG}^{{commit}}")
+    if sha is None:
+        return None
+    date = run_git(
+        repo,
+        "for-each-ref",
+        "--format=%(taggerdate:iso-strict)%(committerdate:iso-strict)",
+        f"refs/tags/{CURATED_TAG}",
+    ).stdout.strip()
+    return sha, date[:25]
+
+
+def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) -> list[tuple[str, str]]:
+    """``(A|M|D, path)`` for every file under ``pathspecs`` that differs between ``rev`` and HEAD, sorted by
+    path; a rename reads as a delete plus an add."""
+    out = run_git(
+        repo,
+        "diff",
+        "--name-status",
+        "-z",
+        "--no-renames",
+        f"{rev}^{{commit}}",
+        "HEAD",
+        "--",
+        *_literal(pathspecs),
+    ).stdout
+    fields = [f for f in out.split("\0") if f]
+    pairs = [(fields[i][0], fields[i + 1]) for i in range(0, len(fields) - 1, 2)]
+    return sorted(pairs, key=lambda p: p[1])
 
 
 def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:

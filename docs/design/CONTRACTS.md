@@ -4939,3 +4939,31 @@ SKILL_NAME = "agentsync-docs"
 def skill_text(docs_repo: Path) -> str:
     """The SKILL.md ``install-skill`` writes: where the docs repo is, how to look things up, how to curate."""
 ```
+
+### 16.17 `checkpoint`: just-in-time builds from a per-session checkpoint (2026-10-02, integrator)
+
+Additive. Operator ruling 2026-10-01 (decision packet `eae0934f7b51`, actioned): nothing runs on a schedule by
+default. A work session starts with `agentsync sync --once`, which catches up everything since the last run, and
+ends with `agentsync checkpoint`, which records where the build stopped so the next session sees the diff since
+then. The LaunchAgents stay available behind `--confirm-install-agent`.
+
+| Command | Calls | Exit |
+|---|---|---|
+| `checkpoint` | refuses an unborn HEAD and any `gitops.has_changes` (uncommitted pages: run `sync --once` first); else `gitops.tag_curated(HEAD)`, then prints the previous checkpoint and how many curate-queue items remain | 0 tagged · 1 no commit yet or uncommitted pages |
+| `curate-queue` (extended) | first `gitops.curated_checkpoint`; if present, `gitops.changes_since(sha)` printed as `ADDED`/`CHANGED`/`REMOVED\t<mirror path>` lines and one `since the last build session (<date>, <sha12>)` count line; if absent, one `no build-session checkpoint yet` line. Then the 16.16 output, unchanged | unchanged: the checkpoint diff never sets the exit code |
+
+The checkpoint is the annotated tag `curated` in the docs repo, so its tagger date is when the session ended,
+not when the tagged commit was made. It is local: `push_if_allowed` pushes only `published`. The checkpoint diff
+answers "what is new since I last worked"; the refresh queue and uncovered list remain the authoritative backlog,
+so a session that stops halfway loses nothing by checkpointing.
+
+```python
+# agentsync.gitops
+CURATED_TAG = "curated"
+def tag_curated(repo: Path, sha: str) -> None:
+    """Force-move the annotated ``curated`` tag to ``sha``: the build-session checkpoint."""
+def curated_checkpoint(repo: Path) -> tuple[str, str] | None:
+    """``(commit sha, checkpoint date ISO 8601)`` of the ``curated`` tag; None before the first one."""
+def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) -> list[tuple[str, str]]:
+    """``(A|M|D, path)`` for files under ``pathspecs`` that differ between ``rev`` and HEAD, sorted by path."""
+```

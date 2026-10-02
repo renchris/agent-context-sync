@@ -168,3 +168,22 @@ Scope (grown, 2026-09-29): +a copy-paste setup prompt for a new Mac (README "Set
   Developer-ID hint still prints on install (P2).
 - **Next:** the operator runs the prompt on the corporate Mac and brings the report back; each friction line becomes a
   fix or a documented unavoidable step (docs/deploy/setup-feedback.md).
+
+## Just-in-time builds (2026-10-02)
+
+Scope (frozen): no scheduled sync or curation by default; a work session catches up with `agentsync sync --once`,
+builds, and ends with a checkpoint so the next session sees the diff since the last build.
+
+- **Ruling:** operator, 2026-10-01 (decision packet `eae0934f7b51`, actioned). No nightly curation run at all; the
+  LaunchAgents stay optional behind `--confirm-install-agent`. A long gap means one larger catch-up, which the
+  operator counts as the feature: the most work done in the session that needs it.
+- **Built:** `agentsync checkpoint` (annotated tag `curated` in the docs repo); `curate-queue` now opens with
+  `ADDED`/`CHANGED`/`REMOVED` mirror pages since that tag; the installed skill starts sessions with
+  `sync --once` and ends them with `checkpoint`. CONTRACTS §16.17. Test:
+  `test_cli.py::test_checkpoint_scopes_the_next_curate_queue_to_changes_since_the_session`.
+- **Open, the operator's:** sources with a retention window (Teams chat kept 30 days, deleted files) lose content
+  that is deleted between sessions, and upstream deletes replace a mirror page with a tombstone. Whether to keep
+  deleted content in `docs/mirror` is a company records-policy call (decision packet `5d4707a94b3b`, 80%
+  conviction for a per-source option, off by default). On the corporate Mac this does not bite yet: mail and Teams
+  messages arrive by hand as files that stay on disk.
+- **Next:** the 20-page pilot (implementation-gap-13) with the operator, using `install-skill` and `curate-queue`.

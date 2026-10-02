@@ -169,6 +169,45 @@ def test_curate_queue_lists_stale_then_uncovered(
     assert "STALE\ttopics/a.md" in out and "UNCOVERED\tmirror/source/projects/sample.txt.md" not in out
 
 
+def test_checkpoint_scopes_the_next_curate_queue_to_changes_since_the_session(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    repo = initialised.docs_repo
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_FAILED  # no commit yet
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    cli.main(["curate-queue", "--config", cfg])
+    assert "no build-session checkpoint yet" in capsys.readouterr().out
+    (repo / "topics" / "a.md").write_text("---\nentity: acme\nsources: []\n---\n# A\n", encoding="utf-8")
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_FAILED  # uncommitted page
+    assert "uncommitted" in capsys.readouterr().err
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "the first checkpoint" in out and "still in the curate queue" in out
+    head = git(repo, "rev-parse", "HEAD").strip()
+    assert git(repo, "rev-parse", "curated^{commit}").strip() == head
+    assert git(repo, "cat-file", "-t", "curated").strip() == "tag"  # annotated: dated when the session ended
+
+    source = local_source_dir
+    (source / "projects" / "new.txt").write_text("new\n", encoding="utf-8")
+    (source / "projects" / "sample.txt").write_text("edited\n", encoding="utf-8")
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    cli.main(["curate-queue", "--config", cfg])
+    out = capsys.readouterr().out
+    assert "ADDED\tmirror/source/projects/new.txt.md" in out
+    assert "CHANGED\tmirror/source/projects/sample.txt.md" in out
+    assert "since the last build session (" in out and head[:12] in out
+    assert out.rstrip().endswith("uncovered mirror page(s)")
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    assert f"previous {head[:12]}" in capsys.readouterr().out
+    cli.main(["curate-queue", "--config", cfg])
+    assert "0 added, 0 changed, 0 removed" in capsys.readouterr().out
+
+
 def test_install_skill_writes_once_and_names_the_docs_repo(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -41,16 +41,16 @@ whether that change costs anything. Git carries the result, so "what changed sin
 ## What it does: five features, one loop
 
 agentsync turns the Microsoft 365 files, mail and chat a Mac can reach into a folder of markdown that a coding agent
-can read and grep, and keeps that folder current by itself. Four of the five features run with no one involved once
-setup is done. The fifth, organizing pages by subject, is written by your coding agent; agentsync tells it which pages
-are out of date but does not write them.
+can read and grep. It runs just in time: when a work session starts, one sync catches up everything that changed since
+the last session, and your coding agent then organizes the new material by subject. Nothing needs to run between
+sessions. agentsync tells the agent which pages are new or out of date but does not write them.
 
 | # | Feature | What you get | Who runs it | Commands | Where the result lands |
 |---|---|---|---|---|---|
-| 1 | **Set up** | The tool, its signed launcher, the knowledge folder and two background jobs, installed in one command with no admin rights | You, once | `scripts/install.sh --source-local "<folder>" --confirm-install-agent` ([Install](#install)) | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
+| 1 | **Set up** | The tool, its signed launcher and the knowledge folder, installed in one command with no admin rights; two background jobs only if you ask for them | You, once | `scripts/install.sh --source-local "<folder>"` ([Install](#install)); add `--confirm-install-agent` for the background jobs | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
 | 2 | **Connect sources** | A say over what feeds the knowledge folder, now and later | You, when the list changes | Folders this Mac syncs (no IT): `install.sh --list-folders`, then `agentsync add-source FOLDER`. A drop folder for files you save by hand, such as emails dragged out of Outlook as `.eml` (no IT): `agentsync add-source --inbox`. Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac: need IT approval ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)), then `agentsync graph login` and `agentsync graph discover --toml`, pasted into `sources.toml` with `state = "live"` | `sources.toml` |
-| 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Automatic: every 5 minutes, plus a full re-check every hour | none (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
-| 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what and marks stale pages on every run | `agentsync curate-queue` (stale pages, then files no page covers yet), `agentsync lint`, `agentsync install-skill` (tells your agent, in any folder, where the knowledge folder is and how to curate it), `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
+| 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Your agent, at the start of each work session; or the optional background jobs (every 5 minutes, plus a full re-check every hour) | `agentsync sync --once` (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
+| 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what, marks stale pages on every run, and records a checkpoint at the end of each build session | `agentsync curate-queue` (mirror pages added, changed and removed since the last checkpoint, then stale pages, then files no page covers yet), `agentsync checkpoint` (ends a build session), `agentsync lint`, `agentsync install-skill` (tells your agent, in any folder, where the knowledge folder is and how to curate it), `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
 | 5 | **Run it safely** | Health checks, a guard against mass deletion, and erasure on request | Mostly automatic; a few commands by hand | `agentsync doctor`, `status`, `reconcile --accept-deletions`, `purge`, `hold`, `offboard` | `docs/_sync/STATE.md` (is every source complete?), `~/Library/Logs/agentsync` |
 
 **The diff is part of feature 3, not a separate step.** Each run lists every source, decides from metadata alone
@@ -62,31 +62,37 @@ or chat is read back to the newest message already seen.
 ### What happens after install
 
 1. The installer writes `sources.toml`, creates `~/agent-context/docs`, and converts the files already on the Mac.
-   It downloads nothing, so online-only files are left for the background runs.
-2. Every 5 minutes a background run checks each source. It downloads at most 1 GiB or 5,000 online-only files per
-   source per run, so on a Mac with mostly online-only files the mirror fills in over several runs.
-   `docs/_sync/STATE.md` says which sources are still incomplete.
+   It downloads nothing, so online-only files are left for later runs.
+2. When a work session starts, your agent runs `agentsync sync --once`, which checks each source. After a long gap
+   that one run does a lot of work, which is the point: everything that changed since the last session lands at once.
+   It downloads at most 1 GiB or 5,000 online-only files per source per run, so on a Mac with mostly online-only
+   files the mirror fills in over several runs. `docs/_sync/STATE.md` says which sources are still incomplete. The
+   optional background jobs run the same command every 5 minutes instead.
 3. Each run rewrites the changed pages in `docs/mirror/`, updates `INDEX.md` and `CHANGELOG/`, refreshes the citation
    map, marks stale subject pages, and makes one git commit.
 4. **Automation stops here.** Open your coding agent in `~/agent-context/docs` and have it read `CLAUDE.md` (or
    `AGENTS.md`), which the installer wrote, then:
    - read `_sync/STATE.md`, to know which sources are incomplete;
    - run `git log --since=<date> --stat -- mirror topics`, or read `CHANGELOG.md`, to see what changed;
-   - run `agentsync curate-queue` for the work list: subject pages whose sources changed (`STALE`), then mirror
-     pages no subject page covers yet (`UNCOVERED`);
+   - run `agentsync curate-queue` for the work list: mirror pages `ADDED`, `CHANGED` and `REMOVED` since the last
+     build session's checkpoint, then subject pages whose sources changed (`STALE`), then mirror pages no subject
+     page covers yet (`UNCOVERED`);
    - write or rewrite pages under `topics/<area>/`, following `topics/CLAUDE.md`: each page pins the mirror pages it
      cites in its `sources:` header and names its subject in `entity:`. Write each page under a temporary
-     `.agentsync-<name>.tmp` name and rename it when done, so a background run never commits half a page.
+     `.agentsync-<name>.tmp` name and rename it when done, so a sync never commits half a page.
 
    `agentsync install-skill` puts these steps in a Claude Code skill, so an agent started in any folder knows the
    knowledge folder exists.
-5. The next background run commits the agent's pages and adds them to the citation map, so later source changes mark
-   them stale.
+5. `agentsync sync --once` commits the agent's pages and adds them to the citation map, so later source changes mark
+   them stale. `agentsync checkpoint` then ends the build session: it tags the commit `curated`, and the next
+   session's `curate-queue` starts from the diff since that tag.
 
-**Not built yet:** nothing writes or refreshes the subject pages on a schedule; an unattended nightly run waits on a
-20-page pilot and a guard against rewriting one page many times
-([`docs/plans/implementation.md`](docs/plans/implementation.md)). Microsoft Graph sources start paused and are
-skipped until `agentsync graph login` has run.
+**By design, nothing runs on a schedule unless you install the background jobs.** Subject pages are written only in a
+work session your agent starts (operator ruling 2026-10-01: no nightly run). Microsoft Graph sources start paused and
+are skipped until `agentsync graph login` has run.
+
+**CORRECTED (2026-10-01):** this section described the background jobs as the default and an unattended nightly
+curation run as planned. Syncing is now just in time, at the start of a session, and the nightly run is dropped.
 
 **CORRECTED (2026-10-01):** this said an agent started in any other folder is not told the knowledge folder exists;
 `agentsync install-skill` now does that.
