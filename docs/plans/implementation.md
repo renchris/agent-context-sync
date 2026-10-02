@@ -187,3 +187,24 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
   conviction for a per-source option, off by default). On the corporate Mac this does not bite yet: mail and Teams
   messages arrive by hand as files that stay on disk.
 - **Next:** the 20-page pilot (implementation-gap-13) with the operator, using `install-skill` and `curate-queue`.
+
+## Point-in-time archive (2026-10-02)
+
+Scope (frozen): a `[governance] archive` switch (default false in the public tool). When true, agentsync keeps
+everything: content a source deletes stays searchable in docs/archive/, every build-session checkpoint leaves a
+permanent dated snapshot tag, and history is never squashed. Manual purge (erasure, legal, operator) still erases.
+
+- **Ruling:** operator, 2026-10-02 (decision packet `5d4707a94b3b`, actioned): "Totally fine. We always save
+  notes." Deleted company data may stay on the laptop past company retention; the public default stays off. This
+  closes the "Open, the operator's" item in Just-in-time builds above, as one global switch rather than the
+  per-source option that packet recommended at 80%.
+- **Built:** `archive = true` copies a page and its sidecars to `archive/<path under mirror/>` (`status:
+  archived`, `deleted_at`, `last_commit`) before an upstream-delete tombstone, queues no purge, adds a permanent
+  `snapshot/<UTC>` tag at each `checkpoint`, skips compaction (`compact-history` exits 1), and `curate-queue`
+  names the archive copy on `REMOVED` lines (a page tombstoned since the checkpoint now reads `REMOVED`). `archive`
+  is pipeline-owned (`GENERATED_PATHSPECS`), linted like `mirror/` (a hand edit blocks), never reaped, and
+  excluded from Time Machine. `purge` rewrites archive pages out of history like mirror pages; snapshot tags are
+  remapped. CONTRACTS §16.18. Tests: `test_cli.py::test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint`
+  (delete, archive, snapshot, purge end to end), `test_cycle.py::test_archive_on_upstream_delete_survives_a_head_moved_by_hand`.
+- **Learnings:** a tombstone is a modification, not a removal, so the checkpoint diff showed an upstream delete as
+  `CHANGED` until the tombstone was reaped 180 days later; `curate-queue` now classifies it `REMOVED`.

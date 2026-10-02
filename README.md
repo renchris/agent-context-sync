@@ -51,7 +51,7 @@ sessions. agentsync tells the agent which pages are new or out of date but does 
 | 2 | **Connect sources** | A say over what feeds the knowledge folder, now and later | You, when the list changes | Folders this Mac syncs (no IT): `install.sh --list-folders`, then `agentsync add-source FOLDER`. A drop folder for files you save by hand, such as emails dragged out of Outlook as `.eml` (no IT): `agentsync add-source --inbox`. Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac: need IT approval ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)), then `agentsync graph login` and `agentsync graph discover --toml`, pasted into `sources.toml` with `state = "live"` | `sources.toml` |
 | 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Your agent, at the start of each work session; or the optional background jobs (every 5 minutes, plus a full re-check every hour) | `agentsync sync --once` (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
 | 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what, marks stale pages on every run, and records a checkpoint at the end of each build session | `agentsync curate-queue` (mirror pages added, changed and removed since the last checkpoint, then stale pages, then files no page covers yet), `agentsync checkpoint` (ends a build session), `agentsync lint`, `agentsync install-skill` (tells your agent, in any folder, where the knowledge folder is and how to curate it), `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
-| 5 | **Run it safely** | Health checks, a guard against mass deletion, and erasure on request | Mostly automatic; a few commands by hand | `agentsync doctor`, `status`, `reconcile --accept-deletions`, `purge`, `hold`, `offboard` | `docs/_sync/STATE.md` (is every source complete?), `~/Library/Logs/agentsync` |
+| 5 | **Run it safely** | Health checks, a guard against mass deletion, and erasure on request; optionally a point-in-time archive that keeps whatever a source deletes | Mostly automatic; a few commands by hand | `agentsync doctor`, `status`, `reconcile --accept-deletions`, `purge`, `hold`, `offboard`; `archive = true` under `[governance]` in `sources.toml` ([Point-in-time archive](#point-in-time-archive-off-by-default)) | `docs/_sync/STATE.md` (is every source complete?), `~/Library/Logs/agentsync`; with the archive on, `docs/archive/` and one `snapshot/<date>` tag per build session |
 
 **The diff is part of feature 3, not a separate step.** Each run lists every source, decides from metadata alone
 which files changed, downloads only those, converts them and commits. The commit and the `CHANGELOG` entry are the
@@ -100,6 +100,32 @@ curation run as planned. Syncing is now just in time, at the start of a session,
 <sub>The design calls the raw inbox `/docs-source`. The implementation reads each source where it already is, so there
 is no `docs-source` folder; `docs/mirror/` holds the converted copy, and `docs/topics/` is the design's subject-organized
 `/docs`.</sub>
+
+### Point-in-time archive (off by default)
+
+By default a file deleted at the source becomes a tombstone in `docs/mirror/`: the body is replaced, the old text
+stays only in git history, `agentsync compact-history` squashes that history after `history_days`, and the deletion
+queues a purge. Someone who keeps every note can turn that off in `sources.toml`:
+
+```toml
+[governance]
+archive = true
+```
+
+With `archive = true`, agentsync keeps everything:
+
+- before a page is tombstoned because its source was deleted, its last full text (sidecars too) is written to
+  `docs/archive/<path under mirror/>` with `status: archived`, `deleted_at` and `last_commit`, and the tombstone
+  names that path. Agents search `archive/` like `mirror/`; it is generated, never hand-edited (`agentsync lint`
+  blocks a hand edit), and reaping never removes it. No purge is queued for the deletion;
+- `agentsync checkpoint` also creates a permanent tag `snapshot/<UTC date and time>`, so
+  `git -C ~/agent-context/docs show snapshot/<date>:<path>` reads any page as it was when a build session ended;
+- history is never squashed: automatic compaction is skipped and `agentsync compact-history` refuses.
+
+`agentsync purge` still erases: a purged item's archive pages leave the working tree and every commit, and snapshot
+tags are rewritten with the rest of history. `archive = true` with `purge_on_upstream_delete = true` in the same
+table is a configuration error. Keeping deleted company content may run past your company's retention policy, so
+turn it on only when that is your call to make.
 
 ## Set up on a new Mac: one prompt
 
