@@ -62,6 +62,8 @@ INDEX_MAX_BYTES = 25_000
 INDEX_MAX_LINES = 200
 
 _MIRROR = "mirror"
+_ARCHIVE = "archive"  # [governance] archive: the last full page of each deleted item, agentsync-written
+_PAGE_TOPS = (_MIRROR, _ARCHIVE)
 _SIDECAR_DIR_SUFFIX = ".files"
 _DIR_GUIDES = frozenset({"CLAUDE.md", "INDEX.md"})
 _PIPELINE_DIRS = ("_manifest", "_sync", "_index", "CHANGELOG")
@@ -102,7 +104,7 @@ def _is_sidecar(path: str) -> bool:
 
 def _is_mirror_page(path: str) -> bool:
     return (
-        path.startswith(_MIRROR + "/")
+        path.startswith(tuple(f"{top}/" for top in _PAGE_TOPS))
         and path.endswith(".md")
         and path != f"{_MIRROR}/CLAUDE.md"
         and not _is_sidecar(path)
@@ -176,22 +178,32 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
         return [LintFinding("FRONTMATTER", path, "; ".join(problems))]
     findings: list[LintFinding] = []
     parts = path.split("/")
+    top = parts[0]
     if len(parts) < 3 or str(data.get("source_id")) != parts[1]:
         findings.append(
             LintFinding(
                 "FRONTMATTER",
                 path,
-                f"source_id {data.get('source_id')!r} does not match the mirror/<id>/ dir",
+                f"source_id {data.get('source_id')!r} does not match the {top}/<id>/ dir",
             )
         )
     status = PageStatus(str(data["status"]))
+    if (top == _ARCHIVE) != (status is PageStatus.ARCHIVED):
+        where = "archive/ pages carry" if top == _ARCHIVE else "only archive/ pages carry"
+        findings.append(
+            LintFinding(
+                "FRONTMATTER",
+                path,
+                f"status {status.value}: {where} status archived (archive/ is written only by agentsync)",
+            )
+        )
     rendered = data.get("rendered_sha256")
     if status is not PageStatus.DELETED and rendered is not None and not _body_matches(body, str(rendered)):
         findings.append(
             LintFinding(
                 "FRONTMATTER",
                 path,
-                "body does not match rendered_sha256: mirror/ is written only by agentsync (hand edit?); "
+                f"body does not match rendered_sha256: {top}/ is written only by agentsync (hand edit?); "
                 f"restore it with `git checkout -- {path}`",
             )
         )
@@ -219,11 +231,16 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
 
 
 def lint_mirror_frontmatter(repo: Path, paths: Sequence[str] | None = None) -> list[LintFinding]:
-    """FRONTMATTER: every mirror page (or just ``paths``) parses and satisfies the mirror contract."""
-    candidates = list(_walk_files(repo, _MIRROR)) if paths is None else sorted(set(paths))
+    """FRONTMATTER: every mirror and archive page (or just ``paths``) parses and satisfies the mirror
+    contract; an archive page also carries ``status: archived`` and a body matching ``rendered_sha256``."""
+    if paths is None:
+        candidates = [p for top in _PAGE_TOPS for p in _walk_files(repo, top)]
+    else:
+        candidates = sorted(set(paths))
     findings: list[LintFinding] = []
     for path in candidates:
-        if not path.startswith(_MIRROR + "/") or path == f"{_MIRROR}/CLAUDE.md":
+        top = path.split("/", 1)[0]
+        if top not in _PAGE_TOPS or "/" not in path or path == f"{_MIRROR}/CLAUDE.md":
             continue
         full = repo / path
         if not full.exists() or full.is_symlink() or not full.is_file():
@@ -235,7 +252,7 @@ def lint_mirror_frontmatter(repo: Path, paths: Sequence[str] | None = None) -> l
                 LintFinding(
                     "FRONTMATTER",
                     path,
-                    "not a mirror page: only agentsync writes mirror/ (pages are *.md; sidecars live in "
+                    f"not a mirror page: only agentsync writes {top}/ (pages are *.md; sidecars live in "
                     f"*{_SIDECAR_DIR_SUFFIX}/ dirs)",
                 )
             )
@@ -265,7 +282,7 @@ def lint_paths(repo: Path, paths: Sequence[str] | None = None) -> list[LintFindi
                 LintFinding("PATH", path, f"{len(path)} chars > {slug.MAX_PATH_CHARS} (Windows MAX_PATH)")
             )
         name = path.rsplit("/", 1)[-1]
-        if path.startswith(_MIRROR + "/") and path != f"{_MIRROR}/CLAUDE.md":
+        if path.split("/", 1)[0] in _PAGE_TOPS and path != f"{_MIRROR}/CLAUDE.md":
             if not slug.is_portable_path(path):
                 findings.append(LintFinding("PATH", path, "mirror path is not a slug fixed point"))
         elif path.startswith("topics/") and name not in _DIR_GUIDES and not slug.is_portable_path(path):
@@ -351,7 +368,10 @@ def lint_no_tokens(
     corporate API docs legitimately contain ``Bearer ``; a mirror page holding a known secret blocks."""
     known = [k for k in known_secrets if len(k) >= 16]
     if paths is None:
-        candidates = [*_pipeline_files(repo), *_walk_files(repo, _MIRROR), *_walk_files(repo, "topics")]
+        candidates = [
+            *_pipeline_files(repo),
+            *(p for top in (*_PAGE_TOPS, "topics") for p in _walk_files(repo, top)),
+        ]
     else:
         candidates = list(paths)
     findings: list[LintFinding] = []
@@ -360,7 +380,7 @@ def lint_no_tokens(
         if full.is_symlink() or not full.is_file():
             continue
         pipeline = _is_pipeline_file(path)
-        if not (pipeline or path.startswith((_MIRROR + "/", "topics/"))):
+        if not (pipeline or path.startswith((_MIRROR + "/", _ARCHIVE + "/", "topics/"))):
             continue
         hit = _first_token_hit(full, PIPELINE_TOKEN_PATTERN if pipeline else TOKEN_PATTERN, known)
         if hit is None:
@@ -535,7 +555,8 @@ def lint_double_conversion(samples: Sequence[tuple[Path, str]], registry: Regist
 
 
 def _dirty_mirror_paths(repo: Path) -> list[str]:
-    """Mirror paths git would commit (modified, added, untracked) — catches edits nobody reported."""
+    """Mirror and archive paths git would commit (modified, added, untracked) — catches edits nobody
+    reported."""
     out = gitops.run_git(
         repo,
         "status",
@@ -545,6 +566,7 @@ def _dirty_mirror_paths(repo: Path) -> list[str]:
         "--no-renames",
         "--",
         ":(literal)mirror",
+        ":(literal)archive",
     ).stdout
     paths: list[str] = []
     for entry in out.split("\0"):
@@ -561,7 +583,7 @@ def run_land_gate(
     changed = sorted({*changed_paths, *_dirty_mirror_paths(repo)})
     findings: list[LintFinding] = []
     findings += lint_no_symlinks(repo)
-    findings += lint_mirror_frontmatter(repo, [p for p in changed if p.startswith(_MIRROR + "/")])
+    findings += lint_mirror_frontmatter(repo, [p for p in changed if p.split("/", 1)[0] in _PAGE_TOPS])
     findings += lint_paths(repo, changed)
     findings += lint_no_cache_in_git(repo)
     findings += lint_no_tokens(repo, sorted({*_pipeline_files(repo), *changed}), known_secrets=known_secrets)

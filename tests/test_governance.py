@@ -311,6 +311,25 @@ def test_parse_governance_defaults_and_validation() -> None:
         gv.parse_governance({"governance": {"history_days": 0}})
 
 
+def test_archive_turns_off_upstream_purge_and_refuses_compaction(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    assert gv.parse_governance({}).archive is False  # the public default
+    got = gv.parse_governance({"governance": {"archive": True}})
+    assert got.archive is True and got.purge_on_upstream_delete is False
+    assert gv.parse_governance({"governance": {"archive": True, "purge_on_upstream_delete": False}}).archive
+    with pytest.raises(ConfigError, match=r"archive.*purge_on_upstream_delete"):
+        gv.parse_governance({"governance": {"archive": True, "purge_on_upstream_delete": True}})
+    with pytest.raises(ConfigError, match="archive"):
+        gv.parse_governance({"governance": {"archive": "yes"}})
+    cfg = make_config(tmp_path, tmp_docs_repo, tmp_state_dir, "[governance]\narchive = true\n")
+    assert gv.compaction_state(tmp_docs_repo, got) == ("ok", gv.ARCHIVE_KEEPS_HISTORY)
+    with pytest.raises(gv.GovernanceError, match="archive on: history is kept"):
+        gv.compact_history(cfg, 0)
+    with pytest.raises(gv.GovernanceError, match="archive on"):
+        gv.compact_history(cfg, dry_run=True)
+
+
 def test_load_governance_reads_sources_toml(tmp_path: Path) -> None:
     p = tmp_path / "sources.toml"
     assert gv.load_governance(p) == gv.GovernanceConfig()
@@ -679,6 +698,7 @@ def test_time_machine_exclusions_are_applied(
     assert f"pending {cfg.state_paths.db}" in lines
     dirs = [
         tmp_docs_repo / "mirror",
+        tmp_docs_repo / "archive",  # [governance] archive: what a source deleted, until a purge erases it
         tmp_docs_repo / ".git",  # every version of every page: a purge cannot reach a backup of it
         cfg.cache_dir,
         cfg.state_paths.teams_store,
@@ -891,7 +911,7 @@ def test_time_machine_exclusions_batch_and_fallback(
         return subprocess.CompletedProcess(args, 1 if bad else 0, "", "denied" if bad else "")
 
     lines = gv.apply_time_machine_exclusions(cfg, runner=fake)
-    assert calls[0][:2] == ["/usr/bin/tmutil", "addexclusion"] and len(calls[0]) == 7
-    assert len(calls) == 6  # one batch + five per-path retries
+    assert calls[0][:2] == ["/usr/bin/tmutil", "addexclusion"] and len(calls[0]) == 8
+    assert len(calls) == 7  # one batch + six per-path retries
     assert lines[-1] == f"failed {cfg.state_paths.staging}: denied"
-    assert lines[3] == f"pending {cfg.state_paths.db}"
+    assert lines[4] == f"pending {cfg.state_paths.db}"

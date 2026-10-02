@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -287,6 +288,24 @@ def test_restore_generated_resets_generated_paths_only(repo: Path) -> None:
     assert (repo / "topics/acme.md").read_text() == "agent edit in progress\n"
     assert (repo / "_sync/STATE.md").exists()
     assert not gitops.has_changes(repo, gitops.GENERATED_PATHSPECS)
+
+
+def test_archive_is_pipeline_owned_and_snapshot_tags_never_move(repo: Path) -> None:
+    assert "archive" in gitops.GENERATED_PATHSPECS and "archive" in gitops.COMMIT_PATHSPECS
+    write(repo, "archive/src/a.md", "kept\n")
+    first = gitops.commit_cycle(repo, "sync: archive")
+    assert first is not None
+    assert "archive/src/a.md" in gitops.tracked_files(repo)
+    when = datetime(2026, 10, 2, 7, 8, 9, tzinfo=UTC)
+    name = gitops.tag_snapshot(repo, first, when)
+    assert name == "snapshot/2026-10-02T070809Z"
+    assert git(repo, "cat-file", "-t", name).strip() == "tag"
+    write(repo, "INDEX.md", "# later\n")
+    later = gitops.commit_cycle(repo, "sync: later")
+    assert later is not None
+    with pytest.raises(GitError):  # an existing snapshot is never moved
+        gitops.tag_snapshot(repo, later, when)
+    assert git(repo, "rev-parse", f"{name}^{{commit}}").strip() == first
 
 
 def test_restore_generated_on_an_unborn_branch_removes_generated(repo: Path) -> None:

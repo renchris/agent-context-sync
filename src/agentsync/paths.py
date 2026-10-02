@@ -128,6 +128,11 @@ class DocsLayout:
         return self.root / "mirror"
 
     @property
+    def archive(self) -> Path:
+        """``[governance] archive``: the last full page of every item a source deleted, kept searchable."""
+        return self.root / "archive"
+
+    @property
     def topics(self) -> Path:
         """Tier 2: agent-curated pages with pinned ``sources:``."""
         return self.root / "topics"

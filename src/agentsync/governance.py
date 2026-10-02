@@ -81,6 +81,7 @@ _GOVERNANCE_KEYS = frozenset(
         "hold_reason",
         "hold_owner",
         "purge_on_upstream_delete",
+        "archive",
     }
 )
 _SCRUBBED_ENV = (
@@ -98,6 +99,7 @@ _SCRUB_MAX_BYTES = 64 * 1024 * 1024
 _TREE_MODE = b"40000"
 _GITLINK_MODE = b"160000"
 _SIDECAR_SUFFIX = ".files"
+_PAGE_TOPS = frozenset({"mirror", "archive"})  # docs-repo dirs whose pages carry an item's identity
 _PURGED_MARK = "[purged]"
 _PATH_CHARS = r"A-Za-z0-9._/\-"
 _SIG_MARKERS = (b"-----BEGIN PGP SIGNATURE-----", b"-----BEGIN SSH SIGNATURE-----")
@@ -158,6 +160,11 @@ class GovernanceConfig:
     hold_reason: str | None = None
     hold_owner: str | None = None
     purge_on_upstream_delete: bool = True
+    archive: bool = False
+
+
+ARCHIVE_KEEPS_HISTORY = "archive on: history is kept"
+"""Why compaction is skipped (STATE.md retention line) or refused (``compact-history``) under ``archive``."""
 
 
 def _bool(t: Mapping[str, Any], key: str, where: str, default: bool) -> bool:
@@ -215,7 +222,15 @@ def parse_governance(doc: Mapping[str, Any], *, where: str = "sources.toml") -> 
         hold_reason=_opt_str(raw, "hold_reason", w),
         hold_owner=_opt_str(raw, "hold_owner", w),
         purge_on_upstream_delete=_bool(raw, "purge_on_upstream_delete", w, True),
+        archive=_bool(raw, "archive", w, False),
     )
+    if cfg.archive and raw.get("purge_on_upstream_delete") is True:
+        raise ConfigError(
+            f"{w}: archive = true keeps what a source deletes, purge_on_upstream_delete = true erases it; "
+            "set one of them (archive alone queues no purge on an upstream delete)"
+        )
+    if cfg.archive:
+        cfg = dataclasses.replace(cfg, purge_on_upstream_delete=False)
     if cfg.hold and not cfg.hold_reason:
         raise ConfigError(
             f"{w}: hold = true needs hold_reason (who asked, and why), so a refusal can say why"
@@ -1007,9 +1022,10 @@ class _Rewriter:
             return False
         if sel.docs_glob and glob_match(path, sel.docs_glob):
             return True
-        if not path.startswith("mirror/") or not path.endswith(".md"):
+        top = path.split("/", 1)[0]
+        if top not in _PAGE_TOPS or not path.endswith(".md"):
             return False
-        if sel.source_id is not None and not path.startswith(f"mirror/{sel.source_id}/"):
+        if sel.source_id is not None and not path.startswith(f"{top}/{sel.source_id}/"):
             return path in self.explicit and self.identity(sha) is None
         ident = self.identity(sha)
         if path in self.explicit:
@@ -1099,7 +1115,7 @@ class _Rewriter:
     def _transform_blob(self, path: str, sha: str) -> str:
         if path.startswith("topics/"):
             return sha
-        kind = "mirror" if path.startswith("mirror/") else "index"
+        kind = "mirror" if path.split("/", 1)[0] in _PAGE_TOPS else "index"
         memo_key = (kind, sha)
         if memo_key in self._blob_memo:
             return self._blob_memo[memo_key]
@@ -1107,7 +1123,7 @@ class _Rewriter:
         if kind == "mirror":
             if self.sha_remap and path.endswith(".md"):
                 _, data = self.cat.read(sha)
-                if b"\nstatus: deleted\n" in data:
+                if b"\nstatus: deleted\n" in data or b"\nstatus: archived\n" in data:
                     text = data.decode("utf-8", "surrogateescape")
                     out = self._hex_re.sub(lambda m: self.sha_remap.get(m.group(0), m.group(0)), text)
                     if out != text:
@@ -2169,6 +2185,8 @@ def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None 
     ``due``: history holds a commit older than ``history_days + compaction_slack_days`` (the next RECONCILE
     compacts it); ``overdue``: older than ``history_days + 2 x compaction_slack_days`` (the scheduled run did
     not happen, or a hold / failure keeps blocking it)."""
+    if gov.archive:
+        return "ok", ARCHIVE_KEEPS_HISTORY
     span = gov.history_days + gov.compaction_slack_days
     if not compaction_due(repo, gov, now=now):
         return "ok", f"no commit older than {span} day(s) (history_days {gov.history_days} + slack)"
@@ -2195,6 +2213,8 @@ def compact_history(
     snapshot of the newest such commit, replay newer commits on it, expire reflogs, prune, and verify that no
     dropped object survives.  Refused while any hold is active."""
     gov = gov or load_governance(config.config_path)
+    if gov.archive:
+        raise GovernanceError(f"history compaction refused: {ARCHIVE_KEEPS_HISTORY} ([governance] archive)")
     days = gov.history_days if keep_days is None else keep_days
     if days < 0:
         raise GovernanceError(f"keep_days must be >= 0, got {days}")
@@ -2305,13 +2325,14 @@ def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 
 def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
-    """Paths that hold re-derivable tenant content and must not be backed up: mirror/, the docs repo's
-    ``.git`` (every version of every mirror page: a purge cannot reach a backup), the converter cache, the
-    SQLite manifest and its ``-wal``/``-shm`` siblings, the Teams store and staging (curated topics/ stay
-    backed up as worktree files)."""
+    """Paths that hold tenant content a purge must reach and must not be backed up: mirror/, archive/, the
+    docs repo's ``.git`` (every version of every mirror page: a purge cannot reach a backup), the converter
+    cache, the SQLite manifest and its ``-wal``/``-shm`` siblings, the Teams store and staging (curated
+    topics/ stay backed up as worktree files)."""
     sp = config.state_paths
     return (
         expand(config.docs_repo) / "mirror",
+        expand(config.docs_repo) / "archive",
         expand(config.docs_repo) / ".git",
         expand(config.cache_dir),
         sp.db,

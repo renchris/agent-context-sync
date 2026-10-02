@@ -90,7 +90,14 @@ from agentsync.model import (
 )
 from agentsync.ops.launchd import rotate_logs
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat, write_heartbeat
-from agentsync.publish import Publisher, SourceStatus, render_tombstone, sidecar_rel
+from agentsync.publish import (
+    DELETED_UPSTREAM,
+    Publisher,
+    SourceStatus,
+    archive_path,
+    render_tombstone,
+    sidecar_rel,
+)
 
 log = logging.getLogger(__name__)
 
@@ -444,6 +451,8 @@ def _repair_outputs(config: Config, manifest: Manifest, run_id: int) -> list[Mir
                             source_kind=src.kind.value,
                             source_path=redacted_path(item.rel_path) if hidden else item.rel_path,
                             durable_id=manifest.durable_id(src.id, stable_id),
+                            archived=t.reason == DELETED_UPSTREAM
+                            and (repo / archive_path(out.output_path)).is_file(),
                         )
                         _write_atomic(path, text)
             live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
@@ -743,7 +752,10 @@ class _Cycle:
 
     def _retention(self, commit_sha: str | None) -> str | None:
         """Scheduled compaction (C15 section 9 item 39): in a RECONCILE, squash history older than
-        ``[governance] history_days`` once it is due; a hold suspends it (STATE.md says which)."""
+        ``[governance] history_days`` once it is due; a hold suspends it (STATE.md says which), and
+        ``[governance] archive`` turns it off (history is kept)."""
+        if self.gov.archive:
+            return commit_sha
         try:
             due = governance.compaction_due(self.repo, self.gov, now=self.now())
         except AgentSyncError as exc:
@@ -969,7 +981,9 @@ class _Cycle:
             lines.append("")
         lines += self._rescreen_lines()
         retention = list(self.retention_lines)
-        if not retention:
+        if not retention and self.gov.archive:
+            retention.append(f"- {governance.ARCHIVE_KEEPS_HISTORY}")
+        elif not retention:
             try:
                 state, detail = governance.compaction_state(self.repo, self.gov, now=self.now())
             except AgentSyncError:
@@ -1405,7 +1419,13 @@ class _Cycle:
         last_commit = gitops.head_sha(self.repo) if removals else None
         for stable_id, reason in sorted(set(removals)):
             self.changes += self.publisher.tombstone(
-                src.id, stable_id, reason=reason, run_id=self.run_id, today=today, last_commit=last_commit
+                src.id,
+                stable_id,
+                reason=reason,
+                run_id=self.run_id,
+                today=today,
+                last_commit=last_commit,
+                archive=self.gov.archive,
             )
             if reason == "deleted-upstream" and self.gov.purge_on_upstream_delete:
                 # C15 req 38: a confirmed deletion (explicit, or absent past the breaker) queues a purge; the

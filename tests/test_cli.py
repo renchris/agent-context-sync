@@ -7,12 +7,13 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli, governance, net
+from agentsync import cli, governance, lints, net, policy
 from agentsync.config import Config, load_config
 from agentsync.errors import AuthError
 from agentsync.graph import auth as graph_auth
@@ -219,6 +220,7 @@ def test_install_skill_writes_once_and_names_the_docs_repo(
     assert text.startswith(f"---\nname: {cli.SKILL_NAME}\n")
     assert str(initialised.docs_repo) in text and "agentsync curate-queue" in text
     assert ".agentsync-<page>.tmp" in text
+    assert "search `archive/`" in text and "show snapshot/<date>:<path>" in text  # [governance] archive
     assert "wrote skill" in capsys.readouterr().out
     assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
     assert "skill up to date" in capsys.readouterr().out
@@ -550,6 +552,75 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     assert "sample.txt.md" not in git(repo, "log", "--all", "--name-only", "--format=")
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
     assert cli.main(["purge", "--config", cfg]) == cli.EXIT_USAGE
+
+
+def _archive_on(config: Config) -> str:
+    path = config.config_path
+    path.write_text(path.read_text(encoding="utf-8") + "\n[governance]\narchive = true\n", encoding="utf-8")
+    return str(path)
+
+
+def test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """[governance] archive: a deleted page stays searchable in archive/, each checkpoint leaves a permanent
+    snapshot tag, compaction is off, and a manual purge still erases the archive copy from all history."""
+    cfg = _archive_on(initialised)
+    repo = initialised.docs_repo
+    page, kept = "mirror/source/projects/sample.txt.md", "archive/source/projects/sample.txt.md"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    live_body = (repo / page).read_text(encoding="utf-8").split("\n---\n", 1)[1]
+    capsys.readouterr()
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    found = re.search(r"snapshot (snapshot/\d{4}-\d{2}-\d{2}T\d{6}Z): ", capsys.readouterr().out)
+    assert found is not None
+    first = found.group(1)
+    assert git(repo, "cat-file", "-t", first).strip() == "tag"
+    before = git(repo, "rev-parse", f"{first}^{{commit}}").strip()
+
+    (local_source_dir / "projects" / "sample.txt").unlink()
+    for _ in range(2):  # a local file must be absent from two complete passes
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    text = (repo / kept).read_text(encoding="utf-8")
+    assert "\nstatus: archived\n" in text and "\ndeleted_at: " in text and "\nlast_commit: " in text
+    assert text.endswith(live_body) and policy.UNTRUSTED_BANNER in text
+    assert f"kept, searchable, at {kept}" in (repo / page).read_text(encoding="utf-8")
+    assert git(repo, "ls-files", "--", kept).strip() == kept  # committed with the tombstone
+    assert governance.pending_purges(initialised.state_paths.root) == []  # archive queues no purge
+    assert not [f for f in lints.lint_mirror_frontmatter(repo) if f.blocking]
+    state_md = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "- archive on: history is kept" in state_md
+    capsys.readouterr()
+    cli.main(["curate-queue", "--config", cfg])
+    assert f"REMOVED\t{page}\t{kept}\n" in capsys.readouterr().out
+    assert cli.main(["compact-history", "--keep-days", "0", "--config", cfg]) == cli.EXIT_FAILED
+    assert "archive on: history is kept" in capsys.readouterr().err
+
+    class Later(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Later:
+            return cls(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+    monkeypatch.setattr(cli, "datetime", Later)
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    assert "snapshot snapshot/2030-01-02T030405Z: " in capsys.readouterr().out
+    assert git(repo, "rev-parse", f"{first}^{{commit}}").strip() == before  # never moved
+
+    blob = git(repo, "rev-parse", f"HEAD:{kept}").strip()
+    sid = _stable_id(initialised, "projects/sample.txt")
+    purge = ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request"]
+    rc = cli.main([*purge, "--config", cfg])
+    assert rc == cli.EXIT_OK, capsys.readouterr().out
+    assert not (repo / kept).exists() and not (repo / page).exists()
+    gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
+    assert gone.returncode != 0  # the archive copy is erased from every commit
+    assert "sample.txt.md" not in git(repo, "log", "--all", "--name-only", "--format=")
+    for tag in (first, "snapshot/2030-01-02T030405Z"):  # the rewrite remapped the snapshot tags
+        assert git(repo, "cat-file", "-t", tag).strip() == "tag"
+        git(repo, "rev-parse", "--verify", f"{tag}^{{commit}}")
 
 
 def test_hold_suspends_purge_and_compaction_and_shows_in_status(

@@ -4967,3 +4967,63 @@ def curated_checkpoint(repo: Path) -> tuple[str, str] | None:
 def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) -> list[tuple[str, str]]:
     """``(A|M|D, path)`` for files under ``pathspecs`` that differ between ``rev`` and HEAD, sorted by path."""
 ```
+
+### 16.18 `[governance] archive`: the point-in-time archive (2026-10-02, integrator)
+
+Additive. Operator ruling 2026-10-02 (decision packet `5d4707a94b3b`, actioned): "Totally fine. We always save
+notes." With `archive = true` agentsync keeps everything; the public default stays `false`, so nothing changes
+for an install that does not set it.
+
+| Key | Default | Effect when `true` |
+|---|---|---|
+| `[governance] archive` | `false` | an upstream delete (reason `deleted-upstream`) first copies each page and its `.files/` sidecars to `archive/<path under mirror/>`, then tombstones the mirror page as before; no purge is queued for it; every `checkpoint` also creates a permanent `snapshot/<UTC %Y-%m-%dT%H%M%SZ>` tag; automatic compaction is skipped and `compact-history` refuses |
+
+`archive = true` with `purge_on_upstream_delete = true` written in the same table is a `ConfigError` naming both
+keys; `archive = true` alone sets `GovernanceConfig.purge_on_upstream_delete` to `False`.
+
+An archive page is the mirror page's last full text with `status: archived` (`PageStatus.ARCHIVED`),
+`deleted_at` (the tombstone date) and `last_commit` added, the body unchanged (the untrusted-content banner kept,
+or added if missing) and `rendered_sha256` of that body (`frontmatter.MIRROR_REQUIRED_ARCHIVED`). A later delete
+of the same path overwrites it; git history keeps the older copy. Reasons `moved`, `retired:*` and
+`unit-removed` archive nothing. Reaping never touches `archive/`. The mirror tombstone body names the archive
+path (`render_tombstone(..., archived=True)`; the repair path re-renders it when the archive file exists).
+
+| Surface | Change |
+|---|---|
+| `gitops.GENERATED_PATHSPECS` | gains `archive` (pipeline-owned), therefore `COMMIT_PATHSPECS` too |
+| `lints.lint_mirror_frontmatter` | also walks `archive/`: a page there must parse, carry `status: archived`, sit under `archive/<source_id>/` and match its `rendered_sha256`; any of those failing, or a non-page file, is a blocking `FRONTMATTER` finding. `status: archived` under `mirror/` is one too. The land gate lints dirty `archive/` paths, `lint_paths` and `lint_no_tokens` cover them |
+| `checkpoint` | with `archive = true`, after `tag_curated`, `gitops.tag_snapshot(HEAD, now)` and one `snapshot snapshot/<date>: …` line |
+| `curate-queue` | a page that became a tombstone since the checkpoint reads `REMOVED`; a `REMOVED` page with an archive copy prints `REMOVED\t<mirror path>\tarchive/<path>` |
+| `compact-history` | `compact_history` raises `GovernanceError` (`history compaction refused: archive on: history is kept …`): exit 1 |
+| STATE.md | the cycle skips `_retention`; `## Retention` carries one line `- archive on: history is kept`; `compaction_state` returns `("ok", ARCHIVE_KEEPS_HISTORY)` |
+| `purge` | the history rewriter treats `archive/*.md` pages like mirror pages (by frontmatter identity, `.files/` sidecars included) and remaps the `last_commit` of archive pages it keeps; snapshot tags are rewritten like every annotated tag, so they still resolve |
+| `time_machine_exclusions` | gains `docs/archive` |
+| generated guides | root `CLAUDE.md`/`AGENTS.md` name `archive/` and `git show snapshot/<date>:<path>`; `BOUNDARY_TEXT` covers `docs/archive/`; `CLAUDE_MD_EXCLUDES` gains the three `**/archive/*/**` globs; `skill_text` says the same |
+
+```python
+# agentsync.governance
+class GovernanceConfig:
+    archive: bool = False
+ARCHIVE_KEEPS_HISTORY = "archive on: history is kept"
+
+# agentsync.gitops
+SNAPSHOT_TAG_PREFIX = "snapshot/"
+def tag_snapshot(repo: Path, sha: str, when: datetime) -> str:
+    """Create the permanent annotated tag ``snapshot/<UTC %Y-%m-%dT%H%M%SZ>`` at ``sha``; return its name."""
+
+# agentsync.publish
+DELETED_UPSTREAM = "deleted-upstream"
+ARCHIVE_DIR = "archive"
+def archive_path(mirror_path: str) -> str:
+    """``mirror/<rest>`` -> ``archive/<rest>``; PublishError for a path outside mirror/."""
+def render_archive_page(
+    page: str, *, fallback: MirrorFrontmatter, deleted_at: str, last_commit: str | None
+) -> str: ...
+# Publisher.tombstone(..., archive: bool = False); render_tombstone(..., archived: bool = False)
+
+# agentsync.paths
+# DocsLayout.archive -> root / "archive"
+```
+
+A purge still erases: `agentsync purge` of an item removes its archive pages from the working tree and from all
+history, snapshot tags included. Test: `test_cli.py::test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint`.

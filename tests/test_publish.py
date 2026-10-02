@@ -14,6 +14,7 @@ import pytest
 from agentsync import gitops, lints, policy, slug
 from agentsync.config import Config, parse_config
 from agentsync.curate import REFRESH_QUEUE_SH
+from agentsync.errors import PublishError
 from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
 from agentsync.manifest import ItemRow, Manifest, TombstoneRow
 from agentsync.model import (
@@ -44,6 +45,7 @@ from agentsync.publish import (
     PlannedPage,
     Publisher,
     SourceStatus,
+    archive_path,
     render_tombstone,
 )
 from test_lints import install_reference_slug
@@ -615,6 +617,76 @@ def test_reap_removes_due_tombstones_only(env: Env) -> None:
     assert env.pub.reap("2026-06-30") == []
 
 
+def test_archive_keeps_the_last_page_and_sidecars_and_reap_leaves_it(env: Env) -> None:
+    item = env.observe("vol:1", "Finance/FY26 Budget.xlsx")
+    res = workbook("Q3")
+    big = dataclasses.replace(res.units[1], sidecars=(("Q3 Full.csv", b"a,b\n1,2\n"),))
+    env.publish(item, dataclasses.replace(res, units=(res.units[0], big)))
+    sheet = "mirror/src/finance/fy26-budget.xlsx.d/01-q3.md"
+    live = env.text(sheet)
+    ch = env.pub.tombstone(
+        "src",
+        "vol:1",
+        reason="deleted-upstream",
+        run_id=env.run_id,
+        today=TODAY,
+        last_commit="f" * 40,
+        archive=True,
+    )
+    assert {c.path for c in ch} == {"mirror/src/finance/fy26-budget.xlsx.d/00-index.md", sheet}
+    kept = archive_path(sheet)
+    assert kept == "archive/src/finance/fy26-budget.xlsx.d/01-q3.md"
+    fm, body = parse_mirror_page(env.text(kept))
+    live_fm, live_body = parse_mirror_page(live)
+    assert body == live_body and policy.has_banner(body)
+    assert fm.status is PageStatus.ARCHIVED and fm.deleted_at == TODAY and fm.last_commit == "f" * 40
+    assert (fm.stable_id, fm.source_path, fm.canonical_sha256) == (
+        live_fm.stable_id,
+        live_fm.source_path,
+        live_fm.canonical_sha256,
+    )
+    assert (env.repo / "archive/src/finance/fy26-budget.xlsx.d/01-q3.files/q3-full.csv").read_bytes() == (
+        b"a,b\n1,2\n"
+    )
+    assert f"kept, searchable, at {kept}" in env.text(sheet)
+    t = env.manifest.get_tombstone(sheet)
+    assert t is not None
+    assert (
+        render_tombstone(t, title="Q3", source_kind="local", source_path=item.rel_path, archived=True)
+        .split("---\n", 2)[2]
+        .count(kept)
+        == 1
+    )
+    assert_pages_valid(env)  # archive pages lint clean
+    assert env.pub.reap("2099-01-01")  # the mirror tombstones go ...
+    assert not (env.repo / sheet).exists()
+    assert (env.repo / kept).is_file()
+    assert (env.repo / archive_path(sheet[:-3] + ".files/q3-full.csv")).is_file()
+
+    (env.repo / kept).write_text(env.text(kept).replace("Q3", "Q4"), encoding="utf-8")
+    edited = [f for f in lints.lint_mirror_frontmatter(env.repo) if f.blocking]
+    assert {f.path for f in edited} == {kept}  # a hand-edited archive page blocks the land
+
+
+def test_archive_only_for_upstream_deletes_and_a_later_delete_overwrites(env: Env) -> None:
+    item = env.observe("vol:1", "a.docx")
+    env.publish(item, result(unit("# A\n\nfirst\n", title="A")))
+    gone = {"run_id": env.run_id, "today": TODAY, "last_commit": None, "archive": True}
+    env.pub.tombstone("src", "vol:1", reason="moved", **gone)  # type: ignore[arg-type]
+    assert not (env.repo / "archive").exists()
+    assert "archive/" not in env.text("mirror/src/a.docx.md")
+    env.pub.restore("src", "vol:1")
+    row = env.manifest.get_item("src", "vol:1")
+    assert row is not None
+    env.publish(row, result(unit("# A\n\nsecond\n", title="A")))
+    for _ in range(2):  # the second call finds a tombstone already: the archive keeps the live text
+        env.pub.tombstone("src", "vol:1", reason="deleted-upstream", **gone)  # type: ignore[arg-type]
+    text = env.text("archive/src/a.docx.md")
+    assert "second" in text and "first" not in text and "\nstatus: archived\n" in text
+    with pytest.raises(PublishError):
+        archive_path("topics/a.md")
+
+
 # ---- deletion breaker --------------------------------------------------------------------------------------
 
 
@@ -1033,6 +1105,7 @@ def test_generated_guides_state_the_untrusted_boundary(env: Env) -> None:
         assert policy.BOUNDARY_TEXT in env.text(rel), rel
     assert env.text("AGENTS.md") == ROOT_CLAUDE_MD
     assert ROOT_CLAUDE_MD.startswith("docs/INDEX.md is the map")  # the design's three lines stay first
+    assert "search docs/archive/" in ROOT_CLAUDE_MD and "show snapshot/<date>:<path>" in ROOT_CLAUDE_MD
     assert "AGENTS.md" in gitops.COMMIT_PATHSPECS
     assert [f for f in lints.run_land_gate(env.repo, ["AGENTS.md", "mirror/CLAUDE.md"]) if f.blocking] == []
 

@@ -93,6 +93,8 @@ ROOT_CLAUDE_MD = (
 docs/INDEX.md is the map; read docs/_sync/STATE.md first.
 docs/mirror/ is generated (never edit it); docs/topics/ is curated.
 What changed: git -C docs log --since=<date> --stat -- mirror topics
+Deleted upstream: search docs/archive/ (generated; [governance] archive keeps the last full page)
+A past state: git -C docs show snapshot/<date>:<path> (git -C docs tag -l 'snapshot/*')
 Curation work list: agentsync curate-queue (stale pages, then uncovered mirror pages); see topics/CLAUDE.md
 
 """
@@ -106,6 +108,9 @@ CLAUDE_MD_EXCLUDES: tuple[str, ...] = (
     "**/mirror/*/**/CLAUDE.md",
     "**/mirror/*/**/CLAUDE.local.md",
     "**/mirror/*/**/.claude/**",
+    "**/archive/*/**/CLAUDE.md",
+    "**/archive/*/**/CLAUDE.local.md",
+    "**/archive/*/**/.claude/**",
 )
 """``claudeMdExcludes`` globs (matched against absolute paths) the generated ``docs/.claude/settings.json``
 carries, so Claude Code never loads a memory file from below ``mirror/<source_id>/`` even if one got there:
@@ -128,6 +133,10 @@ _REASON_MAX = 300
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
+DELETED_UPSTREAM = "deleted-upstream"
+"""Tombstone reason of a confirmed upstream deletion: the one ``[governance] archive`` keeps a copy for."""
+ARCHIVE_DIR = "archive"
+"""Docs-repo dir that holds, under ``[governance] archive``, the last full page of every deleted item."""
 
 _README_TEMPLATE = """\
 # docs — agent context, built by agentsync
@@ -275,6 +284,14 @@ def _sidecar_dir(page_path: str) -> str:
     return stem + _SIDECAR_DIR_SUFFIX
 
 
+def archive_path(mirror_path: str) -> str:
+    """``mirror/<rest>`` -> ``archive/<rest>``: where ``[governance] archive`` keeps a deleted page (or one of
+    its sidecars)."""
+    if not mirror_path.startswith("mirror/"):
+        raise PublishError(f"{mirror_path}: not under mirror/")
+    return f"{ARCHIVE_DIR}/{mirror_path[len('mirror/') :]}"
+
+
 def sidecar_rel(page_path: str, name: str) -> str:
     """Docs-repo-relative path of a unit's sidecar ``name`` next to ``page_path``
     (``<page>.files/<slug>``)."""
@@ -308,7 +325,7 @@ def _is_multi_unit(unit: RenderedUnit) -> bool:
     return unit.kind is not UnitKind.WHOLE or unit.of > 1 or bool(unit.file_stem)
 
 
-def _tombstone_body(row: TombstoneRow, title: str) -> str:
+def _tombstone_body(row: TombstoneRow, title: str, *, archived: bool = False) -> str:
     path = shlex.quote(row.output_path)
     if row.reason == "moved":
         heading, what = "MOVED OUT OF SCOPE", "its source moved out of this source's scope (it still exists)"
@@ -329,6 +346,11 @@ def _tombstone_body(row: TombstoneRow, title: str) -> str:
         f"current content. The path stays until {row.reap_after} so citations still resolve.",
         "",
     ]
+    if archived:
+        lines += [
+            f"The last full content is kept, searchable, at {archive_path(row.output_path)} (never reaped).",
+            "",
+        ]
     if row.last_commit:
         lines += ["Recover the last content:", "", f"    git show {row.last_commit}:{path}", ""]
     else:
@@ -352,12 +374,19 @@ def _with_trust(fm: MirrorFrontmatter) -> MirrorFrontmatter:
 
 
 def render_tombstone(
-    row: TombstoneRow, *, title: str, source_kind: str, source_path: str, durable_id: str | None = None
+    row: TombstoneRow,
+    *,
+    title: str,
+    source_kind: str,
+    source_path: str,
+    durable_id: str | None = None,
+    archived: bool = False,
 ) -> str:
     """Return the full tombstone page text for a tombstone row (deterministic from the row).
 
     ``durable_id`` (extension) is the item's durable key (``Manifest.durable_id``) the page names instead of
-    the row's current id, so tombstone and live pages of one item carry the same ``stable_id``."""
+    the row's current id, so tombstone and live pages of one item carry the same ``stable_id``.
+    ``archived`` (extension): the body names the page's ``archive/`` copy (``[governance] archive``)."""
     clean_title = _one_line(title, 200) or row.output_path.rsplit("/", 1)[-1]
     fm = MirrorFrontmatter(
         source_kind=source_kind,
@@ -371,7 +400,34 @@ def render_tombstone(
         last_commit=row.last_commit,
         source_title=clean_title,
     )
-    return render_mirror_page(_with_trust(fm), _tombstone_body(row, clean_title))
+    return render_mirror_page(_with_trust(fm), _tombstone_body(row, clean_title, archived=archived))
+
+
+def render_archive_page(
+    page: str, *, fallback: MirrorFrontmatter, deleted_at: str, last_commit: str | None
+) -> str:
+    """Return the ``archive/`` copy of a mirror page's last full text: its frontmatter plus
+    ``status: archived``, ``deleted_at`` and ``last_commit``, its body unchanged (the untrusted-content banner
+    kept, or added when missing) and ``rendered_sha256`` of that body.  ``fallback`` names the item when
+    ``page`` does not parse."""
+    try:
+        fm, body = parse_mirror_page(page)
+    except FrontmatterError:
+        fm = fallback
+        try:
+            body = split_frontmatter(page)[1]
+        except FrontmatterError:
+            body = page
+    body = policy.with_banner(body if body.endswith("\n") else body + "\n")
+    fm = dataclasses.replace(
+        fm,
+        status=PageStatus.ARCHIVED,
+        deleted_at=deleted_at,
+        last_commit=last_commit,
+        rendered_sha256=_sha256_text(body),
+        last_rendered_sha256=None,
+    )
+    return render_mirror_page(_with_trust(fm), body)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -447,7 +503,13 @@ class Publisher:
         return path.read_text(encoding="utf-8", errors="replace")
 
     def _prune_empty_dirs(self, start: Path) -> None:
-        stop = {self._root, self._layout.mirror, self._layout.topics, self._layout.manifest_dir}
+        stop = {
+            self._root,
+            self._layout.mirror,
+            self._layout.archive,
+            self._layout.topics,
+            self._layout.manifest_dir,
+        }
         d = start
         while d not in stop and self._root in d.parents:
             try:
@@ -848,6 +910,7 @@ class Publisher:
         run_id: int,
         today: str,
         last_commit: str | None,
+        archive: bool = False,
     ) -> tuple[MirrorChange, OutputRow]:
         path = out.output_path
         last_rendered = out.rendered_sha256
@@ -867,12 +930,21 @@ class Publisher:
             reason=reason,
         )
         title = self._page_title(path) or title_fallback
+        durable_id = self._manifest.durable_id(out.source_id, out.stable_id)
+        archived = (
+            archive
+            and reason == DELETED_UPSTREAM
+            and self._archive_output(
+                out, durable_id=durable_id, source_path=source_path, today=today, last_commit=last_commit
+            )
+        )
         text = render_tombstone(
             row,
             title=title,
             source_kind=self._source_kind(out.source_id),
             source_path=source_path,
-            durable_id=self._manifest.durable_id(out.source_id, out.stable_id),
+            durable_id=durable_id,
+            archived=archived,
         )
         self._manifest.add_tombstone(row)
         self._write_text(path, text)
@@ -886,6 +958,35 @@ class Publisher:
             built_run=run_id,
         )
         return MirrorChange(ChangeOp.DELETED, path, out.source_id, out.stable_id), new_row
+
+    def _archive_output(
+        self, out: OutputRow, *, durable_id: str, source_path: str, today: str, last_commit: str | None
+    ) -> bool:
+        """Copy a page about to be tombstoned, with its sidecars, to ``archive/`` (``[governance] archive``),
+        replacing an earlier copy of the same path; False when there is no page to copy."""
+        path = out.output_path
+        current = self._read_text(path)
+        if current is None:
+            return False
+        try:
+            head = split_frontmatter(current)[0] or ""
+        except FrontmatterError:
+            head = ""
+        if f"\nstatus: {PageStatus.DELETED.value}\n" in f"\n{head}":
+            return False  # already a tombstone: its last content is the archive copy written then
+        fallback = MirrorFrontmatter(
+            source_kind=self._source_kind(out.source_id),
+            source_id=out.source_id,
+            stable_id=durable_id,
+            source_path=source_path,
+            status=PageStatus.ARCHIVED,
+        )
+        dest = archive_path(path)
+        self._write_text(
+            dest, render_archive_page(current, fallback=fallback, deleted_at=today, last_commit=last_commit)
+        )
+        self._sync_sidecars(dest, [(archive_path(rel), data) for rel, data in self._read_sidecars(path)])
+        return True
 
     def write_pages(self, item: ItemRow, pages: Sequence[PlannedPage], run_id: int) -> list[MirrorChange]:
         """Write pages + sidecars, replace the item's ``outputs`` rows, tombstone units that disappeared
@@ -1038,11 +1139,23 @@ class Publisher:
         return changes
 
     def tombstone(
-        self, source_id: str, stable_id: str, *, reason: str, run_id: int, today: str, last_commit: str | None
+        self,
+        source_id: str,
+        stable_id: str,
+        *,
+        reason: str,
+        run_id: int,
+        today: str,
+        last_commit: str | None,
+        archive: bool = False,
     ) -> list[MirrorChange]:
         """Replace every output page of the item by a tombstone stub (``[DELETED UPSTREAM] <title>``,
         ``status: deleted``, the ``git show <last_commit>:<path>`` recovery line); add ``tombstones`` rows
         with reap_after = today + tombstone_reap_days; set the item row state tombstone. Returns op D changes.
+
+        ``archive`` (extension, ``[governance] archive``): for reason ``deleted-upstream`` only, first copy
+        each page's last full content and sidecars to ``archive/<path under mirror/>``, which reaping never
+        touches.
         """
         date.fromisoformat(today)  # ValueError on a malformed date, before anything is written
         item = self._manifest.get_item(source_id, stable_id)
@@ -1067,6 +1180,7 @@ class Publisher:
                 run_id=run_id,
                 today=today,
                 last_commit=last_commit,
+                archive=archive,
             )
             changes.append(change)
             rows.append(row)

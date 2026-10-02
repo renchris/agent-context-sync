@@ -25,6 +25,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agentsync.errors import GitError, PublishError
@@ -35,6 +36,7 @@ log = logging.getLogger(__name__)
 
 GENERATED_PATHSPECS: tuple[str, ...] = (
     "mirror",
+    "archive",
     "_manifest",
     "_index",
     "CHANGELOG",
@@ -61,6 +63,9 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
 
 PUBLISHED_TAG = "published"
 CURATED_TAG = "curated"
+SNAPSHOT_TAG_PREFIX = "snapshot/"
+"""``[governance] archive``: ``agentsync checkpoint`` adds a permanent tag ``snapshot/<UTC %Y-%m-%dT%H%M%SZ>``
+at the same commit; agentsync never moves or deletes one."""
 
 _GIT_TIMEOUT_S = 600.0
 _PUSH_TIMEOUT_S = 300.0
@@ -447,6 +452,14 @@ def tag_curated(repo: Path, sha: str) -> None:
     run_git(
         repo, "tag", "-f", "-a", CURATED_TAG, "-m", "agentsync build-session checkpoint", f"{sha}^{{commit}}"
     )
+
+
+def tag_snapshot(repo: Path, sha: str, when: datetime) -> str:
+    """Create the permanent annotated tag ``snapshot/<UTC %Y-%m-%dT%H%M%SZ>`` at ``sha`` and return its name.
+    Never moved: an existing tag of that name (a second checkpoint in the same second) raises GitError."""
+    name = SNAPSHOT_TAG_PREFIX + when.astimezone(UTC).strftime("%Y-%m-%dT%H%M%SZ")
+    run_git(repo, "tag", "-a", name, "-m", "agentsync point-in-time snapshot", f"{sha}^{{commit}}")
+    return name
 
 
 def curated_checkpoint(repo: Path) -> tuple[str, str] | None:

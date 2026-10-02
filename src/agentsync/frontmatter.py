@@ -154,6 +154,7 @@ MIRROR_REQUIRED_CURRENT: tuple[str, ...] = (
     "tokens_estimate",
 )
 MIRROR_REQUIRED_DELETED: tuple[str, ...] = ("deleted_at", "last_rendered_sha256")
+MIRROR_REQUIRED_ARCHIVED: tuple[str, ...] = ("deleted_at", "rendered_sha256")
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +266,10 @@ def validate_mirror_frontmatter(data: Mapping[str, Any]) -> list[str]:
         )
     if st is PageStatus.DELETED:
         problems.extend(f"missing {k!r} for status deleted" for k in MIRROR_REQUIRED_DELETED if k not in data)
+    if st is PageStatus.ARCHIVED:
+        problems.extend(
+            f"missing {k!r} for status archived" for k in MIRROR_REQUIRED_ARCHIVED if k not in data
+        )
     if st in (PageStatus.UNREADABLE, PageStatus.REFUSED) and "reason" not in data:
         problems.append(f"missing 'reason' for status {st.value}")
     for k in ("content_sha256", "canonical_sha256", "rendered_sha256", "last_rendered_sha256"):

@@ -690,6 +690,9 @@ company = "agentsync"                                 # User-Agent: NONISV|<comp
 #   history_days = 30                                 # compact-history squashes older mirror history
 #   allow_remote = false                              # every clone is a copy no purge can reach
 #   hold = false                                      # legal/records hold: suspends purge and compaction
+#   archive = false                                   # true keeps everything: deleted pages in docs/archive/,
+#                                                     # a snapshot/<date> tag per checkpoint, no compaction;
+#                                                     # agentsync purge still erases
 
 [breaker]                                             # deletion circuit breaker, per source
 fraction = 0.20                                       # trip when deletions > max(fraction * live rows, floor)

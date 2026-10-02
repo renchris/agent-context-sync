@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 import pytest
 
-from agentsync import gitops
+from agentsync import gitops, governance
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
 from agentsync.cycle import RecoveryAction, recover, run_cycle
@@ -160,6 +160,31 @@ def test_head_moved_by_hand_resets_generated_paths_and_republishes(sample_config
     assert report.exit_code == 0 and report.commit_sha is not None
     assert victim in git(repo, "ls-files")
     assert porcelain(repo) == ""
+
+
+def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """[governance] archive: the cycle copies a deleted page to archive/, queues no purge, skips compaction,
+    and the repair path re-renders the mirror tombstone still naming the archive copy."""
+    cfg = sample_config.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[governance]\narchive = true\n", encoding="utf-8")
+    repo = sample_config.docs_repo
+    run(sample_config)
+    victim, kept = f"mirror/{SID}/projects/sample.txt.md", f"archive/{SID}/projects/sample.txt.md"
+    (local_source_dir / "projects" / "sample.txt").unlink()
+    run(sample_config)
+    report = run(sample_config, mode=CycleMode.RECONCILE)
+    assert report.exit_code == 0 and kept in git(repo, "ls-files")
+    assert "\nstatus: archived\n" in (repo / kept).read_text(encoding="utf-8")
+    assert "- archive on: history is kept" in (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert governance.pending_purges(sample_config.state_paths.root) == []
+    git(repo, "rm", "-q", victim)
+    git(repo, "commit", "-q", "-m", "manual: someone deleted a tombstone")
+    with Manifest(sample_config.state_paths.db) as m:
+        assert recover(sample_config, m) is RecoveryAction.RESET_GENERATED
+    assert f"kept, searchable, at {kept}" in (repo / victim).read_text(encoding="utf-8")
+    assert run(sample_config).exit_code == 0 and porcelain(repo) == ""
 
 
 def test_crash_between_observation_and_rename_publish_is_repaired(

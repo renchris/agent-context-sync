@@ -103,6 +103,7 @@ class PageStatus(enum.StrEnum):
     SUPERSEDED = "superseded"
     UNREADABLE = "unreadable"
     REFUSED = "refused"
+    ARCHIVED = "archived"  # a docs/archive/ copy of a page whose source was deleted ([governance] archive)
 
 
 class ConversionStatus(enum.StrEnum):
