@@ -187,6 +187,12 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
   conviction for a per-source option, off by default). On the corporate Mac this does not bite yet: mail and Teams
   messages arrive by hand as files that stay on disk.
 - **Next:** the 20-page pilot (implementation-gap-13) with the operator, using `install-skill` and `curate-queue`.
+  **Before the first topic page** (added 2026-10-02, from [receipt J](../design/receipts/J-textql-ontology.md)):
+  the operator writes about 10 real questions, each with the expected answer and its source paths, to
+  `docs/_eval/questions.md` in the private docs repo. Ask them once in a fresh session before curation, recording
+  each answer as correct or incorrect plus a rough count of lookups, then again after the pilot. The pilot passes if the
+  curated answers are at least as correct, cite their sources, and take fewer lookups. Script it as a `claude -p` A/B
+  only if the result is ambiguous and curation is about to grow past 20 pages.
 
 ## Point-in-time archive (2026-10-02)
 
