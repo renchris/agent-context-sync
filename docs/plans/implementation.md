@@ -193,6 +193,16 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
   each answer as correct or incorrect plus a rough count of lookups, then again after the pilot. The pilot passes if the
   curated answers are at least as correct, cite their sources, and take fewer lookups. Script it as a `claude -p` A/B
   only if the result is ambiguous and curation is about to grow past 20 pages.
+  - **Revised 2026-10-03: the agent drafts, the operator confirms.** Writing 10 questions from a blank page was the
+    operator's step, and the real data is only on the corporate Mac. `install-skill`'s skill now carries a
+    "Baseline questions" section: asked to draft, the agent reads `mirror/` and writes about 15 candidates, splitting
+    them into `_eval/questions.md` (questions only) and `_eval/answers.md` (draft answers and mirror paths), both
+    `status: draft`. The operator keeps about 10, corrects the answers and marks both `status: confirmed`. A run reads
+    only `questions.md`, records answers, cited paths and look-up counts in `_eval/results-<date>-<before|after>.md`,
+    and opens `answers.md` only to score. The skill's look-up steps forbid opening the answer key, which is split
+    out so an answering agent never reads it. `_eval` is in `gitops.COMMIT_PATHSPECS`. CONTRACTS §16.19.
+    Operator step now: on the corporate Mac, run `agentsync install-skill`, then ask the agent to "draft the
+    baseline questions" and review them.
 
 ## Point-in-time archive (2026-10-02)
 

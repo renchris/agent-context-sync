@@ -5027,3 +5027,20 @@ def render_archive_page(
 
 A purge still erases: `agentsync purge` of an item removes its archive pages from the working tree and from all
 history, snapshot tags included. Test: `test_cli.py::test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint`.
+
+### 16.19 Baseline questions: the agent drafts, the operator confirms (2026-10-03, integrator)
+
+Additive; docs-repo content and skill text only. The pre-pilot baseline (implementation plan, "Before the first
+topic page") lives in the docs repo under `_eval/`, which `gitops.COMMIT_PATHSPECS` now stages so `sync --once`
+commits it. agentsync never writes, reads or lints `_eval/`; the files are the agent's and the operator's.
+
+| File | Written by | Read by |
+|---|---|---|
+| `_eval/questions.md` | the agent (draft), the operator (`status: confirmed`) | a baseline run |
+| `_eval/answers.md` | the agent (draft answers + mirror paths), corrected by the operator | scoring only, after every answer is recorded |
+| `_eval/results-<yyyy-mm-dd>-<before\|after>.md` | a baseline run: answer, cited paths, look-up count, verdict | the operator |
+
+`skill_text` gains a "Baseline questions" section (draft about 15 candidates, keep about 10; run; pass rule) and a
+sixth look-up step that forbids opening `_eval/answers.md` or `_eval/results-*.md` to answer a question. The answer
+key is a separate file so an answering agent never has it in front of it. Test:
+`test_cli.py::test_install_skill_writes_once_and_names_the_docs_repo`.

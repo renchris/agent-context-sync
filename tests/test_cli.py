@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli, governance, lints, net, policy
+from agentsync import cli, gitops, governance, lints, net, policy
 from agentsync.config import Config, load_config
 from agentsync.errors import AuthError
 from agentsync.graph import auth as graph_auth
@@ -222,6 +222,9 @@ def test_install_skill_writes_once_and_names_the_docs_repo(
     assert ".agentsync-<page>.tmp" in text
     assert "_index/by-entity.tsv" in text and "`purpose:`" in text and "SYNONYMS.tsv" in text
     assert "search `archive/`" in text and "show snapshot/<date>:<path>" in text  # [governance] archive
+    assert "`_eval/questions.md`" in text and "read only `_eval/questions.md`" in text  # baseline questions
+    assert "Never open `_eval/answers.md`" in text and "status: confirmed" in text
+    assert "_eval" in gitops.COMMIT_PATHSPECS
     assert "wrote skill" in capsys.readouterr().out
     assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
     assert "skill up to date" in capsys.readouterr().out
