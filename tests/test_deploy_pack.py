@@ -27,6 +27,18 @@ REDIRECT_URIS = ["http://localhost", "msauth.com.msauth.unsignedapp://auth"]
 """C15 section 1.6: the loopback rung (MSAL uses http://localhost:<port>) and the macOS broker rung (MSAL
 hard-codes the unsigned-app URI for any Python app)."""
 
+ONE_PROMPT_INSTALL_FLAGS = {
+    "--version",
+    "--log-start",
+    "--list-folders",
+    "--log",
+    "--source-local",
+    "--confirm-install-agent",
+    "--log-end",
+    "--report-only",
+}
+"""The install.sh flags the README's one prompt names; test_contracts.py checks they are in the frozen set."""
+
 on_macos = pytest.mark.skipif(sys.platform != "darwin", reason="plutil is macOS-only")
 
 _SHELLS = [s for s in ("bash", "zsh") if shutil.which(s)]
@@ -814,16 +826,7 @@ def test_every_command_the_readme_one_prompt_names_exists() -> None:
             )
         for m in re.finditer(r"(?:^|[\s/])agentsync\s+([a-z][a-z-]*)((?:\s+--[a-z][a-z-]*)*)", span):
             commands |= {(m.group(1), flag) for flag in m.group(2).split()} | {(m.group(1), "")}
-    assert install_flags == {
-        "--version",
-        "--log-start",
-        "--list-folders",
-        "--log",
-        "--source-local",
-        "--confirm-install-agent",
-        "--log-end",
-        "--report-only",
-    }
+    assert install_flags == ONE_PROMPT_INSTALL_FLAGS
     assert commands == {("it-request", ""), ("it-request", "--out")}
     missing: list[str] = []
     for flag in sorted(install_flags):
