@@ -7,6 +7,11 @@ Source: a 49-agent workflow on 2026-10-04 (six surface readers, three independen
 ## Phase 0 — Agent Team Orchestration
 
 - **Execution locus per wave:** W1–W5 each **S** (one dispatched handoff session per wave, the default). Order: W1 → W2 → (W3 ∥ W4) → W5. W3 and W4 share only `docs/design/CONTRACTS.md`, in different sections; land the smaller diff first.
+- **W1 locus changed to an in-process Workflow (2026-10-04):** the capacity gate refused a net-new session
+  (memory compressor 54% of limit, over its 50% ceiling, the level that preceded past watchdog panics), and a named
+  teammate is also a new process. Workflow agents run inside the lead's process: sequential build agents in the
+  worktree `.worktrees/kiss-w1`, a fresh reviewer per change, a fix pass, then the full gate. The lead lands it. Run
+  `wf_bd61960e-f15`. Later waves go back to **S** when the gate admits.
 - **Lead:** the originating session (pane 137) fires each wave with `--notify-back`, collects, verifies by content on `main`, then fires the next. Lead context budget: stay under 50%; recycle between waves if past 35% while waiting.
 - **Each wave session:** its own worktree off `origin/main`; full gate before landing: `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy src`, `uv run pytest -q`; lands with `/ship`.
 - **Freeze test:** W1 pins TODAY's CLI/installer surface (`test_cli_surface_is_frozen`, `test_install_options_are_frozen`); every later wave edits the pinned dict in the same commit as its cut.
