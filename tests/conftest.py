@@ -1,7 +1,8 @@
 """Shared fixtures: isolated HOME, tmp docs repo, tmp state dir, a local source tree, a sample Config.
 
-Safety: every test runs with HOME pointed at a tmp dir, so ``~`` defaults never touch the real
-~/agent-context, ~/Library/Application Support/agentsync or ~/Library/LaunchAgents.  Tests marked
+Safety: every test runs with HOME pointed at a tmp dir and CLAUDE_CONFIG_DIR unset, so ``~`` defaults never
+touch the real ~/agent-context, ~/Library/Application Support/agentsync, ~/Library/LaunchAgents, or the
+Claude Code skill folders (~/.claude/skills, $CLAUDE_CONFIG_DIR/skills) every sync writes.  Tests marked
 ``fileprovider`` or ``network`` are skipped unless AGENTSYNC_E2E_FILEPROVIDER=1 / AGENTSYNC_E2E_NETWORK=1.
 """
 
@@ -60,19 +61,23 @@ def _owner_only_umask() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Its own MonkeyPatch, not the shared ``monkeypatch`` fixture: a test that calls ``monkeypatch.undo()``
+    (test_cycle.py does, to heal a fault it injected) must not put HOME back on the real home folder."""
     home = tmp_path_factory.mktemp("home")
     gitconfig = home / ".gitconfig"
     gitconfig.write_text(
         "[user]\n\tname = agentsync-test\n\temail = test@localhost\n[init]\n\tdefaultBranch = main\n"
     )
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    monkeypatch.setenv("LC_ALL", "C")
-    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "0")  # never run the (slow, sticky) real tmutil from tests
-    monkeypatch.delenv("AGENTSYNC_CONFIG", raising=False)
-    return home
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HOME", str(home))
+        mp.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+        mp.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        mp.setenv("LC_ALL", "C")
+        mp.setenv("AGENTSYNC_TM_EXCLUDE", "0")  # never run the (slow, sticky) real tmutil from tests
+        mp.delenv("AGENTSYNC_CONFIG", raising=False)
+        mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
+        yield home
 
 
 @pytest.fixture(scope="session")

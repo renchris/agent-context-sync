@@ -334,7 +334,8 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    `broke_stale=True` forces FULL passes this cycle.
 3. `Manifest(state_paths.db)`; `recover()`: `tree_sha ≠ HEAD^{tree}` → `gitops.restore_generated` + re-publish
    from manifest + cache; committed-but-unpromoted pending cursors → promote; otherwise discard pending.
-4. `manifest.sync_sources(config.sources)`; `begin_run`; clear `state_paths.staging`.
+4. `manifest.sync_sources(config.sources)`; `begin_run`; `Publisher.ensure_scaffold`, then `skill.write_skill(docs_repo)`
+   (outside the docs repo; a failure is a logged warning, never a run status, §16.16); clear `state_paths.staging`.
 5. For each live source (errors isolated per source; Graph sources skipped with a reason when no client/network):
    `arm.scan(current_cursor, full=…)` (FULL for local/inbox always, for RECONCILE mode, when no cursor, after a
    stale lock) → `classify_pass` → in ONE transaction: `upsert_observed` for every item, `rekey` safe-saves,
@@ -4921,6 +4922,7 @@ needed under either ruling).
 |---|---|---|
 | `curate-queue` | `curate.refresh_queue` (printed as the refresh-queue lines), then `curate.generate_depends` (live, so pages written since the last sync count) → `curate.uncovered_mirror_pages`, one `UNCOVERED\t<mirror path>` line each, then one count line | 0 nothing listed · 1 any row · an unusable DEPENDS.tsv is a stderr warning, and the uncovered list still prints |
 | `install-skill` [`--dir PATH`] | writes `skill_text(docs_repo)` to `<PATH>/agentsync-docs/SKILL.md` (default `~/.claude/skills`) via a same-directory temp file and rename; unchanged text is not rewritten | 0 written or up to date · 1 not writable |
+| `install-skill` (2026-10-04, KISS K03: hidden alias, no `--dir`) | `skill.write_skill(docs_repo)`, the same write every sync makes (below) | 0 always; an unwritable copy is a logged warning |
 
 A page is uncovered when its frontmatter has `rendered_sha256:`, its `status:` is not deleted, superseded,
 unreadable or refused, and no DEPENDS row cites it. Guide files (`CLAUDE.md`, `INDEX.md`) and sidecars (no
@@ -4938,6 +4940,30 @@ DEFAULT_SKILLS_DIR = "~/.claude/skills"
 SKILL_NAME = "agentsync-docs"
 def skill_text(docs_repo: Path) -> str:
     """The SKILL.md ``install-skill`` writes: where the docs repo is, how to look things up, how to curate."""
+```
+
+**Amended (2026-10-04, KISS K03): every sync writes the skill.** The skill was absent on a new Mac: install.sh
+never ran `install-skill`, nothing refreshed it after an upgrade, and it ignored `CLAUDE_CONFIG_DIR`. The module
+`agentsync.skill` (`src/agentsync/skill.py`, integrator; imports only `agentsync.paths`) now owns the three names
+above, which leave `agentsync.cli`. Every non-dry-run cycle calls `skill.write_skill(docs_repo)` right after
+`Publisher.ensure_scaffold` (§9 step 4). It writes `~/.claude/skills/agentsync-docs/SKILL.md`, and the same under
+`$CLAUDE_CONFIG_DIR/skills` when that variable is set and resolves to a different folder, each by the
+compare-then-rename step above, so a second sync writes nothing. A copy that cannot be read or written is logged
+as a warning and skipped; it never changes the run status. The text names the binary by the fixed string
+`AGENTSYNC_BIN`, never `sys.argv`, so launchd and interactive runs write identical text; it drops the exit-75
+advice and the manual `checkpoint` step (a session ends with `sync`), and its description triggers at the start of
+any work session that needs company documents. Tests never write the real folders: `tests/conftest.py` points
+HOME at a tmp dir and unsets `CLAUDE_CONFIG_DIR` for every test, through its own `MonkeyPatch` so a test's
+`monkeypatch.undo()` cannot restore them. Test: `tests/test_skill.py`.
+
+```python
+# agentsync.skill
+DEFAULT_SKILLS_DIR = "~/.claude/skills"
+SKILL_NAME = "agentsync-docs"
+AGENTSYNC_BIN = "~/.local/bin/agentsync"
+def skill_text(docs_repo: Path) -> str: ...  # the SKILL.md every sync writes
+def skill_paths() -> list[Path]: ...  # ~/.claude/skills/<SKILL_NAME>/SKILL.md, then $CLAUDE_CONFIG_DIR/skills/... if different
+def write_skill(docs_repo: Path) -> list[tuple[Path, bool]]: ...  # (path, written) per current copy; never raises OSError
 ```
 
 ### 16.17 `checkpoint`: just-in-time builds from a per-session checkpoint (2026-10-02, integrator)
@@ -5043,4 +5069,4 @@ commits it. agentsync never writes, reads or lints `_eval/`; the files are the a
 `skill_text` gains a "Baseline questions" section (draft about 15 candidates, keep about 10; run; pass rule) and a
 sixth look-up step that forbids opening `_eval/answers.md` or `_eval/results-*.md` to answer a question. The answer
 key is a separate file so an answering agent never has it in front of it. Test:
-`test_cli.py::test_install_skill_writes_once_and_names_the_docs_repo`.
+`test_cli.py::test_install_skill_writes_once_and_names_the_docs_repo` (moved 2026-10-04 to `test_skill.py`).

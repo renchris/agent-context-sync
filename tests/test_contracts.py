@@ -57,7 +57,6 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "refresh-queue": [],
         "curate-queue": [],
         "checkpoint": [],
-        "install-skill": ["--dir"],
         "materialise": ["--budget"],
         "adopt": [],
         "migrate": [],
@@ -76,7 +75,9 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "setup-report": ["--out", "--friction", "--no-redact"],
         "it-request": ["--out"],
     },
-    "hidden": {},
+    "hidden": {
+        "install-skill": [],
+    },
 }
 """The pinned CLI surface: subcommand -> its visible options (the common --config/-v and -h excluded).
 Adding, hiding or removing a command or option is a deliberate edit here, in the same commit as the change."""

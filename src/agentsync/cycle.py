@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from agentsync import __version__, curate, gitops, governance, lints, materialise, net
+from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
 from agentsync.arm_local import InboxArm, LocalArm, fold_conflict_suffix
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
@@ -689,6 +689,7 @@ class _Cycle:
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
             self._check_policy_change()
             self.publisher.ensure_scaffold()
+            skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
             for src in self.selected:

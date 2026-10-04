@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli, gitops, governance, lints, net, policy
+from agentsync import cli, governance, lints, net, policy
 from agentsync.config import Config, load_config
 from agentsync.errors import AuthError
 from agentsync.graph import auth as graph_auth
@@ -207,27 +207,6 @@ def test_checkpoint_scopes_the_next_curate_queue_to_changes_since_the_session(
     assert f"previous {head[:12]}" in capsys.readouterr().out
     cli.main(["curate-queue", "--config", cfg])
     assert "0 added, 0 changed, 0 removed" in capsys.readouterr().out
-
-
-def test_install_skill_writes_once_and_names_the_docs_repo(
-    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    cfg = str(initialised.config_path)
-    skills = tmp_path / "skills"
-    assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
-    skill = skills / cli.SKILL_NAME / "SKILL.md"
-    text = skill.read_text(encoding="utf-8")
-    assert text.startswith(f"---\nname: {cli.SKILL_NAME}\n")
-    assert str(initialised.docs_repo) in text and "agentsync curate-queue" in text
-    assert ".agentsync-<page>.tmp" in text
-    assert "_index/by-entity.tsv" in text and "`purpose:`" in text and "SYNONYMS.tsv" in text
-    assert "search `archive/`" in text and "show snapshot/<date>:<path>" in text  # [governance] archive
-    assert "`_eval/questions.md`" in text and "read only `_eval/questions.md`" in text  # baseline questions
-    assert "Never open `_eval/answers.md`" in text and "status: confirmed" in text
-    assert "_eval" in gitops.COMMIT_PATHSPECS
-    assert "wrote skill" in capsys.readouterr().out
-    assert cli.main(["install-skill", "--dir", str(skills), "--config", cfg]) == cli.EXIT_OK
-    assert "skill up to date" in capsys.readouterr().out
 
 
 def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
