@@ -85,7 +85,8 @@ exit codes:
   1   failed: a source failed, a blocking lint fired, the refresh queue has rows, a doctor check failed,
       a purge/compaction was not verified, or discovery was incomplete
   2   usage error (bad arguments), or refresh-queue could not read DEPENDS.tsv
-  75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later)
+  75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
+      `sync` without --mode first waits up to 10 minutes for it
   77  sign-in required: a Graph source needs `agentsync graph login` (auth REAUTH_REQUIRED), or Entra
       blocked sign-in (blocked: device|policy|consent|assignment, config-invalid; the message names the fix)
   78  configuration invalid: sources.toml or policy.toml is missing or wrong (the message names the key)
@@ -223,7 +224,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("sync", "run one sync cycle (what the launchd agents run)", _cmd_sync)
     p.add_argument("--once", action="store_true", help="run exactly one cycle (the default; for scripts)")
     p.add_argument(
-        "--mode", choices=[m.value for m in CycleMode], default=CycleMode.POLL.value, help="default: poll"
+        "--mode",
+        choices=[m.value for m in CycleMode],
+        default=None,
+        help="default: poll, or reconcile once reconcile_interval_s has passed since the last full run; "
+        "without --mode a running sync is waited for (up to 10 minutes) instead of exiting 75",
     )
     p.add_argument("--dry-run", action="store_true", help="classify only: no fetch, no writes, no commit")
     p.add_argument(
@@ -599,7 +604,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     config = _config(args)
-    mode = CycleMode.DRY_RUN if args.dry_run else CycleMode(args.mode)
+    mode = CycleMode.DRY_RUN if args.dry_run else CycleMode(args.mode) if args.mode else None
     if args.materialise_budget is None:
         return _run(config, mode=mode, only=tuple(args.source))
     budget = parse_size(args.materialise_budget, where="--materialise-budget")

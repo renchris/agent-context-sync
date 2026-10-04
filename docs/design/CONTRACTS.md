@@ -99,6 +99,14 @@ Opened with `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`. `meta` ke
 `written_at_ns`. A version mismatch raises `ManifestSchemaError` (never silently re-derived). The `cursors` table
 is secret: it is never exported, and the DB lives outside `docs/` on the state volume.
 
+**Amended (2026-10-04, KISS K12):** opening the manifest, from any caller (a cycle, `status`, `purge`), migrates an
+OLDER `manifest_schema_version` or `key_schema_version` forward in one `BEGIN IMMEDIATE` transaction, after copying
+the database with the sqlite3 backup API to `<db>.pre-v<N>` (`manifest.sqlite.pre-v<N>`, mode 0600; N = this build's
+schema version). A failed step rolls back and removes the copy. The copy is deleted by the first cycle that passes
+its commit step after the migration (a cycle that migrated keeps its own copy for one more cycle) and by every
+non-dry-run `purge`. A NEWER version of either still raises `ManifestSchemaError`. `agentsync migrate` remains as
+the explicit form (no copy).
+
 ```sql
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,           -- manifest_schema_version | key_schema_version | tree_sha | written_at_ns
@@ -332,6 +340,12 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 1. `materialise.fail_closed()` (process materialisation policy OFF, inherited by every child process).
 2. `SingleWriterLock(state_paths.lock, label).acquire()` — `LockHeldError` → CLI exit 75 "skipped: lock held";
    `broke_stale=True` forces FULL passes this cycle.
+   **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
+   exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
+   truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
+   `config.reconcile_interval_s` ago, else POLL. It then waits up to `lock_wait_s` (default
+   `INTERACTIVE_LOCK_WAIT_S` = 600 s) for the lock, logging progress every 30 s, and only then raises
+   `LockHeldError` (exit 75). Choosing the mode opens the manifest, which may migrate it (§5 amendment).
 3. `Manifest(state_paths.db)`; `recover()`: `tree_sha ≠ HEAD^{tree}` → `gitops.restore_generated` + re-publish
    from manifest + cache; committed-but-unpromoted pending cursors → promote; otherwise discard pending.
 4. `manifest.sync_sources(config.sources)`; `begin_run`; `Publisher.ensure_scaffold`, then `skill.write_skill(docs_repo)`
@@ -362,7 +376,7 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 sources finished. DRY_RUN: steps 1–5 without the transaction's writes, no fetch, nothing under `docs/`.
 
 CLI exit codes (`cli.py`): 0 ok · 1 failed (source error, blocking lint, refresh-queue rows) · 2 usage ·
-75 lock held · 77 reauth required · 78 config invalid.
+75 lock held (`sync` without `--mode` waits up to 600 s first; K12) · 77 reauth required · 78 config invalid.
 
 **SUPERSEDED (2026-09-29, §16.3):** step 5 adds the reachability gate and the purge-suppression filter, step 6 the content
 policy (label screen before the cache, item-label refusal before a fetch), step 7 enqueues purges for confirmed
@@ -1416,6 +1430,9 @@ class DependsRow:
     pinned_sha: str
     role: str
 
+def migration_backups(db_path: Path) -> list[Path]:
+    """Every ``<db>.pre-v*`` file next to the manifest (a successful cycle and ``purge`` delete them; K12)."""
+
 def cursor_fingerprint(cursor: str | None) -> str:
     """Return the 12-hex sha256 prefix of a cursor for STATE.md (never the token itself); "-" for None."""
 
@@ -1423,10 +1440,12 @@ class Manifest:
     """The SQLite working store.  One instance per cycle; not thread-safe; single writer by the ops lock."""
 
     def __init__(self, db_path: Path) -> None:
-        """Open (creating with mode 0600, WAL, synchronous=FULL, foreign_keys=ON) and migrate-check the db.
+        """Open (creating with mode 0600, WAL, synchronous=FULL, foreign_keys=ON) and migrate the db forward.
 
-        Raises ManifestSchemaError when ``meta.manifest_schema_version`` (or the converter cache's
-        ``key_schema_version``) differs from this build; never silently re-derives.
+        An older ``meta.manifest_schema_version`` or converter ``key_schema_version`` is migrated inside
+        BEGIN IMMEDIATE after a copy to ``<db>.pre-v<N>`` (``migration_backup``).  Raises
+        ManifestSchemaError when either version is newer than this build; never silently re-derives.
+        (Amended 2026-10-04, KISS K12; §5 amendment.)
         """
 
     def close(self) -> None:
@@ -1480,6 +1499,10 @@ class Manifest:
 
     def last_runs(self, limit: int = 10) -> list[tuple[int, str, str, str | None]]:
         """Return (run_id, mode, status, commit_sha) newest first."""
+
+    def last_full_run_started(self) -> str | None:
+        """``started_at`` of the newest ok/partial RECONCILE run; else of the first run ever (a first pass is
+        full); None when no run is recorded.  (KISS K12: picks a due reconcile for ``mode=None``.)"""
 
     def sync_sources(self, configured: Sequence[SourceConfig]) -> list[str]:
         """Upsert one ``sources`` row per configured source; return ids whose scope fingerprint changed.
@@ -3295,16 +3318,19 @@ def build_arms(
 def recover(config: Config, manifest: Manifest) -> RecoveryAction:
     """Compare manifest tree_sha / pending cursors with git HEAD and repair (design 4.7 recovery)."""
 
+INTERACTIVE_LOCK_WAIT_S = 600.0  # KISS K12: how long a mode=None run waits for another cycle's lock
+
 def run_cycle(
     config: Config,
     *,
-    mode: CycleMode,
+    mode: CycleMode | None,  # KISS K12: None = interactive (due reconcile, lock wait; §9 step 2 amendment)
     only: Sequence[str] = (),
     now: Callable[[], datetime] | None = None,
     client: GraphClient | None = None,  # W2: inject a GraphClient (tests); default built from [graph]
     budget_bytes: int | None = None,  # W2: override every source's per-cycle materialise budget
     materialise_paths: Sequence[Path] = (),  # W2: restrict the work queue to these files (materialise)
     accept_deletions: Sequence[str] = (),  # W2: operator-asserted deletion: clear breaker, apply removals
+    lock_wait_s: float = INTERACTIVE_LOCK_WAIT_S,  # KISS K12: the mode=None lock wait (injectable)
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
 
@@ -4093,7 +4119,8 @@ def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     """Queued purges, oldest first."""
 
 def purge(config: Config, selector: PurgeSelector, *, reason: PurgeReason, gov: GovernanceConfig | None = None, dry_run: bool = False, push: bool = False, lock: bool = True, now: datetime | None = None) -> PurgeReport:
-    """Remove the selected items from the docs repo's whole history, the manifest, the converter cache,"""
+    """Remove the selected items from the docs repo's whole history, the manifest (and any pre-migration
+    ``<db>.pre-v*`` copy, KISS K12), the converter cache,"""
 
 def push_rewritten(repo: Path, gov: GovernanceConfig, old_refs: Mapping[str, str], *, remote: str = 'origin') -> str:
     """Force-push rewritten branches/tags with a lease on their pre-rewrite values, only when the policy"""

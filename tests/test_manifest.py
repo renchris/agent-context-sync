@@ -161,14 +161,65 @@ def test_schema_version_mismatch_raises_never_rederives(db_path: Path) -> None:
         Manifest.migrate(db_path)
 
 
-def test_older_schema_version_says_run_migrate(db_path: Path) -> None:
+def _meta(path: Path, key: str) -> str:
+    conn = sqlite3.connect(path)
+    try:
+        return str(conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()[0])
+    finally:
+        conn.close()
+
+
+def test_older_schema_version_migrates_on_open_after_a_backup(db_path: Path) -> None:
     with Manifest(db_path) as man:
         man.set_meta("manifest_schema_version", "0")
-    with pytest.raises(ManifestSchemaError, match="migrate"):
+    with Manifest(db_path) as man:
+        assert man.get_meta("manifest_schema_version") == str(MANIFEST_SCHEMA_VERSION)
+        backup = man.migration_backup
+    assert backup == db_path.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}")
+    assert backup.is_file() and stat.S_IMODE(backup.stat().st_mode) == 0o600
+    assert _meta(backup, "manifest_schema_version") == "0"  # the copy is the database before the step
+    assert manifest_mod.migration_backups(db_path) == [backup]
+    with Manifest(db_path) as man:  # already current: no second copy, the first is left alone
+        assert man.migration_backup is None
+    assert _meta(backup, "manifest_schema_version") == "0"
+
+
+def test_open_runs_a_new_schema_step_in_one_transaction(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    Manifest(db_path).close()
+    step2 = manifest_mod._Migration(2, "add items.note", "ALTER TABLE items ADD COLUMN note TEXT;")
+    monkeypatch.setattr(manifest_mod, "_MIGRATIONS", (*manifest_mod._MIGRATIONS, step2))
+    monkeypatch.setattr(manifest_mod, "MANIFEST_SCHEMA_VERSION", 2)
+    with Manifest(db_path) as man:
+        assert [v for v, _ in man.applied_migrations()] == [1, 2]
+        assert "note" in {r[1] for r in man._db.execute("PRAGMA table_info(items)")}
+        assert man.migration_backup == db_path.with_name("manifest.sqlite.pre-v2")
+    assert _meta(db_path.with_name("manifest.sqlite.pre-v2"), "manifest_schema_version") == "1"
+
+
+def test_failed_open_migration_rolls_back_and_drops_the_copy(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    Manifest(db_path).close()
+    bad = manifest_mod._Migration(2, "broken step", "ALTER TABLE nosuchtable ADD COLUMN y TEXT;")
+    monkeypatch.setattr(manifest_mod, "_MIGRATIONS", (*manifest_mod._MIGRATIONS, bad))
+    monkeypatch.setattr(manifest_mod, "MANIFEST_SCHEMA_VERSION", 2)
+    with pytest.raises(sqlite3.OperationalError):
         Manifest(db_path)
+    assert _meta(db_path, "manifest_schema_version") == "1"
+    assert manifest_mod.migration_backups(db_path) == []
 
 
-def test_key_schema_version_mismatch_raises_and_migrate_reindexes_cache(db_path: Path) -> None:
+def test_newer_key_schema_refuses_on_open(db_path: Path) -> None:
+    with Manifest(db_path) as man:
+        man.set_meta("key_schema_version", "999")
+    with pytest.raises(ManifestSchemaError, match="newer"):
+        Manifest(db_path)
+    assert manifest_mod.migration_backups(db_path) == []
+
+
+def test_key_schema_version_mismatch_migrates_on_open_and_reindexes_cache(db_path: Path) -> None:
     with Manifest(db_path) as man:
         man.record_cache(
             "k1",
@@ -182,12 +233,12 @@ def test_key_schema_version_mismatch_raises_and_migrate_reindexes_cache(db_path:
             run_id=1,
         )
         man.set_meta("key_schema_version", "0")
-    with pytest.raises(ManifestSchemaError, match="key schema"):
-        Manifest(db_path)
-    assert Manifest.migrate(db_path) == []
     with Manifest(db_path) as man:
         assert man.get_meta("key_schema_version") == "1"
         assert man._db.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
+        assert man.migration_backup is not None
+    assert _meta(man.migration_backup, "key_schema_version") == "0"
+    assert Manifest.migrate(db_path) == []
 
 
 def test_not_a_manifest_raises(db_path: Path) -> None:
@@ -211,9 +262,8 @@ def test_migrate_applies_new_steps_in_one_transaction(db_path: Path, monkeypatch
     step2 = manifest_mod._Migration(2, "add items.note", "ALTER TABLE items ADD COLUMN note TEXT;")
     monkeypatch.setattr(manifest_mod, "_MIGRATIONS", (*manifest_mod._MIGRATIONS, step2))
     monkeypatch.setattr(manifest_mod, "MANIFEST_SCHEMA_VERSION", 2)
-    with pytest.raises(ManifestSchemaError, match="migrate"):
-        Manifest(db_path)
-    assert Manifest.migrate(db_path) == [2]
+    assert Manifest.migrate(db_path) == [2]  # the explicit form takes no pre-v<N> copy
+    assert manifest_mod.migration_backups(db_path) == []
     with Manifest(db_path) as man:
         assert man.get_meta("manifest_schema_version") == "2"
         assert [v for v, _ in man.applied_migrations()] == [1, 2]

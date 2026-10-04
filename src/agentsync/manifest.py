@@ -1,7 +1,8 @@
 """SQLite manifest: items keyed on stable identity, outputs, tombstones, cursors, runs (owner: manifest).
 
 Contract: docs/design/CONTRACTS.md section "manifest.py".  The schema below IS the contract; change it only
-together with MANIFEST_SCHEMA_VERSION and a migration (``_MIGRATIONS``, applied by ``Manifest.migrate``).
+together with MANIFEST_SCHEMA_VERSION and a migration (``_MIGRATIONS``, applied on open after a
+``<db>.pre-v<N>`` copy, or by ``Manifest.migrate``).
 
 Durability: the database runs in WAL mode with ``synchronous=FULL``; every public write is atomic on its own
 (one statement, or an internal transaction/savepoint for multi-statement writes), and ``Manifest.transaction``
@@ -827,6 +828,44 @@ def _split_sql(script: str) -> list[str]:
     return out
 
 
+def _migrate_in_tx(conn: sqlite3.Connection, stored: int) -> list[int]:
+    """Apply the schema steps after ``stored`` and re-index the converter cache when ``key_schema_version``
+    moved, in the caller's transaction; return the schema versions applied."""
+    applied = _apply_migrations(conn, _MIGRATIONS, stored, MANIFEST_SCHEMA_VERSION)
+    _write_meta(conn, "manifest_schema_version", str(MANIFEST_SCHEMA_VERSION))
+    key_build = _key_schema_version()
+    key_raw = _read_meta(conn, "key_schema_version")
+    if key_raw != str(key_build):
+        conn.execute("DELETE FROM cache")
+        _write_meta(conn, "key_schema_version", str(key_build))
+        _log.warning("converter key schema %s -> %s: cache index cleared", key_raw, key_build)
+    return applied
+
+
+def _migration_backup_path(db_path: Path) -> Path:
+    """``<db>.pre-v<N>``: the copy an automatic migration to this build's schema N takes first."""
+    return db_path.with_name(f"{db_path.name}.pre-v{MANIFEST_SCHEMA_VERSION}")
+
+
+def migration_backups(db_path: Path) -> list[Path]:
+    """Every ``<db>.pre-v*`` file next to the manifest (a successful cycle and ``purge`` delete them)."""
+    if not db_path.parent.is_dir():
+        return []
+    return sorted(p for p in db_path.parent.glob(f"{db_path.name}.pre-v*") if p.is_file())
+
+
+def _backup_db(conn: sqlite3.Connection, dest: Path) -> None:
+    """Copy the live database (WAL included) to ``dest`` (mode 0600) with the sqlite3 backup API."""
+    fd = os.open(dest, os.O_RDWR | os.O_CREAT, 0o600)
+    os.close(fd)
+    dest.chmod(0o600)
+    target = sqlite3.connect(str(dest))
+    try:
+        conn.backup(target)
+    finally:
+        target.close()
+
+
 # ---------------------------------------------------------------------------------------------------------
 # Manifest
 # ---------------------------------------------------------------------------------------------------------
@@ -836,12 +875,14 @@ class Manifest:
     """The SQLite working store.  One instance per cycle; not thread-safe; single writer by the ops lock."""
 
     def __init__(self, db_path: Path) -> None:
-        """Open (creating with mode 0600, WAL, synchronous=FULL, foreign_keys=ON) and migrate-check the db.
+        """Open (creating with mode 0600, WAL, synchronous=FULL, foreign_keys=ON) and migrate the db forward.
 
-        Raises ManifestSchemaError when ``meta.manifest_schema_version`` (or the converter cache's
-        ``key_schema_version``) differs from this build; never silently re-derives.
+        An older ``meta.manifest_schema_version`` or converter ``key_schema_version`` is migrated inside
+        BEGIN IMMEDIATE after a copy to ``<db>.pre-v<N>`` (``migration_backup``).  Raises
+        ManifestSchemaError when either version is newer than this build; never silently re-derives.
         """
         self._path = db_path
+        self.migration_backup: Path | None = None  # set when this open migrated (the pre-v<N> copy)
         self._in_tx = False
         self._savepoint_seq = 0
         # fold(output_path) -> output paths: output_by_path's case/NFC-insensitive lookup without a full-table
@@ -883,24 +924,10 @@ class Manifest:
             raise ManifestSchemaError(
                 f"{self._path}: has tables but no meta table; not an agentsync manifest"
             )
-        stored = _stored_version(conn, "manifest_schema_version", self._path)
-        if stored != MANIFEST_SCHEMA_VERSION:
-            hint = (
-                "run `agentsync migrate` (Manifest.migrate)"
-                if stored < MANIFEST_SCHEMA_VERSION
-                else "it was written by a newer agentsync; upgrade this install"
-            )
-            raise ManifestSchemaError(
-                f"{self._path}: manifest schema version {stored}, this build needs "
-                f"{MANIFEST_SCHEMA_VERSION}; {hint}"
-            )
-        key_stored = _stored_version(conn, "key_schema_version", self._path)
-        key_build = _key_schema_version()
-        if key_stored != key_build:
-            raise ManifestSchemaError(
-                f"{self._path}: converter key schema version {key_stored}, this build uses {key_build}; "
-                "run `agentsync migrate` (Manifest.migrate) to re-index the converter cache"
-            )
+        stored, key_stored = self._check_not_newer()
+        if stored < MANIFEST_SCHEMA_VERSION or key_stored != _key_schema_version():
+            self._auto_migrate()
+            tables = _user_tables(conn)
         if not {"item_aliases", "redacted_items", "run_changes"} <= tables:
             self._ensure_aliases()
         if "schema_migrations" not in tables:
@@ -911,6 +938,63 @@ class Manifest:
                 (stored, "baseline (ledger backfilled)", _utc_now_iso()),
             )
 
+    def _check_not_newer(self) -> tuple[int, int]:
+        """Stored (schema, key schema) versions; ManifestSchemaError when either is newer than this build."""
+        conn = self._db
+        stored = _stored_version(conn, "manifest_schema_version", self._path)
+        if stored > MANIFEST_SCHEMA_VERSION:
+            raise ManifestSchemaError(
+                f"{self._path}: manifest schema version {stored}, this build needs "
+                f"{MANIFEST_SCHEMA_VERSION}; it was written by a newer agentsync; upgrade this install"
+            )
+        key_stored = _stored_version(conn, "key_schema_version", self._path)
+        key_build = _key_schema_version()
+        if key_stored > key_build:
+            raise ManifestSchemaError(
+                f"{self._path}: converter key schema version {key_stored}, this build uses {key_build}; "
+                "it was written by a newer agentsync; upgrade this install"
+            )
+        return stored, key_stored
+
+    def _auto_migrate(self) -> None:
+        """Copy the db to ``<db>.pre-v<N>``, then migrate it forward in ONE BEGIN IMMEDIATE transaction.
+
+        The copy is taken just before the transaction (the backup API cannot read through this connection's
+        own write lock); the versions are re-read under the write lock, and when a concurrent opener migrated
+        first nothing is applied (the file, shared with that opener, is left for the next cycle to delete).  A
+        failed step rolls everything back and removes the copy."""
+        conn = self._db
+        backup = _migration_backup_path(self._path)
+        _backup_db(conn, backup)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                stored, key_stored = self._check_not_newer()
+                if stored == MANIFEST_SCHEMA_VERSION and key_stored == _key_schema_version():
+                    conn.execute("COMMIT")
+                    applied = None
+                else:
+                    applied = _migrate_in_tx(conn, stored)
+                    conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        except BaseException:
+            with contextlib.suppress(OSError):
+                backup.unlink(missing_ok=True)
+            raise
+        if applied is None:
+            return
+        self.migration_backup = backup
+        _log.warning(
+            "migrated manifest %s to schema %s (applied %s); the old database is kept as %s until the next "
+            "successful sync",
+            self._path,
+            MANIFEST_SCHEMA_VERSION,
+            applied or "converter key re-index only",
+            backup.name,
+        )
+
     def _ensure_aliases(self) -> None:
         for statement in _split_sql(ALIASES_SQL):
             self._db.execute(statement)
@@ -918,6 +1002,9 @@ class Manifest:
     @classmethod
     def migrate(cls, db_path: Path) -> list[int]:
         """Bring an older manifest to this build's schema in ONE transaction; return the versions applied.
+
+        Opening a Manifest does the same automatically (with a pre-v<N> copy); this explicit form takes no
+        copy and also re-indexes a converter cache whose key schema is newer than this build.
 
         Also re-indexes the converter cache when ``key_schema_version`` changed (the ``cache`` table is
         cleared: every old action key is unreachable under the new composition).  Raises ManifestSchemaError
@@ -939,14 +1026,7 @@ class Manifest:
                 )
             conn.execute("BEGIN IMMEDIATE")
             try:
-                applied = _apply_migrations(conn, _MIGRATIONS, stored, MANIFEST_SCHEMA_VERSION)
-                _write_meta(conn, "manifest_schema_version", str(MANIFEST_SCHEMA_VERSION))
-                key_build = _key_schema_version()
-                key_raw = _read_meta(conn, "key_schema_version")
-                if key_raw != str(key_build):
-                    conn.execute("DELETE FROM cache")
-                    _write_meta(conn, "key_schema_version", str(key_build))
-                    _log.warning("converter key schema %s -> %s: cache index cleared", key_raw, key_build)
+                applied = _migrate_in_tx(conn, stored)
                 conn.execute("COMMIT")
             except BaseException:
                 conn.execute("ROLLBACK")
@@ -1126,6 +1206,18 @@ class Manifest:
             "SELECT run_id, mode, status, commit_sha FROM runs ORDER BY run_id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [(int(r[0]), str(r[1]), str(r[2]), r[3]) for r in rows]
+
+    def last_full_run_started(self) -> str | None:
+        """``started_at`` of the newest ok/partial RECONCILE run; else of the first run ever (a first pass is
+        full); None when no run is recorded."""
+        row = self._db.execute(
+            "SELECT started_at FROM runs WHERE mode = ? AND status IN ('ok', 'partial') "
+            "ORDER BY run_id DESC LIMIT 1",
+            (CycleMode.RECONCILE.value,),
+        ).fetchone()
+        if row is None:
+            row = self._db.execute("SELECT started_at FROM runs ORDER BY run_id LIMIT 1").fetchone()
+        return None if row is None else str(row[0])
 
     # ---- sources ----------------------------------------------------------------------------------------
     def sync_sources(self, configured: Sequence[SourceConfig]) -> list[str]:

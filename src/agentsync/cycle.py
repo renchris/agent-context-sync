@@ -32,6 +32,7 @@ import re
 import secrets
 import shutil
 import socket
+import time
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -56,6 +57,7 @@ from agentsync.errors import (
     ConfigError,
     DatalessRefusedError,
     GraphThrottled,
+    LockHeldError,
     PublishError,
 )
 from agentsync.frontmatter import FrontmatterError, parse_frontmatter
@@ -65,7 +67,14 @@ from agentsync.graph.drive import DriveArm
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.graph.mail import MailArm
 from agentsync.graph.teams import TeamsArm
-from agentsync.manifest import ItemRow, Manifest, OutputRow, cursor_fingerprint, redacted_path
+from agentsync.manifest import (
+    ItemRow,
+    Manifest,
+    OutputRow,
+    cursor_fingerprint,
+    migration_backups,
+    redacted_path,
+)
 from agentsync.model import (
     ByteBudget,
     ChangeOp,
@@ -89,7 +98,7 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops.launchd import rotate_logs
-from agentsync.ops.lock import SingleWriterLock, read_heartbeat, write_heartbeat
+from agentsync.ops.lock import LockAcquisition, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.publish import (
     DELETED_UPSTREAM,
     Publisher,
@@ -620,6 +629,7 @@ class _Cycle:
         forced_paths: dict[str, set[str]],
         accept_deletions: frozenset[str],
         auth: MsalAuth | None = None,
+        stale_backups: Sequence[Path] = (),
     ) -> None:
         self.config = config
         self.manifest = manifest
@@ -636,6 +646,7 @@ class _Cycle:
         self.repo = config.docs_repo
         self.dry = mode is CycleMode.DRY_RUN
         self.auth = auth
+        self.stale_backups = tuple(stale_backups)  # pre-v<N> manifest copies older than this cycle
         # [policy] (sources.toml + policy.toml): a broken policy raises ConfigError (exit 78), never "allow"
         self.publisher = Publisher(config, manifest, clock=clock)
         self.registry = Registry.default(config.convert, policy=self.publisher.content_policy)
@@ -731,6 +742,7 @@ class _Cycle:
                 self._retag_published()
                 self.manifest.clear_run_changes(self.run_id)
                 self.manifest.promote_cursors(self.run_id, _iso(self.now()))
+                self._drop_stale_backups()
                 if self.mode is CycleMode.RECONCILE:
                     removed = self.cache.gc(self.manifest.live_action_keys())
                     if removed:
@@ -750,6 +762,17 @@ class _Cycle:
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
         return report
+
+    def _drop_stale_backups(self) -> None:
+        """Delete the pre-migration manifest copies that existed before this cycle: it committed on the
+        migrated database, so the copy has done its job (a copy taken during this cycle waits one more)."""
+        for path in self.stale_backups:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                log.warning("cannot delete the pre-migration manifest copy %s: %s", path, exc)
+            else:
+                log.info("deleted the pre-migration manifest copy %s", path.name)
 
     def _retention(self, commit_sha: str | None) -> str | None:
         """Scheduled compaction (C15 section 9 item 39): in a RECONCILE, squash history older than
@@ -2042,18 +2065,73 @@ def _map_paths(config: Config, paths: Sequence[Path]) -> dict[str, set[str]]:
     return out
 
 
+INTERACTIVE_LOCK_WAIT_S = 600.0
+"""How long a mode-None (interactive) run waits for another cycle's lock before LockHeldError (exit 75)."""
+_LOCK_RETRY_S = 0.5
+_LOCK_PROGRESS_S = 30.0
+
+
+def _interactive_mode(config: Config, now: datetime) -> CycleMode:
+    """The mode of a run that named none: RECONCILE once the last full run (``last_full_run_started``) is at
+    least ``config.reconcile_interval_s`` old, else POLL.  Chosen before the lock, so its label is truthful;
+    opening the manifest here migrates it like any other open."""
+    db = config.state_paths.db
+    if not db.is_file():
+        return CycleMode.POLL
+    with Manifest(db) as manifest:
+        raw = manifest.last_full_run_started()
+    try:
+        started = datetime.fromisoformat(raw) if raw else None
+    except ValueError:
+        started = None
+    if started is None:
+        return CycleMode.POLL
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    age = (now.astimezone(UTC) - started).total_seconds()
+    return CycleMode.RECONCILE if age >= config.reconcile_interval_s else CycleMode.POLL
+
+
+def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
+    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s.  After ``wait_s``
+    the last LockHeldError is raised (naming how long this run waited)."""
+    start = time.monotonic()
+    noted = -_LOCK_PROGRESS_S
+    while True:
+        try:
+            return lock.acquire()
+        except LockHeldError as exc:
+            waited = time.monotonic() - start
+            if waited >= wait_s:
+                raise LockHeldError(f"{exc}; waited {int(waited)}s") from None
+            if waited - noted >= _LOCK_PROGRESS_S:
+                noted = waited
+                log.warning(
+                    "another sync is running (%s); waiting for it to finish (%ds of at most %ds)",
+                    exc,
+                    int(waited),
+                    int(wait_s),
+                )
+            time.sleep(min(_LOCK_RETRY_S, max(0.0, wait_s - waited)))
+
+
 def run_cycle(
     config: Config,
     *,
-    mode: CycleMode,
+    mode: CycleMode | None,
     only: Sequence[str] = (),
     now: Callable[[], datetime] | None = None,
     client: GraphClient | None = None,
     budget_bytes: int | None = None,
     materialise_paths: Sequence[Path] = (),
     accept_deletions: Sequence[str] = (),
+    lock_wait_s: float = INTERACTIVE_LOCK_WAIT_S,
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
+
+    ``mode=None`` is an interactive run (``agentsync sync`` without ``--mode``): its mode is
+    ``_interactive_mode`` (RECONCILE when one is due, else POLL) and it waits up to ``lock_wait_s`` for a
+    running cycle's lock.  An explicit mode (launchd) tries the lock once.
 
     Raises LockHeldError (CLI exit 75), ConfigError, ManifestSchemaError.  AuthRequiredError is caught:
     no cursor advances, STATE.md/heartbeat record ``auth: REAUTH_REQUIRED``, report.auth_required=True.
@@ -2066,6 +2144,7 @@ def run_cycle(
     breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion).
     """
     clock = now or (lambda: datetime.now(UTC))
+    stale_backups = migration_backups(config.state_paths.db)  # before any open: one taken now waits a cycle
     try:
         materialise.fail_closed()
     except OSError as exc:  # not macOS: there is no dataless state to protect
@@ -2074,8 +2153,11 @@ def run_cycle(
     forced = _map_paths(config, materialise_paths) if materialise_paths else {}
     if forced:
         selected = [s for s in selected if s.id in forced]
+    interactive = mode is None
+    if mode is None:
+        mode = _interactive_mode(config, clock())
     lock = SingleWriterLock(config.state_paths.lock, mode.value)
-    acquisition = lock.acquire()
+    acquisition = _acquire_waiting(lock, lock_wait_s) if interactive else lock.acquire()
     if mode is not CycleMode.DRY_RUN:
         rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
     own_client = client is None
@@ -2101,6 +2183,7 @@ def run_cycle(
                 forced_paths=forced,
                 accept_deletions=frozenset(accept_deletions),
                 auth=auth,
+                stale_backups=stale_backups,
             )
             return cycle.run()
     finally:

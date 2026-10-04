@@ -446,6 +446,28 @@ def test_purge_by_source_path_glob_follows_renames(world: World) -> None:
     assert gv.load_suppressions(world.state).matches("src", "other", "hr/renamed-x")
 
 
+def test_purge_after_an_auto_migration_leaves_no_trace_under_the_state_dir(world: World) -> None:
+    db = world.config.state_paths.db
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    conn.commit()
+    conn.close()
+    with Manifest(db) as man:  # any open migrates (status, a cycle, purge itself)
+        backup = man.migration_backup
+    assert backup is not None and b"renamed-secret" in backup.read_bytes()
+    rep = gv.purge(
+        world.config, gv.PurgeSelector(stable_id="S1"), reason=gv.PurgeReason.ERASURE_REQUEST, now=NOW
+    )
+    assert rep.verified, rep
+    assert not backup.exists()
+    suppressions = world.state / "governance" / "suppressed.json"  # keeps the path on purpose: never re-sync
+    for path in sorted(world.config.state_paths.root.rglob("*")):
+        if path.is_file():
+            data = path.read_bytes()
+            assert b"SECRET-ALPHA" not in data, path
+            assert path == suppressions or b"renamed-secret" not in data, path
+
+
 def test_purge_by_docs_glob(world: World) -> None:
     keep_blobs = {s for s, p in all_blobs(world.repo).items() if p == "mirror/src/keep.md"}
     rep = gv.purge(

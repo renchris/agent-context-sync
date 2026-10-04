@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -15,14 +17,15 @@ import pytest
 
 from agentsync import cli, governance, lints, net, policy
 from agentsync.config import Config, load_config
-from agentsync.errors import AuthError
+from agentsync.cycle import run_cycle
+from agentsync.errors import AuthError, LockHeldError
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
 from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
-from agentsync.manifest import Manifest
-from agentsync.model import SourceKind
+from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
+from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock
 
@@ -228,12 +231,122 @@ def test_lock_held_exits_75(initialised: Config, capsys: pytest.CaptureFixture[s
     lock = SingleWriterLock(initialised.state_paths.lock, "reconcile")
     lock.acquire()
     try:
-        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_LOCK_HELD
+        cfg = str(initialised.config_path)
+        assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_LOCK_HELD
         assert "skipped: lock held" in capsys.readouterr().err
         assert cli.main(["status", "--config", str(initialised.config_path)]) == cli.EXIT_OK
         assert "reconcile" in capsys.readouterr().out
     finally:
         lock.release()
+
+
+def test_sync_without_mode_waits_for_a_running_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock = SingleWriterLock(initialised.state_paths.lock, "poll")
+    lock.acquire()
+    timer = threading.Timer(2.0, lock.release)
+    timer.start()
+    try:
+        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    finally:
+        timer.join()
+        lock.release()
+    assert "waiting for it to finish" in capsys.readouterr().err
+
+
+def test_interactive_lock_wait_is_injectable_and_ends_in_lock_held(initialised: Config) -> None:
+    lock = SingleWriterLock(initialised.state_paths.lock, "poll")
+    lock.acquire()
+    try:
+        with pytest.raises(LockHeldError, match="waited"):
+            run_cycle(initialised, mode=None, lock_wait_s=0.3)
+    finally:
+        lock.release()
+
+
+def _last_mode(config: Config) -> str:
+    with Manifest(config.state_paths.db) as manifest:
+        return manifest.last_runs(1)[0][1]
+
+
+def _sql(db: Path, statement: str, *params: str) -> None:
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(statement, params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _age_runs(config: Config) -> None:
+    _sql(config.state_paths.db, "UPDATE runs SET started_at = ?", "2020-01-01T00:00:00Z")
+
+
+def test_sync_without_mode_runs_a_due_reconcile(initialised: Config) -> None:
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert _last_mode(initialised) == "poll"  # the first run is a full pass anyway
+    _age_runs(initialised)
+    assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_OK
+    assert _last_mode(initialised) == "poll"  # an explicit --mode is never overridden
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert _last_mode(initialised) == "reconcile"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert _last_mode(initialised) == "poll"  # the reconcile just ran
+
+
+def test_due_reconcile_follows_reconcile_interval_with_a_frozen_clock(initialised: Config) -> None:
+    later = datetime.now(UTC) + timedelta(seconds=initialised.reconcile_interval_s + 60)
+    assert run_cycle(initialised, mode=None).mode is CycleMode.POLL
+    assert run_cycle(initialised, mode=CycleMode.POLL, now=lambda: later).mode is CycleMode.POLL
+    assert run_cycle(initialised, mode=None, now=lambda: later).mode is CycleMode.RECONCILE
+    sooner = datetime.now(UTC) + timedelta(seconds=initialised.reconcile_interval_s - 60)
+    assert run_cycle(initialised, mode=None, now=lambda: sooner).mode is CycleMode.POLL
+
+
+def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "ctx" / "sources.toml"
+    for var in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
+        monkeypatch.setenv(var, "2026-07-01T00:00:00Z")
+    init = ["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]
+    assert cli.main([*init, "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "old.txt").write_text("ancient\n", encoding="utf-8")
+    for var in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
+        monkeypatch.setenv(var, "2026-07-02T00:00:00Z")
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    for var in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
+        monkeypatch.delenv(var)
+    config = load_config(cfg)
+    gov = governance.load_governance(config.config_path)
+    assert governance.compaction_state(config.docs_repo, gov)[0] == "overdue"
+    (local_source_dir / "projects" / "fresh.txt").write_text("fresh\n", encoding="utf-8")
+    _age_runs(config)
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    assert _last_mode(config) == "reconcile"
+    assert governance.compaction_state(config.docs_repo, gov)[0] == "ok"
+
+
+def test_old_manifest_migrates_through_status_and_sync(initialised: Config) -> None:
+    cfg = str(initialised.config_path)
+    db = initialised.state_paths.db
+    backup = db.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _sql(db, "UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    assert backup.is_file()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # the next committed cycle drops the copy
+    assert not backup.exists()
+    _sql(db, "UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert backup.is_file()  # the migrating cycle keeps its own copy for one more cycle
+    with Manifest(db) as manifest:
+        assert manifest.get_meta("key_schema_version") != "0"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert not backup.exists()
 
 
 def test_materialise_paths(initialised: Config, local_source_dir: Path, tmp_path: Path) -> None:

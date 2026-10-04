@@ -54,7 +54,7 @@ from agentsync import gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.manifest import Manifest
+from agentsync.manifest import Manifest, migration_backups
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock
@@ -1860,8 +1860,9 @@ def purge(
     lock: bool = True,
     now: datetime | None = None,
 ) -> PurgeReport:
-    """Remove the selected items from the docs repo's whole history, the manifest, the converter cache,
-    the Teams store, staging and logs; expire reflogs, prune, and verify no targeted blob survives.
+    """Remove the selected items from the docs repo's whole history, the manifest (and any pre-migration
+    ``<db>.pre-v*`` copy), the converter cache, the Teams store, staging and logs; expire reflogs, prune, and
+    verify no targeted blob survives.
 
     Refused (HoldActiveError) while a hold covers an affected source.  ``dry_run`` reports without writing.
     ``push`` force-pushes the rewritten refs only when ``allow_remote`` and a tenant-owned remote exist.
@@ -1994,6 +1995,9 @@ def _purge_locked(
         )
         for entry in cache_victims:
             _rmtree(entry)
+        for backup in migration_backups(sp.db):  # a pre-migration copy still holds the purged rows
+            backup.unlink(missing_ok=True)
+            notes.append(f"deleted the pre-migration manifest copy {backup.name}")
         for source_id, month in mt.teams_months:
             with contextlib.suppress(FileNotFoundError):
                 (sp.teams_store / source_id / f"{month}.json").unlink()
