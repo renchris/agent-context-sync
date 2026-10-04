@@ -206,6 +206,10 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
   - **2026-10-04: one prompt for it.** README "Next, on the same Mac: draft the baseline questions" is a paste-once
     block for after setup: `git pull`, `install.sh --no-report` (no `--source-local`: the dry run shows the config
     untouched, only reinstall, `migrate` and `doctor`), `install-skill`, `sync --once`, then the skill's Draft step.
+  - **2026-10-04: the KISS simplification supersedes both prompts.** Adoption on low-effort agents stops partway
+    because the loop's order lives only in prose. [kiss-simplification.md](kiss-simplification.md) (5 waves, 19
+    verified changes) makes `sync` do every automatic step and end on one NEXT line, cuts the surface to 9 commands,
+    and folds setup and the baseline draft into one 3-step setup prompt (v7).
 
 ## Point-in-time archive (2026-10-02)
 
