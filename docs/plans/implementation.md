@@ -203,6 +203,9 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
     out so an answering agent never reads it. `_eval` is in `gitops.COMMIT_PATHSPECS`. CONTRACTS §16.19.
     Operator step now: on the corporate Mac, run `agentsync install-skill`, then ask the agent to "draft the
     baseline questions" and review them.
+  - **2026-10-04: one prompt for it.** README "Next, on the same Mac: draft the baseline questions" is a paste-once
+    block for after setup: `git pull`, `install.sh --no-report` (no `--source-local`: the dry run shows the config
+    untouched, only reinstall, `migrate` and `doctor`), `install-skill`, `sync --once`, then the skill's Draft step.
 
 ## Point-in-time archive (2026-10-02)
 
