@@ -587,6 +587,8 @@ def test_eml_fixture_headers_body_attachments_no_base64(fixture_files: dict[str,
     assert "| Message-ID | <kickoff-recap@example.com> |" in u.body
     assert "The purchase order is approved." in u.body
     assert "| 1 | spend.csv | text/csv | 23 | " in u.body
+    assert "Attachments are listed, not converted; save one into the inbox to convert it." in u.body
+    assert "second phase" not in u.body
     for leak in ("Content-Transfer-Encoding", "MIME-Version", "cmVnaW9u", "boundary="):
         assert leak not in u.body
     assert u.title == "Acme kickoff recap" and "1 attachment(s)" in u.summary
@@ -609,6 +611,34 @@ def test_eml_encoded_subject_html_only_and_alternatives(tmp_path: Path) -> None:
     assert "plain wins" in u2.body and "html loses" not in u2.body
     assert "| 1 | a.pdf | application/pdf | 10 |" in u2.body and "text/html" not in u2.body
     assert "JVBER" not in u2.body
+
+
+@pytest.mark.parametrize(
+    "content_type", ["text/plain; charset=utf-8", "text/plain", "text/plain; charset=iso-8859-1"]
+)
+def test_eml_cp1252_body_mislabelled_or_unlabelled_keeps_quotes_and_accents(
+    tmp_path: Path, content_type: str
+) -> None:
+    body = "\u201cCaf\u00e9 menu\u201d is final \u2013 Ren\u00e9e\n".encode("cp1252")
+    raw = (
+        b"From: a@example.com\r\nSubject: menu\r\nMIME-Version: 1.0\r\n"
+        + f"Content-Type: {content_type}\r\n".encode()
+        + b"Content-Transfer-Encoding: 8bit\r\n\r\n"
+        + body
+    )
+    u = _one(EmlConverter(CFG).convert(_write(tmp_path, "c.eml", raw), name="c.eml"))
+    assert "\u201cCaf\u00e9 menu\u201d is final \u2013 Ren\u00e9e" in u.body
+    assert "\ufffd" not in u.body
+
+
+def test_eml_other_declared_charset_still_decodes_by_its_label(tmp_path: Path) -> None:
+    raw = (
+        b"From: a@example.com\r\nSubject: menu\r\nMIME-Version: 1.0\r\n"
+        b"Content-Type: text/plain; charset=koi8-r\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
+        + "\u041f\u0440\u0438\u0432\u0435\u0442\n".encode("koi8-r")
+    )
+    u = _one(EmlConverter(CFG).convert(_write(tmp_path, "k.eml", raw), name="k.eml"))
+    assert "\u041f\u0440\u0438\u0432\u0435\u0442" in u.body
 
 
 def test_eml_attached_message_is_listed_not_expanded(tmp_path: Path) -> None:

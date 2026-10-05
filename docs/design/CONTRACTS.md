@@ -2453,8 +2453,8 @@ class EmlConverter:
     """RFC 822 message via the stdlib email package.
 
     Header table (From, To, Cc, Date, Subject, Message-ID, In-Reply-To, References) then the text/plain part
-    (or text/html through pandoc -> gfm); attachments listed by name, size and sha256 (their conversion is the
-    mail arm's second phase). Never emits raw MIME or base64.
+    (or text/html through pandoc -> gfm); attachments are listed by name, size and sha256, not converted (save
+    one into the inbox to convert it). Never emits raw MIME or base64.
     """
     converter_id = "eml-stdlib"
     extensions: tuple[str, ...] = (".eml",)

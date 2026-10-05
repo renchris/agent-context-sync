@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import email
 import email.policy
 import hashlib
@@ -14,6 +15,7 @@ from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _cell,
+    _decode_text,
     _escape_line,
     _escape_plain,
     _gfm_table,
@@ -24,9 +26,11 @@ from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.1.0"
 _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To", "References")
 _SMIME_ENCRYPTED = frozenset({"application/pkcs7-mime", "application/x-pkcs7-mime"})
+# codecs.lookup() names of the labels Windows mail clients put on cp1252 bytes.
+_WINDOWS_PRONE_CODECS = frozenset({"utf-8", "ascii", "iso8859-1", "cp1252"})
 
 
 def _header(msg: Message, key: str) -> str:
@@ -41,22 +45,31 @@ def _header(msg: Message, key: str) -> str:
 
 
 def _decode_part(part: Message) -> str:
-    """Text of a leaf part, tolerating unknown or lying charsets (never raises)."""
-    try:
-        if isinstance(part, EmailMessage):
-            content = part.get_content()
-            if isinstance(content, str):
-                return content
-    except (LookupError, UnicodeError, KeyError, ValueError, AssertionError):
-        pass
+    """Text of a leaf part, tolerating unknown, missing or lying charsets (never raises).
+
+    A part labelled UTF-8, ASCII, Latin-1 or cp1252, or not labelled at all, goes through ``_decode_text``
+    (strict UTF-8, then cp1252): Windows mail clients send cp1252 under those labels or none, and a lenient
+    decode turns its smart quotes and accents into replacement characters.  Any other declared charset is
+    decoded strictly, falling back to the same order when the charset is unknown or the bytes do not fit it.
+    """
     payload = part.get_payload(decode=True)
     if not isinstance(payload, bytes):
         return ""
-    charset = part.get_content_charset() or "utf-8"
+    charset = part.get_content_charset()
+    if charset:
+        try:
+            codec = codecs.lookup(charset).name
+        except (LookupError, ValueError):
+            codec = ""
+        if codec and codec not in _WINDOWS_PRONE_CODECS:
+            try:
+                return payload.decode(codec)
+            except (LookupError, UnicodeError):  # a bytes-only codec (base64), or bytes that do not fit
+                pass
     try:
-        return payload.decode(charset, errors="replace")
-    except LookupError:
-        return payload.decode("cp1252", errors="replace")
+        return _decode_text(payload)
+    except ConversionError:
+        return payload.decode("utf-8", errors="replace")
 
 
 def _payload_bytes(part: Message) -> bytes:
@@ -113,8 +126,8 @@ class EmlConverter:
     """RFC 822 message via the stdlib email package.
 
     Header table (From, To, Cc, Date, Subject, Message-ID, In-Reply-To, References) then the text/plain part
-    (or text/html through pandoc -> gfm); attachments listed by name, size and sha256 (their conversion is the
-    mail arm's second phase). Never emits raw MIME or base64.
+    (or text/html through pandoc -> gfm); attachments are listed by name, size and sha256, not converted (save
+    one into the inbox to convert it). Never emits raw MIME or base64.
     """
 
     converter_id = "eml-stdlib"
@@ -173,7 +186,7 @@ class EmlConverter:
             out += _gfm_table(["#", "Name", "Type", "Size (bytes)", "sha256"], attachments)
             out += [
                 "",
-                "Attachments are listed, not inlined; their conversion is the mail arm's second phase.",
+                "Attachments are listed, not converted; save one into the inbox to convert it.",
                 "",
             ]
         body = "\n".join(out)
