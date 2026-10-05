@@ -1448,10 +1448,27 @@ def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
     cfg = tmp_path / "ctx" / "sources.toml"
     assert cli.main(["init", "--config", str(cfg)]) == 0
     skill.write_skill(load_config(cfg).docs_repo)
-    capsys.readouterr()
+    init_out = capsys.readouterr().out.splitlines()
+    assert init_out[-1] == "sources: none yet besides the inbox (run agentsync add-source <folder>)"
     rc, out = _status(str(cfg), capsys)
     assert rc == cli.EXIT_OK and not any(ln.startswith("[FAIL]") for ln in out)
     assert out[0].startswith("NEXT: no folder is synced yet: ") and "add-source" in out[0]
+    assert not [ln for ln in out if "source.inbox" in ln and not ln.startswith("[ok  ]")], out
+
+
+def test_a_fresh_empty_inbox_raises_no_warning_in_status_or_doctor(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K05: the inbox every config now has is empty until a file is dropped in; after a complete
+    sync neither status nor the doctor alias reports it as anything but OK."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    for verb in ("status", "doctor"):
+        rc = cli.main([verb, "--config", cfg])
+        out = capsys.readouterr().out.splitlines()
+        (line,) = [ln for ln in out if ln.startswith("[") and " source.inbox.listable " in ln]
+        assert line.startswith("[ok  ]") and "is empty" in line, (verb, line)
+        assert rc == cli.EXIT_OK, (verb, out)
 
 
 def test_status_warns_when_the_checkout_moved_past_the_installed_commit(
@@ -1618,6 +1635,8 @@ def test_init_and_add_source_keep_exactly_one_inbox(
         kinds = [s.kind for s in load_config(initialised.config_path).sources]
         assert kinds.count(SourceKind.INBOX) == 1, argv
         assert kinds.count(SourceKind.LOCAL) == len(argv), argv  # add-source added its folder once
+        ids = ", ".join(s.id for s in load_config(initialised.config_path).sources)
+        assert out.rstrip("\n").splitlines()[-1] == f"sources: {ids}", argv  # a folder: no "none yet" hint
     assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_USAGE  # deleted
     assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # PATH is required
 

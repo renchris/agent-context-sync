@@ -20,7 +20,7 @@ import pytest
 
 from agentsync import cli, gitops
 from agentsync.config import Config, parse_config
-from agentsync.model import PassKind, SourceState
+from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results, run_checks
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
@@ -357,6 +357,22 @@ def test_source_empty_dir_warns(sample_config: Config, tmp_path: Path) -> None:
     r = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))
     assert r["source.local-fixture.listable"].severity is Severity.WARN
     assert r["source.local-fixture.sentinel"].ok
+
+
+def test_empty_inbox_is_ok_unless_it_is_a_cloud_folder(sample_config: Config, tmp_path: Path) -> None:
+    """KISS K05: every config has an inbox and it is empty until a file is dropped in, so an empty local
+    inbox is OK; an empty inbox inside CloudStorage still warns (it may be an unenumerated folder)."""
+    local = tmp_path / "inbox"
+    local.mkdir()
+    cloud = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Inbox"
+    cloud.mkdir(parents=True)
+    for root, ok in ((local, True), (cloud, False)):
+        src = dataclasses.replace(sample_config.sources[0], kind=SourceKind.INBOX, path=root, sentinel=None)
+        listable = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))[
+            "source.local-fixture.listable"
+        ]
+        assert listable.ok is ok, root
+        assert ("drop files you save by hand here" in listable.detail) is ok, listable.detail
 
 
 def test_source_sentinel_missing(sample_config: Config) -> None:

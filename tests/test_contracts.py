@@ -198,6 +198,17 @@ def test_help_lists_no_hidden_verb_and_each_still_parses(capsys: pytest.CaptureF
         assert args.command == name
 
 
+def test_no_guide_names_a_deleted_add_source_option() -> None:
+    """KISS K05/K14: ``add-source --inbox`` and ``--id`` exit 2, so neither README.md nor any guide under
+    docs/deploy may tell a reader to run them (the plans and CONTRACTS.md keep the history)."""
+    import re  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[1]
+    for guide in [root / "README.md", *sorted((root / "docs" / "deploy").rglob("*.md"))]:
+        text = guide.read_text(encoding="utf-8")
+        assert not re.search(r"add-source (--inbox|\S+ --id)\b", text), guide.relative_to(root)
+
+
 def _install_case_arms(script: str, opener: str, closer: str) -> list[str]:
     """The option patterns of the case arms (at most one tab deep; ``*`` is the positional SOURCE arm, the
     ``-*`` unknown-option arm is dropped) between ``opener`` and the next column-0

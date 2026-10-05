@@ -549,7 +549,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     try:
         first = _first_entry(root)
         listed = True
-        if first is None:
+        if first is None and src.kind is SourceKind.INBOX and not cloud:
+            # every config has an inbox since KISS K05; empty is its normal state, not a finding
+            out.append(_ok(f"{base}.listable", f"{root} is empty (drop files you save by hand here)"))
+        elif first is None:
             why = (
                 "a File Provider folder that has not been enumerated, or a TCC denial reading as empty"
                 if cloud

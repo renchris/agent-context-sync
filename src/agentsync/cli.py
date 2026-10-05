@@ -78,7 +78,7 @@ from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, CycleReport, LintFinding
+from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout, default_config_path, expand, is_under
@@ -522,8 +522,11 @@ def _ensure_setup(config: Config) -> int:
         _err(f"governance: {f}")
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
-    ids = ", ".join(s.id for s in config.sources)
-    _out(f"sources: {ids or 'none yet (run agentsync add-source <folder>)'}")
+    if any(s.kind is not SourceKind.INBOX for s in config.sources):
+        _out(f"sources: {', '.join(s.id for s in config.sources)}")
+    else:  # the inbox alone is not a source to sync (KISS K05): point at the one verb that adds one
+        besides = " besides the inbox" if config.sources else ""
+        _out(f"sources: none yet{besides} (run agentsync add-source <folder>)")
     return EXIT_FAILED if findings else EXIT_OK
 
 
