@@ -49,8 +49,12 @@ depends on them. What that leaves:
 
 - **Files: complete with no IT.** `local` sources over the OneDrive client's sync folder. That covers OneDrive, any
   SharePoint library or Teams channel's Files tab synced with **Sync** or **Add shortcut to My files**, Teams chat
-  attachments (the sender's OneDrive "Microsoft Teams Chat Files" folder, shared with you), and meeting recordings
-  and transcripts stored in OneDrive or SharePoint.
+  attachments (the sender's OneDrive "Microsoft Teams Chat Files" folder, shared with you), and meeting transcripts
+  the person has downloaded (`.vtt` and `.docx` both convert). Meeting recordings (`.mp4`) are not converted: no
+  converter takes video, and no separate transcript file is documented beside a recording, so a transcript arrives
+  only when the person downloads it into a synced folder or the inbox. **Corrected (2026-10-05, field N10):** this
+  line used to promise "meeting recordings and transcripts stored in OneDrive or SharePoint", which the design's
+  Teams correction rules out (`docs/design/agent-context-sync.md` §4.2, the CORRECTED 2026-09-29 note, item 4).
 - **Mail and Teams messages: no automatic route.** Microsoft's default user-consent policy excludes `Mail.Read*`,
   `Chat.Read`, `Files.Read.All` and `Sites.Read.All` from user consent (C15, line 237), and channel messages always
   need an admin. The zero-IT route is the `inbox` source: drag messages out of Outlook as `.eml` files (converted by
