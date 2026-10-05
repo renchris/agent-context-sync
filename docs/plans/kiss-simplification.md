@@ -15,7 +15,8 @@ Source: a 49-agent workflow on 2026-10-04 (six surface readers, three independen
   (memory compressor 54% of limit, over its 50% ceiling, the level that preceded past watchdog panics), and a named
   teammate is also a new process. Workflow agents run inside the lead's process: sequential build agents in the
   worktree `.worktrees/kiss-w1`, a fresh reviewer per change, a fix pass, then the full gate. The lead lands it. Run
-  `wf_bd61960e-f15`. Later waves go back to **S** when the gate admits.
+  `wf_bd61960e-f15`. Later waves go back to **S** when the gate admits. W2 also ran in-process (`wf_d4508a0a-f86`): the active-session term
+  refused the fire (8 mid-turn at a ceiling of 8).
 - **Lead:** the originating session (pane 137) fires each wave with `--notify-back`, collects, verifies by content on `main`, then fires the next. Lead context budget: stay under 50%; recycle between waves if past 35% while waiting.
 - **Each wave session:** its own worktree off `origin/main`; full gate before landing: `uv run ruff check src tests`, `uv run ruff format --check src tests`, `uv run mypy src`, `uv run pytest -q`; lands with `/ship`.
 - **Freeze test:** W1 pins TODAY's CLI/installer surface (`test_cli_surface_is_frozen`, `test_install_options_are_frozen`); every later wave edits the pinned dict in the same commit as its cut.
@@ -77,102 +78,36 @@ Learnings:
 - `README.md` still names `install-skill` and `checkpoint` (both now hidden aliases); W3/W5 rewrite those lines.
 - A machine reaper SIGKILLs long pytest runs at times; run the full suite in the background and re-run killed chunks.
 
-## W2 Loop surface: one NEXT line, one curate, one status
+## W2 Loop surface: one NEXT line, one curate, one status — DONE (2026-10-04)
 
-Status: upcoming.
+Landed on `main` at `b262361` (8 commits, `4c5a596..b262361`): `4c5a596` accept-deletions SOURCE (K13a), `4a646a9`
+`loop.next_step` and the NEXT line after interactive sync and status (K01), `3890be1` one `curate` (K09), `8d622f2`
+one read-only `status` (K08a), then four fixes from the fresh-context review (13 findings, none rejected): `102c71e`,
+`a5d17c1`, `5ea97d5`, `b262361`. Gate: ruff, format, mypy clean; pytest 1960 passed, 2 skipped. Run
+`wf_d4508a0a-f86` (in-process Workflow again: the capacity gate refused the fire, 8 sessions mid-turn at a ceiling of 8).
 
-Files: `src/agentsync/loop.py (new)`, `src/agentsync/cli.py`, `src/agentsync/ops/doctor.py`, `src/agentsync/cycle.py (message at 1404 only)`, `src/agentsync/setup_report.py`, `docs/design/CONTRACTS.md`, `tests/test_loop.py (new)`, `tests/test_cli.py`, `tests/test_ops_doctor.py`, `tests/test_setup_report.py`, `tests/test_curate.py`, `tests/test_contracts.py`, `tests/test_install_next_line.py (new)`
-
-### K01 (add, M)
-
-New module src/agentsync/loop.py with next_step(config). It reads disk state only and returns one agent step plus a list of operator waits. The first unmet rule wins:
-1. A status FAIL, including a failed skill write: print its fix.
-2. No live source other than the inbox: ask which folders (`install.sh --list-folders`), then run `~/.local/bin/agentsync add-source "<folder>"`.
-3. A source listing is INCOMPLETE, or files already on this Mac are not yet converted: run sync again. Online-only deferrals are a non-blocking info line.
-4. No curated page and no _eval/questions.md: draft the baseline questions.
-5. _eval is still `status: draft`: stop, the operator confirms.
-6. No curated page and no results-*-before.md: run the 'before' baseline in a session that did not draft the questions.
-7. checkpoint_blockers is non-empty: fix the pages that `curate` lists.
-8. 20 or more curated pages and no after-results: run the 'after' baseline under the same fresh-session rule.
-9. The queue is not empty: run `~/.local/bin/agentsync curate`, curate up to 10 rows (a fixed number), then run sync; session done.
-10. Otherwise: nothing to do; session done.
-
-Operator waits are printed as `WAITING ON YOU:` lines:
-- a tripped breaker: `accept-deletions SOURCE`;
-- queued purges: `purge --queue`;
-- an _eval draft to confirm;
-- files over the budget or refused by the OS: `materialise`.
-
-sync prints NEXT and WAITING after the 'converted N, deferred M online-only' summary, but only for mode-None runs and only when AGENTSYNC_NO_NEXT_HINT is not 1. curate and status print them too. The text is fixed wording plus counts and source ids, never paths.
-
-The static next: hints are deleted. NO_NEXT_HINT_ENV keeps a single definition, which doctor imports.
-
-- **Where:** src/agentsync/loop.py (new); src/agentsync/cli.py:112-120, 416-460, 548, 599; src/agentsync/ops/doctor.py:45, 837; docs/design/CONTRACTS.md:796 (summary line, then NEXT) and loop.py public names
-- **Why:** This removes the root cause. The loop order exists only in skill prose and README.md:223-243, and sync never mentions anything past the summary. 'Follow NEXT' becomes the whole procedure. Fixes from the votes:
-- rule 3 no longer loops forever on permanently deferred files;
-- curate and checkpoint exist after this wave and W1;
-- rule 9 has a session bound;
-- install.sh's single-NEXT contract and the AGENTSYNC_NO_NEXT_HINT switch are kept.
-- **Risk:** Rule order is a product decision: the baseline rules apply only while no curated page exists (see the open decision). The fresh-session rule can be stated but not detected.
-
-### K13a (merge, S)
-
-`agentsync accept-deletions SOURCE` (positional, no flags) replaces `reconcile --source X --accept-deletions`. reconcile stays as a hidden alias. Rewrite the breaker message, the cli fix string and the doctor fix string to name accept-deletions.
-
-- **Where:** src/agentsync/cli.py:236-247, 903; src/agentsync/cycle.py:1404; src/agentsync/ops/doctor.py:1145
-- **Why:** K01's WAITING line names this verb. It turns a two-flag spelling into one operator verb. The deletion breaker itself is unchanged.
-- **Risk:** Low; this is a rename plus a hidden alias.
-- **Learning (review):** the compaction fix string names `sync --mode reconcile`, not accept-deletions: compaction has nothing to do with the breaker, it only needed a visible spelling. accept-deletions waits for the lock like interactive sync (`run_cycle(wait_for_lock=True)`), because launchd never re-runs an operator's exit 75.
-
-### K09 (merge, M)
-
-curate-queue becomes `curate`. Its output, in order:
-1. Findings: the whole of today's _cmd_lint run over the full repo (symlinks, mirror frontmatter, paths, no-cache, tokens, index budget), the curation findings with UNLISTED blocking, and checkpoint_blockers.
-2. ADDED/CHANGED/REMOVED since `curated`, then STALE, then UNCOVERED. Each ADDED or UNCOVERED row carries a ready-made `{path: mirror/<…>, at_rendered_sha256: <hex>, role: primary}` entry.
-3. NEXT.
-
-Exit codes: 1 only when a blocking finding exists; 0 when there are only rows or nothing. Baseline hold: while no curated page exists (no topics/**/*.md besides topics/CLAUDE.md) and there is no results-*-before.md, curate lists no rows, prints the baseline NEXT, and exits 0.
-
-curate-queue, lint and refresh-queue become hidden aliases. They run curate and print 'renamed: run agentsync curate' on stderr. The curate.refresh_queue function stays, because cycle.py:1892 uses it.
-
-- **Where:** src/agentsync/cli.py:258-265, 1051-1135; docs/design/CONTRACTS.md:363 and §16.16
-- **Why:** Today curate-queue exits 1 exactly when there is work, which a literal agent reads as failure. refresh-queue hides UNCOVERED and lint is a separate step anyone can skip. Fixes from the refuting vote: no whole-repo check is lost, installed prompts keep working, and the baseline test is no longer a literal empty-folder check.
-- **Risk:** If the operator never confirms _eval, a new install never gets a curate list. It is named as a WAITING line every session; see the open decision.
-
-### K08a (merge, M)
-
-`status` becomes the single read-only check. It prints:
-1. NEXT first.
-2. One loop line: skill current/stale/missing · inbox · baseline missing/draft/confirmed/before/after · topics N · checkpoint <date>/never · queue N · archive on/off.
-3. doctor.run_checks, keeping doctor's `[FAIL] name: detail (fix: …)` lines byte-identical.
-4. Policy detail, holds, queued purges and breaker trips.
-
-Exit codes: 1 on any FAIL; a failed skill write is a FAIL. Zero folder sources is a NEXT line with exit 0, not a FAIL.
-
-WARN when the installed agentsync commit differs from the checkout HEAD, with the fix 're-run install.sh'.
-
-The TCC canary runs only when the last launcher event shows TCC_PENDING or TCC_DENIED, or when nothing has run since install. The Graph probe runs automatically when Graph sources are live, so --network is deleted.
-
-setup-report calls the shared builder with offline=True and renders the check results once; _doctor_lines_offline is removed. doctor and `policy show` become hidden aliases that run status.
-
-- **Where:** src/agentsync/cli.py:249-257, 352-353, 680-729, 775-833, 954-978, 1516-1527; src/agentsync/ops/doctor.py:753, 850-888, 1230-1270; src/agentsync/setup_report.py (Doctor and Status sections); docs/design/CONTRACTS.md:3219, 3326, 4233, 4238
-- **Why:** A green doctor or a full-looking status reads as 'done' while the curation half has never started. Three commands become one. Fixes from the votes:
-- sourceless installs still pass;
-- install.sh's [FAIL parsing still works;
-- setup-report stays offline and within its 12 s budget;
-- the 15 s canary no longer runs on every call;
-- older install.sh copies still find doctor.
-- **Risk:** install.sh keeps calling the doctor alias until W5. setup-report's expected-FAIL list must know the new checks.
-
-Tests that prove it:
-
-- test_loop.py: one fixture repo per rule 1-10 and per wait, asserting the exact NEXT and WAITING ON YOU lines. A repo with permanently deferred online-only files still reaches rules 4-9. No line contains a mirror path or file name.
-- `sync` with no --mode ends with the summary line and then exactly one NEXT line. `--mode poll`, and AGENTSYNC_NO_NEXT_HINT=1, print none (test_cli.py:866-875 updated).
-- curate: rows give rc 0, a blocking finding gives rc 1, and every whole-repo lint check still runs. ADDED and UNCOVERED rows carry a ready sources: entry. The baseline hold lists no rows. The three hidden aliases run curate and print the rename.
-- status: its first line equals loop.next_step(). One case per FAIL. Zero folder sources gives a NEXT add-source line with rc 0. The [FAIL] format is byte-identical. The TCC canary is skipped when the last event is healthy. The doctor and `policy show` aliases run status.
-- setup-report renders the checks once and makes no network call (CONTRACTS.md:4427)
-- test_install_next_line.py: install.sh with a real first sync that fails (exit 80 fixture) prints exactly one NEXT line
-- accept-deletions SOURCE clears a tripped breaker. test_ops_doctor.py:917 still passes. The pinned CLI dict is updated.
+Learnings for W3-W5:
+- `status` honors `AGENTSYNC_NO_NEXT_HINT=1` too (no NEXT, WAITING or note lines), and the hidden `doctor` alias
+  drops status and policy detail, so install.sh's doctor step keeps one NEXT and never copies `exclude_label_names`
+  into install.out. W5 K02 runs status with the variable unset and lifts its NEXT.
+- The skill check is a FAIL only when a copy is missing or stale, its folder is not writable, and a sync already ran
+  with this build (`Manifest.last_run_started` vs the mtime of `sys.prefix/pyvenv.cfg`); otherwise an info line.
+  A FAIL on any missing skill would block install.sh, whose doctor step runs before the first sync.
+- The installed-commit WARN reads install.sh's stamp `<sys.prefix>/.agentsync-install-source` and the checkout's
+  HEAD from its files, never by running git. No stamp, no line.
+- Rule 1 takes doctor's fixes through `next_step(fixes=)`, but NEXT never copies a fix: it points at the `[FAIL]` line.
+  Rule 2 names `~/src/agent-context-sync/scripts/install.sh --list-folders` (the installed binary does not know its
+  checkout). Rule 8 also needs confirmed baseline questions. Rule 9 counts refresh rows plus uncovered pages, never
+  ADDED-since-checkpoint (it shrinks only when the checkpoint moves, so rule 9 would repeat forever).
+- An incomplete FULL local pass (no folder access, empty cloud folder, missing root) is a WAITING line, not rule 3
+  (`Manifest.last_source_pass`); an OS-refused download cannot be told from a budget deferral on disk, so only
+  over-budget files get the `materialise` wait.
+- `curate` and rule 7 check blockers from the manifest's `checkpoint_pending` base (or HEAD with uncommitted topic
+  pages), not the `curated` tag, which keeps the last session's pages in scope. A blocking finding becomes NEXT.
+- setup-report runs `cli._status_checks(offline=True)` once: no TCC canary, no NEXT, no policy detail.
+- W4 K13b still owns the incomplete-enumeration fix string at `ops/doctor.py` (`sync --mode reconcile --source X`).
+- K13a note: the compaction fix names `sync --mode reconcile`, not accept-deletions, which waits for the lock
+  (`run_cycle(wait_for_lock=True)`) because launchd never re-runs an operator's exit 75.
 
 ## W3 What agents read: one procedure in every guide
 
