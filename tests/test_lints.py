@@ -388,6 +388,35 @@ def test_builtin_secret_scan(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert "aws-access-key" in found[0].message
 
 
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        (
+            "Join: https://teams.microsoft.com/l/meetup-join/19%3ameeting_Zx9%40thread.v2/0?pwd=Qm9vbGVhbjEy",
+            False,
+        ),
+        ("<https://teams.microsoft.com/meet/2468013579?p=Ab12Cd&pwd=Qm9vbGVhbjEy>", False),
+        ("[Join](https://gov.teams.microsoft.us/l/meetup-join/x?context=y&PWD=Qm9vbGVhbjEy)", False),
+        ("https://teams.live.com/meet/9912345678?pwd=Qm9vbGVhbjEy", False),
+        ("https://teams.cloud.microsoft/meet/123?pwd=Qm9vbGVhbjEy", False),
+        ("https://teams.microsoft.com.example.net/l/meetup-join/x?pwd=Qm9vbGVhbjEy", True),
+        ("https://evilteams.microsoft.com/l/meetup-join/x?pwd=Qm9vbGVhbjEy", True),
+        ("https://example.net/go?to=https://teams.microsoft.com/l/x&pwd=Qm9vbGVhbjEy", True),
+        ("https://us02web.zoom.us/j/81234567890?pwd=Qm9vbGVhbjEy", True),
+        ("https://teams.microsoft.com/l/meetup-join/x?password=Qm9vbGVhbjEy", True),
+        ("https://teams.microsoft.com/l/meetup-join/x?pwd=Qm9vbGVhbjEy then pwd: hunter2hunter2", True),
+    ],
+)
+def test_builtin_secret_scan_ignores_teams_join_pwd(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """field N6: a Teams invite's join-link passcode is not a credential; anything else named pwd still is."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    write(repo, "mirror/src/invite.md", page(f"# Weekly sync\n\n{line}\n"))
+    found = lints.lint_secrets(repo, ["mirror/src/invite.md"])
+    assert [("generic-password" in f.message) for f in found] == ([True] if flagged else [])
+
+
 def test_secret_scan_of_nothing(repo: Path) -> None:
     assert lints.lint_secrets(repo, []) == []
 

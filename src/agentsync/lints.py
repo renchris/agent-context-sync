@@ -58,6 +58,16 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 """Built-in content secret scan; gitleaks is used instead when on PATH (``lint_secrets`` prefers it)."""
 
+_TEAMS_JOIN_URL = re.compile(
+    r"(?i)(?<![^\s\"'<>(\[])https?://"
+    r"(?:(?:gov\.|dod\.)?teams\.microsoft\.(?:com|us)|teams\.live\.com|teams\.cloud\.microsoft)"
+    r"(?::\d+)?[/?#][^\s\"'<>]*"
+)
+"""A Teams meeting link that starts a token (so not one nested in another URL's parameter), host-anchored:
+``teams.microsoft.com.example.net`` or ``evilteams.microsoft.com`` is not one."""
+_TEAMS_JOIN_PWD = re.compile(r"(?i)[?&]pwd=[^&#\s\"'<>()]*")
+"""The ``pwd=`` passcode of a Teams join link: an invite, not a credential (gitleaks ignores it too)."""
+
 INDEX_MAX_BYTES = 25_000
 INDEX_MAX_LINES = 200
 
@@ -402,6 +412,13 @@ def _gitleaks() -> Path | None:
     return next((p for p in _GITLEAKS_CANDIDATES if p.is_file() and os.access(p, os.X_OK)), None)
 
 
+def _strip_teams_join_pwd(line: str) -> str:
+    """``line`` with only the ``pwd=`` parameter of each Teams join link removed (a meeting invite would
+    otherwise be quarantined as ``generic-password``); a lookalike host, Zoom's ``pwd=`` and ``password=``
+    are left for the scan."""
+    return _TEAMS_JOIN_URL.sub(lambda m: _TEAMS_JOIN_PWD.sub("", m.group(0)), line)
+
+
 def _builtin_secret_scan(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
     findings: list[LintFinding] = []
     for path in paths:
@@ -411,7 +428,9 @@ def _builtin_secret_scan(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
         seen: set[str] = set()
         for n, line in enumerate(text.splitlines(), start=1):
             for rule, pattern in SECRET_PATTERNS:
-                if rule not in seen and pattern.search(line):
+                if rule in seen:
+                    continue
+                if pattern.search(_strip_teams_join_pwd(line) if rule == "generic-password" else line):
                     seen.add(rule)
                     findings.append(
                         LintFinding("SECRET", path, f"{rule} at line {n} (builtin scan)", blocking=False)
