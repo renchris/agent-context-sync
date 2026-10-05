@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ import httpx
 import pytest
 
 from agentsync import arm_local as al
+from agentsync import cycle as cycle_mod
 from agentsync import gitops, governance
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
@@ -475,6 +477,54 @@ kind = "inbox"
 path = "{path}"
 quiescence_s = 0
 """
+
+
+def test_an_atomic_re_export_converts_within_one_interactive_sync(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field N4: a writer that follows the contract (temp name, then rename) is converted by the sync that
+    sees it, not the one after: an interactive sync waits once for the inbox to settle; launchd never does."""
+    sleeps: list[float] = []
+    start = time.time_ns()
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: start + int(sum(sleeps) * 1e9)
+            self._sleep = sleeps.append
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    config = config_with(
+        tmp_path, local_source_dir, INBOX_SOURCE.format(path=inbox).replace("quiescence_s = 0", "")
+    )
+    page_rel = "mirror/inbox/export.md"
+
+    def export(text: str) -> None:
+        (inbox / "export.md.tmp").write_text(text, encoding="utf-8")
+        (inbox / "export.md.tmp").rename(inbox / "export.md")
+        nonlocal start
+        start = time.time_ns()  # every export restarts the fake clock at the real one
+        sleeps.clear()
+
+    export("# Export\n\nfirst version\n")
+    background = run(config, only=["inbox"])  # an explicit mode (launchd) never waits
+    assert sleeps == []
+    assert not next(s for s in background.sources if s.source_id == "inbox").enumeration_complete
+    assert not (config.docs_repo / page_rel).exists()
+
+    report = run(config, only=["inbox"], mode=None)
+    assert report.exit_code == 0, report
+    assert len(sleeps) == 1 and 0 < sleeps[0] <= 60
+    assert next(s for s in report.sources if s.source_id == "inbox").enumeration_complete
+    assert "first version" in page(config.docs_repo, page_rel)[1]
+
+    export("# Export\n\nsecond version\n")  # the re-export: same name, a new inode
+    report = run(config, only=["inbox"], mode=None)
+    assert report.exit_code == 0, report
+    assert len(sleeps) == 1
+    assert "second version" in page(config.docs_repo, page_rel)[1]
 
 
 def test_inbox_drop_matching_a_graph_file_by_name_and_size_is_refused_unread(

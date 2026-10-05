@@ -636,6 +636,7 @@ class _Cycle:
         accept_deletions: frozenset[str],
         auth: MsalAuth | None = None,
         stale_backups: Sequence[Path] = (),
+        settle_inbox: bool = False,
     ) -> None:
         self.config = config
         self.manifest = manifest
@@ -653,6 +654,7 @@ class _Cycle:
         self.dry = mode is CycleMode.DRY_RUN
         self.auth = auth
         self.stale_backups = tuple(stale_backups)  # pre-v<N> manifest copies older than this cycle
+        self.settle_inbox = settle_inbox  # interactive sync: an inbox waits once for settling files (N4)
         # [policy] (sources.toml + policy.toml): a broken policy raises ConfigError (exit 78), never "allow"
         self.publisher = Publisher(config, manifest, clock=clock)
         self.registry = Registry.default(config.convert, policy=self.publisher.content_policy)
@@ -714,6 +716,9 @@ class _Cycle:
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
+            for arm in arms.values():
+                if isinstance(arm, InboxArm):
+                    arm.settle_once = self.settle_inbox
             for src in self.selected:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
@@ -2247,7 +2252,9 @@ def run_cycle(
     ``mode=None`` is an interactive run (``agentsync sync`` without ``--mode``): its mode is
     ``_interactive_mode`` (RECONCILE when one is due, else POLL) and it waits up to ``lock_wait_s`` for a
     running cycle's lock.  An explicit mode (launchd) tries the lock once, unless ``wait_for_lock`` is True
-    (an operator verb with a fixed mode, such as ``accept-deletions``: launchd never retries it).
+    (an operator verb with a fixed mode, such as ``accept-deletions``: launchd never retries it).  An
+    interactive run also lets each inbox wait once for files still settling (``InboxArm.settle_once``), so a
+    file an exporter just renamed into place converts in this sync, not the next.
 
     Raises LockHeldError (CLI exit 75), ConfigError, ManifestSchemaError.  AuthRequiredError is caught:
     no cursor advances, STATE.md/heartbeat record ``auth: REAUTH_REQUIRED``, report.auth_required=True.
@@ -2270,6 +2277,7 @@ def run_cycle(
     if forced:
         selected = [s for s in selected if s.id in forced]
     interactive = mode is None if wait_for_lock is None else wait_for_lock
+    settle_inbox = mode is None  # an atomic re-export converts within the same sync (field N4)
     if mode is None:
         mode = _interactive_mode(config, clock())
     lock = SingleWriterLock(config.state_paths.lock, mode.value)
@@ -2300,6 +2308,7 @@ def run_cycle(
                 accept_deletions=frozenset(accept_deletions),
                 auth=auth,
                 stale_backups=stale_backups,
+                settle_inbox=settle_inbox,
             )
             return cycle.run()
     finally:

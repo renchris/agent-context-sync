@@ -17,6 +17,7 @@ import time
 import unicodedata
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -668,6 +669,58 @@ def test_inbox_withholds_files_inside_the_quiescence_window(tmp_path: Path) -> N
     assert [i.rel_path for i in res.items] == ["settled.pdf"]
     assert res.enumeration_complete is True
     assert res.alarms == ()
+
+
+def _settling(arm: al.InboxArm) -> list[float]:
+    """Give ``arm`` settle_once and a fake clock that only its sleep moves; returns the sleeps taken."""
+    start = time.time_ns()
+    sleeps: list[float] = []
+    arm.settle_once = True
+    arm._clock = lambda: start + int(sum(sleeps) * 1e9)
+    arm._sleep = sleeps.append
+    return sleeps
+
+
+def test_inbox_settle_once_waits_for_an_atomic_rename_and_lists_it(tmp_path: Path) -> None:
+    root = tmp_path / "inbox"
+    _write(root / "export.eml.tmp")
+    (root / "export.eml.tmp").rename(root / "export.eml")  # the writer contract: temp name, then rename
+    arm = _inbox(root)
+    sleeps = _settling(arm)
+    res = arm.scan(None, full=True)
+    assert len(sleeps) == 1 and 0 < sleeps[0] <= 60
+    assert [i.rel_path for i in res.items] == ["export.eml"]
+    assert res.enumeration_complete is True
+    assert res.alarms == ()
+
+
+def test_inbox_settle_once_lists_once_more_and_never_waits_past_the_window(tmp_path: Path) -> None:
+    root = tmp_path / "inbox"
+    _write(root / "growing.eml")
+    arm = _inbox(root)
+    sleeps = _settling(arm)
+    real_walk = arm._walk_scan
+    walks: list[int] = []
+
+    def walk_and_touch() -> Any:
+        walks.append(1)
+        if len(walks) == 2:  # still being written when the inbox is listed again
+            _write(root / "growing.eml", b"xy")
+            os.utime(root / "growing.eml", ns=(arm._clock(), arm._clock()))
+        return real_walk()
+
+    arm._walk_scan = walk_and_touch  # type: ignore[method-assign]
+    res = arm.scan(None, full=True)
+    assert len(walks) == 2 and len(sleeps) == 1  # one more listing, never a third
+    assert res.items == () and res.enumeration_complete is False
+
+    future = time.time_ns() + 3600 * 1_000_000_000  # a future-dated file cannot leave the window in time
+    os.utime(root / "growing.eml", ns=(future, future))
+    sleeps.clear()
+    walks.clear()
+    res = arm.scan(None, full=True)
+    assert sleeps == [] and len(walks) == 1
+    assert res.enumeration_complete is False
 
 
 def test_inbox_reports_max_of_created_and_modified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -634,7 +634,7 @@ def inbox_source_table(source_id: str, path: Path) -> str:
     return (
         f'\n[[source]]\nid = "{source_id}"\nkind = "inbox"\n'
         f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
-        "# quiescence_s = 60   # files still being written are skipped until they settle\n"
+        "# quiescence_s = 60   # write to a temp name, then rename it into place; expect about a 60 s delay\n"
     )
 
 

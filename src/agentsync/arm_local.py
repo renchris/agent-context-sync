@@ -902,6 +902,10 @@ class InboxArm(LocalArm):
         """Bind to one configured inbox source (see LocalArm)."""
         super().__init__(cfg)
         self._clock: Callable[[], int] = time.time_ns  # wall clock in ns; replaceable in tests
+        self._sleep: Callable[[float], None] = time.sleep  # replaceable in tests
+        # Set by the cycle for an interactive sync (field N4): when the only gap in a walk is withheld files,
+        # wait until the youngest settles (at most quiescence_s) and list the inbox once more.
+        self.settle_once = False
 
     def _exclude(self) -> tuple[str, ...]:
         extra = tuple(p for p in _INBOX_IGNORES if p not in self.cfg.exclude)
@@ -911,30 +915,49 @@ class InboxArm(LocalArm):
         """As LocalArm.scan, but items whose size/mtime changed within ``quiescence_s`` are withheld.
 
         mtime_ns is reported as max(created_ns, mtime_ns) (a copied file keeps its original mtime).  Withheld
-        items make enumeration_complete False (they are neither new nor absent this pass).
+        items make enumeration_complete False (they are neither new nor absent this pass).  With
+        ``settle_once`` set and withheld files the walk's only gap, the arm sleeps until the youngest of them
+        leaves the window (never longer than ``quiescence_s``: a future-dated file is not waited for) and
+        walks once more; what is still withheld then stays withheld.
         """
         del cursor, full
-        walked = self._walk_scan()
-        if isinstance(walked, ScanResult):
-            self.last_stats = None
-            return walked
-        items, stats, alarms = walked
-        self.last_stats = stats
-        horizon = self._clock() - self.cfg.quiescence_s * 1_000_000_000
-        kept: list[SourceItem] = []
-        withheld: list[str] = []
-        for item in items:
-            created = item.created_ns if item.created_ns is not None else item.mtime_ns
-            if max(item.mtime_ns, item.ctime_ns, created) > horizon:
-                withheld.append(item.rel_path)
-                continue
-            kept.append(
-                dataclasses.replace(
-                    item,
-                    mtime_ns=max(created, item.mtime_ns),
-                    extra={"dedup_name": fold_conflict_suffix(item.name)},
+        quiescence_ns = self.cfg.quiescence_s * 1_000_000_000
+        for attempt in range(2):
+            walked = self._walk_scan()
+            if isinstance(walked, ScanResult):
+                self.last_stats = None
+                return walked
+            items, stats, alarms = walked
+            self.last_stats = stats
+            horizon = self._clock() - quiescence_ns
+            kept: list[SourceItem] = []
+            withheld: list[str] = []
+            youngest = horizon
+            for item in items:
+                created = item.created_ns if item.created_ns is not None else item.mtime_ns
+                stamp = max(item.mtime_ns, item.ctime_ns, created)
+                if stamp > horizon:
+                    withheld.append(item.rel_path)
+                    youngest = max(youngest, stamp)
+                    continue
+                kept.append(
+                    dataclasses.replace(
+                        item,
+                        mtime_ns=max(created, item.mtime_ns),
+                        extra={"dedup_name": fold_conflict_suffix(item.name)},
+                    )
                 )
+            wait_ns = youngest - horizon  # until the youngest withheld file leaves the window
+            only_withheld = bool(withheld) and stats.sentinel_present is not False and not stats.unknown_dirs
+            if attempt or not self.settle_once or not only_withheld or wait_ns > quiescence_ns:
+                break
+            log.info(
+                "%s: %d inbox item(s) still settling; waiting %.1fs, then listing the inbox once more",
+                self.source_id,
+                len(withheld),
+                wait_ns / 1e9,
             )
+            self._sleep(wait_ns / 1e9)
         if withheld:
             shown = ", ".join(repr(p) for p in withheld[:5])
             more = f" (+{len(withheld) - 5} more)" if len(withheld) > 5 else ""
