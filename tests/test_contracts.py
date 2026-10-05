@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import inspect
 import pkgutil
@@ -45,10 +46,13 @@ def test_module_imports_and_is_in_contract(module_name: str) -> None:
     assert not missing, f"{module_name}: undocumented public names {missing}"
 
 
+CLI_GLOBAL_OPTIONS: list[str] = ["--config", "-v/--verbose", "--version"]
+"""The pinned options of the root parser itself (-h/--help excluded)."""
+
 CLI_SURFACE: dict[str, dict[str, list[str]]] = {
     "visible": {
         "init": ["--docs-repo", "--source-local", "--force"],
-        "add-source": ["--inbox", "--id"],
+        "add-source": ["path", "--inbox", "--id"],
         "sync": ["--once", "--mode", "--dry-run", "--source", "--materialise-budget"],
         "reconcile": ["--source", "--accept-deletions"],
         "status": [],
@@ -56,21 +60,21 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "lint": [],
         "refresh-queue": [],
         "curate-queue": [],
-        "materialise": ["--budget"],
-        "adopt": [],
+        "materialise": ["--budget", "paths"],
+        "adopt": ["src_dir"],
         "migrate": [],
-        "graph": ["--device-code", "--url", "--toml"],
+        "graph": ["action{login,logout,whoami,discover}", "--device-code", "--url", "--toml"],
         "login": ["--device-code", "--url", "--toml"],
         "logout": ["--device-code", "--url", "--toml"],
         "whoami": ["--device-code", "--url", "--toml"],
         "discover": ["--device-code", "--url", "--toml"],
         "install-agent": ["--interval", "--reconcile-interval", "--no-backup-exclusions"],
         "uninstall-agent": [],
-        "purge": ["--source", "--reason", "--queue", "--dry-run", "--push"],
+        "purge": ["selector", "--source", "--reason", "--queue", "--dry-run", "--push"],
         "compact-history": ["--keep-days", "--dry-run"],
-        "hold": ["--reason", "--owner", "--release", "--list"],
+        "hold": ["scope", "--reason", "--owner", "--release", "--list"],
         "offboard": ["--purge-data", "--dry-run", "--confirm"],
-        "policy": [],
+        "policy": ["action{show}"],
         "setup-report": ["--out", "--friction", "--no-redact"],
         "it-request": ["--out"],
     },
@@ -79,8 +83,10 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "checkpoint": [],
     },
 }
-"""The pinned CLI surface: subcommand -> its visible options (the common --config/-v and -h excluded).
-Adding, hiding or removing a command or option is a deliberate edit here, in the same commit as the change."""
+"""The pinned CLI surface: subcommand -> its options (every spelling, ``a/b``) and positionals (dest, plus
+``{choices}`` when it has them), in declaration order; the common --config/-v and -h are excluded. An option
+whose help is suppressed carries `` (hidden)``. Adding, hiding or removing a command, option, spelling,
+positional or choice is a deliberate edit here, in the same commit as the change."""
 
 INSTALL_OPTIONS: dict[str, list[str]] = {
     "first-argument": ["--log-start", "--log", "--log-end"],
@@ -100,35 +106,48 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
         "--version",
         "-h",
         "--help",
+        "*",
     ],
 }
 """The pinned install.sh options, per case block: the first-argument dispatch and the main option loop."""
 
 
-def _cli_surface() -> dict[str, dict[str, list[str]]]:
-    import argparse  # noqa: PLC0415
+def _cli_entry(action: argparse.Action) -> str:
+    """One pinned entry: every spelling of an option (``-v/--verbose``), or a positional's dest with its
+    choices (``action{show}``); `` (hidden)`` when its help is suppressed."""
+    if action.option_strings:
+        entry = "/".join(action.option_strings)
+    else:
+        entry = action.dest + ("{" + ",".join(map(str, action.choices)) + "}" if action.choices else "")
+    return entry + (" (hidden)" if action.help is argparse.SUPPRESS else "")
 
+
+def _cli_surface() -> tuple[list[str], dict[str, dict[str, list[str]]]]:
+    """The root parser's own options, and each subcommand's options and positionals by visibility."""
     from agentsync import cli  # noqa: PLC0415
 
     parser = cli.build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    root = [
+        _cli_entry(a)
+        for a in parser._actions
+        if not isinstance(a, argparse._HelpAction | argparse._SubParsersAction)
+    ]
     shown = {a.dest for a in sub._choices_actions if a.help is not argparse.SUPPRESS}
     common = {"-h", "--help", "--config", "-v", "--verbose"}
     surface: dict[str, dict[str, list[str]]] = {"visible": {}, "hidden": {}}
     for name, sp in sub.choices.items():
-        options = [
-            a.option_strings[-1]
-            for a in sp._actions
-            if a.option_strings and a.help is not argparse.SUPPRESS and not common & set(a.option_strings)
-        ]
-        surface["visible" if name in shown else "hidden"][name] = options
-    return surface
+        entries = [_cli_entry(a) for a in sp._actions if not common & set(a.option_strings)]
+        surface["visible" if name in shown else "hidden"][name] = entries
+    return root, surface
 
 
 def test_cli_surface_is_frozen() -> None:
-    """Every subcommand, visible or hidden, and every visible option equals the pinned surface; each
+    """The root options and every subcommand, visible or hidden, with every option and positional equal
+    the pinned surface; each
     subcommand is also named in CONTRACTS.md (§16.10 and the cli section)."""
-    surface = _cli_surface()
+    root, surface = _cli_surface()
+    assert root == CLI_GLOBAL_OPTIONS
     assert surface == CLI_SURFACE
     text = CONTRACTS.read_text(encoding="utf-8")
     missing = [name for kind in surface.values() for name in kind if name not in text]
@@ -136,13 +155,14 @@ def test_cli_surface_is_frozen() -> None:
 
 
 def _install_case_arms(script: str, opener: str, closer: str) -> list[str]:
-    """The option patterns of the case arms (at most one tab deep) between ``opener`` and the next column-0
+    """The option patterns of the case arms (at most one tab deep; ``*`` is the positional SOURCE arm, the
+    ``-*`` unknown-option arm is dropped) between ``opener`` and the next column-0
     ``closer``."""
     import re  # noqa: PLC0415
 
     block = script.split(f"\n{opener}\n", 1)[1].split(f"\n{closer}\n", 1)[0]
     arms: list[str] = []
-    for m in re.finditer(r"^\t?(-[^)\n]*)\)", block, flags=re.MULTILINE):
+    for m in re.finditer(r"^\t?(-[^)\n]*|\*)\)", block, flags=re.MULTILINE):
         arms += [o for o in m.group(1).split(" | ") if o != "-*"]
     return arms
 
