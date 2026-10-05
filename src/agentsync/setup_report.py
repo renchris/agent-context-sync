@@ -2212,6 +2212,37 @@ def _background(r: _Run) -> list[str]:
     return out + _fence(tcc)
 
 
+# An item's path or document name in a log line: a slash inside a word, or a document extension. Field report
+# 2026-10-05: client folder and file names nested BELOW a configured source (never registered with the
+# Redactor) reached the report through "fetch of <rel_path> failed" lines and inbox .eml names.
+_PATH_IN_LOG_RE = re.compile(
+    r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|csv|tsv|rtf|odt|ods|odp|pages|numbers|"
+    r"key|vsdx?|one|html?|json|xml|zip|png|jpe?g|gif|heic|tiff?|mp4|mov|m4a|wav)\b",
+    re.IGNORECASE,
+)
+_KEY_PATH_RE = re.compile(r"\b(\w+=)(?:[^=]*?)(?=\s\w+=|$)")
+_ABS_PATH_RE = re.compile(r"(?:(?<=\s)|(?<=^)|(?<=['\"(]))(?:~|/)\S*/.*$")
+
+
+def _scrub_item_paths(line: str) -> str:
+    """``line`` (``<log file>: <log line>``) with item paths and document names replaced by ``<path>``, per
+    ``: ``-separated segment: a ``key=`` value or an absolute path (``/…`` or ``~/…``, to the segment's end)
+    in place, and any segment still naming a path or document whole. The local log keeps the detail; the
+    report, which may go to a public issue, never carries an item's path or name."""
+    name, sep, rest = line.partition(": ")
+    return name + sep + ": ".join(_scrub_segment(part) for part in rest.split(": "))
+
+
+def _scrub_segment(part: str) -> str:
+    if not _PATH_IN_LOG_RE.search(part.replace("agentsync.", "")):
+        return part
+    out = _KEY_PATH_RE.sub(
+        lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(m.group(0)) else m.group(0), part
+    )
+    out = _ABS_PATH_RE.sub("<path>", out)
+    return "<path>" if _PATH_IN_LOG_RE.search(out.replace("agentsync.", "").replace("<path>", "")) else out
+
+
 def _recent_errors(r: _Run) -> list[str]:
     log_dir = r.log_dir()
     if not log_dir.exists():
@@ -2221,10 +2252,13 @@ def _recent_errors(r: _Run) -> list[str]:
     problems: list[str] = []
     for path in files:
         try:
-            hits += [f"{path.name}: {ln}" for ln in _tail(path) if _LEVEL_RE.search(ln)]
+            hits += [_scrub_item_paths(f"{path.name}: {ln}") for ln in _tail(path) if _LEVEL_RE.search(ln)]
         except OSError as exc:
             problems.append(f"- {path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
-    head = f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s) in {log_dir}:"
+    head = (
+        f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s) in {log_dir}"
+        " (item paths and document names shown as <path>):"
+    )
     return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
 
 

@@ -131,15 +131,42 @@ def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Pat
     for placeholder in ("<org-1>", "<folder-1>", "<library-1>", "<user>", "<name>", "<email-1>", "<guid-1>"):
         assert placeholder in text, placeholder
     assert "<serial>" in text and "<host>" in text and "~/Library/CloudStorage/OneDrive-<org-1>/" in text
-    # consistent: the same folder is the same placeholder in the install log and the job log
+    # the install log names the source folder as placeholders; a job log line never carries a path at all
     path_one = "~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<folder-2>"
-    for title in ("Installer", "Recent errors"):
-        assert path_one in section(text, title), title
+    assert path_one in section(text, "Installer")
+    assert "<email-1> (<name>, <user>) owns <path>" in section(text, "Recent errors")
     assert "OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>" in text
     assert not re.search(r"<folder-[4-9]>", text), "three folders, three placeholders"
     m = re.search(r"^(\d+) replacement\(s\) of (\d+) value\(s\)", section(text, "Redaction"), re.MULTILINE)
     assert m and int(m.group(1)) > 10 and 10 <= int(m.group(2)) < int(m.group(1))
     assert f"- redaction: {m.group(1)} replacement(s) of {m.group(2)} value(s)" in section(text, "Summary")
+
+
+def test_recent_errors_never_carry_an_item_path_or_document_name(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Field report 2026-10-05: names nested below a configured source were never registered with the
+    Redactor, so "fetch of <rel_path> failed" lines and inbox .eml names reached a report meant for a
+    public issue."""
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-10-05 09:00:00,000 WARNING agentsync.cycle: src-x: fetch of Big Bank Merger/Q3 pricing for "
+        "Globex.xlsx failed: [Errno 89] Operation canceled\n"
+        + "2026-10-05 09:00:01,000 WARNING agentsync.cycle: inbox: Re Northwind pricing call.eml: "
+        "read failed: Operation canceled\n"
+        + "2026-10-05 09:00:02,000 ERROR agentsync.cycle: src-x: read failed: [Errno 89] Operation canceled: "
+        "'/Users/someone/Library/CloudStorage/OneDrive-Acme/Clients/Initech Deal/term sheet.docx'\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    errors = section(text, "Recent errors")
+    for name in ("Big Bank", "Merger", "Globex", "Northwind", "Initech", "term sheet", "Clients"):
+        assert name not in text, name
+    assert "src-x: <path>: [Errno 89] Operation canceled" in errors
+    assert "inbox: <path>: read failed: Operation canceled" in errors
+    assert "src-x: read failed: [Errno 89] Operation canceled: '<path>" in errors
+    assert "(item paths and document names shown as <path>)" in errors
 
 
 def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> None:
