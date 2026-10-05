@@ -232,6 +232,34 @@ def test_no_redact_and_friction_are_deleted_and_setup_report_is_hidden(
     assert cli.build_parser().parse_args(["setup-report"]).out == Path(setup_report.DEFAULT_OUT)
 
 
+def test_the_friction_env_var_names_the_log_the_report_reads(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """KISS K16a: with --friction gone, $AGENTSYNC_FRICTION_LOG is the one way to point setup-report at
+    another friction log (install.sh's friction_file() honours the same variable): present it is embedded,
+    missing it is named in the section."""
+    elsewhere = fake_mac["home"] / "elsewhere" / "friction-alt.md"
+    elsewhere.parent.mkdir()
+    monkeypatch.setenv(setup_report.FRICTION_ENV, str(elsewhere))
+    write_friction(fake_mac, path=elsewhere)
+    capsys.readouterr()
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0 and "; friction log embedded)" in capsys.readouterr().out
+    assert "Embedded from ~/elsewhere/friction-alt.md as this report read it" in section(
+        text, "Agent friction log"
+    )
+
+    missing = fake_mac["home"] / "elsewhere" / "none.md"
+    monkeypatch.setenv(setup_report.FRICTION_ENV, str(missing))
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0 and f"no friction log found at {missing}" in capsys.readouterr().out
+    assert "No friction log found at ~/elsewhere/none.md" in section(text, "Agent friction log")
+    assert f"${setup_report.FRICTION_ENV} names another file" in section(text, "Agent friction log")
+
+
 def test_a_broken_section_is_recorded_not_raised(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     logs = fake_mac["logs"]
     logs.chmod(0)

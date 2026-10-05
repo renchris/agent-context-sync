@@ -47,8 +47,7 @@ Redaction is on by default and consistent, so the same value is always the same 
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping
 when the report embeds it, so the agent should not invent its own placeholders. Before sending, read the whole file
 once. Redaction only covers values agentsync knows about, so a project or customer name it has never seen (inside a
-log line or in the agent's words) is yours to remove. `--no-redact` keeps every value, says so at the top, and is only for sending
-privately.
+log line or in the agent's words) is yours to remove. The CLI always redacts.
 
 ## 3. Send
 
@@ -65,7 +64,7 @@ privately.
   team triages it there with this page, exactly like an issue; that needs no contact with the agentsync maintainer.
   To hand a report to the maintainer without a public post, the optional route is the contact on the maintainer's
   GitHub profile ([github.com/renchris](https://github.com/renchris)); no email address is published in this
-  repository. Keep the report redacted, or use `--no-redact` only when the recipient may see the names. A privately
+  repository. Keep the report redacted. A privately
   sent report is filed as a public issue, with the organisation removed, only if the person agrees. The issue form's
   "Send a setup report privately" link points here.
 

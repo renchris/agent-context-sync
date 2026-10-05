@@ -10,8 +10,8 @@ body:
         [docs/deploy/setup-feedback.md](https://github.com/renchris/agent-context-sync/blob/main/docs/deploy/setup-feedback.md)
         explains what happens to it.
 
-        This issue is **public**. Paste the redacted report (`~/agent-context/setup-report.md`, not one written with
-        `--no-redact`) and read it once more first. To send it privately instead, see that page: copying the file
+        This issue is **public**. Paste the report (`~/agent-context/setup-report.md`, always redacted) and read it
+        once more first. To send it privately instead, see that page: copying the file
         back to the machine you administer this setup from is enough.
 
         The report command (`install.sh --report-only`, step 3 of the prompt, or `agentsync setup-report --out`) ends
