@@ -679,6 +679,19 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert "wants to access files managed by" in third.stdout
     assert third.stdout.strip().splitlines()[-1].startswith("NEXT: background sync: ok; run ")
 
+    # From this checkout (developer tools present): a build whose sources match is kept, unless the developer
+    # variable AGENTSYNC_REBUILD_LAUNCHER=1 (which replaced --rebuild-launcher, KISS K11b) forces a rebuild.
+    native = {**stubs, "ARCHS": os.uname().machine}
+    built = install_sh(native, "--confirm-install-agent")
+    assert built.returncode == 0, built.stderr
+    kept = install_sh(native, "--confirm-install-agent")
+    assert kept.returncode == 0 and "launcher: " in kept.stdout and "is up to date (sources " in kept.stdout
+    mtime = (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns
+    forced = install_sh({**native, "AGENTSYNC_REBUILD_LAUNCHER": "1"}, "--confirm-install-agent")
+    assert forced.returncode == 0, forced.stderr
+    assert "is up to date" not in forced.stdout and f"launcher: replacing {dest}" in forced.stdout
+    assert (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns != mtime, "rebuilt"
+
 
 @needs_build
 def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launcher_app: Path) -> None:
