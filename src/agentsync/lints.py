@@ -369,7 +369,8 @@ def _first_token_hit(
                 m = pattern.search(line)
                 if m:
                     what = m.group(0).strip()
-                    return n, what.split("=", 1)[0] + "=" if "=" in what else what.split()[0]
+                    # A bearer value may hold "=" (base64 padding), so its label is the scheme alone.
+                    return n, "Bearer" if what.startswith("Bearer") else what.split("=", 1)[0] + "="
     except OSError as exc:
         log.warning("cannot read %s: %s", path, exc.strerror)
     return None

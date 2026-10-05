@@ -349,29 +349,37 @@ def test_token_in_pipeline_file_is_blocking_and_not_quoted(repo: Path) -> None:
 
 
 OPAQUE_BEARER = "8f2kQz71mVb0aLx3TnWp9cRd"
+JWT_BEARER = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl"
+PADDED_BEARER = "dGhpc2lzYXNlY3JldHRva2VuMTIzNA=="
+MID_EQUALS_BEARER = "ya29.a0Xq7Lm2Rz=Q9zKp4Wn8Tb3Vc"
+QUERY_TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2"
 
 
 @pytest.mark.parametrize(
-    ("text", "flagged"),
+    ("text", "value"),
     [
-        ("Our desk covers Bearer Securities and other instruments.", False),
-        ("Authorization: Bearer <your token>", False),
-        ("See the reset-token=howto page.", False),
-        (f"Authorization: Bearer {OPAQUE_BEARER}", True),
-        ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl", True),
-        ("https://app.example.com/cb#access_token=Zm9vYmFyYmF6cXV4MTIzNDU2&state=x", True),
-        ("https://graph.microsoft.com/v1.0/me/delta?$deltatoken=Zm9vYmFyYmF6cXV4MTIz", True),
+        ("Our desk covers Bearer Securities and other instruments.", None),
+        ("Authorization: Bearer <your token>", None),
+        ("See the reset-token=howto page.", None),
+        (f"Authorization: Bearer {OPAQUE_BEARER}", OPAQUE_BEARER),
+        (f"Authorization: Bearer {JWT_BEARER}", JWT_BEARER),
+        (f"Authorization: Bearer {PADDED_BEARER}", PADDED_BEARER),
+        (f"Authorization: Bearer {MID_EQUALS_BEARER}", MID_EQUALS_BEARER),
+        (f"https://app.example.com/cb#access_token={QUERY_TOKEN}&state=x", QUERY_TOKEN),
+        (f"https://graph.microsoft.com/v1.0/me/delta?$deltatoken={QUERY_TOKEN}", QUERY_TOKEN),
     ],
 )
-def test_page_token_check_needs_a_token_shaped_value(repo: Path, text: str, flagged: bool) -> None:
+def test_page_token_check_needs_a_token_shaped_value(repo: Path, text: str, value: str | None) -> None:
     """field N7: prose like "Bearer Securities" is no finding; a real-looking token is a non-blocking one
-    whose advice names an action that exists (no SECRET quarantine is fed by it)."""
+    whose advice names an action that exists (no SECRET quarantine is fed by it) and quotes no part of the
+    value, even one holding "=" (base64 padding)."""
     write(repo, "mirror/src/notes.md", page(f"# Notes\n\n{text}\n"))
     found = lints.lint_no_tokens(repo)
-    assert codes(found) == ([("TOKEN", "mirror/src/notes.md", False)] if flagged else [])
+    assert codes(found) == ([("TOKEN", "mirror/src/notes.md", False)] if value else [])
     for f in found:
         assert "rotate it" in f.message and "quarantine" not in f.message
-        assert OPAQUE_BEARER not in f.message and "Zm9vYmFy" not in f.message
+        assert value is not None
+        assert not any(value[i : i + 8] in f.message for i in range(len(value) - 7))
 
 
 def test_token_lint_on_given_paths_and_skips_cache(repo: Path) -> None:
