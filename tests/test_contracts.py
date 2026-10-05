@@ -156,6 +156,48 @@ def test_cli_surface_is_frozen() -> None:
     assert not missing, f"CLI subcommands missing from CONTRACTS.md: {missing}"
 
 
+LOOP_VERBS = ("sync", "curate", "status")
+"""The verbs an agent runs every session (KISS K19b): visible, with no visible option."""
+
+
+def test_contracts_16_10_lists_the_pinned_surface() -> None:
+    """KISS K19b: §16.10's Visible and Hidden lines name exactly the pinned commands, and sync, curate and
+    status pin no option without `` (hidden)``."""
+    import re  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    section = text.split("\n### 16.10 ", 1)[1].split("\n### ", 1)[0]
+    listed = {}
+    for kind in ("Visible", "Hidden"):
+        line = re.search(rf"(?m)^- {kind}: (.+)$", section)
+        assert line is not None, f"§16.10 has no '- {kind}:' line"
+        listed[kind.lower()] = re.findall(r"`([^`]+)`", line.group(1))
+    for kind, names in listed.items():
+        assert len(names) == len(set(names)), f"§16.10 {kind} names a command twice"
+        assert set(names) == set(CLI_SURFACE[kind]), kind
+    for verb in LOOP_VERBS:
+        shown = [e for e in CLI_SURFACE["visible"][verb] if not e.endswith(" (hidden)")]
+        assert not shown, f"{verb} has a visible option: {shown}"
+
+
+def test_help_lists_no_hidden_verb_and_each_still_parses(capsys: pytest.CaptureFixture[str]) -> None:
+    """KISS K19b: ``agentsync --help`` lists every visible command and none of the hidden ones, and every
+    hidden command still parses (old fix strings, docs and scripts keep working)."""
+    import re  # noqa: PLC0415
+
+    from agentsync import cli  # noqa: PLC0415
+
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["--help"])
+    listed = set(re.findall(r"(?m)^    (\S+)", capsys.readouterr().out))
+    assert set(CLI_SURFACE["visible"]) <= listed
+    assert not set(CLI_SURFACE["hidden"]) & listed
+    needs = {"graph": ["whoami"], "policy": ["show"]}  # the required positional
+    for name in CLI_SURFACE["hidden"]:
+        args = cli.build_parser().parse_args([name, *needs.get(name, [])])
+        assert args.command == name
+
+
 def _install_case_arms(script: str, opener: str, closer: str) -> list[str]:
     """The option patterns of the case arms (at most one tab deep; ``*`` is the positional SOURCE arm, the
     ``-*`` unknown-option arm is dropped) between ``opener`` and the next column-0

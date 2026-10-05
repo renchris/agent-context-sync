@@ -4433,6 +4433,15 @@ class AgentSpec:
 EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher returns it (LaunchAgent runs)
 ```
 
+**Surface (2026-10-05, KISS K19b).** `agentsync --help` lists nine commands, and `sync`, `curate` and `status`
+take no visible option. Every other command is hidden from help and still parses, so fix strings, published docs
+and scripts keep working. `tests/test_contracts.py::CLI_SURFACE` pins both lists with every option, and a test
+checks the two lines below against it: adding, hiding or removing a command is an edit there and here, in the
+same commit.
+
+- Visible: `sync`, `curate`, `status`, `add-source`, `accept-deletions`, `adopt`, `purge`, `hold`, `offboard`
+- Hidden: `init`, `reconcile`, `doctor`, `policy`, `curate-queue`, `lint`, `refresh-queue`, `checkpoint`, `install-skill`, `materialise`, `migrate`, `compact-history`, `install-agent`, `uninstall-agent`, `graph`, `login`, `logout`, `whoami`, `discover`, `it-request`, `setup-report`
+
 ### 16.11 Open contract gaps (recorded, not implemented)
 
 - `frontmatter.MIRROR_KEY_ORDER` has no `content_trust` key (the body banner and AGENTS.md carry the boundary).
