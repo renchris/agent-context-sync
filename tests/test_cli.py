@@ -1204,9 +1204,76 @@ def test_status_fail_lines_are_doctors_byte_for_byte_and_exit_1(
     rc, out = _status(cfg, capsys)
     assert rc == cli.EXIT_FAILED
     assert [ln for ln in out if ln.startswith("[")] == doctor.format_results(fake).splitlines()
-    assert out[0] == "NEXT: the fake.check check failed: do the thing"
+    assert out[0] == "NEXT: the fake.check check failed: do what the fix on its [FAIL] line below says"
     monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: [fake[0], fake[2]])
     assert _status(cfg, capsys)[0] == cli.EXIT_OK, "a warn alone is not a failure"
+
+
+def test_status_next_never_copies_a_fail_fix(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A fix may name a mirror path, a file or a bare ``agentsync`` (CONTRACTS §16.20): NEXT points at it."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    sentinel = "restore /Users/me/Library/CloudStorage/OneDrive-Org/Folder/.agentsync-sentinel"
+    fake = [
+        doctor.CheckResult("source.x.sentinel", False, "gone", doctor.Severity.ERROR, fix=sentinel),
+        doctor.CheckResult("graph.auth", False, "REAUTH", doctor.Severity.ERROR, fix="agentsync login"),
+    ]
+    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: list(fake))
+    rc, out = _status(cfg, capsys)
+    nexts = [ln for ln in out if ln.startswith(("NEXT:", "WAITING ON YOU:"))]
+    assert rc == cli.EXIT_FAILED and nexts[0].startswith("NEXT: the source.x.sentinel check failed: ")
+    assert not any("/" in ln or re.search(r"(^|[\s`])agentsync ", ln) for ln in nexts), nexts
+    assert any(ln.endswith(f"(fix: {sentinel})") for ln in out), "the [FAIL] line still carries the fix"
+
+
+@pytest.mark.parametrize("breakage", ["governance", "schema"])
+def test_status_prints_every_check_when_its_state_cannot_be_read(
+    breakage: str, initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A broken [governance] or a newer-schema manifest is a FAIL line, never an empty status."""
+    cfg = _synced(initialised)
+    if breakage == "governance":
+        path = initialised.config_path
+        path.write_text(path.read_text(encoding="utf-8") + '\n[governance]\nhistory_days = "x"\n', "utf-8")
+    else:
+        with sqlite3.connect(initialised.state_paths.db) as conn:
+            conn.execute("UPDATE meta SET value = '999' WHERE key = 'manifest_schema_version'")
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    checks = [ln for ln in out if re.match(r"\[(ok  |info|warn|FAIL)\] ", ln)]
+    assert len(checks) > 15 and any(ln.startswith("loop: ") for ln in out), out
+    if breakage == "governance":
+        assert rc == cli.EXIT_FAILED and any(ln.startswith("[FAIL] governance.config") for ln in checks)
+        assert any(ln.startswith("status: cannot read the state: ConfigError") for ln in out)
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    assert cli.main(["doctor", "--config", cfg]) == rc
+    alias = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[")]
+    assert [ln.split(" — ")[0] for ln in alias] == [ln.split(" — ")[0] for ln in checks], "ages may tick"
+
+
+def test_the_doctor_alias_prints_no_status_or_policy_detail(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """install.sh copies doctor's output into install.out, whose tail setup-report embeds: no label names."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    monkeypatch.setattr(governance, "pending_purges", lambda root: ["queued"])
+    _status(cfg, capsys)
+    for argv, env in ((["doctor"], None), (["doctor"], "1"), (["status"], "1")):
+        if env is None:
+            monkeypatch.delenv(loop.NO_NEXT_HINT_ENV, raising=False)
+        else:
+            monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, env)
+        cli.main([*argv, "--config", cfg])
+        out = capsys.readouterr().out
+        assert "exclude_label_names" not in out and "(run " not in out, (argv, env)
+        assert "[ok  ] " in out and "loop: skill " in out
+    monkeypatch.delenv(loop.NO_NEXT_HINT_ENV, raising=False)
+    cli.main(["policy", "show", "--config", cfg])
+    out = capsys.readouterr().out
+    assert "  exclude_label_names: -" in out and "queued purges: 1 (run `~/.local/bin/agentsync purge" in out
 
 
 def test_a_failed_skill_write_is_a_fail(
@@ -1238,6 +1305,24 @@ def test_a_failed_skill_write_is_a_fail(
         assert any(re.match(r"\[info\] skill +— stale: the next sync writes it", ln) for ln in out)
     finally:
         path.parent.chmod(0o700)
+
+
+def test_a_skill_copy_no_sync_wrote_is_never_a_fail(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Synced without CLAUDE_CONFIG_DIR, checked with it set: that copy is the next sync's to write."""
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    extra = tmp_path / "other-config"
+    extra.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(extra))
+    monkeypatch.setattr(cli, "_build_installed_at", lambda: datetime.now(UTC) - timedelta(days=1))
+    rc, out = _status(cfg, capsys)
+    (line,) = [ln for ln in out if " skill " in ln and ln.startswith("[")]
+    assert rc == cli.EXIT_OK and line.startswith("[info] skill "), line
+    assert f"missing {extra / 'skills' / skill.SKILL_NAME / 'SKILL.md'}" in line
+    assert str(skill.skill_paths()[0]) not in line, "only the copy that is off is named"
 
 
 def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
@@ -1314,6 +1399,37 @@ def test_status_runs_the_tcc_canary_only_after_a_tcc_event_or_before_any_run(
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(b"")
     assert canary() is True, "installed after every logged event: nothing has run since install"
+
+
+def test_a_denied_path_is_not_cleared_by_another_paths_canary_ok(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The launcher logs one canary line per path and keeps going after TCC_DENIED."""
+    seen: list[bool] = []
+    real = doctor.run_checks
+
+    def spy(config: Config, *, tcc_canary: bool = True) -> list[doctor.CheckResult]:
+        seen.append(tcc_canary)
+        return real(config, tcc_canary=False)
+
+    monkeypatch.setattr(doctor, "run_checks", spy)
+    initialised.log_dir.mkdir(parents=True, exist_ok=True)
+    poll = initialised.log_dir / "com.agentsync.poll.err.log"
+    poll.write_text(
+        '2026-09-29T09:00:00Z agentsync-launcher[1]: TCC_DENIED path="/b" errno=1\n'
+        '2026-09-29T10:00:00Z agentsync-launcher[2]: TCC_DENIED path="/a" errno=1 error="x"\n'
+        '2026-09-29T10:00:01Z agentsync-launcher[2]: CANARY_OK path="/b"\n',
+        encoding="utf-8",
+    )
+    _, out = _status(str(initialised.config_path), capsys)
+    assert seen[-1] is True
+    launcher = [ln for ln in out if ln.startswith("launcher: ")]
+    assert len(launcher) == 1 and 'TCC_DENIED path="/a"' in launcher[0], launcher
+    with poll.open("a", encoding="utf-8") as fh:
+        fh.write('2026-09-29T11:00:00Z agentsync-launcher[3]: CANARY_OK path="/a"\n')
+        fh.write('2026-09-29T11:00:01Z agentsync-launcher[3]: CANARY_OK path="/b"\n')
+    _, out = _status(str(initialised.config_path), capsys)
+    assert seen[-1] is False and not [ln for ln in out if ln.startswith("launcher: ")]
 
 
 def test_status_honours_no_next_hint(

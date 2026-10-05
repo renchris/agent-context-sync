@@ -33,6 +33,7 @@ import dataclasses
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -704,26 +705,65 @@ def _log_tail(path: Path, limit: int = _LOG_TAIL_BYTES) -> list[str]:
     return lines[1:] if size > limit else lines  # the first line of a mid-file window is partial
 
 
+_CANARY_EVENTS = (*_TCC_TOKENS, *_CLEARED_TOKENS)
+_LAUNCHER_PID = re.compile(r"agentsync-launcher\[(\d+)\]")
+_CANARY_PATH = re.compile(r'\bpath=("(?:[^"\\]|\\.)*"|\S+)')
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _LauncherRun:
+    """A job's newest launcher run (its newest canary event and the events just before it with the same pid):
+    when that event was logged, and its TCC_PENDING / TCC_DENIED lines that no later line of the run cleared.
+    The launcher logs one canary line per protected path and keeps going after TCC_DENIED, so a CANARY_OK
+    clears only its own path; CHILD_EXIT clears them all (the child ran)."""
+
+    stamp: datetime | None
+    pending: tuple[str, ...]
+
+
+def _newest_launcher_run(config: Config, suffix: str) -> _LauncherRun | None:
+    """:class:`_LauncherRun` of the ``suffix`` job's stderr log; None when it logged no canary event."""
+    log_path = expand(config.log_dir) / f"{config.launchd_label_prefix}.{suffix}.err.log"
+    try:
+        lines = [ln.strip() for ln in _log_tail(log_path)]
+    except OSError:
+        return None
+    events = [ln for ln in lines if any(t in ln for t in _CANARY_EVENTS)]
+    if not events:
+        return None
+
+    def pid(line: str) -> str | None:
+        m = _LAUNCHER_PID.search(line)
+        return m.group(1) if m is not None else None
+
+    newest = pid(events[-1])
+    start = len(events) - 1
+    while start > 0 and pid(events[start - 1]) == newest:
+        start -= 1
+    pending: dict[str, str] = {}
+    for line in events[start:]:
+        m = _CANARY_PATH.search(line)
+        key = m.group(1) if m is not None else ""
+        if any(t in line for t in _TCC_TOKENS):
+            pending[key] = line
+        elif "CANARY_OK" in line:
+            pending.pop(key, None)
+        else:  # CHILD_EXIT
+            pending.clear()
+    return _LauncherRun(_parse_log_time(events[-1].split(" ", 1)[0]), tuple(pending.values()))
+
+
 def _launcher_events(config: Config, *, now: datetime | None = None) -> list[str]:
-    """Each job's last TCC_PENDING / TCC_DENIED launcher line, with its age, when no later CANARY_OK or
-    CHILD_EXIT line shows a run got past it (a stale event is not a current problem)."""
+    """Each job's TCC_PENDING / TCC_DENIED launcher lines of its newest run that no later line of that run
+    cleared, with their age (an older run's event is not a current problem)."""
     moment = now or datetime.now(UTC)
     out: list[str] = []
     for suffix in ("poll", "reconcile"):
-        log_path = expand(config.log_dir) / f"{config.launchd_label_prefix}.{suffix}.err.log"
-        try:
-            lines = _log_tail(log_path)
-        except OSError:
-            continue
-        last_hit = max((n for n, ln in enumerate(lines) if any(t in ln for t in _TCC_TOKENS)), default=None)
-        if last_hit is None:
-            continue
-        if any(any(t in ln for t in _CLEARED_TOKENS) for ln in lines[last_hit + 1 :]):
-            continue
-        line = lines[last_hit].strip()
-        stamp = _parse_log_time(line.split(" ", 1)[0])
-        age = f" ({_age_text(moment - stamp)} ago)" if stamp is not None else ""
-        out.append(f"{suffix}: {line}{age}")
+        run = _newest_launcher_run(config, suffix)
+        for line in run.pending if run is not None else ():
+            stamp = _parse_log_time(line.split(" ", 1)[0])
+            age = f" ({_age_text(moment - stamp)} ago)" if stamp is not None else ""
+            out.append(f"{suffix}: {line}{age}")
     return out
 
 
@@ -754,7 +794,7 @@ def _status_lines(config: Config) -> list[str]:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
-        out.append(f"queued purges: {len(queued)} (run `agentsync purge --queue`)")
+        out.append(f"queued purges: {len(queued)} (run `{loop.BIN} purge --queue`)")
     try:
         cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -831,41 +871,69 @@ class _Status:
 
 
 def _fail_step(result: doctor.CheckResult) -> str:
-    """Rule 1's NEXT for a FAIL: its fix, or a pointer to its line."""
+    """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
+    keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it."""
     if result.fix:
-        return f"the {result.name} check failed: {result.fix}"
+        return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"
     return f"the {result.name} check failed: its [FAIL] line below says why"
 
 
-def _build_status(config: Config, *, offline: bool = False) -> _Status:
-    """``status``'s output. ``offline`` (setup-report): no Graph probe, no TCC canary (it can raise a privacy
-    prompt), no NEXT lines and no policy detail (label names stay out of a report meant for sharing)."""
+def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
+    """``fn()``, or one line naming the error: a part of status that cannot be read never hides the checks
+    (the matching FAIL, e.g. governance.config or a manifest check, explains it)."""
+    try:
+        return fn()
+    except Exception as exc:
+        return [f"{name}: cannot read the state: {type(exc).__name__}: {exc}"]
+
+
+def _status_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+    """Every check of ``status``. ``offline`` (setup-report): no Graph probe and no TCC canary (it can raise
+    a privacy prompt)."""
     checks = doctor.run_checks(config, tcc_canary=not offline and _tcc_canary_due(config))
-    checks += _extra_checks(config, offline=offline)
+    return checks + _extra_checks(config, offline=offline)
+
+
+def _loop_line(config: Config) -> str:
+    try:
+        return loop.status_line(config)
+    except Exception as exc:
+        return f"loop: cannot read the state: {type(exc).__name__}: {exc}"
+
+
+def _build_status(config: Config, *, brief: bool = False) -> _Status:
+    """``status``'s output. ``brief`` (the ``doctor`` alias, or AGENTSYNC_NO_NEXT_HINT=1, both install.sh's):
+    no detail and no policy lines, so install.sh's output (and setup-report's tail of it) holds what the old
+    doctor printed and no label names."""
+    checks = _status_checks(config)
     fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
     hint_off = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
-    next_lines = [] if offline or hint_off else loop.next_lines(config, fixes=fixes)
-    detail = _status_lines(config) + ([] if offline else _policy_lines(config))
-    return _Status(tuple(next_lines), loop.status_line(config), tuple(checks), tuple(detail))
+    next_lines: list[str] = []
+    if not hint_off:
+        next_lines = _guarded("NEXT", lambda: loop.next_lines(config, fixes=fixes))
+    detail: list[str] = []
+    if not (brief or hint_off):
+        detail = _guarded("status", lambda: _status_lines(config))
+        detail += _guarded("policy", lambda: _policy_lines(config))
+    return _Status(tuple(next_lines), _loop_line(config), tuple(checks), tuple(detail))
 
 
-def _cmd_status(args: argparse.Namespace) -> int:
+def _cmd_status(args: argparse.Namespace, *, brief: bool = False) -> int:
     config = _config(args)
-    status = _build_status(config)
+    status = _build_status(config, brief=brief)
     for line in status.lines():
         _out(line)
     return EXIT_FAILED if status.failed else EXIT_OK
 
 
 def _cmd_status_renamed(args: argparse.Namespace) -> int:
-    """The hidden ``doctor`` and ``policy show`` aliases: run ``status`` (install.sh still calls ``doctor``
-    and reads its ``[FAIL`` lines; under AGENTSYNC_NO_NEXT_HINT=1 the rename note is left out too)."""
+    """The hidden ``doctor`` and ``policy show`` aliases: run ``status`` (under AGENTSYNC_NO_NEXT_HINT=1 the
+    rename note is left out too). install.sh still calls ``doctor`` and reads its ``[FAIL`` lines, so
+    ``doctor`` prints only the NEXT, loop and check lines, as the old doctor did; ``policy show`` keeps the
+    policy detail."""
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
         _err("renamed: run agentsync status")
-    return _cmd_status(args)
-
-
-_CANARY_EVENTS = (*_TCC_TOKENS, *_CLEARED_TOKENS)
+    return _cmd_status(args, brief=args.command == "doctor")
 
 
 def _agents_installed_at(config: Config) -> datetime | None:
@@ -880,29 +948,20 @@ def _agents_installed_at(config: Config) -> datetime | None:
 
 def _tcc_canary_due(config: Config) -> bool:
     """Whether ``status`` runs the TCC canary (up to 15 s per protected source, and it may raise the privacy
-    prompt): only when the newest launcher event of either job is TCC_PENDING or TCC_DENIED, or when no event
-    is logged since the LaunchAgents were installed (or ever)."""
-    last: tuple[datetime, str] | None = None
+    prompt): only when the newest launcher run of either job left a TCC_PENDING or TCC_DENIED line uncleared
+    (on any of its paths, not only the last one logged), or when no event is logged since the LaunchAgents
+    were installed (or ever)."""
+    last: tuple[datetime, bool] | None = None
     for suffix in ("poll", "reconcile"):
-        log_path = expand(config.log_dir) / f"{config.launchd_label_prefix}.{suffix}.err.log"
-        try:
-            lines = _log_tail(log_path)
-        except OSError:
-            continue
-        for ln in reversed(lines):
-            token = next((t for t in _CANARY_EVENTS if t in ln), None)
-            if token is None:
-                continue
-            stamp = _parse_log_time(ln.strip().split(" ", 1)[0])
-            if stamp is not None and (last is None or stamp > last[0]):
-                last = (stamp, token)
-            break
+        run = _newest_launcher_run(config, suffix)
+        if run is not None and run.stamp is not None and (last is None or run.stamp > last[0]):
+            last = (run.stamp, bool(run.pending))
     if last is None:
         return True
     installed = _agents_installed_at(config)
     if installed is not None and last[0] < installed:
         return True
-    return last[1] in _TCC_TOKENS
+    return last[1]
 
 
 # ---- doctor additions (C15 sections 1, 5 and 7; the ops checks live in ops/doctor.py) ------------------
@@ -1188,26 +1247,46 @@ def _install_check(config: Config) -> list[doctor.CheckResult]:
 
 
 def _skill_check(config: Config) -> list[doctor.CheckResult]:
-    """The agentsync-docs skill copies: FAIL when one is missing or stale although a sync ran with this build
-    (every sync writes them, so the write failed); before that, a not-ok info line."""
-    docs = expand(config.docs_repo)
-    state = loop.skill_state(docs)
-    where = ", ".join(str(p) for p in skill.skill_paths())
-    if state == "current":
-        return [_check("skill", True, f"current: {where}", doctor.Severity.INFO)]
+    """The agentsync-docs skill copies: FAIL when a copy is missing or stale, its folder (or the nearest one
+    that exists) cannot be written, and a sync ran with this build (so that sync's write failed); otherwise a
+    not-ok info line naming the copies the next sync writes. A copy a sync never tried to write (a
+    ``$CLAUDE_CONFIG_DIR`` that sync ran without) is never a FAIL."""
+    paths = skill.skill_paths()
+    text = skill.skill_text(expand(config.docs_repo))
+    off: list[tuple[Path, str]] = []
+    for path in paths:
+        try:
+            if path.read_text(encoding="utf-8") != text:
+                off.append((path, "stale"))
+        except (OSError, UnicodeDecodeError):
+            off.append((path, "missing"))
+    if not off:
+        return [_check("skill", True, f"current: {', '.join(str(p) for p in paths)}", doctor.Severity.INFO)]
+
+    def writable(path: Path) -> bool:
+        folder = path.parent
+        while not folder.exists() and folder != folder.parent:
+            folder = folder.parent
+        return os.access(folder, os.W_OK)
+
+    blocked = [(p, s) for p, s in off if not writable(p)]
     started: str | None = None
-    if config.state_paths.db.exists():
+    if blocked and config.state_paths.db.exists():
         with Manifest(config.state_paths.db) as manifest:
             started = manifest.last_run_started()
     ran_at = _parse_log_time(started) if started is not None else None
     built_at = _build_installed_at()
-    if ran_at is None or (built_at is not None and ran_at < built_at):
-        return [_check("skill", False, f"{state}: the next sync writes it ({where})", doctor.Severity.INFO)]
+    if not blocked or ran_at is None or (built_at is not None and ran_at < built_at):
+        where = ", ".join(f"{s} {p}" for p, s in off)
+        return [
+            _check("skill", False, f"{off[0][1]}: the next sync writes it ({where})", doctor.Severity.INFO)
+        ]
+    where = ", ".join(f"{s} {p}" for p, s in blocked)
     return [
         _check(
             "skill",
             False,
-            f"{state} although a sync ran with this build: the skills folder could not be written ({where})",
+            f"{blocked[0][1]} although a sync ran with this build: its folder cannot be written ({where})",
             doctor.Severity.ERROR,
             fix=f"make that folder writable, then run `{loop.BIN} sync`",
         )
@@ -1237,18 +1316,12 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
 
 
 def _report_hooks() -> setup_report.ReportHooks:
-    """setup-report's hooks over one offline :func:`_build_status`: its check lines are the Doctor section,
-    the loop line and the detail lines the Status section (the checks are rendered once)."""
-    built: dict[Path, _Status] = {}
-
-    def status_of(config: Config) -> _Status:
-        if config.config_path not in built:
-            built[config.config_path] = _build_status(config, offline=True)
-        return built[config.config_path]
-
+    """setup-report's hooks, split along status's cost: the Doctor section runs the offline checks once (under
+    the rest of the report's budget), the Status section only the cheap loop line and detail lines (under its
+    own 4 s). No NEXT lines and no policy detail (label names stay out of a report meant for sharing)."""
     return setup_report.ReportHooks(
-        doctor=lambda config: status_of(config).check_lines(),
-        status=lambda config: [status_of(config).line, *status_of(config).detail],
+        doctor=lambda config: doctor.format_results(_status_checks(config, offline=True)).splitlines(),
+        status=lambda config: [_loop_line(config), *_guarded("status", lambda: _status_lines(config))],
     )
 
 

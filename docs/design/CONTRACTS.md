@@ -4891,7 +4891,9 @@ goes to stdout (exit 1). Without `--out` the report itself is stdout and its las
 **Amended (2026-10-04, KISS K08a):** `cli._doctor_lines_offline` is removed. Both hooks read one
 `cli._build_status(config, offline=True)`: Doctor gets its check lines, Status its loop line and status lines
 (the checks render once). Offline means no Graph probe, no TCC canary (it can raise a privacy prompt), no NEXT
-lines and no policy detail (§16.21).
+lines and no policy detail (§16.21). **Amended (2026-10-04, K08a review):** the hooks split along cost
+instead: Doctor runs `cli._status_checks(config, offline=True)` once (under the rest of the budget), Status only
+the cheap loop line and status lines (under its own 4 s), so the checks still render once.
 
 **`AGENTSYNC_NO_NEXT_HINT`** (`cli.NO_NEXT_HINT_ENV`, 2026-09-30, K5): set to `1` (scripts/install.sh exports it),
 `init` and `add-source` print no `next:` hint, so install.sh's single `NEXT:` line is the only next step in its
@@ -5372,3 +5374,18 @@ Tests: `test_cli.py` (status starts with `loop.next_step` then the loop line the
 `AGENTSYNC_NO_NEXT_HINT`; the `doctor` and `policy show` aliases; the automatic Graph probe), `test_loop.py`
 (`status_line`), `test_ops_doctor.py` (`tcc_canary=False`), `test_setup_report.py` (one offline build, checks
 only in Doctor, no probe), and the frozen CLI surface (`doctor` and `policy` hidden).
+
+**Amended (2026-10-04, K08a review):**
+- Rule 1's NEXT for a FAIL never copies the fix ("the <name> check failed: do what the fix on its [FAIL] line
+  below says"): a fix may hold a path, a file name or a bare `agentsync`, which §16.20 keeps out of NEXT.
+- A part of status that raises (a broken `[governance]`, a newer-schema manifest) becomes one
+  `<part>: cannot read the state: <error>` line; every check line still prints.
+- The `doctor` alias, and any `status` under `AGENTSYNC_NO_NEXT_HINT=1`, prints no status or policy lines (item 4),
+  so install.sh's step-5 output, and setup-report's tail of `install.out`, hold what the old doctor printed and
+  no label names. `policy show` keeps them.
+- `skill` FAILs only when a copy that is missing or stale also has a folder (or nearest existing parent) that
+  cannot be written; any other copy is the info line, naming each copy. A `$CLAUDE_CONFIG_DIR` copy that no sync
+  tried to write is therefore never a FAIL.
+- The canary is due when the newest run of either job (its newest event and the events before it with the same
+  launcher pid) left a `TCC_PENDING` / `TCC_DENIED` line uncleared: a `CANARY_OK` clears only its own `path=`,
+  `CHILD_EXIT` clears them all. The `launcher:` status lines use the same rule, one per uncleared line.

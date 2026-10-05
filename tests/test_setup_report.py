@@ -5,7 +5,6 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import re
 import subprocess
@@ -88,14 +87,12 @@ def fake_mac(monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
 def clean_doctor(monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI's status build without its FAIL checks (this tmp HOME has no launcher, so a check FAILs, and a
     doctor FAIL is part of the outcome)."""
-    real = cli._build_status
+    real = cli._status_checks
 
-    def clean(config: Config, *, offline: bool = False) -> Any:
-        built = real(config, offline=offline)
-        kept = tuple(c for c in built.checks if c.ok or c.severity is not doctor.Severity.ERROR)
-        return dataclasses.replace(built, checks=kept)
+    def clean(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.severity is not doctor.Severity.ERROR]
 
-    monkeypatch.setattr(cli, "_build_status", clean)
+    monkeypatch.setattr(cli, "_status_checks", clean)
 
 
 def report(tmp_path: Path, cfg: Path, *extra: str) -> tuple[int, str, float]:
@@ -974,28 +971,44 @@ def test_doctor_hook_makes_no_network_probe(
 def test_checks_render_once_from_one_offline_status_build(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """KISS K08a: one offline status build feeds both sections: the checks in Doctor, the loop line and the
-    detail in Status; no network probe, no NEXT line."""
+    """KISS K08a: the checks run once, offline, in Doctor (under the rest of the budget, not Status's 4 s: a
+    check build slower than that still renders); Status shows the loop line and the detail; no network probe,
+    no NEXT line."""
     calls: list[bool] = []
-    real = cli._build_status
+    real = cli._status_checks
 
-    def counted(config: Config, *, offline: bool = False) -> Any:
+    def counted(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
         calls.append(offline)
+        time.sleep(4.5)
         return real(config, offline=offline)
 
     def boom(*args: object, **kwargs: object) -> object:
         raise AssertionError("network probe from setup-report")
 
-    monkeypatch.setattr(cli, "_build_status", counted)
+    monkeypatch.setattr(cli, "_status_checks", counted)
     monkeypatch.setattr(net, "probe_reachability", boom)
     rc, text, _ = report(tmp_path, fake_mac["config"])
     assert rc == 0 and calls == [True]
+    assert "This section failed" not in section(text, "Status") + section(text, "Doctor")
     status = section(text, "Status")
     assert "loop: skill " in status and "NEXT:" not in status
     assert not re.search(r"^\[(ok|FAIL|warn|info)\s*\]", status, re.MULTILINE), (
         "the checks render in Doctor only"
     )
     assert re.search(r"\d+ check\(s\): \d+ ok", section(text, "Doctor"))
+
+
+def test_a_broken_governance_table_still_renders_every_check(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """A part of status that raises becomes one line; Doctor still lists every check with the FAIL."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[governance]\nhistory_days = "x"\n', encoding="utf-8")
+    rc, text, _ = report(tmp_path, cfg)
+    doctor_section, status = section(text, "Doctor"), section(text, "Status")
+    assert rc == 0 and "This section failed" not in doctor_section + status
+    assert "[FAIL] governance.config" in doctor_section and "loop: skill " in status
+    assert "status: cannot read the state: ConfigError" in status
 
 
 # ---- the redactor ---------------------------------------------------------------------------------------

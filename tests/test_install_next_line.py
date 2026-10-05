@@ -98,3 +98,40 @@ def test_a_failing_real_first_sync_leaves_exactly_one_next_line(tmp_path: Path) 
     assert [line for line in direct.stdout.splitlines() if line.startswith("NEXT:")] == [
         direct.stdout.splitlines()[-1]
     ]
+
+
+REAL_DOCTOR = REAL_THEN_80.replace('  init) exec "$REAL_PYTHON"', '  init|doctor) exec "$REAL_PYTHON"', 1)
+
+
+def test_install_reads_the_real_doctor_alias(tmp_path: Path) -> None:
+    """KISS K08a: step 5 runs the real ``doctor`` alias of ``status``. A real FAIL (here: no launcher for a
+    folder under ~/Library/CloudStorage) is a ``[FAIL`` line install.sh sees (step doctor ``fail-lines``, no
+    first sync), its output carries no status or policy detail (install.out feeds setup-report), and there is
+    still exactly one NEXT line."""
+    env = _env(tmp_path)
+    env["STUB_AGENTSYNC"] = _exe(tmp_path / "agentsync-real-doctor", REAL_DOCTOR)
+    folder = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    (folder / "notes.txt").write_text("The purchase order is approved.\n", encoding="utf-8")
+    wheel = tmp_path / "dist" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder), "--confirm-install-agent"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert any(line.startswith("[FAIL] launcher ") for line in out), cp.stdout
+    assert not any(line.strip() == "converted 1, deferred 0 online-only" for line in out), "no first sync"
+    assert "exclude_label_names" not in cp.stdout and "(run `" not in cp.stdout
+    nexts = [line for line in out + cp.stderr.splitlines() if "NEXT:" in line]
+    assert len(nexts) == 1 and nexts[0] == out[-1], nexts
+    assert nexts[0].startswith("NEXT: fix the [FAIL] lines above")
+    log = (Path(env["HOME"]) / "agent-context" / "setup" / "install.log").read_text(encoding="utf-8")
+    assert " step=doctor " in log and "rc=1 result=done note=fail-lines" in log
