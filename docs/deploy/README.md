@@ -66,7 +66,9 @@ that run as you:
 This builds and ad-hoc signs the launcher (`--launcher PATH` copies a prebuilt, signed one instead), syncs once,
 installs two LaunchAgents (a poll every 5 minutes and an hourly reconcile) and waits up to 3 minutes for the first
 background run and your Allow click, so give the command a 10-minute timeout. `agentsync uninstall-agent` removes
-the LaunchAgents again without offboarding.
+the LaunchAgents again without offboarding. A plain `install.sh` run never touches the launcher, so after pulling a
+new version re-run `install.sh --confirm-install-agent`: it rebuilds the launcher only if its sources changed, and
+an ad-hoc rebuild means one new Allow click.
 
 Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,

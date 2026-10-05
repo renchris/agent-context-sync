@@ -616,6 +616,41 @@ def test_list_folders_without_cloud_storage_exits_3_with_a_next_line(tmp_path: P
     assert not [ln for ln in proc.stdout.splitlines() if ln.startswith("/")], proc.stdout
 
 
+def _first_sh_block(text: str) -> str:
+    match = re.search(r"^```sh\n(.*?)^```$", text, flags=re.DOTALL | re.MULTILINE)
+    assert match, "no ```sh block"
+    return match.group(1)
+
+
+def test_default_install_blocks_never_turn_on_background_sync() -> None:
+    """KISS K11b review: the README's Install block and docs/deploy's first block are the default install, so
+    none of their install.sh lines passes --confirm-install-agent (background sync is the operator's
+    choice)."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    install = readme.split("\n## Install\n", 1)[1].split("\n## ", 1)[0]
+    for block in (
+        _first_sh_block(install),
+        _first_sh_block((DEPLOY / "README.md").read_text(encoding="utf-8")),
+    ):
+        lines = [ln for ln in block.splitlines() if "install.sh" in ln and not ln.lstrip().startswith("#")]
+        assert len(lines) >= 2, block
+        assert not [ln for ln in lines if "--confirm-install-agent" in ln], lines
+
+
+def test_every_launcher_example_passes_confirm_install_agent() -> None:
+    """KISS K11b review: `install.sh --launcher PATH` alone is a usage error (exit 2), so every documented
+    install.sh line that passes --launcher also passes --confirm-install-agent."""
+    pages = [ROOT / "README.md", *DEPLOY_PAGES]
+    examples = [
+        (page.name, line)
+        for page in pages
+        for line in page.read_text(encoding="utf-8").splitlines()
+        if re.search(r"install\.sh[^`\n]*--launcher ", line)
+    ]
+    assert examples, "the MDM pack hands the user an install.sh --launcher command"
+    assert [e for e in examples if "--confirm-install-agent" not in e[1]] == []
+
+
 # ---- steps 2 to 4 ----------------------------------------------------------------------------------------
 
 

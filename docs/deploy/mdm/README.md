@@ -26,8 +26,8 @@ xcrun stapler staple launcher/build/AgentSyncLauncher.app
 ```
 
 The designated requirement is identical for every user's build (bundle id + Team ID), so **one profile covers all
-of them**. Hand the `.app` to the user, who runs `scripts/install.sh --launcher /path/AgentSyncLauncher.app`.
-Run `agentsync doctor`: `launcher.requirement` must show `certificate leaf[subject.OU]`, not `cdhash`.
+of them**. Hand the `.app` to the user. If they turn on background sync (optional, their choice), they run
+`scripts/install.sh --confirm-install-agent --launcher /path/AgentSyncLauncher.app`. Run `agentsync doctor`: `launcher.requirement` must show `certificate leaf[subject.OU]`, not `cdhash`.
 
 ## 2. Fill the template
 
