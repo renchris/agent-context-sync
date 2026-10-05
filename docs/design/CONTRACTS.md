@@ -566,12 +566,20 @@ already carries `SOURCE-MISSING` is not repeated.
     without Keychain access and is logged.
 12. **One procedure in every guide (2026-10-04, KISS K07).** Root `CLAUDE.md` and `AGENTS.md` are
     `publish.root_guide(archive=, inbox=)`: a short header, then `skill.procedure()` (run
-    `~/.local/bin/agentsync sync`, do what NEXT says and repeat, the look-up order, never open `_eval/answers.md`
-    or `_eval/results-*`, the authoring rules moved from the topics seed, what each `curate` row asks), then the inbox line when a live inbox
+    `~/.local/bin/agentsync sync`, do what the `NEXT:` line says and repeat (it is not sync's last line: the
+    `WAITING ON YOU:` and `note:` lines follow it), the look-up order, never open `_eval/answers.md`
+    or `_eval/results-*`, the authoring rules moved from the topics seed, what each `curate` row asks), then
+    `skill.BASELINE`, the Baseline questions section the skill also carries (loop rules 4, 6 and 8 send every
+    agent there, and an AGENTS.md reader never loads the skill), then the inbox line when a live inbox
     source exists, then `BOUNDARY_TEXT` verbatim. Paths are relative to the docs repo (no `docs/` prefix, no
     `git -C docs`); the archive and snapshot lines appear only with `[governance] archive = true`. `skill_text`
-    is the docs-path header, `skill.procedure()` and the Baseline questions section; its SYNONYMS and
-    `.agentsync-*.tmp` rename steps are gone (the gitops `.agentsync-*.tmp` exclusion stays). `topics/CLAUDE.md`
+    is the docs-path header, `skill.procedure()` and `skill.BASELINE`; its SYNONYMS and
+    `.agentsync-*.tmp` rename steps are gone (the gitops `.agentsync-*.tmp` exclusion stays). This supersedes
+    two earlier statements: §16.16's "a page is committed safely by writing `.agentsync-<name>.tmp`" (the skill
+    and `topics/CLAUDE.md` no longer say so, and the root guides name `curate`, not `curate-queue`), and
+    §16.18's "`skill_text` says the same" in its generated-guides row (the skill has no config, so it never
+    carries the archive and snapshot lines; the root `CLAUDE.md`, which a Claude Code session in the docs repo
+    also loads, carries them when archive is on). `topics/CLAUDE.md`
     is a 2-line pointer to the root guide; the K09b seed's sha joins `_TOPICS_CLAUDE_MD_PRIOR_SHA256`, and a
     hand-edited one is kept. **Departure: `SYNONYMS.tsv` is no longer seeded** (§13's tree still lists it):
     `ensure_scaffold` writes no header, INDEX lists it only when the file exists, an existing file

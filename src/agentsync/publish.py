@@ -95,18 +95,34 @@ relative to it).  mirror/ is generated (never edit it); topics/ is curated.
 Every session:
 """
 
+_ROOT_BASELINE_HEAD = """\
+Baseline questions (the agentsync-docs skill's section of that name; before the first subject page):
+
+"""
+
 
 def root_guide(*, archive: bool = False, inbox: str | None = None) -> str:
     """The root CLAUDE.md and AGENTS.md (Codex, Jules, opencode, Amp, Copilot read AGENTS.md): one procedure
-    (``skill.procedure``), then the inbox line when an inbox source exists (``inbox`` is its display path),
-    then :data:`policy.BOUNDARY_TEXT` verbatim."""
+    (``skill.procedure``), then the skill's Baseline questions section (``skill.BASELINE``: the NEXT lines of
+    loop rules 4, 6 and 8 point there, and an AGENTS.md reader never loads the skill), then the inbox line
+    when an inbox source exists (``inbox`` is its display path), then :data:`policy.BOUNDARY_TEXT`
+    verbatim."""
     inbox_line = (
         f"Mail or Teams messages: save them as files (drag them out of Outlook) into `{inbox}`; the next\n"
         "sync converts them.\n\n"
         if inbox
         else ""
     )
-    return _ROOT_GUIDE_HEAD + skill.procedure(archive=archive) + "\n" + inbox_line + policy.BOUNDARY_TEXT
+    return (
+        _ROOT_GUIDE_HEAD
+        + skill.procedure(archive=archive)
+        + "\n"
+        + _ROOT_BASELINE_HEAD
+        + skill.BASELINE
+        + "\n"
+        + inbox_line
+        + policy.BOUNDARY_TEXT
+    )
 
 
 CLAUDE_SETTINGS_PATH = ".claude/settings.json"

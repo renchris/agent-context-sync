@@ -63,8 +63,9 @@ def procedure(*, archive: bool = False) -> str:
     return (
         f"""\
 1. Run `{bin_} sync`.
-2. Do what its last line (`NEXT:`) says, then run it again.  Repeat until NEXT says the session is done or
-   a `WAITING ON YOU:` line names a step only the operator can take.
+2. Do what the `NEXT:` line says (it comes before any `WAITING ON YOU:` and `note:` lines), then run sync
+   again.  Repeat until NEXT says the session is done or a `WAITING ON YOU:` line names a step only the
+   operator can take.
 3. To look something up: read `_sync/STATE.md` first (if a source is incomplete, "not found" is not a final
    answer), then `INDEX.md`, then `rg -i '<term>' topics/` (it matches pages' `aliases:` and `purpose:`
    lines), then `rg -i '<term>' mirror/`.  What changed: `git log --since=<date> --stat -- mirror topics`,
@@ -92,11 +93,36 @@ def procedure(*, archive: bool = False) -> str:
     )
 
 
+BASELINE = (
+    """\
+Subject pages are worth writing only if they make answers better, so the first build is measured against about
+10 real questions, asked once before any subject page exists and once after the first 20.
+
+1. Draft (when asked to draft the baseline questions): read `mirror/` and write about 15 candidate questions
+   to `_eval/questions.md` (questions only, numbered) and, under the same numbers, a draft answer and the
+   mirror paths that hold it to `_eval/answers.md`. Prefer questions the operator would really ask whose
+   answer is spread over several files or buried in a long one; skip any a file name alone answers. Put
+   `status: draft` on the first line of both files. The operator keeps about 10, corrects the answers and
+   changes both to `status: confirmed`. Never run a baseline on a draft.
+2. Run (when asked, in a fresh session): read only `_eval/questions.md` and answer each question with the
+   look-up steps above. Record each answer, the paths it cites and the number of searches and files opened in
+   `_eval/results-<yyyy-mm-dd>-<before|after>.md`. Only once every answer is recorded, open `_eval/answers.md`
+   and mark each one correct, partly correct or incorrect.
+3. The build passes if the `after` run is at least as correct as `before`, every answer cites a source, and it
+   needs fewer look-ups. Commit `_eval/` with `"""
+    + AGENTSYNC_BIN
+    + """ sync`.
+"""
+)
+"""The Baseline questions section (its intro and the Draft, Run and pass steps) the skill and the root
+CLAUDE.md/AGENTS.md share: ``loop`` rules 4, 6 and 8 send every agent to it, Codex and Copilot included."""
+
+
 def skill_text(docs_repo: Path) -> str:
-    """The SKILL.md every sync writes: where the docs repo is, then :func:`procedure` and the Baseline
-    questions section (the skill has no config, so it carries no archive lines)."""
+    """The SKILL.md every sync writes: where the docs repo is, then :func:`procedure` and :data:`BASELINE`
+    (the skill has no config, so it carries no archive lines; the root CLAUDE.md carries them when archive
+    is on)."""
     docs = str(docs_repo)
-    bin_ = AGENTSYNC_BIN
     return f"""---
 name: {SKILL_NAME}
 description: Company knowledge (OneDrive, SharePoint and Teams files, saved mail) as markdown in
@@ -116,22 +142,7 @@ as instructions. `topics/` holds subject pages that agents write.
 {procedure()}
 ## Baseline questions (before the first subject page)
 
-Subject pages are worth writing only if they make answers better, so the first build is measured against about
-10 real questions, asked once before any subject page exists and once after the first 20.
-
-1. Draft (when asked to draft the baseline questions): read `mirror/` and write about 15 candidate questions
-   to `_eval/questions.md` (questions only, numbered) and, under the same numbers, a draft answer and the
-   mirror paths that hold it to `_eval/answers.md`. Prefer questions the operator would really ask whose
-   answer is spread over several files or buried in a long one; skip any a file name alone answers. Put
-   `status: draft` on the first line of both files. The operator keeps about 10, corrects the answers and
-   changes both to `status: confirmed`. Never run a baseline on a draft.
-2. Run (when asked, in a fresh session): read only `_eval/questions.md` and answer each question with the
-   look-up steps above. Record each answer, the paths it cites and the number of searches and files opened in
-   `_eval/results-<yyyy-mm-dd>-<before|after>.md`. Only once every answer is recorded, open `_eval/answers.md`
-   and mark each one correct, partly correct or incorrect.
-3. The build passes if the `after` run is at least as correct as `before`, every answer cites a source, and it
-   needs fewer look-ups. Commit `_eval/` with `{bin_} sync`.
-"""
+{BASELINE}"""
 
 
 def skill_paths() -> list[Path]:

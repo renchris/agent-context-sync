@@ -1254,7 +1254,13 @@ def test_agents_md_carries_the_procedure_and_archive_lines_only_with_archive(
 ) -> None:
     agents = env.text("AGENTS.md")
     assert skill.procedure(archive=False) in agents
-    assert "1. Run `~/.local/bin/agentsync sync`." in agents and "(`NEXT:`)" in agents
+    assert "1. Run `~/.local/bin/agentsync sync`." in agents and "Do what the `NEXT:` line says" in agents
+    # sync prints NEXT, then its WAITING ON YOU: and note: lines (loop.NextStep.lines): never "the last line".
+    assert "last line" not in agents and "last line" not in skill.skill_text(tmp_path)
+    # Loop rules 4, 6 and 8 send the agent to the Baseline section; an AGENTS.md reader never loads the skill.
+    assert skill.BASELINE in agents and "1. Draft (when asked to draft the baseline questions)" in agents
+    assert agents.index(skill.procedure()) < agents.index(skill.BASELINE) < agents.index(policy.BOUNDARY_TEXT)
+    assert skill.BASELINE in skill.skill_text(tmp_path)
     assert "Never open `_eval/answers.md` or `_eval/results-*` to answer a question" in agents
     assert "_sync/STATE.md` first" in agents and agents.index("`INDEX.md`") < agents.index(
         "rg -i '<term>' mirror/"
