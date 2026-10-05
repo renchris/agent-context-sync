@@ -1029,7 +1029,9 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	--source-local)
-		[ $# -ge 2 ] && [ -n "$2" ] || usage_error "--source-local needs a folder"
+		if [ $# -lt 2 ] || [ -z "$2" ]; then
+			usage_error "--source-local needs a folder"
+		fi
 		SOURCE_LOCALS+=("$2")
 		shift
 		;;

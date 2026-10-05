@@ -117,11 +117,10 @@ if [ -z "$PY" ]; then
 		fi
 	done
 fi
-[ -n "$PY" ] && [ -x "$PY" ] ||
-	{
-		printf 'error: no interpreter with agentsync installed (run scripts/install.sh, or pass --python)\n' >&2
-		exit 1
-	}
+if [ -z "$PY" ] || [ ! -x "$PY" ]; then
+	printf 'error: no interpreter with agentsync installed (run scripts/install.sh, or pass --python)\n' >&2
+	exit 1
+fi
 
 rc=0
 "$PY" -I -X utf8 - "$CONFIG" "$OUT" "$DRY_RUN" "$SELFTEST" "$MAX_PAGES" "$MAX_DOWNLOADS" "$MAX_BYTES" <<'PYTHON' || rc=$?

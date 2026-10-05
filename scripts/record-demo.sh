@@ -3,7 +3,10 @@
 # The folder must be inside a OneDrive (File Provider) mount and hold a file named blob.bin; the tape
 # evicts it, so its first read downloads it again. Needs: vhs, gif2webp (brew install vhs webp).
 set -eu
-[ $# -eq 1 ] && [ -f "$1/blob.bin" ] || { echo "usage: record-demo.sh <onedrive-folder-with-blob.bin>" >&2; exit 2; }
+if [ $# -ne 1 ] || [ ! -f "$1/blob.bin" ]; then
+	echo "usage: record-demo.sh <onedrive-folder-with-blob.bin>" >&2
+	exit 2
+fi
 for c in vhs gif2webp; do command -v "$c" >/dev/null 2>&1 || { echo "missing dependency: $c (brew install vhs webp)" >&2; exit 1; }; done  # checked up front since 2026-09-29
 root=$(cd "$(dirname "$0")/.." && pwd)
 make -C "$root/probes" >/dev/null
