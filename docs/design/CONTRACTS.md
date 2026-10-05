@@ -3500,7 +3500,9 @@ login|logout|whoami|discover (also top-level login · logout · whoami · discov
 hidden, still parse; `graph login --device-code` hidden, still works) · it-request [--out PATH] (KISS K18: hidden,
 `--out` defaults to `it_request.DEFAULT_OUT`) · install-agent (2026-10-05,
 KISS K11a: hidden, no options; `--interval`, `--reconcile-interval` and `--no-backup-exclusions` are deleted) ·
-uninstall-agent (hidden) · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
+uninstall-agent (hidden) · add-source PATH (§16.13; KISS K14 deleted `--id`) · setup-report (2026-10-05, KISS
+K16a: hidden; `--no-redact` and `--friction` are deleted; `--out PATH` is hidden and defaults to
+`setup_report.DEFAULT_OUT`).  ``sync`` is
 always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
 ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand
 (KISS K18, 2026-10-05: ``--config`` is hidden from help and still parses).
@@ -4425,7 +4427,7 @@ class AgentSpec:
 | `materialise` [`--budget BYTES`] [`PATH …`] (2026-10-05, KISS K13b) | unchanged, hidden from help; the remedy the over-budget alarm names | 0 · 1 · 78 |
 | `migrate` (2026-10-05, KISS K13b) | hidden, a no-op: prints `migration is automatic: …` and opens nothing; every opener migrates the manifest (§5 KISS K12 amendment). Kept so older install.sh runs and scripts exit 0 | 0 |
 | `it-request` [`--out PATH`] (2026-10-05, KISS K18) | §16.15, unchanged except: hidden from help, and `--out` defaults to `it_request.DEFAULT_OUT` (`~/agent-context/it-request-draft.md`) instead of being required | 0 · 1 · 2 `--out` inside the checkout or the docs repo |
-| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
+| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21). Since KISS K16a (2026-10-05) hidden: `--no-redact` and `--friction` are deleted (argparse exits 2), so the report is always redacted and the friction log is `$AGENTSYNC_FRICTION_LOG`, else `~/agent-context/setup/friction.md`; `--out` is hidden and defaults to `setup_report.DEFAULT_OUT` (`~/agent-context/setup-report.md`), so nothing writes the report to stdout except the fallback below | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) · 2 a deleted option |
 
 ```python
 EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher returns it (LaunchAgent runs)
@@ -4645,6 +4647,14 @@ becomes an info line), no sudo, no prompts, no `tmutil`; each external command h
 atomically with mode 0600 (amended 2026-10-04, KISS K12: the status hook opens the manifest, which migrates an
 older one with a `<db>.pre-v<N>` copy; §5 amendment). Redaction is on unless `--no-redact` (which the report states at the top); the
 Redaction section gives the count per kind.
+
+**SUPERSEDED in part (2026-10-05, KISS K16a):** the command is `agentsync setup-report [--out PATH] [--config
+PATH]`, hidden from help with `--out` hidden too. `--no-redact` is deleted (it was the one switch that could put the
+tenant name into a report meant for a public issue), so the CLI always redacts; `build_report(redact=False)` stays
+a module argument only. `--friction PATH` is deleted; the friction log is `$AGENTSYNC_FRICTION_LOG`, else
+`~/agent-context/setup/friction.md`. Without `--out` the report is written to `setup_report.DEFAULT_OUT`
+(`~/agent-context/setup-report.md`), not stdout; install.sh still passes `--out "$REPORT_PATH"` with its
+`AGENTSYNC_SETUP_REPORT` override. Both deleted options exit 2.
 
 v4 revision, the friction log. The agent no longer writes into the report. `setup-report` reads the friction log
 file (`--friction PATH`, else `$AGENTSYNC_FRICTION_LOG`, else `~/agent-context/setup/friction.md`; at most
@@ -4991,7 +5001,9 @@ help names the `TIME_BUDGET_S` budget (12 s). v5 revision: with `--out`, prompt 
 `setup_report.issue_link(text)` as its last stdout line. v5 revision 2 (K3): the "next:" line is gone; with `--out`
 the last stdout line is `ISSUE_LINK_LABEL` + " " + the link ("issue link (review the report first): <url>", the bare
 `ISSUE_URL` when the report has no link), also in the fallback branch where `--out` cannot be written and the report
-goes to stdout (exit 1). Without `--out` the report itself is stdout and its last line is the bare link.
+goes to stdout (exit 1). Without `--out` the report itself is stdout and its last line is the bare link
+(SUPERSEDED 2026-10-05, KISS K16a: without `--out` the report goes to `setup_report.DEFAULT_OUT` and the CLI prints
+the same two lines as with `--out`).
 **Amended (2026-10-04, KISS K08a):** `cli._doctor_lines_offline` is removed. Both hooks read one
 `cli._build_status(config, offline=True)`: Doctor gets its check lines, Status its loop line and status lines
 (the checks render once). Offline means no Graph probe, no TCC canary (it can raise a privacy prompt), no NEXT

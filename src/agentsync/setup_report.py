@@ -93,7 +93,9 @@ RUN_METADATA_HEADING = "### Run metadata"
 the ``## `` headings stay :data:`SECTION_TITLES`."""
 FRICTION_HEADING = "## Agent friction log"
 FRICTION_ENV = "AGENTSYNC_FRICTION_LOG"
-"""Overrides the default friction log path (``--friction PATH`` overrides both)."""
+"""Overrides the default friction log path (KISS K16a deleted ``--friction PATH``)."""
+DEFAULT_OUT = "~/agent-context/setup-report.md"
+"""Where ``agentsync setup-report`` writes without ``--out`` (hidden since KISS K16a); install.sh's too."""
 FRICTION_KEYS = ("Prompt", "Agent", "Outcome", "Run")
 """The header lines read from each attempt of friction.md: ``install.sh --log-start`` (prompt v6; the v5 agent
 itself) writes ``Prompt:`` and ``Agent:`` after the ``Attempt: <time>`` line; ``Outcome:`` and ``Run:``
@@ -2318,7 +2320,7 @@ def _friction_section(r: _Run) -> list[str]:
     if fr is None:
         return [
             f"No friction log found at {r.friction_path} (setup prompt step 1's `install.sh --log-start` "
-            "creates it; `--friction PATH` names another file)."
+            f"creates it; ${FRICTION_ENV} names another file)."
         ]
     out = [
         f"Embedded from {r.friction_path} as this report read it: {fr.line_count} line(s), last modified "

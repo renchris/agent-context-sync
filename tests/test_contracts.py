@@ -60,9 +60,9 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "purge": ["selector", "--source", "--reason", "--queue", "--dry-run", "--push"],
         "hold": ["scope", "--reason", "--owner", "--release", "--list"],
         "offboard": ["--purge-data", "--dry-run", "--confirm"],
-        "setup-report": ["--out", "--friction", "--no-redact"],
     },
     "hidden": {
+        "setup-report": ["--out (hidden)"],
         "graph": ["action{login,logout,whoami,discover}", "--device-code (hidden)", "--url", "--toml"],
         "login": ["--device-code (hidden)", "--url", "--toml"],
         "logout": ["--device-code (hidden)", "--url", "--toml"],

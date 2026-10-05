@@ -5,14 +5,14 @@ Subcommands: add-source PATH · init (hidden) · sync (hidden options: --once, -
 [PATH ...] (hidden) · adopt SRC_DIR · migrate (hidden, a no-op) · graph login|logout|whoami|discover (also as
 top-level login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) ·
 install-agent (hidden) · uninstall-agent (hidden) · purge SELECTOR | --queue · compact-history [--keep-days N
-(at least 1)] (hidden) · hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report [--out PATH]
-[--friction PATH] [--no-redact] · it-request --out PATH.
+(at least 1)] (hidden) · hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report (hidden; hidden
+--out PATH, default ~/agent-context/setup-report.md) · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
 ``sync`` without ``--mode`` ends with the loop's ``NEXT:`` line and any ``WAITING ON YOU:`` lines
 (:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
 and ``policy show`` are hidden aliases of it). ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops
 them from both.
-``setup-report --out`` ends with the issue link, never a hint.
+``setup-report`` ends with the issue link, never a hint.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
 before any agentsync module imports ``msal``, ``requests`` or ``httpx``; tests/test_cli.py asserts the order.
@@ -340,24 +340,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add(
         "setup-report",
-        "write a redacted Markdown report of this Mac's setup (a summary, the agent's friction log, "
-        "environment, installer, doctor, status, background runs, recent errors) for the setup feedback "
-        f"loop; read-only, no network, under {setup_report.TIME_BUDGET_S:.0f} s",
+        f"write a redacted Markdown report of this Mac's setup to {setup_report.DEFAULT_OUT} (a summary, "
+        "the agent's friction log, environment, installer, doctor, status, background runs, recent errors) "
+        f"for the setup feedback loop; read-only, no network, under {setup_report.TIME_BUDGET_S:.0f} s",
         _cmd_setup_report,
+        hidden=True,
     )
-    p.add_argument("--out", type=Path, metavar="PATH", help="write the report here (default: stdout)")
-    p.add_argument(
-        "--friction",
-        type=Path,
-        metavar="PATH",
-        help="the setup prompt's friction log to embed, redacted (default: "
-        f"${setup_report.FRICTION_ENV}, else ~/agent-context/setup/friction.md)",
-    )
-    p.add_argument(
-        "--no-redact",
-        action="store_true",
-        help="keep names, organisation, folders, emails and ids (the report says so at the top)",
-    )
+    # KISS K16a: --no-redact and --friction are deleted (the friction log is $AGENTSYNC_FRICTION_LOG, else the
+    # setup prompt's file); --out is hidden, install.sh passes it with its AGENTSYNC_SETUP_REPORT override.
+    p.add_argument("--out", type=Path, default=Path(setup_report.DEFAULT_OUT), help=argparse.SUPPRESS)
 
     p = add(
         "it-request",
@@ -1288,19 +1279,11 @@ def _report_hooks() -> setup_report.ReportHooks:
 def _cmd_setup_report(args: argparse.Namespace) -> int:
     """Never fails hard: every section records its own error; exit 1 only when --out cannot be written
     (the report then goes to stdout instead)."""
-    out: Path | None = expand(args.out) if args.out is not None else None
-    friction: Path = (
-        expand(args.friction) if args.friction is not None else setup_report.default_friction_path()
-    )
+    out = expand(args.out)
+    friction = setup_report.default_friction_path()
     text, red = setup_report.build_report(
-        getattr(args, "config", None),
-        redact=not args.no_redact,
-        hooks=_report_hooks(),
-        friction_path=friction,
+        getattr(args, "config", None), hooks=_report_hooks(), friction_path=friction
     )
-    if out is None:
-        sys.stdout.write(text)  # the report's own last line is the bare issue link
-        return EXIT_OK
     link = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.issue_link(text) or setup_report.ISSUE_URL}"
     try:
         setup_report.write_report(out, text)
@@ -1309,11 +1292,7 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
         sys.stdout.write(text)
         _out(link)
         return EXIT_FAILED
-    what = (
-        f"{red.total} replacement(s) of {red.values} value(s)"
-        if red.enabled
-        else "NOT redacted (--no-redact)"
-    )
+    what = f"{red.total} replacement(s) of {red.values} value(s)"
     embedded = "friction log embedded" if friction.is_file() else f"no friction log found at {friction}"
     _out(f"wrote {out} ({what}; {embedded})")
     _out(link)  # always the last line: setup prompt step 3 (v5: step 5) shows it (no "next:" hint)

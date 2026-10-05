@@ -21,6 +21,7 @@ import pytest
 from agentsync import cli, net, setup_report
 from agentsync.config import Config, load_config
 from agentsync.ops import doctor
+from agentsync.paths import expand
 
 ORG = "Contoso"
 FOLDERS = ("FY26 Projects", "Client Alpha", "Budget Review")
@@ -212,14 +213,23 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     assert "~~~text" in text and "```" not in text, "no backtick fences (the issue form wraps it in some)"
 
 
-def test_no_redact_keeps_the_values_and_says_so(fake_mac: dict[str, Path], tmp_path: Path) -> None:
-    rc, text, _ = report(tmp_path, fake_mac["config"], "--no-redact")
-    assert rc == 0
-    top = text.split("\n## ", 1)[0]
-    assert "NOT REDACTED" in top and "--no-redact" in top
-    for raw in (ORG, FOLDERS[0], FOLDERS[1], LIBRARY, EMAIL, GUID, LOGIN, str(fake_mac["home"])):
-        assert raw in text, raw
-    assert "Redaction is OFF" in text and "<org-1>" not in text
+def test_no_redact_and_friction_are_deleted_and_setup_report_is_hidden(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K16a: argparse rejects --no-redact and --friction (exit 2, nothing written); setup-report and its
+    --out are hidden from help and still parse."""
+    out = tmp_path / "r.md"
+    for dropped in (["--no-redact"], ["--friction", str(tmp_path / "f.md")]):
+        argv = ["setup-report", "--out", str(out), "--config", str(fake_mac["config"]), *dropped]
+        assert cli.main(argv) == cli.EXIT_USAGE, dropped
+    assert not out.exists()
+    capsys.readouterr()
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    assert not re.search(r"(?m)^    setup-report\b", capsys.readouterr().out), "hidden from help"
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["setup-report", "--help"])
+    assert "--out" not in capsys.readouterr().out
+    assert cli.build_parser().parse_args(["setup-report"]).out == Path(setup_report.DEFAULT_OUT)
 
 
 def test_a_broken_section_is_recorded_not_raised(fake_mac: dict[str, Path], tmp_path: Path) -> None:
@@ -665,9 +675,11 @@ def test_issue_link_is_the_last_line_and_carries_only_the_four_fields(
     write_install_log(fake_mac)
     write_friction(fake_mac, V5_HAPPY.replace("claude-opus-5-5", f"claude-opus-5-5 on {ORG.lower()}-{HOST}"))
     assert cli.main(["setup-report", "--config", str(fake_mac["config"])]) == 0
-    out = capsys.readouterr().out
-    link = out.rstrip("\n").splitlines()[-1]
-    assert setup_report.issue_link(out) == link and link.startswith(setup_report.ISSUE_URL + "&")
+    text = expand(setup_report.DEFAULT_OUT).read_text(encoding="utf-8")
+    link = text.rstrip("\n").splitlines()[-1]
+    printed = capsys.readouterr().out.rstrip("\n").splitlines()[-1]
+    assert setup_report.issue_link(text) == link and link.startswith(setup_report.ISSUE_URL + "&")
+    assert printed == f"{setup_report.ISSUE_LINK_LABEL} {link}"
     query = parse_qs(urlsplit(link).query)
     assert query == {
         "template": ["setup-report.yml"],
@@ -680,9 +692,6 @@ def test_issue_link_is_the_last_line_and_carries_only_the_four_fields(
     for raw in RAW:
         assert raw not in link, raw
     assert "%20" in link and " " not in link, "URL-encoded"
-    # --no-redact keeps the report's values, never the link's
-    _rc, text, _ = report(tmp_path, fake_mac["config"], "--no-redact")
-    assert ORG in text and ORG.lower() not in text.splitlines()[-1] and HOST not in text.splitlines()[-1]
 
 
 def test_issue_fields_match_the_form() -> None:
@@ -928,13 +937,14 @@ def test_run_ids_that_embed_host_names_are_redacted(fake_mac: dict[str, Path], t
 
 
 def test_setup_report_help_names_the_12_s_budget() -> None:
+    """Hidden since KISS K16a, so the budget is in ``setup-report --help`` (the description), not the list."""
     parser = cli.build_parser()
-    sub = next(a for a in parser._actions if a.dest == "command" or getattr(a, "choices", None))
-    helps = {c.dest: c.help for c in sub._choices_actions}  # type: ignore[attr-defined]
-    assert f"under {setup_report.TIME_BUDGET_S:.0f} s" in (helps["setup-report"] or "")
+    sub = next(a for a in parser._actions if getattr(a, "choices", None) and "setup-report" in a.choices)
+    description = sub.choices["setup-report"].description or ""
+    assert f"under {setup_report.TIME_BUDGET_S:.0f} s" in description
     assert setup_report.TIME_BUDGET_S == 12.0
     contracts = (Path(__file__).parents[1] / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
-    assert "TIME_BUDGET_S = 12.0" in contracts and "--friction PATH" in contracts
+    assert "TIME_BUDGET_S = 12.0" in contracts and "KISS K16a" in contracts
 
 
 def test_unwritable_out_exits_1_and_prints_the_report(
@@ -969,10 +979,18 @@ def test_out_prints_the_issue_link_last_and_no_next_hint(
     assert not any(re.match(r"(?i)\s*next:", ln) for ln in printed)
 
 
-def test_stdout_without_out(fake_mac: dict[str, Path], capsys: pytest.CaptureFixture[str]) -> None:
+def test_out_defaults_to_the_default_report(
+    fake_mac: dict[str, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K16a: without --out the report goes to ~/agent-context/setup-report.md (0600), not stdout."""
     assert cli.main(["setup-report", "--config", str(fake_mac["config"])]) == 0
-    out = capsys.readouterr().out
-    assert out.startswith(setup_report.REPORT_TITLE) and ORG not in out
+    default = fake_mac["home"] / "agent-context" / "setup-report.md"
+    assert expand(setup_report.DEFAULT_OUT) == default
+    text = default.read_text(encoding="utf-8")
+    assert text.startswith(setup_report.REPORT_TITLE) and ORG not in text
+    assert default.stat().st_mode & 0o777 == 0o600
+    printed = capsys.readouterr().out
+    assert printed.startswith(f"wrote {default} (") and setup_report.REPORT_TITLE not in printed
 
 
 def test_doctor_hook_makes_no_network_probe(
