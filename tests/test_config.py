@@ -23,6 +23,7 @@ from agentsync.config import (
     parse_size,
 )
 from agentsync.errors import ConfigError
+from agentsync.governance import parse_governance
 from agentsync.model import SourceKind, SourceState
 
 
@@ -201,7 +202,9 @@ line their status WARN names."""
 def test_old_config_shapes_load(tmp_path: Path) -> None:
     """KISS K15: the previous full template, and the live shape an operator's config has grown into, load
     with the same values the short template gives; ``[graph] company`` is recorded (status warns) and nothing
-    else changes.  principal, cadence_s and launchd_label_prefix stay parsed."""
+    else changes.  principal, cadence_s and launchd_label_prefix stay parsed, and so do the keys a real
+    operator config carries: an uncommented ``[governance] archive`` and a source's exclude, sentinel and
+    max_materialise_bytes."""
     old = parse(_PRE_K15_TEMPLATE, tmp_path)
     new = parse(default_config_text(), tmp_path)
     assert old.graph_company_line == 22  # company = "agentsync"
@@ -213,8 +216,11 @@ def test_old_config_shapes_load(tmp_path: Path) -> None:
         _PRE_K15_TEMPLATE.replace('# principal = "you@example.com"', 'principal = "ada@contoso.com"')
         .replace('company = "agentsync"', 'company = "Contoso"')
         .replace("reap_days = 180", 'reap_days = 180\nlaunchd_label_prefix = "com.contoso.as"')
+        .replace("# [governance]", "[governance]")
+        .replace("#   archive = false", "archive = true")
         + local_source_table("projects", folder)
         + "cadence_s = 600\n"
+        + 'exclude = ["*.tmp", "~$*"]\nsentinel = "README.txt"\nmax_materialise_bytes = "1GB"\n'
         + inbox_source_table("inbox", tmp_path / "inbox")
     )
     cfg = parse(live, tmp_path)
@@ -223,6 +229,10 @@ def test_old_config_shapes_load(tmp_path: Path) -> None:
         SourceKind.LOCAL,
         SourceKind.INBOX,
     ]
+    projects = cfg.source("projects")
+    assert projects.exclude == ("*.tmp", "~$*") and projects.sentinel == "README.txt"
+    assert projects.max_materialise_bytes == 1000**3
+    assert parse_governance(tomllib.loads(live)).archive is True
     assert cfg.graph_company_line == 23  # one line further down: launchd_label_prefix was added above it
     assert not hasattr(cfg.graph, "company")
 

@@ -236,6 +236,69 @@ def test_install_options_are_frozen() -> None:
     assert set(INSTALL_OPTIONS["main"]) >= ONE_PROMPT_INSTALL_FLAGS
 
 
+def _guide_offences(guides: dict[str, str], probes_script: str) -> list[str]:
+    """``guide:line: span (why)`` for each inline-code span in ``guides`` (name -> text) that names an option
+    no parser has: after ``agentsync VERB`` only a pinned verb with its own or the global options, after
+    ``install.sh`` only an install.sh option, and in a span that starts with an option (``--out``) one that
+    agentsync, install.sh or tenant-probes.sh has."""
+    import re  # noqa: PLC0415
+
+    def spellings(entries: list[str]) -> set[str]:
+        return {s for e in entries if e.startswith("-") for s in e.split(" ")[0].split("/")}
+
+    verbs = {**CLI_SURFACE["visible"], **CLI_SURFACE["hidden"]}
+    common = spellings(CLI_GLOBAL_OPTIONS) | {"-h", "--help"}
+    install = set(INSTALL_OPTIONS["main"]) - {"*"}
+    probes = set(_install_case_arms(probes_script, "while [ $# -gt 0 ]; do", "done")) - {"*"}
+    known = common | install | probes | {s for entries in verbs.values() for s in spellings(entries)}
+    command = re.compile(r"\bagentsync ([a-z][a-z-]*)|\binstall\.sh\b")
+    offences: list[str] = []
+    for name, text in guides.items():
+        for n, line in enumerate(text.splitlines(), 1):
+            for span in re.findall(r"`([^`\n]+)`", line):
+                starts = list(command.finditer(span))
+                parts = [(span, known)] if span.startswith("-") else []
+                for i, m in enumerate(starts):
+                    end = starts[i + 1].start() if i + 1 < len(starts) else len(span)
+                    if m.group(1) is None:
+                        allowed = install
+                    elif m.group(1) in verbs:
+                        allowed = common | spellings(verbs[m.group(1)])
+                    else:
+                        allowed = set()
+                        offences.append(f"{name}:{n}: {span} (no command {m.group(1)!r})")
+                    parts.append((span[m.end() : end], allowed))
+                for part, allowed in parts:
+                    bad = [f for f in re.findall(r"(?<!\S)(--?[a-z][a-z-]*)", part) if f not in allowed]
+                    if bad:
+                        offences.append(f"{name}:{n}: {span} ({', '.join(bad)})")
+    return offences
+
+
+def test_guides_name_only_options_that_parse() -> None:
+    """A deleted option exits 2, so README.md and the docs/deploy guides name only commands and options that
+    parse (the plans and CONTRACTS.md keep the history).  The check catches the ``--no-redact`` and
+    ``add-source --inbox`` lines K16a and K05 had left behind."""
+    root = Path(__file__).resolve().parents[1]
+    guides = {
+        str(p.relative_to(root)): p.read_text(encoding="utf-8")
+        for p in [root / "README.md", *sorted((root / "docs" / "deploy").rglob("*.md"))]
+    }
+    probes = (root / "scripts" / "tenant-probes.sh").read_text(encoding="utf-8")
+    assert _guide_offences(guides, probes) == []
+    stale = {
+        "old.md": "Use `--no-redact` to keep names.\n"
+        "Run `agentsync add-source --inbox`, then `agentsync frob`.\n"
+        "Then `install.sh --gone && agentsync sync --once`.\n"
+    }
+    assert [o.rsplit(" (", 1)[1] for o in _guide_offences(stale, probes)] == [
+        "--no-redact)",
+        "--inbox)",
+        "no command 'frob')",
+        "--gone)",
+    ]
+
+
 def test_superseded_markers_point_at_existing_amendments() -> None:
     """History is kept: every SUPERSEDED marker names a §16 subsection that exists."""
     import re  # noqa: PLC0415
