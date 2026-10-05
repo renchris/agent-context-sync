@@ -1109,6 +1109,25 @@ def test_purge_queue_dry_run_previews_and_writes_nothing(
     assert len(governance.pending_purges(initialised.state_paths.root)) == 1
 
 
+def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Field N1: `purge --queue` skips a queued purge on a held source; it stays queued, nothing written."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(initialised.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    assert cli.main(["hold", "source", "--reason", "matter 7", "--owner", "legal", "--config", cfg]) == 0
+    head = git(repo, "rev-parse", "HEAD").strip()
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert "0 queued purge(s) run; 1 still queued" in capsys.readouterr().out
+    assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
+    assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
+
+
 def _archive_on(config: Config) -> str:
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + "\n[governance]\narchive = true\n", encoding="utf-8")
