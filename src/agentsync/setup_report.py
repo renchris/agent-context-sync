@@ -12,7 +12,8 @@ The report opens with a computed ``## Summary``, then the friction log (``~/agen
 embedded and redacted, one line per attempt), then the machine sections and the redaction legend, and its last
 line is a prefilled "Setup report" issue link. The friction log is a sequence of attempts (``Attempt:
 <time>``, ``Prompt:``, ``Agent:``, then ``<time> | step <n> | <kind> | <what> | <fix>`` lines and ``<time> |
-end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--log-end`` for setup prompt v6 (by
+end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--report-only`` (``--log-end`` until
+KISS K17) for setup prompt v6 (by
 the agent itself in v5, whose step numbers :class:`PromptLayout` keeps); v4 ``F<n> | ...`` lines are shown as
 legacy, never counted. Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
@@ -130,8 +131,9 @@ Allow this prompt announced"); in a v5 log they are the first click logged in ea
 INSTALL_STEP = 2
 """The prompt step that runs scripts/install.sh: the installer's failure is a failure of this step."""
 REPORT_STEP = 3
-"""The prompt step every run ends at ("If a command fails ... log it and go to step 3"); its closing
-``install.sh --log-end`` line (``<time> | end | finished``) is its end."""
+"""The prompt step every run ends at ("If a command fails ... log it and go to step 3"); its
+``install.sh --report-only`` closes the attempt with ``<time> | end | finished`` (``--log-end`` until
+KISS K17)."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -598,8 +600,8 @@ class Attempt:
 
     @property
     def finished(self) -> bool:
-        """Whether the attempt has its closing ``<time> | end | finished`` line (``install.sh --log-end`` in
-        prompt v6's step 3; the agent's own line in v5's step 5)."""
+        """Whether the attempt has its closing ``<time> | end | finished`` line (``install.sh --report-only``,
+        before KISS K17 ``--log-end``, in prompt v6's step 3; the agent's own line in v5's step 5)."""
         return any(e.kind == "finished" for e in self.events)
 
     @property
@@ -2562,7 +2564,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append(f"- agent said run: {att.header['Run']}")
     if att is not None and not att.finished:
         step = att.layout.report_step
-        closer = "install.sh --log-end" if not att.layout.logs_steps else "the agent's end line"
+        closer = "install.sh --report-only" if not att.layout.logs_steps else "the agent's end line"
         out.append(
             f'- WARNING: attempt {att.number} has no "end | finished" line ({closer}), so this report may be '
             f"stale: it was written before prompt step {step}, or the agent stopped early. Run "

@@ -1,23 +1,20 @@
 #!/bin/bash
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
-# Usage: scripts/install.sh [--dry-run] [--source-local FOLDER ...] [--confirm-install-agent] [--launcher PATH]
-#                           [--rebuild-launcher] [--config PATH] [--no-report] [--report-only] [--version]
-#                           [--help] [SOURCE]
+# Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent] [--launcher PATH]
+#                           [--rebuild-launcher] [--report-only] [--version] [--help]
 #        scripts/install.sh --list-folders
-#        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX | --log-end
+#        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX
 #
-#   SOURCE                  a local agentsync checkout (default: the checkout holding this script) or a wheel
-#   --dry-run               print every step that would change something; change nothing (no log, no report)
 #   --source-local FOLDER   sync this folder (e.g. one inside ~/Library/CloudStorage/OneDrive-<Org>) as a live
 #                           local source; repeatable, and already-configured folders are left as they are
 #   --confirm-install-agent also sync once, install and start the two LaunchAgents (agentsync install-agent)
 #                           and wait for the first background run (steps 6-8)
 #   --launcher PATH         use this prebuilt, signed AgentSyncLauncher.app instead of building one
 #   --rebuild-launcher      rebuild the launcher even when the installed one matches its sources
-#   --config PATH           sources.toml (default: $AGENTSYNC_CONFIG or ~/agent-context/sources.toml)
-#   --no-report             do not write the setup report at exit (step 9)
-#   --report-only           only write the setup report (step 9), then exit; installs and logs nothing
+#   --report-only           only write the setup report (step 9), then exit; installs and logs nothing, except
+#                           that it closes the friction log's current attempt ("<time> | end | finished") when
+#                           that attempt has no end line yet
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
 #                           (the line step 1 of the setup prompt checks)
@@ -31,9 +28,10 @@
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt
 #   --log STEP KIND WHAT FIX
 #                           append one event to it; KIND is question, click, approval, deviation, error or prompt
-#   --log-end               close the attempt ("<time> | end | finished")
 #
-# Friction log: --log-start, --log and --log-end only append to $AGENTSYNC_FRICTION_LOG (default
+# The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml.
+#
+# Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077), which
 # `agentsync setup-report` reads. Each must be the first argument and takes no other option; they need no uv
 # and no agentsync, write no install.log line, no install.out and no report, and print one confirmation line.
@@ -43,17 +41,18 @@
 #                      that is not a number, or "-", leaves the step column out and moves a non-number into
 #                      WHAT). A KIND outside the six, or a count other than four, exits 2 and still appends
 #                      an "error" line that names it and keeps what was given
-#   --log-end          appends "<UTC> | end | finished"
+# --report-only closes the attempt: it appends "<UTC> | end | finished" before writing the report, only when the
+# last "Attempt:" has no such line (so running it twice adds one), and prints one confirmation line.
 # Arguments are written as given (printf '%s'): nothing in them is expanded or run, so a backtick, $( ) or a
 # typographic ’ is logged as text; a line break inside one becomes a space (one event per line).
 #
 # Steps, each skipped when already done:
 #   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
-#   2. uv tool install agentsync from SOURCE (a uv-managed Python 3.11; the system trust store for TLS);
-#      skipped when the last install came from this same clean checkout commit
+#   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
+#      trust store for TLS); skipped when the last install came from this same clean checkout commit
 #   3. the signed launcher at ~/Applications/AgentSyncLauncher.app: built with launcher/build.sh when
-#      developer tools exist (SIGN_IDENTITY passes through for a Developer ID build), else --launcher PATH or
-#      a prebuilt AgentSyncLauncher.app next to the wheel; an up-to-date one is never rebuilt, because an
+#      developer tools exist (SIGN_IDENTITY passes through for a Developer ID build), or copied from
+#      --launcher PATH; else a valid installed one is kept. An up-to-date one is never rebuilt, because an
 #      ad-hoc rebuild is a new TCC identity and macOS would ask again
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
@@ -81,8 +80,8 @@
 #   printed nothing for a while does not stop this one. A whole run with --confirm-install-agent takes the
 #   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
 #   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
-#   9. report, at every exit after the arguments are read (failures and usage errors too) unless --no-report
-#      or --dry-run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
+#   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
+#      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
 #      same headings (machine facts, install.log, this run's doctor output, friction.md; the home path,
 #      login name, full name, OneDrive-<org> and the --source-local folder names redacted); when the report
@@ -101,11 +100,11 @@
 # published checkout stops at step 1 instead of failing later (tests/test_install_oneshot.py checks they
 # match).
 #
-# Setup log: every real run (never --dry-run or --report-only) appends to $AGENTSYNC_SETUP_LOG (default
-# ~/agent-context/setup/install.log, directory 0700) one "start" line (compat, install.sh commit when SOURCE
+# Setup log: every real run (never a dry run or --report-only) appends to $AGENTSYNC_SETUP_LOG (default
+# ~/agent-context/setup/install.log, directory 0700) one "start" line (compat, install.sh commit when the source
 # is a checkout: "commit=<sha>" or, with local changes, "commit=<sha>-dirty tree=<fingerprint>", the
-# fingerprint being the first 12 hex digits of the SHA-256 of `git diff HEAD` in SOURCE, which reproduces it;
-# SOURCE, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
+# fingerprint being the first 12 hex digits of the SHA-256 of `git diff HEAD` in the source, which reproduces
+# it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
 # exit status, done / skipped / failed: uv, agentsync, launcher, config, doctor, first-sync, agent, wait; or
 # list-folders alone), then the report step's line, then one "end" line (exit status, total seconds, the report
 # included). The report is written while a provisional end line is the log's last line, so it reads a
@@ -127,9 +126,12 @@
 # after argument parsing ends with one "NEXT:" line; for a background exit 80 (an earlier "Don't Allow") or
 # a 79 at the timeout it names the click: turn on agentsync-launcher in System Settings > Privacy & Security
 # > Files and Folders. agentsync exit codes named in messages: 0 ok, 75 lock busy, 77 sign-in required, 78
-# configuration invalid, 79 TCC pending (macOS waits for Allow), 80 TCC denied. --log-start, --log and
-# --log-end: 0 logged, 2 a usage error (a bad KIND or argument count: see "Friction log"), 1 the friction log
-# could not be written; none of them prints a NEXT: line.
+# configuration invalid, 79 TCC pending (macOS waits for Allow), 80 TCC denied. --log-start and --log:
+# 0 logged, 2 a usage error (a bad KIND or argument count: see "Friction log"), 1 the friction log
+# could not be written; neither prints a NEXT: line.
+#
+# Dry run: AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something and changes nothing (no
+# log, no install.out, no report); its NEXT: line says to re-run without it.
 #
 # Test-only seams, never for a real Mac: AGENTSYNC_SIMULATE_LAUNCHD=1 replaces install-agent, the kickstart
 # and the wait with "SIMULATED" lines (no plist, no launchctl write; the wait succeeds at once; the log and
@@ -142,7 +144,7 @@ SETUP_PROMPT_COMPAT=6 # the README prompt's "setup prompt vN": bump both togethe
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log
-# --log-start / --log / --log-end (see "Friction log" in the header), handled before anything else: no uv, no
+# --log-start / --log (see "Friction log" in the header), handled before anything else: no uv, no
 # git, no install.log, no install.out, no report. Every argument is written with printf '%s', never evaluated.
 # The setup prompt's friction log (the path `agentsync setup-report` reads too).
 friction_file() {
@@ -186,14 +188,6 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 		v="${v//$'\n'/ }"
 		friction_append "Attempt: $now"$'\n'"Prompt: v$SETUP_PROMPT_COMPAT"$'\n'"Agent: ${v:-unknown}"$'\n' || rc=1
 		[ "$rc" -ne 0 ] || printf 'friction log: attempt started in %s\n' "$(friction_file)"
-		;;
-	--log-end)
-		if [ $# -ne 0 ]; then
-			printf 'usage error: --log-end takes no argument and no other option (see --help)\n' >&2
-			return 2
-		fi
-		friction_append "$now | end | finished"$'\n' || rc=1
-		[ "$rc" -ne 0 ] || printf 'friction log: attempt finished in %s\n' "$(friction_file)"
 		;;
 	--log)
 		if [ $# -ne 4 ]; then
@@ -244,8 +238,22 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 	[ "$rc" -ne 1 ] || printf 'error: could not write the friction log %s\n' "$(friction_file)" >&2
 	return "$rc"
 }
+# --report-only: close the friction log's current attempt with "<UTC> | end | finished", only when its last
+# "Attempt:" has no end line yet (so a second --report-only adds none). No log or no attempt: nothing to close.
+friction_close_attempt() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	awk '/^Attempt:/ { open = 1; ended = 0; next } /\| end \| finished[[:space:]]*$/ { ended = 1 }
+		END { exit !(open && !ended) }' "$f" || return 0
+	if friction_append "$(date -u +%Y-%m-%dT%H:%M:%SZ) | end | finished"$'\n'; then
+		say "friction log: attempt finished in $f"
+	else
+		warn "could not write the friction log $f"
+	fi
+}
 case "${1:-}" in
---log-start | --log | --log-end)
+--log-start | --log)
 	rc=0
 	friction_cmd "$@" || rc=$?
 	exit "$rc"
@@ -264,7 +272,7 @@ for a in "$@"; do
 		continue
 	fi
 	case "$a" in
-	--dry-run | --report-only | --list-folders | --version | -h | --help) ;; # the NEXT line is for the real run
+	--report-only | --list-folders | --version | -h | --help) ;; # the NEXT line is for the real run
 	--source-local)
 		skip_next=1
 		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
@@ -281,6 +289,7 @@ repo="$(cd "$here/.." && pwd)"
 SELF="$(printf '%q' "$here/$(basename "${BASH_SOURCE[0]}")")" # this script, absolute, for re-run commands
 
 DRY_RUN=0
+[ "${AGENTSYNC_INSTALL_DRY_RUN:-}" != "1" ] || DRY_RUN=1 # the dry run (see the header)
 INSTALL_AGENT=0
 REBUILD=0
 REPORT=1
@@ -435,7 +444,7 @@ with_timeout() {
 	return "$rc"
 }
 
-# Run a command, or only print it under --dry-run.
+# Run a command, or only print it in a dry run.
 run() {
 	if [ "$DRY_RUN" -eq 1 ]; then
 		printf '[dry-run]'
@@ -467,7 +476,7 @@ tighten_setup_modes() {
 		if [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ]; then chmod 600 "$f"; fi
 	done
 }
-log_at() { # STAMP TEXT...: one line "<stamp> run=<id> <text>"; nothing under --dry-run / --report-only
+log_at() { # STAMP TEXT...: one line "<stamp> run=<id> <text>"; nothing in a dry run or under --report-only
 	local stamp="$1"
 	shift
 	[ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 0
@@ -834,7 +843,7 @@ write_fallback_report() { # RC WHY
 	}
 	mv -f "$tmp" "$REPORT_PATH"
 }
-write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 under --dry-run
+write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "${AGENTSYNC:-agentsync}" setup-report --out "$REPORT_PATH" --config "$CONFIG"
@@ -891,7 +900,7 @@ on_exit() {
 				say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
 			fi
 			;;
-		2) ;; # --dry-run: printed, not written
+		2) ;; # a dry run: printed, not written
 		*)
 			if [ "$REPORT_ONLY" -eq 1 ]; then
 				rc=1
@@ -1011,21 +1020,14 @@ list_folders() {
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--dry-run) DRY_RUN=1 ;;
 	--confirm-install-agent) INSTALL_AGENT=1 ;;
 	--rebuild-launcher) REBUILD=1 ;;
-	--no-report) REPORT=0 ;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
-	--log-start | --log | --log-end) usage_error "$1 must be the first argument and takes no other option" ;;
+	--log-start | --log) usage_error "$1 must be the first argument and takes no other option" ;;
 	--launcher)
 		[ $# -ge 2 ] || usage_error "--launcher needs a path"
 		LAUNCHER_SRC="$2"
-		shift
-		;;
-	--config)
-		[ $# -ge 2 ] || usage_error "--config needs a path"
-		CONFIG="$2"
 		shift
 		;;
 	--source-local)
@@ -1044,7 +1046,7 @@ while [ $# -gt 0 ]; do
 		exit 0
 		;;
 	-*) usage_error "unknown option $1" ;;
-	*)
+	*) # SOURCE, a test seam left out of --help: the checkout or wheel to install instead of this checkout
 		[ -z "$SOURCE" ] || usage_error "only one SOURCE is accepted"
 		SOURCE="$1"
 		;;
@@ -1052,23 +1054,20 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-# From here on every exit logs its end, writes the report (unless --no-report / --dry-run) and prints NEXT.
+# From here on every exit logs its end, writes the report (not in a dry run or --list-folders) and prints NEXT.
 PARSED=1
 trap 'on_exit' EXIT
 trap 'on_signal 129' HUP
 trap 'on_signal 130' INT
 trap 'on_signal 143' TERM
-start_capture # a copy of this run's output in install.out (not for --dry-run or --report-only)
-if [ "$REPORT_ONLY" -eq 1 ] && [ "$REPORT" -eq 0 ]; then
-	usage_error "--report-only and --no-report exclude each other"
-fi
+start_capture # a copy of this run's output in install.out (not in a dry run or for --report-only)
 case "$CONFIG" in
 /*) ;;
 *) CONFIG="$PWD/$CONFIG" ;;
 esac
 if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report, one list-folders step in the log
 	REPORT=0
-	if [ -n "$ORIG_ARGS" ] || [ "$DRY_RUN" -eq 1 ] || [ "$REPORT_ONLY" -eq 1 ]; then
+	if [ -n "$ORIG_ARGS" ] || [ "$REPORT_ONLY" -eq 1 ]; then
 		usage_error "--list-folders takes no other option or SOURCE"
 	fi
 	case "$LIST_TIMEOUT" in
@@ -1084,9 +1083,13 @@ if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report, one list
 	list_folders || rc=$?
 	exit "$rc"
 fi
-if [ "$REPORT_ONLY" -eq 1 ]; then # step 9 alone (the EXIT trap writes it)
+if [ "$REPORT_ONLY" -eq 1 ]; then # the attempt's end line, then step 9 alone (the EXIT trap writes it)
 	NEXT_MSG="review the setup report, then send it as it says (nothing is sent for you)"
-	[ "$DRY_RUN" -eq 0 ] || NEXT_MSG="re-run without --dry-run to write the report"
+	if [ "$DRY_RUN" -eq 1 ]; then
+		NEXT_MSG="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to write the report"
+	else
+		friction_close_attempt
+	fi
 	exit 0
 fi
 case "$WAIT_SECONDS" in
@@ -1283,30 +1286,14 @@ elif [ "$SOURCE_KIND" = "checkout" ] && [ -x "$SOURCE/launcher/build.sh" ] && ha
 		rm -rf "$out"
 	fi
 	LAUNCHER_STATE="installed"
+elif [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST"; then
+	say "launcher: keeping $APP_DEST (no developer tools to rebuild it, and no --launcher PATH)"
+	LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="kept"
+	LAUNCHER_STATE="installed"
 else
-	prebuilt=""
-	if [ "$SOURCE_KIND" = "wheel" ] && [ -d "$(dirname "$SOURCE")/$APP_NAME" ]; then
-		prebuilt="$(dirname "$SOURCE")/$APP_NAME"
-	elif [ -d "$repo/launcher/prebuilt/$APP_NAME" ]; then
-		prebuilt="$repo/launcher/prebuilt/$APP_NAME"
-	fi
-	if [ -n "$prebuilt" ] && launcher_valid "$prebuilt"; then
-		if [ -d "$APP_DEST" ] && [ "$(cdhash_of "$APP_DEST")" = "$(cdhash_of "$prebuilt")" ]; then
-			say "launcher: $APP_DEST is up to date (prebuilt $prebuilt)"
-			LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="up-to-date"
-		else
-			install_app "$prebuilt"
-		fi
-		LAUNCHER_STATE="installed"
-	elif [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST"; then
-		say "launcher: keeping $APP_DEST (no developer tools and no prebuilt launcher to update it from)"
-		LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="kept"
-		LAUNCHER_STATE="installed"
-	else
-		warn "no launcher: no developer tools (xcode-select -p) and no prebuilt $APP_NAME; sources under" \
-			"$HOME/Library/CloudStorage cannot run from launchd until one is installed"
-		LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="no-launcher"
-	fi
+	warn "no launcher: no developer tools (xcode-select -p) and no --launcher PATH; sources under" \
+		"$HOME/Library/CloudStorage cannot run from launchd until one is installed"
+	LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="no-launcher"
 fi
 step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
 if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then
@@ -1689,14 +1676,10 @@ esac
 
 # ------------------------------------------------------------------------------------------------ next step
 agent_plist="$HOME/Library/LaunchAgents/$POLL_LABEL.plist"
-CONFIG_FLAG=""
-if [ "$CONFIG" != "$HOME/agent-context/sources.toml" ]; then
-	CONFIG_FLAG=" --config $(printf '%q' "$CONFIG")"
-fi
 EXIT_RC=0
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 if [ "$DRY_RUN" -eq 1 ]; then
-	next="re-run without --dry-run to apply the steps above"
+	next="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
 elif [ "$INSTALL_AGENT" -eq 1 ]; then
 	EXIT_RC=1 # --confirm-install-agent asked for background sync: anything short of it is a failure
 	if [ "$HAVE_SOURCES" -eq 0 ]; then
@@ -1710,10 +1693,10 @@ elif [ "$INSTALL_AGENT" -eq 1 ]; then
 		next="nothing is left in this sandbox: launchd was simulated (AGENTSYNC_SIMULATE_LAUNCHD=1), so no background sync runs"
 	elif [ "$WAIT_RESULT" = "running" ]; then
 		EXIT_RC=0
-		next="nothing is left: background sync is on (its first run is past the macOS access check and keeps converting in the background); check it any time with: $AGENTSYNC status$CONFIG_FLAG"
+		next="nothing is left: background sync is on (its first run is past the macOS access check and keeps converting in the background); check it any time with: $AGENTSYNC status"
 	elif [ "$WAIT_RESULT" = "ok" ]; then
 		EXIT_RC=0
-		next="nothing is left: background sync is on (first background run: exit 0, ok); check it any time with: $AGENTSYNC status$CONFIG_FLAG"
+		next="nothing is left: background sync is on (first background run: exit 0, ok); check it any time with: $AGENTSYNC status"
 	elif [ "$WAIT_RESULT" = "tcc" ]; then
 		EXIT_RC=3
 		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$ORIG_ARGS"
@@ -1721,9 +1704,9 @@ elif [ "$INSTALL_AGENT" -eq 1 ]; then
 		next="macOS denied agentsync-launcher access to files managed by $(provider_name) (an earlier \"Don't Allow\"): $TCC_CLICK, then re-run: $SELF$ORIG_ARGS"
 	elif [ "$WAIT_RESULT" = "timeout" ]; then
 		EXIT_RC=3
-		next="the first background run did not exit 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}); check $AGENTSYNC status$CONFIG_FLAG, then re-run: $SELF$ORIG_ARGS"
+		next="the first background run did not exit 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}); check $AGENTSYNC status, then re-run: $SELF$ORIG_ARGS"
 	else
-		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status$CONFIG_FLAG and $WAIT_ERRLOG show, then re-run: $SELF$ORIG_ARGS"
+		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$ORIG_ARGS"
 	fi
 elif [ "$LAUNCHER_STATE" != "installed" ]; then
 	next="get a signed $APP_NAME (ask IT, or install the Xcode Command Line Tools) and re-run with --launcher PATH"
@@ -1732,11 +1715,11 @@ elif [ "$CONFIG_STATE" = "created" ] && [ "${#FOLDERS[@]}" -eq 0 ]; then
 elif [ "$DOCTOR_RC" -ne 0 ]; then
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
 elif [ ! -f "$agent_plist" ] && [ "${#FOLDERS[@]}" -gt 0 ]; then
-	next="check a first cycle by hand with: $AGENTSYNC sync --once$CONFIG_FLAG; then re-run: $SELF$BASE_ARGS --confirm-install-agent to start background sync"
+	next="check a first cycle by hand with: $AGENTSYNC sync --once; then re-run: $SELF$BASE_ARGS --confirm-install-agent to start background sync"
 elif [ ! -f "$agent_plist" ]; then
 	next="re-run: $SELF$BASE_ARGS --confirm-install-agent to start background sync"
 else
-	next="if macOS asks $PROMPT_TEXT, click Allow; then check progress with: $AGENTSYNC status$CONFIG_FLAG"
+	next="if macOS asks $PROMPT_TEXT, click Allow; then check progress with: $AGENTSYNC status"
 fi
 NEXT_MSG="$next"
 [ "$EXIT_RC" -eq 0 ] || exit "$EXIT_RC" # the EXIT trap writes the report and prints NEXT

@@ -5147,6 +5147,17 @@ scripts/install.sh shows that line for its first sync and logs it as the step's 
 summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING ON YOU:` lines, any `note:` lines.
 `--mode`, `reconcile`, `materialise` and `accept-deletions` still end on the summary line.
 
+**SUPERSEDED in part (2026-10-05, KISS K17): install.sh options.** `--dry-run` is the variable
+`AGENTSYNC_INSTALL_DRY_RUN=1` (same behavior; its `NEXT:` line says to re-run without it). `--config` is deleted:
+the config is `$AGENTSYNC_CONFIG`, else `~/agent-context/sources.toml`, and no `NEXT:` line carries `--config`.
+`--no-report` is deleted with its only caller, the README's separate baseline-questions prompt. `--log-end` is
+deleted: `--report-only` appends `<UTC> | end | finished` to friction.md before writing the report, only when the
+last `Attempt:` has no such line, so a second `--report-only` adds none. The prebuilt-launcher lookup (an
+`AgentSyncLauncher.app` beside a wheel or under `launcher/prebuilt/`) is deleted; without developer tools or
+`--launcher PATH` a valid installed launcher is kept. The `SOURCE` positional (a checkout or wheel) still parses
+as a test seam and is left out of `--help`. The deleted options exit 2 as unknown options; the case arms are
+pinned by `tests/test_contracts.py::INSTALL_OPTIONS`.
+
 ### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
 
 Additive (judge finding J10; setup prompt v5 step 4). `agentsync it-request --out PATH [--config PATH]` renders

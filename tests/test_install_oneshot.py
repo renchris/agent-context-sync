@@ -1,7 +1,7 @@
 """scripts/install.sh as the README one-prompt (setup prompt v6) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
-15 s), then writes the setup report at every exit; ``--log`` / ``--log-end`` keep the friction log.
+15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
 
 Nothing real is touched: HOME is a tmp dir, ``uv``/``agentsync`` are logging stubs on PATH, and launchd is a
 stub ``launchctl`` named by AGENTSYNC_LAUNCHCTL (every harness run sets it, so no test can reach
@@ -288,7 +288,8 @@ def test_readme_prompt_version_matches_the_installer_constant() -> None:
     block = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
     assert re.findall(r"setup prompt v(\d+)", block) == [n]
     assert f'"setup-prompt-compat {n}"' in block and "install.sh --version" in block
-    assert "install.sh --log-start '<agent>'" in block and "install.sh --log-end" in block
+    assert "install.sh --log-start '<agent>'" in block and "install.sh --report-only" in block
+    assert "--log-end" not in block, "KISS K17: --report-only closes the attempt"
     assert "install.sh --log '<step>' '<kind>'" in block, "the prompt logs through the installer (L4)"
     assert '"Prompt: v$SETUP_PROMPT_COMPAT"' in script, "--log-start writes the same version"
 
@@ -525,13 +526,6 @@ def test_a_parse_error_writes_no_report(env: dict[str, str]) -> None:
     assert list(Path(env["HOME"]).iterdir()) == []
 
 
-def test_no_report_skips_the_report(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    cp = install_sh(env, str(wheel), "--source-local", str(folder), "--confirm-install-agent", "--no-report")
-    assert cp.returncode == 0, cp.stderr
-    assert not report_path(env).exists() and "[setup report:" not in cp.stdout
-    assert not any(c.startswith("agentsync setup-report") for c in calls(env))
-
-
 def test_report_only_runs_just_the_report(env: dict[str, str]) -> None:
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
@@ -572,7 +566,7 @@ def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
     assert friction.strip() == "Outcome: failed at step 2"
 
 
-# ---- the sandbox seam and --dry-run ------------------------------------------------------------------------
+# ---- the sandbox seam and the dry run (AGENTSYNC_INSTALL_DRY_RUN=1) ----------------------------------------
 
 
 def test_simulated_launchd_touches_no_launchctl(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -599,7 +593,8 @@ def test_simulated_launchd_touches_no_launchctl(env: dict[str, str], folder: Pat
 def test_dry_run_writes_nothing(env: dict[str, str], folder: Path, wheel: Path) -> None:
     home = Path(env["HOME"])
     before = sorted(home.rglob("*"))
-    cp = install_sh(env, "--dry-run", str(wheel), "--source-local", str(folder), "--confirm-install-agent")
+    dry = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}
+    cp = install_sh(dry, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 0, cp.stderr
     assert sorted(home.rglob("*")) == before
     assert calls(env) == ["uv tool dir --bin", "uv tool dir"], "only read-only uv queries run"
@@ -611,7 +606,7 @@ def test_dry_run_writes_nothing(env: dict[str, str], folder: Path, wheel: Path) 
         f" setup-report --out {report_path(env)} ",
     ):
         assert any(ln.startswith("[dry-run]") and planned in ln for ln in out.splitlines()), planned
-    assert last_line(cp) == "NEXT: re-run without --dry-run to apply the steps above"
+    assert last_line(cp) == "NEXT: re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
 
 
 # ---- the re-run skips an agentsync that is already current -------------------------------------------------
@@ -1106,7 +1101,8 @@ def test_install_out_keeps_the_last_2000_lines(env: dict[str, str], folder: Path
 
 
 def test_dry_run_and_report_only_write_no_install_out(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    assert install_sh(env, "--dry-run", str(wheel), "--source-local", str(folder)).returncode == 0
+    dry = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}
+    assert install_sh(dry, str(wheel), "--source-local", str(folder)).returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     assert not install_out(env).exists()
 
@@ -1149,7 +1145,8 @@ def friction_path(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
 
 
-def test_log_start_log_and_log_end_write_the_friction_log(env: dict[str, str]) -> None:
+def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str]) -> None:
+    """KISS K17: --report-only, not a separate --log-end, appends the attempt's end line."""
     start = install_sh(env, "--log-start", "Claude Code, claude-opus-5-5")
     assert start.returncode == 0, start.stderr
     assert start.stdout == f"friction log: attempt started in {friction_path(env)}\n"
@@ -1158,8 +1155,9 @@ def test_log_start_log_and_log_end_write_the_friction_log(env: dict[str, str]) -
     assert one.stdout == f"friction log: question logged in {friction_path(env)}\n"
     two = install_sh(env, "--log", "step 2", "error", "install.sh exited 3", "a longer wait")
     assert two.returncode == 0, two.stderr
-    end = install_sh(env, "--log-end")
+    end = install_sh(env, "--report-only")
     assert end.returncode == 0, end.stderr
+    assert f"friction log: attempt finished in {friction_path(env)}\n" in end.stdout
     lines = friction_path(env).read_text().splitlines()
     t = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
     assert re.fullmatch(rf"Attempt: {t}", lines[0])
@@ -1178,7 +1176,7 @@ def test_log_start_log_and_log_end_write_the_friction_log(env: dict[str, str]) -
 
 
 def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
-    for argv in (["--log-start", "Copilot CLI"], ["--log", "1", "click", "x", "-"], ["--log-end"]):
+    for argv in (["--log-start", "Copilot CLI"], ["--log", "1", "click", "x", "-"]):
         assert install_sh(env, *argv).returncode == 0
     setup = friction_path(env).parent
     assert sorted(p.name for p in setup.iterdir()) == ["friction.md"], "no install.log, no install.out"
@@ -1188,7 +1186,7 @@ def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
 
 
 def test_friction_options_are_fast(env: dict[str, str]) -> None:
-    for argv in (["--log-start", "a"], ["--log", "2", "approval", "x", "-"], ["--log-end"]):
+    for argv in (["--log-start", "a"], ["--log", "2", "approval", "x", "-"]):
         best = min(_timed(env, argv) for _ in range(3))
         assert best < 0.2, f"{argv[0]} took {best:.3f}s"
 
@@ -1269,15 +1267,33 @@ def test_friction_log_path_follows_the_env_and_appends(env: dict[str, str], tmp_
     f.parent.mkdir()
     f.parent.chmod(0o755)
     f.write_text("earlier line without a newline")
-    e = {**env, "AGENTSYNC_FRICTION_LOG": str(f)}
+    e = {**env, "AGENTSYNC_FRICTION_LOG": str(f), "AGENTSYNC_SETUP_REPORT": str(tmp_path / "report.md")}
     assert install_sh(e, "--log-start", "a").returncode == 0
-    assert install_sh(e, "--log-end").returncode == 0
+    assert install_sh(e, "--report-only").returncode == 0
     lines = f.read_text().splitlines()
     assert lines[0] == "earlier line without a newline" and lines[1].startswith("Attempt: ")
     assert lines[-1].endswith(" | end | finished") and len(lines) == 5
     assert (f.stat().st_mode & 0o777) == 0o600
     assert (f.parent.stat().st_mode & 0o777) == 0o755, "a folder it did not create keeps its mode"
     assert not (Path(env["HOME"]) / "agent-context").exists()
+
+
+def test_report_only_closes_the_current_attempt_once(env: dict[str, str]) -> None:
+    """KISS K17: --report-only appends the end line only when the last attempt has none: never twice, never
+    without an attempt, and a later attempt is closed on its own."""
+    f = friction_path(env)
+    assert install_sh(env, "--report-only").returncode == 0
+    assert not f.exists(), "no friction log, no attempt to close"
+    assert install_sh(env, "--log-start", "a").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    again = install_sh(env, "--report-only")
+    assert again.returncode == 0 and "friction log:" not in again.stdout
+    assert [ln.split(" | ", 1)[-1] for ln in f.read_text().splitlines()][3:] == ["end | finished"]
+    assert install_sh(env, "--log-start", "b").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    attempts = setup_report.parse_friction(f.read_text()).attempts
+    assert [a.finished for a in attempts] == [True, True]
+    assert sum(ln.endswith(" | end | finished") for ln in f.read_text().splitlines()) == 2
 
 
 def test_the_readme_prompt_logs_only_through_the_installer() -> None:

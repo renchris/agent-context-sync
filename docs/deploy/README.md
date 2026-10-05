@@ -46,7 +46,7 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 ~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
 ```
 
-The script is safe to re-run and never prompts; `--dry-run` shows every step first. It installs uv and agentsync,
+The script is safe to re-run and never prompts. It installs uv and agentsync,
 builds and ad-hoc signs the launcher, writes `sources.toml` with one live `kind = "local"` source per folder (on a
 re-run it adds only folders not yet there, through `agentsync add-source`), runs `agentsync doctor`, and ends with
 one `NEXT:` line. Check a first cycle with `agentsync sync --once`, then start background sync:
@@ -167,11 +167,11 @@ them, including the Keychain item, the LaunchAgents, the launcher and its TCC gr
 ## Setup feedback
 
 Every real `install.sh` run appends one line per step to `~/agent-context/setup/install.log` (0600; set
-`AGENTSYNC_SETUP_LOG` to move it; `--dry-run` writes nothing). `agentsync setup-report --out
+`AGENTSYNC_SETUP_LOG` to move it). `agentsync setup-report --out
 ~/agent-context/setup-report.md` turns that log, doctor, status, the background runs and recent log errors into one
 redacted report with a summary first. It is read-only, makes no network calls and takes under 12 s. The coding agent
-logs what the prompt did not foresee as it goes, with `scripts/install.sh --log` (`--log-start` and `--log-end` open
-and close each attempt), into `~/agent-context/setup/friction.md` (0600); the report embeds it with the same
+logs what the prompt did not foresee as it goes, with `scripts/install.sh --log` (`--log-start` opens each attempt
+and `--report-only` closes it), into `~/agent-context/setup/friction.md` (0600); the report embeds it with the same
 redaction, and works out the outcome and run type itself. It prints a link that opens a pre-filled setup-report
 issue; nothing is sent. `install.sh` also writes the report at every exit, and `scripts/install.sh --report-only`
 (step 3 of the prompt) writes it whether or not agentsync got installed. [setup-feedback.md](setup-feedback.md) covers how to review it,

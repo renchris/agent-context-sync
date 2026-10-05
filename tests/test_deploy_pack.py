@@ -34,7 +34,6 @@ ONE_PROMPT_INSTALL_FLAGS = {
     "--log",
     "--source-local",
     "--confirm-install-agent",
-    "--log-end",
     "--report-only",
 }
 """The install.sh flags the README's one prompt names; test_contracts.py checks they are in the frozen set."""
@@ -126,7 +125,7 @@ def test_install_help_exits_zero(tmp_path: Path) -> None:
         timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.startswith("agentsync installer") and "--dry-run" in proc.stdout
+    assert proc.stdout.startswith("agentsync installer") and "AGENTSYNC_INSTALL_DRY_RUN=1" in proc.stdout
     assert sorted(p.name for p in tmp_path.iterdir()) == []  # --help changes nothing
 
 
@@ -230,11 +229,16 @@ def test_deploy_pages_were_found() -> None:
 # ---- install.sh --source-local and the README one-prompt block ------------------------------------------
 
 
+DRY_RUN_NEXT = "NEXT: re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
+"""The dry run's one NEXT line (KISS K17: the variable replaced --dry-run)."""
+
+
 def _install_dry_run(home: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """install.sh --dry-run with HOME = ``home`` and no uv on PATH (so no real uv is ever invoked)."""
-    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
+    """install.sh's dry run (AGENTSYNC_INSTALL_DRY_RUN=1) with HOME = ``home`` and no uv on PATH (so no real
+    uv is ever invoked)."""
+    env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin", "AGENTSYNC_INSTALL_DRY_RUN": "1"}
     return subprocess.run(
-        ["bash", str(SCRIPTS[0]), "--dry-run", *args],
+        ["bash", str(SCRIPTS[0]), *args],
         cwd=home,
         env=env,
         capture_output=True,
@@ -266,7 +270,7 @@ def test_install_dry_run_passes_source_local_to_add_source(tmp_path: Path) -> No
     assert added[0].endswith(f" add-source {str(one).replace(' ', chr(92) + ' ')} --config {config}")
     assert added[1].endswith(f" add-source {two} --config {config}")
     assert not any(" init " in ln for ln in runs)
-    assert out.rstrip().splitlines()[-1] == "NEXT: re-run without --dry-run to apply the steps above"
+    assert out.rstrip().splitlines()[-1] == DRY_RUN_NEXT
     assert _tree(tmp_path) == before  # a dry run changes nothing
 
 
@@ -383,18 +387,17 @@ block redirects to a ``~`` path (v5b review L4), and the four values are single-
 ``$(...)`` in the agent's words is text, not a command (K7)."""
 
 STEP3_COMMAND = (
-    "~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md;"
-    f" {INSTALL_SH} --log-end && {INSTALL_SH} --report-only"
+    f"~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md; {INSTALL_SH} --report-only"
 )
-"""Setup prompt v6 step 3: the IT draft, the friction log's end line and the report in one command; the ``;``
-keeps a missing agentsync from skipping the end line and the report."""
+"""Setup prompt v6 step 3: the IT draft, then the report, which first appends the friction log's end line
+(KISS K17: no separate --log-end); the ``;`` keeps a missing agentsync from skipping the report."""
 
 FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt")
 """Setup prompt v6's closed list of friction line kinds (judge findings J1, J2); the steps are timed by the
 installer, so there is no start or end kind (v5b review V2, L9)."""
 
 FRICTION_LOG = Path("agent-context") / "setup" / "friction.md"
-"""The friction log install.sh --log-start, --log and --log-end append to, relative to HOME."""
+"""The friction log install.sh --log-start, --log and --report-only append to, relative to HOME."""
 
 
 def _report_step() -> int:
@@ -416,9 +419,7 @@ def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None
         assert text.lower().startswith(title), (title, text)
     step1 = steps[1]
     [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', step1)
-    assert int(required) == version, (
-        "v6 depends on --log, --log-start and --log-end, so it needs the v6 installer"
-    )
+    assert int(required) == version, "v6 depends on --log and --log-start, so it needs the v6 installer"
     assert 'If --version does not end with "setup-prompt-compat ' in step1, "the compat check reads --version"
     assert f"go to step {_report_step()}" in step1.split("--version does not end", 1)[1], (
         "a failed folder listing ends at the report"
@@ -665,18 +666,17 @@ def test_readme_report_step_after_any_failure() -> None:
 
 
 def test_readme_report_is_the_last_command() -> None:
-    """Nothing is logged after the report (J4): step 3's one command writes the IT draft, appends the
-    friction log's end line, then writes the report; a missing agentsync (``;``) skips neither, and the finish
-    runs nothing. --log-start and --log-end each appear once, in steps 1 and 3."""
+    """Nothing is logged after the report (J4): step 3's one command writes the IT draft, then the report,
+    which appends the friction log's end line first; a missing agentsync (``;``) does not skip it, and the
+    finish runs nothing. --log-start appears once, in step 1; --log-end is gone (KISS K17)."""
     steps = _prompt_steps()
     assert _commands(_one_prompt_block())[-1] == STEP3_COMMAND
     assert _commands(steps[len(steps)]) == []
     parts = _split_top(STEP3_COMMAND)
-    assert parts[1:] == [f"{INSTALL_SH} --log-end", f"{INSTALL_SH} --report-only"]
-    assert STEP3_COMMAND.index("; ") < STEP3_COMMAND.index("--log-end") < STEP3_COMMAND.index(" && ")
+    assert parts[1:] == [f"{INSTALL_SH} --report-only"]
     block = _one_prompt_block()
-    assert block.count("--log-start") == 1 and block.count("--log-end") == 1
-    assert "--log-start" in steps[1] and "--log-end" in steps[_report_step()]
+    assert block.count("--log-start") == 1 and "--log-end" not in block
+    assert "--log-start" in steps[1] and "--report-only" in steps[_report_step()]
 
 
 def _checkout_home(tmp_path: Path) -> Path:
@@ -776,9 +776,9 @@ def test_readme_step3_command_runs_without_agentsync(tmp_path: Path, shell: str)
 
 @pytest.mark.parametrize("shell", _SHELLS)
 def test_readme_friction_log_two_attempts(tmp_path: Path, shell: str) -> None:
-    """The prompt's exact friction commands (install.sh --log-start, --log and --log-end), as an agent runs
-    them over two attempts under the user's likely shells. The file is private (0600 in a 0700 folder), keeps
-    both attempts, and setup-report parses every line into the step and kind the agent gave."""
+    """The prompt's exact friction commands (install.sh --log-start, --log and --report-only), as an agent
+    runs them over two attempts under the user's likely shells. The file is private (0600 in a 0700 folder),
+    keeps both attempts, and setup-report parses every line into the step and kind the agent gave."""
     from agentsync import setup_report  # noqa: PLC0415
 
     home = _checkout_home(tmp_path)
@@ -788,7 +788,18 @@ def test_readme_friction_log_two_attempts(tmp_path: Path, shell: str) -> None:
             shell, _fill_line(1, "question", "asked which folders to sync | and whether all", "-"), home
         )
         _run_shell(shell, _fill_line(2, "error", "install.sh exited 3", "click Allow sooner"), home)
-        _run_shell(shell, f"{INSTALL_SH} --log-end", home)
+        done = subprocess.run(
+            [shell, "-c", f"{INSTALL_SH} --report-only"],
+            cwd=home,
+            env=tmp_home_env(home) | {"PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "friction log: attempt finished" in done.stdout
+        (home / "agent-context" / "setup-report.md").unlink()  # step 3's report: the next attempt has none
     log = home / FRICTION_LOG
     assert log.stat().st_mode & 0o777 == 0o600 and log.parent.stat().st_mode & 0o777 == 0o700
     friction = setup_report.parse_friction(log.read_text(encoding="utf-8"))
@@ -996,7 +1007,6 @@ def test_split_top_follows_the_documented_separators() -> None:
     ]
     assert _subcommands(STEP3_COMMAND) == [
         "~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md",
-        f"{INSTALL_SH} --log-end",
         f"{INSTALL_SH} --report-only",
     ]
     assert _subcommands(FRICTION_LOG_TEMPLATE) == [FRICTION_LOG_TEMPLATE]

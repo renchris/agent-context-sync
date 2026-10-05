@@ -91,19 +91,15 @@ whose help is suppressed carries `` (hidden)``. Adding, hiding or removing a com
 positional or choice is a deliberate edit here, in the same commit as the change."""
 
 INSTALL_OPTIONS: dict[str, list[str]] = {
-    "first-argument": ["--log-start", "--log", "--log-end"],
+    "first-argument": ["--log-start", "--log"],
     "main": [
-        "--dry-run",
         "--confirm-install-agent",
         "--rebuild-launcher",
-        "--no-report",
         "--report-only",
         "--list-folders",
         "--log-start",
         "--log",
-        "--log-end",
         "--launcher",
-        "--config",
         "--source-local",
         "--version",
         "-h",
@@ -111,7 +107,9 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
         "*",
     ],
 }
-"""The pinned install.sh options, per case block: the first-argument dispatch and the main option loop."""
+"""The pinned install.sh options, per case block: the first-argument dispatch and the main option loop.
+KISS K17 (2026-10-05) deleted --dry-run (now AGENTSYNC_INSTALL_DRY_RUN=1), --config, --no-report and --log-end
+(folded into --report-only); ``*`` is the SOURCE test seam, left out of --help."""
 
 
 def _cli_entry(action: argparse.Action) -> str:
