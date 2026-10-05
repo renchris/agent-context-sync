@@ -1,3 +1,7 @@
+---
+status: in-progress
+---
+
 # Plan — agentsync KISS: fewer options, a loop no agent can stop halfway
 
 Scope (frozen, 2026-10-04): reduce agentsync's flags, config and manual steps to the minimum, and make the full loop (sync, skill, topic pages, checkpoint, baseline questions) automatic or enforced on a new Mac, so a low-effort agent cannot stop partway.
@@ -53,113 +57,25 @@ A pinned freeze test makes any new flag, key or command a deliberate test edit.
 
 Each wave is one dispatched session. Run the waves in order. W3 may run alongside W4: their only shared file is CONTRACTS.md, and they edit different sections of it.
 
-## W1 Engine: sync does every automatic step itself
+## W1 Engine: sync does every automatic step itself — DONE (2026-10-04)
 
-Status: upcoming.
+Landed on `main` at `0004617` (10 commits, `839396c..0004617`): `839396c` freeze pins (K19a), `90bd05b` skill
+written by every sync (K03), `abc8c32` auto-migration, interactive lock wait, due reconcile (K12), `0e01f3b`
+checkpoint blockers and docs-root sources (K10), `f992312` automatic checkpoint (K06), then five fixes from the
+fresh-context review: `a63ed88`, `cce059a`, `05d92c4`, `f990351`, `0004617`. Gate after rebase: ruff, format, mypy
+clean; pytest 1907 passed, 2 skipped.
 
-Files: `src/agentsync/manifest.py`, `src/agentsync/cycle.py`, `src/agentsync/gitops.py`, `src/agentsync/curate.py`, `src/agentsync/governance.py`, `src/agentsync/skill.py (new)`, `src/agentsync/cli.py`, `tests/conftest.py`, `docs/design/CONTRACTS.md (§9, §16.16, §16.17, manifest migration)`, `tests/test_contracts.py`, `tests/test_manifest.py`, `tests/test_cli.py`, `tests/test_skill.py (new; moves test_cli.py:212-230)`, `tests/test_curate.py`, `tests/test_governance.py`
-
-### K19a (guard, S)
-
-Replace test_every_cli_subcommand_is_in_the_contract with test_cli_surface_is_frozen. It checks exact equality of the visible and hidden subcommands, and of each command's visible options, against one pinned dict of TODAY's surface. The common --config/-v options do not count as visible.
-
-Add test_install_options_are_frozen over both install.sh case blocks, agreeing with test_deploy_pack.py:813-822.
-
-Every later wave edits the dict in the same commit as its cut.
-
-- **Where:** tests/test_contracts.py:48; scripts/install.sh:180-268 and 1012-1050 (read only)
-- **Why:** Regrowth becomes a reviewed test edit. Pinning today's surface rather than the target keeps CI green. This is K19 with the skeptic's sequencing fix.
-- **Risk:** None at runtime. Every later wave must update the dict.
-
-### K12 (automate, M)
-
-sync never dead-ends.
-
-(1) Migration. Opening the manifest, from any caller including status, migrates forward inside BEGIN IMMEDIATE when the stored schema or key schema is older. It first copies the database with the sqlite3 backup API to manifest.db.pre-v<N>. That backup is deleted after the first successful cycle commit following the migration, and purge also deletes any manifest.db.pre-v* file. A newer schema still refuses.
-
-(2) Lock wait. The --mode default becomes None. A run with mode None is an interactive poll: it waits up to 600 s for the lock and prints progress every 30 s. The timeout can be injected by keyword argument. An explicit --mode (launchd) still exits 75.
-
-(3) Due reconcile. A mode-None run becomes RECONCILE when the last full run is older than config.reconcile_interval_s, not a literal 3600. The mode is chosen before the lock is taken, so the lock label stays truthful.
-
-Also amend CONTRACTS §9 step 2.
-
-- **Where:** src/agentsync/manifest.py:883-902; src/agentsync/cli.py:224, 603-609, 1573-1577; src/agentsync/cycle.py:713-738, 753-795, 2074; src/agentsync/governance.py:1791-1875 (purge); docs/design/CONTRACTS.md:333, 364
-- **Why:** It removes three stop points a low-effort agent reads as failure:
-- 'run agentsync migrate' after an upgrade;
-- exit 75 sending the agent to a manual retry, while its pages may never get committed;
-- compaction going overdue when no LaunchAgent runs, which K11 makes the default.
-Fixes from the refuting vote: the purge leak, the hard-coded 3600, launchd mode overrides, and migration only inside a cycle.
-- **Risk:** A stuck lock delays an interactive agent by up to 10 minutes; stale-lock breaking already exists. An interactive sync that turns into an hourly full pass is slower on very large OneDrive sources. A migration run from status is a write, made safe by BEGIN IMMEDIATE.
-
-### K03 (automate, S)
-
-New module src/agentsync/skill.py. skill_text and write_skill move there from cli.py. The write reuses the compare-then-rename step from cli.py:1260.
-
-Right after publisher.ensure_scaffold(), every non-dry-run cycle writes the skill:
-- always to ~/.claude/skills/agentsync-docs/SKILL.md;
-- also to $CLAUDE_CONFIG_DIR/skills, when that variable is set and resolves to a different directory.
-The write is wrapped in try/except OSError and only logs a warning. It never changes the run status.
-
-The skill text uses the fixed string ~/.local/bin/agentsync, never sys.argv, so launchd and interactive runs produce identical text. The text drops the 'Exit 75' advice and the manual checkpoint step: a session ends with sync. Its description triggers at the start of any work session that needs company documents.
-
-install-skill stays as a hidden alias with no --dir flag; it writes the skill and exits 0. tests/conftest.py gets an autouse monkeypatch.delenv('CLAUDE_CONFIG_DIR').
-
-- **Where:** src/agentsync/cycle.py:691; src/agentsync/cli.py:271-281, 1166-1271; src/agentsync/skill.py (new); tests/conftest.py:69-73; docs/design/CONTRACTS.md §16.16 (4914-4946)
-- **Why:** The skill is absent on this Mac. install.sh never runs install-skill, it never refreshes after an upgrade, and it ignores CLAUDE_CONFIG_DIR. Writing it on every sync removes a step that is always skipped.
-- **Risk:** sync now writes outside the docs repo; the content comparison means a second sync writes nothing. Without the conftest isolation, the test suite would overwrite the operator's real skill.
-
-### K10 (guard, M)
-
-Add one function, checkpoint_blockers(repo). It reports:
-- every curation lint finding except TOPIC-BUDGET;
-- a new blocking SOURCE-MISSING finding (the resolved source is not a file, or its mirror head is unreadable);
-- the refresh verdicts STALE, UNPINNED, BAD-PIN, MALFORMED and MISSING-OR-UNPARSEABLE, for topic pages changed since the `curated` tag.
-It never reports SOURCE-UNREADABLE or SOURCE-DELETED. The land gate keeps blocking=False.
-
-Delete the 'or mark it provenance: hand-written' escape from the UNLISTED message.
-
-sources: entries starting with mirror/ or archive/ (no ./ or ../) resolve from the docs root, and page-relative entries still resolve. SOURCE-NOT-MIRROR accepts archive/. depends_on_pages keeps its page-relative code path.
-
-Until W2's curate exists, `lint` exits 1 on any blocker.
-
-- **Where:** src/agentsync/curate.py:290-300, 314-317, 328-369, 569-578, 760-773; src/agentsync/cli.py:1051-1068
-- **Why:** Today a page with a wrong pin or a typo'd path passes lint with exit 0, and the one ERROR offers an exemption that switches off STALE detection. Fixes from the vote: archive/ was contradictory, a wrong pin is only a refresh verdict, depends_on_pages was mis-resolved, and SOURCE-UNREADABLE would have blocked forever.
-- **Risk:** Existing pages with warnings hold the checkpoint until fixed; the live Mac has no topic pages yet. Scoping the refresh verdicts to pages changed since `curated` keeps older pages that went stale from blocking.
-
-### K06 (automate, M)
-
-The checkpoint happens automatically.
-
-Before _curate runs, the cycle records the dirty topics/ pages, excluding:
-- topics/CLAUDE.md and INDEX.md;
-- every page that apply_stale_banners or apply_retired_banners changed in this run.
-
-If that set is non-empty, the pre-run HEAD exists, and checkpoint_blockers is empty:
-- the `curated` tag moves to the pre-run HEAD;
-- with archive = true, a snapshot/<UTC> tag is cut at the NEW commit.
-
-This runs after promote_cursors, in its own try/except, and never fails a cycle whose commit already landed. sync prints 'checkpoint advanced' or 'checkpoint held: N curation errors'.
-
-`checkpoint` becomes a hidden alias that runs sync.
-
-- **Where:** src/agentsync/cycle.py:700-731, 1885-1898; src/agentsync/gitops.py:450-470; src/agentsync/cli.py:266-270, 1093-1101, 1138-1163; docs/design/CONTRACTS.md §16.17 (4952-4997)
-- **Why:** The live repo has no `curated` tag, so curate-queue lists every page as new forever, and archive mode never cuts a snapshot. Fixes from the votes: banner and seed rewrites no longer move the tag, the first sync is guarded, the snapshot now holds the session's pages, and a tagging error can no longer fail a landed cycle.
-- **Risk:** A mid-session topic commit moves the tag, but earlier rows stay in UNCOVERED or STALE, so nothing leaves the work list. Archive mode cuts more snapshot tags, which purge already remaps.
-
-Tests that prove it:
-
-- test_contracts.py::test_cli_surface_is_frozen and ::test_install_options_are_frozen pin today's surface
-- An old-schema fixture opened through run_cycle, and through status, migrates and leaves manifest.db.pre-v<N>. The next committed cycle deletes it.
-- Purge after an auto-migration leaves no trace of the purged item in any file under state_paths.root
-- A lock held in a thread for 2 s: `sync` with no --mode returns 0. test_lock_held_exits_75 now passes --mode poll and still gets 75.
-- With a frozen clock, a mode-None sync after reconcile_interval_s runs reconcile, while `--mode poll` stays poll. With no LaunchAgent, governance.compaction stays ok.
-- A sync with HOME and CLAUDE_CONFIG_DIR pointed at tmp writes both skill copies, and a second sync leaves both mtimes unchanged. With CLAUDE_CONFIG_DIR unset, only the HOME copy is written. An unwritable skills folder still gives exit 0.
-- Write a topic page plus a new mirror file, then sync: `curated` equals the pre-run HEAD, the archive snapshot is on the new commit, and the new file is listed ADDED
-- A sync that only adds a STALE banner leaves `curated` where it was. The first-ever sync creates no tag.
-- A page with a well-formed but wrong at_rendered_sha256 holds the checkpoint and is named. A SOURCE-UNREADABLE row does not hold it.
-- `mirror/x.md` resolves from any depth under topics/. depends_on_pages stays page-relative. archive/ sources are accepted. The UNLISTED message no longer contains 'hand-written'.
-- Compaction keeps `curated` pointing at the equivalent rewritten commit
-- test_cli.py:173 is rewritten as two syncs. :567 writes a topic page before each snapshot sync and fakes the clock through the cycle's now().
+Learnings:
+- The manifest is `manifest.sqlite`, so the pre-migration copy is `manifest.sqlite.pre-v<N>` (excluded from Time
+  Machine, deleted by the next unblocked cycle and by purge). The sqlite backup API hangs when the source connection
+  holds its own write lock, so the copy is taken just before `BEGIN IMMEDIATE`; versions are re-read under the lock.
+- Test isolation: tests that call `monkeypatch.undo()` also undid the shared HOME isolation, and one run wrote a
+  real `~/.claude/skills/agentsync-docs` pointing at a pytest tmp dir (removed by the lead). `conftest._isolate_home`
+  now uses its own `MonkeyPatch.context()`; regression `test_skill.py::test_monkeypatch_undo_keeps_home_isolated`.
+- argparse `help=SUPPRESS` prints `==SUPPRESS==` in the command list on Python 3.11, so hidden commands pass no
+  `help=` at all; `add(..., hidden=True)`. The freeze pin counts a parser with no help entry as hidden.
+- `README.md` still names `install-skill` and `checkpoint` (both now hidden aliases); W3/W5 rewrite those lines.
+- A machine reaper SIGKILLs long pytest runs at times; run the full suite in the background and re-run killed chunks.
 
 ## W2 Loop surface: one NEXT line, one curate, one status
 
