@@ -915,7 +915,10 @@ def _tcc_canary_due(config: Config) -> bool:
     """Whether ``status`` runs the TCC canary (up to 15 s per protected source, and it may raise the privacy
     prompt): only when the newest launcher run of either job left a TCC_PENDING or TCC_DENIED line uncleared
     (on any of its paths, not only the last one logged), or when no event is logged since the LaunchAgents
-    were installed (or ever)."""
+    were installed (or ever).  Never with no LaunchAgent installed (KISS K11a): nothing runs the launcher,
+    so a canary would only raise a privacy prompt for it."""
+    if not doctor.agents_wanted(config):
+        return False
     last: tuple[datetime, bool] | None = None
     for suffix in ("poll", "reconcile"):
         run = _newest_launcher_run(config, suffix)
@@ -978,8 +981,13 @@ def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.Che
     proxy = net.resolve_proxy(config.network.proxy, system=system)
     diag = net.proxy_diagnostics(proxy)
     out: list[doctor.CheckResult] = []
-    # The background job resolves the proxy from ITS environment, not this shell's (review deploy-ops).
-    job = net.resolve_proxy(config.network.proxy, environ=_job_environment(config), system=system)
+    # The background job resolves the proxy from ITS environment, not this shell's (review deploy-ops); with
+    # no LaunchAgent installed there is no job to compare (KISS K11a: background sync is optional).
+    job = (
+        net.resolve_proxy(config.network.proxy, environ=_job_environment(config), system=system)
+        if doctor.agents_wanted(config)
+        else proxy
+    )
     if (job.url, job.policy_error) != (proxy.url, proxy.policy_error):
         out.append(
             _check(

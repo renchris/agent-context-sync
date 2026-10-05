@@ -733,8 +733,20 @@ DEVELOPER_ID = dataclasses.replace(
 )
 
 
-def _launcher(monkeypatch: pytest.MonkeyPatch, sig: doctor._CodeSignature = ADHOC) -> Path:
-    """Install a stand-in launcher app under the tmp HOME and fake its codesign answer."""
+def _stray_plist() -> None:
+    """A ``com.agentsync.*`` plist under the tmp HOME: a Mac that runs background sync (KISS K11a)."""
+    stray = launchd.plist_path("com.agentsync.old-job")
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_bytes(b"garbage")
+
+
+def _launcher(
+    monkeypatch: pytest.MonkeyPatch, sig: doctor._CodeSignature = ADHOC, *, agents: bool = True
+) -> Path:
+    """Install a stand-in launcher app under the tmp HOME and fake its codesign answer; ``agents`` adds a
+    LaunchAgent plist, so the launcher is checked as a requirement."""
+    if agents:
+        _stray_plist()
     app = Path.home() / "Applications" / launchd.LAUNCHER_BUNDLE
     exe = app / "Contents" / "MacOS" / launchd.LAUNCHER_EXECUTABLE
     exe.parent.mkdir(parents=True)
@@ -767,6 +779,24 @@ def test_cloud_source_without_launchagents_is_info_only(sample_config: Config) -
     assert errors(results) == [], format_results(results)  # status exits 1 only on an ERROR line
 
 
+@pytest.mark.parametrize("sig", [ADHOC, dataclasses.replace(ADHOC, valid=False, verify_detail="not signed")])
+def test_present_launcher_without_launchagents_is_info_only(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, sig: doctor._CodeSignature
+) -> None:
+    """KISS K11a: a launcher left by install.sh on a Mac with no LaunchAgent plist: its signature and
+    requirement lines are INFO with no fix, and no TCC canary runs (nothing runs the launcher)."""
+    _launcher(monkeypatch, sig, agents=False)
+    cfg, _root = _cloud(sample_config)
+    monkeypatch.setattr(doctor, "_launcher_canary", lambda *a: pytest.fail("the canary ran"))
+    results = run_checks(cfg)
+    r = by_name(results)
+    for name in ("launcher.signature", "launcher.requirement"):
+        assert not r[name].ok and r[name].severity is Severity.INFO and r[name].fix is None, name
+    assert "tcc.onedrive" not in r and r["tcc.canary"].ok and "not run" in r["tcc.canary"].detail
+    assert "install-agent" not in format_results(results)
+    assert errors(results) == [], format_results(results)
+
+
 @pytest.mark.parametrize("trigger", ["plist", "pending"])
 def test_launcher_missing_but_required_is_an_error(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch, trigger: str
@@ -774,9 +804,7 @@ def test_launcher_missing_but_required_is_an_error(
     """With a com.agentsync.* plist present, or install.sh's agent step pending, today's ERROR stands."""
     cfg, _root = _cloud(sample_config)
     if trigger == "plist":
-        stray = launchd.plist_path("com.agentsync.old-job")
-        stray.parent.mkdir(parents=True)
-        stray.write_bytes(b"garbage")
+        _stray_plist()
     else:
         monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
     r = by_name(run_checks(cfg))
@@ -826,6 +854,7 @@ def test_launcher_bad_signature_or_identifier(sample_config: Config, monkeypatch
 
 
 def test_launcher_env_pointing_nowhere(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stray_plist()
     monkeypatch.setattr(doctor, "_find_launcher", launchd.find_launcher)
     monkeypatch.setenv(launchd.LAUNCHER_ENV, "/nonexistent/AgentSyncLauncher.app")
     r = by_name(run_checks(sample_config))["launcher"]

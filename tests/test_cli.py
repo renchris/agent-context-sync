@@ -1513,6 +1513,10 @@ def test_status_runs_the_tcc_canary_only_after_a_tcc_event_or_before_any_run(
         _status(cfg, capsys)
         return seen[-1]
 
+    assert canary() is False, "no LaunchAgent installed: nothing runs the launcher (KISS K11a)"
+    stray = launchd.plist_path("com.agentsync.old-job")
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_bytes(b"")
     assert canary() is True, "nothing has run since install"
     initialised.log_dir.mkdir(parents=True, exist_ok=True)
     poll = initialised.log_dir / "com.agentsync.poll.err.log"
@@ -1535,6 +1539,29 @@ def test_status_runs_the_tcc_canary_only_after_a_tcc_event_or_before_any_run(
     assert canary() is True, "installed after every logged event: nothing has run since install"
 
 
+def test_status_exits_0_for_a_cloud_source_without_launchagents(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K11a: a OneDrive source, no LaunchAgent plist, no launcher and a shell-only HTTPS_PROXY:
+    background sync is optional, so ``status`` exits 0, runs no canary and never names install-agent."""
+    folder = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    folder.mkdir(parents=True)
+    (folder / "a.docx").write_bytes(b"x")
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
+    monkeypatch.setattr(net, "system_proxy", lambda runner=None: net.SystemProxy())
+    monkeypatch.setattr(doctor, "_launcher_canary", lambda *a: pytest.fail("the canary ran"))
+    config = load_config(initialised.config_path)
+    assert launchd.launcher_required(config) and not launchd.agents_installed(config)
+    rc, out = _status(cfg, capsys)
+    text = "\n".join(out)
+    assert rc == cli.EXIT_OK, text
+    assert "install-agent" not in text and "network.proxy.job" not in text and "[FAIL]" not in text
+
+
 def test_a_denied_path_is_not_cleared_by_another_paths_canary_ok(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1547,6 +1574,9 @@ def test_a_denied_path_is_not_cleared_by_another_paths_canary_ok(
         return real(config, tcc_canary=False)
 
     monkeypatch.setattr(doctor, "run_checks", spy)
+    stray = launchd.plist_path("com.agentsync.old-job")  # background sync installed (KISS K11a)
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_bytes(b"")
     initialised.log_dir.mkdir(parents=True, exist_ok=True)
     poll = initialised.log_dir / "com.agentsync.poll.err.log"
     poll.write_text(

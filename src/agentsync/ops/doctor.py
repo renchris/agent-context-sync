@@ -781,25 +781,39 @@ _FP_CANARY_TIMEOUT_S = 15.0
 
 
 _OPTIONAL_NOT_INSTALLED = "not installed (optional background sync; see docs/deploy)"
+_OPTIONAL_NOTE = "background sync only, which is not installed; see docs/deploy"
 
 
-def _agents_wanted(config: Config) -> bool:
+def agents_wanted(config: Config) -> bool:
     """Whether doctor checks background sync as a requirement: a LaunchAgent plist exists, or install.sh's
-    agent step is pending (KISS K11a). Otherwise the launcher and launchd checks are one INFO line each."""
+    agent step is pending (KISS K11a). Otherwise the launcher, launchd, TCC canary and job-proxy checks
+    report INFO only."""
     return os.environ.get(AGENT_STEP_PENDING_ENV, "").strip() == "1" or launchd.agents_installed(config)
+
+
+def _optional(result: CheckResult) -> CheckResult:
+    """``result`` as an INFO line with no fix: it concerns only the optional background sync (KISS K11a)."""
+    if result.ok or (result.severity is Severity.INFO and result.fix is None):
+        return result
+    return CheckResult(result.name, False, result.detail, Severity.INFO, fix=None, note=_OPTIONAL_NOTE)
 
 
 def _check_launcher(config: Config) -> list[CheckResult]:
     """The signed launcher the LaunchAgents run: present, signature valid, identifier, designated requirement
-    (printed for the PPPC profile; WARN when it is an ad-hoc cdhash).  Missing with no LaunchAgent installed
-    (background sync is optional): INFO, no fix."""
+    (printed for the PPPC profile; WARN when it is an ad-hoc cdhash).  With no LaunchAgent installed
+    (background sync is optional), every failed line is INFO with no fix."""
+    out = _launcher_results(config)
+    return out if agents_wanted(config) else [_optional(r) for r in out]
+
+
+def _launcher_results(config: Config) -> list[CheckResult]:
     required = launchd.launcher_required(config)
     try:
         exe = _find_launcher()
     except ConfigError as exc:
         return [_bad("launcher", str(exc), fix=f"unset {launchd.LAUNCHER_ENV}, or {_LAUNCHER_FIX}")]
     if exe is None:
-        if not _agents_wanted(config):
+        if not agents_wanted(config):
             return [
                 _bad("launcher", f"{launchd.LAUNCHER_EXECUTABLE} {_OPTIONAL_NOT_INSTALLED}", Severity.INFO)
             ]
@@ -890,10 +904,13 @@ def _for_it(result: CheckResult) -> CheckResult:
 
 def _check_tcc_access(config: Config) -> list[CheckResult]:
     """Per TCC-protected live source: a timed, metadata-only read through the launcher, judged as the
-    launcher's own responsible process (FDA or the File Provider grant).  Needs the launcher."""
+    launcher's own responsible process (FDA or the File Provider grant).  Needs the launcher, and runs only
+    when background sync is installed (KISS K11a): nothing else runs the launcher."""
     paths = launchd.canary_paths(config)
     if not paths:
         return []
+    if not agents_wanted(config):
+        return _tcc_canary_skipped(config)
     try:
         exe = _find_launcher()
     except ConfigError:
@@ -1074,7 +1091,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
 def _check_launchd(config: Config) -> list[CheckResult]:
     """Both LaunchAgents (WARN when not installed or not loaded).  With no LaunchAgent plist and no pending
     agent step, background sync is optional (KISS K11a): one INFO line per job, no fix."""
-    if not _agents_wanted(config):
+    if not agents_wanted(config):
         return [
             _bad(
                 f"launchd.{suffix}",
@@ -1297,9 +1314,14 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
 
 def _tcc_canary_skipped(config: Config) -> list[CheckResult]:
     """What the ``tcc`` group reports when the caller skips the canary: one info line, only when a canary
-    would have run (a TCC-protected live source)."""
+    would have run (a TCC-protected live source); worded apart for a Mac with no LaunchAgent installed
+    (KISS K11a)."""
     if not launchd.canary_paths(config):
         return []
+    if not agents_wanted(config):
+        return [
+            _ok("tcc.canary", "not run: it probes the launcher, which only the optional background sync runs")
+        ]
     return [
         _ok(
             "tcc.canary",

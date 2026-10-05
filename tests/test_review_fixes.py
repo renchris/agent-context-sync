@@ -926,12 +926,17 @@ def test_symlinked_cloud_root_is_resolved_to_the_file_provider_path() -> None:
 def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """deploy-ops-proxy-env-not-in-launchagent."""
+    """deploy-ops-proxy-env-not-in-launchagent; KISS K11a: only on a Mac with a LaunchAgent installed."""
     config, _src = make_env(tmp_path)
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
     monkeypatch.setattr(cli, "_launchctl_env", lambda names: {})
     monkeypatch.setattr(cli.net, "system_proxy", lambda runner=None: cli.net.SystemProxy())
-    checks = {c.name: c for c in cli._network_checks(config)}
+    assert not launchd.agents_installed(config)
+    assert "network.proxy.job" not in {c.name for c in cli._network_checks(config, offline=True)}
+    plist = launchd.plist_path(f"{config.launchd_label_prefix}.poll")
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(b"garbage")
+    checks = {c.name: c for c in cli._network_checks(config, offline=True)}
     job = checks["network.proxy.job"]
     assert not job.ok and "[network] proxy" in (job.fix or "")
 

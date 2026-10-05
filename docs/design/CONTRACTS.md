@@ -3425,11 +3425,16 @@ so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix
 `agentsync doctor` run by hand prints the fix itself.
 
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
-(`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1`, a missing launcher is one `[info] launcher`
+(`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
+missing launcher is one `[info] launcher`
 line and the `launchd.poll` / `launchd.reconcile` checks are one `[info]` line each, every detail ending "not
 installed (optional background sync; see docs/deploy)", with no fix, whether or not a live source sits under a
 TCC-protected folder. With a plist or the pending step, today's ERROR/WARN results and fixes stand. A launcher
-that is present is checked as before. The `governance.time_machine` fix names `agentsync sync` (every sync
+that is present is still reported, but without agents every failed `launcher.*` line (signature, requirement,
+a bad `AGENTSYNC_LAUNCHER`) is `[info]` with no fix and the note "background sync only, which is not installed;
+see docs/deploy"; the `tcc.<source_id>` canaries never run (the `tcc` group is one ok `tcc.canary` "not run"
+line, and `status` never finds the canary due); and the CLI adds no `network.proxy.job` line, since there is no
+job whose proxy could differ. The `governance.time_machine` fix names `agentsync sync` (every sync
 applies the exclusions), no longer `install-agent`.
 
 ### `agentsync.cycle` — `src/agentsync/cycle.py` — owner: **integrator (W2)**
