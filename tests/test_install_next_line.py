@@ -4,7 +4,7 @@
 The harness is test_install_oneshot's (a tmp HOME, a stub ``uv``, a stub ``launchctl``), except that the
 installed ``agentsync`` runs the real one for ``init``, ``add-source`` and ``sync``; its ``sync`` then exits
 80 (an earlier "Don't Allow"), so install.sh prints the whole sync output before its own NEXT line. Every
-other subcommand is the oneshot stub.
+other subcommand is the oneshot stub. The last test runs the real ``status`` and ``sync`` too (KISS K02).
 """
 
 from __future__ import annotations
@@ -100,12 +100,12 @@ def test_a_failing_real_first_sync_leaves_exactly_one_next_line(tmp_path: Path) 
     ]
 
 
-REAL_DOCTOR = REAL_THEN_80.replace("  init|add-source) exec", "  init|add-source|doctor) exec", 1)
+REAL_DOCTOR = REAL_THEN_80.replace("  init|add-source) exec", "  init|add-source|status) exec", 1)
 
 
-def test_install_reads_the_real_doctor_alias(tmp_path: Path) -> None:
-    """KISS K08a: step 5 runs the real ``doctor`` alias of ``status``. A real FAIL (here: no launcher for a
-    folder under ~/Library/CloudStorage) is a ``[FAIL`` line install.sh sees (step doctor ``fail-lines``, no
+def test_install_reads_the_real_status(tmp_path: Path) -> None:
+    """KISS K08a, K02: step 5 runs the real ``status``. A real FAIL (here: no launcher for a
+    folder under ~/Library/CloudStorage) is a ``[FAIL`` line install.sh sees (step status ``fail-lines``, no
     first sync), its output carries no status or policy detail (install.out feeds setup-report), and there is
     still exactly one NEXT line."""
     env = _env(tmp_path)
@@ -134,4 +134,59 @@ def test_install_reads_the_real_doctor_alias(tmp_path: Path) -> None:
     assert len(nexts) == 1 and nexts[0] == out[-1], nexts
     assert nexts[0].startswith("NEXT: fix the [FAIL] lines above")
     log = (Path(env["HOME"]) / "agent-context" / "setup" / "install.log").read_text(encoding="utf-8")
-    assert " step=doctor " in log and "rc=1 result=done note=fail-lines" in log
+    assert " step=status " in log and "rc=1 result=done note=fail-lines" in log
+
+
+REAL_LOOP = """#!/bin/bash
+case "$1" in
+  init|add-source|status|sync)
+    case " $* " in *" --help "*) ;; *) exec "$REAL_PYTHON" -m agentsync "$@" ;; esac ;;
+esac
+exec "$STUB_INNER" "$@"
+"""
+
+
+def test_install_without_the_flag_ends_on_the_real_loops_next(tmp_path: Path) -> None:
+    """KISS K02: ``install.sh --source-local X`` (no --confirm-install-agent) makes no launchctl call and
+    builds no launcher, runs the real first sync (which writes the skill), and its last line is the real
+    status's NEXT line, the baseline-questions step."""
+    env = _env(tmp_path)
+    env["STUB_AGENTSYNC"] = _exe(tmp_path / "agentsync-real-loop", REAL_LOOP)
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    (folder / "notes.txt").write_text("The purchase order is approved.\n", encoding="utf-8")
+    wheel = tmp_path / "dist" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert any(line.strip() == "first sync: converted 1, deferred 0 online-only" for line in out), cp.stdout
+    calls = Path(env["STUB_LOG"]).read_text(encoding="utf-8") if Path(env["STUB_LOG"]).exists() else ""
+    assert "launchctl" not in calls and not (home / "Applications").exists()
+    assert (home / ".claude" / "skills" / "agentsync-docs" / "SKILL.md").is_file(), "the sync wrote the skill"
+    cfg = home / "agent-context" / "sources.toml"
+    direct = subprocess.run(
+        [sys.executable, "-m", "agentsync", "status", "--config", str(cfg)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        env=env,
+    )
+    status_next = next(line for line in direct.stdout.splitlines() if line.startswith("NEXT: "))
+    assert status_next.startswith("NEXT: draft the baseline questions"), direct.stdout
+    report = home / "agent-context" / "setup-report.md"
+    assert out[-1] == f"{status_next} [setup report: {report}]"
+    nexts = [line for line in out + cp.stderr.splitlines() if "NEXT:" in line]
+    assert nexts == [out[-1]]
+    assert "exclude_label_names" not in cp.stdout + cp.stderr, "the closing status's detail is never printed"

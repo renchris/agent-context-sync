@@ -38,10 +38,12 @@ UID = os.getuid()
 ACTION = (
     "ACTION: macOS is asking whether agentsync-launcher may access files managed by OneDrive. Click Allow."
 )
+LOOP_NEXT = "draft the baseline questions (stub)"  # the stub status's NEXT, which install.sh lifts (KISS K02)
 TCC_CLICK = "turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders"
 
 STUB_UV = """#!/bin/bash
 echo "uv $*" >> "$STUB_LOG"
+echo "UV_TOOL_BIN_DIR=${UV_TOOL_BIN_DIR:-}" >> "$STUB_LOG.uv"
 if [ "$1 $2" = "tool install" ]; then
   if [ -n "${STUB_UV_INSTALL_RC:-}" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
@@ -84,7 +86,12 @@ inbox() { grep -q "^kind = .inbox." "$cfg" || printf '[[source]]\\nkind = "inbox
 case "$sub" in
   init) setup; inbox; hint "agentsync doctor" ;;
   add-source) setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
-  doctor)
+  doctor|status)
+    if [ "$sub" = status ] && [ "${AGENTSYNC_NO_NEXT_HINT:-}" != 1 ]; then  # install.sh's closing status
+      printf '%s\\n' "${STUB_STATUS_OUT:-NEXT: draft the baseline questions (stub)}"
+      echo "  exclude_label_names: Stub Secret Label"
+      exit "${STUB_STATUS_RC:-0}"
+    fi
     [ -z "${STUB_DOCTOR_OUT:-}" ] || printf '%s\\n' "$STUB_DOCTOR_OUT"
     if [ "${AGENTSYNC_AGENT_STEP_PENDING:-}" = 1 ]; then
       echo "[warn] launchd.poll — not loaded (installed by the agent step below)"
@@ -304,7 +311,7 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     order = [
         f"agentsync add-source {folder} --config {cfg}",
-        f"agentsync doctor --config {cfg}",
+        f"agentsync status --config {cfg}",
         f"agentsync sync --once --materialise-budget 0 --config {cfg}",
         f"agentsync install-agent --config {cfg}",
         f"launchctl kickstart gui/{UID}/com.agentsync.poll",
@@ -312,14 +319,14 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     ]
     idx = [index_of(got, c) for c in order]
     assert idx == sorted(idx), got
+    closing = max(i for i, c in enumerate(got) if c == f"agentsync status --config {cfg}")
+    assert idx[4] < closing < idx[5], "KISS K02: status runs again after the wait, for the loop's NEXT"
     assert sum(c.startswith("launchctl kickstart") for c in got) == 1
     assert "ACTION:" not in cp.stdout
     assert "wait: the first background run exited 0 (ok)" in cp.stdout
     assert cp.stdout.splitlines()[-2] == LINK_LINE, "the report's issue link, the last line before NEXT"
-    assert last_line(cp) == (
-        f"NEXT: nothing is left: background sync is on (first background run: exit 0, ok); check it any time "
-        f"with: {env['HOME']}/.local/bin/agentsync status [setup report: {report_path(env)}]"
-    )
+    assert last_line(cp) == f"NEXT: background sync: ok; {LOOP_NEXT} [setup report: {report_path(env)}]"
+    assert "Stub Secret Label" not in cp.stdout + cp.stderr, "the closing status's detail is never printed"
     assert sum(line.startswith("NEXT:") for line in cp.stdout.splitlines()) == 1
     assert report_path(env).read_text().startswith("# agentsync setup report")
     log = install_log(env)
@@ -329,7 +336,7 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "no-launcher"),
         ("config", "done", "0", "created"),
-        ("doctor", "done", "0", ""),
+        ("status", "done", "0", ""),
         ("first-sync", "done", "0", ""),
         ("agent", "done", "0", ""),
         ("wait", "done", "0", ""),
@@ -352,7 +359,7 @@ def test_tcc_pending_prints_one_action_line_then_succeeds(
     assert [ln for ln in cp.stdout.splitlines() if ln.startswith("ACTION:")] == [ACTION]
     assert sum(c.startswith("launchctl kickstart") for c in calls(env)) == 3, "started again after each 79"
     assert "exited 79 (TCC pending: macOS is waiting for Allow); starting it again" in cp.stdout
-    assert last_line(cp).startswith("NEXT: nothing is left: background sync is on")
+    assert last_line(cp).startswith(f"NEXT: background sync: ok; {LOOP_NEXT} ")
 
 
 def test_tcc_still_pending_at_the_timeout_exits_3(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -397,7 +404,7 @@ def test_doctor_tcc_pending_alone_does_not_stop_the_run(
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert [ln for ln in cp.stdout.splitlines() if ln.startswith("ACTION:")] == [ACTION]
-    assert ("doctor", "done", "1", "tcc-pending") in steps(install_log(env))
+    assert ("status", "done", "1", "tcc-pending") in steps(install_log(env))
 
 
 def test_doctor_failure_skips_first_sync_and_agent(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -409,7 +416,32 @@ def test_doctor_failure_skips_first_sync_and_agent(env: dict[str, str], folder: 
     assert last_line(cp).startswith(
         f"NEXT: fix the [FAIL] lines above (each names its fix), then re-run: {INSTALL_SH}"
     )
-    assert ("first-sync", "skipped", "0", "doctor-failed") in steps(install_log(env))
+    assert ("first-sync", "skipped", "0", "status-failed") in steps(install_log(env))
+
+
+LISTING_HELD_FAIL = (
+    "[FAIL] source.fy26-projects.listable — /x/TCC_PENDING: listing did not return within 120s; macOS is "
+    "most likely waiting for you to click Allow on a privacy prompt (fix: click Allow on the macOS prompt, "
+    "then re-run)"
+)
+
+
+@pytest.mark.parametrize("flag", [(), ("--confirm-install-agent",)])
+def test_a_non_tcc_fail_exits_1_without_a_first_sync(
+    env: dict[str, str], folder: Path, wheel: Path, flag: tuple[str, ...]
+) -> None:
+    """KISS K02 and field N8b: a [FAIL] other than the launcher's own TCC_PENDING (here a listing macOS holds
+    for an Allow click in this terminal, whose path even holds the token) stops the run, with or without
+    background sync."""
+    e = {**env, "STUB_DOCTOR_OUT": LISTING_HELD_FAIL, "STUB_DOCTOR_RC": "1"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder), *flag)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert not any(
+        c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
+    )
+    assert "ACTION:" not in cp.stdout
+    assert last_line(cp).startswith("NEXT: fix the [FAIL] lines above (each names its fix), then re-run: ")
+    assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
 
 
 def test_first_sync_failure_fails_the_run_before_the_agent(
@@ -451,20 +483,124 @@ def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], w
                 "kind = 'inbox'   # mail\npath = \"/x/inbox\"\n\n[governance]\narchive = true\n"
             )
         cp = install_sh(env, str(wheel), "--confirm-install-agent")
-        assert cp.returncode == 1
+        assert cp.returncode == (1 if again else 2), "KISS K02: a created config with no folder exits 2"
         assert len(re.findall(r"(?m)^kind = .inbox.", cfg.read_text())) == 1, "exactly one inbox"
         assert f"agentsync init --config {cfg}" in calls(env), "the flagless init ensures the inbox"
         assert ("config: " in cp.stdout and "exists (inbox ensured)" in cp.stdout) is again
         assert not any(
             c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
         )
-        assert last_line(cp).startswith(
-            f"NEXT: choose a folder to sync, then re-run: {INSTALL_SH} {wheel} --confirm-install-agent "
-            '--source-local "<folder>"'
-        )
+        if again:
+            assert last_line(cp).startswith(
+                f"NEXT: choose a folder to sync, then re-run: {INSTALL_SH} {wheel} --confirm-install-agent "
+                '--source-local "<folder>"'
+            )
+        else:
+            assert last_line(cp).startswith(
+                f"NEXT: no folder to sync yet: list them with {INSTALL_SH} --list-folders"
+            )
     cfg.write_text(cfg.read_text() + '\n[[source]]\nid = "work"\nkind = "local"\npath = "/x/work"\n')
     cp = install_sh(env, str(wheel), "--confirm-install-agent")
     assert cp.returncode == 0, cp.stdout + cp.stderr  # a folder source besides the inbox is a source
+
+
+# ---- the loop's NEXT and the exit codes (KISS K02) ---------------------------------------------------------
+
+
+def test_no_install_sh_line_says_nothing_is_left() -> None:
+    assert "nothing is left" not in INSTALL_SH.read_text(encoding="utf-8")
+
+
+def test_without_the_flag_the_first_sync_runs_and_ends_on_the_loops_next(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    cp = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    got = calls(env)
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    assert f"agentsync sync --once --materialise-budget 0 --config {cfg}" in got
+    assert not any(c.startswith(("launchctl", "agentsync install-agent")) for c in got), got
+    assert not (Path(env["HOME"]) / "Applications").exists(), "no launcher built or copied"
+    assert last_line(cp) == f"NEXT: {LOOP_NEXT} [setup report: {report_path(env)}]"
+    assert sum("NEXT:" in ln for ln in cp.stdout.splitlines() + cp.stderr.splitlines()) == 1
+    assert "Stub Secret Label" not in cp.stdout + cp.stderr
+    assert steps(install_log(env))[4:6] == [("status", "done", "0", ""), ("first-sync", "done", "0", "")]
+    seen = _env_calls(env)
+    assert [ln for ln in seen if not ln.startswith("status no_next=1 ")][-2:] == [
+        "status no_next= pending=",
+        "setup-report no_next=1 pending=",
+    ], "the closing status alone runs with its NEXT line on"
+
+
+def test_a_sourceless_first_run_exits_2_and_a_rerun_exits_0(env: dict[str, str], wheel: Path) -> None:
+    first = install_sh(env, str(wheel))
+    assert first.returncode == 2, first.stdout + first.stderr
+    assert last_line(first) == (
+        f"NEXT: no folder to sync yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
+        f'sync, then run: {INSTALL_SH} {wheel} --source-local "<folder>" (one --source-local per folder) '
+        f"[setup report: {report_path(env)}]"
+    )
+    assert not any(c.startswith("agentsync sync") for c in calls(env))
+    assert ("first-sync", "skipped", "0", "no-sources") in steps(install_log(env))
+    again = install_sh(env, str(wheel))  # an existing (inbox-only) config: status's NEXT, exit 0
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert last_line(again) == f"NEXT: {LOOP_NEXT} [setup report: {report_path(env)}]"
+    assert not any(c.startswith("agentsync sync") for c in calls(env))
+
+
+def test_the_loops_next_falls_back_when_status_prints_none(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": "loop: synced", "STUB_STATUS_RC": "2"},
+        str(wheel),
+        "--source-local",
+        str(folder),
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp) == (
+        f"NEXT: run {env['HOME']}/.local/bin/agentsync sync and follow its NEXT line "
+        f"[setup report: {report_path(env)}]"
+    )
+
+
+def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """Field N8b: the first sync's walk can time out on a read macOS holds for an Allow click in this terminal
+    even when status's one-entry listing returned; the closing status's WAITING line then is the NEXT."""
+    held = (
+        "macOS held the listing of fy26-projects for a privacy prompt: click Allow on the macOS prompt (it "
+        "can sit behind other windows), then run `~/.local/bin/agentsync sync`"
+    )
+    out = f"NEXT: {LOOP_NEXT}\nWAITING ON YOU: {held}"
+    cp = install_sh({**env, "STUB_STATUS_OUT": out}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp) == f"NEXT: {held} [setup report: {report_path(env)}]"
+
+
+def test_a_fail_in_the_closing_status_is_printed_and_named(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    fail = "[FAIL] skill — the agentsync-docs skill is stale (fix: make ~/.claude/skills writable)"
+    out = f"NEXT: the skill check failed: do what the fix on its [FAIL] line below says\n{fail}"
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel), "--source-local", str(folder)
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert fail in cp.stdout.splitlines()
+    assert last_line(cp).startswith(
+        "NEXT: fix the [FAIL] lines above (each names its fix), then run "
+        f"{env['HOME']}/.local/bin/agentsync sync and follow its NEXT line"
+    )
+    assert "below" not in last_line(cp)
+
+
+def test_uv_installs_the_binary_into_local_bin(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    cp = install_sh({**env, "UV_TOOL_BIN_DIR": "/elsewhere/bin"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    seen = set(Path(env["STUB_LOG"] + ".uv").read_text().splitlines())
+    assert seen == {f"UV_TOOL_BIN_DIR={env['HOME']}/.local/bin"}, "pinned for every uv call"
 
 
 # ---- the report at every exit ------------------------------------------------------------------------------
@@ -579,7 +715,9 @@ def test_simulated_launchd_touches_no_launchctl(env: dict[str, str], folder: Pat
     assert f"agentsync sync --once --materialise-budget 0 --config {cfg}" in got
     simulated = [ln for ln in cp.stdout.splitlines() if ln.startswith("SIMULATED:")]
     assert len(simulated) == 4 and "no launchctl call" in simulated[2]
-    assert last_line(cp).startswith("NEXT: nothing is left in this sandbox: launchd was simulated")
+    assert last_line(cp).startswith(
+        f"NEXT: background sync: simulated (AGENTSYNC_SIMULATE_LAUNCHD=1, no job runs); {LOOP_NEXT} "
+    )
     log = install_log(env)
     assert " launchd=simulated args=" in log[0]
     assert ("agent", "done", "0", "simulated") in steps(log) and ("wait", "done", "0", "simulated") in steps(
@@ -626,7 +764,7 @@ def test_rerun_skips_reinstalling_the_same_clean_commit(env: dict[str, str], tmp
     for argv in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "x"]):
         subprocess.run([*git, *argv], check=True, capture_output=True)
     first = install_sh(env, str(src))
-    assert first.returncode == 0, first.stderr
+    assert first.returncode == 2, first.stderr  # KISS K02: it created the config and has no folder to sync
     second = install_sh(env, str(src))
     assert second.returncode == 0, second.stderr
     assert sum(c.startswith("uv tool install") for c in calls(env)) == 1
@@ -691,7 +829,7 @@ def test_install_log_start_line_names_the_diff_of_a_dirty_source(env: dict[str, 
     index = src / ".git" / "index"
     before = index.stat().st_mtime_ns
     cp = install_sh(env, str(src))
-    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert cp.returncode == 2, cp.stdout + cp.stderr  # KISS K02: a created config with no folder to sync
     start = install_log(env)[0]
     assert f" commit={sha.stdout.strip()}-dirty tree={_fingerprint(git)} kind=checkout " in start
     fields = dict(re.findall(r"(\w+)=(\S+)", start))
@@ -980,8 +1118,10 @@ def test_agentsync_hints_are_off_and_doctor_knows_the_agent_step(
     assert "fix: agentsync install-agent" not in cp.stdout
     assert "launchd.poll — not loaded (installed by the agent step below)" in cp.stdout
     seen = _env_calls(env)
+    assert seen[-2] == "status no_next= pending=", "KISS K02: the closing status alone has its NEXT on"
+    seen = seen[:-2] + seen[-1:]
     assert seen and all(" no_next=1 " in ln for ln in seen), seen
-    assert [ln.split()[0] for ln in seen if ln.endswith(" pending=1")] == ["doctor"]
+    assert [ln.split()[0] for ln in seen if ln.endswith(" pending=1")] == ["status"]
     assert "setup-report no_next=1 pending=" in seen, "the report describes what is installed by then"
 
 
@@ -990,7 +1130,7 @@ def test_without_confirm_install_agent_doctor_names_its_own_fix(
 ) -> None:
     cp = install_sh(env, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert "doctor no_next=1 pending=" in _env_calls(env)
+    assert "status no_next=1 pending=" in _env_calls(env)
     assert len([ln for ln in cp.stdout.splitlines() if re.match(r"(?i)\s*next:", ln)]) == 1
 
 
@@ -1006,7 +1146,7 @@ def test_first_sync_runs_with_materialisation_off(env: dict[str, str], folder: P
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     assert syncs == [f"agentsync sync --once --materialise-budget 0 --config {cfg}"]  # no `sync --help` call
     assert (
-        "(downloads nothing: the files already on this Mac are converted now; background sync downloads and "
+        "(downloads nothing: the files already on this Mac are converted now; each later sync downloads and "
         "converts the online-only ones)"
     ) in cp.stdout
     assert "stub cycle" in cp.stdout, "no summary line: all the sync printed is shown"
@@ -1360,11 +1500,7 @@ def test_a_running_first_run_past_its_canaries_succeeds(
         in cp.stdout.splitlines()
     )
     assert "ACTION:" not in cp.stdout
-    assert last_line(cp) == (
-        "NEXT: nothing is left: background sync is on (its first run is past the macOS access check and "
-        "keeps converting in the background); check it any time with: "
-        f"{env['HOME']}/.local/bin/agentsync status [setup report: {report_path(env)}]"
-    )
+    assert last_line(cp) == f"NEXT: background sync: running; {LOOP_NEXT} [setup report: {report_path(env)}]"
     assert ("wait", "done", "0", "running") in steps(install_log(env))
 
 

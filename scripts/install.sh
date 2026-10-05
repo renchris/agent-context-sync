@@ -50,7 +50,8 @@
 # Steps, each skipped when already done:
 #   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
 #   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
-#      trust store for TLS); skipped when the last install came from this same clean checkout commit
+#      trust store for TLS; UV_TOOL_BIN_DIR pinned to ~/.local/bin, so the binary sits where the guides say);
+#      skipped when the last install came from this same clean checkout commit
 #   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
 #      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
@@ -59,16 +60,19 @@
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema)
-#   5. agentsync doctor (its TCC probe may raise the one-time "wants to access files managed by" prompt; a
-#      doctor whose only [FAIL] lines are TCC_PENDING does not stop steps 6-8, which wait for the Allow)
-#   With --confirm-install-agent and at least one [[source]] in the config:
-#   6. first-sync: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run; 75, a cycle
-#      already running, skips): no downloads, so the files already on this Mac are converted now, no
-#      online-only file is downloaded here and this step's time does not grow with the folders' size; the
-#      background runs download and convert the online-only files it deferred, within their per-cycle
-#      budget. Its output is shown as its "converted N, deferred M online-only" line(s), each prefixed
+#   5. status: agentsync status (its TCC probe may raise the one-time "wants to access files managed by"
+#      prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's own TCC_PENDING (a
+#      "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8) asks the Allow for. A
+#      listing macOS holds for an Allow click in this terminal is a source.<id>.listable [FAIL]: it stops them
+#   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
+#      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
+#      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
+#      no online-only file is downloaded here and this step's time does not grow with the folders' size; each
+#      later sync downloads and converts the online-only files it deferred, within its per-run budget. Its
+#      output is shown as its "converted N, deferred M online-only" line(s), each prefixed
 #      "first sync: " (and logged as the step's note converted-N-deferred-M), else as all it printed. The
 #      flag is passed unconditionally: sync --help hides it, and the agentsync installed here always has it
+#   With --confirm-install-agent and a first sync that ran:
 #   7. agent: agentsync install-agent
 #   8. wait: launchctl kickstart gui/<uid>/com.agentsync.poll, then launchctl print every 3 s for up to
 #      $AGENTSYNC_WAIT_SECONDS (default 180 s, 3 minutes) until the first background run is past the macOS
@@ -78,7 +82,8 @@
 #      "background sync: running (...)" and leaves that run converting in the background. A job without
 #      canaries waits for an exit 0. While macOS waits for Allow (TCC_PENDING in the launcher log, or exit
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
-#   Steps 6 and 8 print a progress line at least every 15 s, so a coding tool that stops a command which has
+#   Steps 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so a
+#   coding tool that stops a command which has
 #   printed nothing for a while does not stop this one. A whole run with --confirm-install-agent takes the
 #   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
 #   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
@@ -89,11 +94,18 @@
 #      login name, full name, OneDrive-<org> and the --source-local folder names redacted); when the report
 #      ends with its issue link (https://github.com/renchris/agent-context-sync/issues/new?template=...), one
 #      line "issue link (review the report first): <link>" follows, the last line before NEXT:
-# and finally one line starting "NEXT:" with the single next step and, in brackets, the report path. Nothing
+# and finally one line starting "NEXT:" with the single next step and, in brackets, the report path. A run
+# that ends with a folder to sync and nothing failed ends on the loop's NEXT (KISS K02): install.sh runs
+# `agentsync status` once more with its NEXT line on, prints none of its output and lifts its first "NEXT:"
+# line ("run ~/.local/bin/agentsync sync and follow its NEXT line" when it prints none); with
+# --confirm-install-agent the line starts "background sync: running; " (or "ok; "). A [FAIL] line in that
+# status is printed and the NEXT says to fix it; a listing macOS held for an Allow click in this terminal is
+# the NEXT and the run exits 1. A run without a folder over an existing config ends on that status's NEXT
+# too (its "no folder is synced yet" step). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
-# filtered out of its output; every agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of its
-# own), and with --confirm-install-agent doctor gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
+# filtered out of its output; every other agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of
+# its own), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
 # then say the agent step below installs the LaunchAgents instead of naming a command).
 #
 # Setup prompt: SETUP_PROMPT_COMPAT (below) is the N of "setup prompt vN" in README.md ("Set up on a new Mac:
@@ -107,7 +119,7 @@
 # is a checkout: "commit=<sha>" or, with local changes, "commit=<sha>-dirty tree=<fingerprint>", the
 # fingerprint being the first 12 hex digits of the SHA-256 of `git diff HEAD` in the source, which reproduces
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
-# exit status, done / skipped / failed: uv, agentsync, launcher, config, doctor, first-sync, agent, wait; or
+# exit status, done / skipped / failed: uv, agentsync, launcher, config, status, first-sync, agent, wait; or
 # list-folders alone), then the report step's line, then one "end" line (exit status, total seconds, the report
 # included). The report is written while a provisional end line is the log's last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
@@ -120,8 +132,9 @@
 # install.out next to install.log (0600): one "# run=<id> <UTC> install.sh <arguments>" line, then the output.
 # Only its last 2000 lines are kept. `agentsync setup-report` may embed its (redacted) tail.
 #
-# Exit status: 0 when every step ran (doctor findings alone do not fail a run without
-# --confirm-install-agent), 2 on a usage error, 1 when a step failed (including a network/proxy/TLS failure
+# Exit status: 0 when every step ran, 2 on a usage error and when a run created the config and has no folder to
+# sync (its NEXT names --list-folders; a run over an existing config exits 0), 1 when a step failed (a status
+# [FAIL] that stops step 6, a listing held for an Allow click, a network/proxy/TLS failure
 # of uv, a failed first sync, a background run that exited 80, and --confirm-install-agent that did not
 # install the LaunchAgents), 3 when the wait ran out before a background run exited 0 (exit 79 then: macOS
 # still waits for Allow), 143 / 130 / 129 when stopped by a signal; --list-folders: see above. Every exit
@@ -324,6 +337,8 @@ OUT_MAX_LINES=2000 # install.out keeps this many lines
 TEE_PIDS=""        # the two tee processes copying this run's output to install.out
 # agentsync prints no "next:" hints of its own under this installer: its NEXT line is the only instruction.
 export AGENTSYNC_NO_NEXT_HINT=1
+# uv installs the agentsync binary into ~/.local/bin, the path every guide and NEXT line names (KISS K02).
+export UV_TOOL_BIN_DIR="$HOME/.local/bin"
 AGENTSYNC=""
 COMMIT="-"
 DIRTY="" # the SOURCE checkout's local-change fingerprint (tree_fingerprint), empty when clean or unknown
@@ -333,6 +348,7 @@ RERUN=""       # the command a stopped run names (default: this script with the 
 LAST_ERROR=""  # the last error message, for the shell report
 DOCTOR_LOG=""  # this run's doctor output, for the shell report
 SYNC_OUT=""    # the first sync's stdout
+LOOP_OUT=""    # the closing status's output (the loop's NEXT)
 END_LINE=""    # the provisional end line in install.log (set at the exit, before the report)
 REPORT_LINE="" # the report step's line, written before the end line (finish_setup_log)
 ACTION_SHOWN=0 # the ACTION line is printed once
@@ -915,6 +931,7 @@ on_exit() {
 	finish_setup_log "$rc"
 	[ -z "$DOCTOR_LOG" ] || rm -f "$DOCTOR_LOG"
 	[ -z "$SYNC_OUT" ] || rm -f "$SYNC_OUT"
+	[ -z "$LOOP_OUT" ] || rm -f "$LOOP_OUT"
 	[ -z "$NEXT_MSG" ] || say "NEXT: $NEXT_MSG$suffix"
 	stop_capture
 	exit "$rc"
@@ -1381,24 +1398,31 @@ action_once() {
 	say "ACTION: macOS is asking whether agentsync-launcher may access files managed by $(provider_name). Click Allow."
 }
 
-# ------------------------------------------------------------------------------------------------ 5. doctor
-step_start doctor
+# ------------------------------------------------------------------------------------------------ 5. status
+# The [FAIL] lines of status output $1 that stop the run: all but the launcher's own TCC_PENDING (a
+# "tcc.<source>" check, which the wait asks the Allow for). A listing macOS holds for an Allow click in this
+# terminal is a source.<id>.listable [FAIL], so it stops the run (field N8b).
+blocking_fails() {
+	grep '^\[FAIL' "$1" 2>/dev/null | grep -Ev '^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ' || true
+}
+step_start status
 DOCTOR_RC=0
-DOCTOR_TCC_ONLY=0 # every [FAIL] line is TCC_PENDING: the wait (step 8) asks for the Allow instead
+DOCTOR_TCC_ONLY=0 # every [FAIL] line is the launcher's TCC_PENDING: the wait (step 8) asks for the Allow instead
 if [ "$DRY_RUN" -eq 1 ]; then
-	run "$AGENTSYNC" doctor --config "$CONFIG"
+	run "$AGENTSYNC" status --config "$CONFIG"
 	step_end "done"
 else
 	DOCTOR_LOG="$(mktemp)"
-	# With --confirm-install-agent and a source, step 7 installs the LaunchAgents: doctor's launchd.* lines say
-	# so instead of naming `agentsync install-agent` (a second instruction next to NEXT:). Doctor only: the
-	# report written at the exit describes what is installed by then.
+	# With --confirm-install-agent and a source, step 7 installs the LaunchAgents: status's launchd.* lines say
+	# so instead of naming `agentsync install-agent` (a second instruction next to NEXT:). This step only: the
+	# report written at the exit describes what is installed by then. Under AGENTSYNC_NO_NEXT_HINT=1 status
+	# prints no NEXT, detail or policy lines (no label names in install.out).
 	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$HAVE_SOURCES" -eq 1 ]; then
 		export AGENTSYNC_AGENT_STEP_PENDING=1
 	fi
-	"$AGENTSYNC" doctor --config "$CONFIG" </dev/null | tee "$DOCTOR_LOG" || DOCTOR_RC=$?
+	"$AGENTSYNC" status --config "$CONFIG" </dev/null | tee "$DOCTOR_LOG" || DOCTOR_RC=$?
 	unset AGENTSYNC_AGENT_STEP_PENDING
-	if [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG" && ! grep '^\[FAIL' "$DOCTOR_LOG" | grep -qv 'TCC_PENDING'; then
+	if [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG" && [ -z "$(blocking_fails "$DOCTOR_LOG")" ]; then
 		DOCTOR_TCC_ONLY=1
 	fi
 	if [ "$DOCTOR_TCC_ONLY" -eq 1 ]; then
@@ -1430,26 +1454,33 @@ with_progress() {
 	wait "$pid" || rc=$?
 	return "$rc"
 }
-# Steps 6-8 run with --confirm-install-agent, at least one source and a doctor with no [FAIL] other than
-# TCC_PENDING; GO says so (a dry run prints them all).
+# Step 6 runs with a folder to sync and a status with no [FAIL] that stops it (SYNC_GO, KISS K02); steps 7-8
+# also need --confirm-install-agent (GO). A dry run prints them all.
+SYNC_GO=0
+SYNC_SKIP_NOTE=""
+if [ "$DRY_RUN" -eq 1 ]; then
+	SYNC_GO=1
+elif [ "$HAVE_SOURCES" -eq 0 ]; then
+	SYNC_SKIP_NOTE="no-sources"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
+	SYNC_SKIP_NOTE="status-failed"
+else
+	SYNC_GO=1
+fi
 GO=0
 SKIP_NOTE="not-requested"
 if [ "$INSTALL_AGENT" -eq 1 ]; then
-	if [ "$DRY_RUN" -eq 1 ]; then
+	if [ "$SYNC_GO" -eq 1 ]; then
 		GO=1
-	elif [ "$HAVE_SOURCES" -eq 0 ]; then
-		SKIP_NOTE="no-sources"
-	elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
-		SKIP_NOTE="doctor-failed"
-		warn "not installing the LaunchAgents: agentsync doctor reported failures"
 	else
-		GO=1
+		SKIP_NOTE="$SYNC_SKIP_NOTE"
+		[ "$DOCTOR_BLOCKS" -eq 0 ] || warn "not installing the LaunchAgents: agentsync status reported failures"
 	fi
 fi
 [ "$DOCTOR_TCC_ONLY" -eq 0 ] || [ "$GO" -eq 0 ] || action_once
 
 # The first sync downloads nothing (--materialise-budget 0): the files already on this Mac are converted, and
-# the one install command is not bounded by the folders' size; the background runs download and convert the
+# the one install command is not bounded by the folders' size; each later sync downloads and converts the
 # online-only files it deferred.
 FIRST_SYNC=(sync --once --materialise-budget 0)
 FIRST_SYNC_NOTE=""
@@ -1471,13 +1502,13 @@ show_first_sync() { # RC
 }
 step_start first-sync
 SYNC_RC=0
-if [ "$GO" -eq 0 ]; then
-	step_end skipped 0 "$SKIP_NOTE"
+if [ "$SYNC_GO" -eq 0 ]; then
+	step_end skipped 0 "$SYNC_SKIP_NOTE"
 elif [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG"
 	step_end "done"
 else
-	say "first sync: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; background sync downloads and converts the online-only ones)"
+	say "first sync: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; each later sync downloads and converts the online-only ones)"
 	SYNC_OUT="$(mktemp)"
 	with_progress "first sync" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
@@ -1492,7 +1523,7 @@ else
 		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$ORIG_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -eq 75 ]; then
-		say "first sync: skipped, $(rc_meaning 75) (the background run below must still exit 0)"
+		say "first sync: skipped, $(rc_meaning 75)"
 		step_end skipped 75 lock-busy
 	else
 		step_end failed "$SYNC_RC"
@@ -1681,27 +1712,43 @@ case ":$PATH:" in
 esac
 
 # ------------------------------------------------------------------------------------------------ next step
+# The loop's NEXT (KISS K02): status once more, with its NEXT line on (AGENTSYNC_NO_NEXT_HINT unset). Only its
+# [FAIL] lines are printed: its detail and policy lines would put label names into install.out.
+loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
+loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
+	local fails held
+	LOOP_OUT="$(mktemp)"
+	with_progress "status" loop_status_run || true # its exit status is its [FAIL] lines
+	fails="$(grep '^\[FAIL' "$LOOP_OUT" 2>/dev/null || true)"
+	held="$(awk '/^WAITING ON YOU: macOS held the listing / { sub(/^WAITING ON YOU: /, ""); print; exit }' "$LOOP_OUT")"
+	next="$(awk '/^NEXT: / { sub(/^NEXT: /, ""); print; exit }' "$LOOP_OUT")"
+	if [ -n "$fails" ]; then # its NEXT points at a [FAIL] line "below", which is not printed
+		printf '%s\n' "$fails"
+		[ -z "$(blocking_fails "$LOOP_OUT")" ] || EXIT_RC=1
+		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
+	elif [ -n "$held" ]; then # a listing macOS holds for an Allow click in this terminal (field N8b)
+		EXIT_RC=1
+		next="$held"
+	elif [ -z "$next" ]; then
+		next="run $AGENTSYNC sync and follow its NEXT line"
+	fi
+}
 EXIT_RC=0
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 if [ "$DRY_RUN" -eq 1 ]; then
 	next="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
-elif [ "$INSTALL_AGENT" -eq 1 ]; then
+elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
+	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
+	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
+	EXIT_RC=1
+	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
+elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT" != "running" ]; then
 	EXIT_RC=1 # --confirm-install-agent asked for background sync: anything short of it is a failure
 	if [ "$HAVE_SOURCES" -eq 0 ]; then
 		next="choose a folder to sync, then re-run: $SELF$BASE_ARGS --source-local \"<folder>\""
-	elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
-		next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
 	elif [ "$AGENT_RC" -ne 0 ]; then
 		next="read the install-agent error above, then re-run: $SELF$ORIG_ARGS"
-	elif [ "$WAIT_RESULT" = "ok" ] && [ "$SIMULATE" -eq 1 ]; then
-		EXIT_RC=0
-		next="nothing is left in this sandbox: launchd was simulated (AGENTSYNC_SIMULATE_LAUNCHD=1), so no background sync runs"
-	elif [ "$WAIT_RESULT" = "running" ]; then
-		EXIT_RC=0
-		next="nothing is left: background sync is on (its first run is past the macOS access check and keeps converting in the background); check it any time with: $AGENTSYNC status"
-	elif [ "$WAIT_RESULT" = "ok" ]; then
-		EXIT_RC=0
-		next="nothing is left: background sync is on (first background run: exit 0, ok); check it any time with: $AGENTSYNC status"
 	elif [ "$WAIT_RESULT" = "tcc" ]; then
 		EXIT_RC=3
 		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$ORIG_ARGS"
@@ -1713,12 +1760,13 @@ elif [ "$INSTALL_AGENT" -eq 1 ]; then
 	else
 		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$ORIG_ARGS"
 	fi
-elif [ "$CONFIG_STATE" = "created" ] && [ "${#FOLDERS[@]}" -eq 0 ]; then
-	next="add your sources to $CONFIG, then re-run: $SELF$ORIG_ARGS"
-elif [ "$DOCTOR_RC" -ne 0 ]; then
-	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
-else # background sync is optional and the operator's (KISS K11b): every session syncs and follows its NEXT
-	next="run $AGENTSYNC sync and follow its NEXT line"
+else # the loop's NEXT, after the background-sync result when it was asked for
+	loop_next
+	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$SIMULATE" -eq 1 ]; then
+		next="background sync: simulated (AGENTSYNC_SIMULATE_LAUNCHD=1, no job runs); $next"
+	elif [ "$INSTALL_AGENT" -eq 1 ]; then
+		next="background sync: $WAIT_RESULT; $next"
+	fi
 fi
 NEXT_MSG="$next"
 [ "$EXIT_RC" -eq 0 ] || exit "$EXIT_RC" # the EXIT trap writes the report and prints NEXT

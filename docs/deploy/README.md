@@ -48,8 +48,10 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 
 The script is safe to re-run and never prompts. It installs uv and agentsync, writes `sources.toml` with one live
 `kind = "local"` source per folder (on a re-run it adds only folders not yet there, through `agentsync add-source`),
-runs `agentsync doctor`, and ends with one `NEXT:` line. It builds no launcher and installs no LaunchAgent. Every work
-session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
+runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the loop's next step, the same line
+`~/.local/bin/agentsync status` prints. It exits 2 when it created `sources.toml` and has no folder to sync (its
+`NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. It builds no launcher and installs no LaunchAgent. Every
+work session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
 
 ### Optional: background sync (the operator's choice)
 

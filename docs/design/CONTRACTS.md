@@ -5169,6 +5169,24 @@ run that is not sourceless or failing ends on `run ~/.local/bin/agentsync sync a
 README's setup prompt and default install path never pass the flag; `docs/deploy/README.md` documents it as
 optional background sync.
 
+**SUPERSEDED in part (2026-10-05, KISS K02): install.sh ends on the loop's NEXT.** Step 5 runs `agentsync status`
+(logged `step=status`; under `AGENTSYNC_NO_NEXT_HINT=1` it prints the loop line and the checks only, as the
+`doctor` alias did). Its `[FAIL]` lines stop the run (exit 1, `NEXT: fix the [FAIL] lines above ...`), except the
+launcher's own `[FAIL] tcc.<source> — TCC_PENDING: ...` with `--confirm-install-agent`, which the wait asks the
+Allow for; a listing macOS holds for an Allow click in the terminal (`source.<id>.listable`, field N8b) stops it.
+Step 6 (first sync) runs whenever the config has a source other than the inbox and step 5 did not stop the run,
+with or without `--confirm-install-agent` (skip notes `no-sources`, `status-failed`). After it (and after the
+wait), install.sh runs `status` once more with `AGENTSYNC_NO_NEXT_HINT` unset, prints none of its output except
+its `[FAIL]` lines, and its one `NEXT:` line is that status's first `NEXT:` line, else `run
+~/.local/bin/agentsync sync and follow its NEXT line`. A `[FAIL]` there makes the NEXT `fix the [FAIL] lines
+above ..., then run ~/.local/bin/agentsync sync ...` (exit 1 unless it is only the launcher's TCC_PENDING); a
+`WAITING ON YOU: macOS held the listing ...` line becomes the NEXT, exit 1. With `--confirm-install-agent` the NEXT
+starts `background sync: running; ` or `background sync: ok; ` (`simulated (...)` under the test seam). Every
+"nothing is left: background sync is on" line is deleted. A run that created the config and has no folder to
+sync exits 2 with `NEXT: no folder to sync yet: list them with install.sh --list-folders, ...`; a run over an
+existing config without one (inbox-only too) exits 0 on status's NEXT. uv runs with `UV_TOOL_BIN_DIR` pinned to
+`~/.local/bin`.
+
 ### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
 
 Additive (judge finding J10; setup prompt v5 step 4). `agentsync it-request --out PATH [--config PATH]` renders

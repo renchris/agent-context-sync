@@ -503,7 +503,7 @@ inbox() { grep -q '^kind = "inbox"' "$cfg" || printf '[[source]]\\nkind = "inbox
 case "$sub" in
   init) setup; inbox ;;
   add-source) [ -z "$pos" ] || { setup; echo "[[source]]" >> "$cfg"; inbox; } ;;
-  doctor) exit "${STUB_DOCTOR_RC:-0}" ;;
+  doctor|status) exit "${STUB_DOCTOR_RC:-0}" ;;
   setup-report) mkdir -p "$(dirname "$out")"; echo "# agentsync setup report" > "$out" ;;
 esac
 exit 0
@@ -605,7 +605,7 @@ def test_install_sh_dry_run_changes_nothing(stubs: dict[str, str]) -> None:
     assert calls(stubs) == ["uv tool dir --bin", "uv tool dir"], "only read-only uv queries run"
     out = cp.stdout
     assert "[dry-run]" in out and "tool install --force --reinstall-package agentsync --python 3.11" in out
-    for step in ("agentsync init --config", "agentsync doctor --config", "agentsync install-agent --config"):
+    for step in ("agentsync init --config", "agentsync status --config", "agentsync install-agent --config"):
         assert step in out
     next_line = "NEXT: re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to apply the steps above"
     assert out.strip().splitlines()[-1] == next_line
@@ -631,19 +631,19 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     report = f" [setup report: {home}/agent-context/setup-report.md]"
 
     first = install_sh(stubs)
-    assert first.returncode == 0, first.stderr
+    assert first.returncode == 2, first.stderr  # KISS K02: it created the config and has no folder to sync
     assert not dest.exists(), "KISS K11b: no launcher without --confirm-install-agent"
     assert cfg.is_file()
     log1 = calls(stubs)
     assert log1[:2] == ["uv tool dir --bin", "uv tool dir"], "read before the install (is it current?)"
     assert log1[2].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
     assert log1[2].endswith(str(REPO))
-    assert f"agentsync init --config {cfg}" in log1 and f"agentsync doctor --config {cfg}" in log1
+    assert f"agentsync init --config {cfg}" in log1 and f"agentsync status --config {cfg}" in log1
     assert not any("install-agent" in c for c in log1), "no LaunchAgent without --confirm-install-agent"
     assert not any(c.startswith("launchctl") for c in log1), "no launchctl call without the flag"
-    assert (
-        first.stdout.strip().splitlines()[-1]
-        == f"NEXT: add your sources to {cfg}, then re-run: {INSTALL_SH}{report}"
+    assert first.stdout.strip().splitlines()[-1] == (
+        f"NEXT: no folder to sync yet: list them with {INSTALL_SH} --list-folders, choose the folders to "
+        f'sync, then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder){report}'
     )
 
     second = install_sh(stubs)
@@ -654,7 +654,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert cfg.read_text().count('kind = "inbox"') == 1
     assert second.stdout.strip().splitlines()[-1] == (
         f"NEXT: run {home}/.local/bin/agentsync sync and follow its NEXT line{report}"
-    ), "KISS K11b: never a re-run with --confirm-install-agent"
+    ), "KISS K11b: never a re-run with --confirm-install-agent; K02: the stub status prints no NEXT"
 
     no_source = install_sh(stubs, "--launcher", str(launcher_app), "--confirm-install-agent")
     assert no_source.returncode == 1, "asked for background sync of nothing"
@@ -682,7 +682,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert f"agentsync install-agent --config {cfg}" in log3
     assert f"launchctl kickstart gui/{os.getuid()}/com.agentsync.poll" in log3
     assert "wants to access files managed by" in third.stdout
-    assert third.stdout.strip().splitlines()[-1].startswith("NEXT: nothing is left: background sync is on")
+    assert third.stdout.strip().splitlines()[-1].startswith("NEXT: background sync: ok; run ")
 
 
 @needs_build
@@ -783,19 +783,19 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "not-requested"),
         ("config", "done", "0", "created"),
-        ("doctor", "done", "0", ""),
-        ("first-sync", "skipped", "0", "not-requested"),
+        ("status", "done", "0", ""),
+        ("first-sync", "done", "0", ""),  # KISS K02: the first sync runs without the flag
         ("agent", "skipped", "0", "not-requested"),
         ("wait", "skipped", "0", "not-requested"),
         ("report", "done", "0", "agentsync"),  # before the end line (the report read a provisional one)
     ]
 
     again = install_sh({**stubs, "STUB_DOCTOR_RC": "1"}, str(wheel), "--source-local", str(folder))
-    assert again.returncode == 0, again.stderr
+    assert again.returncode == 1, again.stderr  # KISS K02: a status FAIL exits 1
     lines = _setup_log_lines(log)
     assert len(lines) == 22 and len({run for run, _ in lines}) == 2, "appended, one run id per run"
     assert ("config", "done", "0", "add-source") in _steps(lines[11:])
-    assert ("doctor", "done", "1", "fail-lines") in _steps(lines[11:])
+    assert ("status", "done", "1", "fail-lines") in _steps(lines[11:])
 
 
 def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp_path: Path) -> None:
@@ -848,7 +848,9 @@ def test_install_sh_dry_run_writes_no_setup_log(stubs: dict[str, str], tmp_path:
 def test_setup_report_reads_the_install_sh_log(
     stubs: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cp = install_sh(stubs, str(_wheel(tmp_path)))
+    folder = Path(stubs["HOME"]) / "Projects"
+    folder.mkdir()
+    cp = install_sh(stubs, str(_wheel(tmp_path)), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stderr
     monkeypatch.setenv("HOME", stubs["HOME"])
     text, _red = setup_report.build_report(Path(stubs["HOME"]) / "agent-context" / "sources.toml")
