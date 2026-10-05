@@ -954,8 +954,12 @@ def test_symlinked_cloud_root_is_resolved_to_the_file_provider_path() -> None:
 def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """deploy-ops-proxy-env-not-in-launchagent; KISS K11a: only on a Mac with a LaunchAgent installed."""
-    config, _src = make_env(tmp_path)
+    """deploy-ops-proxy-env-not-in-launchagent; KISS K11a: only on a Mac with a LaunchAgent installed. A live
+    Graph source makes the mismatch matter (field N13: without one it is INFO, see the PAC test below)."""
+    graph = '[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\ntenant = "example.test"\n'
+    config, _src = make_env(
+        tmp_path, source_extra=f'\n[[source]]\nid = "mail"\nkind = "graph_mail"\nfolder = "inbox"\n\n{graph}'
+    )
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
     monkeypatch.setattr(cli, "_launchctl_env", lambda names: {})
     monkeypatch.setattr(cli.net, "system_proxy", lambda runner=None: cli.net.SystemProxy())
@@ -966,7 +970,7 @@ def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     plist.write_bytes(b"garbage")
     checks = {c.name: c for c in cli._network_checks(config, offline=True)}
     job = checks["network.proxy.job"]
-    assert not job.ok and "[network] proxy" in (job.fix or "")
+    assert not job.ok and job.severity is doctor.Severity.ERROR and "[network] proxy" in (job.fix or "")
 
 
 def test_pac_proxy_is_info_without_a_live_graph_source(
@@ -993,6 +997,17 @@ def test_pac_proxy_is_info_without_a_live_graph_source(
     policy = [c for c in cli._network_checks(live, offline=True) if c.name == "network.proxy"]
     pac_line = next(c for c in policy if c.detail.startswith("network-policy: PAC"))
     assert pac_line.severity is doctor.Severity.ERROR and pac_line.fix and "[network] proxy" in pac_line.fix
+    warn = next(c for c in policy if c.detail.startswith("system proxy uses PAC"))
+    assert warn.severity is doctor.Severity.WARN and warn.note is None
+    # A LaunchAgent whose environment differs from this shell's: its PAC policy error is unused too.
+    monkeypatch.setattr(cli, "_job_environment", lambda _config: {})
+    monkeypatch.setattr(cli.doctor, "agents_wanted", lambda _config: True)
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.test:8080")
+    job_lines = [c for c in cli._network_checks(config, offline=True) if c.name.startswith("network.proxy")]
+    assert any(c.name == "network.proxy.job" and "PAC" in c.detail for c in job_lines), job_lines
+    for c in job_lines:
+        assert c.severity is doctor.Severity.INFO and c.fix is None, c
+    assert all(c.note for c in job_lines if not c.ok), job_lines
 
 
 def test_offboard_lists_and_removes_installer_artifacts(tmp_path: Path) -> None:

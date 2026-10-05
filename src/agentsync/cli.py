@@ -978,9 +978,9 @@ def _job_environment(config: Config) -> dict[str, str]:
 _PROXY_UNUSED_NOTE = "only Graph sources use the proxy, and none is live"
 
 
-def _unused_proxy_line(detail: str) -> doctor.CheckResult:
+def _unused_proxy_line(detail: str, name: str = "network.proxy") -> doctor.CheckResult:
     """A proxy finding that nothing acts on: no live Graph source (field N13)."""
-    return doctor.CheckResult("network.proxy", False, detail, doctor.Severity.INFO, note=_PROXY_UNUSED_NOTE)
+    return doctor.CheckResult(name, False, detail, doctor.Severity.INFO, note=_PROXY_UNUSED_NOTE)
 
 
 def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
@@ -997,15 +997,19 @@ def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.Che
         else proxy
     )
     if (job.url, job.policy_error) != (proxy.url, proxy.policy_error):
-        out.append(
-            _check(
-                "network.proxy.job",
-                False,
-                f"the LaunchAgent resolves {job.describe()} but this shell resolves {proxy.describe()}",
-                doctor.Severity.ERROR if live_graph else doctor.Severity.WARN,
-                fix='set [network] proxy = "<url>" (or "direct") in sources.toml: both then use it',
+        mismatch = f"the LaunchAgent resolves {job.describe()} but this shell resolves {proxy.describe()}"
+        if live_graph:
+            out.append(
+                _check(
+                    "network.proxy.job",
+                    False,
+                    mismatch,
+                    doctor.Severity.ERROR,
+                    fix='set [network] proxy = "<url>" (or "direct") in sources.toml: both then use it',
+                )
             )
-        )
+        else:  # the job's proxy (even a PAC policy error) is unused without a live Graph source (field N13)
+            out.append(_unused_proxy_line(mismatch, "network.proxy.job"))
     # Only Graph uses the proxy (cycle.py gates every consumer on a live Graph source): without one, a PAC or
     # WPAD setting is INFO with a note, never a fix to chase (field N13).
     if proxy.policy_error and live_graph:
