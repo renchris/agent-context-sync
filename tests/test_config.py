@@ -412,18 +412,21 @@ def test_ensure_inbox_adds_one_inbox_beside_the_docs_repo(tmp_path: Path) -> Non
     assert cfg_path.read_text(encoding="utf-8") == text
 
 
-def test_ensure_inbox_counts_any_inbox_and_never_configures_a_folder_twice(tmp_path: Path) -> None:
+def test_ensure_inbox_adds_the_named_inbox_beside_other_inboxes(tmp_path: Path) -> None:
+    """Field report 2026-10-05: a Mac with hand-added inbox sources elsewhere still gets
+    ~/agent-context/inbox, the folder every guide names; no folder is ever configured twice."""
     elsewhere = tmp_path / "drop"
     elsewhere.mkdir()
     paused = inbox_source_table("drop", elsewhere).replace(
         'kind = "inbox"\n', 'kind = "inbox"\nstate = "paused"\n'
     )
     cfg_path = _ctx_config(tmp_path, paused)
-    assert ensure_inbox(cfg_path)[1] is None  # an inbox in any state counts
-    assert not (tmp_path / "ctx" / "inbox").exists()
-
+    added = ensure_inbox(cfg_path)[1]
     inbox = tmp_path / "ctx" / "inbox"
-    inbox.mkdir()
+    assert added is not None and added.kind is SourceKind.INBOX and added.path == inbox.resolve()
+    assert ensure_inbox(cfg_path)[1] is None  # the second run adds nothing
+    assert [s.path for s in load_config(cfg_path).sources] == [elsewhere.resolve(), inbox.resolve()]
+
     cfg_path = _ctx_config(tmp_path, local_source_table("inbox", inbox))
     assert ensure_inbox(cfg_path)[1] is None  # the folder is already a (local) source
     assert [s.kind for s in load_config(cfg_path).sources] == [SourceKind.LOCAL]

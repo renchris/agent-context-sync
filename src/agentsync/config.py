@@ -639,15 +639,15 @@ def inbox_source_table(source_id: str, path: Path) -> str:
 
 
 def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
-    """Keep the mail inbox (KISS K05): when no ``kind = "inbox"`` source exists (any state), create ``inbox``
-    beside the docs repo (``~/agent-context/inbox``, mode 0700) and append :func:`inbox_source_table` for it
-    with :func:`append_to_config`.  A source already on that folder (any kind) counts as present, so no
-    folder is configured twice.  Returns the config as it now stands and the source added (None when nothing
-    changed).  Raises ConfigError (sources.toml missing or the result would not load) or OSError (the folder
-    cannot be created, or a non-folder has its name), writing no table."""
+    """Keep the mail inbox (KISS K05): create ``inbox`` beside the docs repo (``~/agent-context/inbox``, mode
+    0700) and append :func:`inbox_source_table` for it with :func:`append_to_config`, unless a source (any
+    kind, any state) is already on that folder, so no folder is configured twice.  Other inbox sources do not
+    count: the guides name this folder, and a Mac with hand-added inbox sources elsewhere (field report
+    2026-10-05: six of them) would otherwise get no source on it.  Returns the config as it now stands and
+    the source added (None when nothing changed).  Raises ConfigError (sources.toml missing or the result
+    would not load) or OSError (the folder cannot be created, or a non-folder has its name), writing no
+    table."""
     config = load_config(config_path)
-    if any(s.kind is SourceKind.INBOX for s in config.sources):
-        return config, None
     raw = expand(config.docs_repo).parent / "inbox"
     if not raw.is_dir():
         raw.mkdir(mode=0o700, parents=True)  # FileExistsError when a file has the name
