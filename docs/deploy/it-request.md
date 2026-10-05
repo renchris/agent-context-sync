@@ -22,7 +22,7 @@ filled in the copy too.
 | `<it-owner>` | the IT co-owner of the app registration | IT fills in (leave it) |
 | `<tenant-id>` | the Directory (tenant) ID | IT fills in (leave it; IT replies with it) |
 | `<app-client-id>` | the Application (client) ID, created when IT registers the app | IT fills in (leave it; IT replies with it) |
-| `<company>`, `<version>`, `<shared-mailbox-upn>` | parts of a format or an example, not values to fill | leave them |
+| `<version>`, `<shared-mailbox-upn>` | parts of a format or an example, not values to fill | leave them |
 
 ---
 
@@ -194,8 +194,7 @@ What the user reports, and what IT does about it:
   telemetry.
 - **Network:** HTTPS to `login.microsoftonline.com`, `graph.microsoft.com` and the tenant's `*.sharepoint.com`
   download redirects. Installation also fetches `astral.sh`/`github.com` (uv) and `pypi.org`/`files.pythonhosted.org`
-  (packages). The User-Agent is `NONISV|<company>|agentsync/<version>` (`<company>` is `[graph] company` in
-  `sources.toml`), so SharePoint logs identify the traffic.
+  (packages). The User-Agent is `NONISV|agentsync|agentsync/<version>`, so SharePoint logs identify the traffic.
 - **Credentials:** the MSAL token cache is kept in the user's login Keychain (service `agentsync`), or by the broker.
   Nothing lands on disk in plaintext unless the Keychain is unavailable, in which case a 0600 file is used and a
   warning is logged.

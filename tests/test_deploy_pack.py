@@ -169,6 +169,25 @@ path = "{tmp_path / "src"}"
     assert sorted(str(p) for p in tmp_path.rglob("*")) == before  # no report, no state, no token cache
 
 
+def test_tenant_probes_config_attributes_exist(tmp_path: Path) -> None:
+    """The probe's embedded Python runs past --dry-run only against a real tenant, so no test executes it;
+    every ``config.<a>.<b>`` it reads must still exist (KISS K15 removed ``GraphConfig.company``)."""
+    from agentsync.config import parse_config  # noqa: PLC0415
+
+    text = SCRIPTS[1].read_text(encoding="utf-8")
+    chains = set(re.findall(r"\bconfig((?:\.[a-z_]+)+)", text))
+    assert chains
+    config = parse_config(
+        '[graph]\nclient_id = "00000000-0000-0000-0000-000000000000"\ntenant = "contoso.onmicrosoft.com"\n',
+        config_path=tmp_path / "sources.toml",
+    )
+    for chain in sorted(chains):
+        value: object = config
+        for name in chain.lstrip(".").split("."):
+            assert hasattr(value, name), f"tenant-probes.sh reads config{chain}, which no longer exists"
+            value = getattr(value, name)
+
+
 _FENCE_RE = re.compile(r"^(```|~~~).*?^\1", flags=re.DOTALL | re.MULTILINE)
 _LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")
 

@@ -90,10 +90,13 @@ draft for this Mac: your name, the serial number, the CPU, the organisation and 
 filled in, the links point at this repository on GitHub, and the first line lists what you still fill ("You fill:
 ..."). It never sends anything; you send it.
 
-Once IT has registered the app, append these tables to `~/agent-context/sources.toml` with your own values; the
-template no longer lists them. A Graph source needs `client_id`, and `tenant` must be your tenant id (GUID) or
-verified domain: `organizations` and `common` are refused (AADSTS50194). Start each Graph source paused, because
-its first pass is a full enumeration. `agentsync graph discover` prints the tables for what you can already reach.
+Once IT has registered the app, add these tables to `~/agent-context/sources.toml` with your own values; the
+template no longer lists them. A config written before 2026-10-04 already has a `[graph]` table: put `client_id`
+and `tenant` in that table (TOML refuses a second one) and append only the `[[source]]` tables. A newer config has
+no `[graph]` table, so append the whole block. A Graph source needs `client_id`, and `tenant` must be your tenant
+id (GUID) or verified domain: `organizations` and `common` are refused (AADSTS50194). Start each Graph source
+paused, because its first pass is a full enumeration. `agentsync graph discover` prints the tables for what you can
+already reach.
 
 ```toml
 [graph]

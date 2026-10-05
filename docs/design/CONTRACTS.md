@@ -3398,8 +3398,9 @@ ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:  # tcc_canary: KISS K08a
     """Run every check, in a fixed order, never raising for a single failed check.
 
-    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; docs_repo
-    outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
+    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; sources.toml
+    keys accepted but ignored (`config.graph_company` WARN naming the line to delete, nothing when absent; KISS
+    K15); docs_repo outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
     sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:
     client id set, token cache backend (Keychain vs file), signed in (no network); disk free >= 2 GiB on state

@@ -63,50 +63,139 @@ def test_template_has_only_sources(tmp_path: Path) -> None:
 
 
 def test_graph_examples_in_the_deploy_readme_parse(tmp_path: Path) -> None:
-    """KISS K15 moved the Graph examples out of the template into docs/deploy "What needs IT"; appended to a
-    config as that section says, they load."""
+    """KISS K15 moved the Graph examples out of the template into docs/deploy "What needs IT"; added to a
+    config as that section says, they load: a new config takes the whole block, a pre-K15 config (which
+    already has a ``[graph]`` table) takes ``client_id`` and ``tenant`` into that table, then the
+    ``[[source]]`` tables."""
     readme = (Path(__file__).parents[1] / "docs" / "deploy" / "README.md").read_text(encoding="utf-8")
     section = readme.split("\n## What needs IT\n", 1)[1].split("\n## ", 1)[0]
     (block,) = re.findall(r"```toml\n(.*?)```", section, flags=re.S)
+    assert "already has a `[graph]` table: put `client_id`\nand `tenant` in that table" in section
+    graph_table, sources = block.split("\n\n", 1)
+    assert graph_table.startswith("[graph]\n") and "[graph]" not in sources
+    keys = "".join(
+        line + "\n" for line in graph_table.splitlines() if re.match(r"(client_id|tenant) = ", line)
+    )
     folder = tmp_path / "Projects"
     folder.mkdir()
-    cfg = parse(default_config_text() + local_source_table("projects", folder) + "\n" + block, tmp_path)
-    assert cfg.graph.client_id is not None and cfg.graph.tenant not in ("organizations", "common")
-    graph = cfg.sources[1:]
-    assert [s.kind for s in graph] == [SourceKind.GRAPH_DRIVE, SourceKind.GRAPH_MAIL, SourceKind.GRAPH_TEAMS]
-    assert all(s.state is SourceState.PAUSED for s in graph)
-    assert cfg.source("finance-library").folder == "/Shared Documents/FY26"
+    local = local_source_table("projects", folder) + "\n"
+    with pytest.raises(ConfigError):  # appending the whole block to an old config declares [graph] twice
+        parse(_PRE_K15_TEMPLATE + local + block, tmp_path)
+    old = _PRE_K15_TEMPLATE.replace('tenant = "organizations"', keys + '# tenant = "organizations"')
+    for text in (default_config_text() + local + block, old + local + sources):
+        cfg = parse(text, tmp_path)
+        assert cfg.graph.client_id is not None and cfg.graph.tenant not in ("organizations", "common")
+        graph = cfg.sources[1:]
+        assert [s.kind for s in graph] == [
+            SourceKind.GRAPH_DRIVE,
+            SourceKind.GRAPH_MAIL,
+            SourceKind.GRAPH_TEAMS,
+        ]
+        assert all(s.state is SourceState.PAUSED for s in graph)
+        assert cfg.source("finance-library").folder == "/Shared Documents/FY26"
 
 
 _PRE_K15_TEMPLATE = """\
+# agentsync — sources.toml
+#
+# The in-scope set: nothing else in agentsync names a cloud location.  Edit, then run `agentsync doctor`.
+# Every key below shows its default; delete a line to keep the default.
+
 [agentsync]
-docs_repo = "~/agent-context/docs"
-state_dir = "~/Library/Application Support/agentsync"
-cache_dir = "~/Library/Caches/agentsync"
-log_dir = "~/Library/Logs/agentsync"
-reconcile_interval_s = 3600
-poll_interval_s = 300
+docs_repo = "~/agent-context/docs"                    # its own git repo, OUTSIDE ~/Library/CloudStorage
+state_dir = "~/Library/Application Support/agentsync"  # manifest, cursors (0600), lock, heartbeat
+cache_dir = "~/Library/Caches/agentsync"              # converter cache, rebuildable, never in git
+log_dir = "~/Library/Logs/agentsync"                  # launchd agent logs
+reconcile_interval_s = 3600                           # full enumeration cadence (hourly at <= 1e5 items)
+poll_interval_s = 300                                 # delta poll cadence
 tombstone_reap_days = 180
-# principal = "you@example.com"
+# principal = "you@example.com"                       # which signed-in identity this mirror is a view of
 
 [graph]
-# client_id = "00000000-0000-0000-0000-000000000000"
-tenant = "organizations"
+# client_id = "00000000-0000-0000-0000-000000000000"  # Entra app registration (single-tenant public client)
+#                                                     # unset = no Graph arms; local sources still work
+tenant = "organizations"                              # Graph NEEDS your tenant id (GUID) or verified domain:
+#                                                     # organizations/common are refused (AADSTS50194)
+# scopes = ["Files.Read.All", "Sites.Read.All", "Mail.Read", "User.Read"]
 company = "agentsync"                                 # User-Agent: NONISV|<company>|agentsync/<version>
+# cloud = "global"                                    # global | usgov | usgov-dod | china (default: base_url)
+# broker = true                                       # sign in via the macOS broker (Company Portal) first
+# allow_device_code = false                           # last-resort device-code sign-in, only if IT allows it
+
+# [network]
+#   proxy = "http://proxy.example.com:8080"           # default: HTTPS_PROXY, then the macOS manual proxy;
+#                                                     # "direct" ignores both.  PAC/WPAD are not evaluated.
+
+# [policy]                                            # sensitivity-label gate (C15 section 4)
+#   exclude_label_ids = ["00000000-0000-0000-0000-000000000000"]   # label GUIDs never converted
+#   exclude_label_names = ["Highly Confidential"]
+#   refuse_unlabelled = false
 
 # [governance]                                        # retention, purge, legal hold (C15 section 7)
-#   archive = false
+#   history_days = 30                                 # compact-history squashes older mirror history
+#   allow_remote = false                              # every clone is a copy no purge can reach
+#   hold = false                                      # legal/records hold: suspends purge and compaction
+#   archive = false                                   # true keeps everything: deleted pages in docs/archive/,
+#                                                     # a snapshot/<date> tag per checkpoint, no compaction;
+#                                                     # agentsync purge still erases
 
 [breaker]                                             # deletion circuit breaker, per source
-fraction = 0.20
+fraction = 0.20                                       # trip when deletions > max(fraction * live rows, floor)
 floor = 25
 hold_days = 7
 
 [convert]
-xlsx_stream_threshold_bytes = "20MB"
+xlsx_stream_threshold_bytes = "20MB"                  # larger workbooks get a schema + sample page + CSV
 max_rows_per_sheet = 5000
+# pandoc_path = "/opt/homebrew/bin/pandoc"            # default: pypandoc_binary's bundled pandoc
+
+# ---- sources -------------------------------------------------------------------------------------------
+# One [[source]] per scope.  id: lowercase letters, digits and '-'; it names docs/mirror/<id>/.
+# state: "paused" | "live" | "retired" (retired needs retired_reason).  Budgets are per cycle.
+
+# A folder inside the OneDrive / SharePoint sync client (no IT involvement needed):
+# [[source]]
+# id = "onedrive-projects"
+# kind = "local"
+# path = "~/Library/CloudStorage/OneDrive-Contoso/Projects"
+# sentinel = "README.txt"                             # positive control: must exist, or the walk is 'unknown'
+# include = []                                        # empty = everything
+# exclude = ["~$*", "*.tmp", ".~lock.*#", ".DS_Store", "._*"]
+# max_materialise_bytes = "1GiB"                      # download budget per cycle: online-only files only
+# max_files = 5000
+
+# A manual drag-and-drop inbox:
+# [[source]]
+# id = "inbox"
+# kind = "inbox"
+# path = "~/agent-context/inbox"
+# quiescence_s = 60                                   # skip files still being written
+
+# A SharePoint document library or OneDrive via Graph delta (needs [graph] client_id):
+# [[source]]
+# id = "finance-library"
+# kind = "graph_drive"
+# site = "contoso.sharepoint.com:/sites/finance"      # or: drive_id = "b!..." ; or: drive_id = "me"
+# folder = "/Shared Documents/FY26"                   # subtree filter, "/" = whole drive
+# state = "paused"                                    # first pass is a full enumeration; flip to live
+
+# An Outlook mail folder via Graph message delta:
+# [[source]]
+# id = "mail-projects"
+# kind = "graph_mail"
+# mailbox = "me"                                      # or a shared mailbox UPN (adds Mail.Read.Shared)
+# folder = "Inbox"                                    # well-known name or folder id
+
+# A Teams channel's messages via channel delta (ChannelMessage.Read.All needs admin consent):
+# [[source]]
+# id = "team-acme-general"
+# kind = "graph_teams"
+# team_id = "..."
+# channel_id = "19:...@thread.tacv2"
 """
-"""The live lines of the sources.toml template before KISS K15 (2026-10-04): every older config has them."""
+"""The sources.toml template before KISS K15 (2026-10-04), verbatim (``_TEMPLATE`` in
+``git show 1fa2e72^:src/agentsync/config.py``): every older config started as this text, so line 22 is the
+line their status WARN names."""
 
 
 def test_old_config_shapes_load(tmp_path: Path) -> None:
@@ -115,7 +204,7 @@ def test_old_config_shapes_load(tmp_path: Path) -> None:
     else changes.  principal, cadence_s and launchd_label_prefix stay parsed."""
     old = parse(_PRE_K15_TEMPLATE, tmp_path)
     new = parse(default_config_text(), tmp_path)
-    assert old.graph_company_line == 14  # company = "agentsync"
+    assert old.graph_company_line == 22  # company = "agentsync"
     assert dataclasses.replace(old, graph_company_line=None) == new
     assert new.graph_company_line is None
     folder = tmp_path / "Projects"
@@ -134,7 +223,7 @@ def test_old_config_shapes_load(tmp_path: Path) -> None:
         SourceKind.LOCAL,
         SourceKind.INBOX,
     ]
-    assert cfg.graph_company_line == 15  # one line further down: launchd_label_prefix was added above it
+    assert cfg.graph_company_line == 23  # one line further down: launchd_label_prefix was added above it
     assert not hasattr(cfg.graph, "company")
 
 
