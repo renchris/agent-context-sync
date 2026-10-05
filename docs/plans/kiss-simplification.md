@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 
 # Plan — agentsync KISS: fewer options, a loop no agent can stop halfway
@@ -178,110 +178,23 @@ Learnings for W5:
 - The perf budget test (`AGENTSYNC_PERF=1`) was not completed with the per-listing timer (about 87 µs per directory
   measured; estimated +0.09 s on the 3 s budget).
 
-## W5 Install output, setup prompt v7, setup report
+## W5 Install output, setup prompt v7, setup report — DONE (2026-10-05)
 
-Status: upcoming.
+Landed on `main` at `2b331c4` (13 commits, `5d96f3f..2b331c4`): `5d96f3f` fewer install.sh options (K17),
+`c60faa0` background sync optional, never part of setup (K11b), `f1a8d0e` install.sh ends on the loop's NEXT (K02),
+`5a52194` computed Loop line and `loop_stage` (K16b), `3674be3` setup prompt v7 (K04), then eight review fixes (22
+findings, none rejected). Gate: ruff, format, mypy, shellcheck clean; pytest 2088 passed, 2 skipped. Run
+`wf_e266c250-c64`. Field carry in v7: inbox named through `sources.toml` (N3), what to drop and which formats carry a
+label (N9), never empty the inbox (N14), no Containers or browser (N16), a sync that stops on "click Allow" (N8).
 
-Carry from the field report (docs/research/corporate-setup-feedback-2026-10-05.md § "What W5 must carry"): v7 names
-the inbox by its configured folder(s) (N3), says what to drop there and which formats carry a sensitivity label
-(N9), that the inbox is never emptied by hand (N14), and that agentsync never needs `~/Library/Containers`, Group
-Containers or the browser (N16); a terminal-side TCC_PENDING blocks, only the launcher's goes ahead (N8b); add D1's
-line only if the operator picks `archive = true`.
-
-Files: `scripts/install.sh`, `README.md`, `docs/deploy/README.md`, `docs/deploy/setup-feedback.md`, `docs/plans/implementation.md`, `src/agentsync/setup_report.py`, `src/agentsync/loop.py (read only)`, `.github/ISSUE_TEMPLATE/setup-report.yml`, `docs/design/CONTRACTS.md (§16.14, install.sh log)`, `tests/test_install_oneshot.py`, `tests/test_launcher.py`, `tests/test_deploy_pack.py`, `tests/test_setup_report.py`, `tests/test_contracts.py (install case-arm pin)`
-
-### K02 (rewrite-doc, M)
-
-install.sh's final line becomes the loop's NEXT.
-
-NEXT and exit codes:
-- Delete every 'nothing is left: background sync is on' branch, including the simulated one.
-- After the first sync, install.sh runs status once with AGENTSYNC_NO_NEXT_HINT unset, lifts its NEXT line and prints it as its own single NEXT. If status fails, it falls back to a fixed line: 'run ~/.local/bin/agentsync sync and follow its NEXT line'.
-- When agents were installed, the line is prefixed with the background-sync result (running/ok).
-- A first run with a created config and no folders exits 2 naming --list-folders. An existing config, including the upgrade path, still exits 0.
-- A real doctor FAIL (DOCTOR_BLOCKS) exits 1.
-
-Steps:
-- Step 6 (first sync) runs whenever a folder source exists and DOCTOR_BLOCKS is 0, never gated on DOCTOR_RC. TCC_PENDING alone still goes ahead.
-- Step 5 calls status, logged as step 'status'.
-- Pin UV_TOOL_BIN_DIR=$HOME/.local/bin for uv calls, so the binary always sits where the guides say.
-
-- **Where:** scripts/install.sh:300-314, 1205-1211, 1380-1445, 1694-1736
-- **Why:** The installer tells the setup agent it is finished exactly where the mirror half ends and the curation half begins. The sourceless and doctor-FAIL exits are 'successful' installs that sync nothing. Fixes from the votes:
-- DOCTOR_BLOCKS rather than DOCTOR_RC, so a TCC-pending corporate Mac is not blocked;
-- the exit 2 is scoped so existing and inbox-only configs are not caught;
-- install.sh still prints exactly one NEXT line.
-- **Risk:** Exit-code changes ripple into tests: test_install_oneshot.py:323, 358, 579, 1353; test_launcher.py:559-581, 709, 720.
-
-### K11b (remove, M)
-
-Setup no longer installs LaunchAgents by default.
-- Step 3 (launcher build) and steps 7-8 (install-agent and the 3-minute wait) run only with --confirm-install-agent.
-- The --list-folders NEXT line, the README default path and the setup prompt stop passing that flag.
-- docs/deploy documents it as optional background sync, owned by the operator.
-- --rebuild-launcher becomes the developer variable AGENTSYNC_REBUILD_LAUNCHER=1.
-
-- **Where:** scripts/install.sh:4-17, 1006, 1015-1025, 1240-1312, 1429-1444, 1513-1631, 1723-1725; README.md:50, 168, 564-575; docs/deploy/README.md:46-60, 93-111
-- **Why:** This carries out the 2026-10-01 frozen scope, which prompt v6 breaks on every documented path. The background runs made this Mac look healthy (936 runs) while topics/ stayed empty. It also removes the second Allow click, the launcher-build dead end that exits 0, the wait, and the lock contention.
-- **Risk:** The mirror advances only when a session syncs, a cost the ruling accepts. Depends on W4's doctor INFO change and W1's due reconcile.
-
-### K17 (remove, M)
-
-Trim install.sh's options.
-- --dry-run becomes AGENTSYNC_INSTALL_DRY_RUN=1 and leaves the docs.
-- Delete --config and the CONFIG_FLAG block; tests use AGENTSYNC_CONFIG.
-- Delete --no-report, together with the baseline prompt that called it.
-- Fold --log-end into --report-only, which appends the end line only when the current attempt has none.
-- Delete the dead launcher/prebuilt arm.
-- The SOURCE positional stays as an undocumented test seam, removed from the usage header and --help.
-
-Remaining options: --source-local, --list-folders, --version, --log-start, --log, --report-only, --help, plus the operator-only --confirm-install-agent and --launcher.
-
-- **Where:** scripts/install.sh:3-48, 1012-1050, 1085-1089, 1286-1289, 1688-1692; README.md:567; docs/deploy/README.md:49, 128
-- **Why:** Each removed option is a branch where install.sh exits 0 before the loop starts, or quietly diverges. Fixes from both refuting votes:
-- --no-report goes only together with its live caller;
-- the --log-end fold comes with the prompt-compat bump to 7;
-- the wheel and SOURCE test seam used by about 30 tests is kept.
-- **Risk:** Test edits: test_deploy_pack.py:117, 146, 206, 236, 354, 642-646; test_launcher.py:637, 732; test_install_oneshot.py:520, 590-593.
-
-### K04 (rewrite-doc, M)
-
-Setup prompt v7 replaces both v6 and the separate baseline prompt. It has 3 steps:
-1. Unchanged: preflight, clone or pull, the --version gate, --log-start, --list-folders, then the one question (which folders).
-2. `install.sh --source-local "<folder>"`, announcing the one Allow click.
-3. Run `~/.local/bin/agentsync sync` and do what NEXT says. Repeat until NEXT says the session is done or names a WAITING ON YOU. Then run `install.sh --report-only` and finish with three lines: the folders, the last NEXT or WAITING line, and the report path.
-
-Also:
-- Delete the it-request step and the 'Next, on the same Mac' block.
-- Allowlist: drop `agentsync it-request *`; add exact `Bash(~/.local/bin/agentsync sync)`, `…curate)` and `…status)`, plus the Copilot shell() equivalents.
-- Collapse the feature table to set up / every session / operator.
-- 'What happens after install' becomes 'every session: sync, then NEXT', keeping the existing CORRECTED notes.
-- Remove the README's install-skill mentions and say the inbox always exists.
-- setup-prompt-compat becomes 7. Add PROMPT_LAYOUTS[7]; prompt_layout() picks the layout by explicit version, so v6 logs still parse as v6.
-- Delete the two-command install route in docs/deploy.
-
-- **Where:** README.md:41-54, 53, 62-98, 130-243, 552-575; docs/deploy/README.md:32-77; scripts/install.sh:391-402; src/agentsync/setup_report.py:111-187; docs/plans/implementation.md:207 (pointer to the deleted prompt)
-- **Why:** In v6, step 3 is 'the last command you run' and the finish lines never mention curation. The loop lives in an optional second paste that has never been pasted on this Mac. Fix from the refuting vote: this wave lands after `curate` and the NEXT line exist, so the command-existence test stays a guard.
-- **Risk:** The first session gets longer, because drafting the baseline questions follows install. Exact allow rules never cover purge, hold or offboard.
-
-### K16b (guard, S)
-
-The setup report gains a computed 'Loop:' line. It shows the stage (installed / synced / baseline drafted / baseline confirmed / before run / topics N / after run) and the current NEXT line, never paths. The issue form gains a loop_stage field. compute_outcome and the existing outcome options are unchanged. v7's step 3 regenerates the report after the loop, so the line reflects where setup actually stopped.
-
-- **Where:** src/agentsync/setup_report.py:908-1056; .github/ISSUE_TEMPLATE/setup-report.yml:28-32; docs/deploy/setup-feedback.md:78, 106, 121-128, 185-189; docs/design/CONTRACTS.md §16.14 (4488-4532)
-- **Why:** Today a sync-only install is indistinguishable in feedback from a full one. Fix from both refuting votes: redefining the outcome would make it constant and erase the 'failed at step N' signal, so loop progress gets its own field.
-- **Risk:** Low. Loop text carries no paths, so redaction is unchanged.
-
-Tests that prove it:
-
-- No install.sh output contains 'nothing is left'
-- A sourceless first run (created config, no folders) exits 2 naming --list-folders. A re-run over an existing config exits 0. A non-TCC [FAIL] exits 1. TCC_PENDING alone still runs the first sync (test_install_oneshot.py:395-403 kept).
-- `install.sh --source-local X` with no flag makes no launchctl call and builds no launcher. It runs the first sync, writes the skill, and its last line equals status's NEXT ('draft the baseline questions'). With --confirm-install-agent, the line also states background sync is running.
-- install.sh prints exactly one NEXT line on every path (test_install_oneshot.py:964-991)
-- AGENTSYNC_INSTALL_DRY_RUN=1 replaces --dry-run. --config, --no-report and --log-end exit 2 as unknown options. --report-only appends one end line, idempotently. The case arms equal the pinned set.
-  CORRECTED (2026-10-05, K17 review): the compat bump does not protect older prompts, because the gate reads ">= N". --log-end (the same idempotent close, exit 0) and --no-report (ignored) stay as hidden arms (INSTALL_HIDDEN), so a saved v6 prompt's `--log-end && --report-only` and the old `--no-report && ... install-skill` line still work. Only --config exits 2 as unknown. The dry run covers --log-start, --log and --log-end (one "dry run:" line, nothing written), and a dry-run --report-only leaves the attempt open.
-- Prompt v7: every agentsync subcommand the prompt or the allowlist names exists (test_deploy_pack.py:795 extended). It contains no it-request, no --confirm-install-agent and no second prompt, and closes with --report-only.
-- setup_report parses v6 and v7 logs by explicit version. A sync-only fixture reads 'Loop: synced; NEXT: draft the baseline questions' while its outcome stays 'fully one command'. The issue form has loop_stage.
+Learnings:
+- Setup prompt v7 is README.md § "Set up on a new Mac: one prompt"; `setup-prompt-compat 7`. A saved v6 prompt
+  still works: `--log-end` is a hidden first-argument arm that closes the friction log like `--report-only`.
+- Every failure path in v7 says "go to step 3's report"; step 3 follows NEXT past a non-zero exit and stops only
+  when NEXT says "session done".
+- `--launcher` without `--confirm-install-agent` is a usage error; `AGENTSYNC_REBUILD_LAUNCHER=1` forces a rebuild.
+- Open: the chat-history retention decision (`7137d8ac6cbb`); if the operator picks `archive = true` for a chat
+  inbox, v7 gains one line.
 
 ## Dropped or changed by the skeptics
 
