@@ -6,11 +6,13 @@ status: in-progress
 
 Scope (frozen, 2026-10-04): reduce agentsync's flags, config and manual steps to the minimum, and make the full loop (sync, skill, topic pages, checkpoint, baseline questions) automatic or enforced on a new Mac, so a low-effort agent cannot stop partway.
 
+Scope (grown, 2026-10-05): +the corporate field report's fixes N1-N16 (docs/research/corporate-setup-feedback-2026-10-05.md § 3) as wave WF before W5, and its W5 carry list folded into W5.
+
 Source: a 49-agent workflow on 2026-10-04 (six surface readers, three independent designs — deletion-first, mechanism-first, one-verb — a synthesis, two refuting skeptics per change, a final pass). All 19 changes survived; 11 were refuted as written and are kept here in the skeptic's safer form. Run `wf_cb7df7ea-7c0`.
 
 ## Phase 0 — Agent Team Orchestration
 
-- **Execution locus per wave:** W1–W5 each **S** (one dispatched handoff session per wave, the default). Order: W1 → W2 → (W3 ∥ W4) → W5. W3 and W4 share only `docs/design/CONTRACTS.md`, in different sections; land the smaller diff first.
+- **Execution locus per wave:** W1–W5 each **S** (one dispatched handoff session per wave, the default). Order: W1 → W2 → (W3 ∥ W4) → WF (field fixes, added 2026-10-05) → W5. W3 and W4 share only `docs/design/CONTRACTS.md`, in different sections; land the smaller diff first.
 - **W1 locus changed to an in-process Workflow (2026-10-04):** the capacity gate refused a net-new session
   (memory compressor 54% of limit, over its 50% ceiling, the level that preceded past watchdog panics), and a named
   teammate is also a new process. Workflow agents run inside the lead's process: sequential build agents in the
@@ -302,9 +304,34 @@ Tests that prove it:
 - argparse rejects setup-report --no-redact and --friction. compact-history --keep-days 0 is refused. tests/test_ops_launchd.py program_arguments output is unchanged.
 - test_cli_surface_is_frozen pins the final visible and hidden sets, matching CONTRACTS §16.10
 
+## WF Field fixes from the corporate Mac (added 2026-10-05)
+
+Status: upcoming; runs after W4 lands (it touches cli.py, config.py and the sync arms W4 also edits), before W5.
+
+Source: docs/research/corporate-setup-feedback-2026-10-05.md § 3 (table N1-N16, each with its file, proof test and
+wave fit). Already landed: N1 `cace1d9` (`purge --queue --dry-run` really purged). N2 (setup-report log lines leak
+names nested below a source) is fixed on its own branch first, as data safety. N3 is fixed on `kiss-w4` before W4
+merges: `ensure_inbox` must check that the canonical `~/agent-context/inbox` is configured, not that any inbox
+source exists (the field Mac has six hand-added inbox sources).
+
+Build in this order, one commit each with the doc's proof test: N12 (a user `exclude` keeps the OS-junk defaults;
+`Icon\r`), N8 (ECANCELED retries then defers; time-limited cloud reads end in a blocking "click Allow" FAIL, never
+an empty folder or tombstones), N4 + N14 (inbox writer contract; one settle-and-rescan in an interactive sync, no
+new flag), N6, N7, N13, N5 + N15 (one `_EMITTER_VERSION` bump), N11, N10. No new command, flag or config key: the
+freeze pins must not change in this wave.
+
+Operator decisions from the report (filed, not decided here): D1 retention of chat-derived history (`archive = true`
+for a chat inbox vs company retention), D2/D3 shipping no-IT exporters or reading the Teams cache.
+
 ## W5 Install output, setup prompt v7, setup report
 
 Status: upcoming.
+
+Carry from the field report (docs/research/corporate-setup-feedback-2026-10-05.md § "What W5 must carry"): v7 names
+the inbox by its configured folder(s) (N3), says what to drop there and which formats carry a sensitivity label
+(N9), that the inbox is never emptied by hand (N14), and that agentsync never needs `~/Library/Containers`, Group
+Containers or the browser (N16); a terminal-side TCC_PENDING blocks, only the launcher's goes ahead (N8b); add D1's
+line only if the operator picks `archive = true`.
 
 Files: `scripts/install.sh`, `README.md`, `docs/deploy/README.md`, `docs/deploy/setup-feedback.md`, `docs/plans/implementation.md`, `src/agentsync/setup_report.py`, `src/agentsync/loop.py (read only)`, `.github/ISSUE_TEMPLATE/setup-report.yml`, `docs/design/CONTRACTS.md (§16.14, install.sh log)`, `tests/test_install_oneshot.py`, `tests/test_launcher.py`, `tests/test_deploy_pack.py`, `tests/test_setup_report.py`, `tests/test_contracts.py (install case-arm pin)`
 
