@@ -653,6 +653,25 @@ def test_accept_deletions_clears_a_tripped_breaker(
     assert "accept-deletions" in listing and "\n    reconcile " not in listing
 
 
+def test_accept_deletions_waits_for_a_running_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """launchd never re-runs an operator's accept-deletions, so it waits for the lock like interactive sync
+    instead of exiting 75 'skipped: lock held'."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    lock = SingleWriterLock(initialised.state_paths.lock, "poll")
+    lock.acquire()
+    timer = threading.Timer(2.0, lock.release)
+    timer.start()
+    try:
+        assert cli.main(["accept-deletions", "source", "--config", cfg]) == cli.EXIT_OK
+    finally:
+        timer.join()
+        lock.release()
+    assert "waiting for it to finish" in capsys.readouterr().err
+
+
 def test_adopt_and_migrate(initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = str(initialised.config_path)
     notes = tmp_path / "old-notes"

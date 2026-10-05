@@ -2232,12 +2232,14 @@ def run_cycle(
     materialise_paths: Sequence[Path] = (),
     accept_deletions: Sequence[str] = (),
     lock_wait_s: float = INTERACTIVE_LOCK_WAIT_S,
+    wait_for_lock: bool | None = None,
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
 
     ``mode=None`` is an interactive run (``agentsync sync`` without ``--mode``): its mode is
     ``_interactive_mode`` (RECONCILE when one is due, else POLL) and it waits up to ``lock_wait_s`` for a
-    running cycle's lock.  An explicit mode (launchd) tries the lock once.
+    running cycle's lock.  An explicit mode (launchd) tries the lock once, unless ``wait_for_lock`` is True
+    (an operator verb with a fixed mode, such as ``accept-deletions``: launchd never retries it).
 
     Raises LockHeldError (CLI exit 75), ConfigError, ManifestSchemaError.  AuthRequiredError is caught:
     no cursor advances, STATE.md/heartbeat record ``auth: REAUTH_REQUIRED``, report.auth_required=True.
@@ -2259,7 +2261,7 @@ def run_cycle(
     forced = _map_paths(config, materialise_paths) if materialise_paths else {}
     if forced:
         selected = [s for s in selected if s.id in forced]
-    interactive = mode is None
+    interactive = mode is None if wait_for_lock is None else wait_for_lock
     if mode is None:
         mode = _interactive_mode(config, clock())
     lock = SingleWriterLock(config.state_paths.lock, mode.value)

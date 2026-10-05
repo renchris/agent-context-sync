@@ -122,6 +122,7 @@ The static next: hints are deleted. NO_NEXT_HINT_ENV keeps a single definition, 
 - **Where:** src/agentsync/cli.py:236-247, 903; src/agentsync/cycle.py:1404; src/agentsync/ops/doctor.py:1145
 - **Why:** K01's WAITING line names this verb. It turns a two-flag spelling into one operator verb. The deletion breaker itself is unchanged.
 - **Risk:** Low; this is a rename plus a hidden alias.
+- **Learning (review):** the compaction fix string names `sync --mode reconcile`, not accept-deletions: compaction has nothing to do with the breaker, it only needed a visible spelling. accept-deletions waits for the lock like interactive sync (`run_cycle(wait_for_lock=True)`), because launchd never re-runs an operator's exit 75.
 
 ### K09 (merge, M)
 

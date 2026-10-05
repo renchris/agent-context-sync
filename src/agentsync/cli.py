@@ -672,9 +672,16 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
 
 def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     """The operator asserts SOURCE's absent files really were deleted: a RECONCILE of that source alone that
-    clears its breaker and applies the held removals (the breaker itself is unchanged)."""
+    clears its breaker and applies the held removals (the breaker itself is unchanged).  Like interactive
+    sync it waits for a running cycle's lock: launchd never re-runs an operator's assertion after exit 75."""
     config = _config(args)
-    return _run(config, mode=CycleMode.RECONCILE, only=(args.source,), accept_deletions=(args.source,))
+    return _run(
+        config,
+        mode=CycleMode.RECONCILE,
+        only=(args.source,),
+        accept_deletions=(args.source,),
+        wait_for_lock=True,
+    )
 
 
 def _cmd_mat(args: argparse.Namespace) -> int:
@@ -1069,7 +1076,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     except AgentSyncError as exc:
         state, detail = "overdue", f"cannot read the docs repo history: {exc}"
     severity = {"ok": doctor.Severity.INFO, "due": doctor.Severity.WARN}.get(state, doctor.Severity.ERROR)
-    fix = None if state == "ok" else "agentsync reconcile (or agentsync compact-history); release any hold"
+    compact_fix = "agentsync sync --mode reconcile (or agentsync compact-history); release any hold"
+    fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
