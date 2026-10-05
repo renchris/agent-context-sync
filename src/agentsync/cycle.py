@@ -121,6 +121,7 @@ _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
 _RESCREEN_META = "policy_rescreen_pending"
+_CHECKPOINT_PENDING_META = "checkpoint_pending"  # KISS K06: the HEAD a held or failed checkpoint retries
 _SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
 
 
@@ -792,22 +793,40 @@ class _Cycle:
         pages and ``curate.checkpoint_blockers`` is empty, move ``curated`` to the pre-run HEAD (the mirror
         state the session curated against; what this run brought in stays in the next curate-queue) and, with
         ``[governance] archive``, cut a snapshot tag at the new commit (it holds the session's pages).  Its
-        own try/except: a tagging failure is a warning and never fails the landed cycle."""
-        if pre_head is None or not session_pages:
+        own try/except: a tagging failure is a warning and never fails the landed cycle.
+
+        A held or failed checkpoint is remembered (meta ``checkpoint_pending`` = its base), because that sync
+        already committed the session's pages and no later run would see them dirty: every later cycle
+        retries it, session pages or not, until it advances.  The refresh verdicts are scoped to topic pages
+        changed since the BASE, the pending HEAD or else the pre-run HEAD, so a page from a held session stays
+        checked and an older page a sync only bannered never holds it."""
+        if pre_head is None:
             return
+        pending = self._pending_checkpoint(pre_head)
+        if session_pages:
+            target = pre_head
+        elif pending is not None:
+            target = pending
+        else:
+            return
+        base = pending if pending is not None else pre_head
         try:
-            blockers = curate.checkpoint_blockers(self.repo)
+            blockers = curate.checkpoint_blockers(self.repo, since=base)
             if blockers:
                 self.checkpoint, self.checkpoint_blockers = "held", tuple(blockers)
                 log.warning("checkpoint held: %d curation error(s)", len(blockers))
+                self._set_pending_checkpoint(base)
                 return
-            gitops.tag_curated(self.repo, pre_head)
+            gitops.tag_curated(self.repo, target)
         except Exception as exc:  # the commit already landed: the checkpoint is only a warning
             log.warning("checkpoint not recorded: %s", exc)
             self.checkpoint, self.checkpoint_detail = "failed", _one_line(str(exc) or repr(exc))
+            self._set_pending_checkpoint(base)
             return
-        self.checkpoint, self.checkpoint_detail = "advanced", pre_head
-        log.info("checkpoint advanced: curated at %s", pre_head[:12])
+        self.checkpoint, self.checkpoint_detail = "advanced", target
+        log.info("checkpoint advanced: curated at %s", target[:12])
+        if pending is not None:
+            self._set_pending_checkpoint("")
         if not self.gov.archive:
             return
         try:
@@ -816,6 +835,26 @@ class _Cycle:
                 self.snapshot_tag = gitops.tag_snapshot(self.repo, head, self.now())
         except Exception as exc:  # e.g. a second snapshot in the same second; the checkpoint itself moved
             log.warning("archive snapshot tag not cut: %s", exc)
+
+    def _pending_checkpoint(self, pre_head: str) -> str | None:
+        """The HEAD a held or failed checkpoint would have tagged, or None.  A commit that history
+        compaction or a purge rewrote away is no longer an ancestor: retry at the pre-run HEAD instead."""
+        try:
+            pending = self.manifest.get_meta(_CHECKPOINT_PENDING_META) or None
+            if pending is None or gitops.is_ancestor(self.repo, pending, pre_head):
+                return pending
+        except Exception as exc:  # unreadable: retry at the pre-run HEAD rather than lose it
+            log.warning("checkpoint: cannot read the pending checkpoint: %s", exc)
+            return pre_head
+        log.info("checkpoint: pending %s was rewritten; retrying at %s", pending[:12], pre_head[:12])
+        return pre_head
+
+    def _set_pending_checkpoint(self, sha: str) -> None:
+        """Record (``sha``) or clear (``""``) the pending checkpoint; a failure is only a warning."""
+        try:
+            self.manifest.set_meta(_CHECKPOINT_PENDING_META, sha)
+        except Exception as exc:
+            log.warning("checkpoint: cannot record the pending checkpoint: %s", exc)
 
     def _drop_stale_backups(self) -> None:
         """Delete the pre-migration manifest copies that existed before this cycle: it committed on the

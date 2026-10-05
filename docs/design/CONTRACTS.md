@@ -399,7 +399,9 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
     topic pages that were dirty before step 8 (so not this run's banner rewrites; `CLAUDE.md`/`INDEX.md` never
     count) are non-empty, the pre-run HEAD exists and `curate.checkpoint_blockers(repo)` is empty, it moves
     `curated` to the pre-run HEAD and, with `[governance] archive`, cuts `snapshot/<UTC now()>` at the new
-    HEAD. A blocker or a tagging error never changes the run status (§16.17 amendment).
+    HEAD. A blocker or a tagging error never changes the run status (§16.17 amendment). Since the K06 review
+    the blockers are scoped to changes since the checkpoint base, and a held or failed checkpoint is stored as
+    meta `checkpoint_pending` and retried by every later committing cycle (§16.17 K06 review amendment).
 13. `Publisher.write_state(report, statuses)` (gitignored STATE.md, every cycle, including failures); release lock.
 
 `AuthRequiredError` anywhere in a Graph source: no cursor of that source advances, `set_auth_state(
@@ -3168,10 +3170,11 @@ def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[
 
 CHECKPOINT_VERDICTS: frozenset[str]  # K10: STALE, UNPINNED, BAD-PIN, MALFORMED, MISSING-OR-UNPARSEABLE
 
-def checkpoint_blockers(repo: Path) -> list[LintFinding]:
+def checkpoint_blockers(repo: Path, since: str | None = None) -> list[LintFinding]:
     """K10: what holds the ``curated`` checkpoint (all ``blocking=True``): curation lint findings but
-    TOPIC-BUDGET, UNLISTED, and SOURCE-MISSING plus CHECKPOINT_VERDICTS of topic pages changed since the
-    ``curated`` tag."""
+    TOPIC-BUDGET, UNLISTED, and SOURCE-MISSING plus CHECKPOINT_VERDICTS of topic pages changed since
+    ``since`` (default: the ``curated`` tag; the sync passes its checkpoint base), banner-only changes
+    excluded; every page before the first tag."""
 
 def adopt_pages(src_dir: Path, layout: DocsLayout, adopted_at: str) -> list[str]:
     """Copy an existing hand-made docs tree into ``topics/`` stamping ``provenance: hand-written``,
@@ -5105,7 +5108,28 @@ def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[s
     """K10: paths under ``pathspecs`` differing between ``rev`` and the working tree, plus untracked ones.
     Never writes the index: ``rev``..HEAD tree diff united with ``git status`` (a commit-to-worktree diff
     would refresh ``.git/index`` under GIT_OPTIONAL_LOCKS=0 and race a sync's add/commit)."""
+def file_at(repo: Path, rev: str, path: str) -> bytes | None:
+    """K06 review: the bytes of ``path`` in commit ``rev``; None when absent there or unreadable."""
+def is_ancestor(repo: Path, rev: str, of: str) -> bool:
+    """K06 review: commit ``rev`` exists and is reachable from ``of``."""
 ```
+
+**Amended (2026-10-04, KISS K06 review):** two fixes. (1) Scope. `curated` sits on the commit before the last
+session's pages, so "changed since `curated`" kept those pages in scope, and one that a later sync marked STALE
+held every later checkpoint (its committed banner counted as a change). The cycle now calls
+`checkpoint_blockers(repo, since=<base>)`, where the base is the pending HEAD (below) or else the pre-run HEAD,
+and a page whose only difference from the base is its `> ⚠ STALE` / `> ⚠ SOURCE RETIRED` banner block never
+counts. `agentsync lint` keeps the `curated` tag as its base, with the same banner rule; before the first tag
+every page counts, as before. (2) Retry. A held or failed checkpoint stores manifest meta `checkpoint_pending` =
+its base, because that sync already committed the session's pages and no later run would see them dirty. Every
+later committing cycle retries it, session pages or not: it tags the pre-run HEAD when the run has session pages,
+else the pending HEAD, and clears the meta (`""`) once it advances. A pending commit that compaction or a purge
+rewrote away (no longer an ancestor of HEAD) is replaced by the pre-run HEAD. The lines now read
+`checkpoint held: N curation error(s); fix them, then sync again (every sync retries it)` and
+`checkpoint not recorded (the sync itself landed; the next sync retries it): <why>`. Tests:
+`test_cli.py::test_sync_records_the_checkpoint_once_the_session_pages_are_clean` (an old page bannered STALE does
+not hold a clean new page), `::test_a_checkpoint_tagging_failure_never_fails_the_landed_sync` (a plain sync
+retries), `::test_the_first_ever_sync_records_no_checkpoint`.
 
 ### 16.18 `[governance] archive`: the point-in-time archive (2026-10-02, integrator)
 

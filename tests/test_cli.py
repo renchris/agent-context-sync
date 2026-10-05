@@ -258,12 +258,22 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     assert "STALE" in (repo / "topics" / "a.md").read_text(encoding="utf-8")
     assert _curated(repo) == first
 
+    # a.md's committed STALE banner is its only change since `curated`: its verdict holds nothing.
+    banner_head = git(repo, "rev-parse", "HEAD").strip()
+    _topic(initialised, "topics/d.md", "mirror/source/projects/new.txt.md")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert f"checkpoint advanced: curated at {banner_head[:12]}" in capsys.readouterr().out
+    assert _curated(repo) == banner_head
+    assert "STALE" in (repo / "topics" / "a.md").read_text(encoding="utf-8")
+
     _topic(initialised, "topics/c.md", "mirror/source/projects/new.txt.md", pin="ab" * 32)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # a held checkpoint never fails the sync
     out = capsys.readouterr().out
-    assert "checkpoint held: 2 curation error(s)" in out
-    assert "ERROR STALE topics/a.md" in out and "ERROR STALE topics/c.md" in out
-    assert _curated(repo) == first
+    assert "checkpoint held: 1 curation error(s)" in out and "(every sync retries it)" in out
+    assert "ERROR STALE topics/c.md" in out and "topics/a.md" not in out
+    assert _curated(repo) == banner_head
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # c.md is committed now; still retried
+    assert "checkpoint held: 1 curation error(s)" in capsys.readouterr().out
 
     held_head = git(repo, "rev-parse", "HEAD").strip()
     _topic(initialised, "topics/a.md")
@@ -273,6 +283,14 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     assert _curated(repo) == held_head
     cli.main(["curate-queue", "--config", cfg])
     assert "0 added, 0 changed, 0 removed" in capsys.readouterr().out
+
+    # The same run banners an existing page and commits a clean new one: the banner alone holds nothing.
+    pre = git(repo, "rev-parse", "HEAD").strip()
+    (local_source_dir / "projects" / "sample.txt").write_text("edited again\n", encoding="utf-8")
+    _topic(initialised, "topics/e.md", "mirror/source/projects/new.txt.md")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert f"checkpoint advanced: curated at {pre[:12]}" in capsys.readouterr().out
+    assert "STALE" in (repo / "topics" / "a.md").read_text(encoding="utf-8")
 
 
 def test_a_checkpoint_tagging_failure_never_fails_the_landed_sync(
@@ -284,12 +302,45 @@ def test_a_checkpoint_tagging_failure_never_fails_the_landed_sync(
     def boom(repo: Path, sha: str) -> None:
         raise GitError(["tag"], 128, "fatal: cannot lock ref")
 
+    repo = initialised.docs_repo
+    first = git(repo, "rev-parse", "HEAD").strip()
     monkeypatch.setattr(gitops, "tag_curated", boom)
     capsys.readouterr()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
-    assert "checkpoint not recorded (the sync itself landed): " in capsys.readouterr().out
-    assert git(initialised.docs_repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
-    assert _curated(initialised.docs_repo) is None
+    out = capsys.readouterr().out
+    assert "checkpoint not recorded (the sync itself landed; the next sync retries it): " in out
+    assert git(repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
+    assert _curated(repo) is None
+
+    # The failed sync committed the session's page, so nothing is dirty now: the pending marker retries it.
+    monkeypatch.undo()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert f"checkpoint advanced: curated at {first[:12]}" in capsys.readouterr().out
+    assert _curated(repo) == first
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # advanced: nothing pending any more
+    assert "checkpoint" not in capsys.readouterr().out
+
+
+def test_the_first_ever_sync_records_no_checkpoint(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K06: a topic page already on disk at the first sync is committed, but there is no pre-run HEAD
+    to tag: no ``curated`` tag, no snapshot tag, no checkpoint line, and nothing left pending."""
+    cfg = _archive_on(initialised)
+    repo = initialised.docs_repo
+    (repo / "topics" / "a.md").write_text(
+        "---\nentity: acme\npurpose: Notes; not pricing.\nprovenance: hand-written\n---\n# A\n\nclaim.\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "checkpoint" not in capsys.readouterr().out
+    assert git(repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
+    assert _curated(repo) is None
+    assert git(repo, "tag", "--list", "snapshot/*").strip() == ""
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "checkpoint" not in capsys.readouterr().out
+    assert _curated(repo) is None
 
 
 def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

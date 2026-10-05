@@ -516,6 +516,18 @@ def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[s
     return paths | {entry[3:] for entry in status.stdout.split("\0") if len(entry) > 3}  # "XY path"
 
 
+def file_at(repo: Path, rev: str, path: str) -> bytes | None:
+    """The bytes of ``path`` (repo-relative) in commit ``rev``; None when it is absent there or git cannot
+    read it."""
+    proc = run_git(repo, "cat-file", "blob", f"{rev}^{{commit}}:{path}", check=False)
+    return proc.stdout.encode("utf-8", "surrogateescape") if proc.returncode == 0 else None
+
+
+def is_ancestor(repo: Path, rev: str, of: str) -> bool:
+    """True when commit ``rev`` exists and is reachable from ``of`` (``git merge-base --is-ancestor``)."""
+    return run_git(repo, "merge-base", "--is-ancestor", rev, of, check=False).returncode == 0
+
+
 def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:
     """Return ``git ls-files -z`` paths (repo-relative, sorted)."""
     args = ["ls-files", "-z"]

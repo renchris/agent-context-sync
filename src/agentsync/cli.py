@@ -475,12 +475,16 @@ def _print_checkpoint(report: CycleReport) -> None:
             _out(f"  snapshot {tag}: a permanent tag; read a past page with git show {tag}:<path>")
     elif report.checkpoint == "held":
         _out(
-            f"checkpoint held: {len(report.checkpoint_blockers)} curation error(s); fix them, then sync again"
+            f"checkpoint held: {len(report.checkpoint_blockers)} curation error(s); fix them, then "
+            "sync again (every sync retries it)"
         )
         for f in report.checkpoint_blockers:
             _out(f"  ERROR {f.code} {f.path}: {f.message}")
     elif report.checkpoint == "failed":
-        _out(f"checkpoint not recorded (the sync itself landed): {report.checkpoint_detail}")
+        _out(
+            f"checkpoint not recorded (the sync itself landed; the next sync retries it): "
+            f"{report.checkpoint_detail}"
+        )
 
 
 def _run(config: Config, **kwargs: object) -> int:

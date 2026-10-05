@@ -829,30 +829,65 @@ def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[
     ]
 
 
-def _pages_changed_since_checkpoint(repo: Path) -> set[str] | None:
-    """Topic pages that differ between the ``curated`` tag and the working tree (untracked included); None
+def _without_banners(raw: bytes) -> bytes:
+    """A page's bytes minus its STALE / SOURCE RETIRED banner block, the only part a sync's banner rewrite
+    touches; a page that is not UTF-8 or has no frontmatter comes back unchanged."""
+    try:
+        text = raw.decode("utf-8")
+        fm, body = split_frontmatter(text.removeprefix(_BOM))
+    except (UnicodeDecodeError, FrontmatterError):
+        return raw
+    if fm is None:
+        return raw
+    head = text[: len(text) - len(body)]
+    head = head if head.endswith("\n") else head + "\n"
+    return (head + _split_banners(body).rest).encode("utf-8")
+
+
+def _banner_only_change(repo: Path, rev: str, rel: str) -> bool:
+    """True when ``rel`` existed at ``rev`` and differs from it now only in its banner block: a sync marked
+    an old page STALE or RETIRED and nobody edited it, so its verdicts do not hold this checkpoint."""
+    before = gitops.file_at(repo, rev, rel)
+    if before is None:
+        return False
+    try:
+        now = (repo / rel).read_bytes()
+    except OSError:
+        return False
+    return _without_banners(before) == _without_banners(now)
+
+
+def _pages_changed_since_checkpoint(repo: Path, since: str | None) -> set[str] | None:
+    """Topic pages that differ between ``since`` (default: the ``curated`` tag) and the working tree
+    (untracked included), less those whose only change is a sync's banner rewrite (committed or not); None
     (every page counts) before the first checkpoint or when git cannot answer."""
     try:
         checkpoint = gitops.curated_checkpoint(repo) if gitops.head_sha(repo) else None
         if checkpoint is None:
             return None
-        return gitops.paths_changed_since(repo, checkpoint[0], ("topics",))
+        base = since if since is not None else checkpoint[0]
+        changed = gitops.paths_changed_since(repo, base, ("topics",))
+        return {rel for rel in changed if not _banner_only_change(repo, base, rel)}
     except GitError as exc:
         _log.warning("checkpoint: cannot tell which topic pages changed (%s); checking every page", exc)
         return None
 
 
-def checkpoint_blockers(repo: Path) -> list[LintFinding]:
+def checkpoint_blockers(repo: Path, since: str | None = None) -> list[LintFinding]:
     """Everything that holds the ``curated`` checkpoint, each finding ``blocking=True``: every curation lint
-    finding but TOPIC-BUDGET, UNLISTED, and, for topic pages changed since the ``curated`` tag (every page
-    before the first tag), SOURCE-MISSING and the CHECKPOINT_VERDICTS refresh verdicts.  SOURCE-MISSING is
+    finding but TOPIC-BUDGET, UNLISTED, and, for topic pages changed since ``since`` (the sync passes its
+    checkpoint base, the oldest commit not yet checked; ``agentsync lint`` the ``curated`` tag; every page
+    before the first tag; a change that is only a sync's banner rewrite never counts), SOURCE-MISSING and the
+    CHECKPOINT_VERDICTS refresh verdicts.  The sync cannot use the ``curated`` tag: it sits on the commit
+    BEFORE the last session's pages, so they would stay in scope, and one that later went stale would hold
+    every later checkpoint.  SOURCE-MISSING is
     scoped like the verdicts because a source also vanishes with no fault of the page (a OneDrive rename or
     move, a tombstone reap, a purge); a typo'd path only happens on a page being written.  The verdicts come
     from the pages as they are now, not from DEPENDS.tsv.  The sync's land gate never uses this: its curation
     findings stay ``blocking=False``."""
     layout = DocsLayout(root=repo)
     rows, _entities, findings = generate_depends(layout)
-    changed = _pages_changed_since_checkpoint(repo)
+    changed = _pages_changed_since_checkpoint(repo, since)
 
     def holds(f: LintFinding) -> bool:
         if f.code == "TOPIC-BUDGET":
