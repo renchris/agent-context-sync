@@ -5212,10 +5212,11 @@ Allow for; a listing macOS holds for an Allow click in the terminal (`source.<id
 Step 6 (first sync) runs whenever the config has a source other than the inbox and step 5 did not stop the run,
 with or without `--confirm-install-agent` (skip notes `no-sources`, `status-failed`). After it (and after the
 wait), install.sh runs `status` once more with `AGENTSYNC_NO_NEXT_HINT` unset, prints none of its output except
-its `[FAIL]` lines, and its one `NEXT:` line is that status's first `NEXT:` line, else `run
-~/.local/bin/agentsync sync and follow its NEXT line`. A `[FAIL]` there makes the NEXT `fix the [FAIL] lines
-above ..., then run ~/.local/bin/agentsync sync ...` (exit 1 unless it is only the launcher's TCC_PENDING); a
-`WAITING ON YOU: macOS held the listing ...` line becomes the NEXT, exit 1. With `--confirm-install-agent` the NEXT
+its `[FAIL]` and `WAITING ON YOU:` lines (above the NEXT; source ids only), and its one `NEXT:` line is that
+status's first `NEXT:` line, else `run ~/.local/bin/agentsync sync and follow its NEXT line`. A `[FAIL]` there
+makes the NEXT `fix the [FAIL] lines above ..., then run ~/.local/bin/agentsync sync ...` (exit 1 unless it is
+only the launcher's TCC_PENDING); a `WAITING ON YOU: macOS held the listing ...` line exits 1 whatever the
+`[FAIL]` lines say, and becomes the NEXT unless a blocking `[FAIL]` does. With `--confirm-install-agent` the NEXT
 starts `background sync: running; ` or `background sync: ok; ` (`simulated (...)` under the test seam). Every
 "nothing is left: background sync is on" line is deleted. A run that created the config and has no folder to
 sync exits 2 with `NEXT: no folder to sync yet: list them with install.sh --list-folders, ...`; a run over an

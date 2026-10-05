@@ -1726,24 +1726,32 @@ esac
 
 # ------------------------------------------------------------------------------------------------ next step
 # The loop's NEXT (KISS K02): status once more, with its NEXT line on (AGENTSYNC_NO_NEXT_HINT unset). Only its
-# [FAIL] lines are printed: its detail and policy lines would put label names into install.out.
+# [FAIL] and WAITING ON YOU lines are printed, above the one NEXT: its detail and policy lines would put label
+# names into install.out. WAITING lines name source ids only, which setup-report redacts.
 loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
-	local fails held
+	local fails blocking held waits
 	LOOP_OUT="$(mktemp)"
 	with_progress "status" loop_status_run || true # its exit status is its [FAIL] lines
 	fails="$(grep '^\[FAIL' "$LOOP_OUT" 2>/dev/null || true)"
+	blocking="$(blocking_fails "$LOOP_OUT")" # the launcher's TCC_PENDING alone does not stop the loop
 	held="$(awk '/^WAITING ON YOU: macOS held the listing / { sub(/^WAITING ON YOU: /, ""); print; exit }' "$LOOP_OUT")"
+	waits="$(grep '^WAITING ON YOU: ' "$LOOP_OUT" 2>/dev/null || true)"
 	next="$(awk '/^NEXT: / { sub(/^NEXT: /, ""); print; exit }' "$LOOP_OUT")"
-	if [ -n "$fails" ]; then # its NEXT points at a [FAIL] line "below", which is not printed
-		printf '%s\n' "$fails"
-		[ -z "$(blocking_fails "$LOOP_OUT")" ] || EXIT_RC=1
+	[ -z "$fails" ] || printf '%s\n' "$fails"
+	[ -z "$blocking" ] || EXIT_RC=1
+	[ -z "$held" ] || EXIT_RC=1 # a listing macOS holds for an Allow click in this terminal (field N8b)
+	if [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
 		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
-	elif [ -n "$held" ]; then # a listing macOS holds for an Allow click in this terminal (field N8b)
-		EXIT_RC=1
+	elif [ -n "$held" ]; then # the held listing is the NEXT, so its WAITING line is not printed twice
 		next="$held"
+		waits="$(printf '%s\n' "$waits" | grep -vxF "WAITING ON YOU: $held" || true)"
 	elif [ -z "$next" ]; then
 		next="run $AGENTSYNC sync and follow its NEXT line"
+	fi
+	if [ -n "$waits" ]; then # printed above the NEXT, which status puts first
+		printf '%s\n' "$waits"
+		next="${next//WAITING ON YOU below/WAITING ON YOU above}"
 	fi
 }
 EXIT_RC=0

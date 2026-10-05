@@ -245,6 +245,11 @@ def last_line(cp: subprocess.CompletedProcess[str]) -> str:
     return cp.stdout.rstrip("\n").splitlines()[-1]
 
 
+def one_next(cp: subprocess.CompletedProcess[str]) -> bool:
+    """install.sh prints exactly one NEXT line on every path, across stdout and stderr."""
+    return sum("NEXT:" in ln for ln in cp.stdout.splitlines() + cp.stderr.splitlines()) == 1
+
+
 def report_path(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / "agent-context" / "setup-report.md"
 
@@ -405,6 +410,7 @@ def test_doctor_tcc_pending_alone_does_not_stop_the_run(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert [ln for ln in cp.stdout.splitlines() if ln.startswith("ACTION:")] == [ACTION]
     assert ("status", "done", "1", "tcc-pending") in steps(install_log(env))
+    assert ("first-sync", "done", "0", "") in steps(install_log(env))
 
 
 def test_doctor_failure_skips_first_sync_and_agent(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -542,9 +548,11 @@ def test_a_sourceless_first_run_exits_2_and_a_rerun_exits_0(env: dict[str, str],
     )
     assert not any(c.startswith("agentsync sync") for c in calls(env))
     assert ("first-sync", "skipped", "0", "no-sources") in steps(install_log(env))
+    assert one_next(first)
     again = install_sh(env, str(wheel))  # an existing (inbox-only) config: status's NEXT, exit 0
     assert again.returncode == 0, again.stdout + again.stderr
     assert last_line(again) == f"NEXT: {LOOP_NEXT} [setup report: {report_path(env)}]"
+    assert one_next(again)
     assert not any(c.startswith("agentsync sync") for c in calls(env))
 
 
@@ -562,6 +570,7 @@ def test_the_loops_next_falls_back_when_status_prints_none(
         f"NEXT: run {env['HOME']}/.local/bin/agentsync sync and follow its NEXT line "
         f"[setup report: {report_path(env)}]"
     )
+    assert one_next(cp)
 
 
 def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
@@ -577,6 +586,60 @@ def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
     cp = install_sh({**env, "STUB_STATUS_OUT": out}, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert last_line(cp) == f"NEXT: {held} [setup report: {report_path(env)}]"
+    assert one_next(cp) and "WAITING ON YOU:" not in cp.stdout, "the held line is the NEXT, not printed twice"
+
+
+def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The launcher's TCC_PENDING [FAIL] does not block, so it cannot hide a listing held in the terminal."""
+    fail = "[FAIL] tcc.fy26-projects — TCC_PENDING: did not answer within 15s"
+    held = "macOS held the listing of fy26-projects for a privacy prompt: click Allow on the macOS prompt"
+    out = f"NEXT: {LOOP_NEXT}\nWAITING ON YOU: {held}\n{fail}"
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel), "--source-local", str(folder)
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert fail in cp.stdout.splitlines()
+    assert last_line(cp) == f"NEXT: {held} [setup report: {report_path(env)}]"
+    assert one_next(cp)
+
+
+def test_the_closing_statuss_waits_are_printed_above_its_next(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """Rule 5's NEXT names the WAITING lines: they are printed (above it, so it says so), with one NEXT."""
+    rule5 = "stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    waits = [
+        "WAITING ON YOU: the baseline questions are a draft: change both files to status: confirmed",
+        "WAITING ON YOU: 2 queued purge(s): run `~/.local/bin/agentsync purge --queue`",
+    ]
+    out = "\n".join([f"NEXT: {rule5}", *waits, "note: a later sync lists it"])
+    cp = install_sh({**env, "STUB_STATUS_OUT": out}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    lines = cp.stdout.splitlines()
+    at = lines.index(waits[0])
+    assert lines[at : at + 2] == waits and at < len(lines) - 2
+    assert last_line(cp) == (
+        "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU above); session done "
+        f"[setup report: {report_path(env)}]"
+    )
+    assert one_next(cp) and "a later sync lists it" not in cp.stdout
+    assert all(w in install_out(env).read_text() for w in waits), "the setup report's install.out has them"
+
+
+def test_the_launchers_tcc_pending_alone_in_the_closing_status_exits_0(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    fail = "[FAIL] tcc.fy26-projects — TCC_PENDING: did not answer within 15s"
+    out = f"NEXT: the tcc check failed: do what the fix on its [FAIL] line below says\n{fail}"
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel), "--source-local", str(folder)
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert fail in cp.stdout.splitlines()
+    assert last_line(cp).startswith("NEXT: fix the [FAIL] lines above (each names its fix), then run ")
+    assert one_next(cp)
 
 
 def test_a_fail_in_the_closing_status_is_printed_and_named(
@@ -594,6 +657,7 @@ def test_a_fail_in_the_closing_status_is_printed_and_named(
         f"{env['HOME']}/.local/bin/agentsync sync and follow its NEXT line"
     )
     assert "below" not in last_line(cp)
+    assert one_next(cp)
 
 
 def test_uv_installs_the_binary_into_local_bin(env: dict[str, str], folder: Path, wheel: Path) -> None:
