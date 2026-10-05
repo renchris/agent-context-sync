@@ -4334,7 +4334,7 @@ class AgentSpec:
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
-| `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line | 0 |
+| `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20) | 0 |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks | 0 · 1 |
 | `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
 
@@ -4881,7 +4881,10 @@ goes to stdout (exit 1). Without `--out` the report itself is stdout and its las
 
 **`AGENTSYNC_NO_NEXT_HINT`** (`cli.NO_NEXT_HINT_ENV`, 2026-09-30, K5): set to `1` (scripts/install.sh exports it),
 `init` and `add-source` print no `next:` hint, so install.sh's single `NEXT:` line is the only next step in its
-output; `setup-report` prints none either way.
+output; `setup-report` prints none either way. **Amended (2026-10-04, KISS K01):** the static `next:` hints of
+`init` and `add-source` are deleted; the variable now drops the NEXT / WAITING ON YOU / note lines an interactive
+`sync` ends with (§16.20). Its one definition is `agentsync.loop.NO_NEXT_HINT_ENV`, which `cli` and `ops.doctor`
+import.
 
 **`sync --materialise-budget BYTES`** (2026-09-30, K15): a size (`parse_size`: `0`, `"200MB"`, `"1GiB"`; an invalid
 one exits 78) passed to `run_cycle(budget_bytes=...)`, overriding every selected source's per-cycle
@@ -4902,6 +4905,9 @@ file and downloads nothing: only online-only files are DEFERRED (`SourceReport.d
 `materialise` run prints, as its last report line, `converted N, deferred M online-only` (N = the selected sources'
 `SourceReport.converted`, the files read and converted this run; M = their `deferred_online_only`);
 scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`.
+**Amended (2026-10-04, KISS K01):** a `sync` without `--mode` (and without `AGENTSYNC_NO_NEXT_HINT=1`) prints the
+summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING ON YOU:` lines, any `note:` lines.
+`--mode`, `reconcile`, `materialise` and `accept-deletions` still end on the summary line.
 
 ### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
 
@@ -5209,3 +5215,61 @@ commits it. agentsync never writes, reads or lints `_eval/`; the files are the a
 sixth look-up step that forbids opening `_eval/answers.md` or `_eval/results-*.md` to answer a question. The answer
 key is a separate file so an answering agent never has it in front of it. Test:
 `test_cli.py::test_install_skill_writes_once_and_names_the_docs_repo` (moved 2026-10-04 to `test_skill.py`).
+
+### 16.20 `agentsync.loop`: one NEXT line worked out from disk (2026-10-04, KISS K01, integrator)
+
+Additive. The loop's order lived only in prose, and `sync` stopped at its summary line. `agentsync.loop`
+(`src/agentsync/loop.py`; imports `curate`, `gitops`, `governance`, `skill`, `manifest`, `config` and two
+`cycle` constants, never `ops.doctor`) works out the next step from disk only: the docs repo, the manifest (opened
+only when it exists), the skill copies, `_eval/` and the purge queue. No network call, no write. The first unmet
+rule wins:
+
+| Rule | Condition | NEXT |
+|---|---|---|
+| 1 | no docs repo; a skill copy missing or not this build's text; a live Graph source whose `auth_state` is not ok; then the first of the caller's `fixes` | its fix (`init`, `sync`, `graph login`, the fix) |
+| 2 | no live source other than the inbox | ask which folders (`install.sh --list-folders`), `add-source "<folder>"` |
+| 3 | a live source never enumerated or `enumeration_complete` false, or a local file (not dataless, not Graph) whose last verdict is created/maybe_changed/changed/deferred | `sync` again |
+| 4 | no curated page (`curate.iter_topic_pages`) and no `_eval/questions.md` | draft the baseline questions |
+| 5 | `_eval/questions.md` exists and it or `answers.md` is not `status: confirmed` | stop; the operator confirms |
+| 6 | no curated page and no `_eval/results-*-before.md` | run the 'before' baseline in a session that did not draft the questions |
+| 7 | checkpoint blockers as the sync computes them: `curate.checkpoint_blockers(since=<meta checkpoint_pending>)`, else since HEAD when the session left topic pages uncommitted, else none | `lint`, fix every ERROR, `sync` |
+| 8 | questions confirmed, `AFTER_BASELINE_PAGES` (20) or more curated pages, no `_eval/results-*-after.md` | run the 'after' baseline under the same fresh-session rule |
+| 9 | refresh-queue rows plus uncovered mirror pages | `curate-queue`, curate up to `ROWS_PER_SESSION` (10), `sync`; session done |
+| 10 | otherwise | nothing to do; session done |
+
+Operator waits (`WAITING ON YOU:`, collected whatever rule wins): queued purges (`purge --queue`); a tripped
+deletion breaker per source (`accept-deletions SOURCE`); an `_eval` draft to confirm; online-only files larger
+than their source's `max_materialise_bytes` (`materialise --budget BYTES`). Online-only files within the budget
+are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. A file whose hydration
+the OS refused is indistinguishable on disk from one the budget deferred, so it is in that note, not a wait. Item
+errors are retried by every sync and are not rule 3 (they would make it loop). The text is fixed wording plus
+counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
+
+Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
+`status` prints them after its status lines. `next_lines` never raises (an unreadable state is a logged warning
+and no line), so a caller's exit status never depends on the hint. Tests: `tests/test_loop.py` (a fixture per rule
+and per wait, exact lines, no mirror path or file name), `test_cli.py::test_sync_without_mode_ends_with_the_summary_then_one_next_line`,
+`tests/test_install_next_line.py` (a real first sync that exits 80 under install.sh leaves exactly one NEXT line).
+
+```python
+# agentsync.loop
+NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"  # the one definition; cli and ops.doctor import it
+NEXT_PREFIX = "NEXT: "
+WAIT_PREFIX = "WAITING ON YOU: "
+NOTE_PREFIX = "note: "
+BIN = skill.AGENTSYNC_BIN
+INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"  # where the README's setup prompt clones it
+ROWS_PER_SESSION = 10
+AFTER_BASELINE_PAGES = 20
+
+@dataclass(frozen=True, slots=True)
+class NextStep:
+    step: str
+    waits: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+    rule: int = 10  # which rule (1-10) set step
+    def lines(self) -> list[str]: ...  # "NEXT: <step>", then "WAITING ON YOU: <wait>"..., then "note: <note>"...
+
+def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep: ...
+def next_lines(config: Config, *, fixes: Sequence[str] = ()) -> list[str]: ...  # [] on OSError/AgentSyncError
+```

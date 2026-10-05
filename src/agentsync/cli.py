@@ -9,7 +9,9 @@ uninstall-agent · purge SELECTOR | --queue · compact-history · hold · offboa
 DOCS_REPO] · policy show · add-source PATH [--id ID] · setup-report [--out PATH] [--friction PATH]
 [--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
-``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops the ``next:`` hint of init and add-source;
+``sync`` without ``--mode`` and ``status`` end with the loop's ``NEXT:`` line and any ``WAITING ON YOU:``
+lines (:mod:`agentsync.loop`); ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops them from
+``sync``.
 ``setup-report --out`` ends with the issue link, never a hint.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
@@ -38,7 +40,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agentsync import __version__, curate, gitops, governance, it_request, lints, net, setup_report, skill
+from agentsync import (
+    __version__,
+    curate,
+    gitops,
+    governance,
+    it_request,
+    lints,
+    loop,
+    net,
+    setup_report,
+    skill,
+)
 from agentsync import policy as content_policy
 from agentsync.config import (
     SOURCE_ID_RE,
@@ -64,6 +77,7 @@ from agentsync.errors import (
 )
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
+from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding
 from agentsync.ops import doctor, launchd
@@ -109,17 +123,6 @@ def _out(text: str = "") -> None:
 
 def _err(text: str) -> None:
     sys.stderr.write(text + "\n")
-
-
-NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"
-"""Set to 1 (scripts/install.sh does) and init, add-source and setup-report print no ``next:`` hint: the
-caller prints its own single next step."""
-
-
-def _next_hint(text: str) -> None:
-    """Print ``next: <text>`` unless :data:`NO_NEXT_HINT_ENV` is 1."""
-    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
-        _out(f"next: {text}")
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -590,7 +593,6 @@ def _cmd_init(args: argparse.Namespace) -> int:
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
     _out(f"sources: {', '.join(s.id for s in config.sources) or 'none yet (edit sources.toml)'}")
-    _next_hint("agentsync doctor · agentsync sync --once · agentsync install-agent")
     return EXIT_FAILED if findings else EXIT_OK
 
 
@@ -641,17 +643,23 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     _out(f"added source {sid!r} to {config.config_path}:")
     _out(table.strip("\n"))
-    _next_hint("agentsync doctor · agentsync sync --once")
     return EXIT_OK
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:
+    """One cycle; without ``--mode`` (an agent's or a person's run, never a LaunchAgent's) the report ends
+    with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
     mode = CycleMode.DRY_RUN if args.dry_run else CycleMode(args.mode) if args.mode else None
     if args.materialise_budget is None:
-        return _run(config, mode=mode, only=tuple(args.source))
-    budget = parse_size(args.materialise_budget, where="--materialise-budget")
-    return _run(config, mode=mode, only=tuple(args.source), budget_bytes=budget)
+        rc = _run(config, mode=mode, only=tuple(args.source))
+    else:
+        budget = parse_size(args.materialise_budget, where="--materialise-budget")
+        rc = _run(config, mode=mode, only=tuple(args.source), budget_bytes=budget)
+    if mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+        for line in loop.next_lines(config):
+            _out(line)
+    return rc
 
 
 def _cmd_reconcile(args: argparse.Namespace) -> int:
@@ -776,7 +784,8 @@ def _status_lines(config: Config) -> list[str]:
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
-    for line in _status_lines(_config(args)):
+    config = _config(args)
+    for line in [*_status_lines(config), *loop.next_lines(config)]:
         _out(line)
     return EXIT_OK
 

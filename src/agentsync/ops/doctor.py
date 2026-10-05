@@ -24,6 +24,7 @@ from pathlib import Path
 
 from agentsync.config import Config, SourceConfig
 from agentsync.errors import ConfigError
+from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
@@ -42,10 +43,9 @@ AGENT_STEP_PENDING_ENV = "AGENTSYNC_AGENT_STEP_PENDING"
 by its later agent step, so a launchd.* fix that is install-agent reads :data:`AGENT_STEP_NOTE` instead."""
 AGENT_STEP_NOTE = "installed by the agent step below"
 _AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
-NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"
-"""Set to 1 by scripts/install.sh (the same variable as ``cli.NO_NEXT_HINT_ENV``): its NEXT: line is the only
-instruction in its output, so the ad hoc launcher's Developer ID fix (an IT action, nothing the person or
-their agent does) reads :data:`ADHOC_IT_NOTE`, with no ``fix:``."""
+# NO_NEXT_HINT_ENV (agentsync.loop, its one definition) is 1 under scripts/install.sh: its NEXT: line is
+# the only instruction in its output, so the ad hoc launcher's Developer ID fix (an IT action, nothing the
+# person or their agent does) reads ADHOC_IT_NOTE, with no ``fix:``.
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 
 

@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli, gitops, governance, lints, net, policy
+from agentsync import cli, gitops, governance, lints, loop, net, policy
 from agentsync.config import Config, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -1166,16 +1166,25 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
         out,
         re.MULTILINE,
     )
-    last = out.rstrip("\n").splitlines()[-1]
-    m = re.fullmatch(r"converted (\d+), deferred 2 online-only", last)
-    assert m and int(m.group(1)) >= 8, last
-    assert not re.search(r"(?im)^\s*(next|run|fix):", out)
+    lines = out.rstrip("\n").splitlines()
+    assert lines[-3:-1] == [
+        lines[-3],
+        "NEXT: draft the baseline questions: follow step 1 (Draft) of the agentsync-docs skill's \"Baseline "
+        'questions" section, then run `~/.local/bin/agentsync sync`',
+    ], "the online-only deferrals do not hold the loop at 'sync again'"
+    m = re.fullmatch(r"converted (\d+), deferred 2 online-only", lines[-3])
+    assert m and int(m.group(1)) >= 8, lines[-3]
+    assert lines[-1] == (
+        "note: 2 online-only file(s) in source wait for a later sync's download budget; they do not block "
+        "the next step"
+    )
+    assert not re.search(r"(?m)^\s*(next|run|fix):", out)
     assert (mirror / "sample.docx.md").is_file(), "a local file is converted by the budget-0 run"
     assert not (mirror / "sample.pdf.md").exists(), "an online-only file is not downloaded"
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert (mirror / "sample.pdf.md").is_file() and "left for a later run" not in out
-    assert out.rstrip("\n").splitlines()[-1] == "converted 2, deferred 0 online-only"
+    assert out.rstrip("\n").splitlines()[-2] == "converted 2, deferred 0 online-only"
     assert cli.main(["sync", "--materialise-budget", "lots", "--config", cfg]) == cli.EXIT_CONFIG
     parser = cli.build_parser()
     sync = parser.parse_args(["sync", "--materialise-budget", "200MB"])
@@ -1185,6 +1194,30 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
         parser.parse_args(["sync", "--help"])
     text = " ".join(capsys.readouterr().out.split())
     assert "Only online-only files are charged" in text and "every local file is converted" in text
+
+
+def test_sync_without_mode_ends_with_the_summary_then_one_next_line(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K01: an interactive sync (no --mode) ends with its summary line and then exactly one NEXT line
+    from loop.next_step; a LaunchAgent's explicit --mode, and install.sh's AGENTSYNC_NO_NEXT_HINT=1, print
+    none."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    lines = capsys.readouterr().out.rstrip("\n").splitlines()
+    assert re.fullmatch(r"converted \d+, deferred 0 online-only", lines[-2]), lines[-2]
+    assert lines[-1] == "NEXT: " + loop.next_step(load_config(initialised.config_path)).step
+    assert sum(line.startswith("NEXT:") for line in lines) == 1
+    assert not any(line.startswith(("WAITING ON YOU:", "note:")) for line in lines)
+    assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_OK
+    lines = capsys.readouterr().out.rstrip("\n").splitlines()
+    assert re.fullmatch(r"converted \d+, deferred 0 online-only", lines[-1]), lines[-1]
+    assert not any(line.startswith("NEXT:") for line in lines)
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    lines = capsys.readouterr().out.rstrip("\n").splitlines()
+    assert re.fullmatch(r"converted \d+, deferred 0 online-only", lines[-1]), lines[-1]
+    assert not any(line.startswith("NEXT:") for line in lines)
 
 
 def test_no_next_hint_env_silences_init_add_source_and_setup_report(
@@ -1219,8 +1252,5 @@ def test_no_next_hint_env_silences_init_add_source_and_setup_report(
     assert cli.main([*argv_init, "--force", "--source-local", str(local_source_dir)]) == cli.EXIT_OK
     assert cli.main(["add-source", str(third), "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(report) == cli.EXIT_OK
-    hints = re.findall(r"(?m)^next: .*$", capsys.readouterr().out)
-    assert hints == [
-        "next: agentsync doctor · agentsync sync --once · agentsync install-agent",
-        "next: agentsync doctor · agentsync sync --once",
-    ], "without the variable: init's and add-source's hints, and none from setup-report"
+    out = capsys.readouterr().out
+    assert not re.search(r"(?im)^\s*next:", out), "KISS K01: the static hints are gone (sync says NEXT)"
