@@ -523,6 +523,15 @@ def _extra_from_json(raw: str | None) -> dict[str, ExtraValue]:
     return value
 
 
+class SourcePass(NamedTuple):
+    """A source's newest ``run_sources`` row (``Manifest.last_source_pass``)."""
+
+    pass_kind: PassKind | None  # None: the source was skipped (``skipped_reason``) or failed before a scan
+    enumeration_complete: bool
+    skipped_reason: str | None
+    error: str | None
+
+
 class _ObservedRow(NamedTuple):
     """The columns phase 1 compares an observation against (``Manifest.observation_index``).
 
@@ -1211,6 +1220,23 @@ class Manifest:
                 skipped_reason,
                 error,
             ),
+        )
+
+    def last_source_pass(self, source_id: str) -> SourcePass | None:
+        """The newest ``run_sources`` row for ``source_id``; None when no run has recorded it."""
+        r = self._db.execute(
+            "SELECT pass_kind, enumeration_complete, skipped_reason, error FROM run_sources "
+            "WHERE source_id = ? ORDER BY run_id DESC LIMIT 1",
+            (source_id,),
+        ).fetchone()
+        if r is None:
+            return None
+        kind = r["pass_kind"]
+        return SourcePass(
+            None if kind is None else PassKind(kind),
+            bool(r["enumeration_complete"]),
+            r["skipped_reason"],
+            r["error"],
         )
 
     def finish_run(

@@ -7,8 +7,9 @@ rule wins:
 1. a status FAIL (a missing docs repo, a missing or stale skill copy, a Graph sign-in; then any fix the caller
    passes) names its fix;
 2. no live source other than the inbox: ask which folders, then ``add-source``;
-3. a source listing is INCOMPLETE, or files already on this Mac are not converted yet: sync again (online-only
-   files waiting for a download budget are a note, never this rule);
+3. a source was never listed, a Graph listing is INCOMPLETE, or files already on this Mac are not converted
+   yet: sync again (online-only files waiting for a download budget are a note, and a folder listing a sync
+   ran but could not finish is an operator wait, never this rule: another sync would not clear either);
 4. no curated page and no ``_eval/questions.md``: draft the baseline questions;
 5. ``_eval`` is still a draft: stop, the operator confirms;
 6. no curated page and no ``_eval/results-*-before.md``: run the 'before' baseline in a fresh session;
@@ -29,12 +30,17 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agentsync import curate, gitops, governance, skill
+from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.config import Config, SourceConfig
-from agentsync.cycle import _CHECKPOINT_PENDING_META, _SEED_PAGE_NAMES
+from agentsync.cycle import (
+    _CHECKPOINT_PENDING_META,
+    _SEED_PAGE_NAMES,
+    HYDRATION_REFUSED,
+    NETWORK_POLICY_FAILED,
+)
 from agentsync.errors import AgentSyncError
 from agentsync.manifest import Manifest
-from agentsync.model import LintFinding, RowState, SourceKind, Verdict
+from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.paths import expand
 
 _log = logging.getLogger(__name__)
@@ -86,6 +92,7 @@ class _Files:
     local: dict[str, int] = field(default_factory=dict)  # already on this Mac: the next sync converts them
     online: dict[str, int] = field(default_factory=dict)  # online-only, within the download budget
     over: dict[str, int] = field(default_factory=dict)  # online-only and larger than the source's budget
+    refused: dict[str, int] = field(default_factory=dict)  # the OS refused the download (no budget clears it)
 
 
 def _ids(counts: dict[str, int]) -> str:
@@ -143,9 +150,9 @@ def baseline_state(docs_repo: Path) -> str:
 
 
 def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
-    """Count each source's files that are not converted yet, split into local, online-only and over-budget
-    online-only. An item that failed (``error``) is retried by every sync and is not counted: it would make
-    rule 3 loop."""
+    """Count each source's files that are not converted yet, split into local, online-only, over-budget
+    online-only and OS-refused (``state_reason`` :data:`HYDRATION_REFUSED`). An item that failed (``error``)
+    is retried by every sync and is not counted: it would make rule 3 loop."""
     out = _Files()
     for src in sources:
         for row in manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS)):
@@ -157,7 +164,9 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
             if not pending:
                 continue
             online = src.kind.is_graph or row.dataless or row.state is RowState.DATALESS
-            if not online:
+            if row.state_reason == HYDRATION_REFUSED:
+                bucket = out.refused
+            elif not online:
                 bucket = out.local
             elif max(row.size or 0, 0) > src.max_materialise_bytes:
                 bucket = out.over
@@ -241,14 +250,33 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
     db = config.state_paths.db
     files = _Files()
     incomplete: list[str] = []
+    unlisted: list[str] = []  # a local folder listing ran but could not finish: the operator's to fix
+    inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
+    blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     signin: list[str] = []
     pending: str | None = None
     if db.exists():
         with Manifest(db) as manifest:
             for src in live:
                 row = manifest.get_source(src.id)
-                if row is None or not row.enumeration_complete:
-                    incomplete.append(src.id)
+                last = manifest.last_source_pass(src.id)
+                if (
+                    src.kind.is_graph
+                    and last is not None
+                    and (last.skipped_reason or "").startswith(NETWORK_POLICY_FAILED)
+                ):
+                    blocked.append(src.id)
+                elif row is None or not row.enumeration_complete:
+                    # A local walk is always FULL: one that ran and still came back incomplete hit a folder
+                    # it cannot list (TCC, an empty cloud folder, a missing root or sentinel), which another
+                    # sync does not clear. A Graph FULL pass resumes, so sync again is right for it.
+                    ran_full = last is not None and last.pass_kind is PassKind.FULL
+                    if ran_full and src.kind is SourceKind.LOCAL:
+                        unlisted.append(src.id)
+                    elif ran_full and src.kind is SourceKind.INBOX:
+                        inbox_partial.append(src.id)
+                    else:
+                        incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
                     waits.append(
                         f"the deletion breaker tripped on {src.id} ({row.breaker_candidates or 0} file(s) "
@@ -265,6 +293,29 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
             f"{sum(files.over.values())} online-only file(s) in {_ids(files.over)} are larger than the "
             f"per-run download budget: run `{BIN} materialise --budget BYTES` with BYTES above their size, "
             "or raise that source's max_materialise_bytes"
+        )
+    if files.refused:
+        waits.append(
+            f"{sum(files.refused.values())} online-only file(s) in {_ids(files.refused)} could not be "
+            "downloaded (macOS refused): in Finder, choose Download Now (or Always Keep on This Device) on "
+            f"their folder, then run `{BIN} sync`"
+        )
+    if unlisted:
+        waits.append(
+            f"a folder in {', '.join(sorted(unlisted))} could not be listed (no access, an empty cloud "
+            "folder, or a missing folder; the sync's alarm names it): grant Files and Folders access or "
+            "exclude it"
+        )
+    if blocked:
+        waits.append(
+            f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "
+            f"PAC): IT must allow it; `{BIN} it-request --out {it_request.DEFAULT_OUT}` drafts the request"
+        )
+    if inbox_partial:
+        notes.append(
+            f"the inbox ({', '.join(sorted(inbox_partial))}) was not fully listed (a file still being "
+            "written, or a folder that cannot be read); a later sync lists it; it does not block the next "
+            "step"
         )
     if files.online:
         notes.append(

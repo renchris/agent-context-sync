@@ -8,15 +8,17 @@ import os
 import re
 import shutil
 from datetime import UTC, datetime, timedelta
+from errno import EDEADLK
 from pathlib import Path
 
 import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, skill
 from agentsync.config import Config, load_config, local_source_table
-from agentsync.cycle import run_cycle
+from agentsync.cycle import NETWORK_POLICY_FAILED, run_cycle
+from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import Verdict
+from agentsync.model import CycleMode, Verdict
 
 BIN = "~/.local/bin/agentsync"
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
@@ -199,6 +201,79 @@ def test_online_only_deferrals_are_a_note_and_reach_rules_4_to_9(
         f"NEXT: 1 curation row(s) queued: run `{BIN} curate`, curate up to 10 of them, then run "
         f"`{BIN} sync`; session done",
         *waits_and_note,
+    ]
+
+
+def test_an_os_refused_download_is_a_wait_until_a_later_sync_reads_it(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS refusing a download (EDEADLK) is no budget matter: a WAITING line, not the budget note, and never
+    rule 3. A later sync that reads the file clears it."""
+    (folder / "small.txt").write_text("small\n", encoding="utf-8")
+    online = {(folder / "small.txt").stat().st_ino}
+    real_dataless, real_materialise = materialise.is_dataless, arm_local.materialise
+
+    def fake(st: os.stat_result) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return st.st_ino in online or real_dataless(st)
+
+    def refuse(src: Path, dest: Path, budget: materialise.ByteBudget) -> materialise.MaterialiseResult:
+        if src.name == "small.txt":
+            raise DatalessRefusedError(str(src), EDEADLK, "materialisation refused (EDEADLK)")
+        return real_materialise(src, dest, budget)
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "materialise", refuse)
+    config = _setup(tmp_path, local_source_table("work", folder))
+    run_cycle(config, mode=None)
+    assert _lines(config) == [
+        f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
+        "WAITING ON YOU: 1 online-only file(s) in work could not be downloaded (macOS refused): in Finder, "
+        f"choose Download Now (or Always Keep on This Device) on their folder, then run `{BIN} sync`",
+    ]
+    monkeypatch.setattr(arm_local, "materialise", real_materialise)
+    assert run_cycle(config, mode=None).exit_code == 0
+    assert _lines(config) == [
+        f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`"
+    ]
+
+
+def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path) -> None:
+    """An empty folder in a OneDrive tree leaves every local walk incomplete, and no sync clears it: the
+    operator's wait, never rule 3 (it would loop)."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    for _ in range(2):
+        run_cycle(config, mode=None)
+        assert _lines(config) == [
+            f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
+            "WAITING ON YOU: a folder in work could not be listed (no access, an empty cloud folder, or a "
+            "missing folder; the sync's alarm names it): grant Files and Folders access or exclude it",
+        ]
+    with Manifest(config.state_paths.db) as manifest:
+        assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+
+
+def test_a_graph_source_the_network_refuses_is_an_it_wait(tmp_path: Path, folder: Path) -> None:
+    config = _synced(tmp_path, folder)
+    text = config.config_path.read_text(encoding="utf-8").replace('# client_id = "', 'client_id = "', 1)
+    text += '\n[[source]]\nid = "drive"\nkind = "graph_drive"\ndrive_id = "me"\n'
+    config.config_path.write_text(text, encoding="utf-8")
+    config = load_config(config.config_path)
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.sync_sources(config.sources)
+        manifest.set_auth_state("ok", ["drive"])
+        run_id = manifest.begin_run(CycleMode.POLL, host="test", pid=1)
+        manifest.record_source_pass(
+            run_id, "drive", pass_kind=None, enumeration_complete=False, cursor_reset=False, counts={},
+            skipped_reason=f"{NETWORK_POLICY_FAILED}network-policy (TLS inspection)",
+        )  # fmt: skip
+    assert _lines(config) == [
+        f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
+        "WAITING ON YOU: the network refuses Microsoft Graph for drive (proxy, TLS inspection or PAC): IT "
+        f"must allow it; `{BIN} it-request --out ~/agent-context/it-request-draft.md` drafts the request",
     ]
 
 

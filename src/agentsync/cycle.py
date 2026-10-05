@@ -123,6 +123,10 @@ _SCOPE_CHANGE_REASON = "retired:scope-change"
 _RESCREEN_META = "policy_rescreen_pending"
 _CHECKPOINT_PENDING_META = "checkpoint_pending"  # KISS K06: the HEAD a held or failed checkpoint retries
 _SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
+HYDRATION_REFUSED = "hydration-refused"
+"""``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
+later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
+processed."""
 
 
 class RecoveryAction(enum.StrEnum):
@@ -1625,6 +1629,8 @@ class _Cycle:
         self, src: SourceConfig, arm: SourceArm, row: ItemRow, budget: ByteBudget, acc: _SourceAcc
     ) -> None:
         sid, stable = row.source_id, row.stable_id
+        if row.state_reason == HYDRATION_REFUSED:  # re-decided below: only a new refusal sets it again
+            self.manifest.set_state(sid, stable, row.state, None)
         refused = self._no_converter(row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
             self._publish(src, row, refused, acc)
@@ -1659,6 +1665,8 @@ class _Cycle:
             return
         except DatalessRefusedError as exc:
             self.manifest.set_verdict(sid, stable, Verdict.DEFERRED)
+            if row.state in (RowState.LIVE, RowState.DATALESS):  # never over a quarantine's own reason
+                self.manifest.set_state(sid, stable, row.state, HYDRATION_REFUSED)
             acc.deferred += 1
             acc.deferred_online_only += 1
             acc.alarms.append(f"{row.rel_path}: hydration refused by the OS ({exc}); deferred")

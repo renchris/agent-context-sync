@@ -1552,6 +1552,10 @@ class Manifest:
     ) -> None:
         """Upsert the ``run_sources`` row for one source in one run."""
 
+    def last_source_pass(self, source_id: str) -> SourcePass | None:
+        """The newest ``run_sources`` row for ``source_id`` (NamedTuple: pass_kind, enumeration_complete,
+        skipped_reason, error); None when no run has recorded it. Added 2026-10-04 for ``loop`` (KISS K01)."""
+
     def finish_run(
         self, run_id: int, *, status: str, commit_sha: str | None, counts: Mapping[str, int]
     ) -> None:
@@ -5254,8 +5258,8 @@ key is a separate file so an answering agent never has it in front of it. Test:
 ### 16.20 `agentsync.loop`: one NEXT line worked out from disk (2026-10-04, KISS K01, integrator)
 
 Additive. The loop's order lived only in prose, and `sync` stopped at its summary line. `agentsync.loop`
-(`src/agentsync/loop.py`; imports `curate`, `gitops`, `governance`, `skill`, `manifest`, `config` and two
-`cycle` constants, never `ops.doctor`) works out the next step from disk only: the docs repo, the manifest (opened
+(`src/agentsync/loop.py`; imports `curate`, `gitops`, `governance`, `it_request`, `skill`, `manifest`, `config`
+and four `cycle` constants, never `ops.doctor`) works out the next step from disk only: the docs repo, the manifest (opened
 only when it exists), the skill copies, `_eval/` and the purge queue. No network call, no write. The first unmet
 rule wins:
 
@@ -5263,7 +5267,7 @@ rule wins:
 |---|---|---|
 | 1 | no docs repo; a skill copy missing or not this build's text; a live Graph source whose `auth_state` is not ok; then the first of the caller's `fixes` | its fix (`init`, `sync`, `graph login`, the fix) |
 | 2 | no live source other than the inbox | ask which folders (`install.sh --list-folders`), `add-source "<folder>"` |
-| 3 | a live source never enumerated or `enumeration_complete` false, or a local file (not dataless, not Graph) whose last verdict is created/maybe_changed/changed/deferred | `sync` again |
+| 3 | a live source never enumerated, a Graph source whose `enumeration_complete` is false (its FULL pass resumes), or a local file (not dataless, not Graph) whose last verdict is created/maybe_changed/changed/deferred | `sync` again |
 | 4 | no curated page (`curate.iter_topic_pages`) and no `_eval/questions.md` | draft the baseline questions |
 | 5 | `_eval/questions.md` exists and it or `answers.md` is not `status: confirmed` | stop; the operator confirms |
 | 6 | no curated page and no `_eval/results-*-before.md` | run the 'before' baseline in a session that did not draft the questions |
@@ -5274,9 +5278,14 @@ rule wins:
 
 Operator waits (`WAITING ON YOU:`, collected whatever rule wins): queued purges (`purge --queue`); a tripped
 deletion breaker per source (`accept-deletions SOURCE`); an `_eval` draft to confirm; online-only files larger
-than their source's `max_materialise_bytes` (`materialise --budget BYTES`). Online-only files within the budget
-are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. A file whose hydration
-the OS refused is indistinguishable on disk from one the budget deferred, so it is in that note, not a wait. Item
+than their source's `max_materialise_bytes` (`materialise --budget BYTES`); online-only files the OS refused to
+download (row `state_reason` `cycle.HYDRATION_REFUSED`, set in the `DatalessRefusedError` branch and cleared when
+the row is next processed: Finder's Download Now, then `sync`); a local source whose newest `run_sources` row is a
+FULL pass with `enumeration_complete` 0 (a folder it cannot list: TCC, an empty cloud folder, a missing root or
+sentinel; grant access or exclude it); a Graph source whose newest pass was skipped with a `NETWORK_POLICY_FAILED`
+reason (`it-request`). None of these is rule 3: another sync would not clear them. An inbox whose newest FULL pass
+was incomplete (often a file still being written) is a `note:`. Online-only files within the budget
+are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. Item
 errors are retried by every sync and are not rule 3 (they would make it loop). The text is fixed wording plus
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
 
