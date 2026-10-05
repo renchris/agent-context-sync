@@ -1227,7 +1227,8 @@ class GraphConfig:
     client_id: str | None = None
     tenant: str = "organizations"
     scopes: tuple[str, ...] = DEFAULT_GRAPH_SCOPES
-    company: str = "agentsync"  # User-Agent: NONISV|<company>|agentsync/<version>
+    # company: removed 2026-10-04 (KISS K15). `[graph] company` is still accepted but ignored: the User-Agent
+    # is always NONISV|agentsync|agentsync/<version>, and Config.graph_company_line records the key.
     base_url: str = DEFAULT_GRAPH_BASE_URL
 
     @property
@@ -1286,6 +1287,10 @@ class Config:
     tombstone_reap_days: int = 180
     principal: str | None = None
     launchd_label_prefix: str = "com.agentsync"
+    # 2026-10-04, KISS K15: the 1-based sources.toml line of the ignored `[graph] company` (0 when the key sits
+    # in an inline table), None when absent; status prints one `config.graph_company` WARN whose fix is
+    # `delete line N of <sources.toml>`.
+    graph_company_line: int | None = None
 
     @property
     def state_paths(self) -> StatePaths:
@@ -1315,9 +1320,15 @@ def load_config(path: Path | None = None) -> Config:
     """Read and validate sources.toml (default ``~/agent-context/sources.toml``); raises ConfigError."""
 
 def default_config_text() -> str:
-    """Return the commented sources.toml template that ``agentsync add-source`` (or the hidden ``init``)
-    writes."""
+    """Return the sources.toml template that ``agentsync add-source`` (or the hidden ``init``) writes (KISS
+    K15): one header line and a commented ``[governance] archive`` line; every other key keeps its default,
+    and add-source appends the ``[[source]]`` and inbox tables."""
 ```
+
+Since 2026-10-04 (KISS K15) the template holds no `[agentsync]`, `[graph]`, `[breaker]`, `[convert]`, `[network]`
+or `[policy]` block and no Graph source examples; those examples live in `docs/deploy/README.md` § What needs IT.
+Every key is still parsed with the same defaults, so older configs load unchanged; `principal`, `cadence_s` and
+`launchd_label_prefix` stay honored.
 
 ### `agentsync.frontmatter` — `src/agentsync/frontmatter.py` — owner: **architect (implemented)**
 

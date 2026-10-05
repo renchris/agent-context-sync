@@ -90,6 +90,45 @@ draft for this Mac: your name, the serial number, the CPU, the organisation and 
 filled in, the links point at this repository on GitHub, and the first line lists what you still fill ("You fill:
 ..."). It never sends anything; you send it.
 
+Once IT has registered the app, append these tables to `~/agent-context/sources.toml` with your own values; the
+template no longer lists them. A Graph source needs `client_id`, and `tenant` must be your tenant id (GUID) or
+verified domain: `organizations` and `common` are refused (AADSTS50194). Start each Graph source paused, because
+its first pass is a full enumeration. `agentsync graph discover` prints the tables for what you can already reach.
+
+```toml
+[graph]
+client_id = "00000000-0000-0000-0000-000000000000"  # the Entra app registration (single-tenant public client)
+tenant = "contoso.onmicrosoft.com"
+# scopes = ["Files.Read.All", "Sites.Read.All", "Mail.Read", "User.Read"]
+# cloud = "global"            # global | usgov | usgov-dod | china (default: from base_url)
+# broker = true               # sign in via the macOS broker (Company Portal) first
+# allow_device_code = false   # last-resort device-code sign-in, only if IT allows it
+
+# A SharePoint document library or OneDrive via Graph delta
+[[source]]
+id = "finance-library"
+kind = "graph_drive"
+site = "contoso.sharepoint.com:/sites/finance"  # or: drive_id = "b!..." ; or: drive_id = "me"
+folder = "/Shared Documents/FY26"               # subtree filter, "/" = whole drive
+state = "paused"
+
+# An Outlook mail folder via Graph message delta
+[[source]]
+id = "mail-projects"
+kind = "graph_mail"
+mailbox = "me"     # or a shared mailbox UPN (adds Mail.Read.Shared)
+folder = "Inbox"   # well-known name or folder id
+state = "paused"
+
+# A Teams channel's messages via channel delta (ChannelMessage.Read.All needs admin consent)
+[[source]]
+id = "team-acme-general"
+kind = "graph_teams"
+team_id = "..."
+channel_id = "19:...@thread.tacv2"
+state = "paused"
+```
+
 ## The one-time "Allow" click
 
 On the first background run while you are logged in (`install.sh --confirm-install-agent` starts one), macOS asks:

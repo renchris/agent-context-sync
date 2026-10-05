@@ -145,7 +145,6 @@ class GraphConfig:
     client_id: str | None = None
     tenant: str = "organizations"
     scopes: tuple[str, ...] = DEFAULT_GRAPH_SCOPES
-    company: str = "agentsync"  # User-Agent: NONISV|<company>|agentsync/<version>
     base_url: str = DEFAULT_GRAPH_BASE_URL
     cloud: str | None = None  # global | usgov | usgov-dod | china; None = inferred from base_url (graph.auth)
     allow_device_code: bool = False  # C15 1.4: device code is the last rung, off unless IT allows it
@@ -228,6 +227,7 @@ class Config:
     tombstone_reap_days: int = 180
     principal: str | None = None
     launchd_label_prefix: str = "com.agentsync"
+    graph_company_line: int | None = None  # see :func:`_graph_company_line`; status warns when set
 
     @property
     def state_paths(self) -> StatePaths:
@@ -480,7 +480,6 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         client_id=_str(g, "client_id", gw),
         tenant=_str(g, "tenant", gw, "organizations") or "organizations",
         scopes=_str_list(g, "scopes", gw, DEFAULT_GRAPH_SCOPES),
-        company=_str(g, "company", gw, "agentsync") or "agentsync",
         base_url=(_str(g, "base_url", gw, DEFAULT_GRAPH_BASE_URL) or DEFAULT_GRAPH_BASE_URL).rstrip("/"),
         cloud=_str(g, "cloud", gw),
         allow_device_code=_bool(g, "allow_device_code", gw, False),
@@ -558,7 +557,29 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         tombstone_reap_days=_int(a, "tombstone_reap_days", aw, 180, minimum=1),
         principal=_str(a, "principal", aw),
         launchd_label_prefix=_str(a, "launchd_label_prefix", aw, "com.agentsync") or "com.agentsync",
+        graph_company_line=_graph_company_line(text) if "company" in g else None,
     )
+
+
+_TABLE_HEADER = re.compile(r"^\s*\[\s*([^\[\]]+?)\s*\]\s*(#.*)?$")
+
+
+def _graph_company_line(text: str) -> int:
+    """The 1-based line of ``[graph] company`` in sources.toml text: accepted but ignored since KISS K15 (the
+    User-Agent is always ``NONISV|agentsync|agentsync/<version>``), so status names the line to delete. 0
+    when the key is set in a form this scan cannot place (an inline ``graph = {...}`` table)."""
+    table = ""
+    for n, line in enumerate(text.splitlines(), 1):
+        header = _TABLE_HEADER.match(line)
+        if header is not None:
+            table = header.group(1).replace(" ", "").replace('"', "")
+        elif line.lstrip().startswith("[["):
+            table = "[[]]"  # an array of tables ([[source]]): never [graph]
+        elif (table == "graph" and re.match(r"\s*company\s*=", line)) or (
+            table == "" and re.match(r"\s*graph\s*\.\s*company\s*=", line)
+        ):
+            return n
+    return 0
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -574,8 +595,9 @@ def load_config(path: Path | None = None) -> Config:
 
 
 def default_config_text() -> str:
-    """Return the commented sources.toml template that ``agentsync add-source`` (or the hidden ``init``)
-    writes."""
+    """Return the sources.toml template that ``agentsync add-source`` (or the hidden ``init``) writes (KISS
+    K15): one header line and a commented ``[governance] archive`` line; every other key keeps its default,
+    and add-source appends the ``[[source]]`` and inbox tables."""
     return _TEMPLATE
 
 
@@ -673,100 +695,8 @@ def append_to_config(config_path: Path, table: str) -> Config:
 
 
 _TEMPLATE = """\
-# agentsync — sources.toml
-#
-# The in-scope set: nothing else in agentsync names a cloud location.  Edit, then run `agentsync doctor`.
-# Every key below shows its default; delete a line to keep the default.
+# agentsync sources.toml: `agentsync add-source <folder>` adds one [[source]] table per folder below.
 
-[agentsync]
-docs_repo = "~/agent-context/docs"                    # its own git repo, OUTSIDE ~/Library/CloudStorage
-state_dir = "~/Library/Application Support/agentsync"  # manifest, cursors (0600), lock, heartbeat
-cache_dir = "~/Library/Caches/agentsync"              # converter cache, rebuildable, never in git
-log_dir = "~/Library/Logs/agentsync"                  # launchd agent logs
-reconcile_interval_s = 3600                           # full enumeration cadence (hourly at <= 1e5 items)
-poll_interval_s = 300                                 # delta poll cadence
-tombstone_reap_days = 180
-# principal = "you@example.com"                       # which signed-in identity this mirror is a view of
-
-[graph]
-# client_id = "00000000-0000-0000-0000-000000000000"  # Entra app registration (single-tenant public client)
-#                                                     # unset = no Graph arms; local sources still work
-tenant = "organizations"                              # Graph NEEDS your tenant id (GUID) or verified domain:
-#                                                     # organizations/common are refused (AADSTS50194)
-# scopes = ["Files.Read.All", "Sites.Read.All", "Mail.Read", "User.Read"]
-company = "agentsync"                                 # User-Agent: NONISV|<company>|agentsync/<version>
-# cloud = "global"                                    # global | usgov | usgov-dod | china (default: base_url)
-# broker = true                                       # sign in via the macOS broker (Company Portal) first
-# allow_device_code = false                           # last-resort device-code sign-in, only if IT allows it
-
-# [network]
-#   proxy = "http://proxy.example.com:8080"           # default: HTTPS_PROXY, then the macOS manual proxy;
-#                                                     # "direct" ignores both.  PAC/WPAD are not evaluated.
-
-# [policy]                                            # sensitivity-label gate (C15 section 4)
-#   exclude_label_ids = ["00000000-0000-0000-0000-000000000000"]   # label GUIDs never converted
-#   exclude_label_names = ["Highly Confidential"]
-#   refuse_unlabelled = false
-
-# [governance]                                        # retention, purge, legal hold (C15 section 7)
-#   history_days = 30                                 # compact-history squashes older mirror history
-#   allow_remote = false                              # every clone is a copy no purge can reach
-#   hold = false                                      # legal/records hold: suspends purge and compaction
-#   archive = false                                   # true keeps everything: deleted pages in docs/archive/,
-#                                                     # a snapshot/<date> tag per checkpoint, no compaction;
-#                                                     # agentsync purge still erases
-
-[breaker]                                             # deletion circuit breaker, per source
-fraction = 0.20                                       # trip when deletions > max(fraction * live rows, floor)
-floor = 25
-hold_days = 7
-
-[convert]
-xlsx_stream_threshold_bytes = "20MB"                  # larger workbooks get a schema + sample page + CSV
-max_rows_per_sheet = 5000
-# pandoc_path = "/opt/homebrew/bin/pandoc"            # default: pypandoc_binary's bundled pandoc
-
-# ---- sources -------------------------------------------------------------------------------------------
-# One [[source]] per scope.  id: lowercase letters, digits and '-'; it names docs/mirror/<id>/.
-# state: "paused" | "live" | "retired" (retired needs retired_reason).  Budgets are per cycle.
-
-# A folder inside the OneDrive / SharePoint sync client (no IT involvement needed):
-# [[source]]
-# id = "onedrive-projects"
-# kind = "local"
-# path = "~/Library/CloudStorage/OneDrive-Contoso/Projects"
-# sentinel = "README.txt"                             # positive control: must exist, or the walk is 'unknown'
-# include = []                                        # empty = everything
-# exclude = ["~$*", "*.tmp", ".~lock.*#", ".DS_Store", "._*"]
-# max_materialise_bytes = "1GiB"                      # download budget per cycle: online-only files only
-# max_files = 5000
-
-# A manual drag-and-drop inbox:
-# [[source]]
-# id = "inbox"
-# kind = "inbox"
-# path = "~/agent-context/inbox"
-# quiescence_s = 60                                   # skip files still being written
-
-# A SharePoint document library or OneDrive via Graph delta (needs [graph] client_id):
-# [[source]]
-# id = "finance-library"
-# kind = "graph_drive"
-# site = "contoso.sharepoint.com:/sites/finance"      # or: drive_id = "b!..." ; or: drive_id = "me"
-# folder = "/Shared Documents/FY26"                   # subtree filter, "/" = whole drive
-# state = "paused"                                    # first pass is a full enumeration; flip to live
-
-# An Outlook mail folder via Graph message delta:
-# [[source]]
-# id = "mail-projects"
-# kind = "graph_mail"
-# mailbox = "me"                                      # or a shared mailbox UPN (adds Mail.Read.Shared)
-# folder = "Inbox"                                    # well-known name or folder id
-
-# A Teams channel's messages via channel delta (ChannelMessage.Read.All needs admin consent):
-# [[source]]
-# id = "team-acme-general"
-# kind = "graph_teams"
-# team_id = "..."
-# channel_id = "19:...@thread.tacv2"
+# [governance]
+# archive = true   # on: keep deleted pages and a snapshot tag per checkpoint, never compact; off: default
 """

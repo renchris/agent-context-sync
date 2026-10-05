@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
+import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -7,7 +10,6 @@ import pytest
 from agentsync.config import (
     DEFAULT_EXCLUDES,
     SOURCE_ID_RE,
-    TEAMS_SCOPE,
     BreakerConfig,
     Config,
     append_to_config,
@@ -41,49 +43,114 @@ def test_template_parses_with_defaults(tmp_path: Path) -> None:
     assert cfg.reconcile_interval_s == 3600
 
 
-def test_template_examples_all_parse_when_uncommented(tmp_path: Path) -> None:
-    lines = []
-    for line in default_config_text().splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("# ") and ("=" in stripped or stripped.startswith("# [[source]]")):
-            candidate = stripped[2:]
-            if candidate.startswith(
-                (
-                    "[[source]]",
-                    "id",
-                    "kind",
-                    "path",
-                    "site",
-                    "folder",
-                    "state",
-                    "mailbox",
-                    "team_id",
-                    "channel_id",
-                    "include",
-                    "exclude",
-                    "max_",
-                    "sentinel",
-                    "quiescence_s",
-                    "client_id",
-                )
-            ):
-                lines.append(candidate)
-                continue
-        lines.append(line)
-    cfg = parse("\n".join(lines), tmp_path)
-    kinds = [s.kind for s in cfg.sources]
-    assert kinds == [
+def test_template_has_only_sources(tmp_path: Path) -> None:
+    """KISS K15: one header line and a commented ``[governance] archive`` line; every other key keeps its
+    default, and add-source appends only ``[[source]]`` tables."""
+    text = default_config_text()
+    lines = text.splitlines()
+    assert lines[0].startswith("# agentsync sources.toml") and "add-source" in lines[0]
+    assert [ln for ln in lines if ln and not ln.startswith("#")] == []
+    assert "# [governance]" in lines and any(ln.startswith("# archive = true") for ln in lines)
+    for gone in ("[agentsync]", "[graph]", "[breaker]", "[convert]", "[network]", "[policy]", "tenant"):
+        assert gone not in text, gone
+    on = text.replace("# [governance]", "[governance]").replace("# archive = true", "archive = true")
+    assert tomllib.loads(on) == {"governance": {"archive": True}}
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    full = text + local_source_table("projects", folder) + inbox_source_table("inbox", tmp_path / "inbox")
+    assert list(tomllib.loads(full)) == ["source"]
+    assert [s.kind for s in parse(full, tmp_path).sources] == [SourceKind.LOCAL, SourceKind.INBOX]
+
+
+def test_graph_examples_in_the_deploy_readme_parse(tmp_path: Path) -> None:
+    """KISS K15 moved the Graph examples out of the template into docs/deploy "What needs IT"; appended to a
+    config as that section says, they load."""
+    readme = (Path(__file__).parents[1] / "docs" / "deploy" / "README.md").read_text(encoding="utf-8")
+    section = readme.split("\n## What needs IT\n", 1)[1].split("\n## ", 1)[0]
+    (block,) = re.findall(r"```toml\n(.*?)```", section, flags=re.S)
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    cfg = parse(default_config_text() + local_source_table("projects", folder) + "\n" + block, tmp_path)
+    assert cfg.graph.client_id is not None and cfg.graph.tenant not in ("organizations", "common")
+    graph = cfg.sources[1:]
+    assert [s.kind for s in graph] == [SourceKind.GRAPH_DRIVE, SourceKind.GRAPH_MAIL, SourceKind.GRAPH_TEAMS]
+    assert all(s.state is SourceState.PAUSED for s in graph)
+    assert cfg.source("finance-library").folder == "/Shared Documents/FY26"
+
+
+_PRE_K15_TEMPLATE = """\
+[agentsync]
+docs_repo = "~/agent-context/docs"
+state_dir = "~/Library/Application Support/agentsync"
+cache_dir = "~/Library/Caches/agentsync"
+log_dir = "~/Library/Logs/agentsync"
+reconcile_interval_s = 3600
+poll_interval_s = 300
+tombstone_reap_days = 180
+# principal = "you@example.com"
+
+[graph]
+# client_id = "00000000-0000-0000-0000-000000000000"
+tenant = "organizations"
+company = "agentsync"                                 # User-Agent: NONISV|<company>|agentsync/<version>
+
+# [governance]                                        # retention, purge, legal hold (C15 section 7)
+#   archive = false
+
+[breaker]                                             # deletion circuit breaker, per source
+fraction = 0.20
+floor = 25
+hold_days = 7
+
+[convert]
+xlsx_stream_threshold_bytes = "20MB"
+max_rows_per_sheet = 5000
+"""
+"""The live lines of the sources.toml template before KISS K15 (2026-10-04): every older config has them."""
+
+
+def test_old_config_shapes_load(tmp_path: Path) -> None:
+    """KISS K15: the previous full template, and the live shape an operator's config has grown into, load
+    with the same values the short template gives; ``[graph] company`` is recorded (status warns) and nothing
+    else changes.  principal, cadence_s and launchd_label_prefix stay parsed."""
+    old = parse(_PRE_K15_TEMPLATE, tmp_path)
+    new = parse(default_config_text(), tmp_path)
+    assert old.graph_company_line == 14  # company = "agentsync"
+    assert dataclasses.replace(old, graph_company_line=None) == new
+    assert new.graph_company_line is None
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    live = (
+        _PRE_K15_TEMPLATE.replace('# principal = "you@example.com"', 'principal = "ada@contoso.com"')
+        .replace('company = "agentsync"', 'company = "Contoso"')
+        .replace("reap_days = 180", 'reap_days = 180\nlaunchd_label_prefix = "com.contoso.as"')
+        + local_source_table("projects", folder)
+        + "cadence_s = 600\n"
+        + inbox_source_table("inbox", tmp_path / "inbox")
+    )
+    cfg = parse(live, tmp_path)
+    assert cfg.principal == "ada@contoso.com" and cfg.launchd_label_prefix == "com.contoso.as"
+    assert cfg.source("projects").cadence_s == 600 and [s.kind for s in cfg.sources] == [
         SourceKind.LOCAL,
         SourceKind.INBOX,
-        SourceKind.GRAPH_DRIVE,
-        SourceKind.GRAPH_MAIL,
-        SourceKind.GRAPH_TEAMS,
     ]
-    drive = cfg.source("finance-library")
-    assert drive.state is SourceState.PAUSED
-    assert drive.folder == "/Shared Documents/FY26"
-    assert cfg.source("onedrive-projects").max_materialise_bytes == 1024**3
-    assert TEAMS_SCOPE in cfg.graph_scopes()
+    assert cfg.graph_company_line == 15  # one line further down: launchd_label_prefix was added above it
+    assert not hasattr(cfg.graph, "company")
+
+
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [
+        ('[graph]\ntenant = "x"\n  company = "A"\n', 3),
+        ('[ "graph" ]  # g\ncompany="A"\n', 2),
+        ('graph.company = "A"\n', 1),
+        ('[[source]]\nid = "a"\nkind = "inbox"\npath = "/tmp/i"\n\n[graph]\ncompany = "A"\n', 7),
+        ('graph = { company = "A" }\n', 0),
+        ('[graph]\ntenant = "x"\n', None),
+    ],
+)
+def test_graph_company_line_names_the_line_to_delete(text: str, line: int | None, tmp_path: Path) -> None:
+    assert parse(text, tmp_path).graph_company_line == line
 
 
 def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) -> None:
@@ -227,8 +294,7 @@ def _ctx_config(tmp_path: Path, extra: str = "") -> Path:
     """A template sources.toml whose docs repo is ``tmp_path/ctx/docs`` (the inbox goes to ``ctx/inbox``)."""
     cfg_path = tmp_path / "ctx" / "sources.toml"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    line = 'docs_repo = "~/agent-context/docs"'
-    text = default_config_text().replace(line, f'docs_repo = "{tmp_path / "ctx" / "docs"}"', 1)
+    text = f'[agentsync]\ndocs_repo = "{tmp_path / "ctx" / "docs"}"\n\n' + default_config_text()
     cfg_path.write_text(text + extra, encoding="utf-8")
     return cfg_path
 

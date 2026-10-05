@@ -985,7 +985,8 @@ def test_doctor_hook_makes_no_network_probe(
     cfg = fake_mac["config"]
     text = cfg.read_text(encoding="utf-8")
     cfg.write_text(
-        text.replace("[graph]", '[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"', 1)
+        text
+        + '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\n'
         + '\n[[source]]\nid = "mail"\nkind = "graph_mail"\nfolder = "inbox"\n',
         encoding="utf-8",
     )

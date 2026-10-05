@@ -369,6 +369,23 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     ]
 
 
+def _check_config(config: Config) -> list[CheckResult]:
+    """Keys sources.toml still accepts but ignores (KISS K15): ``[graph] company`` gets one WARN naming the
+    line to delete; nothing is printed when there is none."""
+    line = config.graph_company_line
+    if line is None:
+        return []
+    where = f"line {line} of" if line else "the [graph] company key in"
+    return [
+        _bad(
+            "config.graph_company",
+            "[graph] company is ignored: the User-Agent is always NONISV|agentsync|agentsync/<version>",
+            Severity.WARN,
+            fix=f"delete {where} {config.config_path}",
+        )
+    ]
+
+
 def _check_docs_repo(config: Config) -> list[CheckResult]:
     """docs_repo outside CloudStorage, a git repo (or creatable), no symlinks."""
     repo = expand(config.docs_repo)
@@ -1238,6 +1255,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("python", _check_python),
     ("git", _check_git),
     ("pandoc", _check_pandoc),
+    ("config", _check_config),
     ("docs_repo", _check_docs_repo),
     ("permissions", _check_permissions),
     ("state_dir", _check_state_dir),

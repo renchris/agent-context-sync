@@ -213,6 +213,18 @@ def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
     assert p.is_absolute() and p.name == "pandoc"
 
 
+def test_ignored_graph_company_warns_naming_the_line(sample_config: Config) -> None:
+    """KISS K15: ``[graph] company`` is accepted but ignored; one WARN names the line to delete."""
+    assert "config.graph_company" not in by_name(run_checks(sample_config))
+    path = sample_config.config_path
+    for line, where in ((7, "line 7 of"), (0, "the [graph] company key in")):
+        r = by_name(run_checks(dataclasses.replace(sample_config, graph_company_line=line)))[
+            "config.graph_company"
+        ]
+        assert not r.ok and r.severity is Severity.WARN and "ignored" in r.detail
+        assert r.fix == f"delete {where} {path}"
+
+
 # ------------------------------------------------------------------------------------------------ docs_repo
 
 

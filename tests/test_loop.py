@@ -112,7 +112,7 @@ def test_rule_1_missing_or_stale_skill(tmp_path: Path, folder: Path) -> None:
 def test_rule_1_graph_sign_in_then_the_callers_fix(tmp_path: Path) -> None:
     config = _setup(tmp_path)
     text = config.config_path.read_text(encoding="utf-8")
-    text = text.replace('# client_id = "', 'client_id = "', 1)  # the template's commented [graph] key
+    text += '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\n'  # no [graph] in the template
     text += '\n[[source]]\nid = "drive"\nkind = "graph_drive"\ndrive_id = "me"\n'
     config.config_path.write_text(text, encoding="utf-8")
     config = load_config(config.config_path)
@@ -262,7 +262,8 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
 
 def test_a_graph_source_the_network_refuses_is_an_it_wait(tmp_path: Path, folder: Path) -> None:
     config = _synced(tmp_path, folder)
-    text = config.config_path.read_text(encoding="utf-8").replace('# client_id = "', 'client_id = "', 1)
+    text = config.config_path.read_text(encoding="utf-8")
+    text += '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\n'
     text += '\n[[source]]\nid = "drive"\nkind = "graph_drive"\ndrive_id = "me"\n'
     config.config_path.write_text(text, encoding="utf-8")
     config = load_config(config.config_path)

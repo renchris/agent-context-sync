@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 import pytest
 import yaml
 
-from agentsync import cli, gitops, governance, lints, loop, net, policy, skill
+from agentsync import __version__, cli, gitops, governance, lints, loop, net, policy, skill
 from agentsync.config import Config, inbox_source_table, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -808,12 +808,9 @@ def test_trust_store_is_injected_before_msal_and_requests_are_imported() -> None
 
 def _graph_config(initialised: Config) -> str:
     path = initialised.config_path
-    text = path.read_text(encoding="utf-8")
-    text = text.replace('tenant = "organizations"', 'tenant = "contoso.onmicrosoft.com"', 1)
-    text = text.replace(
-        '# client_id = "00000000-0000-0000-0000-000000000000"',
-        'client_id = "00000000-0000-0000-0000-000000000001"',
-        1,
+    text = path.read_text(encoding="utf-8")  # the template has no [graph] since KISS K15: append one
+    text += (
+        '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\ntenant = "contoso.onmicrosoft.com"\n'
     )
     path.write_text(text, encoding="utf-8")
     return str(path)
@@ -933,6 +930,37 @@ def test_discover_prints_the_snippet_and_fails_when_incomplete(
     assert cli.main(["graph", "discover", "--toml", "--url", url, "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert out.startswith("# agentsync discover") and seen == ["all", url]
+
+
+def test_graph_company_is_ignored_and_status_names_its_line(
+    initialised: Config,
+    fake_auth: type[FakeAuth],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """KISS K15: an old config's ``[graph] company`` still loads, never reaches the User-Agent, and status
+    prints one WARN naming the line to delete."""
+    cfg = _graph_config(initialised)
+    path = Path(cfg)
+    path.write_text(path.read_text(encoding="utf-8") + 'company = "Acme Corp"\n', encoding="utf-8")
+    line = path.read_text(encoding="utf-8").splitlines().index('company = "Acme Corp"') + 1
+    agents: list[str] = []
+
+    def fake_discover(client: Any, *, known: Any = ()) -> discover.DiscoveryReport:
+        agents.append(client._http.headers["User-Agent"])
+        return discover.DiscoveryReport(())
+
+    monkeypatch.setattr(discover, "discover_sources", fake_discover)
+    cli.main(["discover", "--config", cfg])
+    assert agents == [f"NONISV|agentsync|agentsync/{__version__}"]
+    capsys.readouterr()
+    cli.main(["status", "--config", cfg])
+    warns = [ln for ln in capsys.readouterr().out.splitlines() if "config.graph_company" in ln]
+    assert len(warns) == 1 and warns[0].startswith("[warn]")
+    assert f"(fix: delete line {line} of {path})" in warns[0]
+    path.write_text(path.read_text(encoding="utf-8").replace('company = "Acme Corp"\n', ""), encoding="utf-8")
+    cli.main(["status", "--config", cfg])
+    assert "config.graph_company" not in capsys.readouterr().out
 
 
 def _synced(initialised: Config) -> str:
@@ -1164,7 +1192,8 @@ def test_doctor_reports_network_broker_governance_and_policy(
     capsys.readouterr()
     text = initialised.config_path.read_text(encoding="utf-8")
     initialised.config_path.write_text(
-        text.replace("[graph]", '[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"', 1)
+        text
+        + '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\n'
         + '\n[[source]]\nid = "mail"\nkind = "graph_mail"\nfolder = "inbox"\n',
         encoding="utf-8",
     )
@@ -1486,7 +1515,7 @@ def test_add_source_appends_a_live_local_source_and_is_idempotent(
     assert "added source 'fy26-projects'" in out and '[[source]]\nid = "fy26-projects"\nkind = "local"' in out
     after = initialised.config_path.read_text(encoding="utf-8")
     assert after.startswith(before)  # every existing byte, comments included, is kept
-    assert "# ---- sources ----" in after and "# A manual drag-and-drop inbox:" in after
+    assert "# [governance]" in after and "# sentinel = " in after  # the template's and the table's comments
     config = load_config(initialised.config_path)
     added = config.source("fy26-projects")
     assert added.kind is SourceKind.LOCAL and added.is_live and added.path == folder.resolve()

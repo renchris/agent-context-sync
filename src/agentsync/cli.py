@@ -1558,7 +1558,7 @@ def _discover(config: Config, auth: TokenProvider, *, urls: Sequence[str], toml_
     with GraphClient(
         auth,
         base_url=config.graph.base_url,
-        user_agent=user_agent(config.graph.company, __version__),
+        user_agent=user_agent("agentsync", __version__),  # [graph] company is ignored (KISS K15)
         proxy=net.resolve_proxy(config.network.proxy),
     ) as client:
         if urls:

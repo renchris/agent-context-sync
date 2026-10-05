@@ -299,7 +299,6 @@ def _with_graph_attrs(cfg: Config, **extra: Any) -> Any:
         client_id=g.client_id,
         tenant=extra.pop("tenant", g.tenant),
         scopes=g.scopes,
-        company=g.company,
         base_url=extra.pop("base_url", g.base_url),
         **{k: v for k, v in extra.items() if k != "network"},
     )
