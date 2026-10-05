@@ -417,6 +417,11 @@ class CycleReport:
     broke_stale_lock: bool = False
     auth_required: bool = False
     exit_code: int = 0
+    # KISS K06, the automatic checkpoint: "advanced" | "held" | "failed"; None without session pages
+    checkpoint: str | None = None
+    checkpoint_detail: str = ""  # advanced: the curated sha; failed: why (the cycle itself still landed)
+    checkpoint_blockers: tuple[LintFinding, ...] = ()  # held: what holds it (curate.checkpoint_blockers)
+    snapshot_tag: str | None = None  # [governance] archive: the snapshot/<UTC> tag cut at the new commit
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

@@ -56,7 +56,6 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "lint": [],
         "refresh-queue": [],
         "curate-queue": [],
-        "checkpoint": [],
         "materialise": ["--budget"],
         "adopt": [],
         "migrate": [],
@@ -77,6 +76,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
     },
     "hidden": {
         "install-skill": [],
+        "checkpoint": [],
     },
 }
 """The pinned CLI surface: subcommand -> its visible options (the common --config/-v and -h excluded).

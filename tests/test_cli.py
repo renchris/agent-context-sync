@@ -9,16 +9,16 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
 
-from agentsync import cli, governance, lints, net, policy
+from agentsync import cli, gitops, governance, lints, net, policy
 from agentsync.config import Config, load_config
 from agentsync.cycle import run_cycle
-from agentsync.errors import AuthError, LockHeldError
+from agentsync.errors import AuthError, GitError, LockHeldError
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
 from agentsync.graph.auth import AuthStatus
@@ -198,43 +198,98 @@ def test_curate_queue_lists_stale_then_uncovered(
     assert "STALE\ttopics/a.md" in out and "UNCOVERED\tmirror/source/projects/sample.txt.md" not in out
 
 
-def test_checkpoint_scopes_the_next_curate_queue_to_changes_since_the_session(
+def _topic(
+    config: Config, rel: str, mirror: str = "mirror/source/projects/sample.txt.md", pin: str | None = None
+) -> None:
+    """Write a lint-clean topic page citing ``mirror`` at its current rendered_sha256, or at ``pin``."""
+    if pin is None:
+        text = (config.docs_repo / mirror).read_text(encoding="utf-8")
+        found = re.search(r"\nrendered_sha256: ([0-9a-f]{64})\n", text)
+        assert found is not None
+        pin = found.group(1)
+    page = config.docs_repo / rel
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(
+        f"---\nentity: acme\npurpose: Terms; not pricing.\nsources:\n  - path: {mirror}\n"
+        f"    at_rendered_sha256: {pin}\n    role: primary\n---\n# A\n\nclaim.\n",
+        encoding="utf-8",
+    )
+
+
+def _curated(repo: Path) -> str | None:
+    out = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--verify", "-q", "curated^{commit}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return out.stdout.strip() or None
+
+
+def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """KISS K06: no manual checkpoint.  A sync that commits session topic pages with no checkpoint blocker
+    moves ``curated`` to the pre-run HEAD, so what that same sync brought in is still listed ADDED."""
     cfg = str(initialised.config_path)
     repo = initialised.docs_repo
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_FAILED  # no commit yet
-    cli.main(["sync", "--config", cfg])
-    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "checkpoint" not in capsys.readouterr().out
+    assert _curated(repo) is None  # the first-ever sync creates no tag
     cli.main(["curate-queue", "--config", cfg])
     assert "no build-session checkpoint yet" in capsys.readouterr().out
-    (repo / "topics" / "a.md").write_text("---\nentity: acme\nsources: []\n---\n# A\n", encoding="utf-8")
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_FAILED  # uncommitted page
-    assert "uncommitted" in capsys.readouterr().err
-    cli.main(["sync", "--config", cfg])
-    capsys.readouterr()
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
-    out = capsys.readouterr().out
-    assert "the first checkpoint" in out and "still in the curate queue" in out
-    head = git(repo, "rev-parse", "HEAD").strip()
-    assert git(repo, "rev-parse", "curated^{commit}").strip() == head
-    assert git(repo, "cat-file", "-t", "curated").strip() == "tag"  # annotated: dated when the session ended
+    first = git(repo, "rev-parse", "HEAD").strip()
 
-    source = local_source_dir
-    (source / "projects" / "new.txt").write_text("new\n", encoding="utf-8")
-    (source / "projects" / "sample.txt").write_text("edited\n", encoding="utf-8")
-    cli.main(["sync", "--config", cfg])
-    capsys.readouterr()
+    _topic(initialised, "topics/a.md")
+    (local_source_dir / "projects" / "new.txt").write_text("new\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert f"checkpoint advanced: curated at {first[:12]}" in capsys.readouterr().out
+    assert _curated(repo) == first  # the pre-run HEAD, not the new commit
+    assert git(repo, "cat-file", "-t", "curated").strip() == "tag"  # annotated: dated when the session ended
+    assert git(repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
     cli.main(["curate-queue", "--config", cfg])
     out = capsys.readouterr().out
     assert "ADDED\tmirror/source/projects/new.txt.md" in out
-    assert "CHANGED\tmirror/source/projects/sample.txt.md" in out
-    assert "since the last build session (" in out and head[:12] in out
-    assert out.rstrip().endswith("uncovered mirror page(s)")
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
-    assert f"previous {head[:12]}" in capsys.readouterr().out
+    assert "since the last build session (" in out and first[:12] in out
+
+    (local_source_dir / "projects" / "sample.txt").write_text("edited\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # only a STALE banner lands on topics/a.md
+    assert "checkpoint" not in capsys.readouterr().out
+    assert "STALE" in (repo / "topics" / "a.md").read_text(encoding="utf-8")
+    assert _curated(repo) == first
+
+    _topic(initialised, "topics/c.md", "mirror/source/projects/new.txt.md", pin="ab" * 32)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # a held checkpoint never fails the sync
+    out = capsys.readouterr().out
+    assert "checkpoint held: 2 curation error(s)" in out
+    assert "ERROR STALE topics/a.md" in out and "ERROR STALE topics/c.md" in out
+    assert _curated(repo) == first
+
+    held_head = git(repo, "rev-parse", "HEAD").strip()
+    _topic(initialised, "topics/a.md")
+    _topic(initialised, "topics/c.md", "mirror/source/projects/new.txt.md")
+    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK  # the hidden alias runs sync
+    assert f"checkpoint advanced: curated at {held_head[:12]}" in capsys.readouterr().out
+    assert _curated(repo) == held_head
     cli.main(["curate-queue", "--config", cfg])
     assert "0 added, 0 changed, 0 removed" in capsys.readouterr().out
+
+
+def test_a_checkpoint_tagging_failure_never_fails_the_landed_sync(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    _topic(initialised, "topics/a.md")
+
+    def boom(repo: Path, sha: str) -> None:
+        raise GitError(["tag"], 128, "fatal: cannot lock ref")
+
+    monkeypatch.setattr(gitops, "tag_curated", boom)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "checkpoint not recorded (the sync itself landed): " in capsys.readouterr().out
+    assert git(initialised.docs_repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
+    assert _curated(initialised.docs_repo) is None
 
 
 def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -687,20 +742,24 @@ def test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """[governance] archive: a deleted page stays searchable in archive/, each checkpoint leaves a permanent
-    snapshot tag, compaction is off, and a manual purge still erases the archive copy from all history."""
+    """[governance] archive: a deleted page stays searchable in archive/, each sync that advances the
+    checkpoint leaves a permanent snapshot tag on its new commit, compaction is off, and a manual purge still
+    erases the archive copy from all history."""
     cfg = _archive_on(initialised)
     repo = initialised.docs_repo
     page, kept = "mirror/source/projects/sample.txt.md", "archive/source/projects/sample.txt.md"
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     live_body = (repo / page).read_text(encoding="utf-8").split("\n---\n", 1)[1]
     capsys.readouterr()
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    _topic(initialised, "topics/a.md", "mirror/source/projects/sample.csv.md")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     found = re.search(r"snapshot (snapshot/\d{4}-\d{2}-\d{2}T\d{6}Z): ", capsys.readouterr().out)
     assert found is not None
     first = found.group(1)
     assert git(repo, "cat-file", "-t", first).strip() == "tag"
     before = git(repo, "rev-parse", f"{first}^{{commit}}").strip()
+    assert before == git(repo, "rev-parse", "HEAD").strip()  # the new commit: it holds the session's page
+    git(repo, "cat-file", "-e", f"{first}:topics/a.md")
 
     (local_source_dir / "projects" / "sample.txt").unlink()
     for _ in range(2):  # a local file must be absent from two complete passes
@@ -720,13 +779,9 @@ def test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint(
     assert cli.main(["compact-history", "--keep-days", "0", "--config", cfg]) == cli.EXIT_FAILED
     assert "archive on: history is kept" in capsys.readouterr().err
 
-    class Later(datetime):
-        @classmethod
-        def now(cls, tz: tzinfo | None = None) -> Later:
-            return cls(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
-
-    monkeypatch.setattr(cli, "datetime", Later)
-    assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK
+    monkeypatch.setattr("agentsync.cycle._Cycle.now", lambda self: datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC))
+    _topic(initialised, "topics/b.md", "mirror/source/projects/sample.csv.md")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert "snapshot snapshot/2030-01-02T030405Z: " in capsys.readouterr().out
     assert git(repo, "rev-parse", f"{first}^{{commit}}").strip() == before  # never moved
 

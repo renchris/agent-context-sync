@@ -369,6 +369,12 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
     `gitops.commit_cycle(repo, commit_subject(changes, sources))` → sha; `manifest.set_tree_sha(head_tree_sha)`;
     `tag_published(sha)`. No changes ⇒ no snapshot, no commit.
 12. **Only now** `promote_cursors(run_id)`; `set_last_success`; `write_heartbeat` per source; `finish_run`.
+    **Amended (2026-10-04, KISS K06):** right after `promote_cursors` (and before RECONCILE retention, whose
+    rewrite remaps every annotated tag) the cycle runs the automatic checkpoint in its own try/except: when the
+    topic pages that were dirty before step 8 (so not this run's banner rewrites; `CLAUDE.md`/`INDEX.md` never
+    count) are non-empty, the pre-run HEAD exists and `curate.checkpoint_blockers(repo)` is empty, it moves
+    `curated` to the pre-run HEAD and, with `[governance] archive`, cuts `snapshot/<UTC now()>` at the new
+    HEAD. A blocker or a tagging error never changes the run status (§16.17 amendment).
 13. `Publisher.write_state(report, statuses)` (gitignored STATE.md, every cycle, including failures); release lock.
 
 `AuthRequiredError` anywhere in a Graph source: no cursor of that source advances, `set_auth_state(
@@ -835,6 +841,10 @@ class CycleReport:
     broke_stale_lock: bool = False
     auth_required: bool = False
     exit_code: int = 0
+    checkpoint: str | None = None  # KISS K06: "advanced" | "held" | "failed"; None without session pages
+    checkpoint_detail: str = ""  # advanced: the curated sha; failed: why
+    checkpoint_blockers: tuple[LintFinding, ...] = ()  # held: curate.checkpoint_blockers
+    snapshot_tag: str | None = None  # [governance] archive: the tag cut at the new commit
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -5024,13 +5034,26 @@ then. The LaunchAgents stay available behind `--confirm-install-agent`.
 
 | Command | Calls | Exit |
 |---|---|---|
-| `checkpoint` | refuses an unborn HEAD and any `gitops.has_changes` (uncommitted pages: run `sync --once` first); else `gitops.tag_curated(HEAD)`, then prints the previous checkpoint and how many curate-queue items remain | 0 tagged · 1 no commit yet or uncommitted pages |
+| `checkpoint` | **Superseded by the K06 amendment below: a hidden alias that runs `sync`.** Was: refuses an unborn HEAD and any `gitops.has_changes` (uncommitted pages: run `sync --once` first); else `gitops.tag_curated(HEAD)`, then prints the previous checkpoint and how many curate-queue items remain | 0 tagged · 1 no commit yet or uncommitted pages |
 | `curate-queue` (extended) | first `gitops.curated_checkpoint`; if present, `gitops.changes_since(sha)` printed as `ADDED`/`CHANGED`/`REMOVED\t<mirror path>` lines and one `since the last build session (<date>, <sha12>)` count line; if absent, one `no build-session checkpoint yet` line. Then the 16.16 output, unchanged | unchanged: the checkpoint diff never sets the exit code |
 
 The checkpoint is the annotated tag `curated` in the docs repo, so its tagger date is when the session ended,
 not when the tagged commit was made. It is local: `push_if_allowed` pushes only `published`. The checkpoint diff
 answers "what is new since I last worked"; the refresh queue and uncovered list remain the authoritative backlog,
 so a session that stops halfway loses nothing by checkpointing.
+
+**Amended (2026-10-04, KISS K06):** the checkpoint is automatic and a session ends with `sync`. Every non-dry-run
+cycle that commits runs it (§9 step 12 amendment): with session topic pages (dirty before the curation step, so
+banner rewrites and the `topics/CLAUDE.md`/`INDEX.md` seeds never count), a pre-run HEAD (the first-ever sync
+tags nothing) and an empty `curate.checkpoint_blockers`, `tag_curated(pre-run HEAD)`; what the same sync brought
+into `mirror/` is therefore still listed by the next `curate-queue`. `sync` prints `checkpoint advanced: curated
+at <sha12>; …`, or `checkpoint held: N curation error(s); fix them, then sync again` followed by one
+`ERROR <code> <path>: <message>` line per blocker, or `checkpoint not recorded (the sync itself landed): <why>`;
+none of them changes the exit code. A page the session wrote that the same run then marks STALE stays a session
+page, so a wrong pin holds the checkpoint and is named. `checkpoint` is a hidden alias that runs `sync` (no
+options). Tests: `test_cli.py::test_sync_records_the_checkpoint_once_the_session_pages_are_clean`,
+`::test_a_checkpoint_tagging_failure_never_fails_the_landed_sync`,
+`test_governance.py::test_compaction_keeps_curated_on_the_equivalent_rewritten_commit`.
 
 ```python
 # agentsync.gitops
@@ -5069,7 +5092,7 @@ path (`render_tombstone(..., archived=True)`; the repair path re-renders it when
 |---|---|
 | `gitops.GENERATED_PATHSPECS` | gains `archive` (pipeline-owned), therefore `COMMIT_PATHSPECS` too |
 | `lints.lint_mirror_frontmatter` | also walks `archive/`: a page there must parse, carry `status: archived`, sit under `archive/<source_id>/` and match its `rendered_sha256`; any of those failing, or a non-page file, is a blocking `FRONTMATTER` finding. `status: archived` under `mirror/` is one too. The land gate lints dirty `archive/` paths, `lint_paths` and `lint_no_tokens` cover them |
-| `checkpoint` | with `archive = true`, after `tag_curated`, `gitops.tag_snapshot(HEAD, now)` and one `snapshot snapshot/<date>: …` line |
+| `checkpoint` | with `archive = true`, after `tag_curated`, `gitops.tag_snapshot(HEAD, now)` and one `snapshot snapshot/<date>: …` line. **Amended (2026-10-04, KISS K06):** the cycle's automatic checkpoint cuts it, at the new commit (it holds the session's pages) with the cycle's `now()`; a tagging error there is a logged warning |
 | `curate-queue` | a page that became a tombstone since the checkpoint reads `REMOVED`; a `REMOVED` page with an archive copy prints `REMOVED\t<mirror path>\tarchive/<path>` |
 | `compact-history` | `compact_history` raises `GovernanceError` (`history compaction refused: archive on: history is kept …`): exit 1 |
 | STATE.md | the cycle skips `_retention`; `## Retention` carries one line `- archive on: history is kept`; `compaction_state` returns `("ok", ARCHIVE_KEEPS_HISTORY)` |

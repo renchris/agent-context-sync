@@ -270,11 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
         "UNCOVERED mirror pages no curated page cites (rc 1 when any refresh or uncovered row)",
         _cmd_curate_queue,
     )
-    add(
-        "checkpoint",
-        "end a build session: tag the committed docs repo so the next curate-queue lists changes since here",
-        _cmd_checkpoint,
-    )
+    add("checkpoint", "run sync (every sync records the checkpoint itself)", _cmd_checkpoint, hidden=True)
     add(
         "install-skill",
         "write the Claude Code skill now (every sync already writes it)",
@@ -451,9 +447,31 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         _out("  note: a stale lock from a dead run was broken; every source ran a full pass")
     if report.auth_required:
         _out("  sign-in required: run `agentsync graph login` (errors above name any IT action)")
+    _print_checkpoint(report)
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     _out(f"converted {converted}, deferred {online} online-only")
+
+
+def _print_checkpoint(report: CycleReport) -> None:
+    """KISS K06: one line on the automatic checkpoint when this run had session topic pages (nothing
+    when not); a held checkpoint names every error that holds it."""
+    if report.checkpoint == "advanced":
+        _out(
+            f"checkpoint advanced: curated at {report.checkpoint_detail[:12]}; the next curate-queue lists "
+            "mirror changes since here"
+        )
+        if report.snapshot_tag is not None:
+            tag = report.snapshot_tag
+            _out(f"  snapshot {tag}: a permanent tag; read a past page with git show {tag}:<path>")
+    elif report.checkpoint == "held":
+        _out(
+            f"checkpoint held: {len(report.checkpoint_blockers)} curation error(s); fix them, then sync again"
+        )
+        for f in report.checkpoint_blockers:
+            _out(f"  ERROR {f.code} {f.path}: {f.message}")
+    elif report.checkpoint == "failed":
+        _out(f"checkpoint not recorded (the sync itself landed): {report.checkpoint_detail}")
 
 
 def _run(config: Config, **kwargs: object) -> int:
@@ -1099,7 +1117,8 @@ def _print_changes_since_checkpoint(repo: Path) -> None:
     checkpoint = gitops.curated_checkpoint(repo) if gitops.head_sha(repo) else None
     if checkpoint is None:
         _out(
-            "no build-session checkpoint yet: every mirror page is new (agentsync checkpoint ends a session)"
+            "no build-session checkpoint yet: every mirror page is new (a sync records one once a session's "
+            "topic pages are lint-clean)"
         )
         return
     sha, date = checkpoint
@@ -1138,31 +1157,8 @@ def _cmd_curate_queue(args: argparse.Namespace) -> int:
 
 
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
-    config = _config(args)
-    repo, layout = config.docs_repo, config.layout
-    head = gitops.head_sha(repo)
-    if head is None:
-        _err("checkpoint: the docs repo has no commit yet (run agentsync sync --once first)")
-        return EXIT_FAILED
-    if gitops.has_changes(repo):
-        _err("checkpoint: the docs repo has uncommitted pages; run agentsync sync --once, then checkpoint")
-        return EXIT_FAILED
-    previous = gitops.curated_checkpoint(repo)
-    gitops.tag_curated(repo, head)
-    snapshot = (
-        gitops.tag_snapshot(repo, head, datetime.now(UTC))
-        if governance.load_governance(config.config_path).archive
-        else None
-    )
-    _rc, verdicts = curate.refresh_queue(layout)
-    rows, _entities, _findings = curate.generate_depends(layout)
-    left = len(verdicts) + len(curate.uncovered_mirror_pages(layout, rows))
-    since = f"previous {previous[0][:12]} ({previous[1]})" if previous else "the first checkpoint"
-    _out(f"checkpoint {head[:12]}: the next curate-queue lists changes since here; {since}")
-    if snapshot is not None:
-        _out(f"snapshot {snapshot}: a permanent tag; read a past page with git show {snapshot}:<path>")
-    _out(f"{left} item(s) still in the curate queue")
-    return EXIT_OK
+    """Hidden alias (KISS K06): run an interactive sync, which records the checkpoint itself."""
+    return _run(_config(args), mode=None)
 
 
 def _cmd_install_skill(args: argparse.Namespace) -> int:

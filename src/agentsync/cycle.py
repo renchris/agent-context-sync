@@ -121,6 +121,7 @@ _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
 _RESCREEN_META = "policy_rescreen_pending"
+_SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
 
 
 class RecoveryAction(enum.StrEnum):
@@ -666,6 +667,11 @@ class _Cycle:
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
         self.retention_lines: list[str] = []  # STATE.md "## Retention" (compaction ran / held / failed)
+        # KISS K06: the automatic checkpoint's outcome (CycleReport.checkpoint and its companions)
+        self.checkpoint: str | None = None
+        self.checkpoint_detail = ""
+        self.checkpoint_blockers: tuple[LintFinding, ...] = ()
+        self.snapshot_tag: str | None = None
 
     # ---- time ---------------------------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -711,6 +717,7 @@ class _Cycle:
             self._quarantine_secrets()
             self._flush_changes(rewrite=True)
             self.lock.beat("curate")
+            pre_head, session_pages = self._session_topic_pages()  # before this run's banner rewrites
             self._curate()
             self.lock.beat("surface")
             statuses = self._statuses(self.config.sources)
@@ -743,6 +750,7 @@ class _Cycle:
                 self.manifest.clear_run_changes(self.run_id)
                 self.manifest.promote_cursors(self.run_id, _iso(self.now()))
                 self._drop_stale_backups()
+                self._checkpoint(pre_head, session_pages)  # before compaction, which remaps its tags
                 if self.mode is CycleMode.RECONCILE:
                     removed = self.cache.gc(self.manifest.live_action_keys())
                     if removed:
@@ -762,6 +770,52 @@ class _Cycle:
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
         return report
+
+    def _session_topic_pages(self) -> tuple[str | None, set[str]]:
+        """KISS K06: the pre-run HEAD and the topic pages a session left dirty (uncommitted or untracked),
+        taken before this run's curation step so its STALE/RETIRED banner rewrites are not in it; the
+        scaffold's seeds (CLAUDE.md, INDEX.md) never are.  ``(None, set())`` before the first commit or on a
+        git error: no checkpoint this run."""
+        head = gitops.head_sha(self.repo)
+        if head is None:
+            return None, set()
+        try:
+            dirty = gitops.paths_changed_since(self.repo, head, ("topics",))
+        except AgentSyncError as exc:
+            log.warning("checkpoint: cannot list the session's topic pages: %s", exc)
+            return None, set()
+        pages = {p for p in dirty if p.endswith(".md") and p.rsplit("/", 1)[-1] not in _SEED_PAGE_NAMES}
+        return head, pages
+
+    def _checkpoint(self, pre_head: str | None, session_pages: set[str]) -> None:
+        """KISS K06, the automatic checkpoint, after this cycle's commit landed: when the session wrote topic
+        pages and ``curate.checkpoint_blockers`` is empty, move ``curated`` to the pre-run HEAD (the mirror
+        state the session curated against; what this run brought in stays in the next curate-queue) and, with
+        ``[governance] archive``, cut a snapshot tag at the new commit (it holds the session's pages).  Its
+        own try/except: a tagging failure is a warning and never fails the landed cycle."""
+        if pre_head is None or not session_pages:
+            return
+        try:
+            blockers = curate.checkpoint_blockers(self.repo)
+            if blockers:
+                self.checkpoint, self.checkpoint_blockers = "held", tuple(blockers)
+                log.warning("checkpoint held: %d curation error(s)", len(blockers))
+                return
+            gitops.tag_curated(self.repo, pre_head)
+        except Exception as exc:  # the commit already landed: the checkpoint is only a warning
+            log.warning("checkpoint not recorded: %s", exc)
+            self.checkpoint, self.checkpoint_detail = "failed", _one_line(str(exc) or repr(exc))
+            return
+        self.checkpoint, self.checkpoint_detail = "advanced", pre_head
+        log.info("checkpoint advanced: curated at %s", pre_head[:12])
+        if not self.gov.archive:
+            return
+        try:
+            head = gitops.head_sha(self.repo)
+            if head is not None:
+                self.snapshot_tag = gitops.tag_snapshot(self.repo, head, self.now())
+        except Exception as exc:  # e.g. a second snapshot in the same second; the checkpoint itself moved
+            log.warning("archive snapshot tag not cut: %s", exc)
 
     def _drop_stale_backups(self) -> None:
         """Delete the pre-migration manifest copies that existed before this cycle: it committed on the
@@ -951,6 +1005,10 @@ class _Cycle:
             broke_stale_lock=self.broke_stale,
             auth_required=auth_required,
             exit_code=exit_code,
+            checkpoint=self.checkpoint,
+            checkpoint_detail=self.checkpoint_detail,
+            checkpoint_blockers=self.checkpoint_blockers,
+            snapshot_tag=self.snapshot_tag,
         )
 
     def _after(self, report: CycleReport, status: str, *, ok_cycle: bool) -> None:

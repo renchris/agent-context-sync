@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from agentsync import gitops
 from agentsync import governance as gv
 from agentsync.config import Config
 from agentsync.errors import ConfigError
@@ -632,6 +633,24 @@ def test_compact_history_squashes_old_commits_and_prunes(
     assert git(repo, "reflog", "--all").strip() == ""
     assert not gv.compaction_due(repo, gv.GovernanceConfig(), now=NOW)
     assert gv.read_audit(tmp_state_dir)[-1]["action"] == "compact"
+
+
+def test_compaction_keeps_curated_on_the_equivalent_rewritten_commit(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """KISS K06: a sync's RECONCILE may compact right after the automatic checkpoint moved ``curated``; the
+    annotated tag must follow its commit through the rewrite."""
+    repo = tmp_docs_repo
+    shas = _dated_repo(repo)
+    gitops.tag_curated(repo, shas[10])
+    tree = git(repo, "rev-parse", f"{shas[10]}^{{tree}}").strip()
+    rep = gv.compact_history(make_config(tmp_path, repo, tmp_state_dir), now=NOW)
+    assert rep.verified and rep.squashed == 3
+    curated = gitops.curated_checkpoint(repo)
+    assert curated is not None and curated[0] != shas[10]
+    assert git(repo, "rev-parse", f"{curated[0]}^{{tree}}").strip() == tree
+    assert git(repo, "cat-file", "-t", gitops.CURATED_TAG).strip() == "tag"
+    git(repo, "merge-base", "--is-ancestor", curated[0], "HEAD")
 
 
 def test_compaction_is_a_noop_when_history_is_recent(
