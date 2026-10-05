@@ -180,3 +180,9 @@ To compute the outcome and close the version gap, the operator should copy back 
 - `~/agent-context/setup-report.md`, or at least `~/agent-context/setup/install.log` and `friction.md`;
 - `git -C ~/src/agent-context-sync rev-parse HEAD`;
 - `agentsync-fix-request.md`, to map F1–F5, F7 and F10–F12.
+- What the field run's two queued purges erased (N1; they rewrote 14 mirror commits). Copy back
+  `~/Library/Application Support/agentsync/governance/audit.jsonl`: its `purge-enqueued` lines give each purge's
+  `reason` (from a sync: `upstream-deleted` or `label-escalation`) and `source_id`, and its `purge` lines a
+  `path_sha256` per removed file (no names are stored; hash candidate source-relative paths to match them).
+  Then say whether an export was renamed or moved before that run, which counts as an upstream delete
+  (`cycle.py:1595-1603`, `purge_on_upstream_delete`), and whether the originals still exist upstream.

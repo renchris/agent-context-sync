@@ -175,6 +175,10 @@ freeze pins must not change in this wave.
 Operator decisions from the report (filed, not decided here): D1 retention of chat-derived history (`archive = true`
 for a chat inbox vs company retention), D2/D3 shipping no-IT exporters or reading the Teams cache.
 
+Operator ask still open (N1, possible data loss): what the field run's two queued purges erased. The code fix is
+landed, the question is not; the doc's "Still wanted from the operator" list says what to copy back (the
+governance `audit.jsonl`) and what to answer (a renamed or moved export before that run).
+
 ## W5 Install output, setup prompt v7, setup report
 
 Status: upcoming.
