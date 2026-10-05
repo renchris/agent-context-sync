@@ -220,7 +220,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _config(home: Path) -> Path:
     folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     config = home / "agent-context" / "sources.toml"
-    assert cli.main(["init", "--config", str(config), "--source-local", str(folder)]) == 0
+    assert cli.main(["add-source", str(folder), "--config", str(config)]) == 0
     return config
 
 

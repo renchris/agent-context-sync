@@ -229,7 +229,8 @@ def _tree(root: Path) -> list[str]:
     return sorted(str(p) for p in root.rglob("*"))
 
 
-def test_install_dry_run_passes_source_local_to_init(tmp_path: Path) -> None:
+def test_install_dry_run_passes_source_local_to_add_source(tmp_path: Path) -> None:
+    """KISS K14: add-source creates a missing config, so a fresh install runs it once per folder, no init."""
     one = tmp_path / "OneDrive-Contoso" / "FY26 Projects"
     two = tmp_path / "notes"
     one.mkdir(parents=True)
@@ -239,12 +240,13 @@ def test_install_dry_run_passes_source_local_to_init(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     out = proc.stdout
     assert f"source-local: {one}\n" in out and f"source-local: {two}\n" in out  # ~/ is expanded
-    [init] = [ln for ln in out.splitlines() if ln.startswith("[dry-run]") and " init " in ln]
+    runs = [ln for ln in out.splitlines() if ln.startswith("[dry-run]")]
     config = tmp_path / "agent-context" / "sources.toml"
-    assert init.endswith(
-        f" init --config {config} --source-local {str(one).replace(' ', chr(92) + ' ')} --source-local {two}"
-    )
-    assert "add-source" not in out
+    added = [ln for ln in runs if " add-source " in ln]
+    assert len(added) == 2, runs
+    assert added[0].endswith(f" add-source {str(one).replace(' ', chr(92) + ' ')} --config {config}")
+    assert added[1].endswith(f" add-source {two} --config {config}")
+    assert not any(" init " in ln for ln in runs)
     assert out.rstrip().splitlines()[-1] == "NEXT: re-run without --dry-run to apply the steps above"
     assert _tree(tmp_path) == before  # a dry run changes nothing
 

@@ -1,12 +1,12 @@
 """``agentsync`` command line (owner: integrator).
 
-Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...]
-[--materialise-budget BYTES] · accept-deletions SOURCE · status · curate · materialise [--budget BYTES]
-[PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level login · logout ·
-whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent [--interval
-SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history · hold ·
-offboard [--purge-data] [--confirm DOCS_REPO] · add-source PATH [--id ID] · setup-report [--out PATH]
-[--friction PATH] [--no-redact] · it-request --out PATH.
+Subcommands: add-source PATH · init (hidden) · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run]
+[--source ID ...] [--materialise-budget BYTES] · accept-deletions SOURCE · status · curate · materialise
+[--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level
+login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent
+[--interval SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history ·
+hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report [--out PATH] [--friction PATH]
+[--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
 ``sync`` without ``--mode`` ends with the loop's ``NEXT:`` line and any ``WAITING ON YOU:`` lines
 (:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
@@ -30,7 +30,6 @@ if _ssl.SSLContext is not _truststore.SSLContext:  # same effect as agentsync.ne
 
 import argparse
 import dataclasses
-import json
 import logging
 import os
 import re
@@ -55,7 +54,6 @@ from agentsync import (
 )
 from agentsync import policy as content_policy
 from agentsync.config import (
-    SOURCE_ID_RE,
     Config,
     append_to_config,
     canonical_source_root,
@@ -190,32 +188,21 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(handler=handler)
         return p
 
-    p = add(
-        "init", "write sources.toml, create the docs repo (no remote), its scaffold and the inbox", _cmd_init
+    add(
+        "init",
+        "create whatever is missing of sources.toml, the docs repo (no remote), its scaffold, the inbox and "
+        "the state dir (idempotent; add-source does the same and adds a folder)",
+        _cmd_init,
+        hidden=True,
     )
-    p.add_argument(
-        "--docs-repo", type=Path, metavar="PATH", help="docs git repo (default ~/agent-context/docs)"
-    )
-    p.add_argument(
-        "--source-local",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="add a live local source for this folder (repeatable)",
-    )
-    p.add_argument("--force", action="store_true", help="overwrite an existing sources.toml")
 
     p = add(
         "add-source",
-        "append a live local source for a folder (and the inbox, when missing) to an existing sources.toml "
-        "(idempotent)",
+        "sync a folder: append a live local source for it, creating whatever is missing of sources.toml, the "
+        "docs repo (no remote), its scaffold, the inbox and the state dir (idempotent)",
         _cmd_add_source,
     )
     p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
-    p.add_argument(
-        "--id", metavar="ID", help="source id (default: derived from the folder name, made unique)"
-    )
 
     p = add("sync", "run one sync cycle (what the launchd agents run)", _cmd_sync)
     p.add_argument("--once", action="store_true", help="run exactly one cycle (the default; for scripts)")
@@ -414,16 +401,6 @@ def _config(args: argparse.Namespace) -> Config:
     return load_config(path)
 
 
-def _source_id_for(path: Path, taken: set[str]) -> str:
-    candidate = derive_source_id(path, taken)
-    taken.add(candidate)
-    return candidate
-
-
-def _toml_str(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
 _OVER_BUDGET = "exceeds the per-cycle budget ("
 
 
@@ -536,35 +513,18 @@ def _refuse_remotes(config: Config, gov: governance.GovernanceConfig) -> list[st
 # ---------------------------------------------------------------------------------------------------------
 
 
-def _cmd_init(args: argparse.Namespace) -> int:
-    cfg_path = expand(args.config or default_config_path())
-    if cfg_path.exists() and not args.force:
-        if args.source_local or args.docs_repo:
-            _err(f"{cfg_path} exists: edit it, or pass --force to overwrite it")
-            return EXIT_USAGE
-        _out(f"using existing {cfg_path}")
-        config = load_config(cfg_path)
-    else:
-        text = default_config_text()
-        if args.docs_repo is not None:
-            line = 'docs_repo = "~/agent-context/docs"'
-            if line not in text:
-                raise ConfigError("sources.toml template has no docs_repo line to replace")
-            text = text.replace(line, f"docs_repo = {_toml_str(str(expand(args.docs_repo)))}", 1)
-        taken: set[str] = set()
-        blocks = []
-        for raw in args.source_local:
-            path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected
-            if not path.is_dir():
-                _err(f"--source-local {raw}: not a directory")
-                return EXIT_USAGE
-            blocks.append(local_source_table(_source_id_for(path, taken), path))
-        text = text.rstrip("\n") + "\n" + "".join(blocks)
-        config = parse_config(text, config_path=cfg_path)  # validate before writing anything
-        cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        cfg_path.write_text(text, encoding="utf-8")
-        cfg_path.chmod(0o600)
-        _out(f"wrote {cfg_path}")
+def _write_config(cfg_path: Path, text: str) -> None:
+    """Write a new sources.toml (0600), its folder included."""
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(text, encoding="utf-8")
+    cfg_path.chmod(0o600)
+    _out(f"wrote {cfg_path}")
+
+
+def _ensure_setup(config: Config) -> int:
+    """Create whatever is missing for ``config`` (KISS K14, shared by init and add-source): the inbox, the
+    docs repo (no remote) and its scaffold, the state dir, owner-only modes, the Time Machine exclusions.
+    Exit 1 when the docs repo has a remote [governance] does not allow (C15 req 36), else 0."""
     config = _ensure_inbox(config)
     gov = governance.load_governance(config.config_path)
     created = gitops.ensure_repo(config.docs_repo)
@@ -585,8 +545,22 @@ def _cmd_init(args: argparse.Namespace) -> int:
         _err(f"governance: {f}")
     for line in governance.ensure_time_machine_exclusions(config):
         _out(f"time machine: {line}")
-    _out(f"sources: {', '.join(s.id for s in config.sources) or 'none yet (edit sources.toml)'}")
+    ids = ", ".join(s.id for s in config.sources)
+    _out(f"sources: {ids or 'none yet (run agentsync add-source <folder>)'}")
     return EXIT_FAILED if findings else EXIT_OK
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Hidden since KISS K14 (add-source does the same and adds a folder): idempotent, no options."""
+    cfg_path = expand(args.config or default_config_path())
+    if cfg_path.exists():
+        _out(f"using existing {cfg_path}")
+        config = load_config(cfg_path)
+    else:
+        text = default_config_text()
+        config = parse_config(text, config_path=cfg_path)  # validate before writing anything
+        _write_config(cfg_path, text)
+    return _ensure_setup(config)
 
 
 def _ensure_inbox(config: Config) -> Config:
@@ -603,9 +577,15 @@ def _ensure_inbox(config: Config) -> Config:
 
 
 def _cmd_add_source(args: argparse.Namespace) -> int:
-    config = _config(args)  # a missing or invalid sources.toml exits 78 before anything is written
+    """KISS K14: the one setup verb. Validates PATH before writing anything; a missing sources.toml is
+    written from the template with the folder's table; then :func:`_ensure_setup` creates the rest."""
+    cfg_path = expand(args.config or default_config_path())
+    fresh = not cfg_path.exists()
+    template = default_config_text()
+    # A broken sources.toml exits 78 before anything is written; a missing one is checked as the template.
+    config = parse_config(template, config_path=cfg_path) if fresh else load_config(cfg_path)
     raw: Path = args.path
-    path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected, as in init
+    path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected
     if not path.exists():
         _err(f"add-source {raw}: no such folder")
         return EXIT_USAGE
@@ -618,34 +598,28 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     if any(is_under(path, d) or is_under(d, path) for d in {docs, canonical_source_root(docs)}):
         _err(f"add-source {raw}: {path} and the docs repo {docs} must not contain each other")
         return EXIT_USAGE
-    config = _ensure_inbox(config)
-    for s in config.sources:
-        if s.path is not None and s.path == path:
-            _out(
-                f"already configured: source {s.id!r} ({s.kind.value}, {s.state.value}) has path {path} "
-                f"in {config.config_path}"
-            )
-            return EXIT_OK
-    taken = {s.id for s in config.sources}
-    if args.id is not None:
-        sid = str(args.id)
-        if not SOURCE_ID_RE.match(sid):
-            _err(f"add-source --id {sid!r}: must match {SOURCE_ID_RE.pattern} (lowercase, digits, '-')")
-            return EXIT_USAGE
-        if sid in taken:
-            _err(f"add-source --id {sid!r}: another source in {config.config_path} already has this id")
-            return EXIT_USAGE
+    known = next((s for s in config.sources if s.path is not None and s.path == path), None)
+    if known is not None:
+        _out(
+            f"already configured: source {known.id!r} ({known.kind.value}, {known.state.value}) has path "
+            f"{path} in {config.config_path}"
+        )
     else:
-        sid = derive_source_id(path, taken)
-    table = local_source_table(sid, path)
-    try:
-        append_to_config(config.config_path, table)  # validated before anything is written
-    except ConfigError as exc:
-        _err(f"add-source {raw}: refused, sources.toml would not load: {exc}")
-        return EXIT_USAGE
-    _out(f"added source {sid!r} to {config.config_path}:")
-    _out(table.strip("\n"))
-    return EXIT_OK
+        sid = derive_source_id(path, {s.id for s in config.sources})
+        table = local_source_table(sid, path)
+        try:
+            if fresh:
+                text = template.rstrip("\n") + "\n" + table
+                config = parse_config(text, config_path=cfg_path)  # validate before writing anything
+                _write_config(cfg_path, text)
+            else:
+                config = append_to_config(config.config_path, table)  # validated before anything is written
+        except ConfigError as exc:
+            _err(f"add-source {raw}: refused, sources.toml would not load: {exc}")
+            return EXIT_USAGE
+        _out(f"added source {sid!r} to {config.config_path}:")
+        _out(table.strip("\n"))
+    return _ensure_setup(config)
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:

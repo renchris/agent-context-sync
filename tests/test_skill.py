@@ -20,18 +20,7 @@ from agentsync.config import Config, load_config
 @pytest.fixture
 def initialised(tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]) -> Config:
     cfg = tmp_path / "ctx" / "sources.toml"
-    rc = cli.main(
-        [
-            "init",
-            "--config",
-            str(cfg),
-            "--docs-repo",
-            str(tmp_path / "ctx" / "docs"),
-            "--source-local",
-            str(local_source_dir),
-        ]
-    )
-    assert rc == cli.EXIT_OK
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
     capsys.readouterr()
     return load_config(cfg)
 

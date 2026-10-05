@@ -55,9 +55,9 @@
 #      developer tools exist (SIGN_IDENTITY passes through for a Developer ID build), else --launcher PATH or
 #      a prebuilt AgentSyncLauncher.app next to the wheel; an up-to-date one is never rebuilt, because an
 #      ad-hoc rebuild is a new TCC identity and macOS would ask again
-#   4. agentsync init when the config does not exist (with every --source-local folder), else
-#      agentsync add-source for each --source-local folder (idempotent), then agentsync migrate (an upgrade
-#      may bring a newer manifest schema; "already current" otherwise)
+#   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
+#      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
+#      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema)
 #   5. agentsync doctor (its TCC probe may raise the one-time "wants to access files managed by" prompt; a
 #      doctor whose only [FAIL] lines are TCC_PENDING does not stop steps 6-8, which wait for the Allow)
 #   With --confirm-install-agent and at least one [[source]] in the config:
@@ -1315,29 +1315,29 @@ fi
 
 # ------------------------------------------------------------------------------------------------ 4. config
 step_start config
+# add-source and the flagless init each create whatever is missing (sources.toml, the docs repo and its
+# scaffold, the inbox, the state dir) and are idempotent (KISS K14). Opening the manifest migrates it, so an
+# upgrade (step 2) needs no separate migrate call.
 if [ -f "$CONFIG" ]; then
-	if [ "${#FOLDERS[@]}" -eq 0 ]; then
-		say "config: $CONFIG exists (not touched)"
-		step_end skipped 0 exists
-	fi
-	for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
+	CONFIG_STATE="present"
+else
+	CONFIG_STATE="created"
+fi
+if [ "${#FOLDERS[@]}" -gt 0 ]; then
+	for f in "${FOLDERS[@]}"; do
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null ||
 			fail "agentsync add-source $f failed (see the error above)"
 	done
-	# An upgrade (step 2) may ship a newer manifest schema; until it is applied every background run fails.
-	# Idempotent: an up-to-date manifest prints "already current".
-	run "$AGENTSYNC" migrate --config "$CONFIG" </dev/null ||
-		fail "agentsync migrate failed (see the error above)"
-	CONFIG_STATE="present"
+else
+	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || fail "agentsync init failed (see the error above)"
+	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
+fi
+if [ "$CONFIG_STATE" = "created" ]; then
+	step_end "done" 0 created
+elif [ "${#FOLDERS[@]}" -gt 0 ]; then
 	step_end "done" 0 add-source
 else
-	init_args=(init --config "$CONFIG")
-	for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
-		init_args+=(--source-local "$f")
-	done
-	run "$AGENTSYNC" "${init_args[@]}" </dev/null || fail "agentsync init failed (see the error above)"
-	CONFIG_STATE="created"
-	step_end "done" 0 created
+	step_end skipped 0 exists
 fi
 # Sources other than the inbox: init and add-source always add the inbox (KISS K05), so a config holding only
 # the inbox still has no folder to sync and gets "choose a folder to sync".

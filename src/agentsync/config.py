@@ -567,14 +567,15 @@ def load_config(path: Path | None = None) -> Config:
     try:
         text = p.read_text(encoding="utf-8")
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `agentsync init` to write a commented template") from None
+        raise ConfigError(f"{p}: not found; run `agentsync add-source <folder>` to create it") from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     return parse_config(text, config_path=p)
 
 
 def default_config_text() -> str:
-    """Return the commented sources.toml template that ``agentsync init`` writes."""
+    """Return the commented sources.toml template that ``agentsync add-source`` (or the hidden ``init``)
+    writes."""
     return _TEMPLATE
 
 
@@ -583,7 +584,7 @@ _ID_BAD = re.compile(r"[^a-z0-9-]+")
 
 def derive_source_id(path: Path, taken: Collection[str]) -> str:
     """A deterministic source id for a folder: its name slugged to ``SOURCE_ID_RE``, with ``-2``, ``-3`` …
-    appended until it is not in ``taken`` (``init --source-local`` and ``add-source`` both use it)."""
+    appended until it is not in ``taken`` (``add-source`` and :func:`ensure_inbox` use it)."""
     base = _ID_BAD.sub("-", path.name.lower()).strip("-")[:56] or "local"
     if not base[0].isalnum():
         base = "s" + base
@@ -594,10 +595,9 @@ def derive_source_id(path: Path, taken: Collection[str]) -> str:
 
 
 def local_source_table(source_id: str, path: Path) -> str:
-    """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder: a live
-    ``kind = "local"`` source with every other key at its default (excludes ``DEFAULT_EXCLUDES``, budget
-    1 GiB and 5000 files per cycle) and the sentinel left as a commented recommendation.  Starts with a blank
-    line, ends with a newline."""
+    """The ``[[source]]`` table ``add-source`` writes for a folder: a live ``kind = "local"`` source with
+    every other key at its default (excludes ``DEFAULT_EXCLUDES``, budget 1 GiB and 5000 files per cycle) and
+    the sentinel left as a commented recommendation.  Starts with a blank line, ends with a newline."""
     return (
         f'\n[[source]]\nid = "{source_id}"\nkind = "local"\n'
         f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
@@ -649,7 +649,7 @@ def append_to_config(config_path: Path, table: str) -> Config:
         text = target.read_text(encoding="utf-8")
         mode = target.stat().st_mode & 0o777
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `agentsync init` to write a commented template") from None
+        raise ConfigError(f"{p}: not found; run `agentsync add-source <folder>` to create it") from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     if text and not text.endswith("\n"):

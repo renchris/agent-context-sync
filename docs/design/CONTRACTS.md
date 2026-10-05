@@ -1315,7 +1315,8 @@ def load_config(path: Path | None = None) -> Config:
     """Read and validate sources.toml (default ``~/agent-context/sources.toml``); raises ConfigError."""
 
 def default_config_text() -> str:
-    """Return the commented sources.toml template that ``agentsync init`` writes."""
+    """Return the commented sources.toml template that ``agentsync add-source`` (or the hidden ``init``)
+    writes."""
 ```
 
 ### `agentsync.frontmatter` — `src/agentsync/frontmatter.py` — owner: **architect (implemented)**
@@ -3468,13 +3469,13 @@ def source_statuses(
 
 ``agentsync`` command line (owner: integrator).
 
-Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] [--mode poll|reconcile|dry_run]
+Subcommands: init (2026-10-04, KISS K14: hidden, no options) · sync [--once] [--mode poll|reconcile|dry_run]
 [--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
 [--accept-deletions]` is its hidden alias) · status (2026-10-04, KISS K08a: the single read-only check; `doctor`
 and `policy show` are its hidden aliases, `doctor --network` is deleted) · curate (2026-10-04, KISS K09; `curate-queue`,
 `lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
-SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
+SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
 always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
 ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand.
 
@@ -4385,8 +4386,8 @@ class AgentSpec:
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
 | `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
-| `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13) | 0 · 1 · 2 · 78 |
-| `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
+| `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13). Since KISS K14 (2026-10-04, §16.13) hidden and without options (`--docs-repo`, `--source-local` and `--force` are deleted): writes the template only when sources.toml is missing, then the same setup as `add-source` | 0 · 1 · 2 · 78 |
+| `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted. Since KISS K14 (2026-10-04, §16.13) the one setup verb: `--id` is deleted; a missing sources.toml is written from the template with the folder's table; then `config.ensure_inbox` and init's setup (docs repo, scaffold, state dir, owner-only modes, Time Machine exclusions, remote refusal) | 0 added or already configured · 1 disallowed remote on the docs repo · 2 bad path · 78 invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20). Since KISS K08a the single read-only check: `loop.next_lines` first, `loop.status_line`, `doctor.run_checks` + the §16.8 CLI checks, then the status and policy lines (§16.21) | 0 · 1 any FAIL (K08a) |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`; `--network` is deleted) | 0 · 1 |
 | `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
@@ -4534,6 +4535,15 @@ that folder counts as present. An inbox that cannot be added (a file has the nam
 is an `inbox: not added: …` line on stderr; the command's own exit code is unchanged. `scripts/install.sh`
 counts only `[[source]]` tables whose `kind` is not `inbox` as sources (`HAVE_SOURCES`), so a config holding
 only the inbox still ends on "choose a folder to sync" (exit 1 under `--confirm-install-agent`).
+**SUPERSEDED (2026-10-04, KISS K14):** `add-source` is the one setup verb. `--id` is deleted (the id is always
+`derive_source_id`). A missing sources.toml is no longer exit 78: once PATH is valid (checked against the
+template's docs repo, so a bad PATH writes nothing), the template plus the folder's table is validated and
+written (0600). Then, in order: `ensure_inbox`, and init's setup (`gitops.ensure_repo`, the state dir 0700,
+owner-only modes, `Publisher.ensure_scaffold`, which opens and so migrates the manifest, the remote refusal and
+`ensure_time_machine_exclusions`), also when PATH is "already configured". A disallowed remote exits 1, as
+`init`. `init` stays hidden and idempotent with no options (`--docs-repo`, `--force` and `--source-local` are
+deleted): it writes the template only when sources.toml is missing. `sync` and every other command still exit
+78 on a missing sources.toml; the message names `agentsync add-source <folder>`.
 
 `scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
 passes them all to `agentsync init --source-local …` when the config does not exist, or runs
@@ -4541,14 +4551,18 @@ passes them all to `agentsync init --source-local …` when the config does not 
 `source-local:` lines and the `init`/`add-source` commands. With folders given and no LaunchAgent installed, the
 `NEXT:` line is `agentsync sync --once`, then a re-run with `--confirm-install-agent` (without the
 `--source-local` flags, which are in the config by then). Without folders, the `NEXT:` lines are unchanged.
+**SUPERSEDED (2026-10-04, KISS K14):** step 4 runs `agentsync add-source FOLDER --config …` for each folder
+(whether or not the config exists), else the flagless `agentsync init --config …`, which on an existing config
+prints `config: <path> exists (inbox ensured)`. The `agentsync migrate` call is deleted (opening the manifest
+migrates it, KISS K12). The step's note stays `created` / `add-source` / `exists`.
 
 ```python
 def derive_source_id(path: Path, taken: Collection[str]) -> str:
     """A deterministic source id for a folder: its name slugged to ``SOURCE_ID_RE``, with ``-2``, ``-3`` …
-    appended until it is not in ``taken`` (``init --source-local`` and ``add-source`` both use it)."""
+    appended until it is not in ``taken`` (``add-source`` and :func:`ensure_inbox` use it)."""
 
 def local_source_table(source_id: str, path: Path) -> str:
-    """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder."""
+    """The ``[[source]]`` table ``add-source`` writes for a folder."""
 
 def inbox_source_table(source_id: str, path: Path) -> str:
     """The ``[[source]]`` table ``ensure_inbox`` writes: a live ``kind = "inbox"`` drop folder."""

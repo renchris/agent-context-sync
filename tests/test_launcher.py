@@ -485,23 +485,24 @@ fi
 
 STUB_AGENTSYNC = """#!/bin/bash
 echo "agentsync $*" >> "$STUB_LOG"
-cfg="" out="" pos="" sources=""
+cfg="" out="" pos=""
 sub="$1"
 shift
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) cfg="$2"; shift ;;
     --out) out="$2"; shift ;;
-    --source-local) sources="$sources[[source]]\n"; shift ;;
     --*) ;;
     *) pos="$1" ;;
   esac
   shift
 done
+# Like the real ones (KISS K14): init and add-source create a missing config, and both keep one inbox.
+setup() { [ -f "$cfg" ] || { mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg"; }; }
 inbox() { grep -q '^kind = "inbox"' "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
-  init) mkdir -p "$(dirname "$cfg")"; printf "# stub\n$sources" > "$cfg"; inbox ;;
-  add-source) [ -z "$pos" ] || { echo "[[source]]" >> "$cfg"; inbox; } ;;
+  init) setup; inbox ;;
+  add-source) [ -z "$pos" ] || { setup; echo "[[source]]" >> "$cfg"; inbox; } ;;
   doctor) exit "${STUB_DOCTOR_RC:-0}" ;;
   setup-report) mkdir -p "$(dirname "$out")"; echo "# agentsync setup report" > "$out" ;;
 esac
@@ -627,10 +628,11 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     mtime = (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns
     second = install_sh(stubs, "--launcher", str(launcher_app))
     assert second.returncode == 0, second.stderr
-    assert "is up to date" in second.stdout and "exists (not touched)" in second.stdout
+    assert "is up to date" in second.stdout and f"config: {cfg} exists (inbox ensured)" in second.stdout
     assert (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns == mtime, "not re-copied"
     log2 = calls(stubs)[len(log1) :]
-    assert not any(c.startswith("agentsync init") for c in log2)
+    assert f"agentsync init --config {cfg}" in log2, "a re-run's flagless init ensures the inbox"
+    assert cfg.read_text().count('kind = "inbox"') == 1
     assert second.stdout.strip().splitlines()[-1] == (
         f"NEXT: re-run: {INSTALL_SH} --launcher {launcher_app} --confirm-install-agent to start "
         f"background sync{report}"
@@ -671,7 +673,8 @@ def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launc
     assert "not installing the LaunchAgents" in cp.stderr
     assert cp.stdout.strip().splitlines()[-1].startswith("NEXT: fix the [FAIL] lines above")
     assert "--confirm-install-agent" in cp.stdout.strip().splitlines()[-1]  # the NEXT line repeats the flags
-    assert cfg.read_text() == "# existing\n[[source]]\n"
+    text = cfg.read_text()  # every existing byte kept; the flagless init only ensured the inbox (KISS K14)
+    assert text.startswith("# existing\n[[source]]\n") and text.count('kind = "inbox"') == 1
 
 
 def test_install_sh_network_failure_exits_1_with_a_next_line(stubs: dict[str, str]) -> None:

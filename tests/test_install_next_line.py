@@ -2,9 +2,9 @@
 (which ends an interactive sync with the loop's NEXT line) and fails.
 
 The harness is test_install_oneshot's (a tmp HOME, a stub ``uv``, a stub ``launchctl``), except that the
-installed ``agentsync`` runs the real one for ``init`` and ``sync``; its ``sync`` then exits 80 (an earlier
-"Don't Allow"), so install.sh prints the whole sync output before its own NEXT line. Every other subcommand is
-the oneshot stub.
+installed ``agentsync`` runs the real one for ``init``, ``add-source`` and ``sync``; its ``sync`` then exits
+80 (an earlier "Don't Allow"), so install.sh prints the whole sync output before its own NEXT line. Every
+other subcommand is the oneshot stub.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from test_install_oneshot import BASH32, INSTALL_SH, ISSUE_LINK, STUB_AGENTSYNC,
 
 REAL_THEN_80 = """#!/bin/bash
 case "$1" in
-  init) exec "$REAL_PYTHON" -m agentsync "$@" ;;
+  init|add-source) exec "$REAL_PYTHON" -m agentsync "$@" ;;
   sync) case " $* " in *" --help "*) ;; *) "$REAL_PYTHON" -m agentsync "$@"; exit 80 ;; esac ;;
 esac
 exec "$STUB_INNER" "$@"
@@ -100,7 +100,7 @@ def test_a_failing_real_first_sync_leaves_exactly_one_next_line(tmp_path: Path) 
     ]
 
 
-REAL_DOCTOR = REAL_THEN_80.replace('  init) exec "$REAL_PYTHON"', '  init|doctor) exec "$REAL_PYTHON"', 1)
+REAL_DOCTOR = REAL_THEN_80.replace("  init|add-source) exec", "  init|add-source|doctor) exec", 1)
 
 
 def test_install_reads_the_real_doctor_alias(tmp_path: Path) -> None:

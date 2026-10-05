@@ -47,9 +47,8 @@ def fake_mac(monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     for d in (one, two):
         d.mkdir(parents=True)
     cfg = home / "agent-context" / "sources.toml"
-    assert (
-        cli.main(["init", "--config", str(cfg), "--source-local", str(one), "--source-local", str(two)]) == 0
-    )
+    for folder in (one, two):
+        assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
     setup = home / "agent-context" / "setup"
     setup.mkdir(mode=0o700)
     run = "20260929T100000Z-4242"

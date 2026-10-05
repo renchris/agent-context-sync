@@ -51,8 +51,7 @@ CLI_GLOBAL_OPTIONS: list[str] = ["--config", "-v/--verbose", "--version"]
 
 CLI_SURFACE: dict[str, dict[str, list[str]]] = {
     "visible": {
-        "init": ["--docs-repo", "--source-local", "--force"],
-        "add-source": ["path", "--id"],
+        "add-source": ["path"],
         "sync": ["--once", "--mode", "--dry-run", "--source", "--materialise-budget"],
         "accept-deletions": ["source"],
         "status": [],
@@ -75,6 +74,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "it-request": ["--out"],
     },
     "hidden": {
+        "init": [],
         "reconcile": ["--source", "--accept-deletions"],
         "install-skill": [],
         "checkpoint": [],

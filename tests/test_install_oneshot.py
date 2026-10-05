@@ -72,22 +72,18 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --config) cfg="$2"; shift ;;
     --out) out="$2"; shift ;;
-    --source-local) printf '[[source]]\\npath = "%s"\\n' "$2" >> "$STUB_LOG.sources"; shift ;;
     --help) help=1 ;;
     --*) ;;
     *) pos="$1" ;;
   esac
   shift
 done
-inbox() { grep -q '^kind = "inbox"' "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
+# Like the real ones (KISS K14): init and add-source create a missing config, and both keep one inbox.
+setup() { [ -f "$cfg" ] || { mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg"; }; }
+inbox() { grep -q "^kind = .inbox." "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
-  init)
-    mkdir -p "$(dirname "$cfg")"
-    { echo "# stub"; cat "$STUB_LOG.sources" 2>/dev/null; } > "$cfg"
-    rm -f "$STUB_LOG.sources"
-    inbox
-    hint "agentsync doctor" ;;
-  add-source) printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
+  init) setup; inbox; hint "agentsync doctor" ;;
+  add-source) setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
   doctor)
     [ -z "${STUB_DOCTOR_OUT:-}" ] || printf '%s\\n' "$STUB_DOCTOR_OUT"
     if [ "${AGENTSYNC_AGENT_STEP_PENDING:-}" = 1 ]; then
@@ -307,7 +303,7 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     got = calls(env)
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     order = [
-        f"agentsync init --config {cfg} --source-local {folder}",
+        f"agentsync add-source {folder} --config {cfg}",
         f"agentsync doctor --config {cfg}",
         "agentsync sync --help",
         f"agentsync sync --once --materialise-budget 0 --config {cfg}",
@@ -457,7 +453,9 @@ def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], w
             )
         cp = install_sh(env, str(wheel), "--confirm-install-agent")
         assert cp.returncode == 1
-        assert "kind = " in cfg.read_text(), "the config holds the inbox"
+        assert len(re.findall(r"(?m)^kind = .inbox.", cfg.read_text())) == 1, "exactly one inbox"
+        assert f"agentsync init --config {cfg}" in calls(env), "the flagless init ensures the inbox"
+        assert ("config: " in cp.stdout and "exists (inbox ensured)" in cp.stdout) is again
         assert not any(
             c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
         )

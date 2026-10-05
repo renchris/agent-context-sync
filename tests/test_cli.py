@@ -38,18 +38,7 @@ def git(repo: Path, *args: str) -> str:
 @pytest.fixture
 def initialised(tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]) -> Config:
     cfg = tmp_path / "ctx" / "sources.toml"
-    rc = cli.main(
-        [
-            "init",
-            "--config",
-            str(cfg),
-            "--docs-repo",
-            str(tmp_path / "ctx" / "docs"),
-            "--source-local",
-            str(local_source_dir),
-        ]
-    )
-    assert rc == cli.EXIT_OK
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
     capsys.readouterr()
     return load_config(cfg)
 
@@ -60,7 +49,7 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in (
-        "init", "sync", "status", "accept-deletions", "materialise", "graph", "install-agent",
+        "add-source", "sync", "status", "accept-deletions", "materialise", "graph", "install-agent",
         "purge", "compact-history", "hold", "offboard",
     ):  # fmt: skip
         assert command in out
@@ -82,11 +71,13 @@ def test_parser_accepts_the_launchd_argv(initialised: Config) -> None:
     assert args.mode == "poll" and args.config == initialised.config_path
 
 
-def test_init_writes_a_valid_config_repo_and_scaffold(initialised: Config, local_source_dir: Path) -> None:
+def test_add_source_writes_a_valid_config_repo_and_scaffold(
+    initialised: Config, local_source_dir: Path
+) -> None:
     assert initialised.config_path.stat().st_mode & 0o777 == 0o600
     src, box = initialised.sources
     assert src.id == "source" and src.path == local_source_dir and src.is_live
-    inbox = initialised.docs_repo.parent / "inbox"  # KISS K05: init keeps the inbox
+    inbox = initialised.docs_repo.parent / "inbox"  # KISS K05: add-source keeps the inbox
     assert box.id == "inbox" and box.kind is SourceKind.INBOX and box.is_live and box.path == inbox.resolve()
     assert inbox.stat().st_mode & 0o777 == 0o700
     assert (initialised.docs_repo / ".git").is_dir()
@@ -95,10 +86,20 @@ def test_init_writes_a_valid_config_repo_and_scaffold(initialised: Config, local
     ).is_file()
 
 
-def test_init_refuses_to_overwrite_without_force(initialised: Config, tmp_path: Path) -> None:
+def test_init_is_hidden_idempotent_and_takes_no_options(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K14: init stays as a hidden, flagless alias of add-source's setup; it never rewrites a config."""
     cfg = str(initialised.config_path)
-    assert cli.main(["init", "--config", cfg, "--source-local", str(tmp_path)]) == cli.EXIT_USAGE
+    before = initialised.config_path.read_text(encoding="utf-8")
+    for flags in (["--source-local", str(tmp_path)], ["--docs-repo", str(tmp_path)], ["--force"]):
+        assert cli.main(["init", "--config", cfg, *flags]) == cli.EXIT_USAGE, flags
     assert cli.main(["init", "--config", cfg]) == cli.EXIT_OK  # idempotent re-init
+    assert initialised.config_path.read_text(encoding="utf-8") == before
+    assert cli.main(["add-source", str(tmp_path), "--id", "x", "--config", cfg]) == cli.EXIT_USAGE  # no --id
+    capsys.readouterr()
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    assert not re.search(r"(?m)^    init\b", capsys.readouterr().out), "init is hidden from help"
 
 
 def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
@@ -440,6 +441,7 @@ def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert cli.main(["sync", "--config", str(tmp_path / "missing.toml")]) == cli.EXIT_CONFIG
     bad = tmp_path / "bad.toml"
     bad.write_text("[agentsync]\nnope = 1\n", encoding="utf-8")
+    assert "run `agentsync add-source <folder>` to create it" in capsys.readouterr().err  # KISS K14
     assert cli.main(["status", "--config", str(bad)]) == cli.EXIT_CONFIG
     assert "configuration error" in capsys.readouterr().err
 
@@ -552,8 +554,7 @@ def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
     cfg = tmp_path / "ctx" / "sources.toml"
     for var in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
         monkeypatch.setenv(var, "2026-07-01T00:00:00Z")
-    init = ["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]
-    assert cli.main([*init, "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
     (local_source_dir / "projects" / "old.txt").write_text("ancient\n", encoding="utf-8")
     for var in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"):
@@ -591,7 +592,7 @@ def test_old_manifest_migrates_through_status_and_sync(initialised: Config) -> N
 
 
 def test_migrate_command_keeps_a_pre_migration_copy(initialised: Config) -> None:
-    """install.sh step 4 runs `agentsync migrate` before anything else opens the manifest."""
+    """The hidden `migrate` (install.sh ran it before KISS K14; opening the manifest migrates it now)."""
     cfg = str(initialised.config_path)
     db = initialised.state_paths.db
     backup = db.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}")
@@ -1141,6 +1142,9 @@ def test_remote_on_the_docs_repo_is_refused(
     assert cli.main(["install-agent", "--config", cfg]) == cli.EXIT_FAILED
     assert "allow_remote = false" in capsys.readouterr().err
     assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+    folder = initialised.sources[0].path
+    assert folder is not None
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_FAILED  # the same refusal
 
 
 def test_doctor_reports_network_broker_governance_and_policy(
@@ -1351,7 +1355,7 @@ def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     cfg = tmp_path / "ctx" / "sources.toml"
-    assert cli.main(["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]) == 0
+    assert cli.main(["init", "--config", str(cfg)]) == 0
     skill.write_skill(load_config(cfg).docs_repo)
     capsys.readouterr()
     rc, out = _status(str(cfg), capsys)
@@ -1486,7 +1490,7 @@ def test_add_source_appends_a_live_local_source_and_is_idempotent(
     config = load_config(initialised.config_path)
     added = config.source("fy26-projects")
     assert added.kind is SourceKind.LOCAL and added.is_live and added.path == folder.resolve()
-    assert added.exclude == initialised.sources[0].exclude  # the same defaults init --source-local writes
+    assert added.exclude == initialised.sources[0].exclude  # the same defaults as the first folder's
     assert added.max_materialise_bytes == initialised.sources[0].max_materialise_bytes
     assert initialised.config_path.stat().st_mode & 0o777 == 0o600
 
@@ -1544,7 +1548,7 @@ def test_add_source_warns_when_the_inbox_cannot_be_added(
     assert [s.id for s in load_config(cfg).sources] == ["source", "notes"]
 
 
-def test_add_source_derives_a_unique_id_and_honours_id(
+def test_add_source_derives_a_unique_id(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     cfg = str(initialised.config_path)
@@ -1552,11 +1556,10 @@ def test_add_source_derives_a_unique_id_and_honours_id(
     other.mkdir(parents=True)
     assert cli.main(["add-source", str(other), "--config", cfg]) == cli.EXIT_OK
     assert [s.id for s in load_config(initialised.config_path).sources] == ["source", "inbox", "source-2"]
-    third = tmp_path / "third"
+    third = tmp_path / "Team Notes"
     third.mkdir()
-    assert cli.main(["add-source", str(third), "--id", "source", "--config", cfg]) == cli.EXIT_USAGE
-    assert cli.main(["add-source", str(third), "--id", "Not An Id", "--config", cfg]) == cli.EXIT_USAGE
-    assert cli.main(["add-source", str(third), "--id", "team-notes", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(third), "--id", "team", "--config", cfg]) == cli.EXIT_USAGE  # no --id
+    assert cli.main(["add-source", str(third), "--config", cfg]) == cli.EXIT_OK
     assert [s.id for s in load_config(initialised.config_path).sources] == [
         "source",
         "inbox",
@@ -1579,11 +1582,40 @@ def test_add_source_refuses_bad_paths_and_writes_nothing(
     err = capsys.readouterr().err
     assert "no such folder" in err and "not a directory" in err and "must not contain each other" in err
     assert initialised.config_path.read_text(encoding="utf-8") == before
-    # A missing or broken sources.toml is a config error (78), never a new file.
+    # A bad PATH writes no new sources.toml either; a broken one is a config error (78), left as it is.
     missing = tmp_path / "none" / "sources.toml"
-    assert cli.main(["add-source", str(tmp_path), "--config", str(missing)]) == cli.EXIT_CONFIG
-    assert not missing.exists()
+    assert cli.main(["add-source", str(tmp_path / "no-such"), "--config", str(missing)]) == cli.EXIT_USAGE
+    assert not missing.parent.exists()
+    broken = tmp_path / "broken.toml"
+    broken.write_text("[agentsync]\nnope = 1\n", encoding="utf-8")
+    assert cli.main(["add-source", str(tmp_path), "--config", str(broken)]) == cli.EXIT_CONFIG
+    assert broken.read_text(encoding="utf-8") == "[agentsync]\nnope = 1\n"
     capsys.readouterr()
+
+
+def test_add_source_on_a_fresh_home_creates_everything_once(
+    local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K14: add-source is the one setup verb: on a fresh HOME it writes sources.toml and creates the docs
+    repo, its scaffold, the inbox (0700) and the state dir; a second run changes nothing."""
+    ctx = Path.home() / "agent-context"
+    for _ in range(2):
+        assert cli.main(["add-source", str(local_source_dir)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.count("wrote ") == 1 and out.count("added source 'source'") == 1
+    assert "already configured: source 'source'" in out
+    cfg = ctx / "sources.toml"
+    assert cfg.stat().st_mode & 0o777 == 0o600
+    config = load_config(cfg)
+    assert [(s.id, s.kind) for s in config.sources] == [
+        ("source", SourceKind.LOCAL),
+        ("inbox", SourceKind.INBOX),
+    ]
+    assert cfg.read_text(encoding="utf-8").count("\n[[source]]\n") == 2
+    assert (ctx / "inbox").stat().st_mode & 0o777 == 0o700
+    assert config.docs_repo == ctx / "docs" and (config.docs_repo / ".git").is_dir()
+    assert (config.docs_repo / "README.md").is_file() and (config.docs_repo / "mirror/CLAUDE.md").is_file()
+    assert config.state_dir.is_dir() and config.state_paths.db.is_file()
 
 
 def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_ones(
@@ -1685,10 +1717,9 @@ def test_no_next_hint_env_silences_init_add_source_and_setup_report(
     cfg = tmp_path / "ctx" / "sources.toml"
     other = tmp_path / "Other Folder"
     other.mkdir()
-    argv_init = ["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]
     report = ["setup-report", "--out", str(tmp_path / "r.md"), "--config", str(cfg)]
     monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
-    assert cli.main([*argv_init, "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(["add-source", str(other), "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(report) == cli.EXIT_OK
     out = capsys.readouterr().out
@@ -1701,7 +1732,7 @@ def test_no_next_hint_env_silences_init_add_source_and_setup_report(
     monkeypatch.delenv(cli.NO_NEXT_HINT_ENV)
     third = tmp_path / "Third"
     third.mkdir()
-    assert cli.main([*argv_init, "--force", "--source-local", str(local_source_dir)]) == cli.EXIT_OK
+    assert cli.main(["init", "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(["add-source", str(third), "--config", str(cfg)]) == cli.EXIT_OK
     assert cli.main(report) == cli.EXIT_OK
     out = capsys.readouterr().out

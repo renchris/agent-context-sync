@@ -390,7 +390,9 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
     if not repo.exists() and not repo.is_symlink():
         anchor = _nearest_existing(repo.parent)
         if anchor.is_dir() and os.access(anchor, os.W_OK | os.X_OK):
-            out.append(_ok("docs_repo.git", f"{repo} does not exist yet; `agentsync init` creates it"))
+            out.append(
+                _ok("docs_repo.git", f"{repo} does not exist yet; `agentsync add-source <folder>` creates it")
+            )
         else:
             out.append(
                 _bad(
@@ -405,7 +407,12 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
         is_git = True
         out.append(_ok("docs_repo.git", f"{repo} is a git repository"))
     else:
-        out.append(_ok("docs_repo.git", f"{repo} is not a git repo yet; `agentsync init` runs git init"))
+        out.append(
+            _ok(
+                "docs_repo.git",
+                f"{repo} is not a git repo yet; `agentsync add-source <folder>` runs git init",
+            )
+        )
 
     if repo.is_symlink():
         out.append(

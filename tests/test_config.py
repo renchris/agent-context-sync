@@ -96,8 +96,8 @@ def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) ->
     assert sample_config.state_paths.db.name == "manifest.sqlite"
 
 
-def test_load_config_missing_file_names_init(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="agentsync init"):
+def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match=r"run `agentsync add-source <folder>` to create it"):
         load_config(tmp_path / "nope.toml")
 
 

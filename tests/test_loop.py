@@ -42,7 +42,7 @@ def _setup(tmp_path: Path, *tables: str) -> Config:
     """``init`` with no source (a docs repo and the template sources.toml), then ``tables`` appended in
     place of the inbox init adds (KISS K05), which a test adds back with ``ensure_inbox``."""
     cfg = tmp_path / "ctx" / "sources.toml"
-    assert cli.main(["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]) == 0
+    assert cli.main(["init", "--config", str(cfg)]) == 0
     (box,) = load_config(cfg).sources
     assert box.path is not None
     text = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table(box.id, box.path))
