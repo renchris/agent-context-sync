@@ -500,11 +500,20 @@ def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert "configuration error" in capsys.readouterr().err
 
 
-def test_unknown_source_and_graph_without_client_id_exit_78(initialised: Config) -> None:
+def test_unknown_source_and_graph_without_client_id_exit_78(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
     cfg = str(initialised.config_path)
     assert cli.main(["reconcile", "--config", cfg, "--source", "nope"]) == cli.EXIT_CONFIG
+    capsys.readouterr()
     assert cli.main(["graph", "whoami", "--config", cfg]) == cli.EXIT_CONFIG
     assert cli.main(["whoami", "--config", cfg]) == cli.EXIT_CONFIG
+    # field N11: the message says first that local sources need nothing from IT
+    lead = (
+        "configuration error: Graph not configured ([graph] client_id unset): local sources work without IT"
+    )
+    err = capsys.readouterr().err.splitlines()
+    assert len(err) == 2 and all(line.startswith(lead) for line in err), err
 
 
 def test_lock_held_exits_75(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:

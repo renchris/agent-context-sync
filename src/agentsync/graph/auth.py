@@ -318,8 +318,9 @@ def settings_from_config(config: Config) -> AuthSettings:
     client_id = config.graph.client_id
     if not client_id:
         raise ConfigError(
-            f"{config.config_path}: [graph] client_id is not set; Graph sources need the IT app "
-            "registration's client id (see the IT request pack)"
+            "Graph not configured ([graph] client_id unset): local sources work without IT. "
+            f"{config.config_path}: Graph sources need the IT app registration's client id (see the IT "
+            "request pack)"
         )
     tenant = (config.graph.tenant or "").strip()
     if not tenant or tenant.lower() in MULTI_TENANT_AUTHORITIES:
