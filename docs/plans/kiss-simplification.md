@@ -156,28 +156,27 @@ Learnings for WF and W5:
 - setup_report.py still holds the unreachable `--no-redact` strings (`build_report(redact=False)`); W5 K16b
   owns them.
 
-## WF Field fixes from the corporate Mac (added 2026-10-05)
+## WF Field fixes from the corporate Mac — DONE (2026-10-05)
 
-Status: upcoming; runs after W4 lands (it touches cli.py, config.py and the sync arms W4 also edits), before W5.
+Landed on `main` at `d4c43f4` (22 commits, `6b2da6f..d4c43f4`), items N1-N16 of
+docs/research/corporate-setup-feedback-2026-10-05.md § 3 except N9 and N16 (W5's prompt lines): `6b2da6f` N12 a
+custom exclude keeps the OS-junk defaults; `6e26190` N8a ECANCELED retries then defers; `f2eb633` N8b cloud
+listings time-limited, ending in a blocking click-Allow FAIL; `d787faf` N4 one settle-and-rescan of the inbox per
+interactive sync; `0dcd3c5` N14 inbox writer contract in CONTRACTS §11; `de081ae` N6, `f99831d` N7 lints;
+`7975a5c` N13 and `8f18dc7` N11 Graph-less messages; `20a713c` N5 + N15 eml; `4b2b34b` N10; `1cb31d3` N1 held
+purge test; then the review fixes (14 findings, none rejected). Earlier: N1 `cace1d9`, N2 `bef87c1`, N3 in W4.
+Gate: ruff, format, mypy clean; pytest 2059 passed, 2 skipped; freeze pins unchanged. Run `wf_b2a73fa8-634`.
 
-Source: docs/research/corporate-setup-feedback-2026-10-05.md § 3 (table N1-N16, each with its file, proof test and
-wave fit). Already landed: N1 `cace1d9` (`purge --queue --dry-run` really purged). N2 (setup-report log lines leak
-names nested below a source) is fixed on its own branch first, as data safety. N3 is fixed on `kiss-w4` before W4
-merges: `ensure_inbox` must check that the canonical `~/agent-context/inbox` is configured, not that any inbox
-source exists (the field Mac has six hand-added inbox sources).
-
-Build in this order, one commit each with the doc's proof test: N12 (a user `exclude` keeps the OS-junk defaults;
-`Icon\r`), N8 (ECANCELED retries then defers; time-limited cloud reads end in a blocking "click Allow" FAIL, never
-an empty folder or tombstones), N4 + N14 (inbox writer contract; one settle-and-rescan in an interactive sync, no
-new flag), N6, N7, N13, N5 + N15 (one `_EMITTER_VERSION` bump), N11, N10. No new command, flag or config key: the
-freeze pins must not change in this wave.
-
-Operator decisions from the report (filed, not decided here): D1 retention of chat-derived history (`archive = true`
-for a chat inbox vs company retention), D2/D3 shipping no-IT exporters or reading the Teams cache.
-
-Operator ask still open (N1, possible data loss): what the field run's two queued purges erased. The code fix is
-landed, the question is not; the doc's "Still wanted from the operator" list says what to copy back (the
-governance `audit.jsonl`) and what to answer (a renamed or moved export before that run).
+Learnings for W5:
+- A listing that runs past `arm_local.LISTING_TIMEOUT_S` (120 s per read, `call_with_timeout`) stops the whole
+  walk: the scan is incomplete with `listing_held`, nothing is fetched or tombstoned, and sync's alarm says
+  "click Allow, then re-run the sync". Doctor's `source.<id>.listable` is then an ERROR that blocks. So v7 step 3
+  should tell the agent that a sync that stops on "click Allow" means a macOS prompt is waiting for the person.
+- The loop's WAITING line for an unlisted folder still says "grant Files and Folders access or exclude it"; W5
+  may align it with the click-Allow wording.
+- setup_report's timed-call seam now comes from `arm_local.call_with_timeout` (W5 K16b edits that file).
+- The perf budget test (`AGENTSYNC_PERF=1`) was not completed with the per-listing timer (about 87 µs per directory
+  measured; estimated +0.09 s on the 3 s budget).
 
 ## W5 Install output, setup prompt v7, setup report
 
