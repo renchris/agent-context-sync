@@ -54,8 +54,11 @@ sessions. agentsync tells the agent which pages are new or out of date but does 
 **The inbox always exists.** `install.sh` and every sync keep a drop folder for files you save by hand, beside the
 docs repo (`~/agent-context/inbox` by default); the inbox folders are the `kind = "inbox"` sources in
 `sources.toml`. Drop Outlook mail there by dragging a message out as `.eml`, and a meeting transcript as `.docx` or
-`.vtt`. Only `.eml`, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`) carry a sensitivity label, so a
-`.vtt` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. Files stay in the
+`.vtt`. Teams messages go in as `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA`
+in `src/agentsync/model.py`), one file per channel or chat and month, written by your own export script under the
+[inbox writer contract](docs/design/CONTRACTS.md#11-local-arm-and-hydration).
+Only `.eml`, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`) carry a sensitivity label, so a `.vtt`, a
+`.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. Files stay in the
 inbox: never empty it by hand, because removing a file turns its page into a tombstone and queues a purge.
 
 **The diff is part of every sync, not a separate step.** Each run lists every source, decides from metadata alone
@@ -77,8 +80,9 @@ or chat is read back to the newest message already seen.
    one git commit.
 3. The run ends with one `NEXT:` line, worked out from the docs repo's state: sync again, draft the baseline
    questions, run `~/.local/bin/agentsync curate` and write the pages it lists under `topics/<area>/`, or "session
-   done". The agent does what it says and syncs again, until `NEXT:` says "session done" or names a
-   `WAITING ON YOU:` line, a step only you can take (confirming the baseline questions, or a click). The root
+   done". The agent does what it says and syncs again, until the `NEXT:` line itself says "session done". A
+   `WAITING ON YOU:` line under it is a step only you can take (confirming the baseline questions, or a click);
+   the agent shows it to you and keeps going, and when nothing else is left `NEXT:` says "session done". The root
    `CLAUDE.md` (or `AGENTS.md`) in `~/agent-context/docs`, `topics/CLAUDE.md` and the skill carry the same procedure
    and the page rules: each page pins the mirror pages it cites in its `sources:` header and names its subject in
    `entity:`, and is written under a temporary `.agentsync-<name>.tmp` name, then renamed, so a sync never commits
@@ -141,7 +145,7 @@ Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that ca
 agent lists your synced folders, asks you one question (which to sync), and runs one install command, which installs
 agentsync and the knowledge folder, checks them and runs the first sync. It starts no background job: background sync
 is optional and yours to turn on ([Install](#install)). Then it runs the loop every session runs: `agentsync sync`,
-then what its `NEXT:` line says, until the loop says the session is done or waits on you. On a new Mac that ends with
+then what its `NEXT:` line says, until that line says the session is done. On a new Mac that ends with
 drafted baseline questions for you to confirm. You click Allow at most once: if macOS asks about this terminal app.
 It ends with a redacted setup report (outcome, timings, how far the loop got and every point that was not one command)
 for you to review and bring back ([how reports are used](docs/deploy/setup-feedback.md)). Doing it by hand instead: [Install](#install).
@@ -191,9 +195,17 @@ unclear; include better wording). Do not log the steps themselves; the installer
 3. Sync loop and report. Run `~/.local/bin/agentsync sync` and do what its NEXT: line says (it comes before any
    WAITING ON YOU: and note: lines): another command, such as `~/.local/bin/agentsync curate`, or pages or
    questions to write, usually followed by `~/.local/bin/agentsync sync` again. `~/.local/bin/agentsync status`
-   prints the same NEXT: line without syncing. Repeat until NEXT: says "session done" or names a WAITING ON YOU:
-   line; those are mine, so show them to me. If a sync stops on "click Allow", a macOS prompt is waiting for me
-   (it can sit behind other windows): tell me to click Allow, then run the sync again. Then the report, always,
+   prints the same NEXT: line without syncing. The steps a NEXT: line refers to (the agentsync-docs skill, its
+   "Baseline questions" section and the page rules) are written out in ~/agent-context/docs/AGENTS.md
+   (CLAUDE.md for Claude Code): read it, and write every page and question file under ~/agent-context/docs.
+   Run each sync like step 2's command: with the longest command timeout your tool allows, or in the background,
+   reading its output until the NEXT: line appears. A sync prints nothing while it works and can take many
+   minutes; if it seems stuck, a macOS prompt may be waiting for me, so tell me and keep waiting. sync and curate
+   print their NEXT: line even when they exit non-zero (curate exits 1 while it lists errors for you to fix):
+   follow it, and go to the report only when no NEXT: line was printed. Repeat until the NEXT: line itself says
+   "session done". WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says. If a sync
+   stops on "click Allow", a macOS prompt is waiting for me (it can sit behind other windows): tell me to click
+   Allow, then run the sync again. Then the report, always,
    even after a failure; this is the last command you run:
    `~/src/agent-context-sync/scripts/install.sh --report-only`
    (if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code was downloaded).
@@ -209,7 +221,9 @@ unclear; include better wording). Do not log the steps themselves; the installer
 Your coding tool asks before it runs most commands, and each ask is an approval. These rules let the block's
 commands, exactly as written above, run without asking. They are optional and only you add them (the block never
 asks the agent to change its tool's settings); remove them after setup if you like. Start the tool in your home
-folder, so the files the block writes are inside its working folder.
+folder, so the files the block writes are inside its working folder. The rules cover commands only: the files the
+loop has the agent write (the baseline questions in `~/agent-context/docs/_eval/`, later subject pages) still ask
+for approval, one ask per write, unless you let your tool accept file edits.
 
 **Claude Code:** merge this into `~/.claude/settings.json` ([permission rules](https://code.claude.com/docs/en/permissions)).
 Claude Code checks each part of a compound command (`&&`, `;`) on its own, so step 1 needs the first six rules.

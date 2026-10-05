@@ -84,8 +84,11 @@ so set `[network] proxy`. `agentsync status` checks the whole path whenever a Gr
   `kind = "inbox"` source beside the docs repo (`~/agent-context/inbox` by default) and create the folder; the inbox
   folders are the `kind = "inbox"` sources in `sources.toml`. Drag in exports, attachments, PDFs or emails (drag a
   message out of Outlook to save it as `.eml`; save a meeting transcript as `.docx` or `.vtt`), and they are
-  converted once they stop changing (`quiescence_s`). Only `.eml`, `.pdf` and the Office formats carry a sensitivity
-  label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
+  converted once they stop changing (`quiescence_s`). Teams messages go in as `.teams.json` files in the
+  `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`), one file per channel or chat
+  and month, written by your own export script under the
+  [inbox writer contract](../design/CONTRACTS.md#11-local-arm-and-hydration). Only `.eml`, `.pdf` and the Office
+  formats carry a sensitivity label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
   `.docx`. Files stay in the inbox: it is a mirror, not a queue, so never empty it by hand (removing a file turns its
   page into a tombstone and queues a purge). Without IT this is the only route for mail and Teams messages: a tenant
   on Microsoft's default consent policy shows "Need admin approval" for any app that asks to read mail (measured on

@@ -1,11 +1,15 @@
 # IT request: agentsync on a managed Mac
 
-Placeholders, one spelling each. Fill a copy of this page outside the repository and send it yourself. The
-one-prompt setup writes that copy with `agentsync it-request --out ~/agent-context/it-request-draft.md` (mode 0600;
-it never sends anything). The command fills every value this table says a command gives, lists the ones still open
+Placeholders, one spelling each. Fill a copy of this page outside the repository and send it yourself.
+`agentsync it-request --out ~/agent-context/it-request-draft.md` writes that copy (mode 0600; it never sends
+anything); the sync loop's `WAITING ON YOU:` line names it when the network refuses Microsoft Graph, and setup
+prompt v7 no longer runs it. The command fills every value this table says a command gives, lists the ones still open
 at the top of the copy ("You fill: ..."), makes the links absolute and leaves out this table and the operator
 section. The manifest block below is a copy of [`entra-app.json`](entra-app.json), so its two placeholders are
 filled in the copy too.
+
+**CORRECTED (2026-10-05, KISS K04):** this said "The one-prompt setup writes that copy with `agentsync
+it-request`". Setup prompt v7 has no IT request step, and `it-request` is a hidden command (KISS K18).
 
 | Placeholder | Meaning | Where the value comes from |
 |---|---|---|

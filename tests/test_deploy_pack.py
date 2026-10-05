@@ -668,9 +668,11 @@ def test_readme_step2_is_the_one_install_command() -> None:
 
 
 def test_readme_step3_runs_the_loop_then_the_report() -> None:
-    """KISS K04: step 3 is the loop every session runs (sync, then what NEXT says, until "session done" or a
-    WAITING ON YOU line), then the report, and the finish's three lines. The words it keys on are the loop's
-    own: NEXT's prefix and its "session done", and the WAITING prefix. No IT request and no second prompt."""
+    """KISS K04: step 3 is the loop every session runs (sync, then what NEXT says, until NEXT itself says
+    "session done"; a WAITING ON YOU line is shown, never a stop), then the report, and the finish's three
+    lines. The words it keys on are the loop's own: NEXT's prefix and its "session done", and the WAITING
+    prefix. Each sync gets step 2's long timeout, a non-zero exit with a NEXT line is followed, and the agent
+    is told where the procedure a NEXT line names is written out. No IT request and no second prompt."""
     from agentsync import loop  # noqa: PLC0415
 
     block = _one_prompt_block()
@@ -678,7 +680,30 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     step3 = steps[3]
     assert _commands(step3) == [*LOOP_COMMANDS, REPORT_COMMAND]
     assert f"Run `{AGENTSYNC} sync` and do what its NEXT: line says" in step3
-    assert 'Repeat until NEXT: says "session done" or names a WAITING ON YOU: line' in step3
+    flat = " ".join(step3.split())
+    assert 'Repeat until the NEXT: line itself says "session done".' in flat
+    assert "WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says." in flat
+    assert (
+        "Run each sync like step 2's command: with the longest command timeout your tool allows, or in the"
+        " background, reading its output until the NEXT: line appears." in flat
+    ), "the first downloading sync and a held listing (120 s) outlast a default tool timeout"
+    assert "if it seems stuck, a macOS prompt may be waiting for me" in flat
+    assert (
+        "sync and curate print their NEXT: line even when they exit non-zero (curate exits 1 while it lists"
+        " errors for you to fix): follow it, and go to the report only when no NEXT: line was printed."
+        in flat
+    )
+    assert (
+        'The steps a NEXT: line refers to (the agentsync-docs skill, its "Baseline questions" section and the'
+        " page rules) are written out in ~/agent-context/docs/AGENTS.md (CLAUDE.md for Claude Code)" in flat
+    )
+    from agentsync import publish  # noqa: PLC0415
+
+    guide = publish.root_guide()
+    assert '"Baseline questions" section' in loop._BASELINE, "rule 4's NEXT names the section"
+    assert "Baseline questions (the agentsync-docs skill's section of that name" in guide, (
+        "the root CLAUDE.md/AGENTS.md the prompt points at carries that section"
+    )
     assert f"`{AGENTSYNC} status` prints the same NEXT: line without syncing" in step3
     loop_source = Path(loop.__file__).read_text(encoding="utf-8")
     assert loop.NEXT_PREFIX == "NEXT: " and loop.WAIT_PREFIX == "WAITING ON YOU: "
@@ -759,6 +784,14 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     day1 = deploy.split("**Manual inbox.**", 1)[1].split("- **Check it:**", 1)[0]
     for phrase in (".vtt", ".teams.json", "carry a sensitivity label", "never empty it by hand"):
         assert phrase in day1, phrase
+    from agentsync.model import TEAMS_MONTH_SCHEMA  # noqa: PLC0415
+
+    teams = f"Teams messages go in as `.teams.json` files in the `{TEAMS_MONTH_SCHEMA}` shape"
+    contract = "inbox writer contract](%sdesign/CONTRACTS.md#11-local-arm-and-hydration)"
+    assert teams in readme and contract % "docs/" in readme, "N9: a Teams route, not only the label caveat"
+    assert teams in day1 and contract % "../" in day1
+    contracts = (ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
+    assert "\n## 11. Local arm and hydration\n" in contracts and "**Inbox writer contract" in contracts
 
 
 def _checkout_home(tmp_path: Path) -> Path:
@@ -1175,6 +1208,9 @@ def test_readme_pre_allow_part_is_optional_and_honest() -> None:
     )
     assert "`~/.claude/settings.json`" in part and "https://code.claude.com/docs/en/permissions" in part
     assert "a `>>` target that starts with `~` always needs approval" in part
+    assert "The rules cover commands only: the files the loop has the agent write" in part, (
+        "the baseline draft's file writes still ask"
+    )
     assert "`install.sh --log`" in part and "never with a `>>` redirect" in part
     assert "#tool-permission-patterns" in part
     first = f"Bash({INSTALL_SH} *)"
@@ -1521,3 +1557,5 @@ def test_it_request_placeholders_are_in_its_top_table() -> None:
     )
     assert "**To:** `<it-contact>`" in text
     assert "`agentsync it-request --out ~/agent-context/it-request-draft.md`" in top
+    flat_top = " ".join(top.split()).replace("**CORRECTED", "\0").split("\0", 1)[0]
+    assert "one-prompt setup writes" not in flat_top, "KISS K04: setup prompt v7 runs no it-request"

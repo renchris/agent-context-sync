@@ -253,8 +253,11 @@ The operator pre-allows them in the tool's settings with the tested rules for Cl
 under "Fewer approval prompts" in the README's [one-prompt setup](../../README.md#set-up-on-a-new-mac-one-prompt),
 so a logged `approval` line makes the outcome "worked with help". Since v6 the rules cover every command in the
 block: it logs through `install.sh --log` and has no `>>` redirect, which Claude Code's documentation says always
-needs approval when its target starts with `~` (K13). What the rules cannot change: neither tool tells the agent
-about an approval (section 4: "not observable").
+needs approval when its target starts with `~` (K13). The rules cover commands only: since v7 the loop also has
+the agent write files (the baseline questions in `~/agent-context/docs/_eval/`, and in later sessions subject
+pages), and each of those writes still asks in a tool's default mode, so a v7 run that reaches the draft may log
+an `approval` line for them. What the rules cannot change: neither tool tells the agent about an approval
+(section 4: "not observable").
 
 Preconditions, outside the setup's count because the prompt stops at step 1 and says why:
 
