@@ -24,7 +24,7 @@ from agentsync.config import Config, canonical_source_root, parse_config
 from agentsync.cycle import run_cycle
 from agentsync.frontmatter import parse_frontmatter
 from agentsync.graph.client import GraphClient
-from agentsync.manifest import Manifest
+from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import (
     ByteBudget,
     CycleMode,
@@ -527,6 +527,11 @@ def test_install_no_tm_ensure_applies_missing_exclusions_once(
         and f"excluded {config.docs_repo / 'mirror'}" in lines
     )
     assert governance.ensure_time_machine_exclusions(config, runner=fake) == []  # nothing missing now
+    db = config.state_paths.db
+    copy = db.with_name(f"{db.name}.pre-v{MANIFEST_SCHEMA_VERSION}")  # KISS K12: same rows and cursors
+    copy.write_bytes(b"pre-migration copy")
+    assert copy in governance.time_machine_exclusions(config)
+    assert governance.ensure_time_machine_exclusions(config, runner=fake) == [f"excluded {copy}"]
 
 
 def test_sg12_cli_runs_owner_only_and_doctor_flags_readable_repos(tmp_path: Path) -> None:

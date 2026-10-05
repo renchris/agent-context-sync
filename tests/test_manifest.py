@@ -211,6 +211,23 @@ def test_failed_open_migration_rolls_back_and_drops_the_copy(
     assert manifest_mod.migration_backups(db_path) == []
 
 
+def test_migration_copy_is_excluded_from_backups_and_never_left_partial(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with Manifest(db_path) as man:
+        man.set_meta("key_schema_version", "0")
+    excluded: list[Path] = []
+    monkeypatch.setattr(manifest_mod.tm_exclude, "exclude_new_file", lambda p: excluded.append(p) or True)
+    partial = db_path.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}.partial")
+    partial.write_bytes(b"truncated by a killed copy")  # a leftover is replaced, never trips the copy
+    assert partial in manifest_mod.migration_backups(db_path)  # so purge and the TM list reach it too
+    with Manifest(db_path) as man:
+        backup = man.migration_backup
+    assert backup is not None and excluded == [partial]  # excluded before the copy is written, then renamed
+    assert not partial.exists() and _meta(backup, "key_schema_version") == "0"
+    assert manifest_mod.migration_backups(db_path) == [backup]
+
+
 def test_newer_key_schema_refuses_on_open(db_path: Path) -> None:
     with Manifest(db_path) as man:
         man.set_meta("key_schema_version", "999")
@@ -262,8 +279,9 @@ def test_migrate_applies_new_steps_in_one_transaction(db_path: Path, monkeypatch
     step2 = manifest_mod._Migration(2, "add items.note", "ALTER TABLE items ADD COLUMN note TEXT;")
     monkeypatch.setattr(manifest_mod, "_MIGRATIONS", (*manifest_mod._MIGRATIONS, step2))
     monkeypatch.setattr(manifest_mod, "MANIFEST_SCHEMA_VERSION", 2)
-    assert Manifest.migrate(db_path) == [2]  # the explicit form takes no pre-v<N> copy
-    assert manifest_mod.migration_backups(db_path) == []
+    assert Manifest.migrate(db_path) == [2]  # the explicit form takes the same pre-v<N> copy (install.sh)
+    assert manifest_mod.migration_backups(db_path) == [db_path.with_name("manifest.sqlite.pre-v2")]
+    assert _meta(db_path.with_name("manifest.sqlite.pre-v2"), "manifest_schema_version") == "1"
     with Manifest(db_path) as man:
         assert man.get_meta("manifest_schema_version") == "2"
         assert [v for v, _ in man.applied_migrations()] == [1, 2]

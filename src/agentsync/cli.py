@@ -230,7 +230,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="default: poll, or reconcile once reconcile_interval_s has passed since the last full run; "
         "without --mode a running sync is waited for (up to 10 minutes) instead of exiting 75",
     )
-    p.add_argument("--dry-run", action="store_true", help="classify only: no fetch, no writes, no commit")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="classify only: no fetch, no writes under docs/, no commit (an older manifest is still "
+        "migrated, with a pre-v<N> copy)",
+    )
     p.add_argument(
         "--source", action="append", default=[], metavar="ID", help="only this source (repeatable)"
     )
@@ -328,7 +333,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="recorded in the audit trail (default: operator)",
     )
     p.add_argument("--queue", action="store_true", help="run every queued purge instead of SELECTOR")
-    p.add_argument("--dry-run", action="store_true", help="report what would be purged; change nothing")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be purged; change nothing (an older manifest is still migrated first)",
+    )
     p.add_argument("--push", action="store_true", help="force-push the rewrite to an allowed tenant remote")
 
     p = add("compact-history", "squash mirror history older than [governance] history_days", _cmd_compact)

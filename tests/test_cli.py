@@ -345,6 +345,23 @@ def test_interactive_lock_wait_is_injectable_and_ends_in_lock_held(initialised: 
         lock.release()
 
 
+def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _age_runs(initialised)  # a reconcile is due, but the one holding the lock is it, still 'running'
+    lock = SingleWriterLock(initialised.state_paths.lock, "reconcile")
+    lock.acquire()
+    timer = threading.Timer(1.0, lock.release)
+    timer.start()
+    try:
+        report = run_cycle(initialised, mode=None, lock_wait_s=30.0)
+    finally:
+        timer.join()
+        lock.release()
+    assert report.mode is CycleMode.POLL
+    assert _last_mode(initialised) == "poll"
+
+
 def _last_mode(config: Config) -> str:
     with Manifest(config.state_paths.db) as manifest:
         return manifest.last_runs(1)[0][1]
@@ -425,6 +442,24 @@ def test_old_manifest_migrates_through_status_and_sync(initialised: Config) -> N
     assert backup.is_file()  # the migrating cycle keeps its own copy for one more cycle
     with Manifest(db) as manifest:
         assert manifest.get_meta("key_schema_version") != "0"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert not backup.exists()
+
+
+def test_migrate_command_keeps_a_pre_migration_copy(initialised: Config) -> None:
+    """install.sh step 4 runs `agentsync migrate` before anything else opens the manifest."""
+    cfg = str(initialised.config_path)
+    db = initialised.state_paths.db
+    backup = db.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _sql(db, "UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    assert cli.main(["migrate", "--config", cfg]) == cli.EXIT_OK
+    assert backup.is_file()
+    conn = sqlite3.connect(backup)
+    try:
+        assert conn.execute("SELECT value FROM meta WHERE key = 'key_schema_version'").fetchone()[0] == "0"
+    finally:
+        conn.close()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert not backup.exists()
 

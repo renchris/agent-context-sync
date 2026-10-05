@@ -98,7 +98,7 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops.launchd import rotate_logs
-from agentsync.ops.lock import LockAcquisition, SingleWriterLock, read_heartbeat, write_heartbeat
+from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.publish import (
     DELETED_UPSTREAM,
     Publisher,
@@ -2132,10 +2132,19 @@ _LOCK_PROGRESS_S = 30.0
 def _interactive_mode(config: Config, now: datetime) -> CycleMode:
     """The mode of a run that named none: RECONCILE once the last full run (``last_full_run_started``) is at
     least ``config.reconcile_interval_s`` old, else POLL.  Chosen before the lock, so its label is truthful;
-    opening the manifest here migrates it like any other open."""
+    opening the manifest here migrates it like any other open.
+
+    A live lock holder labelled ``reconcile`` (the LaunchAgent's full pass, still recorded as ``running``, so
+    ``last_full_run_started`` cannot see it) makes this run a POLL: it waits for that pass and then runs the
+    cheap cycle instead of a second full reconcile straight after it."""
     db = config.state_paths.db
     if not db.is_file():
         return CycleMode.POLL
+    lock_path = config.state_paths.lock
+    if SingleWriterLock.is_held(lock_path):
+        holder = LockInfo.parse(SingleWriterLock.read_body(lock_path))
+        if holder is not None and holder.label == CycleMode.RECONCILE.value:
+            return CycleMode.POLL
     with Manifest(db) as manifest:
         raw = manifest.last_full_run_started()
     try:

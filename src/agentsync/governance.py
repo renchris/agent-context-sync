@@ -60,6 +60,9 @@ from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
+from agentsync.tm_exclude import TM_EXCLUDE_XATTR
+from agentsync.tm_exclude import has_xattr as _has_xattr
+from agentsync.tm_exclude import set_exclusion as _set_tm_exclusion
 
 log = logging.getLogger(__name__)
 
@@ -2331,8 +2334,9 @@ def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
 def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
     """Paths that hold tenant content a purge must reach and must not be backed up: mirror/, archive/, the
     docs repo's ``.git`` (every version of every mirror page: a purge cannot reach a backup), the converter
-    cache, the SQLite manifest and its ``-wal``/``-shm`` siblings, the Teams store and staging (curated
-    topics/ stay backed up as worktree files)."""
+    cache, the SQLite manifest, its ``-wal``/``-shm`` siblings and any pre-migration ``<db>.pre-v*`` copy (the
+    same rows and cursors; KISS K12), the Teams store and staging (curated topics/ stay backed up as worktree
+    files)."""
     sp = config.state_paths
     return (
         expand(config.docs_repo) / "mirror",
@@ -2344,55 +2348,11 @@ def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
         sp.db.with_name(sp.db.name + "-shm"),
         sp.teams_store,
         sp.staging,
+        *migration_backups(sp.db),
     )
 
 
-TM_EXCLUDE_XATTR = "com.apple.metadata:com_apple_backup_excludeItem"
-"""The sticky Time Machine exclusion ``tmutil addexclusion`` sets on a path (no admin rights needed)."""
-
 _TM_TRANSIENT = ("-wal", "-shm")
-
-
-def _libc_xattr() -> Any:
-    """libc with getxattr(2)/setxattr(2) typed (macOS signatures: position and options arguments)."""
-    import ctypes  # noqa: PLC0415 — macOS-only, kept off the import path of every other command
-
-    libc = ctypes.CDLL(None, use_errno=True)
-    common: list[Any] = [
-        ctypes.c_char_p,
-        ctypes.c_char_p,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_uint32,
-        ctypes.c_int,
-    ]
-    libc.getxattr.restype = ctypes.c_ssize_t
-    libc.getxattr.argtypes = common
-    libc.setxattr.restype = ctypes.c_int
-    libc.setxattr.argtypes = common
-    return libc
-
-
-def _has_xattr(path: Path, name: str) -> bool:
-    """Whether ``path`` carries xattr ``name``, via getxattr(2) (``/usr/bin/xattr`` is a Python script that
-    costs ~1.8 s per call, measured 2026-09-29; that made every sync cycle ~11 s slower)."""
-    return int(_libc_xattr().getxattr(os.fsencode(path), name.encode(), None, 0, 0, 0x0001)) >= 0
-
-
-TM_EXCLUDE_VALUE = bytes.fromhex(
-    "62706C69737430305F1011636F6D2E6170706C652E6261636B75706408000000000000010100000000000000010000000000000000"
-    "000000000000001C"
-)
-"""The value ``tmutil addexclusion`` writes: bplist string ``com.apple.backupd`` (read back 2026-09-29)."""
-
-
-def _set_tm_exclusion(path: Path) -> bool:
-    """Write the sticky exclusion xattr directly with setxattr(2): instant, where ``tmutil`` takes ~11 s.
-
-    ``staging/`` is recreated every cycle, so without this each cycle paid one ``tmutil`` call."""
-    buf = TM_EXCLUDE_VALUE
-    rc = _libc_xattr().setxattr(os.fsencode(path), TM_EXCLUDE_XATTR.encode(), buf, len(buf), 0, 0x0001)
-    return int(rc) == 0 and _has_xattr(path, TM_EXCLUDE_XATTR)
 
 
 def time_machine_status(config: Config, *, runner: Runner | None = None) -> list[tuple[Path, bool | None]]:

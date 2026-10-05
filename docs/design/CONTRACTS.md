@@ -107,6 +107,28 @@ its commit step after the migration (a cycle that migrated keeps its own copy fo
 non-dry-run `purge`. A NEWER version of either still raises `ManifestSchemaError`. `agentsync migrate` remains as
 the explicit form (no copy).
 
+**Amended (2026-10-04, KISS K12 review):** "any caller" means every opener, read-only commands included:
+`sync --dry-run`, `purge --dry-run`, `status` and setup-report's Status section (through the status hook) each
+migrate an older manifest, with the copy, on first open; their "no writes" promises cover `docs/` and the
+manifest's rows, not this one-time schema step. `agentsync migrate` (install.sh step 4, which runs before anything
+else opens the manifest) now takes the same copy whenever a step or a re-index will run, superseding "(no copy)"
+above. The copy is built as `<db>.pre-v<N>.partial` and renamed into place, so a process killed mid-copy (the
+status hook runs in an abandoned-on-timeout thread) leaves no truncated copy; `migration_backups` matches the
+`.partial` too. On macOS the copy carries the sticky Time Machine exclusion xattr from creation
+(`tm_exclude.exclude_new_file`; `AGENTSYNC_TM_EXCLUDE=0` disables it), and `governance.time_machine_exclusions`
+lists every `migration_backups(db)` path, so doctor reports an unexcluded one and
+`ensure_time_machine_exclusions` repairs it: the copy holds the same rows and secret cursors, and a purge cannot
+reach a backup (C15 req 42).
+
+```python
+# agentsync.tm_exclude (leaf: standard library only; governance imports TM_EXCLUDE_XATTR from it)
+TM_EXCLUDE_XATTR = "com.apple.metadata:com_apple_backup_excludeItem"
+TM_EXCLUDE_VALUE: bytes  # the bplist `tmutil addexclusion` writes
+def has_xattr(path: Path, name: str) -> bool: ...  # getxattr(2)
+def set_exclusion(path: Path) -> bool: ...  # setxattr(2) + read-back
+def exclude_new_file(path: Path) -> bool: ...  # best effort: macOS only, honours AGENTSYNC_TM_EXCLUDE=0, never raises
+```
+
 ```sql
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,           -- manifest_schema_version | key_schema_version | tree_sha | written_at_ns
@@ -346,6 +368,9 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    `config.reconcile_interval_s` ago, else POLL. It then waits up to `lock_wait_s` (default
    `INTERACTIVE_LOCK_WAIT_S` = 600 s) for the lock, logging progress every 30 s, and only then raises
    `LockHeldError` (exit 75). Choosing the mode opens the manifest, which may migrate it (§5 amendment).
+   **Amended (2026-10-04, KISS K12 review):** when the lock is held by a live process whose body label is
+   `reconcile` (a LaunchAgent full pass, whose run row is still `running`), `mode=None` picks POLL, so it waits
+   for that pass and then runs a poll rather than a second full reconcile.
 3. `Manifest(state_paths.db)`; `recover()`: `tree_sha ≠ HEAD^{tree}` → `gitops.restore_generated` + re-publish
    from manifest + cache; committed-but-unpromoted pending cursors → promote; otherwise discard pending.
 4. `manifest.sync_sources(config.sources)`; `begin_run`; `Publisher.ensure_scaffold`, then `skill.write_skill(docs_repo)`
@@ -4377,7 +4402,8 @@ manifest's `-wal`/`-shm`; `governance.time_machine_status`, `ensure_time_machine
 `TM_EXCLUDE_XATTR`; `AGENTSYNC_TM_EXCLUDE=0` disables it; called by `init` and after each CLI cycle; the
 xattr is read with getxattr(2) and a missing one is written directly with setxattr(2) using `TM_EXCLUDE_VALUE`,
 the exact bytes `tmutil addexclusion` writes, falling back to `tmutil` — `staging/` is recreated every cycle,
-and a `tmutil` call costs ~11 s) and doctor
+and a `tmutil` call costs ~11 s; the xattr code lives in the leaf module `agentsync.tm_exclude` since 2026-10-04,
+KISS K12) and doctor
 `governance.time_machine`. `remote_allowed` parses both URLs (scheme, userinfo, host equal; path at a `/`
 boundary); `parse_governance` rejects a prefix that is not a URL or carries a password.
 
@@ -4487,7 +4513,8 @@ prints "This section failed: <type>: <message>"; a missing or invalid sources.to
 skips Doctor and Status. No network (doctor runs `_extra_checks(..., offline=True)`: the Graph reachability probe
 becomes an info line), no sudo, no prompts, no `tmutil`; each external command has a timeout and the whole report
 `TIME_BUDGET_S` (doctor and status run in abandoned-on-timeout daemon threads). Read-only apart from `--out`, written
-atomically with mode 0600. Redaction is on unless `--no-redact` (which the report states at the top); the
+atomically with mode 0600 (amended 2026-10-04, KISS K12: the status hook opens the manifest, which migrates an
+older one with a `<db>.pre-v<N>` copy; §5 amendment). Redaction is on unless `--no-redact` (which the report states at the top); the
 Redaction section gives the count per kind.
 
 v4 revision, the friction log. The agent no longer writes into the report. `setup-report` reads the friction log

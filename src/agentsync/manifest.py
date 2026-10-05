@@ -29,6 +29,7 @@ from pathlib import Path
 from types import MappingProxyType, TracebackType
 from typing import Any, NamedTuple
 
+from agentsync import tm_exclude
 from agentsync.config import SourceConfig
 from agentsync.errors import ConfigError, ManifestSchemaError
 from agentsync.model import (
@@ -855,15 +856,35 @@ def migration_backups(db_path: Path) -> list[Path]:
 
 
 def _backup_db(conn: sqlite3.Connection, dest: Path) -> None:
-    """Copy the live database (WAL included) to ``dest`` (mode 0600) with the sqlite3 backup API."""
-    fd = os.open(dest, os.O_RDWR | os.O_CREAT, 0o600)
+    """Copy the live database (WAL included) to ``dest`` (mode 0600) with the sqlite3 backup API.
+
+    The copy holds the same rows and secret cursors as the manifest, so it carries the sticky Time Machine
+    exclusion before any byte is written (a purge cannot reach a backup; C15 req 42).  It is built under a
+    ``.partial`` name and renamed into place, so a process killed mid-copy (setup-report's abandoned status
+    thread) never leaves a truncated ``<db>.pre-v<N>`` for the next migration to trip over; a leftover
+    ``.partial`` still matches ``migration_backups`` and is deleted with the copies."""
+    tmp = dest.with_name(dest.name + ".partial")
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
-    dest.chmod(0o600)
-    target = sqlite3.connect(str(dest))
     try:
-        conn.backup(target)
-    finally:
-        target.close()
+        tmp.chmod(0o600)
+        tm_exclude.exclude_new_file(tmp)
+        target = sqlite3.connect(str(tmp))
+        try:
+            conn.backup(target)
+        finally:
+            target.close()
+        tmp.replace(dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise
+
+
+def _needs_migration(stored: int, key_raw: str | None) -> bool:
+    """Whether the stored schema or converter key schema differs from this build's (caller refused newer)."""
+    return stored < MANIFEST_SCHEMA_VERSION or key_raw != str(_key_schema_version())
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -1003,8 +1024,10 @@ class Manifest:
     def migrate(cls, db_path: Path) -> list[int]:
         """Bring an older manifest to this build's schema in ONE transaction; return the versions applied.
 
-        Opening a Manifest does the same automatically (with a pre-v<N> copy); this explicit form takes no
-        copy and also re-indexes a converter cache whose key schema is newer than this build.
+        Opening a Manifest does the same automatically; this explicit form also re-indexes a converter cache
+        whose key schema is newer than this build.  Both take the ``<db>.pre-v<N>`` copy first whenever a step
+        or a re-index will run (install.sh's upgrade calls this before anything else opens the manifest), and
+        a failed step removes it; the next committed cycle deletes it (KISS K12).
 
         Also re-indexes the converter cache when ``key_schema_version`` changed (the ``cache`` table is
         cleared: every old action key is unreachable under the new composition).  Raises ManifestSchemaError
@@ -1024,15 +1047,27 @@ class Manifest:
                 raise ManifestSchemaError(
                     f"{db_path}: schema version {stored} is newer than this build ({MANIFEST_SCHEMA_VERSION})"
                 )
-            conn.execute("BEGIN IMMEDIATE")
+            backup: Path | None = None
+            if _needs_migration(stored, _read_meta(conn, "key_schema_version")):
+                backup = _migration_backup_path(db_path)
+                _backup_db(conn, backup)
             try:
-                applied = _migrate_in_tx(conn, stored)
-                conn.execute("COMMIT")
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    applied = _migrate_in_tx(conn, stored)
+                    conn.execute("COMMIT")
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
             except BaseException:
-                conn.execute("ROLLBACK")
+                if backup is not None:
+                    with contextlib.suppress(OSError):
+                        backup.unlink(missing_ok=True)
                 raise
             if applied:
                 _log.info("migrated manifest %s: applied schema versions %s", db_path, applied)
+            if backup is not None:
+                _log.warning("the old database is kept as %s until the next successful sync", backup.name)
             return applied
         finally:
             with contextlib.suppress(sqlite3.ProgrammingError):
