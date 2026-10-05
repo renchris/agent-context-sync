@@ -1202,6 +1202,9 @@ class DocsLayout:
     def rel(self, path: Path) -> str:
         """Return ``path`` as a POSIX string relative to the docs repo root (raises ValueError outside it)."""
 
+def glob_strip(pattern: str) -> str:
+    """Trim space, tab and newline around a glob, never ``\\r``: the macOS icon file is ``Icon\\r``."""
+
 def glob_match(rel_path: str, pattern: str) -> bool:
     """Match one POSIX relative path against one glob (gitignore-like, case-insensitive).
 
