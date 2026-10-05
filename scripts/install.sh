@@ -1,17 +1,18 @@
 #!/bin/bash
 # agentsync installer for a managed Mac: no admin rights, no interactive prompts, safe to re-run.
 #
-# Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent] [--launcher PATH]
-#                           [--rebuild-launcher] [--report-only] [--version] [--help]
+# Usage: scripts/install.sh [--source-local FOLDER ...] [--confirm-install-agent [--launcher PATH]]
+#                           [--report-only] [--version] [--help]
 #        scripts/install.sh --list-folders
 #        scripts/install.sh --log-start AGENT | --log STEP KIND WHAT FIX
 #
 #   --source-local FOLDER   sync this folder (e.g. one inside ~/Library/CloudStorage/OneDrive-<Org>) as a live
 #                           local source; repeatable, and already-configured folders are left as they are
-#   --confirm-install-agent also sync once, install and start the two LaunchAgents (agentsync install-agent)
-#                           and wait for the first background run (steps 6-8)
-#   --launcher PATH         use this prebuilt, signed AgentSyncLauncher.app instead of building one
-#   --rebuild-launcher      rebuild the launcher even when the installed one matches its sources
+#   --confirm-install-agent optional background sync, the operator's choice (a setup agent never passes it):
+#                           also build the signed launcher, sync once, install and start the two LaunchAgents
+#                           (agentsync install-agent) and wait for the first background run (steps 3, 6-8)
+#   --launcher PATH         with --confirm-install-agent: use this prebuilt, signed AgentSyncLauncher.app
+#                           instead of building one
 #   --report-only           only write the setup report (step 9), then exit; installs and logs nothing, except
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
 #                           that attempt has no end line yet
@@ -50,10 +51,11 @@
 #   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
 #   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
 #      trust store for TLS); skipped when the last install came from this same clean checkout commit
-#   3. the signed launcher at ~/Applications/AgentSyncLauncher.app: built with launcher/build.sh when
-#      developer tools exist (SIGN_IDENTITY passes through for a Developer ID build), or copied from
-#      --launcher PATH; else a valid installed one is kept. An up-to-date one is never rebuilt, because an
-#      ad-hoc rebuild is a new TCC identity and macOS would ask again
+#   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
+#      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
+#      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
+#      rebuilt, because an ad-hoc rebuild is a new TCC identity and macOS would ask again (the developer
+#      variable AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds it anyway)
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema)
@@ -292,6 +294,7 @@ DRY_RUN=0
 [ "${AGENTSYNC_INSTALL_DRY_RUN:-}" != "1" ] || DRY_RUN=1 # the dry run (see the header)
 INSTALL_AGENT=0
 REBUILD=0
+[ "${AGENTSYNC_REBUILD_LAUNCHER:-}" != "1" ] || REBUILD=1 # developer only: rebuild an up-to-date launcher (step 3)
 REPORT=1
 REPORT_ONLY=0
 LIST_FOLDERS=0
@@ -1012,7 +1015,7 @@ list_folders() {
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
 		step_end failed "$rc" no-folders
 	else
-		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" --confirm-install-agent (one --source-local per folder)"
+		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
 		step_end "done" 0 "listed-$total"
 	fi
 	return "$rc"
@@ -1021,7 +1024,6 @@ list_folders() {
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--confirm-install-agent) INSTALL_AGENT=1 ;;
-	--rebuild-launcher) REBUILD=1 ;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
 	--log-start | --log) usage_error "$1 must be the first argument and takes no other option" ;;
@@ -1123,6 +1125,7 @@ case "$SOURCE" in
 	;;
 esac
 if [ -n "$LAUNCHER_SRC" ]; then
+	[ "$INSTALL_AGENT" -eq 1 ] || usage_error "--launcher only applies with --confirm-install-agent (the launcher is for background sync)"
 	[ -d "$LAUNCHER_SRC" ] || usage_error "--launcher is not an app bundle directory: $LAUNCHER_SRC"
 	LAUNCHER_SRC="$(cd "$LAUNCHER_SRC" && pwd)"
 fi
@@ -1261,8 +1264,11 @@ install_app() {
 	run /usr/bin/ditto "$1" "$APP_DEST"
 }
 
+# Only for background sync (KISS K11b): a run without --confirm-install-agent builds, copies and checks nothing.
 LAUNCHER_STATE="missing"
-if [ -n "$LAUNCHER_SRC" ]; then
+if [ "$INSTALL_AGENT" -eq 0 ]; then
+	LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="not-requested" LAUNCHER_STATE="not-requested"
+elif [ -n "$LAUNCHER_SRC" ]; then
 	launcher_valid "$LAUNCHER_SRC" || fail "--launcher $LAUNCHER_SRC does not pass codesign --verify --strict"
 	if [ -d "$APP_DEST" ] && launcher_valid "$APP_DEST" && [ "$(cdhash_of "$APP_DEST")" = "$(cdhash_of "$LAUNCHER_SRC")" ]; then
 		say "launcher: $APP_DEST is up to date (same cdhash as $LAUNCHER_SRC)"
@@ -1675,7 +1681,6 @@ case ":$PATH:" in
 esac
 
 # ------------------------------------------------------------------------------------------------ next step
-agent_plist="$HOME/Library/LaunchAgents/$POLL_LABEL.plist"
 EXIT_RC=0
 TCC_CLICK="turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders" # a click, not a command
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -1708,18 +1713,12 @@ elif [ "$INSTALL_AGENT" -eq 1 ]; then
 	else
 		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$ORIG_ARGS"
 	fi
-elif [ "$LAUNCHER_STATE" != "installed" ]; then
-	next="get a signed $APP_NAME (ask IT, or install the Xcode Command Line Tools) and re-run with --launcher PATH"
 elif [ "$CONFIG_STATE" = "created" ] && [ "${#FOLDERS[@]}" -eq 0 ]; then
 	next="add your sources to $CONFIG, then re-run: $SELF$ORIG_ARGS"
 elif [ "$DOCTOR_RC" -ne 0 ]; then
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
-elif [ ! -f "$agent_plist" ] && [ "${#FOLDERS[@]}" -gt 0 ]; then
-	next="check a first cycle by hand with: $AGENTSYNC sync --once; then re-run: $SELF$BASE_ARGS --confirm-install-agent to start background sync"
-elif [ ! -f "$agent_plist" ]; then
-	next="re-run: $SELF$BASE_ARGS --confirm-install-agent to start background sync"
-else
-	next="if macOS asks $PROMPT_TEXT, click Allow; then check progress with: $AGENTSYNC status"
+else # background sync is optional and the operator's (KISS K11b): every session syncs and follows its NEXT
+	next="run $AGENTSYNC sync and follow its NEXT line"
 fi
 NEXT_MSG="$next"
 [ "$EXIT_RC" -eq 0 ] || exit "$EXIT_RC" # the EXIT trap writes the report and prints NEXT

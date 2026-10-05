@@ -33,7 +33,6 @@ ONE_PROMPT_INSTALL_FLAGS = {
     "--list-folders",
     "--log",
     "--source-local",
-    "--confirm-install-agent",
     "--report-only",
 }
 """The install.sh flags the README's one prompt names; test_contracts.py checks they are in the frozen set."""
@@ -526,15 +525,15 @@ def _intro() -> str:
 
 def test_readme_intro_says_what_the_prompt_does() -> None:
     """The text above the block matches what the block does (K14): it lists the folders, asks one question,
-    runs one install command, and the person clicks Allow at most twice (the terminal in step 1, the
-    launcher in step 2), not "one installer command" and "one macOS prompt"."""
+    runs one install command, and the person clicks Allow at most once (the terminal in step 1; KISS K11b: no
+    launcher, so no second click), not "one installer command" and "one macOS prompt"."""
     intro = _intro()
     for phrase in (
         "lists your synced folders",
         "asks you one question (which to sync)",
         "runs one install command",
-        "You click Allow at most twice: once if macOS asks about this terminal app, and once for "
-        "agentsync-launcher.",
+        "It starts no background job: background sync is optional and yours to turn on",
+        "You click Allow at most once: if macOS asks about this terminal app.",
         "writes the IT request as a draft it never sends",
         "redacted setup report",
     ):
@@ -542,7 +541,7 @@ def test_readme_intro_says_what_the_prompt_does() -> None:
     assert "one installer command" not in intro and "one macOS prompt" not in intro
     steps = _prompt_steps()
     assert "macOS may ask whether this terminal app can access files managed by OneDrive" in steps[1]
-    assert '"macOS will ask whether agentsync-launcher may access files managed by OneDrive.' in steps[2]
+    assert "agentsync-launcher" not in steps[2] and "asks for no second Allow click" in steps[2]
     assert len([c for c in _commands(steps[2]) if "scripts/install.sh" in c]) == 1
 
 
@@ -618,7 +617,8 @@ def test_list_folders_without_cloud_storage_exits_3_with_a_next_line(tmp_path: P
 def test_readme_step2_is_the_one_install_command() -> None:
     step2 = _prompt_steps()[2]
     [cmd] = _commands(step2)
-    assert cmd == f'{INSTALL_SH} --source-local "<folder>" --confirm-install-agent'
+    assert cmd == f'{INSTALL_SH} --source-local "<folder>"'
+    assert "--confirm-install-agent" not in _one_prompt_block(), "KISS K11b: background sync is optional"
     assert "10 minutes" in step2 and "run the same command again" in step2, "J11: a timeout and a safe re-run"
     assert "NEXT:" in step2
     assert (
@@ -988,7 +988,7 @@ def _agent_commands() -> list[str]:
     assert commands == [
         FRICTION_LOG_TEMPLATE,
         STEP1_COMMAND,
-        f'{INSTALL_SH} --source-local "<folder>" --confirm-install-agent',
+        f'{INSTALL_SH} --source-local "<folder>"',
         STEP3_COMMAND,
     ], commands
     return commands
@@ -1349,7 +1349,8 @@ def test_setup_feedback_page_triages_by_friction_id() -> None:
     for step in ("Choosing the folders", "TCC Allow click", "Agent-tool approvals", "IT consent"):
         assert step in unavoidable, step
     assert "Full Disk Access to the" in unavoidable and "pre-allows" in unavoidable
-    assert "for the terminal (step 1)" in unavoidable and "`agentsync-launcher` (step 2)" in unavoidable
+    assert "for the terminal (step 1)" in unavoidable
+    assert "`install.sh --confirm-install-agent`" in unavoidable, "KISS K11b: launcher click optional"
     assert "within 12 s" in page  # setup_report.TIME_BUDGET_S (judge finding I20)
 
 

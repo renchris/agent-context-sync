@@ -224,8 +224,9 @@ Each one has its evidence. A report showing that one of them can be avoided move
 Current unavoidable human steps (these do not break "fully one command"):
 
 - **Choosing the folders.** The one question the prompt asks on purpose: what to sync is the user's decision.
-- **The TCC Allow click** ("wants to access files managed by OneDrive"), for the terminal (step 1) and once for
-  `agentsync-launcher` (step 2). The launcher's click goes away when MDM grants Full Disk Access to the
+- **The TCC Allow click** ("wants to access files managed by OneDrive"), for the terminal (step 1). Setup no
+  longer asks a second one: the click for `agentsync-launcher` comes only with the operator's optional background
+  sync (`install.sh --confirm-install-agent`, KISS K11b), never in a setup run. The launcher's click goes away when MDM grants Full Disk Access to the
   Developer-ID-signed launcher ([the one-time Allow click](README.md#the-one-time-allow-click),
   [mdm/README.md](mdm/README.md)). After a denied prompt the person turns `agentsync-launcher` (or the terminal)
   on in System Settings > Privacy & Security > Files and Folders (a click the prompt forbids the agent), and the

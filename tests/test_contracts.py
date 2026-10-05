@@ -94,7 +94,6 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
     "first-argument": ["--log-start", "--log"],
     "main": [
         "--confirm-install-agent",
-        "--rebuild-launcher",
         "--report-only",
         "--list-folders",
         "--log-start",
@@ -109,7 +108,8 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
 }
 """The pinned install.sh options, per case block: the first-argument dispatch and the main option loop.
 KISS K17 (2026-10-05) deleted --dry-run (now AGENTSYNC_INSTALL_DRY_RUN=1), --config, --no-report and --log-end
-(folded into --report-only); ``*`` is the SOURCE test seam, left out of --help."""
+(folded into --report-only); ``*`` is the SOURCE test seam, left out of --help. KISS K11b (2026-10-05) turned
+--rebuild-launcher into the developer variable AGENTSYNC_REBUILD_LAUNCHER=1."""
 
 
 def _cli_entry(action: argparse.Action) -> str:

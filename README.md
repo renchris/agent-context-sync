@@ -47,7 +47,7 @@ sessions. agentsync tells the agent which pages are new or out of date but does 
 
 | # | Feature | What you get | Who runs it | Commands | Where the result lands |
 |---|---|---|---|---|---|
-| 1 | **Set up** | The tool, its signed launcher and the knowledge folder, installed in one command with no admin rights; two background jobs only if you ask for them | You, once | `scripts/install.sh --source-local "<folder>"` ([Install](#install)); add `--confirm-install-agent` for the background jobs | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
+| 1 | **Set up** | The tool and the knowledge folder, installed in one command with no admin rights; a signed launcher and two background jobs only if you turn on optional background sync yourself | You, once | `scripts/install.sh --source-local "<folder>"` ([Install](#install)); background sync, yours to choose: [Install](#install) | `~/agent-context/sources.toml` (the source list) and `~/agent-context/docs` (a git repo) |
 | 2 | **Connect sources** | A say over what feeds the knowledge folder, now and later | You, when the list changes | Folders this Mac syncs (no IT): `install.sh --list-folders`, then `agentsync add-source FOLDER`. A drop folder for files you save by hand, such as emails dragged out of Outlook as `.eml` (no IT): `~/agent-context/inbox`, which `install.sh` and `agentsync add-source` create. Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac: need IT approval ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)), then `agentsync graph login` and `agentsync graph discover --toml`, pasted into `sources.toml` with `state = "live"` | `sources.toml` |
 | 3 | **Keep a markdown copy current** | Every change upstream shows up as a markdown page, and the record of what changed is kept for you | Your agent, at the start of each work session; or the optional background jobs (every 5 minutes, plus a full re-check every hour) | `agentsync sync --once` (`agentsync status` to look; `agentsync materialise` to pull online-only files sooner) | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md` (added, modified, renamed, deleted); `INDEX.md` |
 | 4 | **Organize by subject** | Pages by client, project or decision, each tied to the exact version of the sources it cites, and flagged when those sources change | Your coding agent writes the pages. agentsync tracks which page cites what, marks stale pages on every run, and records a checkpoint at the end of each build session | `agentsync curate-queue` (mirror pages added, changed and removed since the last checkpoint, then stale pages, then files no page covers yet), `agentsync checkpoint` (ends a build session), `agentsync lint`, `agentsync install-skill` (tells your agent, in any folder, where the knowledge folder is and how to curate it), `agentsync adopt DIR` (import pages you already have) | `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
@@ -130,9 +130,9 @@ turn it on only when that is your call to make.
 ## Set up on a new Mac: one prompt
 
 Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. The
-agent lists your synced folders, asks you one question (which to sync), and runs one install command, which installs,
-syncs once, starts background sync and waits for you. You click Allow at most twice: once if macOS asks about this
-terminal app, and once for agentsync-launcher. It writes the IT request as a draft it never sends, and it ends with a redacted setup report (outcome, timings and every point that was not one command)
+agent lists your synced folders, asks you one question (which to sync), and runs one install command, which installs
+agentsync and the knowledge folder and checks them. It starts no background job: background sync is optional and
+yours to turn on ([Install](#install)). You click Allow at most once: if macOS asks about this terminal app. It writes the IT request as a draft it never sends, and it ends with a redacted setup report (outcome, timings and every point that was not one command)
 for you to review and bring back ([how reports are used](docs/deploy/setup-feedback.md)). Doing it by hand instead: [Install](#install).
 
 ```text
@@ -161,22 +161,21 @@ unclear; include better wording). Do not log the steps themselves; the installer
    older than this prompt and stop. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3. Otherwise show me the folders and ask which to
    sync, suggesting project folders rather than a whole library, and tell me that online-only files in them are
-   downloaded by background sync, up to 1 GiB per folder per run.
-2. Install and start. Tell me: "macOS will ask whether agentsync-launcher may access files managed by OneDrive.
-   Click Allow when it appears." Then run, with one --source-local per folder I chose (full paths), using the
-   longest command timeout your tool allows (10 minutes if you can set it):
-   `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>" --confirm-install-agent`
-   It installs, runs doctor, converts the files already on this Mac, starts background sync and waits until the
-   background job is running. It is safe to re-run: if your tool stopped it early, run the same command again. If
-   your tool cannot wait that long in the foreground, run it in the background and read its output until the NEXT:
-   line appears; that is expected, not a deviation. If it exits non-zero, do what NEXT: says only if it is an
+   downloaded by each sync, up to 1 GiB per folder per run.
+2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
+   timeout your tool allows (10 minutes if you can set it):
+   `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`
+   It installs and runs doctor. It starts no background job and asks for no second Allow click: background sync is
+   mine to turn on later, so add no other option to this command. It is safe to re-run: if your tool stopped it
+   early, run the same command again. If your tool cannot wait that long in the foreground, run it in the background
+   and read its output until the NEXT: line appears; that is expected, not a deviation. If it exits non-zero, do what NEXT: says only if it is an
    install.sh or agentsync command or a click for me; otherwise log it and go to step 3.
 3. IT request and report, always, even after a failure; this is the last command you run:
    `~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md; ~/src/agent-context-sync/scripts/install.sh --report-only`
    (if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code was downloaded).
    The IT draft is never sent. The report works out the outcome, times and run type itself, redacts names, and its
    last lines are an issue link and a NEXT: line. Do not send or upload anything.
-4. Finish with five lines: the folders synced (full paths); the background sync result; the doctor result;
+4. Finish with five lines: the folders synced (full paths); install.sh's NEXT: line; the doctor result;
    ~/agent-context/it-request-draft.md and its "You fill:" line; and ~/agent-context/setup-report.md with the issue
    link, which I review before pasting the report there or copying it back privately.
 ```
@@ -544,21 +543,21 @@ agent do all of this for you, paste the block in [Set up on a new Mac: one promp
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
 ~/src/agent-context-sync/scripts/install.sh --list-folders   # the OneDrive and SharePoint folders this Mac syncs
-# one command: uv, agentsync, the signed launcher, sources.toml with one live source per folder, doctor, a first
-# sync, background sync started and its first run waited for; ends with a NEXT: line
-~/src/agent-context-sync/scripts/install.sh \
-  --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects" --confirm-install-agent
+# one command: uv, agentsync, sources.toml with one live source per folder, the inbox, doctor; ends with a NEXT:
+# line (no launcher, no background job)
+~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
 ```
 
 The installer is safe to re-run and never prompts. `--list-folders` prints
 one full path per line; it exits 3 when OneDrive is not signed in or syncs no folder yet and 4 when macOS denied
 this terminal access, and its `NEXT:` line says which. Repeat `--source-local` for each folder. On a Mac that
 already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
-one folder). `--confirm-install-agent` installs two LaunchAgents: a poll every 5 minutes and an hourly reconcile. On
-the first background run, macOS asks once for permission for the launcher to read OneDrive files; the installer
-waits up to 3 minutes for it, so give a coding tool's command a 10-minute timeout. Without `--confirm-install-agent`
-it stops after doctor, so you can check a cycle by hand first (`agentsync sync --once`, then `agentsync status`) and
-re-run with the flag. [`docs/deploy/README.md`](docs/deploy/README.md) covers the rest: every installed path, the
+one folder). Then run `~/.local/bin/agentsync sync` and do what its `NEXT:` line says; every work session starts
+that way. Background sync is optional and yours to turn on, never part of setup:
+`install.sh --confirm-install-agent` builds the signed launcher, syncs once and installs two LaunchAgents (a poll
+every 5 minutes and an hourly reconcile). On their first run, macOS asks once for permission for the launcher to read
+OneDrive files; the installer waits up to 3 minutes for it, so give the command a 10-minute timeout.
+[`docs/deploy/README.md`](docs/deploy/README.md) covers the rest: every installed path, the
 one-time Allow click, the exit codes, what needs IT, and `agentsync offboard`.
 
 ## Everything behind these numbers is in this repository

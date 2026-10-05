@@ -567,15 +567,32 @@ def test_install_sh_help_and_usage_errors(stubs: dict[str, str], tmp_path: Path)
     cp = install_sh(stubs, "--help")
     assert cp.returncode == 0 and "--confirm-install-agent" in cp.stdout
     assert "AGENTSYNC_INSTALL_DRY_RUN=1" in cp.stdout
-    for gone in ("--dry-run", "--config", "--no-report", "--log-end", "--source", "SOURCE"):
-        assert f"{gone} " not in cp.stdout, f"KISS K17: --help still names {gone}"
+    assert "AGENTSYNC_REBUILD_LAUNCHER=1" in cp.stdout  # KISS K11b: a developer variable, not an option
+    for gone in (
+        "--dry-run",
+        "--config",
+        "--no-report",
+        "--log-end",
+        "--source",
+        "SOURCE",
+        "--rebuild-launcher",
+    ):
+        assert f"{gone} " not in cp.stdout, f"KISS K17/K11b: --help still names {gone}"
     assert install_sh(stubs, "--bogus").returncode == 2
-    for gone in (["--dry-run"], ["--config", "x.toml"], ["--no-report"], ["--log-end"]):  # KISS K17
+    for gone in (
+        ["--dry-run"],
+        ["--config", "x.toml"],
+        ["--no-report"],
+        ["--log-end"],
+        ["--rebuild-launcher"],
+    ):
         cp = install_sh(stubs, *gone)
         assert cp.returncode == 2 and f"unknown option {gone[0]}" in cp.stderr, gone
     assert install_sh(stubs, str(tmp_path / "nowhere")).returncode == 2
     assert install_sh(stubs, str(tmp_path / "missing.whl")).returncode == 2
     assert install_sh(stubs, "--launcher").returncode == 2
+    cp = install_sh(stubs, "--launcher", str(tmp_path))  # KISS K11b: the launcher is for background sync only
+    assert cp.returncode == 2 and "--launcher only applies with --confirm-install-agent" in cp.stderr
     # no step ran; the setup report written at a post-parse usage error only reads launchd
     assert [c for c in calls(stubs) if not c.startswith("launchctl print ")] == []
 
@@ -613,37 +630,31 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     cfg = home / "agent-context" / "sources.toml"
     report = f" [setup report: {home}/agent-context/setup-report.md]"
 
-    first = install_sh(stubs, "--launcher", str(launcher_app))
+    first = install_sh(stubs)
     assert first.returncode == 0, first.stderr
-    assert (dest / "Contents" / "MacOS" / "agentsync-launcher").is_file()
-    assert (
-        subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(dest)], check=False).returncode == 0
-    )
+    assert not dest.exists(), "KISS K11b: no launcher without --confirm-install-agent"
     assert cfg.is_file()
-    assert "designated requirement: cdhash H" in first.stdout
     log1 = calls(stubs)
     assert log1[:2] == ["uv tool dir --bin", "uv tool dir"], "read before the install (is it current?)"
     assert log1[2].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
     assert log1[2].endswith(str(REPO))
     assert f"agentsync init --config {cfg}" in log1 and f"agentsync doctor --config {cfg}" in log1
     assert not any("install-agent" in c for c in log1), "no LaunchAgent without --confirm-install-agent"
+    assert not any(c.startswith("launchctl") for c in log1), "no launchctl call without the flag"
     assert (
         first.stdout.strip().splitlines()[-1]
-        == f"NEXT: add your sources to {cfg}, then re-run: {INSTALL_SH} --launcher {launcher_app}{report}"
+        == f"NEXT: add your sources to {cfg}, then re-run: {INSTALL_SH}{report}"
     )
 
-    mtime = (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns
-    second = install_sh(stubs, "--launcher", str(launcher_app))
+    second = install_sh(stubs)
     assert second.returncode == 0, second.stderr
-    assert "is up to date" in second.stdout and f"config: {cfg} exists (inbox ensured)" in second.stdout
-    assert (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns == mtime, "not re-copied"
+    assert f"config: {cfg} exists (inbox ensured)" in second.stdout
     log2 = calls(stubs)[len(log1) :]
     assert f"agentsync init --config {cfg}" in log2, "a re-run's flagless init ensures the inbox"
     assert cfg.read_text().count('kind = "inbox"') == 1
     assert second.stdout.strip().splitlines()[-1] == (
-        f"NEXT: re-run: {INSTALL_SH} --launcher {launcher_app} --confirm-install-agent to start "
-        f"background sync{report}"
-    )
+        f"NEXT: run {home}/.local/bin/agentsync sync and follow its NEXT line{report}"
+    ), "KISS K11b: never a re-run with --confirm-install-agent"
 
     no_source = install_sh(stubs, "--launcher", str(launcher_app), "--confirm-install-agent")
     assert no_source.returncode == 1, "asked for background sync of nothing"
@@ -651,6 +662,12 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert (
         no_source.stdout.strip().splitlines()[-1].startswith("NEXT: choose a folder to sync, then re-run: ")
     )
+    assert (dest / "Contents" / "MacOS" / "agentsync-launcher").is_file(), "the flag builds or copies it"
+    assert (
+        subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(dest)], check=False).returncode == 0
+    )
+    assert "designated requirement: cdhash H" in no_source.stdout
+    mtime = (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns
 
     folder = home / "Projects"
     folder.mkdir()
@@ -658,6 +675,8 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
         stubs, "--launcher", str(launcher_app), "--source-local", str(folder), "--confirm-install-agent"
     )
     assert third.returncode == 0, third.stderr
+    assert "is up to date" in third.stdout
+    assert (dest / "Contents" / "MacOS" / "agentsync-launcher").stat().st_mtime_ns == mtime, "not re-copied"
     log3 = calls(stubs)
     assert f"agentsync sync --once --materialise-budget 0 --config {cfg}" in log3  # KISS K13b: no probe
     assert f"agentsync install-agent --config {cfg}" in log3
@@ -698,7 +717,7 @@ def test_install_sh_network_failure_exits_1_with_a_next_line(stubs: dict[str, st
 def test_install_sh_rejects_an_unsigned_launcher(stubs: dict[str, str], tmp_path: Path) -> None:
     fake = tmp_path / "AgentSyncLauncher.app"
     (fake / "Contents" / "MacOS").mkdir(parents=True)
-    cp = install_sh(stubs, "--launcher", str(fake))
+    cp = install_sh(stubs, "--launcher", str(fake), "--confirm-install-agent")
     assert cp.returncode == 1 and "codesign --verify" in cp.stderr
     assert not (Path(stubs["HOME"]) / "Applications").exists()
 
@@ -743,7 +762,12 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     cp = install_sh(stubs, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stderr
     assert "install.log" not in cp.stdout + cp.stderr, "the setup log is never printed"
-    assert cp.stdout.strip().splitlines()[-1].startswith("NEXT: get a signed AgentSyncLauncher.app")
+    assert (
+        cp.stdout.strip()
+        .splitlines()[-1]
+        .startswith(f"NEXT: run {home}/.local/bin/agentsync sync and follow its NEXT line")
+    ), "KISS K11b: no launcher dead end without --confirm-install-agent"
+    assert not any(c.startswith("launchctl") for c in calls(stubs)), "no launchctl call without the flag"
     log = home / "agent-context" / "setup" / "install.log"
     assert (log.parent.stat().st_mode & 0o777) == 0o700 and (log.stat().st_mode & 0o777) == 0o600
     assert (log.parent.parent.stat().st_mode & 0o777) == 0o700, "a ~/agent-context it creates is 0700"
@@ -757,7 +781,7 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     assert _steps(lines) == [
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
-        ("launcher", "skipped", "0", "no-launcher"),
+        ("launcher", "skipped", "0", "not-requested"),
         ("config", "done", "0", "created"),
         ("doctor", "done", "0", ""),
         ("first-sync", "skipped", "0", "not-requested"),

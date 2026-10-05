@@ -5158,6 +5158,17 @@ last `Attempt:` has no such line, so a second `--report-only` adds none. The pre
 as a test seam and is left out of `--help`. The deleted options exit 2 as unknown options; the case arms are
 pinned by `tests/test_contracts.py::INSTALL_OPTIONS`.
 
+**SUPERSEDED in part (2026-10-05, KISS K11b): background sync is optional and the operator's.** Step 3 (the
+launcher) runs only with `--confirm-install-agent`, like steps 6-8; without it the `launcher` step is logged
+`result=skipped note=not-requested` and no launcher is built, copied or checked, and no `launchctl` write runs.
+`--launcher PATH` without `--confirm-install-agent` is a usage error (exit 2). `--rebuild-launcher` is deleted (exit
+2 as an unknown option); the developer variable `AGENTSYNC_REBUILD_LAUNCHER=1` rebuilds an up-to-date launcher
+instead. No `NEXT:` line of a run without the flag names `--confirm-install-agent`: `--list-folders` names
+`install.sh --source-local "<folder>"`, the "get a signed AgentSyncLauncher.app" exit-0 dead end is deleted, and a
+run that is not sourceless or failing ends on `run ~/.local/bin/agentsync sync and follow its NEXT line`. The
+README's setup prompt and default install path never pass the flag; `docs/deploy/README.md` documents it as
+optional background sync.
+
 ### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
 
 Additive (judge finding J10; setup prompt v5 step 4). `agentsync it-request --out PATH [--config PATH]` renders

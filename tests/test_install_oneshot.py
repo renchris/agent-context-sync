@@ -731,9 +731,8 @@ def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -
     ]
     assert lines[-1] == (
         "NEXT: choose the folders to sync from the list above (project folders rather than a whole library), "
-        f'then run: {INSTALL_SH} --source-local "<folder>" --confirm-install-agent '
-        "(one --source-local per folder)"
-    )
+        f'then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder)'
+    ), "KISS K11b: the setup path never passes --confirm-install-agent"
     assert calls(env) == [], "no uv, agentsync or launchctl: names only"
     assert not report_path(env).exists(), "no report for --list-folders"
     log = install_log(env)

@@ -18,7 +18,7 @@ reads. It runs as you, needs **no admin rights**, and keeps everything on the Ma
 |---|---|---|
 | `~/.local/bin/uv` | uv (only if none is on `PATH`; the official installer, shell profiles untouched) | you |
 | `~/.local/share/uv/tools/agentsync/`, `~/.local/bin/agentsync` | agentsync and a uv-managed Python 3.11 (`uv tool install`) | `agentsync offboard` |
-| `~/Applications/AgentSyncLauncher.app` | the signed launcher that LaunchAgents run (bundle id `com.agentsync.launcher`) | `agentsync offboard` |
+| `~/Applications/AgentSyncLauncher.app` | the signed launcher that LaunchAgents run (bundle id `com.agentsync.launcher`), only with `--confirm-install-agent` | `agentsync offboard` |
 | `~/agent-context/sources.toml` | the in-scope set: the only file that names a location | `offboard --purge-data` |
 | `~/agent-context/docs/` | the docs git repo (mode 0700, **no remote**) | `offboard --purge-data` |
 | `~/Library/Application Support/agentsync/` | manifest (SQLite, 0600), cursors, lock, heartbeat, governance audit | `agentsync offboard` |
@@ -46,18 +46,25 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 ~/src/agent-context-sync/scripts/install.sh --source-local "$HOME/Library/CloudStorage/OneDrive-Contoso/Projects"
 ```
 
-The script is safe to re-run and never prompts. It installs uv and agentsync,
-builds and ad-hoc signs the launcher, writes `sources.toml` with one live `kind = "local"` source per folder (on a
-re-run it adds only folders not yet there, through `agentsync add-source`), runs `agentsync doctor`, and ends with
-one `NEXT:` line. Check a first cycle with `agentsync sync --once`, then start background sync:
+The script is safe to re-run and never prompts. It installs uv and agentsync, writes `sources.toml` with one live
+`kind = "local"` source per folder (on a re-run it adds only folders not yet there, through `agentsync add-source`),
+runs `agentsync doctor`, and ends with one `NEXT:` line. It builds no launcher and installs no LaunchAgent. Every work
+session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
+
+### Optional: background sync (the operator's choice)
+
+Background sync is never part of setup, and the one-prompt setup never turns it on: you decide, on your own Mac,
+whether to run it. It keeps the mirror current between sessions, at the cost of a second Allow click and two jobs
+that run as you:
 
 ```sh
 ~/src/agent-context-sync/scripts/install.sh --confirm-install-agent
 ```
 
-The one-prompt setup does both in one run: `install.sh --source-local "<folder>" --confirm-install-agent` also
-syncs once, starts background sync and waits up to 3 minutes for the first background run and your Allow click, so
-give a coding tool's command a 10-minute timeout.
+This builds and ad-hoc signs the launcher (`--launcher PATH` copies a prebuilt, signed one instead), syncs once,
+installs two LaunchAgents (a poll every 5 minutes and an hourly reconcile) and waits up to 3 minutes for the first
+background run and your Allow click, so give the command a 10-minute timeout. `agentsync uninstall-agent` removes
+the LaunchAgents again without offboarding.
 
 Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,
@@ -149,7 +156,7 @@ launcher's `TCC_*` tokens.
 - **MDM suppresses or blocks the prompt:** ask IT for the PPPC profile ([mdm/README.md](mdm/README.md)). Until then,
   `~/.local/bin/agentsync sync` from Terminal runs under Terminal's own grant, and inbox sources need no grant at all.
 - **Rebuilding the launcher** ad hoc creates a new identity, so macOS asks again. `install.sh` skips identical
-  rebuilds.
+  rebuilds (a developer forces one with `AGENTSYNC_REBUILD_LAUNCHER=1`).
 
 ## Exit codes the jobs report
 
