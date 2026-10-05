@@ -49,13 +49,47 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in (
-        "add-source", "sync", "status", "accept-deletions", "materialise", "graph",
-        "purge", "compact-history", "hold", "offboard",
+        "add-source", "sync", "status", "accept-deletions", "graph", "purge", "hold", "offboard",
     ):  # fmt: skip
         assert command in out
     assert "install-agent" not in out and "uninstall-agent" not in out  # KISS K11a: hidden, still parse
     assert cli.main(["sync", "--help"]) == 0
     assert "75  skipped" in capsys.readouterr().out
+
+
+def test_sync_takes_no_visible_option_and_the_hidden_maintenance_verbs_still_parse(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K13b: sync drops --dry-run and --source and hides --once, --mode and --materialise-budget;
+    materialise, migrate and compact-history are hidden, migrate is a no-op, and compact-history refuses
+    --keep-days below 1."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    for name in ("materialise", "migrate", "compact-history"):
+        assert not re.search(rf"(?m)^    {name}\b", out), f"{name} is hidden from help"
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["sync", "--help"])
+    out = capsys.readouterr().out
+    for flag in ("--once", "--mode", "--materialise-budget", "--dry-run", "--source"):
+        assert flag not in out, flag
+    for dropped in (["--dry-run"], ["--source", "source"]):
+        assert cli.main(["sync", *dropped, "--config", cfg]) == cli.EXIT_USAGE, dropped
+    parser = cli.build_parser()
+    hidden = parser.parse_args(["sync", "--once", "--mode", "reconcile", "--materialise-budget", "0"])
+    assert hidden.once and hidden.mode == "reconcile" and hidden.materialise_budget == "0"
+    for argv in (["materialise", "--budget", "1MB"], ["migrate"], ["compact-history", "--keep-days", "1"]):
+        assert parser.parse_args(argv).command == argv[0]
+    capsys.readouterr()
+    assert cli.main(["migrate", "--config", cfg]) == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith("migration is automatic")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    head = git(initialised.docs_repo, "rev-parse", "HEAD").strip()
+    capsys.readouterr()
+    for days in ("0", "-1"):
+        assert cli.main(["compact-history", "--keep-days", days, "--config", cfg]) == cli.EXIT_FAILED
+        assert "keep_days must be >= 1" in capsys.readouterr().err
+    assert git(initialised.docs_repo, "rev-parse", "HEAD").strip() == head  # nothing squashed
 
 
 def test_usage_errors_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
@@ -117,7 +151,7 @@ def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFix
     assert "source (local, live): baseline complete" in status and "lock: free" in status
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     assert "0 blocking" in capsys.readouterr().out
-    assert cli.main(["sync", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["sync", "--mode", "dry_run", "--config", cfg]) == cli.EXIT_OK  # hidden, still parses
     assert "mode dry_run" in capsys.readouterr().out
     assert cli.main(["reconcile", "--config", cfg]) == cli.EXIT_OK
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "1"
@@ -449,7 +483,7 @@ def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str
 
 def test_unknown_source_and_graph_without_client_id_exit_78(initialised: Config) -> None:
     cfg = str(initialised.config_path)
-    assert cli.main(["sync", "--config", cfg, "--source", "nope"]) == cli.EXIT_CONFIG
+    assert cli.main(["reconcile", "--config", cfg, "--source", "nope"]) == cli.EXIT_CONFIG
     assert cli.main(["graph", "whoami", "--config", cfg]) == cli.EXIT_CONFIG
     assert cli.main(["whoami", "--config", cfg]) == cli.EXIT_CONFIG
 
@@ -592,22 +626,27 @@ def test_old_manifest_migrates_through_status_and_sync(initialised: Config) -> N
     assert not backup.exists()
 
 
-def test_migrate_command_keeps_a_pre_migration_copy(initialised: Config) -> None:
-    """The hidden `migrate` (install.sh ran it before KISS K14; opening the manifest migrates it now)."""
+def test_migrate_is_a_no_op_and_the_next_sync_migrates(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hidden `migrate` (install.sh ran it before KISS K14) is a no-op since KISS K13b: it opens nothing,
+    and the next sync migrates the manifest with its pre-v<N> copy."""
     cfg = str(initialised.config_path)
     db = initialised.state_paths.db
     backup = db.with_name(f"manifest.sqlite.pre-v{MANIFEST_SCHEMA_VERSION}")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     _sql(db, "UPDATE meta SET value = '0' WHERE key = 'key_schema_version'")
+    capsys.readouterr()
     assert cli.main(["migrate", "--config", cfg]) == cli.EXIT_OK
-    assert backup.is_file()
-    conn = sqlite3.connect(backup)
+    assert "migration is automatic" in capsys.readouterr().out
+    assert not backup.exists()
+    conn = sqlite3.connect(db)
     try:
         assert conn.execute("SELECT value FROM meta WHERE key = 'key_schema_version'").fetchone()[0] == "0"
     finally:
         conn.close()
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
-    assert not backup.exists()
+    assert backup.is_file()
 
 
 def test_materialise_paths(initialised: Config, local_source_dir: Path, tmp_path: Path) -> None:
@@ -1107,8 +1146,8 @@ def test_hold_suspends_purge_and_compaction_and_shows_in_status(
     sid = _stable_id(initialised, "projects/sample.txt")
     assert cli.main(["purge", f"id={sid}", "--config", cfg]) == cli.EXIT_FAILED
     assert "suspended by legal/records hold" in capsys.readouterr().err
-    assert cli.main(["compact-history", "--keep-days", "0", "--config", cfg]) == cli.EXIT_FAILED
-    capsys.readouterr()
+    assert cli.main(["compact-history", "--keep-days", "1", "--config", cfg]) == cli.EXIT_FAILED
+    assert "hold" in capsys.readouterr().err
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     assert "HOLD: hold all (state): litigation 42" in capsys.readouterr().out
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
@@ -1707,11 +1746,6 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
     parser = cli.build_parser()
     sync = parser.parse_args(["sync", "--materialise-budget", "200MB"])
     assert sync.materialise_budget == "200MB"
-    capsys.readouterr()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["sync", "--help"])
-    text = " ".join(capsys.readouterr().out.split())
-    assert "Only online-only files are charged" in text and "every local file is converted" in text
 
 
 def test_sync_without_mode_ends_with_the_summary_then_one_next_line(

@@ -902,8 +902,8 @@ class _Cycle:
             return commit_sha
         if not rep.verified:
             self.retention_lines.append(
-                f"- compaction NOT verified: {len(rep.survivors)} object(s) survive; run "
-                "`agentsync compact-history` and check"
+                f"- compaction NOT verified: {len(rep.survivors)} object(s) of the squashed history can "
+                "still be read from the docs repo"
             )
         elif rep.squashed:
             self.retention_lines.append(

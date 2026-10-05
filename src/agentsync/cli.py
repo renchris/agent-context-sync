@@ -1,12 +1,12 @@
 """``agentsync`` command line (owner: integrator).
 
-Subcommands: add-source PATH · init (hidden) · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run]
-[--source ID ...] [--materialise-budget BYTES] · accept-deletions SOURCE · status · curate · materialise
-[--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level
-login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent
-(hidden) · uninstall-agent (hidden) · purge SELECTOR | --queue · compact-history ·
-hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report [--out PATH] [--friction PATH]
-[--no-redact] · it-request --out PATH.
+Subcommands: add-source PATH · init (hidden) · sync (hidden options: --once, --mode poll|reconcile|dry_run,
+--materialise-budget BYTES) · accept-deletions SOURCE · status · curate · materialise [--budget BYTES]
+[PATH ...] (hidden) · adopt SRC_DIR · migrate (hidden, a no-op) · graph login|logout|whoami|discover (also as
+top-level login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) ·
+install-agent (hidden) · uninstall-agent (hidden) · purge SELECTOR | --queue · compact-history [--keep-days N
+(at least 1)] (hidden) · hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report [--out PATH]
+[--friction PATH] [--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
 ``sync`` without ``--mode`` ends with the loop's ``NEXT:`` line and any ``WAITING ON YOU:`` lines
 (:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
@@ -99,7 +99,7 @@ exit codes:
       failed, a purge/compaction was not verified, or discovery was incomplete (curate rows are not a failure)
   2   usage error (bad arguments)
   75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
-      `sync` without --mode first waits up to 10 minutes for it
+      `sync` (not a LaunchAgent's run) first waits up to 10 minutes for it
   77  sign-in required: a Graph source needs `agentsync graph login` (auth REAUTH_REQUIRED), or Entra
       blocked sign-in (blocked: device|policy|consent|assignment, config-invalid; the message names the fix)
   78  configuration invalid: sources.toml or policy.toml is missing or wrong (the message names the key)
@@ -205,31 +205,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
 
     p = add("sync", "run one sync cycle (what the launchd agents run)", _cmd_sync)
-    p.add_argument("--once", action="store_true", help="run exactly one cycle (the default; for scripts)")
-    p.add_argument(
-        "--mode",
-        choices=[m.value for m in CycleMode],
-        default=None,
-        help="default: poll, or reconcile once reconcile_interval_s has passed since the last full run; "
-        "without --mode a running sync is waited for (up to 10 minutes) instead of exiting 75",
-    )
-    p.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="classify only: no fetch, no writes under docs/, no commit (an older manifest is still "
-        "migrated, with a pre-v<N> copy)",
-    )
-    p.add_argument(
-        "--source", action="append", default=[], metavar="ID", help="only this source (repeatable)"
-    )
-    p.add_argument(
-        "--materialise-budget",
-        metavar="BYTES",
-        help='download budget per source for this run only, e.g. "200MB" (default: each source\'s '
-        "max_materialise_bytes). Only online-only files are charged: files already on this Mac are always "
-        "read and converted. 0 = no downloads this run: every local file is converted, and every changed "
-        "online-only file is left for a later run",
-    )
+    # KISS K13b: sync takes no visible option. --once (a no-op: one cycle is the default), --mode (the launchd
+    # agents' poll | reconcile; dry_run classifies only) and --materialise-budget BYTES (a download budget
+    # per source for this run only; 0, install.sh's first sync, converts every local file and downloads
+    # nothing) still parse; --dry-run and --source are deleted.
+    p.add_argument("--once", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--mode", choices=[m.value for m in CycleMode], default=None, help=argparse.SUPPRESS)
+    p.add_argument("--materialise-budget", metavar="BYTES", help=argparse.SUPPRESS)
 
     p = add(
         "accept-deletions",
@@ -277,7 +259,12 @@ def build_parser() -> argparse.ArgumentParser:
         hidden=True,
     )
 
-    p = add("materialise", "hydrate + convert named files (or pending work) within a byte budget", _cmd_mat)
+    p = add(
+        "materialise",
+        "hydrate + convert named files (or pending work) within a byte budget",
+        _cmd_mat,
+        hidden=True,
+    )
     p.add_argument(
         "--budget", metavar="BYTES", help='byte budget for this run, e.g. "500MB" (default: config)'
     )
@@ -286,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("adopt", "copy an existing hand-made docs tree into topics/ as hand-written pages", _cmd_adopt)
     p.add_argument("src_dir", type=Path, metavar="PATH")
 
-    add("migrate", "bring the manifest to this build's schema (after an upgrade)", _cmd_migrate)
+    add("migrate", "a no-op: every command migrates the manifest itself", _cmd_migrate, hidden=True)
 
     p = add("graph", "Microsoft Graph sign-in: login | logout | whoami | discover", _cmd_graph)
     p.add_argument("action", choices=["login", "logout", "whoami", "discover"])
@@ -332,8 +319,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--push", action="store_true", help="force-push the rewrite to an allowed tenant remote")
 
-    p = add("compact-history", "squash mirror history older than [governance] history_days", _cmd_compact)
-    p.add_argument("--keep-days", type=int, metavar="N", help="default: [governance] history_days")
+    p = add(
+        "compact-history",
+        "squash mirror history older than [governance] history_days",
+        _cmd_compact,
+        hidden=True,
+    )
+    p.add_argument("--keep-days", type=int, metavar="N", help=">= 1; default: [governance] history_days")
     p.add_argument("--dry-run", action="store_true", help="report only")
 
     p = add("hold", "legal/records hold: suspend purge and compaction for a scope", _cmd_hold)
@@ -624,12 +616,12 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     """One cycle; without ``--mode`` (an agent's or a person's run, never a LaunchAgent's) the report ends
     with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
-    mode = CycleMode.DRY_RUN if args.dry_run else CycleMode(args.mode) if args.mode else None
+    mode = CycleMode(args.mode) if args.mode else None
     if args.materialise_budget is None:
-        rc = _run(config, mode=mode, only=tuple(args.source))
+        rc = _run(config, mode=mode)
     else:
         budget = parse_size(args.materialise_budget, where="--materialise-budget")
-        rc = _run(config, mode=mode, only=tuple(args.source), budget_bytes=budget)
+        rc = _run(config, mode=mode, budget_bytes=budget)
     if mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
         for line in loop.next_lines(config):
             _out(line)
@@ -1107,7 +1099,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     except AgentSyncError as exc:
         state, detail = "overdue", f"cannot read the docs repo history: {exc}"
     severity = {"ok": doctor.Severity.INFO, "due": doctor.Severity.WARN}.get(state, doctor.Severity.ERROR)
-    compact_fix = "agentsync sync --mode reconcile (or agentsync compact-history); release any hold"
+    compact_fix = "agentsync sync (its next full pass compacts); release any hold"
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
     queued = governance.pending_purges(config.state_paths.root)
@@ -1510,9 +1502,9 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
 
 
 def _cmd_migrate(args: argparse.Namespace) -> int:
-    config = _config(args)
-    applied = Manifest.migrate(config.state_paths.db)
-    _out(f"manifest {config.state_paths.db}: " + (f"applied {applied}" if applied else "already current"))
+    """KISS K13b: a no-op kept so older install.sh runs and scripts still exit 0; opening the manifest
+    migrates it (with its pre-v<N> copy) in every command that uses it."""
+    _out("migration is automatic: every agentsync command that opens the manifest migrates it")
     return EXIT_OK
 
 

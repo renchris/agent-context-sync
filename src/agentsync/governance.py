@@ -2225,13 +2225,13 @@ def compact_history(
 ) -> CompactionReport:
     """Squash every commit older than ``keep_days`` (default ``[governance] history_days``) into one root
     snapshot of the newest such commit, replay newer commits on it, expire reflogs, prune, and verify that no
-    dropped object survives.  Refused while any hold is active."""
+    dropped object survives.  Refused while any hold is active, and for ``keep_days`` below 1."""
     gov = gov or load_governance(config.config_path)
     if gov.archive:
         raise GovernanceError(f"history compaction refused: {ARCHIVE_KEEPS_HISTORY} ([governance] archive)")
     days = gov.history_days if keep_days is None else keep_days
-    if days < 0:
-        raise GovernanceError(f"keep_days must be >= 0, got {days}")
+    if days < 1:  # KISS K13b: 0 would squash every commit, the session's own included
+        raise GovernanceError(f"keep_days must be >= 1, got {days}")
     repo = expand(config.docs_repo)
     sp = config.state_paths
     _refuse_if_held(active_holds(sp.root, gov), "history compaction")

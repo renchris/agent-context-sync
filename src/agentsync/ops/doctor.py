@@ -1170,18 +1170,14 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
         age = _age_s(last, now)
         incomplete = entry.get("consecutive_incomplete")
         if age is None:
-            out.append(
-                _bad(
-                    name, "no successful pass yet", Severity.WARN, fix=f"agentsync sync --source {src.id} -v"
-                )
-            )
+            out.append(_bad(name, "no successful pass yet", Severity.WARN, fix="agentsync sync -v"))
         elif age > limit:
             out.append(
                 _bad(
                     name,
                     f"last success {last} ({age}s ago) > {_STALE_FACTOR} x cadence ({limit}s)",
                     Severity.WARN,
-                    fix=f"agentsync sync --source {src.id} -v",
+                    fix="agentsync sync -v",
                 )
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
@@ -1190,7 +1186,7 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
                     name,
                     f"enumeration incomplete for {incomplete} consecutive passes (deletions held)",
                     Severity.WARN,
-                    fix=f"agentsync doctor; agentsync sync --mode reconcile --source {src.id}",
+                    fix=f"agentsync sync -v (a full pass that lists all of {src.id} clears this)",
                 )
             )
         else:

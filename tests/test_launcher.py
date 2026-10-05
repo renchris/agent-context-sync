@@ -652,7 +652,7 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     )
     assert third.returncode == 0, third.stderr
     log3 = calls(stubs)
-    assert f"agentsync sync --once --config {cfg}" in log3
+    assert f"agentsync sync --once --materialise-budget 0 --config {cfg}" in log3  # KISS K13b: no probe
     assert f"agentsync install-agent --config {cfg}" in log3
     assert f"launchctl kickstart gui/{os.getuid()}/com.agentsync.poll" in log3
     assert "wants to access files managed by" in third.stdout

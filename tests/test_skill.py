@@ -105,7 +105,7 @@ def test_sync_without_claude_config_dir_writes_only_the_home_copy(
 
 
 def test_dry_run_writes_no_skill(initialised: Config) -> None:
-    assert cli.main(["sync", "--dry-run", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    assert cli.main(["sync", "--mode", "dry_run", "--config", str(initialised.config_path)]) == cli.EXIT_OK
     assert not home_skill().exists()
 
 

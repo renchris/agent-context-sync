@@ -3489,10 +3489,13 @@ def source_statuses(
 ``agentsync`` command line (owner: integrator).
 
 Subcommands: init (2026-10-04, KISS K14: hidden, no options) · sync [--once] [--mode poll|reconcile|dry_run]
-[--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
+[--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30; 2026-10-05, KISS K13b: no visible option,
+`--once`, `--mode` and `--materialise-budget` hidden, `--dry-run` and `--source` deleted) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
 [--accept-deletions]` is its hidden alias) · status (2026-10-04, KISS K08a: the single read-only check; `doctor`
 and `policy show` are its hidden aliases, `doctor --network` is deleted) · curate (2026-10-04, KISS K09; `curate-queue`,
-`lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
+`lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] (hidden since KISS K13b) ·
+adopt SRC_DIR · migrate (KISS K13b: hidden, a no-op printing "migration is automatic") · compact-history
+[--keep-days N] [--dry-run] (KISS K13b: hidden; N below 1 is refused) · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent (2026-10-05,
 KISS K11a: hidden, no options; `--interval`, `--reconcile-interval` and `--no-backup-exclusions` are deleted) ·
 uninstall-agent (hidden) · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
@@ -4405,7 +4408,7 @@ class AgentSpec:
 | `graph whoami` / `whoami` | `MsalAuth.status()`, prints `sign_in_method` | 0 · 77 signed out |
 | `graph discover` / `discover` [`--url URL`…] [`--toml`] | `discover.discover_sources` / `resolve_url` → `render_sources_toml` | 0 · 1 incomplete (each IT action on stderr) |
 | `purge SELECTOR` [`--source ID`] [`--reason R`] [`--dry-run`] [`--push`] · `purge --queue` | `governance.purge` / `run_purge_queue` | 0 verified or dry run · 1 not verified / hold · 75 lock |
-| `compact-history` [`--keep-days N`] [`--dry-run`] | `governance.compact_history` | 0 verified / nothing to squash · 1 |
+| `compact-history` [`--keep-days N`] [`--dry-run`] | `governance.compact_history`. Since KISS K13b (2026-10-05) hidden; `--keep-days` below 1 raises `GovernanceError` (`keep_days must be >= 1`), since 0 squashed every commit | 0 verified / nothing to squash · 1 (also N < 1) |
 | `hold SCOPE --reason R --owner O` · `hold SCOPE --release --owner O` · `hold --list` | `set_hold` / `release_hold` / `active_holds` | 0 · 1 · 2 |
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
@@ -4415,6 +4418,9 @@ class AgentSpec:
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted. Since KISS K14 (2026-10-04, §16.13) the one setup verb: `--id` is deleted; a missing sources.toml is written from the template with the folder's table; then `config.ensure_inbox` and init's setup (docs repo, scaffold, state dir, owner-only modes, Time Machine exclusions, remote refusal) | 0 added or already configured · 1 disallowed remote on the docs repo · 2 bad path · 78 invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20). Since KISS K08a the single read-only check: `loop.next_lines` first, `loop.status_line`, `doctor.run_checks` + the §16.8 CLI checks, then the status and policy lines (§16.21) | 0 · 1 any FAIL (K08a) |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`; `--network` is deleted) | 0 · 1 |
+| `sync` (2026-10-05, KISS K13b) | `run_cycle`. No visible option: `--dry-run` and `--source` are deleted (argparse exits 2); `--once` (a no-op), `--mode poll\|reconcile\|dry_run` (the LaunchAgents' argv) and `--materialise-budget BYTES` (install.sh's first sync passes `0` unconditionally; its `sync --help` probe is deleted, since the hidden flag no longer shows there) still parse, hidden from `sync --help`. Fix strings name only `agentsync sync -v` (doctor's heartbeat checks) and `agentsync sync` (status's compaction check) | 0 · 1 · 75 · 78 |
+| `materialise` [`--budget BYTES`] [`PATH …`] (2026-10-05, KISS K13b) | unchanged, hidden from help; the remedy the over-budget alarm names | 0 · 1 · 78 |
+| `migrate` (2026-10-05, KISS K13b) | hidden, a no-op: prints `migration is automatic: …` and opens nothing; every opener migrates the manifest (§5 KISS K12 amendment). Kept so older install.sh runs and scripts exit 0 | 0 |
 | `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
 
 ```python

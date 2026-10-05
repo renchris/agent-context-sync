@@ -66,8 +66,8 @@
 #      online-only file is downloaded here and this step's time does not grow with the folders' size; the
 #      background runs download and convert the online-only files it deferred, within their per-cycle
 #      budget. Its output is shown as its "converted N, deferred M online-only" line(s), each prefixed
-#      "first sync: " (and logged as the step's note converted-N-deferred-M), else as all it printed. An
-#      agentsync without --materialise-budget runs plain sync --once
+#      "first sync: " (and logged as the step's note converted-N-deferred-M), else as all it printed. The
+#      flag is passed unconditionally: sync --help hides it, and the agentsync installed here always has it
 #   7. agent: agentsync install-agent
 #   8. wait: launchctl kickstart gui/<uid>/com.agentsync.poll, then launchctl print every 3 s for up to
 #      $AGENTSYNC_WAIT_SECONDS (default 180 s, 3 minutes) until the first background run is past the macOS
@@ -1484,14 +1484,7 @@ elif [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG"
 	step_end "done"
 else
-	sync_help="$("$AGENTSYNC" sync --help </dev/null 2>/dev/null || true)"
-	if [ "${sync_help#*--materialise-budget}" = "$sync_help" ]; then
-		FIRST_SYNC=(sync --once) # an agentsync from before the flag: online-only files within its budget
-		FIRST_SYNC_NOTE="no-budget-flag"
-		say "first sync: $AGENTSYNC sync --once (this agentsync has no --materialise-budget: online-only files are downloaded within the per-cycle budget)"
-	else
-		say "first sync: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; background sync downloads and converts the online-only ones)"
-	fi
+	say "first sync: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; background sync downloads and converts the online-only ones)"
 	SYNC_OUT="$(mktemp)"
 	with_progress "first sync" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"

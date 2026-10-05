@@ -94,8 +94,7 @@ case "$sub" in
     exit "${STUB_DOCTOR_RC:-0}" ;;
   sync)
     if [ -n "$help" ]; then
-      echo "usage: agentsync sync [--once] [--dry-run] [--source ID]"
-      [ -n "${STUB_SYNC_NO_BUDGET_FLAG:-}" ] || echo "  --materialise-budget BYTES"
+      echo "usage: agentsync sync"
       exit 0
     fi
     [ -z "${STUB_SYNC_SLEEP:-}" ] || sleep "$STUB_SYNC_SLEEP"
@@ -305,7 +304,6 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     order = [
         f"agentsync add-source {folder} --config {cfg}",
         f"agentsync doctor --config {cfg}",
-        "agentsync sync --help",
         f"agentsync sync --once --materialise-budget 0 --config {cfg}",
         f"agentsync install-agent --config {cfg}",
         f"launchctl kickstart gui/{UID}/com.agentsync.poll",
@@ -1006,32 +1004,19 @@ def test_without_confirm_install_agent_doctor_names_its_own_fix(
 
 
 def test_first_sync_runs_with_materialisation_off(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """KISS K13b: --materialise-budget 0 is passed unconditionally; sync --help hides the flag, so the old
+    `sync --help` probe would have silently dropped it."""
     cp = install_sh(env, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     syncs = [c for c in calls(env) if c.startswith("agentsync sync ")]
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
-    assert syncs == [
-        "agentsync sync --help",
-        f"agentsync sync --once --materialise-budget 0 --config {cfg}",
-    ]
+    assert syncs == [f"agentsync sync --once --materialise-budget 0 --config {cfg}"]  # no `sync --help` call
     assert (
         "(downloads nothing: the files already on this Mac are converted now; background sync downloads and "
         "converts the online-only ones)"
     ) in cp.stdout
     assert "stub cycle" in cp.stdout, "no summary line: all the sync printed is shown"
     assert ("first-sync", "done", "0", "") in steps(install_log(env))
-
-
-def test_first_sync_without_the_budget_flag_runs_plain_sync(
-    env: dict[str, str], folder: Path, wheel: Path
-) -> None:
-    e = {**env, "STUB_SYNC_NO_BUDGET_FLAG": "1"}
-    cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
-    assert cp.returncode == 0, cp.stdout + cp.stderr
-    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
-    assert f"agentsync sync --once --config {cfg}" in calls(env)
-    assert "this agentsync has no --materialise-budget" in cp.stdout
-    assert ("first-sync", "done", "0", "no-budget-flag") in steps(install_log(env))
 
 
 # ---- --list-folders fits a 2-minute tool timeout (K8) ------------------------------------------------------
