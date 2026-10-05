@@ -120,6 +120,12 @@ lists every `migration_backups(db)` path, so doctor reports an unexcluded one an
 `ensure_time_machine_exclusions` repairs it: the copy holds the same rows and secret cursors, and a purge cannot
 reach a backup (C15 req 42).
 
+**Amended (2026-10-05, KISS K13b):** `agentsync migrate` is a hidden no-op: it prints `migration is automatic: …`,
+opens nothing and takes no copy, superseding "remains as the explicit form" and "now takes the same copy" above.
+The first opener migrates an older manifest and takes the `<db>.pre-v<N>` copy; on install that is step 4's
+`add-source` or flagless `init` (`Publisher.ensure_scaffold` opens the manifest), which replaced the `migrate`
+call. `sync --dry-run` is deleted; its opener in the list above is now the hidden `sync --mode dry_run`.
+
 ```python
 # agentsync.tm_exclude (leaf: standard library only; governance imports TM_EXCLUDE_XATTR from it)
 TM_EXCLUDE_XATTR = "com.apple.metadata:com_apple_backup_excludeItem"
@@ -949,7 +955,8 @@ class ConfigError(AgentSyncError):
     """sources.toml is missing, unparseable or semantically invalid; the message names the key."""
 
 class ManifestSchemaError(AgentSyncError):
-    """The SQLite manifest's schema or key-schema version does not match this build; run migrate."""
+    """The SQLite manifest's schema or key-schema version does not match this build. Every opener migrates
+    an older one, so this means a newer build wrote it: upgrade this install."""
 
 class LockHeldError(AgentSyncError):
     """Another live agentsync process holds the single-writer lock (CLI exit 75, logged as skipped)."""

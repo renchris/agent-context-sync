@@ -16,21 +16,21 @@ OneDrive/SharePoint sync folder ───────┼─► staging (<state>/
 ```
 
 Nothing flows back to Microsoft 365, and no copy leaves the Mac unless `[governance] allow_remote = true` names a
-tenant-owned remote (`remote_url_prefixes`). `agentsync init` creates the repo without a remote, and agentsync
+tenant-owned remote (`remote_url_prefixes`). `agentsync add-source` creates the repo without a remote, and agentsync
 refuses to push to a remote that is not listed.
 
 ## Where copies live
 
 | Location | Holds | Bounded by | Purge reaches it |
 |---|---|---|---|
-| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | `compact-history` (`[governance] history_days`, default 30) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
+| `~/agent-context/docs/mirror/` + `.git` | converted markdown, one page per item, plus git history | compaction on `sync`'s full pass when due (`[governance] history_days`, default 30) | yes: history rewrite, reflog expiry, `gc --prune=now`, verified with `git cat-file -e` |
 | `~/Library/Caches/agentsync` | converter outputs by content hash | GC after each complete enumeration | yes |
 | `~/Library/Application Support/agentsync/manifest.sqlite` | paths, ids, hashes, labels, cursors (0600); no content | tombstone reap, 180 days | yes (rows forgotten) |
 | `…/agentsync/staging`, `…/agentsync/teams/` | raw downloads (per cycle); Teams month stores | emptied each cycle; Teams rolls up by month | staging: n/a; Teams: yes |
 | `~/Library/Logs/agentsync`, `…/governance/audit.jsonl` | ids and paths; the purge audit (source id, **path hash**, time, reason, no content) | log rotation (8 MB × 2) | the audit is kept by design |
 | login Keychain, service `agentsync` | the MSAL token cache | token lifetime / `graph logout` | `offboard` |
 
-Time Machine: `mirror/`, `.git`, the cache and the manifest are excluded (`agentsync doctor` checks
+Time Machine: `mirror/`, `.git`, the cache and the manifest are excluded (`agentsync status` checks
 `governance.time_machine`). Only hand-written `topics/` pages are backed up. Any other backup of `~/agent-context`
 is a copy that no purge reaches, so exclude it too.
 
@@ -41,8 +41,8 @@ is a copy that no purge reaches, so exclude it too.
   Schedule it (weekly is suggested), or run it on request. Tombstones of purged items carry no `git show` recovery
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
-  objects are pruned. This runs automatically on a reconcile when due, or by hand with `agentsync compact-history`.
-  `doctor` warns when compaction is due and fails when it is overdue.
+  objects are pruned. This runs automatically on the full pass `agentsync sync` makes when one is due.
+  `agentsync status` warns when compaction is due and fails when it is overdue.
 - **Explicit purge:** `agentsync purge id=<stable_id> | path=<source glob> | docs=<docs glob> --reason
   {upstream-deleted,label-escalation,dlp-remediation,erasure-request,operator}` (add `--dry-run` first). It
   rewrites history in the repo and the published worktree, deletes cache entries and manifest rows, and writes one

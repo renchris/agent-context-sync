@@ -104,8 +104,8 @@ is no `docs-source` folder; `docs/mirror/` holds the converted copy, and `docs/t
 ### Point-in-time archive (off by default)
 
 By default a file deleted at the source becomes a tombstone in `docs/mirror/`: the body is replaced, the old text
-stays only in git history, `agentsync compact-history` squashes that history after `history_days`, and the deletion
-queues a purge. Someone who keeps every note can turn that off in `sources.toml`:
+stays only in git history, `agentsync sync` squashes that history after `history_days` on its next full pass, and
+the deletion queues a purge. Someone who keeps every note can turn that off in `sources.toml`:
 
 ```toml
 [governance]
@@ -120,7 +120,7 @@ With `archive = true`, agentsync keeps everything:
   blocks a hand edit), and reaping never removes it. No purge is queued for the deletion;
 - `agentsync checkpoint` also creates a permanent tag `snapshot/<UTC date and time>`, so
   `git -C ~/agent-context/docs show snapshot/<date>:<path>` reads any page as it was when a build session ended;
-- history is never squashed: automatic compaction is skipped and `agentsync compact-history` refuses.
+- history is never squashed: compaction is skipped.
 
 `agentsync purge` still erases: a purged item's archive pages leave the working tree and every commit, and snapshot
 tags are rewritten with the rest of history. `archive = true` with `purge_on_upstream_delete = true` in the same

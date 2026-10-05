@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -579,6 +580,17 @@ def _age_runs(config: Config) -> None:
     _sql(config.state_paths.db, "UPDATE runs SET started_at = ?", "2020-01-01T00:00:00Z")
 
 
+def _assert_fix_parses(fix: str | None) -> None:
+    """A fix naming an agentsync command names one the CLI still parses (KISS K13b; the twin of
+    test_ops_doctor.assert_fix_parses). The text after ``;`` and any parenthetical are prose."""
+    assert fix is not None and fix.startswith("agentsync "), fix
+    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
+    try:
+        cli.build_parser().parse_args(shlex.split(command))
+    except SystemExit:
+        pytest.fail(f"the fix names a command the CLI rejects: {fix}")
+
+
 def test_sync_without_mode_runs_a_due_reconcile(initialised: Config) -> None:
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
@@ -618,6 +630,9 @@ def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
     config = load_config(cfg)
     gov = governance.load_governance(config.config_path)
     assert governance.compaction_state(config.docs_repo, gov)[0] == "overdue"
+    compaction = {c.name: c for c in cli._governance_checks(config)}["governance.compaction"]
+    assert compaction.fix == "agentsync sync (its next full pass compacts); release any hold"
+    _assert_fix_parses(compaction.fix)
     (local_source_dir / "projects" / "fresh.txt").write_text("fresh\n", encoding="utf-8")
     _age_runs(config)
     assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK

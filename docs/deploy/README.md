@@ -147,7 +147,7 @@ launcher's `TCC_*` tokens.
   (a click, not a command), then re-run the install command (`install.sh ... --confirm-install-agent`); its
   `NEXT:` line names the exact command.
 - **MDM suppresses or blocks the prompt:** ask IT for the PPPC profile ([mdm/README.md](mdm/README.md)). Until then,
-  `agentsync sync --once` from Terminal runs under Terminal's own grant, and inbox sources need no grant at all.
+  `~/.local/bin/agentsync sync` from Terminal runs under Terminal's own grant, and inbox sources need no grant at all.
 - **Rebuilding the launcher** ad hoc creates a new identity, so macOS asks again. `install.sh` skips identical
   rebuilds.
 

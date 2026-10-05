@@ -10,6 +10,8 @@ import dataclasses
 import errno
 import os
 import plistlib
+import re
+import shlex
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -645,21 +647,45 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     _beat(sample_config, now_iso=old)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and r.severity is Severity.WARN and "3 x cadence" in r.detail
+    assert r.fix == "agentsync sync -v"
+    assert_fix_parses(r.fix)
 
     sample_config.state_paths.heartbeat.unlink()
     for _ in range(3):
         _beat(sample_config, enumeration_complete=False)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "incomplete for 3" in r.detail
+    assert r.fix == "agentsync sync -v (a full pass that lists all of local-fixture clears this)"
+    assert_fix_parses(r.fix)
 
     _beat(sample_config, ok=False, auth_state="REAUTH_REQUIRED")
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and r.severity is Severity.ERROR and r.fix == "agentsync login"
+    assert_fix_parses(r.fix)
 
     sample_config.state_paths.heartbeat.unlink()
     _beat(sample_config, ok=False, pass_kind=None)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "no successful pass" in r.detail
+    assert r.fix == "agentsync sync -v"
+    assert_fix_parses(r.fix)
+
+
+def assert_fix_parses(fix: str | None) -> None:
+    """A fix naming an agentsync command names one the CLI still parses (KISS K13b: no deleted spelling
+    such as ``sync --source`` or ``sync --dry-run``). The text after ``;`` and any parenthetical are prose."""
+    assert fix is not None and fix.startswith("agentsync "), fix
+    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
+    try:
+        cli.build_parser().parse_args(shlex.split(command))
+    except SystemExit:
+        pytest.fail(f"the fix names a command the CLI rejects: {fix}")
+
+
+def test_assert_fix_parses_rejects_deleted_spellings() -> None:
+    for fix in ("agentsync sync --source local-fixture -v", "agentsync sync --dry-run"):
+        with pytest.raises(pytest.fail.Exception):
+            assert_fix_parses(fix)
 
 
 def test_heartbeat_corrupt(sample_config: Config) -> None:

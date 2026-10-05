@@ -12,7 +12,8 @@ class ConfigError(AgentSyncError):
 
 
 class ManifestSchemaError(AgentSyncError):
-    """The SQLite manifest's schema or key-schema version does not match this build; run migrate."""
+    """The SQLite manifest's schema or key-schema version does not match this build. Every opener migrates
+    an older one, so this means a newer build wrote it: upgrade this install."""
 
 
 class LockHeldError(AgentSyncError):
