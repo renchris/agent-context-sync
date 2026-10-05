@@ -12,7 +12,7 @@ rule wins:
 4. no curated page and no ``_eval/questions.md``: draft the baseline questions;
 5. ``_eval`` is still a draft: stop, the operator confirms;
 6. no curated page and no ``_eval/results-*-before.md``: run the 'before' baseline in a fresh session;
-7. checkpoint blockers: fix the pages ``lint`` lists;
+7. checkpoint blockers: fix the pages ``curate`` lists;
 8. :data:`AFTER_BASELINE_PAGES` or more curated pages and no after-results: run the 'after' baseline;
 9. the curation queue is not empty: curate up to :data:`ROWS_PER_SESSION` rows, sync, session done;
 10. nothing to do: session done.
@@ -34,7 +34,7 @@ from agentsync.config import Config, SourceConfig
 from agentsync.cycle import _CHECKPOINT_PENDING_META, _SEED_PAGE_NAMES
 from agentsync.errors import AgentSyncError
 from agentsync.manifest import Manifest
-from agentsync.model import RowState, SourceKind, Verdict
+from agentsync.model import LintFinding, RowState, SourceKind, Verdict
 from agentsync.paths import expand
 
 _log = logging.getLogger(__name__)
@@ -149,6 +149,13 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     return out
 
 
+def _checkpoint_base(docs: Path, head: str, pending: str | None) -> str:
+    """The base the next sync checks the checkpoint from: the held checkpoint's base (manifest meta
+    ``checkpoint_pending``) while it is still an ancestor of HEAD, else HEAD (history compaction or a purge
+    rewrote the pending commit away, or nothing is pending: only uncommitted topic pages count)."""
+    return pending if pending and gitops.is_ancestor(docs, pending, head) else head
+
+
 def _checkpoint_blockers(docs: Path, pending: str | None) -> int:
     """Rule 7, as the sync sees it: what holds a held checkpoint (manifest meta ``checkpoint_pending``, the
     base it retries from), else what would hold the topic pages this session left uncommitted; 0 when neither
@@ -156,16 +163,33 @@ def _checkpoint_blockers(docs: Path, pending: str | None) -> int:
     head = gitops.head_sha(docs)
     if head is None:
         return 0
-    if pending and gitops.is_ancestor(docs, pending, head):
-        base = pending
-    elif pending:
-        base = head  # history compaction or a purge rewrote it away: the sync retries at its pre-run HEAD
-    else:
+    if not pending:
         dirty = gitops.paths_changed_since(docs, head, ("topics",))
         if not any(p.endswith(".md") and p.rsplit("/", 1)[-1] not in _SEED_PAGE_NAMES for p in dirty):
             return 0
-        base = head
-    return len(curate.checkpoint_blockers(docs, since=base))
+    return len(curate.checkpoint_blockers(docs, since=_checkpoint_base(docs, head, pending)))
+
+
+def checkpoint_findings(config: Config) -> list[LintFinding]:
+    """Every checkpoint blocker from the base rule 7 and the next sync use (``curate`` prints them): a page
+    changed since that base is checked for STALE pins and missing sources, every page for the curation lints
+    and UNLISTED. Before the first commit every page counts."""
+    docs = expand(config.docs_repo)
+    head = gitops.head_sha(docs)
+    if head is None:
+        return curate.checkpoint_blockers(docs)
+    pending: str | None = None
+    if config.state_paths.db.exists():
+        with Manifest(config.state_paths.db) as manifest:
+            pending = manifest.get_meta(_CHECKPOINT_PENDING_META) or None
+    return curate.checkpoint_blockers(docs, since=_checkpoint_base(docs, head, pending))
+
+
+def curation_held(config: Config) -> bool:
+    """The baseline hold: no curated page yet and no ``_eval/results-*-before.md``, so ``curate`` lists no
+    rows (rules 4-6 come first)."""
+    has_before = any((expand(config.docs_repo) / _EVAL_DIR).glob("results-*-before.md"))
+    return not curate.iter_topic_pages(config.layout) and not has_before
 
 
 def _queue_rows(config: Config) -> int:
@@ -290,8 +314,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
     blockers = _checkpoint_blockers(docs, pending) if pages else 0
     if blockers:
         return done(
-            f"{blockers} curation error(s) hold the checkpoint: run `{BIN} lint`, fix every ERROR it "
-            f"lists, then run `{BIN} sync`",
+            f"{blockers} curation error(s) hold the checkpoint: run `{BIN} curate`, fix every ERROR "
+            f"it lists, then run `{BIN} sync`",
             7,
         )
 
@@ -308,7 +332,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
     rows = _queue_rows(config)
     if rows:
         return done(
-            f"{rows} curation row(s) queued: run `{BIN} curate-queue`, curate up to {ROWS_PER_SESSION} of "
+            f"{rows} curation row(s) queued: run `{BIN} curate`, curate up to {ROWS_PER_SESSION} of "
             f"them, then run `{BIN} sync`; session done",
             9,
         )

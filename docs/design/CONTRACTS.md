@@ -408,7 +408,8 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 "REAUTH_REQUIRED")`, STATE.md + heartbeat say so, report `auth_required=True` → CLI exit 77 after the local
 sources finished. DRY_RUN: steps 1–5 without the transaction's writes, no fetch, nothing under `docs/`.
 
-CLI exit codes (`cli.py`): 0 ok · 1 failed (source error, blocking lint, refresh-queue rows) · 2 usage ·
+CLI exit codes (`cli.py`): 0 ok · 1 failed (source error, blocking lint; since KISS K09 `curate` exits 1 only on a
+blocking finding, never on rows) · 2 usage ·
 75 lock held (`sync` without `--mode` waits up to 600 s first; K12) · 77 reauth required · 78 config invalid.
 
 **SUPERSEDED (2026-09-29, §16.3):** step 5 adds the reachability gate and the purge-suppression filter, step 6 the content
@@ -515,7 +516,8 @@ the `curated` checkpoint, every item `blocking=True`: every curation lint findin
 `MISSING-OR-UNPARSEABLE` of topic pages changed since the `curated` tag (working tree and untracked files
 included; every page before the first tag). `SOURCE-UNREADABLE` and `SOURCE-DELETED` never hold it. The sync's
 land gate is unchanged: its curation findings stay `blocking=False`. `agentsync lint` prints every blocker as an
-ERROR and exits 1 on any of them; `TOPIC-BUDGET` stays a warning.
+ERROR and exits 1 on any of them; `TOPIC-BUDGET` stays a warning. (KISS K09: `lint` is now a hidden alias of
+`curate`, §16.16.)
 
 Amended (2026-10-04, KISS K10 review). `SOURCE-MISSING` means what the plan says: the source is not a regular
 file, or it has no `rendered_sha256:` head (a guide file, a sidecar, broken frontmatter), which are exactly the
@@ -3421,8 +3423,8 @@ def source_statuses(
 
 Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] [--mode poll|reconcile|dry_run]
 [--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
-[--accept-deletions]` is its hidden alias) · status · doctor · lint ·
-refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
+[--accept-deletions]` is its hidden alias) · status · doctor · curate (2026-10-04, KISS K09; `curate-queue`,
+`lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
 SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
 always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
@@ -3431,7 +3433,7 @@ always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  E
 ```python
 EXIT_OK = 0
 
-EXIT_FAILED = 1  # a source failed, a blocking lint fired, or refresh-queue found rows
+EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 
 EXIT_USAGE = 2
 
@@ -5049,6 +5051,30 @@ def skill_text(docs_repo: Path) -> str:
     """The SKILL.md ``install-skill`` writes: where the docs repo is, how to look things up, how to curate."""
 ```
 
+**Amended (2026-10-04, KISS K09): `curate` replaces `curate-queue`, `lint` and `refresh-queue`.** `curate-queue`
+exited 1 exactly when there was work, which a literal agent reads as failure; `refresh-queue` hid UNCOVERED; `lint`
+was a separate step anyone could skip. `curate` prints, in order:
+
+| Section | Calls |
+|---|---|
+| findings | every whole-repo land-gate lint (`lint_no_symlinks`, `lint_mirror_frontmatter`, `lint_paths`, `lint_no_cache_in_git`, `lint_no_tokens`, `lint_index_budget`), `TOPIC-BUDGET` warnings, then `loop.checkpoint_findings(config)`: `curate.checkpoint_blockers` from the base rule 7 and the next sync use (the pending checkpoint base while it is an ancestor of HEAD, else HEAD), so every curation lint finding and UNLISTED is an ERROR, and STALE pins and SOURCE-MISSING only for pages changed since that base. One `N finding(s), B blocking` line |
+| rows | the K06 `ADDED`/`CHANGED`/`REMOVED` lines since `curated`, the refresh-queue lines (`STALE` and the other verdicts), then `UNCOVERED` lines, then one count line. Each `ADDED` and `UNCOVERED` row ends with a tab and `curate.source_entry`: a ready `{path: mirror/…, at_rendered_sha256: <hex>, role: primary}` flow mapping (the path double-quoted when YAML would misread it plain) |
+| NEXT | `loop.next_lines(config)` |
+
+Exit 1 only when a blocking finding exists; rows alone exit 0, and an unusable DEPENDS.tsv is a stderr warning.
+Baseline hold (`loop.curation_held`): while no curated page exists (`curate.iter_topic_pages` is empty) and there is
+no `_eval/results-*-before.md`, the rows section is one `no curation rows yet` line; findings and NEXT still print.
+`curate-queue`, `lint` and `refresh-queue` are hidden aliases: they print `renamed: run agentsync curate` on stderr,
+then run `curate`. `curate.refresh_queue` stays (the cycle's STALE banners use it). The `lint` base change: it used
+the `curated` tag, which kept the last session's pages in scope, so a page a later sync only marked STALE was an
+ERROR (exit 1) instead of a row.
+
+```python
+# agentsync.curate
+def source_entry(layout: DocsLayout, rel: str) -> str | None:
+    """A ready sources: entry citing mirror page ``rel`` at its current rendered_sha256; None when not curatable."""
+```
+
 **Amended (2026-10-04, KISS K03): every sync writes the skill.** The skill was absent on a new Mac: install.sh
 never ran `install-skill`, nothing refreshed it after an upgrade, and it ignored `CLAUDE_CONFIG_DIR`. The module
 `agentsync.skill` (`src/agentsync/skill.py`, integrator; imports only `agentsync.paths`) now owns the three names
@@ -5127,7 +5153,8 @@ session's pages, so "changed since `curated`" kept those pages in scope, and one
 held every later checkpoint (its committed banner counted as a change). The cycle now calls
 `checkpoint_blockers(repo, since=<base>)`, where the base is the pending HEAD (below) or else the pre-run HEAD,
 and a page whose only difference from the base is its `> ⚠ STALE` / `> ⚠ SOURCE RETIRED` banner block never
-counts. `agentsync lint` keeps the `curated` tag as its base, with the same banner rule; before the first tag
+counts. `agentsync lint` keeps the `curated` tag as its base, with the same banner rule (superseded by KISS K09:
+`curate`, which `lint` now runs, uses the sync's base, §16.16); before the first tag
 every page counts, as before. (2) Retry. A held or failed checkpoint stores manifest meta `checkpoint_pending` =
 its base, because that sync already committed the session's pages and no later run would see them dirty. Every
 later committing cycle retries it, session pages or not: it tags the pre-run HEAD when the run has session pages,
@@ -5232,9 +5259,9 @@ rule wins:
 | 4 | no curated page (`curate.iter_topic_pages`) and no `_eval/questions.md` | draft the baseline questions |
 | 5 | `_eval/questions.md` exists and it or `answers.md` is not `status: confirmed` | stop; the operator confirms |
 | 6 | no curated page and no `_eval/results-*-before.md` | run the 'before' baseline in a session that did not draft the questions |
-| 7 | checkpoint blockers as the sync computes them: `curate.checkpoint_blockers(since=<meta checkpoint_pending>)`, else since HEAD when the session left topic pages uncommitted, else none | `lint`, fix every ERROR, `sync` |
+| 7 | checkpoint blockers as the sync computes them: `curate.checkpoint_blockers(since=<meta checkpoint_pending>)`, else since HEAD when the session left topic pages uncommitted, else none | `curate` (was `lint`; K09), fix every ERROR, `sync` |
 | 8 | questions confirmed, `AFTER_BASELINE_PAGES` (20) or more curated pages, no `_eval/results-*-after.md` | run the 'after' baseline under the same fresh-session rule |
-| 9 | refresh-queue rows plus uncovered mirror pages | `curate-queue`, curate up to `ROWS_PER_SESSION` (10), `sync`; session done |
+| 9 | refresh-queue rows plus uncovered mirror pages | `curate` (was `curate-queue`; K09), curate up to `ROWS_PER_SESSION` (10), `sync`; session done |
 | 10 | otherwise | nothing to do; session done |
 
 Operator waits (`WAITING ON YOU:`, collected whatever rule wins): queued purges (`purge --queue`); a tripped
@@ -5272,4 +5299,6 @@ class NextStep:
 
 def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep: ...
 def next_lines(config: Config, *, fixes: Sequence[str] = ()) -> list[str]: ...  # [] on OSError/AgentSyncError
+def checkpoint_findings(config: Config) -> list[LintFinding]: ...  # K09: rule 7's base, every blocker (curate)
+def curation_held(config: Config) -> bool: ...  # K09: no curated page and no results-*-before.md
 ```

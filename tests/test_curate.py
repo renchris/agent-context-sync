@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 import agentsync.curate as curate
 from agentsync import gitops
@@ -1063,6 +1064,33 @@ def test_uncovered_mirror_pages_lists_current_pages_no_topic_cites(layout: DocsL
         "mirror/s/deep/also-uncovered.md",
         "mirror/s/uncovered.md",
     ]
+
+
+@pytest.mark.parametrize(
+    "rel", ["mirror/s/plain-page.txt.md", "mirror/s/q1, q2 & more.md", "mirror/s/it's 100%: ok.md"]
+)
+def test_source_entry_pastes_into_a_lint_clean_page(layout: DocsLayout, rel: str) -> None:
+    """KISS K09: the ready-made entry YAML reads back to the page's path and current pin, quoted only when a
+    plain flow scalar would misread the path, and a page citing it is lint-clean and fresh."""
+    pin = mirror_page(layout, rel)
+    entry = curate.source_entry(layout, rel)
+    assert entry is not None
+    assert yaml.safe_load(entry) == {"path": rel, "at_rendered_sha256": pin, "role": "primary"}
+    assert entry.startswith(f"{{path: {rel}, ") == (rel == "mirror/s/plain-page.txt.md")
+    topic_page(layout, "topics/p.md", f"entity: e\npurpose: p\nsources:\n  - {entry}\n")
+    rows, _entities, findings = curate.generate_depends(layout)
+    assert findings == [] and [r.source for r in rows] == [rel]
+    assert write_depends(layout, rows) and refresh_queue(layout) == (0, [])
+
+
+def test_source_entry_only_for_curatable_mirror_pages(layout: DocsLayout) -> None:
+    mirror_page(layout, "mirror/s/gone.md", status=PageStatus.DELETED)
+    mirror_page(layout, "mirror/s/locked.md", status=PageStatus.REFUSED)
+    (layout.root / "mirror" / "CLAUDE.md").write_text("# guide\n", encoding="utf-8")
+    topic_page(layout, "topics/p.md", "entity: e\n")
+    rels = ("mirror/s/gone.md", "mirror/s/locked.md", "mirror/CLAUDE.md", "mirror/s/none.md", "topics/p.md")
+    for rel in rels:
+        assert curate.source_entry(layout, rel) is None, rel
 
 
 def test_uncovered_mirror_pages_without_mirror_dir(tmp_path: Path) -> None:

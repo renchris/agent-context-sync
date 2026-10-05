@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+import yaml
 
 from agentsync import cli, gitops, governance, lints, loop, net, policy
 from agentsync.config import Config, load_config
@@ -97,9 +98,7 @@ def test_init_refuses_to_overwrite_without_force(initialised: Config, tmp_path: 
     assert cli.main(["init", "--config", cfg]) == cli.EXIT_OK  # idempotent re-init
 
 
-def test_sync_twice_status_lint_refresh_queue(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = str(initialised.config_path)
     repo = initialised.docs_repo
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -111,9 +110,8 @@ def test_sync_twice_status_lint_refresh_queue(
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     status = capsys.readouterr().out
     assert "source (local, live): baseline complete" in status and "lock: free" in status
-    assert cli.main(["lint", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     assert "0 blocking" in capsys.readouterr().out
-    assert cli.main(["refresh-queue", "--config", cfg]) == cli.EXIT_OK
     assert cli.main(["sync", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     assert "mode dry_run" in capsys.readouterr().out
     assert cli.main(["reconcile", "--config", cfg]) == cli.EXIT_OK
@@ -128,16 +126,16 @@ def test_lint_fails_on_a_hand_edited_mirror_page(
     page = initialised.docs_repo / "mirror" / "source" / "projects" / "sample.txt.md"
     page.write_text(page.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
     capsys.readouterr()
-    assert cli.main(["lint", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
     assert "FRONTMATTER" in capsys.readouterr().out
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED  # the land gate blocks the commit
 
 
-def test_lint_exits_1_on_a_wrong_pin_or_a_typoed_source(
+def test_curate_exits_1_on_a_wrong_pin_or_a_typoed_source(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """KISS K10: a well-formed but wrong pin (STALE) and a missing source are checkpoint blockers, so lint
-    fails on them; before, both passed with exit 0."""
+    """KISS K10: a well-formed but wrong pin (STALE) and a missing source are checkpoint blockers, so curate
+    (was lint) fails on them; before, both passed with exit 0."""
     cfg = str(initialised.config_path)
     cli.main(["sync", "--config", cfg])
     topics = initialised.docs_repo / "topics"
@@ -152,50 +150,126 @@ def test_lint_exits_1_on_a_wrong_pin_or_a_typoed_source(
         page.format(src="mirror/source/projects/typo.md", pin="ab" * 32), encoding="utf-8"
     )
     capsys.readouterr()
-    assert cli.main(["lint", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert "ERROR STALE topics/a.md" in out and "ERROR SOURCE-MISSING topics/b.md" in out
     assert "hand-written" not in out
 
 
-def test_refresh_queue_exit_codes(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
-    cfg = str(initialised.config_path)
-    assert cli.main(["refresh-queue", "--config", cfg]) == 2  # no DEPENDS.tsv yet
-    cli.main(["sync", "--config", cfg])
-    repo = initialised.docs_repo
-    topic = repo / "topics" / "a.md"
-    topic.write_text(
-        "---\nentity: acme\nsources:\n  - path: ../mirror/source/projects/sample.txt.md\n"
-        f"    at_rendered_sha256: {'ab' * 32}\n    role: primary\n---\n# A\n",
-        encoding="utf-8",
-    )
-    cli.main(["sync", "--config", cfg])
-    capsys.readouterr()
-    assert cli.main(["refresh-queue", "--config", cfg]) == cli.EXIT_FAILED
-    assert "STALE\ttopics/a.md" in capsys.readouterr().out
+def _before(config: Config) -> None:
+    """A 'before' baseline result: the baseline hold is over, so curate lists rows."""
+    results = config.docs_repo / "_eval" / "results-2026-10-04-before.md"
+    results.parent.mkdir(parents=True, exist_ok=True)
+    results.write_text("1. Finance. (1 search, 1 file)\n", encoding="utf-8")
 
 
-def test_curate_queue_lists_stale_then_uncovered(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
+def _mirror_sha(config: Config, rel: str) -> str:
+    text = (config.docs_repo / rel).read_text(encoding="utf-8")
+    found = re.search(r"\nrendered_sha256: ([0-9a-f]{64})\n", text)
+    assert found is not None
+    return found.group(1)
+
+
+def _row_entry(out: str, word: str, rel: str) -> dict[str, str]:
+    """The ready-made sources: entry on ``word``'s row for ``rel``, parsed as YAML."""
+    (line,) = [ln for ln in out.splitlines() if ln.startswith(f"{word}\t{rel}\t")]
+    entry = yaml.safe_load(line.split("\t")[2])
+    assert isinstance(entry, dict)
+    return entry
+
+
+def test_curate_rows_exit_0_and_carry_a_ready_sources_entry(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """KISS K09: work is not failure.  UNCOVERED, ADDED and STALE rows exit 0; each ADDED and UNCOVERED row
+    carries a sources: entry that, pasted into a page, is lint-clean; the output ends with NEXT."""
     cfg = str(initialised.config_path)
+    sample, new = "mirror/source/projects/sample.txt.md", "mirror/source/projects/new.txt.md"
+    _before(initialised)
     cli.main(["sync", "--config", cfg])
     capsys.readouterr()
-    assert cli.main(["curate-queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "UNCOVERED\tmirror/source/projects/sample.txt.md" in out
-    assert out.rstrip().endswith("uncovered mirror page(s)")
-    repo = initialised.docs_repo
-    (repo / "topics" / "a.md").write_text(
-        "---\nentity: acme\nsources:\n  - path: ../mirror/source/projects/sample.txt.md\n"
-        f"    at_rendered_sha256: {'ab' * 32}\n    role: primary\n---\n# A\n",
+    entry = _row_entry(out, "UNCOVERED", sample)
+    pin = _mirror_sha(initialised, sample)
+    assert entry == {"path": sample, "at_rendered_sha256": pin, "role": "primary"}
+    assert "0 finding(s), 0 blocking" in out
+    assert out.splitlines()[-1] == loop.next_step(initialised).lines()[0]
+
+    line = next(ln for ln in out.splitlines() if ln.startswith(f"UNCOVERED\t{sample}\t"))
+    page = initialised.docs_repo / "topics" / "a.md"
+    page.write_text(
+        f"---\nentity: acme\npurpose: Terms; not pricing.\nsources:\n  - {line.split(chr(9))[2]}\n---\n# A\n",
         encoding="utf-8",
     )
-    cli.main(["sync", "--config", cfg])
+    (local_source_dir / "projects" / "new.txt").write_text("new\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "checkpoint advanced" in capsys.readouterr().out
+    (local_source_dir / "projects" / "sample.txt").write_text("edited\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # a.md gets a STALE banner, no blocker
     capsys.readouterr()
-    assert cli.main(["curate-queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "STALE\ttopics/a.md" in out and "UNCOVERED\tmirror/source/projects/sample.txt.md" not in out
+    assert _row_entry(out, "ADDED", new)["at_rendered_sha256"] == _mirror_sha(initialised, new)
+    assert f"CHANGED\t{sample}\n" in out
+    assert f"STALE\ttopics/a.md\t{sample}" in out and "ERROR" not in out
+    assert out.index("ADDED\t") < out.index("STALE\t") < out.index("UNCOVERED\t")
+    assert out.splitlines()[-1].startswith("NEXT: ")
+
+
+def test_curate_runs_every_whole_repo_lint_and_exits_1_only_on_a_blocking_finding(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    _before(initialised)
+    ran: list[str] = []
+    names = (
+        "lint_no_symlinks", "lint_mirror_frontmatter", "lint_paths", "lint_no_cache_in_git", "lint_no_tokens",
+        "lint_index_budget",
+    )  # fmt: skip
+    for name in names:
+        real = getattr(lints, name)
+        monkeypatch.setattr(lints, name, lambda repo, _n=name, _f=real: (ran.append(_n), _f(repo))[1])
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK  # an UNCOVERED row only
+    assert ran == list(names)
+    assert "UNCOVERED\t" in capsys.readouterr().out
+    (initialised.docs_repo / "topics" / "orders.md").write_text(
+        "---\nentity: orders\npurpose: who approves orders\nsources: []\n---\nbody\n", encoding="utf-8"
+    )
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "ERROR UNLISTED topics/orders.md" in out and "1 blocking" in out
+    assert out.splitlines()[-1].startswith("NEXT: 1 curation error(s) hold the checkpoint")
+
+
+def test_curate_baseline_hold_lists_no_rows(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    """No curated page and no 'before' results: no rows, the baseline NEXT, exit 0."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "UNCOVERED" not in out and "refresh-queue row(s)" not in out and "checkpoint" not in out
+    assert "no curation rows yet" in out
+    step = loop.next_step(initialised)
+    assert step.rule == 4 and out.splitlines()[-1] == step.lines()[0]
+
+
+@pytest.mark.parametrize("old", ["curate-queue", "lint", "refresh-queue"])
+def test_curate_old_names_are_hidden_aliases(
+    old: str, initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    _before(initialised)
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
+    want = capsys.readouterr()
+    assert cli.main([old, "--config", cfg]) == cli.EXIT_OK
+    got = capsys.readouterr()
+    assert got.out == want.out and "UNCOVERED\t" in got.out
+    assert got.err == want.err + "renamed: run agentsync curate\n"
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    assert f"    {old} " not in capsys.readouterr().out
 
 
 def _topic(
@@ -233,10 +307,11 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     moves ``curated`` to the pre-run HEAD, so what that same sync brought in is still listed ADDED."""
     cfg = str(initialised.config_path)
     repo = initialised.docs_repo
+    _before(initialised)  # past the baseline hold, so curate lists rows
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     assert "checkpoint" not in capsys.readouterr().out
     assert _curated(repo) is None  # the first-ever sync creates no tag
-    cli.main(["curate-queue", "--config", cfg])
+    cli.main(["curate", "--config", cfg])
     assert "no build-session checkpoint yet" in capsys.readouterr().out
     first = git(repo, "rev-parse", "HEAD").strip()
 
@@ -247,9 +322,9 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     assert _curated(repo) == first  # the pre-run HEAD, not the new commit
     assert git(repo, "cat-file", "-t", "curated").strip() == "tag"  # annotated: dated when the session ended
     assert git(repo, "ls-files", "--", "topics/a.md").strip() == "topics/a.md"
-    cli.main(["curate-queue", "--config", cfg])
+    cli.main(["curate", "--config", cfg])
     out = capsys.readouterr().out
-    assert "ADDED\tmirror/source/projects/new.txt.md" in out
+    assert "ADDED\tmirror/source/projects/new.txt.md\t{path: " in out
     assert "since the last build session (" in out and first[:12] in out
 
     (local_source_dir / "projects" / "sample.txt").write_text("edited\n", encoding="utf-8")
@@ -281,7 +356,7 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     assert cli.main(["checkpoint", "--config", cfg]) == cli.EXIT_OK  # the hidden alias runs sync
     assert f"checkpoint advanced: curated at {held_head[:12]}" in capsys.readouterr().out
     assert _curated(repo) == held_head
-    cli.main(["curate-queue", "--config", cfg])
+    cli.main(["curate", "--config", cfg])
     assert "0 added, 0 changed, 0 removed" in capsys.readouterr().out
 
     # The same run banners an existing page and commits a clean new one: the banner alone holds nothing.
@@ -905,7 +980,7 @@ def test_archive_keeps_a_deleted_page_and_snapshots_each_checkpoint(
     state_md = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert "- archive on: history is kept" in state_md
     capsys.readouterr()
-    cli.main(["curate-queue", "--config", cfg])
+    cli.main(["curate", "--config", cfg])
     assert f"REMOVED\t{page}\t{kept}\n" in capsys.readouterr().out
     assert cli.main(["compact-history", "--keep-days", "0", "--config", cfg]) == cli.EXIT_FAILED
     assert "archive on: history is kept" in capsys.readouterr().err

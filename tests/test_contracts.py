@@ -57,9 +57,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "accept-deletions": ["source"],
         "status": [],
         "doctor": ["--network"],
-        "lint": [],
-        "refresh-queue": [],
-        "curate-queue": [],
+        "curate": [],
         "materialise": ["--budget", "paths"],
         "adopt": ["src_dir"],
         "migrate": [],
@@ -82,6 +80,9 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "reconcile": ["--source", "--accept-deletions"],
         "install-skill": [],
         "checkpoint": [],
+        "curate-queue": [],
+        "lint": [],
+        "refresh-queue": [],
     },
 }
 """The pinned CLI surface: subcommand -> its options (every spelling, ``a/b``) and positionals (dest, plus

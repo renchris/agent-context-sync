@@ -196,7 +196,7 @@ def test_online_only_deferrals_are_a_note_and_reach_rules_4_to_9(
     _eval(config, "confirmed", "confirmed", "before")
     _hand_written(config, 1)
     assert _lines(config) == [
-        f"NEXT: 1 curation row(s) queued: run `{BIN} curate-queue`, curate up to 10 of them, then run "
+        f"NEXT: 1 curation row(s) queued: run `{BIN} curate`, curate up to 10 of them, then run "
         f"`{BIN} sync`; session done",
         *waits_and_note,
     ]
@@ -251,7 +251,7 @@ def test_rule_7_checkpoint_blockers_uncommitted_then_held(tmp_path: Path, folder
         "---\nentity: orders\npurpose: who approves orders\nsources: []\n---\nbody\n",  # UNLISTED
     )
     want = [
-        f"NEXT: 1 curation error(s) hold the checkpoint: run `{BIN} lint`, fix every ERROR it lists, then "
+        f"NEXT: 1 curation error(s) hold the checkpoint: run `{BIN} curate`, fix every ERROR it lists, then "
         f"run `{BIN} sync`"
     ]
     assert _lines(config) == want, "the session's uncommitted page"
@@ -276,7 +276,7 @@ def test_rule_9_the_queue_is_bounded_per_session(tmp_path: Path, folder: Path) -
     config = _synced(tmp_path, folder)
     _hand_written(config, 1)  # a page exists, no _eval: the baseline rules no longer apply
     assert _lines(config) == [
-        f"NEXT: 1 curation row(s) queued: run `{BIN} curate-queue`, curate up to 10 of them, then run "
+        f"NEXT: 1 curation row(s) queued: run `{BIN} curate`, curate up to 10 of them, then run "
         f"`{BIN} sync`; session done"
     ]
 

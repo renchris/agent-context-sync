@@ -2,7 +2,7 @@
 
 Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...]
 [--materialise-budget BYTES] · accept-deletions SOURCE · status · doctor [--network]
-· lint · refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
+· curate · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also as top-level login · logout · whoami · discover; login [--device-code];
 discover [--url URL ...] [--toml]) · install-agent [--interval SECONDS] [--no-backup-exclusions] ·
 uninstall-agent · purge SELECTOR | --queue · compact-history · hold · offboard [--purge-data] [--confirm
@@ -82,11 +82,11 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
-from agentsync.paths import default_config_path, expand, is_under
+from agentsync.paths import DocsLayout, default_config_path, expand, is_under
 from agentsync.publish import Publisher, archive_path
 
 EXIT_OK = 0
-EXIT_FAILED = 1  # a source failed, a blocking lint fired, or refresh-queue found rows
+EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 EXIT_USAGE = 2
 EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held"
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
@@ -96,9 +96,9 @@ EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher
 _EPILOG = """\
 exit codes:
   0   ok
-  1   failed: a source failed, a blocking lint fired, the refresh queue has rows, a doctor check failed,
-      a purge/compaction was not verified, or discovery was incomplete
-  2   usage error (bad arguments), or refresh-queue could not read DEPENDS.tsv
+  1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a doctor check
+      failed, a purge/compaction was not verified, or discovery was incomplete (curate rows are not a failure)
+  2   usage error (bad arguments)
   75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
       `sync` without --mode first waits up to 10 minutes for it
   77  sign-in required: a Graph source needs `agentsync graph login` (auth REAUTH_REQUIRED), or Entra
@@ -282,14 +282,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also probe the Graph host through the resolved proxy (automatic with live Graph sources)",
     )
-    add("lint", "run every land-gate lint over the whole docs repo, plus the curation lints", _cmd_lint)
-    add("refresh-queue", "print curated pages whose pinned sources changed (rc 1 when any)", _cmd_refresh)
     add(
-        "curate-queue",
-        "the curation work list: mirror changes since the last checkpoint, the refresh queue, then "
-        "UNCOVERED mirror pages no curated page cites (rc 1 when any refresh or uncovered row)",
-        _cmd_curate_queue,
+        "curate",
+        "the curation work list: every lint finding, mirror changes since the last checkpoint, the refresh "
+        "queue, then UNCOVERED mirror pages no curated page cites, then NEXT (rc 1 only on a blocking "
+        "finding)",
+        _cmd_curate,
     )
+    for old_name in ("curate-queue", "lint", "refresh-queue"):
+        add(old_name, "renamed: run agentsync curate", _cmd_curate_renamed, hidden=True)
     add("checkpoint", "run sync (every sync records the checkpoint itself)", _cmd_checkpoint, hidden=True)
     add(
         "install-skill",
@@ -482,8 +483,8 @@ def _print_checkpoint(report: CycleReport) -> None:
     when not); a held checkpoint names every error that holds it."""
     if report.checkpoint == "advanced":
         _out(
-            f"checkpoint advanced: curated at {report.checkpoint_detail[:12]}; the next curate-queue lists "
-            "mirror changes since here"
+            f"checkpoint advanced: curated at {report.checkpoint_detail[:12]}; the next curate lists mirror "
+            "changes since here"
         )
         if report.snapshot_tag is not None:
             tag = report.snapshot_tag
@@ -1109,36 +1110,6 @@ def _cmd_it_request(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _cmd_lint(args: argparse.Namespace) -> int:
-    config = _config(args)
-    repo, layout = config.docs_repo, config.layout
-    findings: list[LintFinding] = []
-    findings += lints.lint_no_symlinks(repo)
-    findings += lints.lint_mirror_frontmatter(repo)
-    findings += lints.lint_paths(repo)
-    findings += lints.lint_no_cache_in_git(repo)
-    findings += lints.lint_no_tokens(repo)
-    findings += lints.lint_index_budget(repo)
-    # Every checkpoint blocker is an ERROR; TOPIC-BUDGET is the one curation finding that stays a warning.
-    findings += [f for f in curate.generate_depends(layout)[2] if f.code == "TOPIC-BUDGET"]
-    findings += curate.checkpoint_blockers(repo)
-    for f in sorted(findings, key=lambda f: (not f.blocking, f.code, f.path)):
-        _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
-    blocking = sum(1 for f in findings if f.blocking)
-    _out(f"{len(findings)} finding(s), {blocking} blocking")
-    return EXIT_FAILED if blocking else EXIT_OK
-
-
-def _cmd_refresh(args: argparse.Namespace) -> int:
-    config = _config(args)
-    rc, verdicts = curate.refresh_queue(config.layout)
-    for v in verdicts:
-        _out(v.line())
-    if rc == 2:
-        _err(f"{config.layout.depends_tsv}: missing or unreadable (run a sync first)")
-    return rc
-
-
 _CHANGE_WORDS = {"A": "ADDED", "M": "CHANGED", "D": "REMOVED"}
 
 
@@ -1151,10 +1122,11 @@ def _is_tombstone(page: Path) -> bool:
     return head.startswith("---\n") and "\nstatus: deleted\n" in head.split("\n---\n", 1)[0]
 
 
-def _print_changes_since_checkpoint(repo: Path) -> None:
+def _print_changes_since_checkpoint(layout: DocsLayout) -> None:
     """What the mirror gained, changed and lost since the last build session's checkpoint.  A page that
     became a tombstone reads REMOVED, and a removed page with an ``archive/`` copy names it in a third
-    column."""
+    column; an ADDED page carries its ready-made ``sources:`` entry there instead."""
+    repo = expand(layout.root)
     checkpoint = gitops.curated_checkpoint(repo) if gitops.head_sha(repo) else None
     if checkpoint is None:
         _out(
@@ -1171,8 +1143,13 @@ def _print_changes_since_checkpoint(repo: Path) -> None:
         word: sum(1 for st, _ in changes if _CHANGE_WORDS.get(st) == word) for word in _CHANGE_WORDS.values()
     }
     for status, path in changes:
-        archived = archive_path(path) if status == "D" else None
-        tail = f"\t{archived}" if archived and (repo / archived).is_file() else ""
+        tail = ""
+        if status == "D":
+            archived = archive_path(path)
+            tail = f"\t{archived}" if archived and (repo / archived).is_file() else ""
+        elif status == "A":
+            entry = curate.source_entry(layout, path)
+            tail = f"\t{entry}" if entry else ""
         _out(f"{_CHANGE_WORDS.get(status, status)}\t{path}{tail}")
     _out(
         f"since the last build session ({date}, {sha[:12]}): {counts['ADDED']} added, {counts['CHANGED']} "
@@ -1180,21 +1157,57 @@ def _print_changes_since_checkpoint(repo: Path) -> None:
     )
 
 
-def _cmd_curate_queue(args: argparse.Namespace) -> int:
+def _curate_findings(config: Config) -> list[LintFinding]:
+    """Every whole-repo land-gate lint, TOPIC-BUDGET (the one curation finding that stays a warning), then
+    the checkpoint blockers from the base the next sync checks (``loop.checkpoint_findings``): every curation
+    lint finding and UNLISTED as an ERROR, STALE pins and missing sources of pages changed since that base."""
+    repo, layout = config.docs_repo, config.layout
+    findings: list[LintFinding] = []
+    findings += lints.lint_no_symlinks(repo)
+    findings += lints.lint_mirror_frontmatter(repo)
+    findings += lints.lint_paths(repo)
+    findings += lints.lint_no_cache_in_git(repo)
+    findings += lints.lint_no_tokens(repo)
+    findings += lints.lint_index_budget(repo)
+    findings += [f for f in curate.generate_depends(layout)[2] if f.code == "TOPIC-BUDGET"]
+    findings += loop.checkpoint_findings(config)
+    return sorted(findings, key=lambda f: (not f.blocking, f.code, f.path))
+
+
+def _cmd_curate(args: argparse.Namespace) -> int:
+    """KISS K09: findings, then the work rows (none during the baseline hold), then the loop's NEXT; exit 1
+    only on a blocking finding, never because there is work."""
     config = _config(args)
     layout = config.layout
-    _print_changes_since_checkpoint(config.docs_repo)
-    rc, verdicts = curate.refresh_queue(layout)
-    for v in verdicts:
-        _out(v.line())
-    if rc == 2:
-        _err(f"{layout.depends_tsv}: missing or unreadable (run a sync first); listing uncovered pages only")
-    rows, _entities, _findings = curate.generate_depends(layout)  # live: pages written since the last sync
-    uncovered = curate.uncovered_mirror_pages(layout, rows)
-    for rel in uncovered:
-        _out(f"UNCOVERED\t{rel}")
-    _out(f"{len(verdicts)} refresh-queue row(s), {len(uncovered)} uncovered mirror page(s)")
-    return EXIT_FAILED if verdicts or uncovered else EXIT_OK
+    findings = _curate_findings(config)
+    for f in findings:
+        _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
+    blocking = sum(1 for f in findings if f.blocking)
+    _out(f"{len(findings)} finding(s), {blocking} blocking")
+    if loop.curation_held(config):
+        _out("no curation rows yet: curation starts once the 'before' baseline results exist (see NEXT)")
+    else:
+        _print_changes_since_checkpoint(layout)
+        rc, verdicts = curate.refresh_queue(layout)
+        for v in verdicts:
+            _out(v.line())
+        if rc == 2:
+            _err(f"{layout.depends_tsv}: missing or unreadable (run a sync first); listing uncovered pages")
+        rows, _entities, _findings = curate.generate_depends(layout)  # live: pages written since the sync
+        uncovered = curate.uncovered_mirror_pages(layout, rows)
+        for rel in uncovered:
+            entry = curate.source_entry(layout, rel)
+            _out(f"UNCOVERED\t{rel}" + (f"\t{entry}" if entry else ""))
+        _out(f"{len(verdicts)} refresh-queue row(s), {len(uncovered)} uncovered mirror page(s)")
+    for line in loop.next_lines(config):
+        _out(line)
+    return EXIT_FAILED if blocking else EXIT_OK
+
+
+def _cmd_curate_renamed(args: argparse.Namespace) -> int:
+    """Hidden aliases (KISS K09): curate-queue, lint and refresh-queue run curate under their old names."""
+    _err("renamed: run agentsync curate")
+    return _cmd_curate(args)
 
 
 def _cmd_checkpoint(args: argparse.Namespace) -> int:

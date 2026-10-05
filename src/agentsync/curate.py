@@ -6,11 +6,12 @@ DOCS REPO ROOT (``topics/…``, ``mirror/…``) and the refresh-queue script run
 
 Every finding this module emits is ``blocking=False``: the curated layer is agent-written, and a bad pin or a
 missing ``entity:`` must never stop the mirror from syncing.  ``checkpoint_blockers`` is where they bite: they
-hold the ``curated`` checkpoint, and ``agentsync lint`` exits 1 on any of them.
+hold the ``curated`` checkpoint, and ``agentsync curate`` exits 1 on any of them.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import posixpath
@@ -85,6 +86,7 @@ _log = logging.getLogger(__name__)
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _HEX64_BYTES = re.compile(rb"[0-9a-f]{64}")
+_PLAIN_YAML_PATH = re.compile(r"[\w./+=~@-]+")  # a path YAML reads back unquoted in a flow mapping
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _ADOPTED_AT = re.compile(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?")
 _TOP_LEVEL_KEY = re.compile(r"([A-Za-z_][A-Za-z0-9_-]*)[ \t]*:")
@@ -814,9 +816,23 @@ def uncovered_mirror_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> li
     return sorted(out, key=lambda p: p.encode("utf-8", "surrogateescape"))
 
 
+def source_entry(layout: DocsLayout, rel: str) -> str | None:
+    """A ready-made ``sources:`` entry citing mirror page ``rel`` at its current ``rendered_sha256``, as one
+    YAML flow mapping (``{path: mirror/…, at_rendered_sha256: <hex>, role: primary}``; the path is quoted when
+    YAML would misread it plain); None when ``rel`` is not a curatable mirror page (no ``rendered_sha256:``,
+    or a deleted, superseded, unreadable or refused one)."""
+    if not rel.startswith(_DOCS_ROOT_SOURCE_PREFIXES[0]) or not rel.endswith(".md"):
+        return None
+    sha, status, ok = _read_mirror_head(expand(layout.root), os.fsencode(rel))
+    if not ok or status in _NOT_CURATABLE_STATUSES or not _HEX64_BYTES.fullmatch(sha):
+        return None
+    path = rel if _PLAIN_YAML_PATH.fullmatch(rel) else json.dumps(rel, ensure_ascii=False)
+    return f"{{path: {path}, at_rendered_sha256: {sha.decode('ascii')}, role: {ROLES[0]}}}"
+
+
 def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[LintFinding]:
     """UNLISTED: every curated page that is not ``provenance: hand-written`` appears in DEPENDS.tsv
-    (blocking=False for the sync; the ``agentsync lint`` command reports it as an error)."""
+    (blocking=False for the sync; ``agentsync curate`` reports it as an error)."""
     listed = {r.page for r in rows}
     return [
         _finding(
@@ -876,15 +892,15 @@ def _pages_changed_since_checkpoint(repo: Path, since: str | None) -> set[str] |
 def checkpoint_blockers(repo: Path, since: str | None = None) -> list[LintFinding]:
     """Everything that holds the ``curated`` checkpoint, each finding ``blocking=True``: every curation lint
     finding but TOPIC-BUDGET, UNLISTED, and, for topic pages changed since ``since`` (the sync passes its
-    checkpoint base, the oldest commit not yet checked; ``agentsync lint`` the ``curated`` tag; every page
-    before the first tag; a change that is only a sync's banner rewrite never counts), SOURCE-MISSING and the
-    CHECKPOINT_VERDICTS refresh verdicts.  The sync cannot use the ``curated`` tag: it sits on the commit
-    BEFORE the last session's pages, so they would stay in scope, and one that later went stale would hold
-    every later checkpoint.  SOURCE-MISSING is
-    scoped like the verdicts because a source also vanishes with no fault of the page (a OneDrive rename or
-    move, a tombstone reap, a purge); a typo'd path only happens on a page being written.  The verdicts come
-    from the pages as they are now, not from DEPENDS.tsv.  The sync's land gate never uses this: its curation
-    findings stay ``blocking=False``."""
+    checkpoint base, the oldest commit not yet checked, and ``agentsync curate`` the same base through
+    ``loop.checkpoint_findings``; the default is the ``curated`` tag; every page before the first tag; a
+    change that is only a sync's banner rewrite never counts), SOURCE-MISSING and the CHECKPOINT_VERDICTS
+    refresh verdicts.  The sync cannot use the ``curated`` tag: it sits on the commit BEFORE the last
+    session's pages, so they would stay in scope, and one that later went stale would hold every later
+    checkpoint.  SOURCE-MISSING is scoped like the verdicts because a source also vanishes with no fault of
+    the page (a OneDrive rename or move, a tombstone reap, a purge); a typo'd path only happens on a page
+    being written.  The verdicts come from the pages as they are now, not from DEPENDS.tsv.  The sync's land
+    gate never uses this: its curation findings stay ``blocking=False``."""
     layout = DocsLayout(root=repo)
     rows, _entities, findings = generate_depends(layout)
     changed = _pages_changed_since_checkpoint(repo, since)
