@@ -222,10 +222,15 @@ class DocsLayout:
 # ---------------------------------------------------------------------------------------------------------
 
 
+def glob_strip(pattern: str) -> str:
+    """Trim space, tab and newline around a glob, never ``\\r``: the macOS icon file is ``Icon\\r``."""
+    return pattern.strip(" \t\n")
+
+
 @functools.lru_cache(maxsize=512)
 def _glob_regex(pattern: str) -> re.Pattern[str]:
     """Compile one glob to a regex over POSIX relative paths."""
-    pat = pattern.strip(" \t\n")  # not \r: the macOS custom-icon file is literally "Icon\r"
+    pat = glob_strip(pattern)
     anchored = "/" in pat.rstrip("/")
     pat = pat.lstrip("/")
     if pat.endswith("/"):

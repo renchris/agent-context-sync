@@ -514,8 +514,10 @@ def test_custom_exclude_still_drops_os_junk(tmp_path: Path, exclude: tuple[str, 
     _write(root / "sub" / "._notes.md")
     _write(root / "sub" / "plan.docx")
     _write(root / "drafts" / "wip.docx")
+    _write(root / "Brand" / "Icon" / "guide.md")  # a folder named Icon is not the icon file
     rels = [i.rel_path for i in al.LocalArm(_cfg(root, exclude=exclude)).scan(None, full=True).items]
     assert "Icon\r" not in rels
+    assert "Brand/Icon/guide.md" in rels
     assert "sub/.DS_Store" not in rels and "sub/._notes.md" not in rels
     assert {"notes.md", "sub/plan.docx"} <= set(rels)
     assert ("drafts/wip.docx" in rels) is (exclude == DEFAULT_EXCLUDES)

@@ -49,7 +49,7 @@ from agentsync.model import (
     SourceItem,
     SourceKind,
 )
-from agentsync.paths import CLOUD_STORAGE_ROOT, _glob_regex, expand, glob_match, is_under
+from agentsync.paths import CLOUD_STORAGE_ROOT, _glob_regex, expand, glob_match, glob_strip, is_under
 
 log = logging.getLogger(__name__)
 
@@ -307,7 +307,7 @@ def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:
 def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:
     """True when a directory matches an exclude glob; ``name/`` (directory-only) patterns match the dir."""
     for pattern in exclude:
-        p = pattern.strip()
+        p = glob_strip(pattern)  # as glob_match does: a bare strip() turns "Icon\r" into "Icon"
         if p.endswith("/"):
             p = p.rstrip("/")
             if not p:
