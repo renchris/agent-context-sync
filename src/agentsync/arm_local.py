@@ -288,6 +288,15 @@ def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:
     return any(is_under(path, r) for r in roots)
 
 
+def cloud_provider_root(path: Path) -> Path | None:
+    """The File Provider folder holding ``path`` (``~/Library/CloudStorage/<provider>``); None outside one."""
+    p = expand(path)
+    for root in _cloud_roots():
+        if root in p.parents:
+            return root / p.relative_to(root).parts[0]
+    return None
+
+
 def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:
     """True when a directory matches an exclude glob; ``name/`` (directory-only) patterns match the dir."""
     for pattern in exclude:
@@ -718,6 +727,17 @@ class LocalArm:
             alarms=(alarm,),
         )
 
+    def _held(self, what: str) -> ScanResult:
+        """A read past ``listing_timeout_s``. Recorded like EPERM: the source is unknown this pass, never
+        empty, so nothing is tombstoned; ``listing_held`` tells the cycle not to read anything else under the
+        root this pass (each read would wait on the same prompt)."""
+        alarm = (
+            f"walk of {self.root} stopped: {what}. macOS is most likely waiting for you to click Allow on a "
+            "privacy prompt (it can sit behind other windows): click Allow, then re-run the sync "
+            "(enumeration incomplete, nothing is deleted)"
+        )
+        return dataclasses.replace(self._incomplete(alarm), listing_held=True)
+
     def _sentinel_present(self, items: Sequence[SourceItem]) -> bool | None:
         sentinel = self.cfg.sentinel
         if sentinel is None:
@@ -742,8 +762,21 @@ class LocalArm:
 
     def _walk_scan(self) -> tuple[list[SourceItem], WalkStats, list[str]] | ScanResult:
         """Walk the root; returns (items, stats, alarms) or an incomplete, empty ScanResult."""
-        try:
+
+        def root_reads() -> tuple[os.stat_result, str | OSError | None]:
             root_st = os.lstat(self.root)
+            if not stat.S_ISDIR(root_st.st_mode):  # a symlink or a file: refused below, no volume read
+                return root_st, None
+            try:
+                return root_st, self._volume_uuid()
+            except OSError as exc:
+                return root_st, exc
+
+        # The root's own metadata reads share the listings' time limit: a privacy prompt may hold them too.
+        try:
+            root_st, volume = call_with_timeout(root_reads, self.listing_timeout_s, name="agentsync-root")
+        except CallTimedOutError:
+            return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
         except FileNotFoundError:
             return self._incomplete(f"source root missing: {self.root} (walk skipped; nothing is deleted)")
         except OSError as exc:
@@ -752,10 +785,8 @@ class LocalArm:
             return self._incomplete(f"source root is a symlink: {self.root}; configure the canonical path")
         if not stat.S_ISDIR(root_st.st_mode):
             return self._incomplete(f"source root is not a directory: {self.root}")
-        try:
-            volume = self._volume_uuid()
-        except OSError as exc:
-            return self._incomplete(f"volume UUID unavailable for {self.root}: {exc}")
+        if not isinstance(volume, str):
+            return self._incomplete(f"volume UUID unavailable for {self.root}: {volume}")
         try:
             items, stats = walk(
                 self.root,
@@ -769,12 +800,7 @@ class LocalArm:
         except FileNotFoundError:
             return self._incomplete(f"source root vanished during the walk: {self.root}")
         except CallTimedOutError as exc:
-            # Recorded like EPERM: the source is unknown this pass, never empty, so nothing is tombstoned.
-            return self._incomplete(
-                f"walk of {self.root} stopped: {exc}. macOS is most likely waiting for you to click Allow on "
-                "a privacy prompt (it can sit behind other windows): click Allow, then re-run the sync "
-                "(enumeration incomplete, nothing is deleted)"
-            )
+            return self._held(str(exc))
         except OSError as exc:
             return self._incomplete(f"walk failed at {self.root}: {exc}")
         sentinel = self._sentinel_present(items)

@@ -42,7 +42,7 @@ from pathlib import Path
 
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
-from agentsync.arm_local import InboxArm, LocalArm, fold_conflict_suffix
+from agentsync.arm_local import InboxArm, LocalArm, cloud_provider_root, fold_conflict_suffix
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
@@ -359,6 +359,11 @@ def build_arms(
 NETWORK_POLICY_FAILED = "failed: "
 """Prefix of a client problem that FAILS the Graph sources (network policy), rather than skipping them."""
 
+LISTING_HELD = "listing held: "
+"""Prefix of the ``run_sources.skipped_reason`` of a local walk that timed out on a read macOS holds for an
+Allow prompt (``ScanResult.listing_held``, field N8): the pass fetched nothing, and next-step says click
+Allow."""
+
 
 def _proxy_setting(config: Config) -> str | None:
     network = getattr(config, "network", None)
@@ -655,6 +660,9 @@ class _Cycle:
         self.auth = auth
         self.stale_backups = tuple(stale_backups)  # pre-v<N> manifest copies older than this cycle
         self.settle_inbox = settle_inbox  # interactive sync: an inbox waits once for settling files (N4)
+        # ~/Library/CloudStorage/<provider> folders a walk timed out in this cycle: every other source under
+        # one would wait on the same privacy prompt, so they are not read either (field N8)
+        self.held_clouds: set[Path] = set()
         # [policy] (sources.toml + policy.toml): a broken policy raises ConfigError (exit 78), never "allow"
         self.publisher = Publisher(config, manifest, clock=clock)
         self.registry = Registry.default(config.convert, policy=self.publisher.content_policy)
@@ -1282,13 +1290,32 @@ class _Cycle:
             or (src.kind is SourceKind.GRAPH_DRIVE and srow is not None and not srow.baseline_complete)
         )
         index = self.manifest.observation_index(src.id)
-        if isinstance(arm, LocalArm):
-            arm.known_h0 = index
-        try:
-            scan = arm.scan(current, full=full)
-        finally:
+        cloud = cloud_provider_root(arm.root) if isinstance(arm, LocalArm) else None
+        if isinstance(arm, LocalArm) and cloud is not None and cloud in self.held_clouds:
+            alarm = (
+                f"not read this pass: a walk under {cloud} timed out, so macOS is most likely waiting for "
+                "you to click Allow on a privacy prompt: click Allow, then re-run the sync "
+                "(nothing is deleted)"
+            )
+            scan = ScanResult(
+                source_id=src.id,
+                pass_kind=PassKind.FULL,
+                items=(),
+                new_cursor=None,
+                enumeration_complete=False,
+                alarms=(alarm,),
+                listing_held=True,
+            )
+        else:
             if isinstance(arm, LocalArm):
-                arm.known_h0 = None
+                arm.known_h0 = index
+            try:
+                scan = arm.scan(current, full=full)
+            finally:
+                if isinstance(arm, LocalArm):
+                    arm.known_h0 = None
+        if scan.listing_held and cloud is not None:
+            self.held_clouds.add(cloud)
         acc.pass_kind = scan.pass_kind
         acc.enumeration_complete = scan.enumeration_complete
         acc.alarms += list(scan.alarms)
@@ -1395,7 +1422,14 @@ class _Cycle:
                     enumeration_complete=scan.enumeration_complete,
                     cursor_reset=scan.cursor_reset,
                     counts={k.value: v for k, v in acc.counts.items()},
+                    skipped_reason=LISTING_HELD + "click Allow on the macOS prompt"
+                    if scan.listing_held
+                    else None,
                 )
+        if scan.listing_held:
+            # Every fetch would lstat and read under the root macOS is holding, and wait as the walk did: no
+            # work queue, rewrites or removals this pass (the pending rows stay queued for the next one).
+            return
         # ---- work queue: fetch -> H1 -> convert -> H2 -> publish ------------------------------------------
         self.lock.beat(f"work:{src.id}")
         queue = self.manifest.pending_work(src.id)

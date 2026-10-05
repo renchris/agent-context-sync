@@ -800,6 +800,9 @@ class ScanResult:
     cursor_reset: bool = False  # a 410 or a dropped bad cursor forced a re-enumeration this pass
     unknown_dirs: tuple[str, ...] = ()  # zero-child cloud dirs / EPERM dirs: 'unknown', never 'empty'
     alarms: tuple[str, ...] = ()  # operator-visible problems (bad cursor dropped, canary missing, ...)
+    # a read of the root past its time limit: macOS is holding it for an Allow prompt, so every other read
+    # under the root would wait too; the cycle fetches, rewrites and removes nothing for the source this pass
+    listing_held: bool = False
 
 @dataclass(frozen=True, slots=True)
 class FetchResult:
@@ -1938,6 +1941,10 @@ def call_with_timeout(fn: Callable[[], _T], timeout_s: float, *, name: str = "ag
     holds the caller (and never holds the interpreter's exit). Also the seam of doctor's source listing and
     setup-report's probes (field report N8, 2026-10-05)."""
 
+def cloud_provider_root(path: Path) -> Path | None:
+    """The File Provider folder holding ``path`` (``~/Library/CloudStorage/<provider>``); None outside one.
+    The cycle skips every source under a folder whose walk timed out this cycle (field report N8)."""
+
 def volume_uuid(path: Path) -> str:
     """Return the UUID of the volume holding ``path`` (getattrlist ATTR_VOL_UUID on its mount point).
 
@@ -1992,6 +1999,10 @@ class LocalArm:
         ScanResult with enumeration_complete=False (never mass deletion). A listing past
         ``self.listing_timeout_s`` (default LISTING_TIMEOUT_S) -> the same empty, incomplete ScanResult with a
         "click Allow, then re-run" alarm (recorded like EPERM; nothing is tombstoned).
+        The root's own lstat and volume-UUID read share that limit, and either expiry sets ``listing_held``:
+        the cycle then records the pass with ``skipped_reason`` "listing held: ..." (next-step: click Allow,
+        never "exclude it"), fetches nothing from the source, and does not read any other source under the
+        same ``~/Library/CloudStorage/<provider>`` folder that cycle (field report N8, 2026-10-05).
         """
 
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:
@@ -3675,6 +3686,7 @@ class NetworkConfig:
 
 ```python
 NETWORK_POLICY_FAILED = "failed: "  # prefix of a client problem that FAILS (not skips) the Graph sources
+LISTING_HELD = "listing held: "  # skipped_reason prefix of a local pass whose walk a privacy prompt held (N8)
 ```
 
 ### 16.4 Sign-in, TLS and proxies (amends §10 "Auth" and "Client"; C15 §1, §5)
@@ -5491,6 +5503,13 @@ Callers: `sync` without `--mode` prints `next_lines` after its summary line unle
 and no line), so a caller's exit status never depends on the hint. Tests: `tests/test_loop.py` (a fixture per rule
 and per wait, exact lines, no mirror path or file name), `test_cli.py::test_sync_without_mode_ends_with_the_summary_then_one_next_line`,
 `tests/test_install_next_line.py` (a real first sync that exits 80 under install.sh leaves exactly one NEXT line).
+
+Field report N8 (2026-10-05): a local or inbox source whose newest `run_sources` row carries a
+`cycle.LISTING_HELD` `skipped_reason` (its walk timed out on a read macOS holds for an Allow prompt, or a sibling
+under the same cloud folder did) is its own wait, before the could-not-be-listed one: click Allow on the macOS
+prompt, then `sync`. It never says "exclude it": once the prompt is answered, a narrowed scope would retire the
+folder's pages in one pass, past the deletion breaker. Test:
+`tests/test_loop.py::test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it`.
 
 ```python
 # agentsync.loop

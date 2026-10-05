@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import threading
 from datetime import UTC, datetime, timedelta
 from errno import EDEADLK
 from pathlib import Path
@@ -271,6 +272,45 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+
+
+def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field N8 review: a walk that times out on a privacy prompt says click Allow, never "exclude it" (once
+    the prompt is answered, a narrowed scope would retire the folder's pages past the deletion breaker). A
+    second source under the same cloud folder is not read that pass: it would wait on the same prompt."""
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    first, second = cloud / "Alpha", cloud / "Beta"
+    for root in (first, second):
+        _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("alpha", first) + local_source_table("beta", second))
+    real = arm_local._list_dir
+    release = threading.Event()
+    listed: list[Path] = []
+
+    def held(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        listed.append(path)
+        if path == first:
+            release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    monkeypatch.setattr(arm_local, "_list_dir", held)
+    monkeypatch.setattr(arm_local, "LISTING_TIMEOUT_S", 0.2, raising=False)
+    try:
+        run_cycle(config, mode=None)
+    finally:
+        release.set()
+    assert not any(p == second or second in p.parents for p in listed), listed
+    lines = _lines(config)
+    assert (
+        "WAITING ON YOU: macOS held the listing of alpha, beta for a privacy prompt: click Allow on the "
+        f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
+    ) in lines, lines
+    assert not any("exclude it" in line for line in lines), lines
+    monkeypatch.setattr(arm_local, "_list_dir", real)
+    run_cycle(config, mode=None)
+    assert not any("privacy prompt" in line for line in _lines(config))
 
 
 def test_a_graph_source_the_network_refuses_is_an_it_wait(tmp_path: Path, folder: Path) -> None:

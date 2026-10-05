@@ -406,6 +406,72 @@ def test_a_walk_that_times_out_on_a_privacy_prompt_tombstones_nothing(
     assert after == before
 
 
+def test_a_held_walk_fetches_nothing_under_the_held_root(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field N8 review: once a walk times out, a fetch would lstat and read under the root macOS is holding
+    and wait as the walk did. The pass fetches nothing, the pending row stays queued, and the pass is recorded
+    as held (next-step says click Allow)."""
+    assert run(sample_config).commit_sha is not None
+    with Manifest(sample_config.state_paths.db) as m:
+        sid = next(r.stable_id for r in m.iter_items("local-fixture") if not r.is_dir)
+        m.set_verdict("local-fixture", sid, Verdict.DEFERRED)
+    real = al._list_dir
+    release = threading.Event()
+    fetched: list[Path] = []
+
+    def held(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if path == local_source_dir / "projects":
+            release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    def blocked(src: Path, dest: Path, budget: object) -> object:
+        fetched.append(src)
+        release.wait(5.0)
+        raise AssertionError("fetched under a held root")
+
+    monkeypatch.setattr(al, "_list_dir", held)
+    monkeypatch.setattr(al, "materialise", blocked)
+    monkeypatch.setattr(al, "LISTING_TIMEOUT_S", 0.2, raising=False)
+    try:
+        report = run(sample_config)
+    finally:
+        release.set()
+    assert fetched == []
+    assert any("click Allow" in a for a in report.sources[0].alarms), report.sources[0].alarms
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.get_item("local-fixture", sid)
+        last = m.last_source_pass("local-fixture")
+    assert row is not None and row.last_verdict is Verdict.DEFERRED
+    assert last is not None and (last.skipped_reason or "").startswith(cycle_mod.LISTING_HELD)
+
+
+def test_a_held_root_read_ends_in_the_same_click_allow_pass(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field N8 review: the root's own metadata reads (lstat, volume UUID) share the listings' time limit, so
+    a prompt holding them ends in the click-Allow pass instead of a sync that never returns."""
+    assert run(sample_config).commit_sha is not None
+    release = threading.Event()
+    real = al.volume_uuid
+
+    def held(path: Path) -> str:
+        release.wait(5.0)
+        return real(path)
+
+    monkeypatch.setattr(al, "volume_uuid", held)
+    monkeypatch.setattr(al, "LISTING_TIMEOUT_S", 0.2, raising=False)
+    started = time.monotonic()
+    try:
+        report = run(sample_config)
+    finally:
+        release.set()
+    assert time.monotonic() - started < 4.0
+    src = report.sources[0]
+    assert not src.enumeration_complete and any("click Allow" in a for a in src.alarms), src.alarms
+    assert not any(c.op.value == "D" for c in report.changes), report.changes
+
+
 # ---------------------------------------------------------------------------------------------------------
 # performance paths: H0 fast path, batched writes, the land gate on a clean tree; inbox (name, size) dedup
 # ---------------------------------------------------------------------------------------------------------

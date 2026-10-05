@@ -220,6 +220,9 @@ class ScanResult:
     cursor_reset: bool = False  # a 410 or a dropped bad cursor forced a re-enumeration this pass
     unknown_dirs: tuple[str, ...] = ()  # zero-child cloud dirs / EPERM dirs: 'unknown', never 'empty'
     alarms: tuple[str, ...] = ()  # operator-visible problems (bad cursor dropped, canary missing, ...)
+    # a read of the root past its time limit: macOS is holding it for an Allow prompt, so every other read
+    # under the root would wait too; the cycle fetches, rewrites and removes nothing for the source this pass
+    listing_held: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -36,6 +36,7 @@ from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
     _SEED_PAGE_NAMES,
     HYDRATION_REFUSED,
+    LISTING_HELD,
     NETWORK_POLICY_FAILED,
 )
 from agentsync.errors import AgentSyncError
@@ -262,6 +263,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     unlisted: list[str] = []  # a local folder listing ran but could not finish: the operator's to fix
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
+    held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
     pending: str | None = None
     if db.exists():
@@ -275,6 +277,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     and (last.skipped_reason or "").startswith(NETWORK_POLICY_FAILED)
                 ):
                     blocked.append(src.id)
+                elif last is not None and (last.skipped_reason or "").startswith(LISTING_HELD):
+                    # Never "exclude it": once the prompt is answered, a narrowed scope retires the folder's
+                    # pages in one pass, past the deletion breaker.
+                    held.append(src.id)
                 elif row is None or not row.enumeration_complete:
                     # A local walk is always FULL: one that ran and still came back incomplete hit a folder
                     # it cannot list (TCC, an empty cloud folder, a missing root or sentinel), which another
@@ -308,6 +314,11 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"{sum(files.refused.values())} online-only file(s) in {_ids(files.refused)} could not be "
             "downloaded (macOS refused): in Finder, choose Download Now (or Always Keep on This Device) on "
             f"their folder, then run `{BIN} sync`"
+        )
+    if held:
+        waits.append(
+            f"macOS held the listing of {', '.join(sorted(held))} for a privacy prompt: click Allow on the "
+            f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
     if unlisted:
         waits.append(
