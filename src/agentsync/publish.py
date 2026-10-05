@@ -1578,11 +1578,23 @@ class Publisher:
     def write_state(self, report: CycleReport, statuses: Sequence[SourceStatus]) -> None:
         """Write the gitignored ``_sync/STATE.md`` (read-side contract fields of design 4.6), every cycle.
 
-        It opens with ``## Next``: :func:`loop.next_lines`, the NEXT / WAITING ON YOU / note lines ``status``
-        prints (KISS K08b), worked out from disk after this cycle's commit and checkpoint."""
+        It opens with ``## Next``: :func:`loop.next_lines` (KISS K08b), worked out from disk after this
+        cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a blocking lint
+        finding, which held this run's commit, is the step (the loop's rules never see the land gate), and
+        past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a walk of every
+        uncited mirror page that every LaunchAgent poll would otherwise pay."""
         from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
 
-        next_lines = loop.next_lines(self._config) or [
+        blocking = sum(1 for f in report.lint_findings if f.blocking)
+        fixes = (
+            [
+                f"{blocking} blocking finding(s) held this run's commit (## Lint findings below): fix every "
+                f"ERROR, then run `{skill.AGENTSYNC_BIN} sync`"
+            ]
+            if blocking
+            else []
+        )
+        next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False) or [
             f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
         ]
         now = self._now()

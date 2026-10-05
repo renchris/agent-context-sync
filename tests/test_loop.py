@@ -356,6 +356,28 @@ def test_rule_9_the_queue_is_bounded_per_session(tmp_path: Path, folder: Path) -
     ]
 
 
+def test_rule_9_uncounted_sends_the_agent_to_curate_without_walking_the_mirror(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """STATE.md is written by every cycle, LaunchAgent polls included: it never pays rule 9's mirror walk."""
+    config = _synced(tmp_path, folder)
+    _hand_written(config, 1)
+    want = (
+        f"NEXT: run `{BIN} curate` and follow its NEXT line (it counts the curation queue; curate up to 10 "
+        f"rows, then run `{BIN} sync`; session done)"
+    )
+
+    def no_walk(*args: object) -> list[str]:
+        raise AssertionError("the mirror walk ran")
+
+    monkeypatch.setattr(loop.curate, "uncovered_mirror_pages", no_walk)
+    step = loop.next_step(config, count_queue=False)
+    assert (step.rule, step.lines()) == (9, [want])
+    run_cycle(config, mode=CycleMode.POLL)
+    state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert f"## Next\n\n{want}\n\n## This run" in state
+
+
 def test_rule_10_nothing_to_do(tmp_path: Path, folder: Path) -> None:
     config = _synced(tmp_path, folder)
     (page,) = (config.docs_repo / "mirror" / "work").glob("*.md")

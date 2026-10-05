@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from agentsync import loop
 from agentsync.config import parse_config
 from agentsync.cycle import run_cycle
 from agentsync.model import CycleMode, Verdict
@@ -42,6 +43,16 @@ def _tree(root: Path, n: int) -> None:
     (root / "README.txt").write_text("sentinel\n", encoding="utf-8")
 
 
+def _confirmed_baseline(repo: Path) -> None:
+    """A confirmed baseline with a 'before' run, as a mature install has: the Next block every cycle writes
+    to STATE.md then reaches rule 9, the curation queue, whose count (a walk of the mirror) it must skip."""
+    ev = repo / "_eval"
+    ev.mkdir()
+    (ev / "questions.md").write_text("status: confirmed\n\n1. Who approved the order?\n", encoding="utf-8")
+    (ev / "answers.md").write_text("status: confirmed\n\n1. Finance.\n", encoding="utf-8")
+    (ev / "results-2026-10-04-before.md").write_text("1. Finance. (1 search, 1 file)\n", encoding="utf-8")
+
+
 def _cpu() -> float:
     own = resource.getrusage(resource.RUSAGE_SELF)
     kids = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -54,6 +65,7 @@ def test_noop_cycle_costs_at_most_3s_per_100k_files(tmp_path: Path) -> None:
     _tree(source, FILES)
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    _confirmed_baseline(repo)
     state.mkdir(mode=0o700)
     text = f"""
 [agentsync]
@@ -77,6 +89,7 @@ max_files = 10000000
     assert first.exit_code == 0 and first.commit_sha is not None, first
     warm = run_cycle(config, mode=CycleMode.POLL, now=clock)
     assert warm.exit_code == 0, warm
+    assert loop.next_step(config).rule == 9  # the timed cycles work out the costliest rule
     walls: list[float] = []
     cpus: list[float] = []
     for _ in range(RUNS):

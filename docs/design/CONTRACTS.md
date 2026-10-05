@@ -588,9 +588,13 @@ already carries `SOURCE-MISSING` is not repeated.
     staleness line says to run `~/.local/bin/agentsync sync` first, and its `REAUTH_REQUIRED` login line
     appears only when a Graph source is configured.
 13. **STATE.md and INDEX.md name the next step (2026-10-05, KISS K08b).** `Publisher.write_state` opens STATE.md
-    with `## Next`: the `loop.next_lines(config)` lines (`NEXT:`, `WAITING ON YOU:`, `note:`), the same ones
-    `status` prints, worked out from disk at cycle step 13 (after the commit and the checkpoint), so the two
-    cannot drift; no mirror path or file name appears in them. When the loop state cannot be read the block
+    with `## Next`: the `loop.next_lines` lines (`NEXT:`, `WAITING ON YOU:`, `note:`), worked out from disk at
+    cycle step 13 (after the commit and the checkpoint); no mirror path or file name appears in them. They
+    are the lines `sync` prints after a cycle, with two exceptions (`status` also puts its FAIL fixes first,
+    as rule 1): a blocking lint finding, which held this run's commit and which the loop's rules never see,
+    is the NEXT step, as in `curate`; and `count_queue=False` keeps rule 9's queue count, which reads every
+    uncited mirror page, out of every cycle (LaunchAgent polls included): past rule 8 the step is "run
+    `curate` and follow its NEXT line", and `curate` counts. When the loop state cannot be read the block
     says so and names `~/.local/bin/agentsync status`. The run fields that used to follow the H1 now sit under
     `## This run`. `publish` imports `loop` inside `write_state` (loop imports cycle, which imports publish).
     INDEX.md prints `Topics: none yet; run ~/.local/bin/agentsync sync and follow NEXT` (the command in

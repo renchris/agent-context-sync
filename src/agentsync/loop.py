@@ -228,10 +228,12 @@ def queue_rows(config: Config) -> int:
     return (len(verdicts) if rc != 2 else 0) + len(uncovered)
 
 
-def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
+def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True) -> NextStep:
     """The first unmet rule of the loop (module docstring) and the operator's waits, from disk only.
 
-    ``fixes`` are the fixes of status FAILs the caller already ran (rule 1, after the disk checks here)."""
+    ``fixes`` are the fixes of status FAILs the caller already ran (rule 1, after the disk checks here).
+    ``count_queue=False`` (STATE.md, written by every cycle) skips rule 9's count, which reads every uncited
+    mirror page: past rule 8 the step sends the agent to ``curate``, which counts it."""
     docs = expand(config.docs_repo)
     waits: list[str] = []
     notes: list[str] = []
@@ -398,6 +400,12 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
         )
 
     # Rule 9: the curation queue, bounded per session.
+    if not count_queue:
+        return done(
+            f"run `{BIN} curate` and follow its NEXT line (it counts the curation queue; curate up to "
+            f"{ROWS_PER_SESSION} rows, then run `{BIN} sync`; session done)",
+            9,
+        )
     rows = queue_rows(config)
     if rows:
         return done(
@@ -408,11 +416,11 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
     return done("nothing to do: session done", 10)
 
 
-def next_lines(config: Config, *, fixes: Sequence[str] = ()) -> list[str]:
+def next_lines(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True) -> list[str]:
     """:meth:`NextStep.lines` of :func:`next_step`; [] (with a logged warning) when the state cannot be read,
     so a caller's own exit status never changes because of the hint."""
     try:
-        return next_step(config, fixes=fixes).lines()
+        return next_step(config, fixes=fixes, count_queue=count_queue).lines()
     except (OSError, AgentSyncError) as exc:
         _log.warning("next step: cannot read the loop state: %s", exc)
         return []

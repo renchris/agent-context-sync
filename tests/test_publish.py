@@ -1325,10 +1325,28 @@ def test_state_md_opens_with_the_next_step(env: Env) -> None:
     assert "mirror/" not in "\n".join(later.lines())
 
 
+def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) -> None:
+    """The loop's rules never see the land gate: a blocked commit is the NEXT step, as in ``curate``."""
+    skill.write_skill(env.repo)  # under the isolated HOME: rule 1's skill check passes
+    finding = LintFinding("SYMLINK", "topics/a/x.md", "a symlink", blocking=True)
+    env.pub.write_state(report(findings=(finding,)), [status("src")])
+    want = loop.next_step(
+        env.config,
+        fixes=[
+            "1 blocking finding(s) held this run's commit (## Lint findings below): fix every ERROR, then "
+            "run `~/.local/bin/agentsync sync`"
+        ],
+    )
+    assert want.rule == 1
+    assert _state_next_block(env.text("_sync/STATE.md")) == want.lines()
+    env.pub.write_state(report(findings=(dataclasses.replace(finding, blocking=False),)), [status("src")])
+    assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()
+
+
 def test_state_md_next_block_says_so_when_the_state_cannot_be_read(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(loop, "next_lines", lambda config: [])
+    monkeypatch.setattr(loop, "next_lines", lambda config, **kwargs: [])
     env.pub.write_state(report(), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == [
         "(the next step could not be worked out: run `~/.local/bin/agentsync status`)"
