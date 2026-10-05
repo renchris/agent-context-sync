@@ -3423,6 +3423,14 @@ fleet-signing action for IT, nothing the person or their agent does), have `fix=
 so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix:`. Any other value, or none, and
 `agentsync doctor` run by hand prints the fix itself.
 
+Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
+(`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1`, a missing launcher is one `[info] launcher`
+line and the `launchd.poll` / `launchd.reconcile` checks are one `[info]` line each, every detail ending "not
+installed (optional background sync; see docs/deploy)", with no fix, whether or not a live source sits under a
+TCC-protected folder. With a plist or the pending step, today's ERROR/WARN results and fixes stand. A launcher
+that is present is checked as before. The `governance.time_machine` fix names `agentsync sync` (every sync
+applies the exclusions), no longer `install-agent`.
+
 ### `agentsync.cycle` — `src/agentsync/cycle.py` — owner: **integrator (W2)**
 
 One sync cycle, in the durability order of design 4.7 (owner: integrator — signatures only until W2).
@@ -3485,8 +3493,9 @@ Subcommands: init (2026-10-04, KISS K14: hidden, no options) · sync [--once] [-
 [--accept-deletions]` is its hidden alias) · status (2026-10-04, KISS K08a: the single read-only check; `doctor`
 and `policy show` are its hidden aliases, `doctor --network` is deleted) · curate (2026-10-04, KISS K09; `curate-queue`,
 `lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
-login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
-SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
+login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent (2026-10-05,
+KISS K11a: hidden, no options; `--interval`, `--reconcile-interval` and `--no-backup-exclusions` are deleted) ·
+uninstall-agent (hidden) · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
 always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
 ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand.
 
@@ -4345,6 +4354,11 @@ def canary_paths(config: Config) -> tuple[Path, ...]:
 
 def launcher_required(config: Config) -> bool:
     """True when a live source sits under a TCC-protected folder, so the job must run the signed launcher."""
+    # 2026-10-05, KISS K11a: unchanged; install-agent still refuses without the launcher. doctor reports a
+    # missing launcher as INFO unless agents_installed(config) or AGENTSYNC_AGENT_STEP_PENDING=1 (§ ops.doctor)
+
+def agents_installed(config: Config) -> bool:  # 2026-10-05, KISS K11a
+    """True when any ``<prefix>.*.plist`` sits in ``~/Library/LaunchAgents`` (the config's"""
 
 def watchdog_s(interval_s: int) -> int:
     """The launcher's hard wall-clock limit for one run of a job started every ``interval_s`` seconds."""
@@ -4396,7 +4410,7 @@ class AgentSpec:
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
 | `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
-| `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
+| `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text. Since KISS K11a (2026-10-05) hidden, with no options: `--no-backup-exclusions`, `--interval` and `--reconcile-interval` are deleted, the exclusions always apply and both intervals come from sources.toml; `uninstall-agent` is its hidden pair. The launchd argv is unchanged | 0 · 1 · 2 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13). Since KISS K14 (2026-10-04, §16.13) hidden and without options (`--docs-repo`, `--source-local` and `--force` are deleted): writes the template only when sources.toml is missing, then the same setup as `add-source` | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted. Since KISS K14 (2026-10-04, §16.13) the one setup verb: `--id` is deleted; a missing sources.toml is written from the template with the folder's table; then `config.ensure_inbox` and init's setup (docs repo, scaffold, state dir, owner-only modes, Time Machine exclusions, remote refusal) | 0 added or already configured · 1 disallowed remote on the docs repo · 2 bad path · 78 invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20). Since KISS K08a the single read-only check: `loop.next_lines` first, `loop.status_line`, `doctor.run_checks` + the §16.8 CLI checks, then the status and policy lines (§16.21) | 0 · 1 any FAIL (K08a) |

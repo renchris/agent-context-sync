@@ -21,6 +21,7 @@ back to the interpreter (logged); one with a protected source refuses (ConfigErr
 from __future__ import annotations
 
 import contextlib
+import glob
 import logging
 import os
 import plistlib
@@ -275,7 +276,9 @@ def canary_paths(config: Config) -> tuple[Path, ...]:
 
 
 def launcher_required(config: Config) -> bool:
-    """True when a live source sits under a TCC-protected folder, so the job must run the signed launcher."""
+    """True when a live source sits under a TCC-protected folder, so the job must run the signed launcher.
+    install-agent refuses without it; doctor reports a missing launcher only once :func:`agents_installed`
+    (or install.sh's agent step is pending), since background sync is optional (KISS K11a)."""
     return bool(canary_paths(config))
 
 
@@ -437,6 +440,21 @@ def plist_path(label: str) -> Path:
     """Return ``~/Library/LaunchAgents/<label>.plist``."""
     _check_label(label)
     return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+
+
+_DEFAULT_LABEL_PREFIX = "com.agentsync"
+
+
+def agents_installed(config: Config) -> bool:
+    """True when any ``<prefix>.*.plist`` sits in ``~/Library/LaunchAgents`` (the config's
+    ``launchd_label_prefix`` or the default ``com.agentsync``), readable or not: background sync is optional
+    (KISS K11a), so doctor checks the launcher and the jobs only on a Mac that has them."""
+    agents = Path.home() / "Library" / "LaunchAgents"
+    prefixes = {config.launchd_label_prefix, _DEFAULT_LABEL_PREFIX}
+    try:
+        return any(any(agents.glob(f"{glob.escape(p)}.*.plist")) for p in prefixes)
+    except OSError:
+        return False
 
 
 def _write_plist(path: Path, data: bytes) -> None:

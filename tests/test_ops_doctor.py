@@ -129,8 +129,9 @@ def test_happy_path_has_no_errors_and_fixed_order(sample_config: Config) -> None
     assert names == expected
     assert errors(results) == [], format_results(results)
     r = by_name(results)
-    assert r["launchd.poll"].severity is Severity.WARN and not r["launchd.poll"].ok
-    assert r["launchd.poll"].fix == "agentsync install-agent"
+    for name in ("launcher", "launchd.poll", "launchd.reconcile"):  # KISS K11a: background sync is optional
+        assert not r[name].ok and r[name].severity is Severity.INFO and r[name].fix is None, name
+        assert r[name].detail.endswith(" not installed (optional background sync; see docs/deploy)"), name
     assert r["pandoc"].ok and r["pandoc"].detail.startswith("pandoc ")
     assert r["git"].ok and "git version" in r["git"].detail
     assert r["materialise.policy"].detail.startswith("process policy off")
@@ -736,8 +737,32 @@ def _cloud(cfg: Config) -> tuple[Config, Path]:
     return dataclasses.replace(cfg, sources=(cfg.sources[0], src)), root
 
 
-def test_launcher_missing_but_required_is_an_error(sample_config: Config) -> None:
+def test_cloud_source_without_launchagents_is_info_only(sample_config: Config) -> None:
+    """KISS K11a: a CloudStorage source with no LaunchAgent plist: launcher and launchd are INFO lines with
+    no fix (background sync is optional), and status exits 0."""
     cfg, _root = _cloud(sample_config)
+    assert launchd.launcher_required(cfg) and not launchd.agents_installed(cfg)
+    results = run_checks(cfg)
+    r = by_name(results)
+    for name in ("launcher", "launchd.poll", "launchd.reconcile"):
+        assert not r[name].ok and r[name].severity is Severity.INFO and r[name].fix is None, name
+        assert "not installed (optional background sync; see docs/deploy)" in r[name].detail, name
+    assert "install-agent" not in format_results(results)
+    assert errors(results) == [], format_results(results)  # status exits 1 only on an ERROR line
+
+
+@pytest.mark.parametrize("trigger", ["plist", "pending"])
+def test_launcher_missing_but_required_is_an_error(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, trigger: str
+) -> None:
+    """With a com.agentsync.* plist present, or install.sh's agent step pending, today's ERROR stands."""
+    cfg, _root = _cloud(sample_config)
+    if trigger == "plist":
+        stray = launchd.plist_path("com.agentsync.old-job")
+        stray.parent.mkdir(parents=True)
+        stray.write_bytes(b"garbage")
+    else:
+        monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
     r = by_name(run_checks(cfg))
     assert not r["launcher"].ok and r["launcher"].severity is Severity.ERROR
     assert "install.sh" in (r["launcher"].fix or "")

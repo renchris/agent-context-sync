@@ -119,8 +119,8 @@ def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Pat
     summary = section(text, "Summary")
     assert summary.lstrip().startswith(
         "- **outcome: worked with help** (computed: install.sh exit 0; no friction log, so the human turns "
-        "are unknown; "
-    ), "then this tmp HOME's doctor FAILs (no launcher)"
+        "are unknown)\n"
+    ), "no doctor FAIL: with no LaunchAgent plist a missing launcher is INFO (KISS K11a)"
     assert "- friction log: none at ~/agent-context/setup/friction.md" in summary
     assert text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL + "&title=Setup%20report")
     assert "- generated at: " in text and "- agentsync: " in text and "- install source: " in text
@@ -191,7 +191,9 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     m = re.search(r"^(\d+) ok: (.+)$", doctor, re.MULTILINE)
     assert re.search(r"\d+ check\(s\): \d+ ok", doctor) and m and "python" in m.group(2).split(", ")
     assert "[ok  ]" not in doctor, "only the lines that are not ok are listed"
-    assert re.search(r"^\[(?:warn|FAIL)\s*\] launchd\.poll ", doctor, re.MULTILINE), "non-ok lines are kept"
+    assert re.search(r"^\[(?:warn|FAIL)\s*\] \S+ ", doctor, re.MULTILINE), "non-ok lines are kept"
+    optional = r"^\[info\s*\] launchd\.poll .* not installed \(optional background sync"  # KISS K11a
+    assert re.search(optional, doctor, re.MULTILINE), "the INFO line, with no fix, is kept too"
     status = section(text, "Status")
     assert "lock: free" in status and "last runs: none" in status
     bg = section(text, "Background runs")

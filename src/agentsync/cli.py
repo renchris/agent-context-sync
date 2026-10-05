@@ -4,7 +4,7 @@ Subcommands: add-source PATH · init (hidden) · sync [--once] [--mode poll|reco
 [--source ID ...] [--materialise-budget BYTES] · accept-deletions SOURCE · status · curate · materialise
 [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level
 login · logout · whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent
-[--interval SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history ·
+(hidden) · uninstall-agent (hidden) · purge SELECTOR | --queue · compact-history ·
 hold · offboard [--purge-data] [--confirm DOCS_REPO] · setup-report [--out PATH] [--friction PATH]
 [--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
@@ -300,17 +300,15 @@ def build_parser() -> argparse.ArgumentParser:
         _graph_options(add(name, text, _cmd_graph))
         sub.choices[name].set_defaults(action=name)
 
-    p = add("install-agent", "install the poll + reconcile LaunchAgents (no admin rights)", _cmd_install)
-    p.add_argument("--interval", type=int, metavar="SECONDS", help="poll interval (default: config, 300)")
-    p.add_argument(
-        "--reconcile-interval", type=int, metavar="SECONDS", help="reconcile interval (default: config, 3600)"
+    # KISS K11a: background sync is optional and operator-owned (docs/deploy), so both are hidden; the
+    # intervals come from sources.toml and the Time Machine exclusions always apply.
+    add(
+        "install-agent",
+        "install the poll + reconcile LaunchAgents (optional background sync; no admin rights)",
+        _cmd_install,
+        hidden=True,
     )
-    p.add_argument(
-        "--no-backup-exclusions",
-        action="store_true",
-        help="skip `tmutil addexclusion` of mirror/, the cache and the manifest (C15 req 42)",
-    )
-    add("uninstall-agent", "unload and remove both LaunchAgents", _cmd_uninstall)
+    add("uninstall-agent", "unload and remove both LaunchAgents", _cmd_uninstall, hidden=True)
 
     p = add("purge", "remove items from the docs repo's whole history, cache and manifest", _cmd_purge)
     p.add_argument(
@@ -1097,9 +1095,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                     False,
                     "not excluded from Time Machine: " + ", ".join(str(p) for p in missing),
                     doctor.Severity.WARN,
-                    fix="agentsync install-agent (or: tmutil addexclusion "
-                    + " ".join(map(str, missing))
-                    + ")",
+                    fix="agentsync sync (or: tmutil addexclusion " + " ".join(map(str, missing)) + ")",
                 )
             )
         else:
@@ -1589,10 +1585,6 @@ def _discover(config: Config, auth: TokenProvider, *, urls: Sequence[str], toml_
 
 def _cmd_install(args: argparse.Namespace) -> int:
     config = _config(args)
-    if args.interval is not None:
-        config = dataclasses.replace(config, poll_interval_s=args.interval)
-    if args.reconcile_interval is not None:
-        config = dataclasses.replace(config, reconcile_interval_s=args.reconcile_interval)
     gov = governance.load_governance(config.config_path)
     findings = _refuse_remotes(config, gov)
     if findings:  # C15 req 36: never schedule a mirror whose clones no purge can reach
@@ -1608,9 +1600,8 @@ def _cmd_install(args: argparse.Namespace) -> int:
             )
             return EXIT_CONFIG
     specs = (launchd.poll_spec(config), launchd.reconcile_spec(config))  # ConfigError -> exit 78
-    if not args.no_backup_exclusions:
-        for line in governance.apply_time_machine_exclusions(config):
-            _out(f"time machine: {line}")
+    for line in governance.apply_time_machine_exclusions(config):
+        _out(f"time machine: {line}")
     for spec in specs:
         path = launchd.install(spec)
         _out(f"installed {spec.label} every {spec.start_interval_s}s -> {path}")

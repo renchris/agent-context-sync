@@ -604,3 +604,19 @@ def test_launcher_plist_passes_plutil_lint(sample_config: Config, tmp_path: Path
     path.write_bytes(render_plist(spec))
     cp = subprocess.run([PLUTIL, "-lint", str(path)], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stdout + cp.stderr
+
+
+def test_agents_installed_reads_any_prefix_plist(sample_config: Config) -> None:
+    """KISS K11a: doctor checks background sync only when a ``<prefix>.*.plist`` (or ``com.agentsync.*``)
+    exists, readable or not; another app's agent does not count."""
+    agents = Path.home() / "Library" / "LaunchAgents"
+    assert not launchd.agents_installed(sample_config), "no LaunchAgents folder at all"
+    agents.mkdir(parents=True)
+    (agents / "com.example.other.plist").write_bytes(b"")
+    (agents / "com.agentsyncx.poll.plist").write_bytes(b"")
+    assert not launchd.agents_installed(sample_config)
+    custom = dataclasses.replace(sample_config, launchd_label_prefix="org.acme.sync")
+    (agents / "org.acme.sync.poll.plist").write_bytes(b"garbage")
+    assert launchd.agents_installed(custom) and not launchd.agents_installed(sample_config)
+    (agents / "com.agentsync.reconcile.plist").write_bytes(b"")
+    assert launchd.agents_installed(sample_config)

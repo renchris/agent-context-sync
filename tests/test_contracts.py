@@ -64,8 +64,6 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "logout": ["--device-code", "--url", "--toml"],
         "whoami": ["--device-code", "--url", "--toml"],
         "discover": ["--device-code", "--url", "--toml"],
-        "install-agent": ["--interval", "--reconcile-interval", "--no-backup-exclusions"],
-        "uninstall-agent": [],
         "purge": ["selector", "--source", "--reason", "--queue", "--dry-run", "--push"],
         "compact-history": ["--keep-days", "--dry-run"],
         "hold": ["scope", "--reason", "--owner", "--release", "--list"],
@@ -75,6 +73,8 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
     },
     "hidden": {
         "init": [],
+        "install-agent": [],
+        "uninstall-agent": [],
         "reconcile": ["--source", "--accept-deletions"],
         "install-skill": [],
         "checkpoint": [],

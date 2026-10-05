@@ -777,15 +777,29 @@ _DEVELOPER_ID_FIX = (
 _FP_CANARY_TIMEOUT_S = 15.0
 
 
+_OPTIONAL_NOT_INSTALLED = "not installed (optional background sync; see docs/deploy)"
+
+
+def _agents_wanted(config: Config) -> bool:
+    """Whether doctor checks background sync as a requirement: a LaunchAgent plist exists, or install.sh's
+    agent step is pending (KISS K11a). Otherwise the launcher and launchd checks are one INFO line each."""
+    return os.environ.get(AGENT_STEP_PENDING_ENV, "").strip() == "1" or launchd.agents_installed(config)
+
+
 def _check_launcher(config: Config) -> list[CheckResult]:
     """The signed launcher the LaunchAgents run: present, signature valid, identifier, designated requirement
-    (printed for the PPPC profile; WARN when it is an ad-hoc cdhash)."""
+    (printed for the PPPC profile; WARN when it is an ad-hoc cdhash).  Missing with no LaunchAgent installed
+    (background sync is optional): INFO, no fix."""
     required = launchd.launcher_required(config)
     try:
         exe = _find_launcher()
     except ConfigError as exc:
         return [_bad("launcher", str(exc), fix=f"unset {launchd.LAUNCHER_ENV}, or {_LAUNCHER_FIX}")]
     if exe is None:
+        if not _agents_wanted(config):
+            return [
+                _bad("launcher", f"{launchd.LAUNCHER_EXECUTABLE} {_OPTIONAL_NOT_INSTALLED}", Severity.INFO)
+            ]
         where = f"{launchd.LAUNCHER_EXECUTABLE} not found at {launchd.default_launcher_app()}"
         if not required:
             return [
@@ -1055,7 +1069,17 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
 
 
 def _check_launchd(config: Config) -> list[CheckResult]:
-    """Both LaunchAgents (WARN when not installed or not loaded)."""
+    """Both LaunchAgents (WARN when not installed or not loaded).  With no LaunchAgent plist and no pending
+    agent step, background sync is optional (KISS K11a): one INFO line per job, no fix."""
+    if not _agents_wanted(config):
+        return [
+            _bad(
+                f"launchd.{suffix}",
+                f"{config.launchd_label_prefix}.{suffix} {_OPTIONAL_NOT_INSTALLED}",
+                Severity.INFO,
+            )
+            for suffix in ("poll", "reconcile")
+        ]
     out: list[CheckResult] = []
     builders: tuple[tuple[str, Callable[[Config], launchd.AgentSpec]], ...] = (
         ("poll", launchd.poll_spec),
@@ -1294,7 +1318,7 @@ def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
     sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:
     client id set, token cache backend (Keychain vs file), signed in (no network); disk free >= 2 GiB on state
-    and docs volumes; launchd agents loaded (WARN if not).
+    and docs volumes; launchd agents loaded (WARN if not; INFO when none is installed, KISS K11a).
 
     Ops extension (C15 §3): the signed launcher's presence, signature, identifier and designated requirement
     (WARN when ad hoc), and per TCC-protected source a timed metadata-only canary run *as the launcher*.

@@ -49,10 +49,11 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in (
-        "add-source", "sync", "status", "accept-deletions", "materialise", "graph", "install-agent",
+        "add-source", "sync", "status", "accept-deletions", "materialise", "graph",
         "purge", "compact-history", "hold", "offboard",
     ):  # fmt: skip
         assert command in out
+    assert "install-agent" not in out and "uninstall-agent" not in out  # KISS K11a: hidden, still parse
     assert cli.main(["sync", "--help"]) == 0
     assert "75  skipped" in capsys.readouterr().out
 
@@ -727,12 +728,16 @@ def test_install_and_uninstall_agent_call_launchd(
         governance, "apply_time_machine_exclusions", lambda c, **_k: excluded.append(c) or ["excluded x"]
     )
     cfg = str(initialised.config_path)
-    assert cli.main(["install-agent", "--interval", "120", "--config", cfg]) == cli.EXIT_OK
+    for flag in (["--interval", "120"], ["--reconcile-interval", "60"], ["--no-backup-exclusions"]):
+        assert cli.main(["install-agent", *flag, "--config", cfg]) == cli.EXIT_USAGE  # KISS K11a: deleted
+    assert installed == [] and excluded == []
+    capsys.readouterr()
+    assert cli.main(["install-agent", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "time machine: excluded x" in out and len(excluded) == 1  # C15 req 42, once at install
+    assert "time machine: excluded x" in out and len(excluded) == 1  # C15 req 42, always, once at install
     assert f"launchd runs: {installed[0].program_arguments[0]}" in out
-    assert [(s.label, s.start_interval_s) for s in installed] == [
-        ("com.agentsync.poll", 120),
+    assert [(s.label, s.start_interval_s) for s in installed] == [  # the intervals come from sources.toml
+        ("com.agentsync.poll", 300),
         ("com.agentsync.reconcile", 3600),
     ]
     assert installed[0].materialize_dataless_files is False
