@@ -133,6 +133,31 @@ def test_lint_fails_on_a_hand_edited_mirror_page(
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED  # the land gate blocks the commit
 
 
+def test_lint_exits_1_on_a_wrong_pin_or_a_typoed_source(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K10: a well-formed but wrong pin (STALE) and a missing source are checkpoint blockers, so lint
+    fails on them; before, both passed with exit 0."""
+    cfg = str(initialised.config_path)
+    cli.main(["sync", "--config", cfg])
+    topics = initialised.docs_repo / "topics"
+    page = (
+        "---\nentity: acme\npurpose: Terms.\nsources:\n  - path: {src}\n    at_rendered_sha256: {pin}\n"
+        "    role: primary\n---\n# A\n"
+    )
+    (topics / "a.md").write_text(
+        page.format(src="mirror/source/projects/sample.txt.md", pin="ab" * 32), encoding="utf-8"
+    )
+    (topics / "b.md").write_text(
+        page.format(src="mirror/source/projects/typo.md", pin="ab" * 32), encoding="utf-8"
+    )
+    capsys.readouterr()
+    assert cli.main(["lint", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "ERROR STALE topics/a.md" in out and "ERROR SOURCE-MISSING topics/b.md" in out
+    assert "hand-written" not in out
+
+
 def test_refresh_queue_exit_codes(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = str(initialised.config_path)
     assert cli.main(["refresh-queue", "--config", cfg]) == 2  # no DEPENDS.tsv yet

@@ -5,8 +5,8 @@ Path convention (adapts design 4.5 to docs/ being its own repo): DEPENDS.tsv col
 DOCS REPO ROOT (``topics/…``, ``mirror/…``) and the refresh-queue script runs from the docs repo root.
 
 Every finding this module emits is ``blocking=False``: the curated layer is agent-written, and a bad pin or a
-missing ``entity:`` must never stop the mirror from syncing.  The refresh queue (rc 1) and ``agentsync lint``
-are where those findings bite.
+missing ``entity:`` must never stop the mirror from syncing.  ``checkpoint_blockers`` is where they bite: they
+hold the ``curated`` checkpoint, and ``agentsync lint`` exits 1 on any of them.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from typing import Any
 
 import yaml
 
-from agentsync import slug
-from agentsync.errors import CurateError
+from agentsync import gitops, slug
+from agentsync.errors import CurateError, GitError
 from agentsync.frontmatter import FrontmatterError, parse_frontmatter, split_frontmatter
 from agentsync.manifest import DependsRow
 from agentsync.model import LintFinding
@@ -100,6 +100,21 @@ _BOM = "﻿"
 _MAX_REPORTED_PROBLEMS = 50
 _PAGE_MAX_LINES = 400  # design 4.6 page budget: one subject per page, read whole
 _PAGE_MAX_BYTES = 25_000
+# What a source may cite (else SOURCE-NOT-MIRROR), and the sources: prefixes resolved from the docs root.
+_DOCS_ROOT_SOURCE_PREFIXES = ("mirror/", "archive/")
+
+CHECKPOINT_VERDICTS: frozenset[str] = frozenset(
+    {"STALE", "UNPINNED", "BAD-PIN", "MALFORMED", "MISSING-OR-UNPARSEABLE"}
+)
+"""Refresh verdicts that hold the ``curated`` checkpoint for a page changed since it.  SOURCE-DELETED and
+SOURCE-UNREADABLE never do: the source's state is not the page's fault and can outlive any session."""
+_VERDICT_HINTS: Mapping[str, str] = {
+    "STALE": "the source changed since its at_rendered_sha256 pin: re-read it, update the page and the pin",
+    "UNPINNED": "no at_rendered_sha256 pin",
+    "BAD-PIN": "at_rendered_sha256 is not 64 lowercase hex chars",
+    "MALFORMED": "malformed DEPENDS row",
+    "MISSING-OR-UNPARSEABLE": "the source has no readable rendered_sha256: fix the path",
+}
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -109,7 +124,8 @@ _PAGE_MAX_BYTES = 25_000
 
 @dataclass(frozen=True, slots=True)
 class TopicSource:
-    """One ``sources:`` entry as written (path is PAGE-relative)."""
+    """One ``sources:`` entry as written (path is PAGE-relative, or docs-root-relative when it starts
+    ``mirror/`` or ``archive/``: see ``resolve_source_path``)."""
 
     path: str
     at_rendered_sha256: str
@@ -289,12 +305,25 @@ def parse_topic_page(layout: DocsLayout, rel_path: str) -> TopicPage:
 
 def normalise_source_path(page_rel: str, source_rel_to_page: str) -> str:
     """Resolve a page-relative ``sources:`` path to docs-repo-relative; CurateError if it escapes docs/."""
-    src = source_rel_to_page.strip()
+    return _normalise(page_rel, source_rel_to_page, posixpath.dirname(page_rel))
+
+
+def resolve_source_path(page_rel: str, source: str) -> str:
+    """Resolve one ``sources:`` entry to docs-repo-relative: an entry starting ``mirror/`` or ``archive/``
+    resolves from the docs root (the path an agent copies from DEPENDS.tsv or a curate work list), anything
+    else page-relative as before.  CurateError if it escapes docs/.  ``depends_on_pages`` stays page-relative
+    (``normalise_source_path``)."""
+    root_relative = source.strip().startswith(_DOCS_ROOT_SOURCE_PREFIXES)
+    return _normalise(page_rel, source, "" if root_relative else posixpath.dirname(page_rel))
+
+
+def _normalise(page_rel: str, source: str, base: str) -> str:
+    src = source.strip()
     if not src:
         raise CurateError(f"{page_rel}: empty source path")
     if src.startswith("/"):
         raise CurateError(f"{page_rel}: source path {src!r} is absolute; write it relative to the page")
-    joined = posixpath.normpath(posixpath.join(posixpath.dirname(page_rel), src))
+    joined = posixpath.normpath(posixpath.join(base, src))
     if joined in ("", ".", "..") or joined.startswith(("../", "/")):
         raise CurateError(f"{page_rel}: source path {src!r} escapes docs/ (resolves to {joined!r})")
     return unicodedata.normalize("NFC", joined)
@@ -312,6 +341,18 @@ def _is_hand_written(layout: DocsLayout, rel_path: str) -> bool:
         return any(line.startswith(b"provenance: hand-written") for line in raw.split(b"\n"))
 
 
+def _head_readable(path: Path) -> bool:
+    """True when ``path`` is a regular file whose head can be read (SOURCE-MISSING otherwise)."""
+    try:
+        if not path.is_file():
+            return False
+        with path.open("rb") as fh:
+            fh.read(4096)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _finding(code: str, path: str, message: str) -> LintFinding:
     """Every curation finding is non-blocking for the sync (see the module docstring)."""
     return LintFinding(code=code, path=path, message=message, blocking=False)
@@ -327,7 +368,7 @@ def _page_findings_and_rows(
     seen: dict[str, int] = {}
     for i, src in enumerate(page.sources):
         try:
-            source = normalise_source_path(rel, src.path)
+            source = resolve_source_path(rel, src.path)
         except CurateError as exc:
             findings.append(_finding("CURATE-PARSE", rel, f"sources[{i}]: {exc}"))
             continue
@@ -359,9 +400,20 @@ def _page_findings_and_rows(
                     f"(len={len(src.at_rendered_sha256)})",
                 )
             )
-        if not source.startswith("mirror/"):
+        if not source.startswith(_DOCS_ROOT_SOURCE_PREFIXES):
             findings.append(
-                _finding("SOURCE-NOT-MIRROR", rel, f"sources[{i}] ({source}) is not a mirror/ page")
+                _finding(
+                    "SOURCE-NOT-MIRROR", rel, f"sources[{i}] ({source}) is not a mirror/ or archive/ page"
+                )
+            )
+        if not _head_readable(layout.root / source):
+            findings.append(
+                _finding(
+                    "SOURCE-MISSING",
+                    rel,
+                    f"sources[{i}] ({source}) is not a readable file: fix the path (mirror/… and archive/… "
+                    "resolve from the docs root, anything else from the page)",
+                )
             )
         rows.append(DependsRow(page=rel, source=source, pinned_sha=src.at_rendered_sha256, role=src.role))
     for i, dep in enumerate(page.depends_on_pages):
@@ -765,12 +817,47 @@ def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[
         _finding(
             "UNLISTED",
             rel,
-            "curated page is in no DEPENDS.tsv row, so it can never go STALE: add pinned sources: "
-            f"or mark it 'provenance: {HAND_WRITTEN}'",
+            "curated page is in no DEPENDS.tsv row, so it can never go STALE: add pinned sources:",
         )
         for rel in iter_topic_pages(layout)
         if rel not in listed and not _is_hand_written(layout, rel)
     ]
+
+
+def _pages_changed_since_checkpoint(repo: Path) -> set[str] | None:
+    """Topic pages that differ between the ``curated`` tag and the working tree (untracked included); None
+    (every page counts) before the first checkpoint or when git cannot answer."""
+    try:
+        checkpoint = gitops.curated_checkpoint(repo) if gitops.head_sha(repo) else None
+        if checkpoint is None:
+            return None
+        return gitops.paths_changed_since(repo, checkpoint[0], ("topics",))
+    except GitError as exc:
+        _log.warning("checkpoint: cannot tell which topic pages changed (%s); checking every page", exc)
+        return None
+
+
+def checkpoint_blockers(repo: Path) -> list[LintFinding]:
+    """Everything that holds the ``curated`` checkpoint, each finding ``blocking=True``: every curation lint
+    finding but TOPIC-BUDGET (SOURCE-MISSING included), UNLISTED, and the CHECKPOINT_VERDICTS refresh
+    verdicts of topic pages changed since the ``curated`` tag (every page before the first tag).  The verdicts
+    come from the pages as they are now, not from DEPENDS.tsv.  The sync's land gate never uses this: its
+    curation findings stay ``blocking=False``."""
+    layout = DocsLayout(root=repo)
+    rows, _entities, findings = generate_depends(layout)
+    out = [replace(f, blocking=True) for f in findings if f.code != "TOPIC-BUDGET"]
+    out += [replace(f, blocking=True) for f in lint_unlisted_pages(layout, rows)]
+    linted = {(f.code, f.path) for f in out}
+    changed = _pages_changed_since_checkpoint(repo)
+    cells = [(r.page, r.source, r.pinned_sha, r.role) for r in rows]
+    for v in {_queue_row(layout.root, "\t".join(c).encode("utf-8", "surrogateescape")) for c in cells}:
+        if v is None or v.verdict not in CHECKPOINT_VERDICTS or (v.verdict, v.page) in linted:
+            continue  # UNPINNED / BAD-PIN rows are already named by the lint finding of the same code
+        if changed is not None and v.page not in changed:
+            continue
+        message = f"{v.source}: {_VERDICT_HINTS[v.verdict]}"
+        out.append(LintFinding(code=v.verdict, path=v.page, message=message, blocking=True))
+    return sorted(out, key=lambda f: (f.path, f.code, f.message))
 
 
 # ---------------------------------------------------------------------------------------------------------

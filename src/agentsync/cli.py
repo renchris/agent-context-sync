@@ -1060,9 +1060,9 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     findings += lints.lint_no_cache_in_git(repo)
     findings += lints.lint_no_tokens(repo)
     findings += lints.lint_index_budget(repo)
-    rows, _entities, curate_findings = curate.generate_depends(layout)
-    findings += curate_findings
-    findings += [dataclasses.replace(f, blocking=True) for f in curate.lint_unlisted_pages(layout, rows)]
+    # Every checkpoint blocker is an ERROR; TOPIC-BUDGET is the one curation finding that stays a warning.
+    findings += [f for f in curate.generate_depends(layout)[2] if f.code == "TOPIC-BUDGET"]
+    findings += curate.checkpoint_blockers(repo)
     for f in sorted(findings, key=lambda f: (not f.blocking, f.code, f.path)):
         _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
     blocking = sum(1 for f in findings if f.blocking)

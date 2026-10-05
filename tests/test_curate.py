@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 import agentsync.curate as curate
+from agentsync import gitops
 from agentsync.curate import (
     BY_ENTITY_HEADER,
     DEPENDS_HEADER,
@@ -406,6 +407,7 @@ def test_generate_depends_findings(layout: DocsLayout) -> None:
         ("topics/p.md", "CURATE-PARSE"),
         ("topics/p.md", "DUPLICATE-SOURCE"),
         ("topics/p.md", "MISSING-PURPOSE"),
+        *[("topics/p.md", "SOURCE-MISSING")] * 5,  # b, c, d, e and topics/other.md do not exist
         ("topics/p.md", "SOURCE-NOT-MIRROR"),
         ("topics/p.md", "UNPINNED"),
     ]
@@ -1080,3 +1082,98 @@ def test_missing_purpose_and_page_budget_are_warnings(layout: DocsLayout) -> Non
     ]
     assert not any(f.blocking for f in findings)
     assert "split it" in findings[1].message
+
+
+# ---------------------------------------------------------------------------------------------------------
+# docs-root sources, SOURCE-MISSING, checkpoint blockers (KISS K10)
+# ---------------------------------------------------------------------------------------------------------
+
+GOOD = "entity: e\npurpose: Terms; not pricing.\n"
+
+
+@pytest.mark.parametrize(
+    ("page", "src", "expected"),
+    [
+        ("topics/p.md", "mirror/s/x.md", "mirror/s/x.md"),
+        ("topics/a/b/c/p.md", "mirror/s/x.md", "mirror/s/x.md"),
+        ("topics/a/p.md", "archive/s/x.md", "archive/s/x.md"),
+        ("topics/a/p.md", "../../mirror/s/x.md", "mirror/s/x.md"),  # page-relative still resolves
+        ("topics/a/p.md", "./mirror/s/x.md", "topics/a/mirror/s/x.md"),  # ./ keeps it page-relative
+        ("topics/a/p.md", "sibling.md", "topics/a/sibling.md"),
+    ],
+)
+def test_resolve_source_path(page: str, src: str, expected: str) -> None:
+    assert curate.resolve_source_path(page, src) == expected
+
+
+def test_resolve_source_path_still_rejects_escapes() -> None:
+    with pytest.raises(CurateError, match="escapes"):
+        curate.resolve_source_path("topics/p.md", "mirror/../../x.md")
+    assert normalise_source_path("topics/a/p.md", "mirror/s/x.md") == "topics/a/mirror/s/x.md"
+
+
+def test_docs_root_sources_and_archive_are_clean(layout: DocsLayout) -> None:
+    pin = mirror_page(layout, "mirror/s/a.md")
+    old = mirror_page(layout, "archive/s/old.md", "# old\n")
+    topic_page(layout, "topics/a/b/sib.md", GOOD + sources_yaml(("mirror/s/a.md", pin, "primary")))
+    topic_page(
+        layout,
+        "topics/a/b/p.md",
+        GOOD
+        + sources_yaml(("mirror/s/a.md", pin, "primary"), ("archive/s/old.md", old, "corroborating"))
+        + "depends_on_pages: [sib.md]\n",  # page-relative, unlike sources:
+    )
+    rows, _entities, findings = generate_depends(layout)
+    assert findings == []
+    assert [(r.page, r.source) for r in rows] == [
+        ("topics/a/b/p.md", "archive/s/old.md"),
+        ("topics/a/b/p.md", "mirror/s/a.md"),
+        ("topics/a/b/sib.md", "mirror/s/a.md"),
+    ]
+    assert curate.checkpoint_blockers(layout.root) == []
+
+
+def test_unlisted_message_offers_no_hand_written_escape(layout: DocsLayout) -> None:
+    topic_page(layout, "topics/nosources.md", GOOD)
+    (finding,) = lint_unlisted_pages(layout, generate_depends(layout)[0])
+    assert finding.code == "UNLISTED" and "hand-written" not in finding.message
+
+
+def test_checkpoint_blockers_wrong_pin_holds_and_source_state_does_not(layout: DocsLayout) -> None:
+    pin = mirror_page(layout, "mirror/s/a.md")
+    mirror_page(layout, "mirror/s/unreadable.md", status=PageStatus.UNREADABLE)
+    gone = mirror_page(layout, "mirror/s/gone.md", status=PageStatus.DELETED)
+    topic_page(layout, "topics/wrong-pin.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    topic_page(layout, "topics/unreadable.md", GOOD + sources_yaml(("mirror/s/unreadable.md", H, "primary")))
+    topic_page(layout, "topics/gone.md", GOOD + sources_yaml(("mirror/s/gone.md", gone, "primary")))
+    topic_page(layout, "topics/typo.md", GOOD + sources_yaml(("mirror/s/typo.md", pin, "primary")))
+    topic_page(layout, "topics/huge.md", GOOD + sources_yaml(("mirror/s/a.md", pin, "primary")), "x\n" * 401)
+    blockers = curate.checkpoint_blockers(layout.root)
+    assert [(f.path, f.code) for f in blockers] == [
+        ("topics/typo.md", "MISSING-OR-UNPARSEABLE"),
+        ("topics/typo.md", "SOURCE-MISSING"),
+        ("topics/wrong-pin.md", "STALE"),
+    ]
+    assert all(f.blocking for f in blockers)
+    assert "mirror/s/a.md" in blockers[2].message
+    # the land gate's own findings stay non-blocking
+    assert not any(f.blocking for f in generate_depends(layout)[2])
+
+
+def test_checkpoint_blockers_scope_verdicts_to_pages_changed_since_curated(layout: DocsLayout) -> None:
+    repo = layout.root
+    gitops.ensure_repo(repo)
+    mirror_page(layout, "mirror/s/a.md")
+    topic_page(layout, "topics/old-stale.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    topic_page(layout, "topics/edited.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    topic_page(layout, "topics/nopurpose.md", "entity: e\n" + sources_yaml(("mirror/s/a.md", H, "primary")))
+    gitops.run_git(repo, "add", "-A")
+    gitops.run_git(repo, "commit", "-q", "-m", "pages")
+    gitops.tag_curated(repo, "HEAD")
+    topic_page(layout, "topics/edited.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")), "# new\n")
+    topic_page(layout, "topics/new.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    assert [(f.path, f.code) for f in curate.checkpoint_blockers(repo)] == [
+        ("topics/edited.md", "STALE"),
+        ("topics/new.md", "STALE"),
+        ("topics/nopurpose.md", "MISSING-PURPOSE"),  # lint findings hold whatever page they are on
+    ]

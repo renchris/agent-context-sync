@@ -496,6 +496,15 @@ def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) 
     return sorted(pairs, key=lambda p: p[1])
 
 
+def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[str]:
+    """Paths under ``pathspecs`` that differ between ``rev`` and the WORKING TREE (staged or not), plus the
+    untracked, non-ignored files there: what a session wrote since ``rev``, committed or not."""
+    literal = _literal(pathspecs)
+    diff = run_git(repo, "diff", "--name-only", "-z", "--no-renames", f"{rev}^{{commit}}", "--", *literal)
+    untracked = run_git(repo, "ls-files", "-z", "--others", "--exclude-standard", "--", *literal)
+    return {p for p in (diff.stdout + "\0" + untracked.stdout).split("\0") if p}
+
+
 def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:
     """Return ``git ls-files -z`` paths (repo-relative, sorted)."""
     args = ["ls-files", "-z"]

@@ -472,6 +472,18 @@ and runs from the docs repo root; `refresh_queue` is its Python twin (same verdi
 Banner text: `> ⚠ STALE — sources changed since <date>; see DEPENDS.tsv` (added and removed only by
 `apply_stale_banners`), `> ⚠ SOURCE RETIRED — <reason>`.
 
+Amended (2026-10-04, KISS K10). A `sources:` path that starts `mirror/` or `archive/` (no `./` or `../`)
+resolves from the docs root (`resolve_source_path`); any other path stays page-relative, and `depends_on_pages`
+stays page-relative (`normalise_source_path`). `SOURCE-NOT-MIRROR` accepts `archive/`. A new `SOURCE-MISSING`
+finding names a source that is not a readable file. The UNLISTED message no longer offers
+`provenance: hand-written` as a way out (adopted pages stay exempt). `checkpoint_blockers(repo)` lists what holds
+the `curated` checkpoint, every item `blocking=True`: every curation lint finding except `TOPIC-BUDGET`
+(`SOURCE-MISSING` included), UNLISTED, and the refresh verdicts `STALE`, `UNPINNED`, `BAD-PIN`, `MALFORMED` and
+`MISSING-OR-UNPARSEABLE` of topic pages changed since the `curated` tag (working tree and untracked files
+included; every page before the first tag). `SOURCE-UNREADABLE` and `SOURCE-DELETED` never hold it. The sync's
+land gate is unchanged: its curation findings stay `blocking=False`. `agentsync lint` prints every blocker as an
+ERROR and exits 1 on any of them; `TOPIC-BUDGET` stays a warning.
+
 ## 14. Decisions and adaptations taken by the architect
 
 1. **Config location** `~/agent-context/sources.toml` (plan) instead of `docs/_sync/sources.toml` (design §4.2):
@@ -3078,6 +3090,10 @@ def parse_topic_page(layout: DocsLayout, rel_path: str) -> TopicPage:
 def normalise_source_path(page_rel: str, source_rel_to_page: str) -> str:
     """Resolve a page-relative ``sources:`` path to docs-repo-relative; CurateError if it escapes docs/."""
 
+def resolve_source_path(page_rel: str, source: str) -> str:
+    """K10: one ``sources:`` entry to docs-repo-relative; ``mirror/…`` and ``archive/…`` from the docs root,
+    anything else page-relative.  CurateError if it escapes docs/."""
+
 def generate_depends(layout: DocsLayout) -> tuple[list[DependsRow], list[tuple[str, str]], list[LintFinding]]:
     """Parse every curated page -> (DEPENDS rows sorted by (page, source), (entity, page) rows sorted, lint
     findings: CURATE-PARSE, MISSING-ENTITY, MISSING-PURPOSE, TOPIC-BUDGET, BAD-ROLE, UNPINNED/BAD-PIN rows are
@@ -3105,6 +3121,12 @@ def apply_retired_banners(
 def lint_unlisted_pages(layout: DocsLayout, rows: Sequence[DependsRow]) -> list[LintFinding]:
     """UNLISTED: every curated page that is not ``provenance: hand-written`` appears in DEPENDS.tsv
     (blocking=False for the sync; the ``agentsync lint`` command reports it as an error)."""
+
+CHECKPOINT_VERDICTS: frozenset[str]  # K10: STALE, UNPINNED, BAD-PIN, MALFORMED, MISSING-OR-UNPARSEABLE
+
+def checkpoint_blockers(repo: Path) -> list[LintFinding]:
+    """K10: what holds the ``curated`` checkpoint (all ``blocking=True``): curation lint findings but
+    TOPIC-BUDGET, UNLISTED, and CHECKPOINT_VERDICTS of topic pages changed since the ``curated`` tag."""
 
 def adopt_pages(src_dir: Path, layout: DocsLayout, adopted_at: str) -> list[str]:
     """Copy an existing hand-made docs tree into ``topics/`` stamping ``provenance: hand-written``,
@@ -5019,6 +5041,8 @@ def curated_checkpoint(repo: Path) -> tuple[str, str] | None:
     """``(commit sha, checkpoint date ISO 8601)`` of the ``curated`` tag; None before the first one."""
 def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) -> list[tuple[str, str]]:
     """``(A|M|D, path)`` for files under ``pathspecs`` that differ between ``rev`` and HEAD, sorted by path."""
+def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[str]:
+    """K10: paths under ``pathspecs`` differing between ``rev`` and the working tree, plus untracked ones."""
 ```
 
 ### 16.18 `[governance] archive`: the point-in-time archive (2026-10-02, integrator)
