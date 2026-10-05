@@ -292,6 +292,8 @@ EXIT_MEANINGS = {
 """agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists the same)."""
 
 _RESERVE_S = 1.0
+_LOOP_NEXT_S = 4.0  # the Summary's Loop line: the ``loop_next`` hook's own limit
+_LOOP_FLOOR_S = 1.0  # held back from Doctor's share, so the hook gets at least 2 s past a slow doctor
 _TAIL_BYTES = 64 * 1024
 _LEVEL_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL)\b|^(?:error|fatal):|^Traceback ")
 _LAUNCHD_KEYS = ("state", "runs", "last exit code", "last terminating signal")
@@ -1438,6 +1440,7 @@ class _Run:
         self.outcome: Outcome | None = None  # set by the Summary
         self.run_type: str | None = None
         self.loop_stage: str | None = None
+        self.loop_line: str | None = None  # the Summary's Loop line, computed after Doctor (build_report)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -2086,7 +2089,7 @@ def _doctor(r: _Run) -> list[str]:
         return ["Not run: no doctor hook."]
     config = r.config
     doctor_fn = r.hooks.doctor
-    lines = r.call(lambda: doctor_fn(config), timeout=max(1.0, r.remaining() - 2.0))
+    lines = r.call(lambda: doctor_fn(config), timeout=max(1.0, r.remaining() - 2.0 - _LOOP_FLOOR_S))
     tags: Counter[str] = Counter()
     ok_names: list[str] = []
     shown: list[str] = []
@@ -2585,8 +2588,9 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
 
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
-    loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's). Sets
-    ``r.loop_stage`` for the issue link."""
+    loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
+    first ``WAITING ON YOU:`` line and how many more there are (rule 5's NEXT and a held listing point at
+    one). Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
@@ -2596,11 +2600,15 @@ def _loop_line(r: _Run) -> str:
         return f"- Loop: {stage}; NEXT: not read (no loop hook)"
     config, next_fn = r.config, r.hooks.loop_next
     try:
-        lines = r.call(lambda: next_fn(config), timeout=4.0)
+        lines = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
         return f"- Loop: {stage}; NEXT: not read ({type(exc).__name__})"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
+    waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
+    if waits:
+        more = f" (+{len(waits) - 1} more)" if len(waits) > 1 else ""
+        text += f"; {loop_next_text(waits[0])}{more}"
     return f"- Loop: {stage}; {text}"
 
 
@@ -2655,7 +2663,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     out: list[str] = [f"- **outcome: {outcome.text}** (computed: {'; '.join(outcome.why)})"]
     if att is not None and att.header.get("Outcome"):
         out.append(f"- agent said: {att.header['Outcome']}")
-    out.append(_loop_line(r))
+    out.append(r.loop_line if r.loop_line is not None else _loop_line(r))
     if fr is None:
         out.append(f"- friction log: none at {r.friction_path}")
     elif att is None:
@@ -2718,8 +2726,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")
     elif r.facts.background:
         out.append("- background sync: " + " · ".join(r.facts.background))
-    if att is None or att.layout.version < 7 or expand(IT_DRAFT).exists():  # v7 has no IT request step
-        out.append(_it_draft_line(4 if att is not None and att.layout.version == 5 else REPORT_STEP))
+    layout = att.layout if att is not None else prompt_layout(None)  # no friction log: the newest prompt
+    if layout.version < 7 or expand(IT_DRAFT).exists():  # v7 has no IT request step
+        out.append(_it_draft_line(4 if layout.version == 5 else REPORT_STEP))
     if r.facts.shadow:
         expected = " (expected in a sandbox)" if run_type != "real" else ""
         out.append(
@@ -2870,8 +2879,8 @@ def build_report(
         header.append(f"- install source: {_install_source(r)}")
     except Exception as exc:
         header.append(f"- install source: (failed: {type(exc).__name__}: {exc})")
-    # Cheap sections first, doctor last (it gets what is left of the budget), then the friction log (the
-    # latest attempt's outcome counts doctor's FAILs); printed in heading order.
+    # Cheap sections first, doctor last (it gets what is left of the budget, less the Loop line's floor), then
+    # the friction log (the latest attempt's outcome counts doctor's FAILs); printed in heading order.
     bodies: dict[str, list[str]] = {}
     order: tuple[tuple[str, Callable[[_Run], list[str]]], ...] = (
         ("Environment", _environment),
@@ -2885,6 +2894,10 @@ def build_report(
     )
     for title, fn in order:
         bodies[title] = _section(title, functools.partial(fn, r))
+    try:  # the Loop line's hook is a slow call: in its own pass, so ``took`` counts it
+        r.loop_line = _loop_line(r)
+    except Exception as exc:
+        r.loop_line = f"- Loop: not read ({type(exc).__name__})"
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     lines = [REPORT_TITLE]

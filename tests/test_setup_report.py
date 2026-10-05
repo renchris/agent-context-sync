@@ -1487,6 +1487,79 @@ def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Pat
     assert "NEXT: not read (RuntimeError)" in section(text, "Summary"), "the message may hold a path"
 
 
+def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: dict[str, Path]) -> None:
+    """KISS K16b review: a WAIT is where setup stopped (a held listing's Allow click), so the Loop line
+    carries the first one, path-free, and a count of the rest; the hook runs before ``took`` is measured."""
+
+    def slow(config: object) -> list[str]:
+        time.sleep(1.0)
+        return [
+            "NEXT: draft the baseline questions: run `~/.local/bin/agentsync sync`",
+            "WAITING ON YOU: macOS held the listing of one for a privacy prompt: click Allow on the macOS "
+            "prompt (it can sit behind other windows), then run `/Users/x/.local/bin/agentsync sync`",
+            "WAITING ON YOU: 2 queued purge(s): run `~/.local/bin/agentsync purge --queue`",
+            "note: 3 online-only file(s) in one wait for a later sync's download budget",
+        ]
+
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(loop_next=slow))
+    [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert loop.endswith(
+        "; NEXT: draft the baseline questions: run `agentsync sync`; WAITING ON YOU: macOS held the listing "
+        "of one for a privacy prompt: click Allow on the macOS prompt (it can sit behind other windows), "
+        "then run `agentsync sync` (+1 more)"
+    ), loop
+    took = re.search(r"^- took: ([0-9.]+)s", text, flags=re.MULTILINE)
+    assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """Rule 5's NEXT says the wait is below: the Loop line carries it."""
+    for folder in (fake_mac["one"], fake_mac["two"]):
+        (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    evals = expand(load_config(fake_mac["config"]).docs_repo) / "_eval"
+    evals.mkdir(parents=True, exist_ok=True)
+    (evals / "questions.md").write_text("status: draft\n\n1. Who approved it?\n", encoding="utf-8")
+    (evals / "answers.md").write_text("status: draft\n\n1. Finance.\n", encoding="utf-8")
+    write_friction(fake_mac, V7_HAPPY)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert loop == (
+        "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU "
+        "below); session done; WAITING ON YOU: the baseline questions are a draft: keep about 10 in "
+        "_eval/questions.md, correct the answers in _eval/answers.md, and change both files to status: "
+        "confirmed"
+    ), loop
+
+
+def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CLI wiring: the doctor hook's ERROR FAILs reach ``loop_next`` as rule 1 (Doctor runs first). With
+    no friction log the report reads the newest prompt (v7), which has no IT request step."""
+    real = cli._status_checks
+
+    def failing(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        broken = doctor.CheckResult(
+            "manifest.integrity", False, "broken", doctor.Severity.ERROR, f"rm {fake_mac['home']}/state.db"
+        )
+        return [*(c for c in real(config, offline=offline) if c.ok), broken]
+
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0  # writes the skill (rule 1's first)
+    monkeypatch.setattr(cli, "_status_checks", failing)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
+    assert (
+        "; NEXT: the manifest.integrity check failed: do what the fix on its [FAIL] line below says" in loop
+    )
+    assert "~/" not in loop and "/Users/" not in loop and "state.db" not in loop, "a fix is never copied"
+    assert "IT draft" not in summary, "no friction log reads as v7, which has no IT request step"
+
+
 def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

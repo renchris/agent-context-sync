@@ -4949,13 +4949,15 @@ ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs 
 line (install.sh writes the report once the run is closed), so the run's seconds exclude it.
 
 KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
-second bullet is `- Loop: <stage>; NEXT: <step>`: `loop_stage(baseline, topics, synced)` gives the furthest
+second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced)` gives the furthest
 `LOOP_STAGES` stage reached (`installed` when no sync ran, `synced`, `baseline drafted`, `baseline confirmed`,
 `before run`, `topics N`, `after run`), from the Status hook's `loop:` line (`baseline <word>`, `topics N`) and
 its `last runs:` line (a sync ran unless it is "none" or the manifest is missing); the NEXT is the first `NEXT: `
 line of a third hook, `ReportHooks.loop_next` (the CLI's `loop.next_lines(config, fixes=<the doctor hook's FAIL
-steps>, count_queue=False)`, run after Doctor under `r.call`'s 4 s), passed through `loop_next_text`, which cuts
-every `~/...` or `/...` path to its last part. A missing hook, a failed or timed-out call or an unreadable state
+steps>, count_queue=False)`, run once in its own pass after Doctor and before the header's `took` is measured, under
+`r.call`'s 4 s; Doctor's share holds back 1 s more than before, so the hook gets at least 2 s past a slow doctor),
+and its first `WAITING ON YOU: ` line with a count of the rest (rule 5's NEXT and a held listing's Allow click
+point at one), each passed through `loop_next_text`, which cuts every `~/...` or `/...` path to its last part. A missing hook, a failed or timed-out call or an unreadable state
 is said on the line ("NEXT: not read (...)"); the Status section still prints no NEXT. `compute_outcome` and the
 issue form's Outcome options are unchanged: the outcome judges the install, the Loop line the loop. The issue
 link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
@@ -4964,7 +4966,8 @@ link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form
 K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v6;
 `form_step` maps 1-3 onto the form's 1-3. `prompt_layout(version)` picks by explicit version (<= 5 -> v5, 6 ->
 v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still reads as v6. A v7 attempt's
-Summary has no IT draft line unless the draft exists (v7 has no IT request step). **Redaction.** `build_report`
+Summary, or one with no friction log (read as `PROMPT_VERSION`'s layout), has no IT draft line unless the draft
+exists (v7 has no IT request step). **Redaction.** `build_report`
 has no `redact` argument: the report is always redacted.
 
 ```python
