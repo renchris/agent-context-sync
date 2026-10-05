@@ -921,6 +921,28 @@ def test_launcher_env_pointing_nowhere(sample_config: Config, monkeypatch: pytes
     assert not r.ok and r.severity is Severity.ERROR and launchd.LAUNCHER_ENV in (r.fix or "")
 
 
+def test_launcher_fixes_naming_install_sh_name_confirm_install_agent(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KISS K11b review: plain install.sh builds no launcher, so a launcher fix that names install.sh without
+    --confirm-install-agent loops the agent (doctor FAILs, install.sh builds nothing, doctor FAILs again)."""
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
+    cfg, _root = _cloud(sample_config)
+
+    def launcher_fixes() -> list[str]:
+        return [x.fix or "" for x in run_checks(cfg) if x.name.startswith("launcher") and not x.ok]
+
+    fixes = launcher_fixes()  # missing but required
+    _launcher(monkeypatch)
+    fixes += launcher_fixes()  # ad hoc
+    monkeypatch.setattr(doctor, "_codesign_info", lambda p: dataclasses.replace(ADHOC, valid=False))
+    fixes += launcher_fixes()  # invalid signature
+    named = [f for f in fixes if "install.sh" in f]
+    assert len(named) >= 3, fixes
+    assert all("install.sh --confirm-install-agent" in f for f in named), named
+    assert any("--confirm-install-agent --launcher <built .app>" in f for f in named), "the Developer ID fix"
+
+
 @pytest.mark.parametrize(
     ("rc", "ok", "severity", "needle"),
     [

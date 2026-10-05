@@ -553,7 +553,7 @@ def test_launcher_canaries_protected_sources(sample_config: Config) -> None:
 
 def test_protected_source_without_launcher_refuses(sample_config: Config) -> None:
     cfg, root = _with_cloud_source(sample_config, sentinel=None)
-    with pytest.raises(ConfigError, match=r"install\.sh") as ei:
+    with pytest.raises(ConfigError, match=r"install\.sh --confirm-install-agent") as ei:  # K11b review
         poll_spec(cfg)
     assert str(root) in str(ei.value)
     # without a protected source the interpreter fallback stays available (logged)

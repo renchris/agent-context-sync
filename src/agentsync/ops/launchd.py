@@ -342,8 +342,9 @@ def _spec(config: Config, suffix: str, mode: CycleMode, interval_s: int) -> Agen
             protected = ", ".join(str(p) for p in canary_paths(config))
             raise ConfigError(
                 f"{label}: live sources under TCC-protected folders ({protected}) need the signed "
-                f"{LAUNCHER_EXECUTABLE}: run scripts/install.sh (or launcher/build.sh and copy "
-                f"build/{LAUNCHER_BUNDLE} to {default_launcher_app().parent}/), then install-agent again"
+                f"{LAUNCHER_EXECUTABLE}: run scripts/install.sh --confirm-install-agent (it builds the "
+                f"launcher and installs the LaunchAgents), or launcher/build.sh, copy "
+                f"build/{LAUNCHER_BUNDLE} to {default_launcher_app().parent}/ and run install-agent again"
             )
         log.warning(
             "launchd: %s not found; %s runs the interpreter directly (fine only while no source is under a "

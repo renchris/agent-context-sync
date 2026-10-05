@@ -788,12 +788,15 @@ def _check_disk(config: Config) -> list[CheckResult]:
     return out
 
 
+# Plain install.sh builds no launcher (KISS K11b): only --confirm-install-agent does, and it installs the
+# LaunchAgents too.
 _LAUNCHER_FIX = (
-    "scripts/install.sh (builds, signs and installs ~/Applications/AgentSyncLauncher.app), "
-    "then agentsync install-agent"
+    "scripts/install.sh --confirm-install-agent (builds, signs and installs "
+    "~/Applications/AgentSyncLauncher.app, then the LaunchAgents)"
 )
 _DEVELOPER_ID_FIX = (
-    "SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)' launcher/build.sh, then scripts/install.sh"
+    "SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)' launcher/build.sh, then "
+    "scripts/install.sh --confirm-install-agent --launcher <built .app>"
 )
 _FP_CANARY_TIMEOUT_S = 15.0
 
