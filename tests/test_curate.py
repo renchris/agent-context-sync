@@ -18,7 +18,6 @@ from agentsync.curate import (
     BY_ENTITY_HEADER,
     DEPENDS_HEADER,
     HAND_WRITTEN,
-    REFRESH_QUEUE_SH,
     RETIRED_BANNER,
     ROLES,
     STALE_BANNER,
@@ -109,16 +108,6 @@ def sources_yaml(*entries: tuple[str, str, str]) -> str:
     return "".join(lines)
 
 
-def run_script(root: Path, tmp_path: Path, tsv: str | None = None) -> tuple[int, list[str], str]:
-    """Run the real design-4.5 shell script from the docs repo root (LC_ALL=C via conftest)."""
-    script = tmp_path / "refresh-queue.sh"
-    script.write_text(REFRESH_QUEUE_SH, encoding="utf-8")
-    args = ["/bin/sh", str(script)] + ([tsv] if tsv else [])
-    proc = subprocess.run(args, cwd=root, capture_output=True, check=False, stdin=subprocess.DEVNULL)
-    lines = proc.stdout.decode("utf-8", "surrogateescape").splitlines()
-    return proc.returncode, lines, proc.stderr.decode("utf-8", "replace")
-
-
 def twin(layout: DocsLayout) -> tuple[int, list[str]]:
     rc, verdicts = refresh_queue(layout)
     return rc, [v.line() for v in verdicts]
@@ -142,7 +131,6 @@ def test_constants_match_the_design() -> None:
         "BAD-PIN",
         "MALFORMED",
     }
-    assert "TSV=${1:-DEPENDS.tsv}" in REFRESH_QUEUE_SH
 
 
 def test_refresh_verdict_line_matches_script_printf() -> None:
@@ -464,11 +452,11 @@ def test_write_by_entity(layout: DocsLayout) -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------
-# refresh queue: the Python twin against the real script
+# refresh queue (the design 4.5 awk script's semantics; the script itself was retired in KISS K09b)
 # ---------------------------------------------------------------------------------------------------------
 
 
-def test_design_fixture_exactly_one_stale_and_one_deleted(layout: DocsLayout, tmp_path: Path) -> None:
+def test_design_fixture_exactly_one_stale_and_one_deleted(layout: DocsLayout) -> None:
     """Design 4.5: one page, one present source, one tombstone -> exactly one STALE and one SOURCE-DELETED."""
     fresh = mirror_page(layout, "mirror/s/fresh.md", "# fresh\n")
     mirror_page(layout, "mirror/s/changed.md", "# new\n")
@@ -487,11 +475,9 @@ def test_design_fixture_exactly_one_stale_and_one_deleted(layout: DocsLayout, tm
     write_depends(layout, rows)
     expected = ["SOURCE-DELETED\ttopics/p.md\tmirror/s/gone.md", "STALE\ttopics/p.md\tmirror/s/changed.md"]
     assert twin(layout) == (1, expected)
-    rc, out, _ = run_script(layout.root, tmp_path)
-    assert (rc, out) == (1, expected)
 
 
-def test_full_corpus_twin_matches_script(layout: DocsLayout, tmp_path: Path) -> None:
+def test_full_corpus_verdicts(layout: DocsLayout) -> None:
     build_corpus(layout)
     rows, _, _ = generate_depends(layout)
     write_depends(layout, rows)
@@ -502,16 +488,13 @@ def test_full_corpus_twin_matches_script(layout: DocsLayout, tmp_path: Path) -> 
         "SOURCE-UNREADABLE\ttopics/clients/acme/scope.md\tmirror/s/bad.md",
         "STALE\ttopics/clients/acme/commercial.md\tmirror/s/stale.md",
     ]
-    s_rc, s_lines, _ = run_script(layout.root, tmp_path)
-    assert (s_rc, s_lines) == (rc, lines)
 
 
-def test_all_fresh_is_rc_zero(layout: DocsLayout, tmp_path: Path) -> None:
+def test_all_fresh_is_rc_zero(layout: DocsLayout) -> None:
     pin = mirror_page(layout, "mirror/s/a.md")
     topic_page(layout, "topics/p.md", "entity: e\n" + sources_yaml(("../mirror/s/a.md", pin, "primary")))
     write_depends(layout, generate_depends(layout)[0])
     assert twin(layout) == (0, [])
-    assert run_script(layout.root, tmp_path)[:2] == (0, [])
 
 
 RAW_MIRROR_FILES: dict[str, bytes] = {
@@ -530,17 +513,28 @@ RAW_MIRROR_FILES: dict[str, bytes] = {
 
 
 @pytest.mark.parametrize(
-    "tsv",
+    ("tsv", "expected"),
     [
-        pytest.param(None, id="missing"),
-        pytest.param(b"", id="empty"),
-        pytest.param(b"\n", id="blank-first-line"),
-        pytest.param(b"pages\tsource\n", id="bad-header"),
-        pytest.param(b"topics/p.md\tmirror/raw/nofence.md\t" + H.encode() + b"\tprimary\n", id="headerless"),
-        pytest.param(DEPENDS_HEADER.encode(), id="header-only-no-newline"),
-        pytest.param(DEPENDS_HEADER.encode() + b"\n", id="header-only"),
+        pytest.param(None, (2, []), id="missing"),
+        pytest.param(b"", (2, []), id="empty"),
+        pytest.param(b"\n", (2, []), id="blank-first-line"),
+        pytest.param(b"pages\tsource\n", (2, []), id="bad-header"),
+        pytest.param(
+            b"topics/p.md\tmirror/raw/nofence.md\t" + H.encode() + b"\tprimary\n", (2, []), id="headerless"
+        ),
+        pytest.param(DEPENDS_HEADER.encode(), (0, []), id="header-only-no-newline"),
+        pytest.param(DEPENDS_HEADER.encode() + b"\n", (0, []), id="header-only"),
         pytest.param(
             b"page\tsource\n\nx\ty\none\n\t\t\n" + b"q\tmirror/raw/nofence.md\t" + H.encode(),
+            (
+                1,
+                [
+                    "MALFORMED\t\t(fields=0)",
+                    "MALFORMED\tone\t(fields=1)",
+                    "MALFORMED\tx\t(fields=2)",
+                    "UNPINNED\t\t",
+                ],
+            ),
             id="malformed-mix",
         ),
         pytest.param(
@@ -549,6 +543,17 @@ RAW_MIRROR_FILES: dict[str, bytes] = {
             + b"".join(
                 b"topics/p.md\t" + name.encode() + b"\t" + H.encode() + b"\tprimary\n"
                 for name in sorted([*RAW_MIRROR_FILES, "mirror/raw/absent.md"])
+            ),
+            (
+                1,
+                [
+                    "MISSING-OR-UNPARSEABLE\ttopics/p.md\tmirror/raw/absent.md",
+                    "MISSING-OR-UNPARSEABLE\ttopics/p.md\tmirror/raw/quoted.md",
+                    "SOURCE-DELETED\ttopics/p.md\tmirror/raw/deleted-no-sha.md",
+                    "SOURCE-UNREADABLE\ttopics/p.md\tmirror/raw/refused.md",
+                    "STALE\ttopics/p.md\tmirror/raw/crlf.md",
+                    "STALE\ttopics/p.md\tmirror/raw/extra-space.md",
+                ],
             ),
             id="raw-pages",
         ),
@@ -567,22 +572,33 @@ RAW_MIRROR_FILES: dict[str, bytes] = {
             + b"topics/a.md\tmirror/x.md\t71c0aa\xe2\x80\xa6\tprimary\n"  # non-ASCII: byte length
             + b"Topics/Z.md\tmirror/x.md\t\n"
             + b"topics/caf\xc3\xa9.md\tmirror/x.md\t\n",
+            (
+                1,
+                [  # sort -u in C-locale byte order
+                    "BAD-PIN\ttopics/a.md\tmirror/x.md\t(len=6)",
+                    "BAD-PIN\ttopics/a.md\tmirror/x.md\t(len=64)",
+                    "BAD-PIN\ttopics/a.md\tmirror/x.md\t(len=65)",
+                    "BAD-PIN\ttopics/a.md\tmirror/x.md\t(len=9)",
+                    "UNPINNED\tTopics/Z.md\tmirror/x.md",
+                    "UNPINNED\ttopics/a.md\tmirror/x.md",
+                    "UNPINNED\ttopics/b.md\tmirror/x.md",
+                    "UNPINNED\ttopics/caf\u00e9.md\tmirror/x.md",
+                ],
+            ),
             id="pins-and-order",
         ),
     ],
 )
-def test_twin_matches_script(layout: DocsLayout, tmp_path: Path, tsv: bytes | None) -> None:
+def test_queue_verdicts_and_rc(
+    layout: DocsLayout, tsv: bytes | None, expected: tuple[int, list[str]]
+) -> None:
+    """Pinned from the design 4.5 awk script's output (LC_ALL=C) before it was retired in KISS K09b."""
     for rel, data in RAW_MIRROR_FILES.items():
         (layout.root / rel).parent.mkdir(parents=True, exist_ok=True)
         (layout.root / rel).write_bytes(data)
     if tsv is not None:
         layout.depends_tsv.write_bytes(tsv)
-    s_rc, s_lines, _ = run_script(layout.root, tmp_path)
-    p_rc, p_lines = twin(layout)
-    assert (p_rc, p_lines) == (s_rc, s_lines)
-    if tsv is None or tsv in (b"", b"\n", b"pages\tsource\n"):
-        assert p_rc == 2
-        assert not refresh_queue(layout)[1]
+    assert twin(layout) == expected
 
 
 def test_raw_pages_verdicts_are_the_expected_ones(layout: DocsLayout) -> None:
@@ -606,8 +622,8 @@ def test_raw_pages_verdicts_are_the_expected_ones(layout: DocsLayout) -> None:
     }  # nofence, twice and no-trailing-nl are fresh
 
 
-def test_empty_source_column_is_reported_where_the_script_crashes(layout: DocsLayout, tmp_path: Path) -> None:
-    """Documented divergence: macOS awk dies on ``getline < ""`` and the script silently drops later rows."""
+def test_empty_source_column_is_reported(layout: DocsLayout) -> None:
+    """Where the awk script died on ``getline < ""`` and dropped every later row, each row is reported."""
     layout.depends_tsv.write_bytes(
         DEPENDS_HEADER.encode()
         + b"\ntopics/a.md\t\t"
@@ -618,13 +634,10 @@ def test_empty_source_column_is_reported_where_the_script_crashes(layout: DocsLa
         1,
         ["MISSING-OR-UNPARSEABLE\ttopics/a.md\t", "UNPINNED\ttopics/b.md\tmirror/x.md"],
     )
-    _rc, lines, err = run_script(layout.root, tmp_path)
-    if "null file name" in err:  # the macOS awk failure mode the twin deliberately does not copy
-        assert "UNPINNED\ttopics/b.md\tmirror/x.md" not in lines
 
 
-def test_directory_source_twin_continues_where_the_script_dies(layout: DocsLayout, tmp_path: Path) -> None:
-    """Documented divergence: awk dies on a directory source; the queue must not read that as 'all fresh'."""
+def test_directory_source_does_not_stop_the_queue(layout: DocsLayout) -> None:
+    """The awk script died on a directory source; the queue must not read that as 'all fresh'."""
     (layout.root / "mirror/s/book.xlsx.d").mkdir(parents=True)
     layout.depends_tsv.write_text(
         f"{DEPENDS_HEADER}\ntopics/a.md\tmirror/s/book.xlsx.d\t{H}\tprimary\ntopics/b.md\tmirror/x.md\t{H}\tprimary\n",
@@ -637,12 +650,9 @@ def test_directory_source_twin_continues_where_the_script_dies(layout: DocsLayou
             "MISSING-OR-UNPARSEABLE\ttopics/b.md\tmirror/x.md",
         ],
     )
-    rc, lines, err = run_script(layout.root, tmp_path)
-    if "i/o error" in err:  # measured on macOS awk 20200816: rc 0, nothing printed
-        assert (rc, lines) == (0, [])
 
 
-def test_generator_never_emits_a_directory_source(layout: DocsLayout, tmp_path: Path) -> None:
+def test_generator_never_emits_a_directory_source(layout: DocsLayout) -> None:
     pin = mirror_page(layout, "mirror/s/book.xlsx.d/01-q3.md", "# q3\n")
     topic_page(
         layout,
@@ -656,17 +666,16 @@ def test_generator_never_emits_a_directory_source(layout: DocsLayout, tmp_path: 
     assert [r.source for r in rows] == ["mirror/s/book.xlsx.d/01-q3.md"]
     assert [(f.code, f.blocking) for f in findings] == [("SOURCE-IS-DIRECTORY", False)]
     write_depends(layout, rows)
-    assert twin(layout) == run_script(layout.root, tmp_path)[:2] == (0, [])
+    assert twin(layout) == (0, [])
 
 
-def test_absolute_source_is_read_like_awk_does(layout: DocsLayout, tmp_path: Path) -> None:
+def test_absolute_source_is_read_as_is(layout: DocsLayout, tmp_path: Path) -> None:
     outside = tmp_path / "outside.md"
     outside.write_text(f"---\nrendered_sha256: {H}\n---\n", encoding="utf-8")
     layout.depends_tsv.write_text(
         f"{DEPENDS_HEADER}\ntopics/a.md\t{outside}\t{H}\tprimary\n", encoding="utf-8"
     )
     assert twin(layout) == (0, [])
-    assert run_script(layout.root, tmp_path)[:2] == (0, [])
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -1027,13 +1036,13 @@ def test_adopt_rolls_back_on_write_failure(
 # ---------------------------------------------------------------------------------------------------------
 
 
-def test_week3_loop_generate_write_queue_banner(layout: DocsLayout, tmp_path: Path) -> None:
+def test_week3_loop_generate_write_queue_banner(layout: DocsLayout) -> None:
     build_corpus(layout)
     rows, entities, findings = generate_depends(layout)
     assert write_depends(layout, rows) and write_by_entity(layout, entities)
     assert findings == [] and lint_unlisted_pages(layout, rows) == []
     rc, verdicts = refresh_queue(layout)
-    assert (rc, [v.line() for v in verdicts]) == run_script(layout.root, tmp_path)[:2]
+    assert rc == 1 and [v.verdict for v in verdicts] == ["SOURCE-DELETED", "SOURCE-UNREADABLE", "STALE"]
     assert apply_stale_banners(layout, verdicts, TODAY) == ["topics/clients/acme/commercial.md"]
     # a second identical cycle writes nothing
     rows2, entities2, _ = generate_depends(layout)

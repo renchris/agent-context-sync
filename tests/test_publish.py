@@ -13,7 +13,7 @@ import pytest
 
 from agentsync import gitops, lints, policy, publish, slug
 from agentsync.config import Config, parse_config
-from agentsync.curate import REFRESH_QUEUE_SH
+from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError
 from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
 from agentsync.manifest import ItemRow, Manifest, TombstoneRow
@@ -36,6 +36,7 @@ from agentsync.model import (
     UnitKind,
     Verdict,
 )
+from agentsync.paths import DocsLayout
 from agentsync.publish import (
     GITATTRIBUTES,
     GITIGNORE,
@@ -235,7 +236,7 @@ def test_scaffold_writes_fixed_files_once(env: Env) -> None:
     assert (repo / ".gitattributes").read_text() == GITATTRIBUTES
     assert (repo / "SYNONYMS.tsv").read_text() == "term\texpansion\towner\n"
     readme = (repo / "README.md").read_text()
-    assert REFRESH_QUEUE_SH.rstrip("\n") in readme
+    assert "Refresh queue" not in readme and "awk" not in readme  # KISS K09b: `curate` lists the work
     assert "owner@example.com" in readme and "| `lib` | graph_drive | live |" in readme
     assert str(Path.home()) not in readme  # ~-relative display paths
     assert env.pub.ensure_scaffold() == []
@@ -270,6 +271,7 @@ def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:
     current = hashlib.sha256(TOPICS_CLAUDE_MD.encode()).hexdigest()
     assert current not in publish._TOPICS_CLAUDE_MD_PRIOR_SHA256
     assert "_index/by-entity.tsv" in TOPICS_CLAUDE_MD and "purpose:" in TOPICS_CLAUDE_MD
+    assert "refresh queue" not in TOPICS_CLAUDE_MD  # KISS K09b
 
 
 # ---- path allocation ---------------------------------------------------------------------------------------
@@ -999,8 +1001,8 @@ def test_full_publish_commit_then_noop_cycle(env: Env) -> None:
     assert lints.lint_paths(env.repo) == []
 
 
-def test_refresh_queue_script_reads_published_pages(env: Env) -> None:
-    """The README's shell refresh queue gives the design's verdicts on pages this module writes."""
+def test_refresh_queue_reads_published_pages(env: Env) -> None:
+    """The refresh queue gives the design's verdicts on pages this module writes."""
     fresh = env.observe("vol:1", "fresh.docx")
     stale = env.observe("vol:2", "stale.docx")
     gone = env.observe("vol:3", "gone.docx")
@@ -1018,11 +1020,9 @@ def test_refresh_queue_script_reads_published_pages(env: Env) -> None:
         for sid, name in (("vol:1", "fresh"), ("vol:2", "stale"), ("vol:3", "gone"), ("vol:4", "locked"))
     ]
     (env.repo / "DEPENDS.tsv").write_text("page\tsource\tpinned_sha\trole\n" + "\n".join(rows) + "\n")
-    script = env.repo / ".git" / "refresh-queue.sh"
-    script.write_text(REFRESH_QUEUE_SH)
-    proc = subprocess.run(["/bin/sh", str(script)], cwd=env.repo, capture_output=True, text=True, check=False)
-    assert proc.returncode == 1
-    assert proc.stdout.splitlines() == [
+    rc, verdicts = refresh_queue(DocsLayout(root=env.repo))
+    assert rc == 1
+    assert [v.line() for v in verdicts] == [
         "SOURCE-DELETED\ttopics/t.md\tmirror/src/gone.docx.md",
         "SOURCE-UNREADABLE\ttopics/t.md\tmirror/src/locked.docx.md",
         "STALE\ttopics/t.md\tmirror/src/stale.docx.md",

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from agentsync.curate import REFRESH_QUEUE_SH
+from agentsync.curate import refresh_queue
 from agentsync.frontmatter import (
     MIRROR_KEY_ORDER,
     Bare,
@@ -20,6 +19,7 @@ from agentsync.frontmatter import (
     validate_mirror_frontmatter,
 )
 from agentsync.model import PageStatus
+from agentsync.paths import DocsLayout
 from agentsync.policy import CONTENT_TRUST_KEY, CONTENT_TRUST_VALUE
 
 H = "a" * 64
@@ -132,7 +132,7 @@ def test_split_and_parse_edge_cases() -> None:
     )
 
 
-def test_refresh_queue_script_reads_rendered_pages(tmp_path: Path) -> None:
+def test_refresh_queue_reads_rendered_pages(tmp_path: Path) -> None:
     """Design 4.5 fixture: one page, one fresh source, one stale source, one tombstone."""
     repo = tmp_path / "docs"
     (repo / "mirror" / "s").mkdir(parents=True)
@@ -158,11 +158,9 @@ def test_refresh_queue_script_reads_rendered_pages(tmp_path: Path) -> None:
         f"topics/p.md\tmirror/s/gone.md\t{H}\tcorroborating",
     ]
     (repo / "DEPENDS.tsv").write_text("\n".join(rows) + "\n")
-    script = tmp_path / "refresh-queue.sh"
-    script.write_text(REFRESH_QUEUE_SH)
-    proc = subprocess.run(["/bin/sh", str(script)], cwd=repo, capture_output=True, text=True, check=False)
-    assert proc.returncode == 1, proc.stderr
-    assert proc.stdout.splitlines() == [
+    rc, verdicts = refresh_queue(DocsLayout(root=repo))
+    assert rc == 1
+    assert [v.line() for v in verdicts] == [
         "SOURCE-DELETED\ttopics/p.md\tmirror/s/gone.md",
         "STALE\ttopics/p.md\tmirror/s/stale.md",
     ]

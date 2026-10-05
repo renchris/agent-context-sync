@@ -2,7 +2,7 @@
 curate).
 
 Path convention (adapts design 4.5 to docs/ being its own repo): DEPENDS.tsv columns 1-2 are relative to the
-DOCS REPO ROOT (``topics/…``, ``mirror/…``) and the refresh-queue script runs from the docs repo root.
+DOCS REPO ROOT (``topics/…``, ``mirror/…``) and the refresh queue resolves them from the docs repo root.
 
 Every finding this module emits is ``blocking=False``: the curated layer is agent-written, and a bad pin or a
 missing ``entity:`` must never stop the mirror from syncing.  ``checkpoint_blockers`` is where they bite: they
@@ -51,36 +51,6 @@ VERDICTS: tuple[str, ...] = (
 
 STALE_BANNER = "> ⚠ STALE — sources changed since {date}; see DEPENDS.tsv"
 RETIRED_BANNER = "> ⚠ SOURCE RETIRED — {reason}"
-
-REFRESH_QUEUE_SH = r"""#!/bin/sh
-# docs/ refresh queue — which curated pages are stale against mirror/.  Run from the docs repo root.
-# rc 0 = every row fresh · 1 = rows need action (printed) · 2 = DEPENDS.tsv unusable.
-TSV=${1:-DEPENDS.tsv}
-[ -s "$TSV" ] || { echo "$TSV: missing or empty" >&2; exit 2; }
-awk -F'\t' 'NR==1 && $1!="page"{exit 2} {exit 0}' "$TSV" || {
-  echo "$TSV: missing header (page/source/pinned_sha/role)" >&2; exit 2; }
-OUT=$(awk -F'\t' '
-  NR==1 { next }
-  NF < 3 { printf "MALFORMED\t%s\t(fields=%d)\n", $1, NF; next }
-  {
-    page=$1; src=$2; pin=$3; cur=""; st=""; ok=0; dash=0
-    if (pin == "")               { printf "UNPINNED\t%s\t%s\n", page, src; next }
-    if (pin !~ /^[0-9a-f]{64}$/) { printf "BAD-PIN\t%s\t%s\t(len=%d)\n", page, src, length(pin); next }
-    while ((getline line < src) > 0) {            # frontmatter only: stop at the closing ---
-      if (line == "---") { if (++dash == 2) break; else continue }
-      if (line ~ /^rendered_sha256: /) { cur = substr(line, 18); ok = 1 }
-      else if (line ~ /^status: /)     { st  = substr(line, 9) }
-    }
-    close(src)
-    if (st == "deleted")        { printf "SOURCE-DELETED\t%s\t%s\n", page, src; next }
-    if (st == "unreadable" || st == "refused") { printf "SOURCE-UNREADABLE\t%s\t%s\n", page, src; next }
-    if (!ok)                    { printf "MISSING-OR-UNPARSEABLE\t%s\t%s\n", page, src; next }
-    if (cur != pin)             { printf "STALE\t%s\t%s\n", page, src; next }
-  }' "$TSV" | sort -u)
-[ -n "$OUT" ] && { printf '%s\n' "$OUT"; exit 1; }
-exit 0
-"""
-"""The design 4.5 script, verbatim except the default TSV path (docs repo root).  Written into README.md."""
 
 _log = logging.getLogger(__name__)
 
@@ -153,7 +123,7 @@ class TopicPage:
 
 @dataclass(frozen=True, slots=True)
 class RefreshVerdict:
-    """One refresh-queue output row (same vocabulary and order as the shell script: ``sort -u``)."""
+    """One refresh-queue output row (the design 4.5 script's vocabulary and order: ``sort -u``)."""
 
     verdict: str
     page: str
@@ -564,7 +534,7 @@ def write_by_entity(layout: DocsLayout, rows: Sequence[tuple[str, str]]) -> bool
 
 
 # ---------------------------------------------------------------------------------------------------------
-# the refresh queue (Python twin of REFRESH_QUEUE_SH)
+# the refresh queue (the design 4.5 awk script, ported; the script itself was retired in KISS K09b)
 # ---------------------------------------------------------------------------------------------------------
 
 
@@ -662,7 +632,7 @@ def _refresh_queue_file(tsv: Path, root: Path) -> tuple[int, list[RefreshVerdict
 
 
 def refresh_queue(layout: DocsLayout) -> tuple[int, list[RefreshVerdict]]:
-    """Python twin of REFRESH_QUEUE_SH: returns (rc, verdicts) with identical semantics (rc 0/1/2)."""
+    """The design 4.5 refresh queue: (rc, verdicts); rc 0 = fresh, 1 = rows need action, 2 = unusable."""
     return _refresh_queue_file(layout.depends_tsv, layout.root)
 
 

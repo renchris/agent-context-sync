@@ -31,7 +31,6 @@ from typing import Any
 
 from agentsync import gitops, policy, slug
 from agentsync.config import Config, SourceConfig
-from agentsync.curate import REFRESH_QUEUE_SH
 from agentsync.errors import ConfigError, GitError, PublishError
 from agentsync.frontmatter import (
     HEX64_RE,
@@ -80,7 +79,7 @@ TOPICS_CLAUDE_MD = """\
 Every claim cites a docs/mirror/... page in the `sources:` frontmatter as
 `{path: <page-relative path>, at_rendered_sha256: <64 hex>, role: primary|corroborating}`;
 `entity:` is required.  A page starting with `> ⚠ STALE` is cited as of its pinned sha, never as
-current.  Run the refresh queue (docs/README.md) before trusting a STALE page.
+current.
 Read docs/_sync/STATE.md first: incomplete sources mean a negative answer is "not found in docs/,
 and source X was incomplete", never a bare "nothing found".
 `agentsync curate-queue` lists the work: STALE pages, then UNCOVERED mirror pages no page cites yet.
@@ -103,6 +102,7 @@ _TOPICS_CLAUDE_MD_PRIOR_SHA256 = frozenset(
     {
         "0fb18bb9239fe610c8377b9562c24d654884abec2a9f036c0b422355e06833ea",  # cc66fcc .. d413d8f
         "e79d138aa9a5aea7e143d816d84cc0051749db842b217cea972f8092bd76dcd4",  # 3d4b211 .. 2953b10
+        "38ea7f80f942e54458970f5b77eed2d545373f1639a416256a721f9e6968f6a8",  # c712aec .. KISS K09b
     }
 )
 """sha256 of every earlier ``TOPICS_CLAUDE_MD``: a topics/CLAUDE.md still byte-identical to one of them was
@@ -183,21 +183,6 @@ Exactly one process writes it: `agentsync` on the Mac that ran `agentsync instal
 | id | kind | state | how it syncs |
 |---|---|---|---|
 {sources}
-
-## Refresh queue
-
-Which curated pages are stale against `mirror/`. Run from this folder's root:
-
-```sh
-{refresh_queue}
-```
-
-Verdicts: `STALE` (re-synthesize the page) · `SOURCE-DELETED` (the mirror page is a
-tombstone: re-curate or retire the claim) · `SOURCE-UNREADABLE` (the mirror page is an
-unreadable/refused stub: the source is unreadable, not absent; see `_sync/QUARANTINE.tsv`;
-never re-curate on it) · `MISSING-OR-UNPARSEABLE` (a bug in the generator or in path
-normalisation, not a content problem) · `UNPINNED` / `BAD-PIN` / `MALFORMED` (lint failures).
-rc 0 = fresh, 1 = rows need action, 2 = DEPENDS.tsv unusable.
 
 ## Retention and deletion
 
@@ -628,7 +613,6 @@ class Publisher:
         return _README_TEMPLATE.format(
             principal=cfg.principal or "unset",
             sources="\n".join(rows),
-            refresh_queue=REFRESH_QUEUE_SH.rstrip("\n"),
             owner=owner,
             state_dir=_display_path(cfg.state_dir),
             cache_dir=_display_path(cfg.cache_dir),
@@ -666,9 +650,8 @@ class Publisher:
         return json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
     def ensure_scaffold(self) -> list[str]:
-        """Create dirs and the fixed files (.gitignore, .gitattributes, README.md with the refresh-queue
-        script verbatim, root/mirror/topics CLAUDE.md, root AGENTS.md, SYNONYMS.tsv header) if missing or
-        different; return written paths."""
+        """Create dirs and the fixed files (.gitignore, .gitattributes, README.md, root/mirror/topics
+        CLAUDE.md, root AGENTS.md, SYNONYMS.tsv header) if missing or different; return written paths."""
         for d in (self._layout.mirror, self._layout.topics, self._layout.sync_dir, self._layout.manifest_dir):
             d.mkdir(parents=True, exist_ok=True)
         files: dict[str, str] = {

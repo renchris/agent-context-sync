@@ -545,6 +545,11 @@ already carries `SOURCE-MISSING` is not repeated.
 6. **Manifest shards** carry no hashes except output H2s (§5.1) so a no-op or touch-only cycle commits nothing.
 7. **DEPENDS.tsv paths** are relative to the docs repo root, because `docs/` is its own repository here; the
    refresh-queue script's only change is its default TSV path.
+   **SUPERSEDED (2026-10-04, KISS K09b):** the shell script is gone. `curate.REFRESH_QUEUE_SH`, the copy of it
+   and its verdict glossary in `docs/README.md`, and the topics seed's "Run the refresh queue" line are deleted;
+   `agentsync curate` lists the work. `curate.refresh_queue` stays as the only implementation (same verdicts,
+   `sort -u` order and rc), so §13's "written verbatim into `docs/README.md`" no longer holds. The earlier topics
+   seed's sha joins `_TOPICS_CLAUDE_MD_PRIOR_SHA256`, so an unedited copy upgrades.
 8. **PDF** via pdfminer.six (plan), **pptx** via python-pptx (plan) instead of MarkItDown; `.msg` is not routed
    (no permissive parser chosen) and becomes a REFUSED stub until one is.
    **SUPERSEDED (2026-09-29, §16.9):** PDF via pypdfium2 (PDFium, BSD/Apache), pdfminer.six as the fallback.
