@@ -11,9 +11,16 @@ name: diagrams
 # every job has a timeout, and two jobs were added: `lint` (shellcheck, ruff, node --check) and `probes` (build
 # the macOS probes with -Werror, `bash -n` under macOS /bin/bash 3.2, and the smoke test in probes/smoke.sh).
 # The workflow keeps its name and the `check` job id so existing required-check settings still match.
+#
+# CORRECTED (2026-10-05): there are no required-check settings (main has no branch protection and no rulesets).
+# The `lint` job was red from its first run: it used the image's shellcheck 0.9.0, which reports SC2015 on
+# `[ a ] && [ b ] || c` where the developer's 0.11.0 does not, and since the step stopped there the ruff and
+# node steps had never run. shellcheck now comes from uv.lock (the `lint` group in pyproject.toml), the same
+# binary pytest and the developer run, and launcher/*.sh is linted here too. Pushes run on main only, as in ci.yml.
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - "docs/diagrams/**"
       - "scripts/render-diagrams.mjs"
@@ -25,6 +32,9 @@ on:
       - "scripts/**"
       - "docs/design/receipts/review/scripts/**"
       - "docs/design/receipts/verify/experiments/**"
+      - "launcher/**"
+      - "pyproject.toml"
+      - "uv.lock"
   pull_request:
     paths:
       - "docs/diagrams/**"
@@ -37,6 +47,9 @@ on:
       - "scripts/**"
       - "docs/design/receipts/review/scripts/**"
       - "docs/design/receipts/verify/experiments/**"
+      - "launcher/**"
+      - "pyproject.toml"
+      - "uv.lock"
 
 permissions:
   contents: read
@@ -65,8 +78,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - name: shellcheck
-        run: shellcheck probes/*.sh scripts/*.sh docs/design/receipts/review/scripts/*.sh
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.17"
+      - name: shellcheck (0.11.0 from uv.lock, the binary pytest and the developer also run)
+        run: uv run --locked --only-group lint shellcheck probes/*.sh scripts/*.sh launcher/*.sh docs/design/receipts/review/scripts/*.sh
       - name: ruff (default rules; the experiments are kept byte-for-byte as receipts and are not linted)
         run: pipx run ruff==0.15.9 check --isolated scripts
       - name: node --check
@@ -80,7 +96,7 @@ jobs:
         with:
           persist-credentials: false
       - name: bash -n under macOS /bin/bash 3.2
-        run: for f in probes/*.sh scripts/*.sh docs/design/receipts/review/scripts/*.sh; do /bin/bash -n "$f"; done
+        run: for f in probes/*.sh scripts/*.sh launcher/*.sh docs/design/receipts/review/scripts/*.sh; do /bin/bash -n "$f"; done
       - name: build probes with warnings as errors
         run: make -C probes CFLAGS='-O2 -Wall -Wextra -Werror'
       - name: compile the receipt experiments

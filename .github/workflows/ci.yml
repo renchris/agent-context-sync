@@ -6,9 +6,15 @@ name: ci
 # resolved with `gh api repos/astral-sh/setup-uv/git/ref/tags/v10.2.0` on 2026-09-29 (a lightweight tag on
 # commit c18668a). ruff is scoped to src/ and tests/: the receipt experiments under docs/ are kept byte-for-byte,
 # and the film scripts and the Python blocks inside the design docs are not held to it.
+#
+# CORRECTED (2026-10-05): a bare `push:` ran every branch, so a hand-off branch re-ran a commit main had already
+# run and a same-repo pull request would have run twice. Pushes now run on main only; a branch gets its run from
+# its pull request or from workflow_dispatch. `uv sync --locked` also installs the `lint` group, which puts the
+# locked shellcheck on PATH, so the three shellcheck tests that used to skip on this image now run.
 on:
   workflow_dispatch:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
