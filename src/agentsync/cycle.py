@@ -1522,8 +1522,8 @@ class _Cycle:
                 acc.breaker_tripped = True
                 acc.alarms.append(
                     f"deletion breaker TRIPPED: {len(pc.deletion_candidates)} absent file(s) held, nothing "
-                    "removed; if the deletion is real run `agentsync reconcile --source "
-                    f"{src.id} --accept-deletions` or retire the source"
+                    f"removed; if the deletion is real run `agentsync accept-deletions {src.id}` or retire "
+                    "the source"
                 )
             else:
                 confirmed = self._confirmed_absent(src, pc.deletion_candidates, rows_before, acc)

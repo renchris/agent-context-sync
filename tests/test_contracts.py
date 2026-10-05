@@ -54,7 +54,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "init": ["--docs-repo", "--source-local", "--force"],
         "add-source": ["path", "--inbox", "--id"],
         "sync": ["--once", "--mode", "--dry-run", "--source", "--materialise-budget"],
-        "reconcile": ["--source", "--accept-deletions"],
+        "accept-deletions": ["source"],
         "status": [],
         "doctor": ["--network"],
         "lint": [],
@@ -79,6 +79,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "it-request": ["--out"],
     },
     "hidden": {
+        "reconcile": ["--source", "--accept-deletions"],
         "install-skill": [],
         "checkpoint": [],
     },

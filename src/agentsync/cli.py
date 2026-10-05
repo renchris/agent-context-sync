@@ -1,7 +1,7 @@
 """``agentsync`` command line (owner: integrator).
 
 Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...]
-[--materialise-budget BYTES] · reconcile [--source ID ...] [--accept-deletions] · status · doctor [--network]
+[--materialise-budget BYTES] · accept-deletions SOURCE · status · doctor [--network]
 · lint · refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also as top-level login · logout · whoami · discover; login [--device-code];
 discover [--url URL ...] [--toml]) · install-agent [--interval SECONDS] [--no-backup-exclusions] ·
@@ -248,14 +248,26 @@ def build_parser() -> argparse.ArgumentParser:
         "online-only file is left for a later run",
     )
 
-    p = add("reconcile", "run one full-enumeration cycle (every source re-listed)", _cmd_reconcile)
+    p = add(
+        "accept-deletions",
+        "the deletion is real: clear SOURCE's tripped deletion breaker and apply its removals",
+        _cmd_accept_deletions,
+    )
+    p.add_argument("source", metavar="SOURCE", help="the source id the breaker tripped on")
+
+    p = add(
+        "reconcile",
+        "run one full-enumeration cycle (agentsync sync runs one when due)",
+        _cmd_reconcile,
+        hidden=True,
+    )
     p.add_argument(
         "--source", action="append", default=[], metavar="ID", help="only this source (repeatable)"
     )
     p.add_argument(
         "--accept-deletions",
         action="store_true",
-        help="clear the deletion breaker of the selected sources and apply their removals (needs --source)",
+        help="old spelling of agentsync accept-deletions SOURCE (needs --source)",
     )
 
     add(
@@ -645,10 +657,17 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 def _cmd_reconcile(args: argparse.Namespace) -> int:
     config = _config(args)
     if args.accept_deletions and not args.source:
-        _err("--accept-deletions needs --source ID (it is an operator assertion about one source)")
+        _err("--accept-deletions needs a source: run agentsync accept-deletions SOURCE")
         return EXIT_USAGE
     accept = tuple(args.source) if args.accept_deletions else ()
     return _run(config, mode=CycleMode.RECONCILE, only=tuple(args.source), accept_deletions=accept)
+
+
+def _cmd_accept_deletions(args: argparse.Namespace) -> int:
+    """The operator asserts SOURCE's absent files really were deleted: a RECONCILE of that source alone that
+    clears its breaker and applies the held removals (the breaker itself is unchanged)."""
+    config = _config(args)
+    return _run(config, mode=CycleMode.RECONCILE, only=(args.source,), accept_deletions=(args.source,))
 
 
 def _cmd_mat(args: argparse.Namespace) -> int:

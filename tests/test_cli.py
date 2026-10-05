@@ -59,8 +59,8 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in (
-        "init", "sync", "status", "doctor", "reconcile", "materialise", "graph", "install-agent", "purge",
-        "compact-history", "hold", "offboard", "policy",
+        "init", "sync", "status", "doctor", "accept-deletions", "materialise", "graph", "install-agent",
+        "purge", "compact-history", "hold", "offboard", "policy",
     ):  # fmt: skip
         assert command in out
     assert cli.main(["sync", "--help"]) == 0
@@ -529,8 +529,53 @@ def test_materialise_paths(initialised: Config, local_source_dir: Path, tmp_path
     assert cli.main(["materialise", "--config", cfg, "--budget", "lots"]) == cli.EXIT_CONFIG
 
 
-def test_reconcile_accept_deletions_needs_a_source(initialised: Config) -> None:
+def test_reconcile_accept_deletions_needs_a_source(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert cli.main(["reconcile", "--accept-deletions", "--config", str(initialised.config_path)]) == 2
+    assert "agentsync accept-deletions SOURCE" in capsys.readouterr().err
+
+
+def test_accept_deletions_clears_a_tripped_breaker(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K13a: the breaker alarm names ``accept-deletions SOURCE``, which clears the breaker and applies
+    the held removals; ``reconcile`` is a hidden alias that still parses."""
+    cfg_path = initialised.config_path
+    text = cfg_path.read_text(encoding="utf-8")
+    if "\n[breaker]" in text:  # the init template carries the defaults: lower the floor so 5 deletions trip
+        assert "\nfloor = 25\n" in text
+        text = text.replace("\nfloor = 25\n", "\nfloor = 2\n", 1)
+    else:
+        text += "\n[breaker]\nfraction = 0.2\nfloor = 2\nhold_days = 7\n"
+    cfg_path.write_text(text, encoding="utf-8")
+    cfg = str(cfg_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    victims = ["sample.csv", "sample.txt", "sample.html", "sample.md", "sample.pdf"]
+    for name in victims:
+        (local_source_dir / "projects" / name).unlink()
+    capsys.readouterr()
+    assert cli.main(["sync", "--mode", "reconcile", "--config", cfg]) == cli.EXIT_OK
+    tripped = capsys.readouterr().out
+    assert "BREAKER TRIPPED" in tripped and "run `agentsync accept-deletions source`" in tripped
+    assert "--accept-deletions" not in tripped
+    repo = initialised.docs_repo
+    assert (repo / "mirror/source/projects/sample.csv.md").is_file()
+    with Manifest(initialised.state_paths.db) as m:
+        assert m.breaker_active("source", datetime.now(UTC).isoformat())
+    assert cli.main(["accept-deletions", "source", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "mode reconcile" in out and f"{len(victims)} change(s)" in out and "BREAKER" not in out
+    with Manifest(initialised.state_paths.db) as m:
+        assert not m.breaker_active("source", datetime.now(UTC).isoformat())
+        row = m.get_source("source")
+        assert row is not None and row.breaker_tripped_at is None
+    assert cli.main(["accept-deletions", "no-such-source", "--config", cfg]) == cli.EXIT_CONFIG
+    assert cli.main(["accept-deletions", "--config", cfg]) == cli.EXIT_USAGE
+    capsys.readouterr()
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    listing = capsys.readouterr().out
+    assert "accept-deletions" in listing and "\n    reconcile " not in listing
 
 
 def test_adopt_and_migrate(initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

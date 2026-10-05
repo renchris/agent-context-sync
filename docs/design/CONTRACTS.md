@@ -3420,7 +3420,8 @@ def source_statuses(
 ``agentsync`` command line (owner: integrator).
 
 Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] [--mode poll|reconcile|dry_run]
-[--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · reconcile [--source ID ...] [--accept-deletions] · status · doctor · lint ·
+[--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
+[--accept-deletions]` is its hidden alias) · status · doctor · lint ·
 refresh-queue · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
 SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
@@ -4329,6 +4330,7 @@ class AgentSpec:
 | `hold SCOPE --reason R --owner O` · `hold SCOPE --release --owner O` · `hold --list` | `set_hold` / `release_hold` / `active_holds` | 0 · 1 · 2 |
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
 | `policy show` | `policy.load_policy` | 0 · 78 invalid policy |
+| `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2) | 0 · 1 · 75 lock · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
