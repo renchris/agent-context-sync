@@ -5071,7 +5071,7 @@ was a separate step anyone could skip. `curate` prints, in order:
 |---|---|
 | findings | every whole-repo land-gate lint (`lint_no_symlinks`, `lint_mirror_frontmatter`, `lint_paths`, `lint_no_cache_in_git`, `lint_no_tokens`, `lint_index_budget`), `TOPIC-BUDGET` warnings, then `loop.checkpoint_findings(config)`: `curate.checkpoint_blockers` from the base rule 7 and the next sync use (the pending checkpoint base while it is an ancestor of HEAD, else HEAD), so every curation lint finding and UNLISTED is an ERROR, and STALE pins and SOURCE-MISSING only for pages changed since that base. One `N finding(s), B blocking` line |
 | rows | the K06 `ADDED`/`CHANGED`/`REMOVED` lines since `curated`, the refresh-queue lines (`STALE` and the other verdicts), then `UNCOVERED` lines, then one count line. Each `ADDED` and `UNCOVERED` row ends with a tab and `curate.source_entry`: a ready `{path: mirror/…, at_rendered_sha256: <hex>, role: primary}` flow mapping (the path double-quoted when YAML would misread it plain) |
-| NEXT | `loop.next_lines(config)` |
+| NEXT | `loop.next_lines(config, fixes=…)`: with B > 0 the fix is `B blocking finding(s) above: fix every ERROR, then run agentsync sync` (rule 1), since the loop never sees the land-gate lints and rule 7 counts blockers only while a checkpoint is pending or a topic page is dirty |
 
 Exit 1 only when a blocking finding exists; rows alone exit 0, and an unusable DEPENDS.tsv is a stderr warning.
 Baseline hold (`loop.curation_held`): while no curated page exists (`curate.iter_topic_pages` is empty) and there is

@@ -127,7 +127,13 @@ def test_lint_fails_on_a_hand_edited_mirror_page(
     page.write_text(page.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
     capsys.readouterr()
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
-    assert "FRONTMATTER" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "FRONTMATTER" in out
+    # The land gate is invisible to the loop's rules: NEXT names the ERROR, not the baseline step.
+    assert (
+        out.splitlines()[-1]
+        == f"NEXT: 1 blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"
+    )
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED  # the land gate blocks the commit
 
 
@@ -240,7 +246,16 @@ def test_curate_runs_every_whole_repo_lint_and_exits_1_only_on_a_blocking_findin
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert "ERROR UNLISTED topics/orders.md" in out and "1 blocking" in out
-    assert out.splitlines()[-1].startswith("NEXT: 1 curation error(s) hold the checkpoint")
+    fix = f"NEXT: 1 blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"
+    assert out.splitlines()[-1] == fix
+    # Committed by hand, nothing is pending or dirty, so rule 7 counts 0: NEXT still names the ERROR, never
+    # the queued rows or "session done".
+    git(initialised.docs_repo, "add", "topics/orders.md")
+    git(initialised.docs_repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "by hand")
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "ERROR UNLISTED topics/orders.md" in out and out.splitlines()[-1] == fix
+    assert "queued" not in out and "session done" not in out
 
 
 def test_curate_baseline_hold_lists_no_rows(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:

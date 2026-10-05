@@ -515,6 +515,10 @@ sh refresh-queue.sh docs/DEPENDS.tsv               # which curated pages are now
 code 1 when any page needs action). The same refresh-queue script is also written into the docs repo's own
 `README.md`.
 
+**CORRECTED (2026-10-04):** `agentsync refresh-queue` is now a hidden alias of `agentsync curate`, which exits 1
+only on a blocking finding (an ERROR line); work rows (`STALE`, `UNCOVERED` and the rest) exit 0. The work list is
+those rows, not the exit code.
+
 The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s over 1,600 rows
 ([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
 separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).

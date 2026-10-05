@@ -1424,7 +1424,14 @@ def _cmd_curate(args: argparse.Namespace) -> int:
             entry = curate.source_entry(layout, rel)
             _out(f"UNCOVERED\t{rel}" + (f"\t{entry}" if entry else ""))
         _out(f"{len(verdicts)} refresh-queue row(s), {len(uncovered)} uncovered mirror page(s)")
-    for line in loop.next_lines(config):
+    # A blocking finding is rule 1 here: the loop's own rules never see the land-gate lints, and rule 7 counts
+    # checkpoint blockers only while something is pending or dirty, so NEXT must not send the agent past it.
+    fixes = (
+        [f"{blocking} blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"]
+        if blocking
+        else []
+    )
+    for line in loop.next_lines(config, fixes=fixes):
         _out(line)
     return EXIT_FAILED if blocking else EXIT_OK
 
