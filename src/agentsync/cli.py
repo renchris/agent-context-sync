@@ -1308,10 +1308,20 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
 def _report_hooks() -> setup_report.ReportHooks:
     """setup-report's hooks, split along status's cost: the Doctor section runs the offline checks once (under
     the rest of the report's budget), the Status section only the cheap loop line and detail lines (under its
-    own 4 s). No NEXT lines and no policy detail (label names stay out of a report meant for sharing)."""
+    own 4 s). No policy detail (label names stay out of a report meant for sharing). The Summary's Loop line
+    (KISS K16b) takes the loop's NEXT from ``loop_next``, with the doctor checks' FAILs as rule 1's fixes and
+    without rule 9's mirror walk; the Status section still prints no NEXT line."""
+    fixes: list[str] = []
+
+    def checks(config: Config) -> list[str]:
+        results = _status_checks(config, offline=True)
+        fixes[:] = [_fail_step(r) for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
+        return doctor.format_results(results).splitlines()
+
     return setup_report.ReportHooks(
-        doctor=lambda config: doctor.format_results(_status_checks(config, offline=True)).splitlines(),
+        doctor=checks,
         status=lambda config: [_loop_line(config), *_guarded("status", lambda: _status_lines(config))],
+        loop_next=lambda config: loop.next_lines(config, fixes=fixes, count_queue=False),
     )
 
 

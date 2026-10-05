@@ -69,15 +69,16 @@ log line or in the agent's words) is yours to remove. The CLI always redacts.
   "Send a setup report privately" link points here.
 
 The form's field ids are stable, because the pre-filled link names them
-(`https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml&title=...&outcome=...&run_type=...&prompt_version=...&agent=...`,
+(`https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml&title=...&outcome=...&run_type=...&prompt_version=...&agent=...&loop_stage=...`,
 each value URL-encoded; `title` is the issue title, "Setup report: " and the outcome, run type and prompt version):
 
 | Field id | Type | Value |
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v6` |
+| `prompt_version` | input | the prompt version, `v7` (v6 and v5 attempts still report theirs) |
 | `agent` | input | the attempt header's `Agent:` value |
+| `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
 | `review` | checkboxes | ticked by the person |
 
@@ -145,7 +146,16 @@ triaged like every other line (below).
 An attempt whose header says `Prompt: v5` is judged with v5's six steps: its folder question is the first
 question in its step 2, its Allow clicks the first click in its steps 2 and 3, a later `end` line of its step
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
-1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4.
+1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
+three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
+
+The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
+`Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
+`baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
+status's loop line; the NEXT line is the one `agentsync status` would print, with every path cut to its last part
+(`~/.local/bin/agentsync` is `agentsync`). So a setup that synced and stopped before drafting the baseline
+questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. The line holds
+no path, so redaction is unchanged; its stage prefills the form's Loop stage.
 
 The run type is computed too:
 
@@ -173,7 +183,7 @@ closed as "won't fix" or "user error". When the person had to help, the setup ha
 comment, one line per `F<n>`, in this form:
 
 ```text
-Prompt v<N>, run <Real Mac | Sandbox | Sandbox with simulated launchd>, outcome <outcome>.
+Prompt v<N>, run <Real Mac | Sandbox | Sandbox with simulated launchd>, outcome <outcome>, loop <stage>.
 F1: prompt wording -> <commit>, test <tests/test_file.py::test_name>
 F2: installer automation -> <commit>, test <tests/test_file.py::test_name>
 F3: unavoidable: <the list item below, and the evidence: a macOS dialog, an MDM setting, an IT consent>

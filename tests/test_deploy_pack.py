@@ -1108,9 +1108,9 @@ def test_readme_pre_allow_part_is_optional_and_honest() -> None:
 
 ISSUE_TEMPLATES = ROOT / ".github" / "ISSUE_TEMPLATE"
 _FORM_TYPES = {"markdown", "textarea", "input", "dropdown", "checkboxes"}
-FORM_IDS = ["outcome", "run_type", "prompt_version", "agent", "report", "review"]
-"""The form's field ids, stable because setup-report's pre-filled link names them (J23)."""
-PREFILLED_IDS = ["outcome", "run_type", "prompt_version", "agent"]
+FORM_IDS = ["outcome", "run_type", "prompt_version", "agent", "loop_stage", "report", "review"]
+"""The form's field ids, stable because setup-report's pre-filled link names them (J23; K16b loop_stage)."""
+PREFILLED_IDS = ["outcome", "run_type", "prompt_version", "agent", "loop_stage"]
 RUN_TYPES = ["Real Mac", "Sandbox", "Sandbox with simulated launchd"]
 
 
@@ -1153,6 +1153,10 @@ def test_setup_report_issue_form_structure() -> None:
     assert report["type"] == "textarea" and report["attributes"]["render"] == "markdown"
     assert report["validations"]["required"] is True
     assert _field("agent")["type"] == "input"
+    loop_stage = _field("loop_stage")
+    assert loop_stage["type"] == "input" and loop_stage["validations"]["required"] is False, (
+        "a report from before the Loop line has no stage"
+    )
     prompt = _field("prompt_version")
     assert prompt["type"] == "input" and prompt["validations"]["required"] is True
     assert prompt["attributes"]["placeholder"] == f"v{_prompt_version()}"
@@ -1195,7 +1199,7 @@ def test_setup_report_form_has_a_run_type() -> None:
 
 
 def test_setup_report_form_field_ids_are_documented_for_the_prefilled_link() -> None:
-    """setup-feedback.md lists every field id with its type, the link's query keys are the four Summary
+    """setup-feedback.md lists every field id with its type, the link's query keys are the five Summary
     fields, and the documented outcome and run type values are the form's options."""
     send = _feedback_page().split("## 3. Send", 1)[1].split("\n## ", 1)[0]
     rows = dict(re.findall(r"^\| `([a-z_]+)` \| ([a-z]+) \|", send, flags=re.MULTILINE))

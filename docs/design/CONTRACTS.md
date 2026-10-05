@@ -4524,7 +4524,7 @@ class AgentSpec:
 | `materialise` [`--budget BYTES`] [`PATH …`] (2026-10-05, KISS K13b) | unchanged, hidden from help; the remedy the over-budget alarm names | 0 · 1 · 78 |
 | `migrate` (2026-10-05, KISS K13b) | hidden, a no-op: prints `migration is automatic: …` and opens nothing; every opener migrates the manifest (§5 KISS K12 amendment). Kept so older install.sh runs and scripts exit 0 | 0 |
 | `it-request` [`--out PATH`] (2026-10-05, KISS K18) | §16.15, unchanged except: hidden from help, and `--out` defaults to `it_request.DEFAULT_OUT` (`~/agent-context/it-request-draft.md`) instead of being required | 0 · 1 · 2 `--out` inside the checkout or the docs repo |
-| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21). Since KISS K16a (2026-10-05) hidden: `--no-redact` and `--friction` are deleted (argparse exits 2), so the report is always redacted and the friction log is `$AGENTSYNC_FRICTION_LOG`, else `~/agent-context/setup/friction.md`; `--out` is hidden and defaults to `setup_report.DEFAULT_OUT` (`~/agent-context/setup-report.md`), so nothing writes the report to stdout except the fallback below | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) · 2 a deleted option |
+| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21); since KISS K16b a third hook, `loop_next`, gives the Summary's Loop line the loop's NEXT. Since KISS K16a (2026-10-05) hidden: `--no-redact` and `--friction` are deleted (argparse exits 2), so the report is always redacted and the friction log is `$AGENTSYNC_FRICTION_LOG`, else `~/agent-context/setup/friction.md`; `--out` is hidden and defaults to `setup_report.DEFAULT_OUT` (`~/agent-context/setup-report.md`), so nothing writes the report to stdout except the fallback below | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) · 2 a deleted option |
 
 ```python
 EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher returns it (LaunchAgent runs)
@@ -4757,7 +4757,8 @@ Redaction section gives the count per kind.
 **SUPERSEDED in part (2026-10-05, KISS K16a):** the command is `agentsync setup-report [--out PATH] [--config
 PATH]`, hidden from help with `--out` hidden too. `--no-redact` is deleted (it was the one switch that could put the
 tenant name into a report meant for a public issue), so the CLI always redacts; `build_report(redact=False)` stays
-a module argument only. `--friction PATH` is deleted; the friction log is `$AGENTSYNC_FRICTION_LOG`, else
+a module argument only (**SUPERSEDED, KISS K16b:** the argument is gone too, with the report's "NOT REDACTED"
+banner and "Redaction is OFF" lines: it had no caller left). `--friction PATH` is deleted; the friction log is `$AGENTSYNC_FRICTION_LOG`, else
 `~/agent-context/setup/friction.md`. Without `--out` the report is written to `setup_report.DEFAULT_OUT`
 (`~/agent-context/setup-report.md`), not stdout; install.sh still passes `--out "$REPORT_PATH"` with its
 `AGENTSYNC_SETUP_REPORT` override. Both deleted options exit 2.
@@ -4947,6 +4948,24 @@ ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs 
 (V4).** A run whose `step=report` line follows its `end` line says the report step is logged after the run's end
 line (install.sh writes the report once the run is closed), so the run's seconds exclude it.
 
+KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
+second bullet is `- Loop: <stage>; NEXT: <step>`: `loop_stage(baseline, topics, synced)` gives the furthest
+`LOOP_STAGES` stage reached (`installed` when no sync ran, `synced`, `baseline drafted`, `baseline confirmed`,
+`before run`, `topics N`, `after run`), from the Status hook's `loop:` line (`baseline <word>`, `topics N`) and
+its `last runs:` line (a sync ran unless it is "none" or the manifest is missing); the NEXT is the first `NEXT: `
+line of a third hook, `ReportHooks.loop_next` (the CLI's `loop.next_lines(config, fixes=<the doctor hook's FAIL
+steps>, count_queue=False)`, run after Doctor under `r.call`'s 4 s), passed through `loop_next_text`, which cuts
+every `~/...` or `/...` path to its last part. A missing hook, a failed or timed-out call or an unreadable state
+is said on the line ("NEXT: not read (...)"); the Status section still prints no NEXT. `compute_outcome` and the
+issue form's Outcome options are unchanged: the outcome judges the install, the Loop line the loop. The issue
+link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
+**Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install (`INSTALL_STEP`), 3 sync loop and report
+(`REPORT_STEP`); the folder question and the Allow clicks (steps 1 and 2) are not logged, as in v6;
+`form_step` maps 1-3 onto the form's 1-3. `prompt_layout(version)` picks by explicit version (<= 5 -> v5, 6 ->
+v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still reads as v6. A v7 attempt's
+Summary has no IT draft line unless the draft exists (v7 has no IT request step). **Redaction.** `build_report`
+has no `redact` argument: the report is always redacted.
+
 ```python
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES: tuple[str, ...]  # the "## " headings in report order: Summary first, Redaction last
@@ -4957,8 +4976,8 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 6
-PROMPT_STEPS: dict[int, str]  # v6: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
+PROMPT_VERSION = 7  # KISS K16b (was 6)
+PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
 INSTALL_STEP = 2
@@ -4978,7 +4997,9 @@ TIME_BUDGET_S = 12.0
 ISSUE_URL = "https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml"
 ISSUE_LINK_LABEL = "issue link (review the report first):"  # the CLI's last line with --out
 ISSUE_TITLE = "Setup report: "
-ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent"}
+ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent",
+                "loop_stage": "loop_stage"}  # loop_stage: KISS K16b
+LOOP_STAGES = ("installed", "synced", "baseline drafted", "baseline confirmed", "before run", "topics N", "after run")
 ISSUE_RUN_TYPES = {"real": "Real Mac", "sandbox": "Sandbox", "simulated launchd": "Sandbox with simulated launchd"}
 RECENT_ERROR_LINES = 40
 INSTALL_RUNS_SHOWN = 3
@@ -5008,8 +5029,8 @@ class PromptLayout:
     version: int; steps: dict[int, str]; folder_question_step: int; allow_click_steps: tuple[int, ...]
     install_step: int; report_step: int; logs_expected_turns: bool; logs_steps: bool
     form_step: dict[int, int]  # this version's step -> the PROMPT_STEPS step of the issue form
-PROMPT_LAYOUTS: dict[int, PromptLayout]  # 5 and 6
-def prompt_layout(version: int | None) -> PromptLayout: ...  # v5 for <= 5, else v6
+PROMPT_LAYOUTS: dict[int, PromptLayout]  # 5, 6 and 7 (KISS K16b)
+def prompt_layout(version: int | None) -> PromptLayout: ...  # v5 for <= 5, v6, v7; not stated or newer: PROMPT_VERSION
 
 @dataclass(frozen=True, slots=True)
 class Friction:
@@ -5048,7 +5069,10 @@ def is_sandbox_home(home: str) -> bool: ...
 def it_draft_fields(text: str) -> tuple[list[str], list[str]]: ...  # (person fields, IT fields) still open
 def expected_warn(name: str, detail: str, *, agents_installed: bool) -> str | None: ...
 def agents_installed(runs: Sequence[InstallRun]) -> bool: ...
-def build_issue_url(*, outcome: str | None, run_type: str | None, prompt: str | None, agent: str | None) -> str: ...
+def build_issue_url(*, outcome: str | None, run_type: str | None, prompt: str | None, agent: str | None,
+                    loop_stage: str | None = None) -> str: ...
+def loop_stage(baseline: str | None, topics: int | None, synced: bool) -> str: ...  # a LOOP_STAGES stage
+def loop_next_text(line: str) -> str: ...  # a NEXT line with each path cut to its last part
 def issue_link(report: str) -> str | None: ...  # the link a report ends with
 def origin_label(url: str) -> str: ...  # github.com/renchris/agent-context-sync | other (redacted) | none
 def tree_fingerprint(diff: bytes) -> str: ...  # install.sh's: sha256(git diff HEAD)[:12]
@@ -5067,6 +5091,7 @@ class ReportHooks:
     """What the report needs from the CLI (this module never imports agentsync.cli)."""
     doctor: Callable[[Config], list[str]] | None = None
     status: Callable[[Config], list[str]] | None = None
+    loop_next: Callable[[Config], list[str]] | None = None  # the loop's NEXT lines (KISS K16b)
 
 class Redactor:
     """Known values (home ~, <user>, <name>, <org-N>, <library-N>, <folder-N>, <source-N>, <serial>, <host>,
@@ -5089,7 +5114,7 @@ def default_setup_log() -> Path:
 def cloud_storage_root() -> Path:
     """~/Library/CloudStorage (listing it reads no provider's files)."""
 
-def build_report(config_path: Path | None = None, *, redact: bool = True, hooks: ReportHooks | None = None,
+def build_report(config_path: Path | None = None, *, hooks: ReportHooks | None = None,
                  friction_path: Path | None = None, now: datetime | None = None,
                  budget_s: float = TIME_BUDGET_S) -> tuple[str, Redactor]:
     """The report and the redactor that produced it; never raises for a failed probe or section.

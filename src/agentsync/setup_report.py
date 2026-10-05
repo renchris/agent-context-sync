@@ -13,19 +13,21 @@ embedded and redacted, one line per attempt), then the machine sections and the 
 line is a prefilled "Setup report" issue link. The friction log is a sequence of attempts (``Attempt:
 <time>``, ``Prompt:``, ``Agent:``, then ``<time> | step <n> | <kind> | <what> | <fix>`` lines and ``<time> |
 end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--report-only`` (``--log-end`` until
-KISS K17) for setup prompt v6 (by
-the agent itself in v5, whose step numbers :class:`PromptLayout` keeps); v4 ``F<n> | ...`` lines are shown as
-legacy, never counted. Everything the
+KISS K17) for setup prompts v6 and v7 (by the agent itself in v5); :class:`PromptLayout` keeps each version's
+step numbers, picked by the ``Prompt:`` line's explicit version; v4 ``F<n> | ...`` lines are shown as legacy,
+never counted. Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
 did: install.log's last install run exit, questions beyond the folder question, clicks beyond the Allow
 clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
 prompt and error lines are counted apart as "agent friction"), human turns (by kind), step and session times
 (from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
-the first sync, which doctor warns are expected, and the IT draft's unfilled fields. The agent's own
+the first sync, which doctor warns are expected, the IT draft's unfilled fields, and the ``Loop:`` line (KISS
+K16b: how far the loop got past the install, :func:`loop_stage`, and its current NEXT line without paths, kept
+apart from the outcome, which judges only the install). The agent's own
 ``Outcome:`` line is shown only as "agent said". The Installer section also embeds the tail of install.sh's
 output copy (``install.out`` next to install.log: what the agent saw) and counts its instruction-like lines.
 
-Redaction (on by default) replaces, consistently (the same value always gets the same placeholder): the home
+Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
 ``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
@@ -111,15 +113,17 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 6
-"""The setup prompt this module's step numbers are for (README "Set up on a new Mac: one prompt")."""
+PROMPT_VERSION = 7
+"""The newest setup prompt this module knows (README "Set up on a new Mac: one prompt"): an attempt whose
+``Prompt:`` line states no version is read with its step numbers."""
 PROMPT_STEPS = {
     1: "preflight",
     2: "install and start",
     3: "IT request and report",
     4: "finish",
 }
-"""Setup prompt v6's steps, as the outcome and the issue form's Outcome options name them."""
+"""The issue form's Outcome step names: setup prompt v6's four steps, kept unchanged in v7 (KISS K16b) so
+older reports keep their option; each layout's ``form_step`` maps its steps onto them."""
 FOLDER_QUESTION_STEP = 1
 """The step that asks the one question fully one command allows (which folders to sync). Prompt v6 does not
 log it (its ``question`` kind is "something other than which folders to sync"), so every logged question is
@@ -152,6 +156,17 @@ class PromptLayout:
 
 
 PROMPT_LAYOUTS = {
+    7: PromptLayout(
+        version=7,
+        steps={1: "preflight", 2: "install", 3: "sync loop and report"},
+        folder_question_step=FOLDER_QUESTION_STEP,
+        allow_click_steps=ALLOW_CLICK_STEPS,
+        install_step=INSTALL_STEP,
+        report_step=REPORT_STEP,
+        logs_expected_turns=False,
+        logs_steps=False,
+        form_step={1: 1, 2: 2, 3: 3},
+    ),
     6: PromptLayout(
         version=6,
         steps=PROMPT_STEPS,
@@ -182,13 +197,17 @@ PROMPT_LAYOUTS = {
         form_step={1: 1, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4},
     ),
 }
-"""Setup prompt v6 (this module's constants) and v5, whose logs are still read with their own step numbers
-(a v4 log is read as v5: its F<n> lines are legacy anyway)."""
+"""Setup prompt v7 (three steps: the IT request is gone and step 3 runs the sync loop, then the report), v6
+and v5, each log read with its own step numbers (a v4 log is read as v5: its F<n> lines are legacy anyway). v6
+and v7 share this module's step constants."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
-    """The layout of setup prompt ``version``: v5 for 5 and earlier, else v6 (also when not stated)."""
-    return PROMPT_LAYOUTS[5] if version is not None and version <= 5 else PROMPT_LAYOUTS[PROMPT_VERSION]
+    """The layout of setup prompt ``version``, picked by its explicit number: v5 for 5 and earlier, v6 for 6,
+    v7 for 7; :data:`PROMPT_VERSION`'s when not stated or newer than this module knows."""
+    if version is None or version > PROMPT_VERSION:
+        return PROMPT_LAYOUTS[PROMPT_VERSION]
+    return PROMPT_LAYOUTS[5] if version <= 5 else PROMPT_LAYOUTS[version]
 
 
 SANDBOX_HOMES = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
@@ -228,8 +247,25 @@ ISSUE_LINK_LABEL = "issue link (review the report first):"
 """What ``setup-report --out`` prints before the issue link, as its last stdout line."""
 ISSUE_TITLE = "Setup report: "
 """The issue form's ``title:`` (the report's link appends the outcome, run type and prompt version)."""
-ISSUE_FIELDS = {"outcome": "outcome", "run_type": "run_type", "prompt": "prompt_version", "agent": "agent"}
+ISSUE_FIELDS = {
+    "outcome": "outcome",
+    "run_type": "run_type",
+    "prompt": "prompt_version",
+    "agent": "agent",
+    "loop_stage": "loop_stage",
+}
 """What the report prefills -> the ``id`` of that field in .github/ISSUE_TEMPLATE/setup-report.yml."""
+LOOP_STAGES = (
+    "installed",
+    "synced",
+    "baseline drafted",
+    "baseline confirmed",
+    "before run",
+    "topics N",
+    "after run",
+)
+"""The Summary's ``Loop:`` stages in loop order (KISS K16b; ``topics N`` carries the curated page count): how
+far past the install the setup got, apart from the outcome, which judges only the install."""
 ISSUE_RUN_TYPES = {
     "real": "Real Mac",
     "sandbox": "Sandbox",
@@ -361,6 +397,9 @@ _OUT_RUN_RE = re.compile(r"^# run=\S+ ")  # install.out's header line of each ru
 _CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)")  # install.log's first-sync note
 _CONVERTED_LINE_RE = re.compile(r"\bconverted (\d+), deferred (\d+) online-only\b")  # sync's last line
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
+_LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
+_LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
+_NEXT_PATH_RE = re.compile(r"(?<![\w.~/-])[~/][^\s`'\"()<>]*/([^\s`'\"()<>/]+)")  # a path: its last part
 _APPS = {
     "OneDrive": ("/Applications/OneDrive.app", "~/Applications/OneDrive.app"),
     "Company Portal": ("/Applications/Company Portal.app", "~/Applications/Company Portal.app"),
@@ -378,6 +417,7 @@ class ReportHooks:
 
     doctor: Callable[[Config], list[str]] | None = None
     status: Callable[[Config], list[str]] | None = None
+    loop_next: Callable[[Config], list[str]] | None = None  # the loop's NEXT lines (KISS K16b), after doctor
 
 
 def _tokens(value: str) -> list[str]:
@@ -1088,6 +1128,27 @@ def compute_run_type(runs: Sequence[InstallRun], home: str) -> str:
     return "sandbox" if is_sandbox_home(home) else "real"
 
 
+def loop_stage(baseline: str | None, topics: int | None, synced: bool) -> str:
+    """How far the loop got (:data:`LOOP_STAGES`), from status's loop line (``baseline`` is
+    ``loop.baseline_state``'s word, ``topics`` the curated page count) and whether a sync ran: the furthest
+    stage reached, so a curated page outranks the baseline before it."""
+    if baseline == "after":
+        return "after run"
+    if topics:
+        return f"topics {topics}"
+    stage = {"before": "before run", "confirmed": "baseline confirmed", "draft": "baseline drafted"}
+    if baseline in stage:
+        return stage[baseline]
+    return "synced" if synced else "installed"
+
+
+def loop_next_text(line: str) -> str:
+    """A ``NEXT:`` line without paths: each ``~/...`` or ``/...`` path becomes its last part
+    (``~/.local/bin/agentsync`` is ``agentsync``). The loop's wording names no mirror path or file name, so
+    this leaves fixed text, counts and source ids (which the report redacts)."""
+    return _NEXT_PATH_RE.sub(r"\1", line.strip())
+
+
 def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
     """(person fields, IT fields) still unfilled in an IT request draft: the placeholders of
     :data:`IT_PERSON_FIELDS` and :data:`IT_ADMIN_FIELDS` found in the email (below the draft's first ``---``
@@ -1135,13 +1196,25 @@ def agents_installed(runs: Sequence[InstallRun]) -> bool:
 
 
 def build_issue_url(
-    *, outcome: str | None, run_type: str | None, prompt: str | None, agent: str | None
+    *,
+    outcome: str | None,
+    run_type: str | None,
+    prompt: str | None,
+    agent: str | None,
+    loop_stage: str | None = None,
 ) -> str:
     """The prefilled "Setup report" issue link: :data:`ISSUE_URL`, a title, and the form fields of
-    :data:`ISSUE_FIELDS`, URL-encoded. Only these four values go in: never the report body."""
+    :data:`ISSUE_FIELDS`, URL-encoded. Only these five values go in: never the report body."""
     title = ISSUE_TITLE + " · ".join(v for v in (outcome, run_type, prompt) if v)
     params: list[tuple[str, str]] = [("title", title)]
-    for key, value in (("outcome", outcome), ("run_type", run_type), ("prompt", prompt), ("agent", agent)):
+    values = (
+        ("outcome", outcome),
+        ("run_type", run_type),
+        ("prompt", prompt),
+        ("agent", agent),
+        ("loop_stage", loop_stage),
+    )
+    for key, value in values:
         if value:
             params.append((ISSUE_FIELDS[key], value))
     return ISSUE_URL + "&" + urlencode(params, quote_via=quote)
@@ -1328,6 +1401,7 @@ class _Facts:
     shadow: str | None = None
     instructions: tuple[Counter[str], int, int] | None = None  # (per kind, lines read, runs among them)
     first_sync: tuple[int, int] | None = None  # the last "converted N, deferred M online-only" in install.out
+    loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
 
 
 class _Run:
@@ -1359,6 +1433,7 @@ class _Run:
             self.install_runs = read_install_runs(self.install_log)
         self.outcome: Outcome | None = None  # set by the Summary
         self.run_type: str | None = None
+        self.loop_stage: str | None = None
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -1492,9 +1567,9 @@ def _docs_commits(r: _Run) -> list[str]:
     return shas[-500:]
 
 
-def _build_redactor(r: _Run, *, enabled: bool) -> Redactor:
+def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
-    red = Redactor(enabled=enabled)
+    red = Redactor()
     home = Path.home()
     for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
         red.add("home", h)
@@ -2068,6 +2143,16 @@ def _status(r: _Run) -> list[str]:
     baselines = [m.group(1) for m in (_BASELINE_RE.match(ln) for ln in lines) if m is not None]
     if baselines:
         r.facts.baseline = (baselines.count("complete"), len(baselines))
+    loop_line = next((ln for ln in lines if ln.startswith("loop: ")), None)
+    if loop_line is not None:
+        baseline = _LOOP_BASELINE_RE.search(loop_line)
+        topics = _LOOP_TOPICS_RE.search(loop_line)
+        synced = any(ln.startswith("last runs:") and ln != "last runs: none" for ln in lines)
+        r.facts.loop = (
+            baseline.group(1) if baseline else None,
+            int(topics.group(1)) if topics else None,
+            synced,
+        )
     for ln in lines:
         if ln.startswith("last runs:"):
             for sha in _LAST_RUNS_RE.findall(ln):
@@ -2488,6 +2573,27 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     return f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
 
 
+def _loop_line(r: _Run) -> str:
+    """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
+    loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's). Sets
+    ``r.loop_stage`` for the issue link."""
+    if r.facts.loop is not None:
+        r.loop_stage = loop_stage(*r.facts.loop)
+    stage = r.loop_stage or "unknown (no status loop line)"
+    if r.config is None:
+        return f"- Loop: {stage}; NEXT: not read (the config does not load)"
+    if r.hooks.loop_next is None:
+        return f"- Loop: {stage}; NEXT: not read (no loop hook)"
+    config, next_fn = r.config, r.hooks.loop_next
+    try:
+        lines = r.call(lambda: next_fn(config), timeout=4.0)
+    except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
+        return f"- Loop: {stage}; NEXT: not read ({type(exc).__name__})"
+    found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
+    text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
+    return f"- Loop: {stage}; {text}"
+
+
 def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     if not r.install_runs:
         return "- install.sh: no run in the install log"
@@ -2539,6 +2645,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     out: list[str] = [f"- **outcome: {outcome.text}** (computed: {'; '.join(outcome.why)})"]
     if att is not None and att.header.get("Outcome"):
         out.append(f"- agent said: {att.header['Outcome']}")
+    out.append(_loop_line(r))
     if fr is None:
         out.append(f"- friction log: none at {r.friction_path}")
     elif att is None:
@@ -2601,7 +2708,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")
     elif r.facts.background:
         out.append("- background sync: " + " · ".join(r.facts.background))
-    out.append(_it_draft_line(4 if att is not None and att.layout.version == 5 else REPORT_STEP))
+    if att is None or att.layout.version < 7 or expand(IT_DRAFT).exists():  # v7 has no IT request step
+        out.append(_it_draft_line(4 if att is not None and att.layout.version == 5 else REPORT_STEP))
     if r.facts.shadow:
         expected = " (expected in a sandbox)" if run_type != "real" else ""
         out.append(
@@ -2673,8 +2781,6 @@ def residue_by_section(report: str) -> list[tuple[str, list[str]]]:
 
 
 def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list[str]:
-    if not red.enabled:
-        return ["", "## Redaction", "", "Redaction is OFF (`--no-redact`): 0 values replaced."]
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
     words = {w for _title, found in hits for w in found}
@@ -2717,19 +2823,20 @@ def _issue_link(r: _Run, red: Redactor) -> str:
         run_type=ISSUE_RUN_TYPES.get(r.run_type or ""),
         prompt=_prompt_version(att),
         agent=agent or None,
+        loop_stage=r.loop_stage,
     )
 
 
 def build_report(
     config_path: Path | None = None,
     *,
-    redact: bool = True,
     hooks: ReportHooks | None = None,
     friction_path: Path | None = None,
     now: datetime | None = None,
     budget_s: float = TIME_BUDGET_S,
 ) -> tuple[str, Redactor]:
-    """The report text and the redactor that produced it (its ``total`` is the redaction count). Never
+    """The report text and the redactor that produced it (its ``total`` is the redaction count), always
+    redacted (KISS K16b: the ``redact`` argument went with ``--no-redact``, its last caller). Never
     raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
     agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
     line is the prefilled issue link (:func:`issue_link` returns it)."""
@@ -2738,9 +2845,9 @@ def build_report(
     if friction_path is not None:
         r.friction_path = expand(friction_path)
     try:
-        red = _build_redactor(r, enabled=redact)
+        red = _build_redactor(r)
     except Exception:  # redaction facts are best effort; the patterns (email, GUID, hex) still apply
-        red = Redactor(enabled=redact)
+        red = Redactor()
         red.add("home", str(Path.home()))
     r.red = red
     try:
@@ -2771,20 +2878,10 @@ def build_report(
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     lines = [REPORT_TITLE]
-    if not redact:
-        lines += [
-            "",
-            "> **NOT REDACTED** (`--no-redact`): this report names people, organisations, folders and ids. "
-            "Do not paste it into a public issue.",
-        ]
     for title in SECTION_TITLES[:-1]:
         lines += bodies[title]
     main = _redact_lines(red, lines)
-    counts = (
-        f"{red.total} replacement(s) of {red.values} value(s) (legend under Redaction)"
-        if red.enabled
-        else "OFF (--no-redact)"
-    )
+    counts = f"{red.total} replacement(s) of {red.values} value(s) (legend under Redaction)"
     main = main.replace(_REDACTION_MARK, counts)
     try:
         link = _issue_link(r, red)

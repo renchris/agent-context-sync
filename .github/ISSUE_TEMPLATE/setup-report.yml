@@ -16,7 +16,7 @@ body:
 
         The report command (`install.sh --report-only`, step 3 of the prompt, or `agentsync setup-report --out`) ends
         with an "issue link" line that opens this form pre-filled with the report's Summary values (outcome, run
-        type, prompt version, agent). Opened another way, copy them from the Summary at the top of the
+        type, prompt version, agent, loop stage). Opened another way, copy them from the Summary at the top of the
         report. The field ids are stable: setup-feedback.md lists them.
   - type: dropdown
     id: outcome
@@ -25,7 +25,8 @@ body:
       description: >-
         The Summary's computed outcome (setup-report works it out from the installer, doctor, first sync, background
         run and friction log; setup-feedback.md defines each value). Steps are numbered as in the README's
-        one-prompt block (setup prompt v6: four steps). "Fully one command" means no human turn beyond the
+        one-prompt block (setup prompt v6: four steps; v7: three, numbered as v6's first three, so the option
+        names stay v6's). "Fully one command" means no human turn beyond the
         unavoidable steps listed there; the agent's own friction (deviation and prompt lines) is counted on the
         Summary's "agent friction" line and does not change the outcome.
       options:
@@ -66,6 +67,17 @@ body:
       label: Agent tool and model
       description: The Summary's agent, the coding agent that ran the prompt.
       placeholder: "Claude Code (model id), GitHub Copilot CLI, ..., or: by hand"
+    validations:
+      required: false
+  - type: input
+    id: loop_stage
+    attributes:
+      label: Loop stage
+      description: >-
+        The stage on the Summary's "Loop:" line: how far the loop got after the install (installed, synced,
+        baseline drafted, baseline confirmed, before run, topics N, after run). It is separate from the outcome,
+        which judges only the install. Reports from before this field have no Loop line: leave it empty.
+      placeholder: "synced"
     validations:
       required: false
   - type: textarea

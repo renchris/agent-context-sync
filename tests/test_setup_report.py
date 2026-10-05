@@ -697,7 +697,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str,
 
 
 @pytest.mark.usefixtures("clean_doctor")
-def test_issue_link_is_the_last_line_and_carries_only_the_four_fields(
+def test_issue_link_is_the_last_line_and_carries_only_the_five_fields(
     fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_install_log(fake_mac)
@@ -716,7 +716,8 @@ def test_issue_link_is_the_last_line_and_carries_only_the_four_fields(
         "run_type": ["Sandbox with simulated launchd"],
         "prompt_version": ["v5"],
         "agent": ["Claude Code, claude-opus-5-5 on <org-1>-<host>"],
-    }
+        "loop_stage": ["installed"],
+    }, "no sync has run in this fixture: the loop stage is installed (KISS K16b)"
     for raw in RAW:
         assert raw not in link, raw
     assert "%20" in link and " " not in link, "URL-encoded"
@@ -1405,6 +1406,85 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert "  4  2026-09-29T10:01:10Z | end | finished" in fr
     fail = setup_report.Outcome("failed", 2, (), 6)
     assert fail.text == "failed at step 2" and fail.form_label == "Failed at step 2 (install and start)"
+
+
+V7_HAPPY = V6_HAPPY.replace("Prompt: v6", "Prompt: v7")
+"""Setup prompt v7 run through with nothing to log (KISS K04/K16b): the same header and closing line as v6."""
+
+
+def test_prompt_layout_is_picked_by_explicit_version() -> None:
+    """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7; no version (or a newer one) as the newest."""
+    assert [setup_report.prompt_layout(v).version for v in (4, 5, 6, 7, None, 99)] == [5, 5, 6, 7, 7, 7]
+    v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
+    assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
+    assert max(v7.steps) == 3 and max(v6.steps) == 4
+    label = setup_report.Outcome("failed", 3, (), 7).form_label
+    assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
+
+
+def test_loop_stage_and_next_text() -> None:
+    stage = setup_report.loop_stage
+    assert stage(None, None, False) == "installed"
+    assert stage("missing", 0, False) == "installed"
+    assert stage("missing", 0, True) == "synced"
+    assert stage("draft", 0, True) == "baseline drafted"
+    assert stage("confirmed", 0, True) == "baseline confirmed"
+    assert stage("before", 0, True) == "before run"
+    assert stage("before", 3, True) == "topics 3"
+    assert stage("after", 25, True) == "after run"
+    text = setup_report.loop_next_text
+    assert text(
+        "NEXT: no folder is synced yet: ask the operator which folders to sync "
+        "(`~/src/agent-context-sync/scripts/install.sh --list-folders` lists them), then run "
+        '`~/.local/bin/agentsync add-source "<folder>"` for each, then `/Users/x/.local/bin/agentsync sync`'
+    ) == (
+        "NEXT: no folder is synced yet: ask the operator which folders to sync (`install.sh --list-folders` "
+        'lists them), then run `agentsync add-source "<folder>"` for each, then `agentsync sync`'
+    )
+    assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_v7_sync_only_reads_synced_and_draft_the_baseline_questions(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """KISS K16b: a v7 setup that installed and synced but did not draft the baseline questions keeps its
+    outcome (the install was one command) and says on its Loop line where the loop stopped, with the loop's
+    NEXT and no path."""
+    for folder in (fake_mac["one"], fake_mac["two"]):
+        (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
+    )
+    [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
+    assert loop.startswith("- Loop: synced; NEXT: draft the baseline questions"), loop
+    assert "~/" not in loop and "/Users/" not in loop and "`agentsync sync`" in loop
+    assert "- prompt: v7 · " in summary
+    assert "IT draft" not in summary, "v7 has no IT request step"
+    assert "NEXT:" not in section(text, "Status")
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["loop_stage"] == ["synced"] and link["prompt_version"] == ["v7"]
+    assert link["outcome"] == ["Fully one command"]
+
+
+def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
+    def crash(config: object) -> list[str]:
+        raise RuntimeError("loop exploded")
+
+    _text, summary = summary_of(fake_mac)
+    assert "- Loop: unknown (no status loop line); NEXT: not read (no loop hook)" in summary
+    hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current · baseline draft · topics 0"])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert "- Loop: baseline drafted; NEXT: not read (no loop hook)" in section(text, "Summary")
+    hooks = setup_report.ReportHooks(loop_next=crash)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert "NEXT: not read (RuntimeError)" in section(text, "Summary"), "the message may hold a path"
 
 
 def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
