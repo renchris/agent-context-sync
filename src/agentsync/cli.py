@@ -578,6 +578,15 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     if any(is_under(path, d) or is_under(d, path) for d in {docs, canonical_source_root(docs)}):
         _err(f"add-source {raw}: {path} and the docs repo {docs} must not contain each other")
         return EXIT_USAGE
+    # PATH is the inbox folder of a config with no inbox (one from before K05): the inbox first, so that
+    # folder becomes kind "inbox", never a local source install.sh would count as a folder to sync.
+    if path == canonical_source_root(docs.parent / "inbox") and not any(
+        s.kind is SourceKind.INBOX for s in config.sources
+    ):
+        if fresh:
+            _write_config(cfg_path, template)
+            fresh = False
+        config = _ensure_inbox(config)
     known = next((s for s in config.sources if s.path is not None and s.path == path), None)
     if known is not None:
         _out(

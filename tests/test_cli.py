@@ -1641,6 +1641,26 @@ def test_init_and_add_source_keep_exactly_one_inbox(
     assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # PATH is required
 
 
+def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inbox(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KISS K05 after K14: the inbox is ensured before the PATH lookup, so add-source on the inbox folder of a
+    config from before K05 adds it as kind "inbox", never as a local folder install.sh would count."""
+    box = initialised.source("inbox")
+    assert box.path is not None and box.path.is_dir()
+    cfg = initialised.config_path
+    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    assert cli.main(["add-source", str(box.path), "--config", str(cfg)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "added inbox source 'inbox'" in out and "already configured: source 'inbox' (inbox, live)" in out
+    on_box = [s for s in load_config(cfg).sources if s.path == box.path]
+    assert [s.kind for s in on_box] == [SourceKind.INBOX]
+    fresh = initialised.config_path.parent.parent / "fresh" / "sources.toml"  # no sources.toml yet
+    assert cli.main(["add-source", str(box.path), "--config", str(fresh)]) == cli.EXIT_OK
+    assert [(s.kind, s.path) for s in load_config(fresh).sources] == [(SourceKind.INBOX, box.path)]
+    assert "sources: none yet besides the inbox" in capsys.readouterr().out
+
+
 def test_add_source_warns_when_the_inbox_cannot_be_added(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
