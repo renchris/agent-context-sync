@@ -55,7 +55,8 @@ _ARCHIVE_LINES = """\
 
 def procedure(*, archive: bool = False) -> str:
     """The one procedure every guide carries (root CLAUDE.md, AGENTS.md, the skill): sync, follow NEXT and
-    repeat, the look-up order, the answer-key warning, the authoring rules. Paths are relative to the docs
+    repeat, the look-up order, the answer-key warning, the authoring rules, what each curate row asks (the
+    refresh-queue verdict glossary the docs README carried until KISS K09b). Paths are relative to the docs
     repo and the binary is always :data:`AGENTSYNC_BIN`; the archive and snapshot lines appear only when
     ``[governance] archive = true``."""
     bin_ = AGENTSYNC_BIN
@@ -76,6 +77,18 @@ def procedure(*, archive: bool = False) -> str:
 5. Writing a subject page under `topics/`:
 """
         + _AUTHORING
+        + f"""\
+6. What each `{bin_} curate` row asks of you:
+   `STALE`: the source changed since the page's pin: re-read it, update the page and the pin.
+   `SOURCE-DELETED`: the source was deleted upstream: re-cite the claim from another source or retire it.
+   `SOURCE-UNREADABLE`: the source is unreadable or refused, not absent (see `_sync/QUARANTINE.tsv`):
+   never re-curate on it.
+   `MISSING-OR-UNPARSEABLE`: the cited path is not a readable mirror page (a typo, or moved or reaped):
+   fix the `sources:` path.
+   `UNPINNED`, `BAD-PIN`: fix the page's `at_rendered_sha256` pin.  `MALFORMED`: a broken `DEPENDS.tsv`
+   row: run `{bin_} sync`, which rewrites it.
+   `UNCOVERED`, `ADDED`: a mirror page no subject page cites yet: cite it with the row's `sources:` entry.
+"""
     )
 
 

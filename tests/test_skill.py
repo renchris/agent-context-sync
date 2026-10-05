@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, gitops, skill
+from agentsync import cli, curate, gitops, skill
 from agentsync.config import Config, load_config
 
 
@@ -61,6 +61,17 @@ def test_install_skill_writes_once_and_names_the_docs_repo(
     assert "wrote skill" in capsys.readouterr().out
     assert cli.main(["install-skill", "--config", cfg]) == cli.EXIT_OK
     assert "skill up to date" in capsys.readouterr().out
+
+
+def test_procedure_says_what_each_curate_row_asks() -> None:
+    """Every refresh-queue verdict curate prints has its action in the procedure; the opposite ones stay
+    opposite (a SOURCE-UNREADABLE row is never re-curated on, a SOURCE-DELETED one is re-cited or retired)."""
+    text = skill.procedure()
+    for verdict in (*curate.VERDICTS, "UNCOVERED", "ADDED"):
+        assert f"`{verdict}`" in text, verdict
+    unreadable = text[text.index("`SOURCE-UNREADABLE`") : text.index("`MISSING-OR-UNPARSEABLE`")]
+    assert "_sync/QUARANTINE.tsv" in unreadable and "never re-curate" in unreadable
+    assert "retire" in text[text.index("`SOURCE-DELETED`") : text.index("`SOURCE-UNREADABLE`")]
 
 
 def test_skill_text_names_the_fixed_binary_and_ends_with_sync() -> None:

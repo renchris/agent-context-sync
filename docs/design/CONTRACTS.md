@@ -549,7 +549,10 @@ already carries `SOURCE-MISSING` is not repeated.
    and its verdict glossary in `docs/README.md`, and the topics seed's "Run the refresh queue" line are deleted;
    `agentsync curate` lists the work. `curate.refresh_queue` stays as the only implementation (same verdicts,
    `sort -u` order and rc), so §13's "written verbatim into `docs/README.md`" no longer holds. The earlier topics
-   seed's sha joins `_TOPICS_CLAUDE_MD_PRIOR_SHA256`, so an unedited copy upgrades.
+   seed's sha joins `_TOPICS_CLAUDE_MD_PRIOR_SHA256`, so an unedited copy upgrades. The glossary's actions moved,
+   corrected, into `skill.procedure()` step 6 (one line per verdict, plus `UNCOVERED` and `ADDED`), so every
+   guide says what each `curate` row asks: `SOURCE-UNREADABLE` is never re-curated on, and
+   `MISSING-OR-UNPARSEABLE` means fix the `sources:` path, not "a bug in the generator".
 8. **PDF** via pdfminer.six (plan), **pptx** via python-pptx (plan) instead of MarkItDown; `.msg` is not routed
    (no permissive parser chosen) and becomes a REFUSED stub until one is.
    **SUPERSEDED (2026-09-29, §16.9):** PDF via pypdfium2 (PDFium, BSD/Apache), pdfminer.six as the fallback.
@@ -564,7 +567,7 @@ already carries `SOURCE-MISSING` is not repeated.
 12. **One procedure in every guide (2026-10-04, KISS K07).** Root `CLAUDE.md` and `AGENTS.md` are
     `publish.root_guide(archive=, inbox=)`: a short header, then `skill.procedure()` (run
     `~/.local/bin/agentsync sync`, do what NEXT says and repeat, the look-up order, never open `_eval/answers.md`
-    or `_eval/results-*`, the authoring rules moved from the topics seed), then the inbox line when a live inbox
+    or `_eval/results-*`, the authoring rules moved from the topics seed, what each `curate` row asks), then the inbox line when a live inbox
     source exists, then `BOUNDARY_TEXT` verbatim. Paths are relative to the docs repo (no `docs/` prefix, no
     `git -C docs`); the archive and snapshot lines appear only with `[governance] archive = true`. `skill_text`
     is the docs-path header, `skill.procedure()` and the Baseline questions section; its SYNONYMS and

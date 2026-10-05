@@ -519,6 +519,10 @@ code 1 when any page needs action). The same refresh-queue script is also writte
 only on a blocking finding (an ERROR line); work rows (`STALE`, `UNCOVERED` and the rest) exit 0. The work list is
 those rows, not the exit code.
 
+**CORRECTED (2026-10-05, KISS K09b):** the refresh-queue script and its verdict glossary are no longer written into
+the docs repo's `README.md`; `~/.local/bin/agentsync curate` lists the rows, and every generated guide (root
+`CLAUDE.md`, `AGENTS.md`, the skill) says what each row asks.
+
 The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s over 1,600 rows
 ([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
 separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).
