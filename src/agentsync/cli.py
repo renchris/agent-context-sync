@@ -1688,10 +1688,14 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         if args.selector:
             _err("purge: pass SELECTOR or --queue, not both")
             return EXIT_USAGE
-        reports = governance.run_purge_queue(config)
+        dry_run = bool(args.dry_run)
+        reports = governance.run_purge_queue(config, dry_run=dry_run)
         for rep in reports:
             _print_purge(rep)
         left = governance.pending_purges(config.state_paths.root)
+        if dry_run:
+            _out(f"{len(reports)} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
+            return EXIT_OK
         _out(f"{len(reports)} queued purge(s) run; {len(left)} still queued")
         return EXIT_OK if all(r.verified for r in reports) and not left else EXIT_FAILED
     if not args.selector:

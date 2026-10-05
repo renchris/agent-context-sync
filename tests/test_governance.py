@@ -577,6 +577,17 @@ def test_purge_queue_runs_and_keeps_held_requests(world: World) -> None:
     assert gv.pending_purges(world.state) == []
 
 
+def test_purge_queue_dry_run_writes_nothing_and_keeps_the_queue(world: World) -> None:
+    """Field report 2026-10-05: `purge --queue --dry-run` ran both queued purges and rewrote history."""
+    s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    head = git(world.repo, "rev-parse", "HEAD").strip()
+    reports = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
+    assert len(reports) == 1 and reports[0].dry_run and reports[0].commits_rewritten == 0
+    assert git(world.repo, "rev-parse", "HEAD").strip() == head
+    assert [q.selector for q in gv.pending_purges(world.state)] == [s1]
+
+
 def test_purge_works_on_a_sha256_repo(tmp_path: Path, tmp_state_dir: Path) -> None:
     repo = tmp_path / "docs256"
     subprocess.run(["git", "init", "-q", "-b", "main", "--object-format=sha256", str(repo)], check=True)

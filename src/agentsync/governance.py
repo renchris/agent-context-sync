@@ -2113,10 +2113,14 @@ def run_purge_queue(
     config: Config,
     *,
     gov: GovernanceConfig | None = None,
+    dry_run: bool = False,
     lock: bool = True,
     now: datetime | None = None,
 ) -> list[PurgeReport]:
-    """Run every queued purge; a held or failing one stays queued (logged), the rest are dequeued."""
+    """Run every queued purge; a held or failing one stays queued (logged), the rest are dequeued.
+
+    ``dry_run`` reports each queued purge without writing anything, and leaves the queue as it is.
+    """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
     reports: list[PurgeReport] = []
@@ -2124,7 +2128,9 @@ def run_purge_queue(
         remaining: list[QueuedPurge] = []
         for q in pending_purges(sp.root):
             try:
-                rep = purge(config, q.selector, reason=q.reason, gov=gov, lock=False, now=now)
+                rep = purge(
+                    config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now
+                )
             except GovernanceError as exc:
                 log.warning("governance: queued purge kept: %s", exc)
                 remaining.append(q)
@@ -2132,7 +2138,8 @@ def run_purge_queue(
             reports.append(rep)
             if not rep.verified:
                 remaining.append(q)
-        _write_queue(sp.root, remaining)
+        if not dry_run:
+            _write_queue(sp.root, remaining)
     return reports
 
 

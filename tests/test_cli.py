@@ -972,6 +972,25 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     assert cli.main(["purge", "--config", cfg]) == cli.EXIT_USAGE
 
 
+def test_purge_queue_dry_run_previews_and_writes_nothing(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Field report 2026-10-05: `purge --queue --dry-run` executed the queued purges."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(initialised.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    head = git(repo, "rev-parse", "HEAD").strip()
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "dry run" in out and "1 queued purge(s) previewed" in out and "; 1 queued" in out
+    assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
+    assert len(governance.pending_purges(initialised.state_paths.root)) == 1
+
+
 def _archive_on(config: Config) -> str:
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + "\n[governance]\narchive = true\n", encoding="utf-8")
