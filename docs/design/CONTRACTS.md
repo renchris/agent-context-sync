@@ -5395,7 +5395,7 @@ rule wins:
 
 | Rule | Condition | NEXT |
 |---|---|---|
-| 1 | no docs repo; a skill copy missing or not this build's text; a live Graph source whose `auth_state` is not ok; then the first of the caller's `fixes` | its fix (`init`, `sync`, `graph login`, the fix) |
+| 1 | no docs repo; a skill copy missing or not this build's text; a live Graph source whose `auth_state` is not ok; then the first of the caller's `fixes` | its fix (`add-source "<folder>"` with the first live local source's id, or "a folder to sync" when there is none; `init` until KISS K14 hid it. Then `sync`, `graph login`, the fix) |
 | 2 | no live source other than the inbox | ask which folders (`install.sh --list-folders`), `add-source "<folder>"` |
 | 3 | a live source never enumerated, a Graph source whose `enumeration_complete` is false (its FULL pass resumes), or a local file (not dataless, not Graph) whose last verdict is created/maybe_changed/changed/deferred | `sync` again |
 | 4 | no curated page (`curate.iter_topic_pages`) and no `_eval/questions.md` | draft the baseline questions |

@@ -246,9 +246,16 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         waits.append(f"{len(queued)} queued purge(s): run `{BIN} purge --queue`")
 
     # Rule 1: status FAILs.
-    if not (docs / ".git").exists():
-        return done(f"the docs repo does not exist yet: run `{BIN} init`", 1)
     live = config.live_sources()
+    if not (docs / ".git").exists():
+        # add-source creates whatever is missing (KISS K14; init is hidden). A source id, never its path.
+        folder = next((s for s in live if s.kind is SourceKind.LOCAL), None)
+        which = f"the folder of source {folder.id!r}" if folder is not None else "a folder to sync"
+        return done(
+            f'the docs repo does not exist yet: run `{BIN} add-source "<folder>"` with {which} '
+            "(it creates whatever is missing)",
+            1,
+        )
     db = config.state_paths.db
     files = _Files()
     incomplete: list[str] = []

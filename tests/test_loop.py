@@ -92,7 +92,20 @@ def _hand_written(config: Config, n: int) -> None:
 def test_rule_1_missing_docs_repo(tmp_path: Path, folder: Path) -> None:
     config = _setup(tmp_path, local_source_table("work", folder))
     shutil.rmtree(config.docs_repo)
-    assert _lines(config) == [f"NEXT: the docs repo does not exist yet: run `{BIN} init`"]
+    assert _lines(config) == [
+        f'NEXT: the docs repo does not exist yet: run `{BIN} add-source "<folder>"` with the folder of '
+        "source 'work' (it creates whatever is missing)"
+    ]
+    assert " init" not in _lines(config)[0]  # KISS K14: init is hidden, NEXT names the visible verb
+
+
+def test_rule_1_missing_docs_repo_without_a_folder(tmp_path: Path) -> None:
+    config = _setup(tmp_path)
+    shutil.rmtree(config.docs_repo)
+    assert _lines(config) == [
+        f'NEXT: the docs repo does not exist yet: run `{BIN} add-source "<folder>"` with a folder to sync '
+        "(it creates whatever is missing)"
+    ]
 
 
 def test_rule_1_missing_or_stale_skill(tmp_path: Path, folder: Path) -> None:
