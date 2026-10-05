@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 import pytest
 import yaml
 
-from agentsync import cli, gitops, governance, lints, loop, net, policy
+from agentsync import cli, gitops, governance, lints, loop, net, policy, skill
 from agentsync.config import Config, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -27,7 +27,7 @@ from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import CycleMode, SourceKind
-from agentsync.ops import launchd
+from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock
 
 
@@ -60,8 +60,8 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in (
-        "init", "sync", "status", "doctor", "accept-deletions", "materialise", "graph", "install-agent",
-        "purge", "compact-history", "hold", "offboard", "policy",
+        "init", "sync", "status", "accept-deletions", "materialise", "graph", "install-agent",
+        "purge", "compact-history", "hold", "offboard",
     ):  # fmt: skip
         assert command in out
     assert cli.main(["sync", "--help"]) == 0
@@ -704,9 +704,11 @@ def test_install_and_uninstall_agent_call_launchd(
 
 
 def test_doctor_runs(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    """``doctor`` is a hidden alias of ``status`` (install.sh still calls it until W5)."""
     rc = cli.main(["doctor", "--config", str(initialised.config_path)])
-    out = capsys.readouterr().out
-    assert "[ok  ] git" in out and "launchd.poll" in out
+    cap = capsys.readouterr()
+    assert "[ok  ] git" in cap.out and "launchd.poll" in cap.out
+    assert cap.out.startswith("NEXT: ") and "renamed: run agentsync status" in cap.err
     assert rc in (cli.EXIT_OK, cli.EXIT_FAILED)
 
 
@@ -1051,18 +1053,25 @@ def test_offboard_is_a_dry_run_unless_confirmed(
     assert not initialised.state_paths.root.exists() and initialised.docs_repo.is_dir()  # docs kept
 
 
-def test_policy_show_and_a_broken_policy_is_a_config_error(
+def test_status_shows_the_policy_and_a_broken_policy_fails(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """KISS K08a: status prints the effective policy; ``policy show`` is a hidden alias of status; a broken
+    policy is a FAIL there (rc 1) and still a configuration error for sync."""
     cfg = str(initialised.config_path)
     guid = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"
     with initialised.config_path.open("a", encoding="utf-8") as fh:
         fh.write(f'\n[policy]\nexclude_label_ids = ["{guid.upper()}"]\n')
-    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert f"exclude_label_ids: {guid}" in out and "labels_active: true" in out
+    assert f"  exclude_label_ids: {guid}" in out and "  labels_active: true" in out
+    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_OK
+    cap = capsys.readouterr()
+    assert cap.out == out and "renamed: run agentsync status" in cap.err
     (initialised.config_path.parent / "policy.toml").write_text("[policy]\nnope = 1\n", encoding="utf-8")
-    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_CONFIG
+    assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "[FAIL] policy " in out and "policy: invalid (see the [FAIL] policy line)" in out
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG  # a broken policy never means "allow"
 
 
@@ -1089,13 +1098,23 @@ def test_doctor_reports_network_broker_governance_and_policy(
 
     monkeypatch.setattr(net, "probe_reachability", fake_probe)
     cfg = str(initialised.config_path)
-    rc = cli.main(["doctor", "--network", "--config", cfg])
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    assert probes == [], "no live Graph source: no probe"
+    assert cli.main(["doctor", "--network", "--config", cfg]) == cli.EXIT_USAGE, "--network is deleted"
+    capsys.readouterr()
+    text = initialised.config_path.read_text(encoding="utf-8")
+    initialised.config_path.write_text(
+        text.replace("[graph]", '[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"', 1)
+        + '\n[[source]]\nid = "mail"\nkind = "graph_mail"\nfolder = "inbox"\n',
+        encoding="utf-8",
+    )
+    rc = cli.main(["status", "--config", cfg])
     out = capsys.readouterr().out
     assert "network.proxy" in out and "governance.remote" in out and "] policy" in out
     assert "failed: network-policy: TLS" in out and rc == cli.EXIT_FAILED  # TLS is failed, never skipped
-    assert probes == [initialised.graph.base_url]
+    assert probes == [initialised.graph.base_url], "a live Graph source: the probe runs by itself"
     git(initialised.docs_repo, "remote", "add", "origin", "https://github.com/someone/docs.git")
-    cli.main(["doctor", "--config", cfg])
+    cli.main(["status", "--config", cfg])
     assert "[FAIL] governance.remote" in capsys.readouterr().out
 
 
@@ -1113,6 +1132,167 @@ def test_status_surfaces_the_launchers_tcc_tokens(
     assert (
         "launcher: poll: 2026-09-29T10:00:10Z agentsync-launcher[1]: TCC_PENDING" in capsys.readouterr().out
     )
+
+
+# ---- status: the single read-only check (KISS K08a) --------------------------------------------------------
+
+
+def _status(cfg: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, list[str]]:
+    rc = cli.main(["status", "--config", cfg])
+    return rc, capsys.readouterr().out.splitlines()
+
+
+def test_status_starts_with_next_then_the_loop_line_then_the_checks(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    want = loop.next_step(initialised).lines()
+    assert rc == cli.EXIT_OK and want[0].startswith("NEXT: ") and out[: len(want)] == want
+    assert out[len(want)].startswith("loop: skill current · inbox off · baseline missing · topics 0 · ")
+    assert re.match(r"\[(ok  |info|warn|FAIL)\] ", out[len(want) + 1]), "then the checks"
+    assert "  source (local, live): baseline complete" in "\n".join(out) and "  labels_active: false" in out
+
+
+def test_status_fail_lines_are_doctors_byte_for_byte_and_exit_1(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    fake = [
+        doctor.CheckResult("python", True, "3.11.9"),
+        doctor.CheckResult("fake.check", False, "broken (twice)", doctor.Severity.ERROR, fix="do the thing"),
+        doctor.CheckResult("fake.warn", False, "degraded", doctor.Severity.WARN, fix="later"),
+    ]
+    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: list(fake))
+    monkeypatch.setattr(cli, "_extra_checks", lambda config, *, offline=False: [])
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED
+    assert [ln for ln in out if ln.startswith("[")] == doctor.format_results(fake).splitlines()
+    assert out[0] == "NEXT: the fake.check check failed: do the thing"
+    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: [fake[0], fake[2]])
+    assert _status(cfg, capsys)[0] == cli.EXIT_OK, "a warn alone is not a failure"
+
+
+def test_a_failed_skill_write_is_a_fail(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = str(initialised.config_path)
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_OK and any(
+        re.match(r"\[info\] skill +— missing: the next sync writes it", ln) for ln in out
+    )
+    _synced(initialised)
+    (path,) = skill.skill_paths()
+    path.write_text("an older skill\n", encoding="utf-8")
+    path.parent.chmod(0o500)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, "a skill write failure never fails a sync"
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        assert rc == cli.EXIT_FAILED
+        assert out[0].startswith("NEXT: the agentsync-docs skill is missing or out of date")
+        (fail,) = [ln for ln in out if ln.startswith("[FAIL] skill ")]
+        assert "stale although a sync ran with this build" in fail and fail.endswith(
+            "(fix: make that folder writable, then run `~/.local/bin/agentsync sync`)"
+        )
+        later = datetime.now(UTC) + timedelta(hours=1)
+        monkeypatch.setattr(cli, "_build_installed_at", lambda: later)
+        rc, out = _status(cfg, capsys)
+        assert rc == cli.EXIT_OK, "a build installed after the last sync: that sync could not write it"
+        assert any(re.match(r"\[info\] skill +— stale: the next sync writes it", ln) for ln in out)
+    finally:
+        path.parent.chmod(0o700)
+
+
+def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]) == 0
+    skill.write_skill(load_config(cfg).docs_repo)
+    capsys.readouterr()
+    rc, out = _status(str(cfg), capsys)
+    assert rc == cli.EXIT_OK and not any(ln.startswith("[FAIL]") for ln in out)
+    assert out[0].startswith("NEXT: no folder is synced yet: ") and "add-source" in out[0]
+
+
+def test_status_warns_when_the_checkout_moved_past_the_installed_commit(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    checkout = tmp_path / "checkout"
+    (checkout / ".git" / "refs" / "heads").mkdir(parents=True)
+    (checkout / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (checkout / ".git" / "packed-refs").write_text(
+        f"# pack-refs\n{'b' * 40} refs/heads/main\n", encoding="utf-8"
+    )
+    stamp = tmp_path / "stamp"
+    stamp.write_text(f"commit={'a' * 12} source={checkout}\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "_install_stamp", lambda: stamp)
+    cfg = str(initialised.config_path)
+    rc, out = _status(cfg, capsys)
+    (line,) = [ln for ln in out if " install.commit " in ln]
+    assert rc == cli.EXIT_OK and line.startswith("[warn] install.commit ")
+    assert f"installed from {'a' * 12}, but the checkout at {checkout} is at {'b' * 12}" in line
+    assert line.endswith(f"(fix: re-run install.sh ({checkout}/scripts/install.sh))")
+    (checkout / ".git" / "refs" / "heads" / "main").write_text("a" * 40 + "\n", encoding="utf-8")
+    (line,) = [ln for ln in _status(cfg, capsys)[1] if " install.commit " in ln]
+    assert line.startswith("[ok  ] install.commit ")
+    monkeypatch.setattr(cli, "_install_stamp", lambda: tmp_path / "none")
+    assert not [ln for ln in _status(cfg, capsys)[1] if " install.commit " in ln], "no stamp: no check"
+
+
+def test_status_runs_the_tcc_canary_only_after_a_tcc_event_or_before_any_run(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: list[bool] = []
+    real = doctor.run_checks
+
+    def spy(config: Config, *, tcc_canary: bool = True) -> list[doctor.CheckResult]:
+        seen.append(tcc_canary)
+        return real(config, tcc_canary=tcc_canary)
+
+    monkeypatch.setattr(doctor, "run_checks", spy)
+    cfg = str(initialised.config_path)
+
+    def canary() -> bool:
+        _status(cfg, capsys)
+        return seen[-1]
+
+    assert canary() is True, "nothing has run since install"
+    initialised.log_dir.mkdir(parents=True, exist_ok=True)
+    poll = initialised.log_dir / "com.agentsync.poll.err.log"
+    poll.write_text(
+        "2026-09-29T10:00:00Z agentsync-launcher[1]: CANARY_OK path=/x\n"
+        "2026-09-29T10:00:05Z agentsync-launcher[1]: CHILD_EXIT rc=0\n",
+        encoding="utf-8",
+    )
+    assert canary() is False, "the last run got past TCC"
+    with poll.open("a", encoding="utf-8") as fh:
+        fh.write("2026-09-29T11:00:00Z agentsync-launcher[2]: TCC_PENDING reason=canary path=/y\n")
+    assert canary() is True
+    (initialised.log_dir / "com.agentsync.reconcile.err.log").write_text(
+        "2026-09-29T12:00:00Z agentsync-launcher[3]: CHILD_EXIT rc=0\n", encoding="utf-8"
+    )
+    assert canary() is False, "the newest event of either job decides"
+    plist = launchd.plist_path("com.agentsync.poll")
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(b"")
+    assert canary() is True, "installed after every logged event: nothing has run since install"
+
+
+def test_status_honours_no_next_hint(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """install.sh exports AGENTSYNC_NO_NEXT_HINT=1 and still calls ``doctor``: its NEXT stays the only one."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_OK
+    cap = capsys.readouterr()
+    assert cap.out.startswith("loop: skill current") and "renamed" not in cap.err
+    assert not re.search(r"(?im)^\s*(next|waiting on you|note):", cap.out)
 
 
 # ---- add-source ------------------------------------------------------------------------------------------

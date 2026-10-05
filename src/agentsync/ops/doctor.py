@@ -1,4 +1,4 @@
-"""``agentsync doctor``: preflight checks with a concrete fix per failure (owner: ops).
+"""Preflight checks with a concrete fix per failure, run by ``agentsync status`` (owner: ops).
 
 Every probe that touches the machine or another module is a private module-level function (``_git_path``,
 ``_run``, ``_volume_uuid``, ``_auth_status``, ...) so tests replace it with a fake; ``run_checks`` never
@@ -879,7 +879,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
                     f"TCC_PENDING: {root} did not answer within {_FP_CANARY_TIMEOUT_S:.0f}s; macOS is asking "
                     f"(or asked) {prompt}",
                     fix=(
-                        f"click Allow on {prompt} while logged in, then run agentsync doctor again "
+                        f"click Allow on {prompt} while logged in, then run agentsync status again "
                         "(prefer this per-provider grant over Full Disk Access: see "
                         "launcher/Sources/main.swift, "
                         "trust boundary)"
@@ -1247,7 +1247,21 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
 )
 
 
-def run_checks(config: Config) -> list[CheckResult]:
+def _tcc_canary_skipped(config: Config) -> list[CheckResult]:
+    """What the ``tcc`` group reports when the caller skips the canary: one info line, only when a canary
+    would have run (a TCC-protected live source)."""
+    if not launchd.canary_paths(config):
+        return []
+    return [
+        _ok(
+            "tcc.canary",
+            "not run: the last launcher run got past TCC (it runs again after a TCC_PENDING or TCC_DENIED "
+            "launcher event, or when nothing has run since install)",
+        )
+    ]
+
+
+def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
 
     python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; docs_repo
@@ -1259,11 +1273,14 @@ def run_checks(config: Config) -> list[CheckResult]:
 
     Ops extension (C15 §3): the signed launcher's presence, signature, identifier and designated requirement
     (WARN when ad hoc), and per TCC-protected source a timed metadata-only canary run *as the launcher*.
+    ``tcc_canary=False`` (KISS K08a: ``status`` decides when it is due) replaces the canary with one
+    ``tcc.canary`` info line.
     """
     results: list[CheckResult] = []
     for group, check in _CHECKS:
+        run = _tcc_canary_skipped if group == "tcc" and not tcc_canary else check
         try:
-            results.extend(check(config))
+            results.extend(run(config))
         except Exception as exc:
             log.debug("doctor: check %s crashed", group, exc_info=True)
             results.append(_bad(group, f"check crashed: {type(exc).__name__}: {exc}"))

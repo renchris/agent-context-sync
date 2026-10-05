@@ -822,6 +822,16 @@ def test_tcc_canary_through_the_launcher(
     assert "AgentSyncLauncher.app" in r["tcc"].detail, "the note names the launcher, not the interpreter"
 
 
+def test_tcc_canary_false_runs_no_canary(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    """KISS K08a: status decides when the canary is due; when it is not, one ok tcc.canary line instead."""
+    _launcher(monkeypatch)
+    cfg, _root = _cloud(sample_config)
+    monkeypatch.setattr(doctor, "_launcher_canary", lambda *a: pytest.fail("the canary ran"))
+    r = by_name(run_checks(cfg, tcc_canary=False))
+    assert "tcc.onedrive" not in r and r["tcc.canary"].ok and "not run" in r["tcc.canary"].detail
+    assert "tcc.canary" not in by_name(run_checks(sample_config, tcc_canary=False)), "no protected source"
+
+
 def test_launcher_canary_probe_argv(tmp_path: Path) -> None:
     """The real probe runs the launcher as its own responsible process, canary-only, never a program."""
     log = tmp_path / "argv.txt"

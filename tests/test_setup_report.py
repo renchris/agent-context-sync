@@ -5,6 +5,7 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import subprocess
@@ -19,7 +20,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from agentsync import cli, net, setup_report
-from agentsync.config import load_config
+from agentsync.config import Config, load_config
+from agentsync.ops import doctor
 
 ORG = "Contoso"
 FOLDERS = ("FY26 Projects", "Client Alpha", "Budget Review")
@@ -84,12 +86,16 @@ def fake_mac(monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
 
 @pytest.fixture
 def clean_doctor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The CLI's doctor hook without its FAIL lines (this tmp HOME has no launcher, so doctor FAILs, and a
+    """The CLI's status build without its FAIL checks (this tmp HOME has no launcher, so a check FAILs, and a
     doctor FAIL is part of the outcome)."""
-    real = cli._doctor_lines_offline
-    monkeypatch.setattr(
-        cli, "_doctor_lines_offline", lambda config: [ln for ln in real(config) if not ln.startswith("[FAIL")]
-    )
+    real = cli._build_status
+
+    def clean(config: Config, *, offline: bool = False) -> Any:
+        built = real(config, offline=offline)
+        kept = tuple(c for c in built.checks if c.ok or c.severity is not doctor.Severity.ERROR)
+        return dataclasses.replace(built, checks=kept)
+
+    monkeypatch.setattr(cli, "_build_status", clean)
 
 
 def report(tmp_path: Path, cfg: Path, *extra: str) -> tuple[int, str, float]:
@@ -961,8 +967,35 @@ def test_doctor_hook_makes_no_network_probe(
     )
     config = load_config(cfg)
     assert any(s.kind.is_graph for s in config.sources)
-    lines = [ln for ln in cli._extra_checks(config, probe=True, offline=True) if ln.name == "network.graph"]
+    lines = [ln for ln in cli._extra_checks(config, offline=True) if ln.name == "network.graph"]
     assert [ln.detail.split(" (")[0] for ln in lines] == ["not probed"]
+
+
+def test_checks_render_once_from_one_offline_status_build(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KISS K08a: one offline status build feeds both sections: the checks in Doctor, the loop line and the
+    detail in Status; no network probe, no NEXT line."""
+    calls: list[bool] = []
+    real = cli._build_status
+
+    def counted(config: Config, *, offline: bool = False) -> Any:
+        calls.append(offline)
+        return real(config, offline=offline)
+
+    def boom(*args: object, **kwargs: object) -> object:
+        raise AssertionError("network probe from setup-report")
+
+    monkeypatch.setattr(cli, "_build_status", counted)
+    monkeypatch.setattr(net, "probe_reachability", boom)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0 and calls == [True]
+    status = section(text, "Status")
+    assert "loop: skill " in status and "NEXT:" not in status
+    assert not re.search(r"^\[(ok|FAIL|warn|info)\s*\]", status, re.MULTILINE), (
+        "the checks render in Doctor only"
+    )
+    assert re.search(r"\d+ check\(s\): \d+ ok", section(text, "Doctor"))
 
 
 # ---- the redactor ---------------------------------------------------------------------------------------

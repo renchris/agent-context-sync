@@ -1,17 +1,17 @@
 """``agentsync`` command line (owner: integrator).
 
 Subcommands: init · sync [--once] [--mode poll|reconcile|dry_run] [--dry-run] [--source ID ...]
-[--materialise-budget BYTES] · accept-deletions SOURCE · status · doctor [--network]
-· curate · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
-login|logout|whoami|discover (also as top-level login · logout · whoami · discover; login [--device-code];
-discover [--url URL ...] [--toml]) · install-agent [--interval SECONDS] [--no-backup-exclusions] ·
-uninstall-agent · purge SELECTOR | --queue · compact-history · hold · offboard [--purge-data] [--confirm
-DOCS_REPO] · policy show · add-source PATH [--id ID] · setup-report [--out PATH] [--friction PATH]
-[--no-redact] · it-request --out PATH.
+[--materialise-budget BYTES] · accept-deletions SOURCE · status · curate · materialise [--budget BYTES]
+[PATH ...] · adopt SRC_DIR · migrate · graph login|logout|whoami|discover (also as top-level login · logout ·
+whoami · discover; login [--device-code]; discover [--url URL ...] [--toml]) · install-agent [--interval
+SECONDS] [--no-backup-exclusions] · uninstall-agent · purge SELECTOR | --queue · compact-history · hold ·
+offboard [--purge-data] [--confirm DOCS_REPO] · add-source PATH [--id ID] · setup-report [--out PATH]
+[--friction PATH] [--no-redact] · it-request --out PATH.
 Every subcommand accepts ``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``.
-``sync`` without ``--mode`` and ``status`` end with the loop's ``NEXT:`` line and any ``WAITING ON YOU:``
-lines (:mod:`agentsync.loop`); ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops them from
-``sync``.
+``sync`` without ``--mode`` ends with the loop's ``NEXT:`` line and any ``WAITING ON YOU:`` lines
+(:mod:`agentsync.loop`); ``status``, the single read-only check, starts with them (KISS K08a; ``doctor``
+and ``policy show`` are hidden aliases of it). ``AGENTSYNC_NO_NEXT_HINT=1`` (scripts/install.sh sets it) drops
+them from both.
 ``setup-report --out`` ends with the issue link, never a hint.
 
 C15 section 9 item 32: the macOS trust store is injected into ``ssl`` (truststore) as the very first thing,
@@ -96,7 +96,7 @@ EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher
 _EPILOG = """\
 exit codes:
   0   ok
-  1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a doctor check
+  1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a status check
       failed, a purge/compaction was not verified, or discovery was incomplete (curate rows are not a failure)
   2   usage error (bad arguments)
   75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
@@ -274,14 +274,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add(
-        "status", "show sources, last runs, lock, heartbeat, holds and queued purges (read-only)", _cmd_status
+        "status",
+        "the single read-only check: NEXT, the loop line, every preflight check with its fix (rc 1 on any "
+        "FAIL), then policy, holds, queued purges and each source",
+        _cmd_status,
     )
-    p = add("doctor", "preflight checks, each failure with its fix", _cmd_doctor)
-    p.add_argument(
-        "--network",
-        action="store_true",
-        help="also probe the Graph host through the resolved proxy (automatic with live Graph sources)",
-    )
+    add("doctor", "renamed: run agentsync status", _cmd_status_renamed, hidden=True)
     add(
         "curate",
         "the curation work list: every lint finding, mirror changes since the last checkpoint, the refresh "
@@ -372,7 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="list only (the default without --confirm)")
     p.add_argument("--confirm", metavar="DOCS_REPO", help="the docs repo path: required to remove anything")
 
-    p = add("policy", "content policy (sensitivity labels): show the effective policy", _cmd_policy)
+    p = add("policy", "renamed: run agentsync status", _cmd_status_renamed, hidden=True)
     p.add_argument("action", choices=["show"])
 
     p = add(
@@ -759,7 +757,7 @@ def _status_lines(config: Config) -> list[str]:
         out.append(f"launcher: {event}")
     db = config.state_paths.db
     if not db.exists():
-        out.append("manifest: none yet (run `agentsync sync --once`)")
+        out.append("manifest: none yet (no sync has run)")
         return out
     with Manifest(db) as manifest:
         runs = manifest.last_runs(5)
@@ -784,11 +782,120 @@ def _status_lines(config: Config) -> list[str]:
     return out
 
 
+def _policy_lines(config: Config) -> list[str]:
+    """The effective content policy (what ``policy show`` printed; a broken policy is the ``policy`` FAIL)."""
+    try:
+        pol = content_policy.load_policy(config)
+    except ConfigError:
+        return ["policy: invalid (see the [FAIL] policy line)"]
+    sidecar = config.config_path.parent / content_policy.POLICY_FILE_NAME
+    return [
+        f"policy: {config.config_path} [policy]" + (f" + {sidecar}" if sidecar.is_file() else ""),
+        f"  labels_active: {'true' if pol.labels_active else 'false'}",
+        f"  exclude_label_ids: {', '.join(pol.exclude_label_ids) or '-'}",
+        f"  exclude_label_names: {', '.join(pol.exclude_label_names) or '-'}",
+        f"  refuse_unlabelled: {'true' if pol.refuse_unlabelled else 'false'}",
+        f"  fingerprint: {pol.fingerprint()}",
+        "  always: encrypted Office (EncryptedPackage) and encrypted PDFs become UNREADABLE stubs",
+    ]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Status:
+    """What ``status`` prints, in order (KISS K08a): the loop's NEXT / WAITING ON YOU / note lines, the one
+    loop line, every check (doctor's ``[FAIL] name — detail (fix: ...)`` lines, byte for byte), then the
+    detail lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
+    breaker, the policy)."""
+
+    loop: tuple[str, ...]
+    line: str
+    checks: tuple[doctor.CheckResult, ...]
+    detail: tuple[str, ...]
+
+    @property
+    def failed(self) -> bool:
+        return any(not r.ok and r.severity is doctor.Severity.ERROR for r in self.checks)
+
+    def check_lines(self) -> list[str]:
+        return doctor.format_results(list(self.checks)).splitlines()
+
+    def lines(self) -> list[str]:
+        return [*self.loop, self.line, *self.check_lines(), *self.detail]
+
+
+def _fail_step(result: doctor.CheckResult) -> str:
+    """Rule 1's NEXT for a FAIL: its fix, or a pointer to its line."""
+    if result.fix:
+        return f"the {result.name} check failed: {result.fix}"
+    return f"the {result.name} check failed: its [FAIL] line below says why"
+
+
+def _build_status(config: Config, *, offline: bool = False) -> _Status:
+    """``status``'s output. ``offline`` (setup-report): no Graph probe, no TCC canary (it can raise a privacy
+    prompt), no NEXT lines and no policy detail (label names stay out of a report meant for sharing)."""
+    checks = doctor.run_checks(config, tcc_canary=not offline and _tcc_canary_due(config))
+    checks += _extra_checks(config, offline=offline)
+    fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
+    hint_off = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
+    next_lines = [] if offline or hint_off else loop.next_lines(config, fixes=fixes)
+    detail = _status_lines(config) + ([] if offline else _policy_lines(config))
+    return _Status(tuple(next_lines), loop.status_line(config), tuple(checks), tuple(detail))
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
     config = _config(args)
-    for line in [*_status_lines(config), *loop.next_lines(config)]:
+    status = _build_status(config)
+    for line in status.lines():
         _out(line)
-    return EXIT_OK
+    return EXIT_FAILED if status.failed else EXIT_OK
+
+
+def _cmd_status_renamed(args: argparse.Namespace) -> int:
+    """The hidden ``doctor`` and ``policy show`` aliases: run ``status`` (install.sh still calls ``doctor``
+    and reads its ``[FAIL`` lines; under AGENTSYNC_NO_NEXT_HINT=1 the rename note is left out too)."""
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+        _err("renamed: run agentsync status")
+    return _cmd_status(args)
+
+
+_CANARY_EVENTS = (*_TCC_TOKENS, *_CLEARED_TOKENS)
+
+
+def _agents_installed_at(config: Config) -> datetime | None:
+    """When the poll LaunchAgent's plist was last written (``install-agent``), to the second; None when it is
+    not installed."""
+    try:
+        mtime = launchd.plist_path(f"{config.launchd_label_prefix}.poll").stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(int(mtime), UTC)
+
+
+def _tcc_canary_due(config: Config) -> bool:
+    """Whether ``status`` runs the TCC canary (up to 15 s per protected source, and it may raise the privacy
+    prompt): only when the newest launcher event of either job is TCC_PENDING or TCC_DENIED, or when no event
+    is logged since the LaunchAgents were installed (or ever)."""
+    last: tuple[datetime, str] | None = None
+    for suffix in ("poll", "reconcile"):
+        log_path = expand(config.log_dir) / f"{config.launchd_label_prefix}.{suffix}.err.log"
+        try:
+            lines = _log_tail(log_path)
+        except OSError:
+            continue
+        for ln in reversed(lines):
+            token = next((t for t in _CANARY_EVENTS if t in ln), None)
+            if token is None:
+                continue
+            stamp = _parse_log_time(ln.strip().split(" ", 1)[0])
+            if stamp is not None and (last is None or stamp > last[0]):
+                last = (stamp, token)
+            break
+    if last is None:
+        return True
+    installed = _agents_installed_at(config)
+    if installed is not None and last[0] < installed:
+        return True
+    return last[1] in _TCC_TOKENS
 
 
 # ---- doctor additions (C15 sections 1, 5 and 7; the ops checks live in ops/doctor.py) ------------------
@@ -834,7 +941,7 @@ def _job_environment(config: Config) -> dict[str, str]:
     return env
 
 
-def _network_checks(config: Config, *, probe: bool, offline: bool = False) -> list[doctor.CheckResult]:
+def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
     live_graph = any(s.kind.is_graph and s.is_live for s in config.sources)
     system = net.system_proxy()
     proxy = net.resolve_proxy(config.network.proxy, system=system)
@@ -866,16 +973,16 @@ def _network_checks(config: Config, *, probe: bool, offline: bool = False) -> li
         out.append(_check("network.proxy", True, diag[0], doctor.Severity.INFO))
     out += [_check("network.proxy", False, w, doctor.Severity.WARN) for w in diag[1:]]
     if offline:  # setup-report: no network, ever
-        if probe or live_graph:
+        if live_graph:
             out.append(
                 _check(
                     "network.graph",
                     False,
-                    "not probed (setup-report makes no network calls; run `agentsync doctor --network`)",
+                    "not probed (setup-report makes no network calls; `agentsync status` probes it)",
                     doctor.Severity.INFO,
                 )
             )
-    elif probe or live_graph:
+    elif live_graph:  # the probe runs whenever a Graph source is live (KISS K08a: no --network)
         reach = net.probe_reachability(config.graph.base_url, proxy)
         if reach.online:
             out.append(
@@ -993,15 +1100,123 @@ def _policy_check(config: Config) -> list[doctor.CheckResult]:
     return [_check("policy", True, detail, doctor.Severity.INFO)]
 
 
-def _extra_checks(config: Config, *, probe: bool, offline: bool = False) -> list[doctor.CheckResult]:
-    """Integrator-owned doctor checks: proxy/TLS reachability, broker, governance and content policy
-    (``offline``: never the Graph reachability probe, whatever ``probe`` and the sources say)."""
+_INSTALL_STAMP = ".agentsync-install-source"
+"""scripts/install.sh's record, inside the uv tool environment, of the clean checkout it installed this build
+from: ``commit=<sha12> source=<checkout path>`` (removed for a dirty checkout or a wheel)."""
+
+
+def _install_stamp() -> Path:
+    return Path(sys.prefix) / _INSTALL_STAMP
+
+
+def _build_installed_at() -> datetime | None:
+    """When this build was installed: its environment's ``pyvenv.cfg`` (``uv tool install --force``
+    recreates it), to the second; None when unreadable."""
+    try:
+        return datetime.fromtimestamp(int((Path(sys.prefix) / "pyvenv.cfg").stat().st_mtime), UTC)
+    except OSError:
+        return None
+
+
+def _checkout_head(checkout: Path) -> str | None:
+    """The commit HEAD names in the git checkout at ``checkout``, read from its files (never by running git:
+    without the developer tools /usr/bin/git offers to install them); None when it cannot be read."""
+    try:
+        git_dir = checkout / ".git"
+        if git_dir.is_file():  # a linked worktree: "gitdir: <path>"
+            pointer = git_dir.read_text(encoding="utf-8").strip()
+            if not pointer.startswith("gitdir: "):
+                return None
+            git_dir = checkout / pointer.removeprefix("gitdir: ")
+        common = git_dir
+        if (git_dir / "commondir").is_file():
+            common = git_dir / (git_dir / "commondir").read_text(encoding="utf-8").strip()
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref: "):
+            return head or None
+        ref = head.removeprefix("ref: ")
+        for base in (git_dir, common):
+            if (base / ref).is_file():
+                return (base / ref).read_text(encoding="utf-8").strip() or None
+        for line in (common / "packed-refs").read_text(encoding="utf-8").splitlines():
+            sha, _, name = line.partition(" ")
+            if name == ref:
+                return sha
+    except OSError:
+        return None
+    return None
+
+
+def _install_check(config: Config) -> list[doctor.CheckResult]:
+    """WARN when the checkout install.sh installed this build from has moved to another commit."""
+    try:
+        stamp = _install_stamp().read_text(encoding="utf-8").strip()
+    except OSError:
+        return []  # not installed by install.sh from a clean checkout
+    commit, _, source = stamp.removeprefix("commit=").partition(" source=")
+    if not stamp.startswith("commit=") or not commit or not source:
+        return []
+    head = _checkout_head(Path(source))
+    if head is None:
+        return []
+    if head[:12] == commit[:12]:
+        return [
+            _check(
+                "install.commit",
+                True,
+                f"installed from {commit[:12]}, the checkout's HEAD",
+                doctor.Severity.INFO,
+            )
+        ]
+    return [
+        _check(
+            "install.commit",
+            False,
+            f"installed from {commit[:12]}, but the checkout at {source} is at {head[:12]}",
+            doctor.Severity.WARN,
+            fix=f"re-run install.sh ({source}/scripts/install.sh)",
+        )
+    ]
+
+
+def _skill_check(config: Config) -> list[doctor.CheckResult]:
+    """The agentsync-docs skill copies: FAIL when one is missing or stale although a sync ran with this build
+    (every sync writes them, so the write failed); before that, a not-ok info line."""
+    docs = expand(config.docs_repo)
+    state = loop.skill_state(docs)
+    where = ", ".join(str(p) for p in skill.skill_paths())
+    if state == "current":
+        return [_check("skill", True, f"current: {where}", doctor.Severity.INFO)]
+    started: str | None = None
+    if config.state_paths.db.exists():
+        with Manifest(config.state_paths.db) as manifest:
+            started = manifest.last_run_started()
+    ran_at = _parse_log_time(started) if started is not None else None
+    built_at = _build_installed_at()
+    if ran_at is None or (built_at is not None and ran_at < built_at):
+        return [_check("skill", False, f"{state}: the next sync writes it ({where})", doctor.Severity.INFO)]
+    return [
+        _check(
+            "skill",
+            False,
+            f"{state} although a sync ran with this build: the skills folder could not be written ({where})",
+            doctor.Severity.ERROR,
+            fix=f"make that folder writable, then run `{loop.BIN} sync`",
+        )
+    ]
+
+
+def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+    """Integrator-owned checks: proxy/TLS reachability, broker, governance, content policy, the skill copies
+    and the installed commit (``offline``: never the Graph reachability probe, whatever the sources say)."""
     out: list[doctor.CheckResult] = []
     checks: tuple[tuple[str, Callable[[], list[doctor.CheckResult]]], ...] = (
-        ("network", lambda: _network_checks(config, probe=probe, offline=offline)),
+        ("network", lambda: _network_checks(config, offline=offline)),
         ("graph.broker", lambda: _broker_check(config)),
         ("governance", lambda: _governance_checks(config)),
         ("policy", lambda: _policy_check(config)),
+        ("skill", lambda: _skill_check(config)),
+        ("install.commit", lambda: _install_check(config)),
     )
     for name, fn in checks:
         try:
@@ -1013,18 +1228,20 @@ def _extra_checks(config: Config, *, probe: bool, offline: bool = False) -> list
     return out
 
 
-def _cmd_doctor(args: argparse.Namespace) -> int:
-    config = _config(args)
-    results = doctor.run_checks(config) + _extra_checks(config, probe=bool(args.network))
-    _out(doctor.format_results(results))
-    failed = [r for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
-    return EXIT_FAILED if failed else EXIT_OK
+def _report_hooks() -> setup_report.ReportHooks:
+    """setup-report's hooks over one offline :func:`_build_status`: its check lines are the Doctor section,
+    the loop line and the detail lines the Status section (the checks are rendered once)."""
+    built: dict[Path, _Status] = {}
 
+    def status_of(config: Config) -> _Status:
+        if config.config_path not in built:
+            built[config.config_path] = _build_status(config, offline=True)
+        return built[config.config_path]
 
-def _doctor_lines_offline(config: Config) -> list[str]:
-    """Every ``agentsync doctor`` line without the Graph network probe (what setup-report embeds)."""
-    results = doctor.run_checks(config) + _extra_checks(config, probe=False, offline=True)
-    return doctor.format_results(results).splitlines()
+    return setup_report.ReportHooks(
+        doctor=lambda config: status_of(config).check_lines(),
+        status=lambda config: [status_of(config).line, *status_of(config).detail],
+    )
 
 
 def _cmd_setup_report(args: argparse.Namespace) -> int:
@@ -1037,7 +1254,7 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
     text, red = setup_report.build_report(
         getattr(args, "config", None),
         redact=not args.no_redact,
-        hooks=setup_report.ReportHooks(doctor=_doctor_lines_offline, status=_status_lines),
+        hooks=_report_hooks(),
         friction_path=friction,
     )
     if out is None:
@@ -1342,7 +1559,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
             "interpreter, whose user-writable uv tool environment is inside the trust boundary: prefer this "
             "grant to Full Disk Access / a PPPC SystemPolicyAllFiles payload"
         )
-    _out("check: agentsync doctor (it names the File Provider target)")
+    _out("check: agentsync status (it names the File Provider target)")
     return EXIT_OK
 
 
@@ -1463,20 +1680,6 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
     if rep.dry_run:
         _out(f"dry run: nothing removed; to remove, pass --confirm {expand(config.docs_repo)}")
     return EXIT_FAILED if rep.errors else EXIT_OK
-
-
-def _cmd_policy(args: argparse.Namespace) -> int:
-    config = _config(args)
-    pol = content_policy.load_policy(config)  # ConfigError -> exit 78: a broken policy never means "allow"
-    sidecar = config.config_path.parent / content_policy.POLICY_FILE_NAME
-    _out(f"sources: {config.config_path} [policy]" + (f" + {sidecar}" if sidecar.is_file() else ""))
-    _out(f"labels_active: {'true' if pol.labels_active else 'false'}")
-    _out(f"exclude_label_ids: {', '.join(pol.exclude_label_ids) or '-'}")
-    _out(f"exclude_label_names: {', '.join(pol.exclude_label_names) or '-'}")
-    _out(f"refuse_unlabelled: {'true' if pol.refuse_unlabelled else 'false'}")
-    _out(f"fingerprint: {pol.fingerprint()}")
-    _out("always: encrypted Office (EncryptedPackage) and encrypted PDFs become UNREADABLE stubs")
-    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------------------------------------

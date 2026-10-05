@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,17 +111,35 @@ def _eval_status(path: Path) -> str | None:
     return ""
 
 
-def _skill_current(docs_repo: Path) -> bool:
-    """Every skill copy exists and holds this build's text (a sync writes them; a failed write leaves them
-    missing or stale)."""
+def skill_state(docs_repo: Path) -> str:
+    """``current`` when every skill copy exists and holds this build's text, ``missing`` when a copy does not
+    exist (or cannot be read), else ``stale`` (a sync writes them; a failed write leaves them missing or
+    stale)."""
     text = skill.skill_text(docs_repo)
+    state = "current"
     for path in skill.skill_paths():
         try:
             if path.read_text(encoding="utf-8") != text:
-                return False
+                state = "stale"
         except (OSError, UnicodeDecodeError):
-            return False
-    return True
+            return "missing"
+    return state
+
+
+def baseline_state(docs_repo: Path) -> str:
+    """Where the baseline questions stand: ``missing`` (no ``_eval/questions.md``), ``draft`` (it or
+    ``answers.md`` is not ``status: confirmed``), ``confirmed``, ``before`` (a 'before' results file exists)
+    or ``after`` (an 'after' results file exists)."""
+    eval_dir = docs_repo / _EVAL_DIR
+    if any(eval_dir.glob("results-*-after.md")):
+        return "after"
+    if any(eval_dir.glob("results-*-before.md")):
+        return "before"
+    questions = _eval_status(eval_dir / "questions.md")
+    if questions is None:
+        return "missing"
+    confirmed = questions == "confirmed" and _eval_status(eval_dir / "answers.md") == "confirmed"
+    return "confirmed" if confirmed else "draft"
 
 
 def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
@@ -192,7 +210,7 @@ def curation_held(config: Config) -> bool:
     return not curate.iter_topic_pages(config.layout) and not has_before
 
 
-def _queue_rows(config: Config) -> int:
+def queue_rows(config: Config) -> int:
     """Rule 9: refresh-queue rows (STALE and the other verdicts) plus mirror pages no curated page cites."""
     layout = config.layout
     rc, verdicts = curate.refresh_queue(layout)
@@ -262,7 +280,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
             "the baseline questions are a draft: keep about 10 in _eval/questions.md, correct the answers in "
             "_eval/answers.md, and change both files to status: confirmed"
         )
-    if not _skill_current(docs):
+    if skill_state(docs) != "current":
         return done(
             f"the agentsync-docs skill is missing or out of date: run `{BIN} sync` (it writes the skill; "
             "if this line is still here after that sync, the skills folder cannot be written: tell the "
@@ -329,7 +347,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep:
         )
 
     # Rule 9: the curation queue, bounded per session.
-    rows = _queue_rows(config)
+    rows = queue_rows(config)
     if rows:
         return done(
             f"{rows} curation row(s) queued: run `{BIN} curate`, curate up to {ROWS_PER_SESSION} of "
@@ -347,3 +365,41 @@ def next_lines(config: Config, *, fixes: Sequence[str] = ()) -> list[str]:
     except (OSError, AgentSyncError) as exc:
         _log.warning("next step: cannot read the loop state: %s", exc)
         return []
+
+
+def status_line(config: Config) -> str:
+    """``status``'s one loop line (KISS K08a): ``loop: skill <current|stale|missing> · inbox <on|missing|off>
+    · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · queue N ·
+    archive <on|off>``. Disk only; a part that cannot be read shows ``?``."""
+    docs = expand(config.docs_repo)
+
+    def part(name: str, fn: Callable[[], object]) -> str:
+        try:
+            return f"{name} {fn()}"
+        except (OSError, AgentSyncError) as exc:
+            _log.warning("loop: cannot read %s: %s", name, exc)
+            return f"{name} ?"
+
+    def inbox() -> str:
+        boxes = [s for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
+        if not boxes:
+            return "off"
+        return "on" if all(expand(s.path).is_dir() for s in boxes if s.path is not None) else "missing"
+
+    def checkpoint() -> str:
+        found = gitops.curated_checkpoint(docs) if (docs / ".git").exists() else None
+        return found[1][:10] if found is not None else "never"
+
+    def archive() -> str:
+        return "on" if governance.load_governance(config.config_path).archive else "off"
+
+    parts = (
+        part("skill", lambda: skill_state(docs)),
+        part("inbox", inbox),
+        part("baseline", lambda: baseline_state(docs)),
+        part("topics", lambda: len(curate.iter_topic_pages(config.layout))),
+        part("checkpoint", checkpoint),
+        part("queue", lambda: queue_rows(config) if (docs / ".git").exists() else 0),
+        part("archive", archive),
+    )
+    return "loop: " + " · ".join(parts)

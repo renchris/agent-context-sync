@@ -61,7 +61,7 @@ give a coding tool's command a 10-minute timeout.
 
 Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,
-so set `[network] proxy`. `agentsync doctor --network` checks the whole path.
+so set `[network] proxy`. `agentsync status` checks the whole path whenever a Graph source is live.
 
 ## Day 1, with zero IT involvement
 

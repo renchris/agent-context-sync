@@ -1242,6 +1242,11 @@ class Manifest:
         ).fetchall()
         return [(int(r[0]), str(r[1]), str(r[2]), r[3]) for r in rows]
 
+    def last_run_started(self) -> str | None:
+        """``started_at`` of the newest run, whatever its mode or status; None when no run is recorded."""
+        row = self._db.execute("SELECT started_at FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()
+        return None if row is None else str(row[0])
+
     def last_full_run_started(self) -> str | None:
         """``started_at`` of the newest ok/partial RECONCILE run; else of the first run ever (a first pass is
         full); None when no run is recorded."""

@@ -56,7 +56,6 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "sync": ["--once", "--mode", "--dry-run", "--source", "--materialise-budget"],
         "accept-deletions": ["source"],
         "status": [],
-        "doctor": ["--network"],
         "curate": [],
         "materialise": ["--budget", "paths"],
         "adopt": ["src_dir"],
@@ -72,7 +71,6 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "compact-history": ["--keep-days", "--dry-run"],
         "hold": ["scope", "--reason", "--owner", "--release", "--list"],
         "offboard": ["--purge-data", "--dry-run", "--confirm"],
-        "policy": ["action{show}"],
         "setup-report": ["--out", "--friction", "--no-redact"],
         "it-request": ["--out"],
     },
@@ -83,6 +81,8 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "curate-queue": [],
         "lint": [],
         "refresh-queue": [],
+        "doctor": [],
+        "policy": ["action{show}"],
     },
 }
 """The pinned CLI surface: subcommand -> its options (every spelling, ``a/b``) and positionals (dest, plus

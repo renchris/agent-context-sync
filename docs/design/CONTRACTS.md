@@ -409,7 +409,7 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 sources finished. DRY_RUN: steps 1–5 without the transaction's writes, no fetch, nothing under `docs/`.
 
 CLI exit codes (`cli.py`): 0 ok · 1 failed (source error, blocking lint; since KISS K09 `curate` exits 1 only on a
-blocking finding, never on rows) · 2 usage ·
+blocking finding, never on rows; since KISS K08a `status` exits 1 on any FAIL check) · 2 usage ·
 75 lock held (`sync` without `--mode` waits up to 600 s first; K12) · 77 reauth required · 78 config invalid.
 
 **SUPERSEDED (2026-09-29, §16.3):** step 5 adds the reachability gate and the purge-suppression filter, step 6 the content
@@ -3336,7 +3336,7 @@ AGENT_STEP_NOTE = "installed by the agent step below"
 NO_NEXT_HINT_ENV = "AGENTSYNC_NO_NEXT_HINT"  # "1" (install.sh): the ad hoc launcher's fix is a note for IT
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 
-def run_checks(config: Config) -> list[CheckResult]:
+def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:  # tcc_canary: KISS K08a
     """Run every check, in a fixed order, never raising for a single failed check.
 
     python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; docs_repo
@@ -3423,7 +3423,8 @@ def source_statuses(
 
 Subcommands: init [--docs-repo PATH] [--source-local PATH ...] · sync [--once] [--mode poll|reconcile|dry_run]
 [--dry-run] [--source ID ...] [--materialise-budget BYTES] (2026-09-30) · accept-deletions SOURCE (2026-10-04, KISS K13a; `reconcile [--source ID ...]
-[--accept-deletions]` is its hidden alias) · status · doctor · curate (2026-10-04, KISS K09; `curate-queue`,
+[--accept-deletions]` is its hidden alias) · status (2026-10-04, KISS K08a: the single read-only check; `doctor`
+and `policy show` are its hidden aliases, `doctor --network` is deleted) · curate (2026-10-04, KISS K09; `curate-queue`,
 `lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] · adopt SRC_DIR · migrate · graph
 login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent [--interval
 SECONDS] [--reconcile-interval SECONDS] · uninstall-agent · add-source PATH [--id ID] (§16.13).  ``sync`` is
@@ -4238,7 +4239,10 @@ TCC_DENIED (`--canary-only`); 81 disclaim unavailable. `doctor.run_checks` adds,
 `launcher.signature`, `launcher.requirement`, `tcc.<source_id>`; a `ConfigError` from `[graph]` is reported as
 `graph.config` (not as a token-cache fault). The CLI appends `network.proxy`, `network.graph` (probe; automatic
 with live Graph sources, or `--network`), `graph.broker`, `governance.remote`, `governance.hold`,
-`governance.purge_queue` and `policy`.
+`governance.purge_queue` and `policy`. **Amended (2026-10-04, KISS K08a):** `--network` is deleted (the probe runs
+whenever a Graph source is live); the CLI also appends `skill` and `install.commit` (§16.21); `run_checks(config,
+tcc_canary=False)` replaces the `tcc.<source_id>` canaries with one ok `tcc.canary` line ("not run"), and `status`
+passes `tcc_canary=True` only when the canary is due (§16.21).
 ```python
 LAUNCHER_ENV = 'AGENTSYNC_LAUNCHER'
 
@@ -4331,14 +4335,14 @@ class AgentSpec:
 | `compact-history` [`--keep-days N`] [`--dry-run`] | `governance.compact_history` | 0 verified / nothing to squash · 1 |
 | `hold SCOPE --reason R --owner O` · `hold SCOPE --release --owner O` · `hold --list` | `set_hold` / `release_hold` / `active_holds` | 0 · 1 · 2 |
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
-| `policy show` | `policy.load_policy` | 0 · 78 invalid policy |
+| `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
 | `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2) | 0 · 1 · 75 lock · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
-| `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20) | 0 |
-| `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks | 0 · 1 |
-| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
+| `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20). Since KISS K08a the single read-only check: `loop.next_lines` first, `loop.status_line`, `doctor.run_checks` + the §16.8 CLI checks, then the status and policy lines (§16.21) | 0 · 1 any FAIL (K08a) |
+| `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`; `--network` is deleted) | 0 · 1 |
+| `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
 
 ```python
 EXIT_TCC_PENDING = 79  # launchd.EXIT_TCC_PENDING: only the signed launcher returns it (LaunchAgent runs)
@@ -4880,6 +4884,10 @@ help names the `TIME_BUDGET_S` budget (12 s). v5 revision: with `--out`, prompt 
 the last stdout line is `ISSUE_LINK_LABEL` + " " + the link ("issue link (review the report first): <url>", the bare
 `ISSUE_URL` when the report has no link), also in the fallback branch where `--out` cannot be written and the report
 goes to stdout (exit 1). Without `--out` the report itself is stdout and its last line is the bare link.
+**Amended (2026-10-04, KISS K08a):** `cli._doctor_lines_offline` is removed. Both hooks read one
+`cli._build_status(config, offline=True)`: Doctor gets its check lines, Status its loop line and status lines
+(the checks render once). Offline means no Graph probe, no TCC canary (it can raise a privacy prompt), no NEXT
+lines and no policy detail (§16.21).
 
 **`AGENTSYNC_NO_NEXT_HINT`** (`cli.NO_NEXT_HINT_ENV`, 2026-09-30, K5): set to `1` (scripts/install.sh exports it),
 `init` and `add-source` print no `next:` hint, so install.sh's single `NEXT:` line is the only next step in its
@@ -5273,7 +5281,7 @@ errors are retried by every sync and are not rule 3 (they would make it loop). T
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
 
 Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
-`status` prints them after its status lines. `next_lines` never raises (an unreadable state is a logged warning
+`status` prints them after its status lines (since KISS K08a, first: §16.21). `next_lines` never raises (an unreadable state is a logged warning
 and no line), so a caller's exit status never depends on the hint. Tests: `tests/test_loop.py` (a fixture per rule
 and per wait, exact lines, no mirror path or file name), `test_cli.py::test_sync_without_mode_ends_with_the_summary_then_one_next_line`,
 `tests/test_install_next_line.py` (a real first sync that exits 80 under install.sh leaves exactly one NEXT line).
@@ -5301,4 +5309,57 @@ def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep: ...
 def next_lines(config: Config, *, fixes: Sequence[str] = ()) -> list[str]: ...  # [] on OSError/AgentSyncError
 def checkpoint_findings(config: Config) -> list[LintFinding]: ...  # K09: rule 7's base, every blocker (curate)
 def curation_held(config: Config) -> bool: ...  # K09: no curated page and no results-*-before.md
+def skill_state(docs_repo: Path) -> str: ...  # K08a: "current" | "stale" | "missing" (rule 1 and status)
+def baseline_state(docs_repo: Path) -> str: ...  # K08a: "missing" | "draft" | "confirmed" | "before" | "after"
+def queue_rows(config: Config) -> int: ...  # rule 9's count: refresh-queue rows plus uncovered mirror pages
+def status_line(config: Config) -> str: ...  # K08a: status's one loop line
 ```
+
+### 16.21 `status`: the single read-only check (2026-10-04, KISS K08a, integrator)
+
+A green doctor or a full-looking status read as "done" while the curation half had never started, so `status`,
+`doctor` and `policy show` become one command. `agentsync status` prints, in order:
+
+1. `loop.next_lines(config, fixes=<each FAIL check's "the <name> check failed: <fix>">)`: NEXT, WAITING ON YOU and
+   note lines (none under `AGENTSYNC_NO_NEXT_HINT=1`: install.sh still calls `doctor` and keeps one NEXT).
+2. `loop.status_line(config)`: `loop: skill <current|stale|missing> · inbox <on|missing|off> · baseline
+   <missing|draft|confirmed|before|after> · topics N · checkpoint <curated tag date|never> · queue N · archive
+   <on|off>` (a part that cannot be read shows `?`).
+3. `doctor.format_results(doctor.run_checks(config, tcc_canary=<due>) + cli._extra_checks(config))`: doctor's
+   lines byte for byte, so install.sh's `^\[FAIL` parsing is unchanged.
+4. The status lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
+   breaker, `details:`), then the effective policy (`policy: <files>` and indented `labels_active`,
+   `exclude_label_ids`, `exclude_label_names`, `refuse_unlabelled`, `fingerprint`, `always` lines).
+
+Exit 1 on any FAIL (an ERROR-severity check), else 0. Zero folder sources is rule 2's NEXT with exit 0, not a FAIL.
+`doctor` and `policy show` are hidden aliases that run `status` (stderr "renamed: run agentsync status" unless
+`AGENTSYNC_NO_NEXT_HINT=1`); `doctor --network` exits 2. The "no manifest" status line now reads `manifest: none
+yet (no sync has run)` (NEXT is the instruction).
+
+New checks (`cli._extra_checks`):
+- `skill`: ok when every copy is current; FAIL when one is missing or stale although a sync ran with this build
+  (the newest run's `started_at`, `Manifest.last_run_started()`, is at or after this build's install time, the
+  tool environment's `pyvenv.cfg` mtime), fix "make that folder writable, then run `~/.local/bin/agentsync sync`";
+  before that a not-ok info line ("the next sync writes it"). install.sh's doctor step runs before its first sync,
+  so a fresh or upgraded install is never blocked by it.
+- `install.commit`: reads install.sh's stamp `<sys.prefix>/.agentsync-install-source` (`commit=<sha12>
+  source=<checkout>`, written only for a clean checkout) and the checkout's HEAD from its files (loose ref, then
+  `packed-refs`; never by running git); WARN when they differ, fix "re-run install.sh (<checkout>/scripts/install.sh)".
+  No stamp or an unreadable checkout: no line.
+
+The TCC canary (up to 15 s per protected source; it may raise the privacy prompt) runs only when the newest
+launcher event (`TCC_PENDING`, `TCC_DENIED`, `CANARY_OK` or `CHILD_EXIT`) of the poll and reconcile `.err.log`
+files is `TCC_PENDING` or `TCC_DENIED`, when no event is logged, or when the newest one predates the poll plist's
+mtime (nothing has run since `install-agent`). Otherwise one ok `tcc.canary` line says it was not run. The Graph
+probe runs whenever a Graph source is live.
+
+setup-report: one `cli._build_status(config, offline=True)` per report feeds both hooks (§16.14 amendment): no
+network call, no canary, no NEXT lines, no policy detail (label names stay out of a report meant for sharing).
+`setup_report.expected_warn` needs no new entry: the new checks are FAILs (always unexpected), a warn that is
+a real finding (`install.commit`), or info/ok lines.
+
+Tests: `test_cli.py` (status starts with `loop.next_step` then the loop line then the checks; FAIL lines equal
+`doctor.format_results` and exit 1; a failed skill write; zero folder sources; `install.commit`; the canary rule;
+`AGENTSYNC_NO_NEXT_HINT`; the `doctor` and `policy show` aliases; the automatic Graph probe), `test_loop.py`
+(`status_line`), `test_ops_doctor.py` (`tcc_canary=False`), `test_setup_report.py` (one offline build, checks
+only in Doctor, no probe), and the frozen CLI surface (`doctor` and `policy` hidden).

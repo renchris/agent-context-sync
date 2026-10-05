@@ -931,7 +931,7 @@ def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
     monkeypatch.setattr(cli, "_launchctl_env", lambda names: {})
     monkeypatch.setattr(cli.net, "system_proxy", lambda runner=None: cli.net.SystemProxy())
-    checks = {c.name: c for c in cli._network_checks(config, probe=False)}
+    checks = {c.name: c for c in cli._network_checks(config)}
     job = checks["network.proxy.job"]
     assert not job.ok and "[network] proxy" in (job.fix or "")
 

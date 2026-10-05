@@ -297,6 +297,35 @@ def test_rule_10_nothing_to_do(tmp_path: Path, folder: Path) -> None:
     assert _lines(config) == ["NEXT: nothing to do: session done"]
 
 
+# ---- status's one loop line (KISS K08a) --------------------------------------------------------------------
+
+
+def test_status_line_tracks_skill_baseline_topics_and_queue(tmp_path: Path, folder: Path) -> None:
+    config = _synced(tmp_path, folder)
+    line = loop.status_line(config)
+    assert line == (
+        "loop: skill current · inbox off · baseline missing · topics 0 · checkpoint never · queue 1 · "
+        "archive off"
+    )
+    (path,) = skill.skill_paths()
+    path.write_text("an older skill\n", encoding="utf-8")
+    assert loop.skill_state(config.docs_repo) == "stale"
+    path.unlink()
+    assert loop.skill_state(config.docs_repo) == "missing"
+    states = []
+    for questions, answers, results in (
+        ("draft", "draft", ()),
+        ("confirmed", "confirmed", ()),
+        ("confirmed", "confirmed", ("before",)),
+        ("confirmed", "confirmed", ("before", "after")),
+    ):
+        _eval(config, questions, answers, *results)
+        states.append(loop.baseline_state(config.docs_repo))
+    assert states == ["draft", "confirmed", "before", "after"]
+    _hand_written(config, 2)
+    assert " topics 2 " in loop.status_line(config) and "skill missing" in loop.status_line(config)
+
+
 # ---- the operator's waits ---------------------------------------------------------------------------------
 
 

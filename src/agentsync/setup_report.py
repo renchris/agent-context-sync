@@ -4,8 +4,9 @@ feedback loop (docs/deploy/setup-feedback.md; owner: integrator).
 Read-only and bounded: no network, no sudo, no prompts, no ``tmutil``; every external command has a timeout
 and the whole report a time budget (:data:`TIME_BUDGET_S`). Each section catches its own errors and records
 them in the report, so a report is always produced. The doctor and status sections come from the CLI through
-:class:`ReportHooks` (this module never imports ``agentsync.cli``); doctor runs without its Graph network
-probe.
+:class:`ReportHooks` (this module never imports ``agentsync.cli``): one offline ``agentsync status`` build,
+its check lines in Doctor and its loop and detail lines in Status, without the Graph network probe or the TCC
+canary.
 
 The report opens with a computed ``## Summary``, then the friction log (``~/agent-context/setup/friction.md``,
 embedded and redacted, one line per attempt), then the machine sections and the redaction legend, and its last
@@ -369,7 +370,8 @@ _T = TypeVar("_T")
 @dataclasses.dataclass(frozen=True, slots=True)
 class ReportHooks:
     """What the report needs from the CLI (injected, so this module never imports ``agentsync.cli``):
-    ``doctor`` returns every doctor line (no network probe), ``status`` the ``agentsync status`` lines."""
+    ``doctor`` returns every check line of ``agentsync status`` (no network probe, no TCC canary), ``status``
+    its loop line and detail lines (KISS K08a: the checks are rendered once, in Doctor)."""
 
     doctor: Callable[[Config], list[str]] | None = None
     status: Callable[[Config], list[str]] | None = None
@@ -2056,7 +2058,7 @@ def _doctor(r: _Run) -> list[str]:
         else ""
     )
     return [
-        summary + " (run without the Graph network probe: `agentsync doctor --network` does it). "
+        summary + " (run without the Graph network probe and the TCC canary: `agentsync status` runs them). "
         f"Only the lines that are not ok:{note}",
         "",
         *_fence(shown),
