@@ -1339,8 +1339,17 @@ else
 	CONFIG_STATE="created"
 	step_end "done" 0 created
 fi
+# Sources other than the inbox: init and add-source always add the inbox (KISS K05), so a config holding only
+# the inbox still has no folder to sync and gets "choose a folder to sync".
+non_inbox_sources() { # $1: sources.toml; prints the number of [[source]] tables whose kind is not "inbox"
+	awk '
+		/^[[:space:]]*\[/ { if (t && !ib) n++; t = ($0 ~ /^[[:space:]]*\[\[source\]\][[:space:]]*(#.*)?$/); ib = 0; next }
+		t && /^[[:space:]]*kind[[:space:]]*=[[:space:]]*("inbox"|\047inbox\047)[[:space:]]*(#.*)?$/ { ib = 1 }
+		END { if (t && !ib) n++; print n + 0 }
+	' "$1" 2>/dev/null || echo 0
+}
 HAVE_SOURCES=0
-if [ "${#FOLDERS[@]}" -gt 0 ] || grep -q '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null; then
+if [ "${#FOLDERS[@]}" -gt 0 ] || [ "$(non_inbox_sources "$CONFIG")" -gt 0 ]; then
 	HAVE_SOURCES=1
 fi
 

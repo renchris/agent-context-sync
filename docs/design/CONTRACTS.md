@@ -4385,8 +4385,8 @@ class AgentSpec:
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
 | `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text | 0 · 1 · 78 |
-| `init` | as before; exits 1 when the docs repo has a disallowed remote | 0 · 1 · 2 · 78 |
-| `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
+| `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13) | 0 · 1 · 2 · 78 |
+| `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted | 0 added or already configured · 2 bad path/id · 78 missing or invalid sources.toml |
 | `status` | + active holds, queued purges, the launcher's last `TCC_PENDING`/`TCC_DENIED` log line; then `loop.next_lines` (2026-10-04, KISS K01, §16.20). Since KISS K08a the single read-only check: `loop.next_lines` first, `loop.status_line`, `doctor.run_checks` + the §16.8 CLI checks, then the status and policy lines (§16.21) | 0 · 1 any FAIL (K08a) |
 | `doctor` [`--network`] | `doctor.run_checks` + the §16.8 CLI checks (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`; `--network` is deleted) | 0 · 1 |
 | `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
@@ -4526,6 +4526,14 @@ and 5000 files per cycle, the sentinel as a commented recommendation).
 `add-source --inbox [PATH]` (2026-10-01) writes `inbox_source_table` instead: a live `kind = "inbox"` drop folder.
 PATH defaults to `inbox` beside the docs repo (`~/agent-context/inbox`) and is created (mode 0700) when missing;
 every other rule above applies unchanged. `add-source` with neither PATH nor `--inbox` exits 2.
+**SUPERSEDED (2026-10-04, KISS K05):** `--inbox` is deleted and PATH is required (argparse, exit 2). `init` and
+`add-source` (once PATH is valid) call `ensure_inbox(config_path)`: when no `kind = "inbox"` source exists in any
+state, it creates `inbox` beside the docs repo (`~/agent-context/inbox`, mode 0700) and appends
+`inbox_source_table` with `derive_source_id` (`inbox`, or `inbox-2` when taken). A source of any kind already on
+that folder counts as present. An inbox that cannot be added (a file has the name, the result would not load)
+is an `inbox: not added: …` line on stderr; the command's own exit code is unchanged. `scripts/install.sh`
+counts only `[[source]]` tables whose `kind` is not `inbox` as sources (`HAVE_SOURCES`), so a config holding
+only the inbox still ends on "choose a folder to sync" (exit 1 under `--confirm-install-agent`).
 
 `scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
 passes them all to `agentsync init --source-local …` when the config does not exist, or runs
@@ -4543,7 +4551,11 @@ def local_source_table(source_id: str, path: Path) -> str:
     """The ``[[source]]`` table ``init --source-local`` and ``add-source`` write for a folder."""
 
 def inbox_source_table(source_id: str, path: Path) -> str:
-    """The ``[[source]]`` table ``add-source --inbox`` writes: a live ``kind = "inbox"`` drop folder."""
+    """The ``[[source]]`` table ``ensure_inbox`` writes: a live ``kind = "inbox"`` drop folder."""
+
+def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
+    """Keep the mail inbox (KISS K05); returns the config as it stands and the source added (None when
+    nothing changed). Raises ConfigError or OSError, writing no table."""
 
 def append_to_config(config_path: Path, table: str) -> Config:
     """Append ``table`` to sources.toml keeping every existing byte; validated with parse_config before an

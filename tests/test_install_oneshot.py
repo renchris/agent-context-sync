@@ -79,13 +79,15 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+inbox() { grep -q '^kind = "inbox"' "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
   init)
     mkdir -p "$(dirname "$cfg")"
     { echo "# stub"; cat "$STUB_LOG.sources" 2>/dev/null; } > "$cfg"
     rm -f "$STUB_LOG.sources"
+    inbox
     hint "agentsync doctor" ;;
-  add-source) printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; hint "agentsync doctor" ;;
+  add-source) printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
   doctor)
     [ -z "${STUB_DOCTOR_OUT:-}" ] || printf '%s\\n' "$STUB_DOCTOR_OUT"
     if [ "${AGENTSYNC_AGENT_STEP_PENDING:-}" = 1 ]; then
@@ -446,15 +448,26 @@ def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder:
 
 
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    for again in (False, True):  # a fresh install, then a re-run over a config holding only the inbox
+        if again:  # the real init's table (KISS K05), with a commented kind line and a literal string
+            cfg.write_text(
+                '# x\n[agentsync]\n\n[[source]]\nid = "inbox"\n# kind = "local"\n'
+                "kind = 'inbox'   # mail\npath = \"/x/inbox\"\n\n[governance]\narchive = true\n"
+            )
+        cp = install_sh(env, str(wheel), "--confirm-install-agent")
+        assert cp.returncode == 1
+        assert "kind = " in cfg.read_text(), "the config holds the inbox"
+        assert not any(
+            c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
+        )
+        assert last_line(cp).startswith(
+            f"NEXT: choose a folder to sync, then re-run: {INSTALL_SH} {wheel} --confirm-install-agent "
+            '--source-local "<folder>"'
+        )
+    cfg.write_text(cfg.read_text() + '\n[[source]]\nid = "work"\nkind = "local"\npath = "/x/work"\n')
     cp = install_sh(env, str(wheel), "--confirm-install-agent")
-    assert cp.returncode == 1
-    assert not any(
-        c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
-    )
-    assert last_line(cp).startswith(
-        f"NEXT: choose a folder to sync, then re-run: {INSTALL_SH} {wheel} --confirm-install-agent "
-        '--source-local "<folder>"'
-    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr  # a folder source besides the inbox is a source
 
 
 # ---- the report at every exit ------------------------------------------------------------------------------

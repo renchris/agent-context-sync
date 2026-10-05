@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, skill
-from agentsync.config import Config, load_config, local_source_table
+from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
 from agentsync.cycle import NETWORK_POLICY_FAILED, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
@@ -39,10 +39,14 @@ def folder(tmp_path: Path) -> Path:
 
 
 def _setup(tmp_path: Path, *tables: str) -> Config:
-    """``init`` with no source (a docs repo and the template sources.toml), then ``tables`` appended."""
+    """``init`` with no source (a docs repo and the template sources.toml), then ``tables`` appended in
+    place of the inbox init adds (KISS K05), which a test adds back with ``ensure_inbox``."""
     cfg = tmp_path / "ctx" / "sources.toml"
     assert cli.main(["init", "--config", str(cfg), "--docs-repo", str(tmp_path / "ctx" / "docs")]) == 0
-    cfg.write_text(cfg.read_text(encoding="utf-8") + "".join(tables), encoding="utf-8")
+    (box,) = load_config(cfg).sources
+    assert box.path is not None
+    text = cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table(box.id, box.path))
+    cfg.write_text(text + "".join(tables), encoding="utf-8")
     return load_config(cfg)
 
 
@@ -135,7 +139,7 @@ def test_rule_2_no_folder_source(tmp_path: Path) -> None:
         f'`{BIN} add-source "<folder>"` for each, then `{BIN} sync`'
     ]
     assert _lines(config) == want
-    assert cli.main(["add-source", "--inbox", "--config", str(config.config_path)]) == 0
+    assert ensure_inbox(config.config_path)[1] is not None
     assert _lines(load_config(config.config_path)) == want, "the inbox alone is not a folder source"
 
 

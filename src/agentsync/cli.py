@@ -61,7 +61,7 @@ from agentsync.config import (
     canonical_source_root,
     default_config_text,
     derive_source_id,
-    inbox_source_table,
+    ensure_inbox,
     load_config,
     local_source_table,
     parse_config,
@@ -190,7 +190,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(handler=handler)
         return p
 
-    p = add("init", "write sources.toml, create the docs repo (no remote) and its scaffold", _cmd_init)
+    p = add(
+        "init", "write sources.toml, create the docs repo (no remote), its scaffold and the inbox", _cmd_init
+    )
     p.add_argument(
         "--docs-repo", type=Path, metavar="PATH", help="docs git repo (default ~/agent-context/docs)"
     )
@@ -206,21 +208,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add(
         "add-source",
-        "append a live local source for a folder to an existing sources.toml (idempotent)",
+        "append a live local source for a folder (and the inbox, when missing) to an existing sources.toml "
+        "(idempotent)",
         _cmd_add_source,
     )
-    p.add_argument(
-        "path",
-        type=Path,
-        nargs="?",
-        metavar="PATH",
-        help="the folder to sync (it must exist; with --inbox it is created, default <docs repo>/../inbox)",
-    )
-    p.add_argument(
-        "--inbox",
-        action="store_true",
-        help="add a drop folder for files you save by hand (e.g. .eml dragged out of Outlook) instead",
-    )
+    p.add_argument("path", type=Path, metavar="PATH", help="the folder to sync (it must exist)")
     p.add_argument(
         "--id", metavar="ID", help="source id (default: derived from the folder name, made unique)"
     )
@@ -573,6 +565,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
         cfg_path.write_text(text, encoding="utf-8")
         cfg_path.chmod(0o600)
         _out(f"wrote {cfg_path}")
+    config = _ensure_inbox(config)
     gov = governance.load_governance(config.config_path)
     created = gitops.ensure_repo(config.docs_repo)
     config.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -596,14 +589,22 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return EXIT_FAILED if findings else EXIT_OK
 
 
+def _ensure_inbox(config: Config) -> Config:
+    """:func:`agentsync.config.ensure_inbox` for init and add-source (KISS K05): prints the inbox it added.
+    An inbox that cannot be added is a warning, never a failure of the command that asked for more."""
+    try:
+        config, added = ensure_inbox(config.config_path)
+    except (ConfigError, OSError) as exc:
+        _err(f"inbox: not added: {exc}")
+        return config
+    if added is not None and added.path is not None:
+        _out(f"added inbox source {added.id!r} ({added.path}): drop files you save by hand here")
+    return config
+
+
 def _cmd_add_source(args: argparse.Namespace) -> int:
     config = _config(args)  # a missing or invalid sources.toml exits 78 before anything is written
-    if args.path is None and not args.inbox:
-        _err("add-source: PATH is required (or use --inbox for a drop folder)")
-        return EXIT_USAGE
-    raw: Path = args.path if args.path is not None else expand(config.docs_repo).parent / "inbox"
-    if args.inbox:
-        expand(raw).mkdir(mode=0o700, parents=True, exist_ok=True)
+    raw: Path = args.path
     path = canonical_source_root(expand(raw))  # a symlinked cloud root stays protected, as in init
     if not path.exists():
         _err(f"add-source {raw}: no such folder")
@@ -617,6 +618,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
     if any(is_under(path, d) or is_under(d, path) for d in {docs, canonical_source_root(docs)}):
         _err(f"add-source {raw}: {path} and the docs repo {docs} must not contain each other")
         return EXIT_USAGE
+    config = _ensure_inbox(config)
     for s in config.sources:
         if s.path is not None and s.path == path:
             _out(
@@ -635,7 +637,7 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             return EXIT_USAGE
     else:
         sid = derive_source_id(path, taken)
-    table = inbox_source_table(sid, path) if args.inbox else local_source_table(sid, path)
+    table = local_source_table(sid, path)
     try:
         append_to_config(config.config_path, table)  # validated before anything is written
     except ConfigError as exc:

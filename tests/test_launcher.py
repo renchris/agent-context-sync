@@ -498,9 +498,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+inbox() { grep -q '^kind = "inbox"' "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
-  init) mkdir -p "$(dirname "$cfg")"; printf "# stub\n$sources" > "$cfg" ;;
-  add-source) [ -z "$pos" ] || echo "[[source]]" >> "$cfg" ;;
+  init) mkdir -p "$(dirname "$cfg")"; printf "# stub\n$sources" > "$cfg"; inbox ;;
+  add-source) [ -z "$pos" ] || { echo "[[source]]" >> "$cfg"; inbox; } ;;
   doctor) exit "${STUB_DOCTOR_RC:-0}" ;;
   setup-report) mkdir -p "$(dirname "$out")"; echo "# agentsync setup report" > "$out" ;;
 esac

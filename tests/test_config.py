@@ -13,6 +13,8 @@ from agentsync.config import (
     append_to_config,
     default_config_text,
     derive_source_id,
+    ensure_inbox,
+    inbox_source_table,
     load_config,
     local_source_table,
     parse_config,
@@ -219,3 +221,59 @@ def test_append_to_config_keeps_every_byte_and_validates_first(tmp_path: Path) -
     assert cfg_path.read_text(encoding="utf-8") == text  # an invalid result is never written
     with pytest.raises(ConfigError, match="not found"):
         append_to_config(tmp_path / "missing.toml", local_source_table("x", folder))
+
+
+def _ctx_config(tmp_path: Path, extra: str = "") -> Path:
+    """A template sources.toml whose docs repo is ``tmp_path/ctx/docs`` (the inbox goes to ``ctx/inbox``)."""
+    cfg_path = tmp_path / "ctx" / "sources.toml"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    line = 'docs_repo = "~/agent-context/docs"'
+    text = default_config_text().replace(line, f'docs_repo = "{tmp_path / "ctx" / "docs"}"', 1)
+    cfg_path.write_text(text + extra, encoding="utf-8")
+    return cfg_path
+
+
+def test_ensure_inbox_adds_one_inbox_beside_the_docs_repo(tmp_path: Path) -> None:
+    cfg_path = _ctx_config(tmp_path)
+    before = cfg_path.read_text(encoding="utf-8")
+    config, added = ensure_inbox(cfg_path)
+    inbox = tmp_path / "ctx" / "inbox"
+    assert inbox.is_dir() and inbox.stat().st_mode & 0o777 == 0o700
+    assert added is not None and added.id == "inbox" and added.kind is SourceKind.INBOX and added.is_live
+    assert added.path == inbox.resolve() and config.sources == (added,)
+    text = cfg_path.read_text(encoding="utf-8")
+    assert text == before + inbox_source_table("inbox", inbox.resolve())
+    assert ensure_inbox(cfg_path) == (config, None)  # idempotent: one kind = "inbox", nothing written
+    assert cfg_path.read_text(encoding="utf-8") == text
+
+
+def test_ensure_inbox_counts_any_inbox_and_never_configures_a_folder_twice(tmp_path: Path) -> None:
+    elsewhere = tmp_path / "drop"
+    elsewhere.mkdir()
+    paused = inbox_source_table("drop", elsewhere).replace(
+        'kind = "inbox"\n', 'kind = "inbox"\nstate = "paused"\n'
+    )
+    cfg_path = _ctx_config(tmp_path, paused)
+    assert ensure_inbox(cfg_path)[1] is None  # an inbox in any state counts
+    assert not (tmp_path / "ctx" / "inbox").exists()
+
+    inbox = tmp_path / "ctx" / "inbox"
+    inbox.mkdir()
+    cfg_path = _ctx_config(tmp_path, local_source_table("inbox", inbox))
+    assert ensure_inbox(cfg_path)[1] is None  # the folder is already a (local) source
+    assert [s.kind for s in load_config(cfg_path).sources] == [SourceKind.LOCAL]
+
+    other = tmp_path / "other"
+    other.mkdir()
+    cfg_path = _ctx_config(tmp_path, local_source_table("inbox", other))
+    added = ensure_inbox(cfg_path)[1]
+    assert added is not None and added.id == "inbox-2"  # the id "inbox" is taken
+
+    inbox.rmdir()
+    inbox.write_text("not a folder", encoding="utf-8")
+    cfg_path = _ctx_config(tmp_path)
+    with pytest.raises(FileExistsError):
+        ensure_inbox(cfg_path)
+    assert load_config(cfg_path).sources == ()
+    with pytest.raises(ConfigError, match="not found"):
+        ensure_inbox(tmp_path / "missing.toml")

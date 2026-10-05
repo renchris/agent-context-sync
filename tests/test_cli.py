@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from agentsync import cli, gitops, governance, lints, loop, net, policy, skill
-from agentsync.config import Config, load_config
+from agentsync.config import Config, inbox_source_table, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
 from agentsync.graph import auth as graph_auth
@@ -84,8 +84,11 @@ def test_parser_accepts_the_launchd_argv(initialised: Config) -> None:
 
 def test_init_writes_a_valid_config_repo_and_scaffold(initialised: Config, local_source_dir: Path) -> None:
     assert initialised.config_path.stat().st_mode & 0o777 == 0o600
-    (src,) = initialised.sources
+    src, box = initialised.sources
     assert src.id == "source" and src.path == local_source_dir and src.is_live
+    inbox = initialised.docs_repo.parent / "inbox"  # KISS K05: init keeps the inbox
+    assert box.id == "inbox" and box.kind is SourceKind.INBOX and box.is_live and box.path == inbox.resolve()
+    assert inbox.stat().st_mode & 0o777 == 0o700
     assert (initialised.docs_repo / ".git").is_dir()
     assert (initialised.docs_repo / "README.md").is_file() and (
         initialised.docs_repo / "mirror/CLAUDE.md"
@@ -1203,7 +1206,7 @@ def test_status_starts_with_next_then_the_loop_line_then_the_checks(
     rc, out = _status(cfg, capsys)
     want = loop.next_step(initialised).lines()
     assert rc == cli.EXIT_OK and want[0].startswith("NEXT: ") and out[: len(want)] == want
-    assert out[len(want)].startswith("loop: skill current · inbox off · baseline missing · topics 0 · ")
+    assert out[len(want)].startswith("loop: skill current · inbox on · baseline missing · topics 0 · ")
     assert re.match(r"\[(ok  |info|warn|FAIL)\] ", out[len(want) + 1]), "then the checks"
     assert "  source (local, live): baseline complete" in "\n".join(out) and "  labels_active: false" in out
 
@@ -1498,23 +1501,47 @@ def test_add_source_appends_a_live_local_source_and_is_idempotent(
     assert initialised.config_path.read_text(encoding="utf-8") == after
 
 
-def test_add_source_inbox_creates_the_drop_folder_beside_the_docs_repo_and_is_idempotent(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
+def test_init_and_add_source_keep_exactly_one_inbox(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """KISS K05: init and add-source add the inbox to a config that has none, once; there is no --inbox."""
     cfg = str(initialised.config_path)
-    inbox = initialised.docs_repo.parent / "inbox"
-    assert not inbox.exists()
-    assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_OK
-    out = capsys.readouterr().out
-    assert '[[source]]\nid = "inbox"\nkind = "inbox"' in out
-    assert inbox.is_dir() and inbox.stat().st_mode & 0o777 == 0o700
-    added = load_config(initialised.config_path).source("inbox")
-    assert added.kind is SourceKind.INBOX and added.is_live and added.path == inbox.resolve()
-    after = initialised.config_path.read_text(encoding="utf-8")
-    assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_OK
-    assert "already configured: source 'inbox'" in capsys.readouterr().out
-    assert initialised.config_path.read_text(encoding="utf-8") == after
-    assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # no PATH and no --inbox
+    box = initialised.source("inbox")
+    assert box.path is not None
+    old = initialised.config_path.read_text(encoding="utf-8").removesuffix(
+        inbox_source_table("inbox", box.path)
+    )
+    folder = tmp_path / "Notes"
+    folder.mkdir()
+    for argv in (["add-source", str(folder)], ["init"]):
+        initialised.config_path.write_text(old, encoding="utf-8")  # a config from before K05
+        assert load_config(initialised.config_path).sources == initialised.sources[:1]
+        for _ in range(2):
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK
+        out = capsys.readouterr().out
+        assert out.count("added inbox source 'inbox'") == 1, argv
+        kinds = [s.kind for s in load_config(initialised.config_path).sources]
+        assert kinds.count(SourceKind.INBOX) == 1, argv
+        assert kinds.count(SourceKind.LOCAL) == len(argv), argv  # add-source added its folder once
+    assert cli.main(["add-source", "--inbox", "--config", cfg]) == cli.EXIT_USAGE  # deleted
+    assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # PATH is required
+
+
+def test_add_source_warns_when_the_inbox_cannot_be_added(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = initialised.config_path
+    box = initialised.source("inbox")
+    assert box.path is not None
+    cfg.write_text(cfg.read_text(encoding="utf-8").removesuffix(inbox_source_table("inbox", box.path)))
+    box.path.rmdir()
+    box.path.write_text("a file, not a folder", encoding="utf-8")
+    folder = tmp_path / "Notes"
+    folder.mkdir()
+    assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == cli.EXIT_OK
+    cap = capsys.readouterr()
+    assert "inbox: not added: " in cap.err and "added source 'notes'" in cap.out
+    assert [s.id for s in load_config(cfg).sources] == ["source", "notes"]
 
 
 def test_add_source_derives_a_unique_id_and_honours_id(
@@ -1524,7 +1551,7 @@ def test_add_source_derives_a_unique_id_and_honours_id(
     other = tmp_path / "elsewhere" / "source"  # same folder name as the initialised source ("source")
     other.mkdir(parents=True)
     assert cli.main(["add-source", str(other), "--config", cfg]) == cli.EXIT_OK
-    assert [s.id for s in load_config(initialised.config_path).sources] == ["source", "source-2"]
+    assert [s.id for s in load_config(initialised.config_path).sources] == ["source", "inbox", "source-2"]
     third = tmp_path / "third"
     third.mkdir()
     assert cli.main(["add-source", str(third), "--id", "source", "--config", cfg]) == cli.EXIT_USAGE
@@ -1532,6 +1559,7 @@ def test_add_source_derives_a_unique_id_and_honours_id(
     assert cli.main(["add-source", str(third), "--id", "team-notes", "--config", cfg]) == cli.EXIT_OK
     assert [s.id for s in load_config(initialised.config_path).sources] == [
         "source",
+        "inbox",
         "source-2",
         "team-notes",
     ]

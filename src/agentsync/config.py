@@ -606,7 +606,7 @@ def local_source_table(source_id: str, path: Path) -> str:
 
 
 def inbox_source_table(source_id: str, path: Path) -> str:
-    """The ``[[source]]`` table ``add-source --inbox`` writes: a live ``kind = "inbox"`` drop folder for files
+    """The ``[[source]]`` table :func:`ensure_inbox` writes: a live ``kind = "inbox"`` drop folder for files
     saved by hand (``.eml`` dragged out of Outlook, exports), every other key at its default.  Starts with a
     blank line, ends with a newline."""
     return (
@@ -614,6 +614,28 @@ def inbox_source_table(source_id: str, path: Path) -> str:
         f"path = {json.dumps(str(path), ensure_ascii=False)}\n"
         "# quiescence_s = 60   # files still being written are skipped until they settle\n"
     )
+
+
+def ensure_inbox(config_path: Path) -> tuple[Config, SourceConfig | None]:
+    """Keep the mail inbox (KISS K05): when no ``kind = "inbox"`` source exists (any state), create ``inbox``
+    beside the docs repo (``~/agent-context/inbox``, mode 0700) and append :func:`inbox_source_table` for it
+    with :func:`append_to_config`.  A source already on that folder (any kind) counts as present, so no
+    folder is configured twice.  Returns the config as it now stands and the source added (None when nothing
+    changed).  Raises ConfigError (sources.toml missing or the result would not load) or OSError (the folder
+    cannot be created, or a non-folder has its name), writing no table."""
+    config = load_config(config_path)
+    if any(s.kind is SourceKind.INBOX for s in config.sources):
+        return config, None
+    raw = expand(config.docs_repo).parent / "inbox"
+    if not raw.is_dir():
+        raw.mkdir(mode=0o700, parents=True)  # FileExistsError when a file has the name
+        raw.chmod(0o700)  # mkdir's mode is masked by the umask
+    path = canonical_source_root(raw)
+    if any(s.path is not None and s.path == path for s in config.sources):
+        return config, None
+    sid = derive_source_id(path, {s.id for s in config.sources})
+    config = append_to_config(config.config_path, inbox_source_table(sid, path))
+    return config, next(s for s in config.sources if s.id == sid)
 
 
 def append_to_config(config_path: Path, table: str) -> Config:

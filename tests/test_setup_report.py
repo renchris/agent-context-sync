@@ -185,7 +185,8 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     assert "step=doctor seconds=3 rc=1" in raw.split("</details>", 1)[0], "raw log collapsed"
     assert "step=doctor seconds=3 rc=1" not in inst.split("<details>", 1)[0]
     conf = section(text, "Configuration")
-    assert "sources: 2 (by kind: local 2" in conf and "2 under ~/Library/CloudStorage" in conf
+    assert "sources: 3 (by kind: inbox 1, local 2" in conf  # init keeps the inbox (KISS K05)
+    assert "2 under ~/Library/CloudStorage" in conf
     assert "client_id: not set" in conf and "a git repo" in conf
     doctor = section(text, "Doctor")
     m = re.search(r"^(\d+) ok: (.+)$", doctor, re.MULTILINE)
