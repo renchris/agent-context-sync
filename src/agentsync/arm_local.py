@@ -69,7 +69,11 @@ _HDR = 4 + 4 * _ATTR_BIT_MAP_COUNT
 _FILE_BUF = _HDR + 16 + 4
 _VOL_BUF = _HDR + 16
 
-# Always ignored in an inbox, whatever ``exclude`` says: lock files and in-flight downloads.
+# Always ignored by every local arm, whatever ``exclude`` says: Finder metadata, AppleDouble files and the
+# custom-icon file. A hand-written ``exclude`` adds to these instead of replacing them.
+_OS_JUNK: tuple[str, ...] = (".DS_Store", "._*", "Icon\r")
+
+# Always ignored in an inbox, whatever ``exclude`` says: lock files, in-flight downloads and OS junk.
 _INBOX_IGNORES: tuple[str, ...] = (
     "~$*",
     "*.tmp",
@@ -78,9 +82,7 @@ _INBOX_IGNORES: tuple[str, ...] = (
     "*.part",
     "*.partial",
     "*.download",
-    ".DS_Store",
-    "._*",
-    "Icon\r",
+    *_OS_JUNK,
 )
 
 _WINDOWS_DEFAULT_HOST_RE = re.compile(r"-(?:DESKTOP|LAPTOP)-[A-Z0-9]{7}$", re.IGNORECASE)
@@ -662,7 +664,8 @@ class LocalArm:
     # -- helpers -------------------------------------------------------------------------------------------
 
     def _exclude(self) -> tuple[str, ...]:
-        return tuple(self.cfg.exclude)
+        extra = tuple(p for p in _OS_JUNK if p not in self.cfg.exclude)
+        return (*self.cfg.exclude, *extra)
 
     def _volume_uuid(self) -> str:
         if self._volume is None:

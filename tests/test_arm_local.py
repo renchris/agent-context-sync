@@ -472,6 +472,22 @@ def test_scan_is_a_complete_full_pass(tree: Path) -> None:
     assert arm.last_stats.excluded == 2  # DEFAULT_EXCLUDES: ~$b.docx, .DS_Store
 
 
+@pytest.mark.parametrize("exclude", [DEFAULT_EXCLUDES, ("drafts/",)], ids=["defaults", "custom"])
+def test_custom_exclude_still_drops_os_junk(tmp_path: Path, exclude: tuple[str, ...]) -> None:
+    root = tmp_path / "src"
+    _write(root / "notes.md")
+    _write(root / "Icon\r")
+    _write(root / "sub" / ".DS_Store")
+    _write(root / "sub" / "._notes.md")
+    _write(root / "sub" / "plan.docx")
+    _write(root / "drafts" / "wip.docx")
+    rels = [i.rel_path for i in al.LocalArm(_cfg(root, exclude=exclude)).scan(None, full=True).items]
+    assert "Icon\r" not in rels
+    assert "sub/.DS_Store" not in rels and "sub/._notes.md" not in rels
+    assert {"notes.md", "sub/plan.docx"} <= set(rels)
+    assert ("drafts/wip.docx" in rels) is (exclude == DEFAULT_EXCLUDES)
+
+
 def test_scan_without_sentinel_reports_none(tree: Path) -> None:
     arm = al.LocalArm(_cfg(tree))
     assert arm.scan(None, full=True).enumeration_complete is True

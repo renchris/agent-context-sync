@@ -225,7 +225,7 @@ class DocsLayout:
 @functools.lru_cache(maxsize=512)
 def _glob_regex(pattern: str) -> re.Pattern[str]:
     """Compile one glob to a regex over POSIX relative paths."""
-    pat = pattern.strip()
+    pat = pattern.strip(" \t\n")  # not \r: the macOS custom-icon file is literally "Icon\r"
     anchored = "/" in pat.rstrip("/")
     pat = pat.lstrip("/")
     if pat.endswith("/"):

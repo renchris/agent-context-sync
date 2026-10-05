@@ -24,6 +24,8 @@ from agentsync.paths import DocsLayout, glob_match, is_cloud_path, is_included, 
         ("x/archive/y.docx", "**/archive/**", True),
         ("q1.xlsx", "q[0-9].xlsx", True),
         ("qa.xlsx", "q[!0-9].xlsx", True),
+        ("sub/Icon\r", "Icon\r", True),  # the macOS custom-icon file: the \r is part of the name
+        ("Icon", "Icon\r", False),
     ],
 )
 def test_glob_match(path: str, pattern: str, expected: bool) -> None:
