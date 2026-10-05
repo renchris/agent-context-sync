@@ -8,6 +8,7 @@ import dataclasses
 import errno
 import hashlib
 import io
+import logging
 import os
 import re
 import stat
@@ -674,10 +675,10 @@ def test_inbox_withholds_files_inside_the_quiescence_window(tmp_path: Path) -> N
 
 
 def _settling(arm: al.InboxArm) -> list[float]:
-    """Give ``arm`` settle_once and a fake clock that only its sleep moves; returns the sleeps taken."""
+    """Give ``arm`` a settle budget and a fake clock that only its sleep moves; returns the sleeps taken."""
     start = time.time_ns()
     sleeps: list[float] = []
-    arm.settle_once = True
+    arm.settle = al.SettleBudget()
     arm._clock = lambda: start + int(sum(sleeps) * 1e9)
     arm._sleep = sleeps.append
     return sleeps
@@ -723,6 +724,43 @@ def test_inbox_settle_once_lists_once_more_and_never_waits_past_the_window(tmp_p
     res = arm.scan(None, full=True)
     assert sleeps == [] and len(walks) == 1
     assert res.enumeration_complete is False
+
+
+def test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A zip from a later time zone extracts with mtimes hours ahead: that file stays withheld, and the
+    fresh export beside it is still waited for and listed, with the wait shown at the default log level."""
+    root = tmp_path / "inbox"
+    _write(root / "fresh.eml")
+    ahead = time.time_ns() + 7 * 3600 * 1_000_000_000
+    os.utime(_write(root / "fromzip.eml"), ns=(ahead, ahead))
+    arm = _inbox(root)
+    sleeps = _settling(arm)
+    with caplog.at_level(logging.WARNING, logger=al.__name__):
+        res = arm.scan(None, full=True)
+    assert len(sleeps) == 1 and 0 < sleeps[0] <= 60
+    assert [i.rel_path for i in res.items] == ["fresh.eml"]
+    assert res.enumeration_complete is False and any("fromzip.eml" in a for a in res.alarms)
+    assert any("still settling" in r.getMessage() for r in caplog.records)
+
+
+def test_inbox_settle_never_waits_past_the_budget_left(tmp_path: Path) -> None:
+    """The wait comes out of the budget the cycle shares across inboxes; when even the oldest withheld file
+    would not settle in what is left, the arm does not sleep at all."""
+    root = tmp_path / "inbox"
+    _write(root / "export.eml")
+    arm = _inbox(root, quiescence_s=600)
+    sleeps = _settling(arm)
+    assert arm.settle is not None
+    arm.settle.remaining_s = 30.0
+    res = arm.scan(None, full=True)
+    assert sleeps == [] and res.items == () and arm.settle.remaining_s == 30.0
+    real_clock = arm._clock
+    arm._clock = lambda: real_clock() + 590 * 1_000_000_000  # about 10 s left of the 600 s window
+    res = arm.scan(None, full=True)
+    assert len(sleeps) == 1 and sleeps[0] <= 30 and arm.settle.remaining_s == 30.0 - sleeps[0]
+    assert [i.rel_path for i in res.items] == ["export.eml"]
 
 
 def test_inbox_reports_max_of_created_and_modified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

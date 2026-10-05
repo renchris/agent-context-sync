@@ -61,6 +61,10 @@ _T = TypeVar("_T")
 # stay far below two minutes, so expiry means an unanswered prompt or a stalled provider.
 LISTING_TIMEOUT_S = 120.0
 
+# The most one interactive sync waits for settling inbox files, summed over every inbox it lists (field N4).
+# An agent runs `agentsync sync` at the start of a session, and its tools stop a command at about two minutes.
+INBOX_SETTLE_MAX_S = 60.0
+
 # sys/attr.h (macOS 15 SDK)
 _ATTR_BIT_MAP_COUNT = 5
 _ATTR_CMN_CRTIME = 0x00000200
@@ -904,6 +908,14 @@ class LocalArm:
         )
 
 
+@dataclasses.dataclass
+class SettleBudget:
+    """The wait one interactive sync has left for settling inbox files; every inbox arm of the cycle shares
+    one (field N4)."""
+
+    remaining_s: float = INBOX_SETTLE_MAX_S
+
+
 class InboxArm(LocalArm):
     """SourceArm for kind ``inbox``: LocalArm plus quiescence, lock-file ignores and max(created,
     modified)."""
@@ -914,17 +926,18 @@ class InboxArm(LocalArm):
         self._clock: Callable[[], int] = time.time_ns  # wall clock in ns; replaceable in tests
         self._sleep: Callable[[float], None] = time.sleep  # replaceable in tests
         # Set by the cycle for an interactive sync (field N4): when the only gap in a walk is withheld files,
-        # wait until the youngest settles (at most quiescence_s) and list the inbox once more.
-        self.settle_once = False
+        # wait until the youngest settles and list the inbox once more, drawing the wait from this budget.
+        self.settle: SettleBudget | None = None
 
     def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
         """As LocalArm.scan, but items whose size/mtime changed within ``quiescence_s`` are withheld.
 
         mtime_ns is reported as max(created_ns, mtime_ns) (a copied file keeps its original mtime).  Withheld
-        items make enumeration_complete False (they are neither new nor absent this pass).  With
-        ``settle_once`` set and withheld files the walk's only gap, the arm sleeps until the youngest of them
-        leaves the window (never longer than ``quiescence_s``: a future-dated file is not waited for) and
-        walks once more; what is still withheld then stays withheld.
+        items make enumeration_complete False (they are neither new nor absent this pass).  With ``settle``
+        set and withheld files the walk's only gap, the arm sleeps until the youngest of them leaves the
+        window, at most what ``settle`` has left (nothing when even the oldest would not settle in that time;
+        a future-dated file is never waited for and stays withheld), and walks once more; what is still
+        withheld then stays withheld.
         """
         del cursor, full
         quiescence_ns = self.cfg.quiescence_s * 1_000_000_000
@@ -935,16 +948,18 @@ class InboxArm(LocalArm):
                 return walked
             items, stats, alarms = walked
             self.last_stats = stats
-            horizon = self._clock() - quiescence_ns
+            now = self._clock()
+            horizon = now - quiescence_ns
             kept: list[SourceItem] = []
             withheld: list[str] = []
-            youngest = horizon
+            settling: list[int] = []  # withheld stamps that leave the window in time (not future-dated)
             for item in items:
                 created = item.created_ns if item.created_ns is not None else item.mtime_ns
                 stamp = max(item.mtime_ns, item.ctime_ns, created)
                 if stamp > horizon:
                     withheld.append(item.rel_path)
-                    youngest = max(youngest, stamp)
+                    if stamp <= now:
+                        settling.append(stamp)
                     continue
                 kept.append(
                     dataclasses.replace(
@@ -953,17 +968,21 @@ class InboxArm(LocalArm):
                         extra={"dedup_name": fold_conflict_suffix(item.name)},
                     )
                 )
-            wait_ns = youngest - horizon  # until the youngest withheld file leaves the window
-            only_withheld = bool(withheld) and stats.sentinel_present is not False and not stats.unknown_dirs
-            if attempt or not self.settle_once or not only_withheld or wait_ns > quiescence_ns:
+            budget = self.settle
+            only_withheld = stats.sentinel_present is not False and not stats.unknown_dirs
+            if attempt or budget is None or not settling or not only_withheld:
                 break
-            log.info(
-                "%s: %d inbox item(s) still settling; waiting %.1fs, then listing the inbox once more",
+            if (min(settling) - horizon) / 1e9 > budget.remaining_s:
+                break  # not even the oldest settles in the time this sync has left
+            wait_s = min((max(settling) - horizon) / 1e9, budget.remaining_s)  # until the youngest leaves
+            budget.remaining_s -= wait_s
+            log.warning(
+                "%s: %d inbox item(s) still settling; waiting %.0fs, then listing the inbox once more",
                 self.source_id,
                 len(withheld),
-                wait_ns / 1e9,
+                wait_s,
             )
-            self._sleep(wait_ns / 1e9)
+            self._sleep(wait_s)
         if withheld:
             shown = ", ".join(repr(p) for p in withheld[:5])
             more = f" (+{len(withheld) - 5} more)" if len(withheld) > 5 else ""

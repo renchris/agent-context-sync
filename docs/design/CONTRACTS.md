@@ -496,7 +496,10 @@ are `duplicate-of <source_id> (<mirror path>)` and are also detected by (normali
 - Expect about a 60 s delay: a file whose mtime, ctime or creation time is inside `quiescence_s` (default 60) is
   withheld, and the rename resets ctime. An interactive `agentsync sync` (no `--mode`) waits once, at most
   `quiescence_s`, when withheld files are an inbox walk's only gap, then lists that inbox again
-  (`InboxArm.settle_once`); a background sync never waits, and the next one picks them up.
+  (`InboxArm.settle`); a background sync never waits, and the next one picks them up. The waits of one sync
+  share one budget, `INBOX_SETTLE_MAX_S` (60 s) over every inbox, logged at WARNING; an inbox whose oldest
+  withheld file would not settle in what is left does not wait, and a future-dated file (a zip from a later
+  time zone) is never waited for and stays withheld.
 - Never set `quiescence_s = 0` in a shared inbox: a half-written file would be committed.
 
 Pinned by `tests/test_contracts.py::test_inbox_writer_contract_matches_the_arm`.
@@ -1930,6 +1933,7 @@ class WalkStats:
     sentinel_present: bool | None  # None when no sentinel is configured
 
 LISTING_TIMEOUT_S = 120.0  # one directory listing; past it macOS is holding the read for an Allow prompt
+INBOX_SETTLE_MAX_S = 60.0  # the most one interactive sync waits for settling inbox files, all inboxes
 
 class CallTimedOutError(TimeoutError):
     """:func:`call_with_timeout` gave up waiting. A subclass, because Python also raises an OS ETIMEDOUT (a
@@ -2011,15 +2015,29 @@ class LocalArm:
         Re-lstats first: if the inode no longer matches ``item.ino`` raises FileNotFoundError (re-classify).
         """
 
+@dataclasses.dataclass
+class SettleBudget:
+    """The wait one interactive sync has left for settling inbox files; every inbox arm of the cycle shares
+    one (field N4)."""
+
+    remaining_s: float = INBOX_SETTLE_MAX_S
+
+
 class InboxArm(LocalArm):
     """SourceArm for kind ``inbox``: LocalArm plus quiescence, lock-file ignores and max(created,
     modified)."""
+
+    settle: SettleBudget | None  # set by the cycle for an interactive sync; None = never wait
 
     def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
         """As LocalArm.scan, but items whose size/mtime changed within ``quiescence_s`` are withheld.
 
         mtime_ns is reported as max(created_ns, mtime_ns) (a copied file keeps its original mtime).  Withheld
-        items make enumeration_complete False (they are neither new nor absent this pass).
+        items make enumeration_complete False (they are neither new nor absent this pass).  With ``settle``
+        set and withheld files the walk's only gap, the arm sleeps until the youngest of them leaves the
+        window, at most what ``settle`` has left (nothing when even the oldest would not settle in that time;
+        a future-dated file is never waited for and stays withheld), and walks once more; what is still
+        withheld then stays withheld.
         """
 
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:

@@ -42,7 +42,7 @@ from pathlib import Path
 
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
-from agentsync.arm_local import InboxArm, LocalArm, cloud_provider_root, fold_conflict_suffix
+from agentsync.arm_local import InboxArm, LocalArm, SettleBudget, cloud_provider_root, fold_conflict_suffix
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
@@ -659,7 +659,7 @@ class _Cycle:
         self.dry = mode is CycleMode.DRY_RUN
         self.auth = auth
         self.stale_backups = tuple(stale_backups)  # pre-v<N> manifest copies older than this cycle
-        self.settle_inbox = settle_inbox  # interactive sync: an inbox waits once for settling files (N4)
+        self.settle_inbox = settle_inbox  # interactive sync: inboxes wait for settling files (N4)
         # ~/Library/CloudStorage/<provider> folders a walk timed out in this cycle: every other source under
         # one would wait on the same privacy prompt, so they are not read either (field N8)
         self.held_clouds: set[Path] = set()
@@ -724,9 +724,10 @@ class _Cycle:
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
+            settle = SettleBudget() if self.settle_inbox else None  # one wait bound for the whole sync
             for arm in arms.values():
                 if isinstance(arm, InboxArm):
-                    arm.settle_once = self.settle_inbox
+                    arm.settle = settle
             for src in self.selected:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
@@ -2287,8 +2288,9 @@ def run_cycle(
     ``_interactive_mode`` (RECONCILE when one is due, else POLL) and it waits up to ``lock_wait_s`` for a
     running cycle's lock.  An explicit mode (launchd) tries the lock once, unless ``wait_for_lock`` is True
     (an operator verb with a fixed mode, such as ``accept-deletions``: launchd never retries it).  An
-    interactive run also lets each inbox wait once for files still settling (``InboxArm.settle_once``), so a
-    file an exporter just renamed into place converts in this sync, not the next.
+    interactive run also lets each inbox wait once for files still settling (``InboxArm.settle``, at most
+    ``INBOX_SETTLE_MAX_S`` for the whole sync), so a file an exporter just renamed into place converts in this
+    sync, not the next.
 
     Raises LockHeldError (CLI exit 75), ConfigError, ManifestSchemaError.  AuthRequiredError is caught:
     no cursor advances, STATE.md/heartbeat record ``auth: REAUTH_REQUIRED``, report.auth_required=True.

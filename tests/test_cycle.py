@@ -593,6 +593,40 @@ def test_an_atomic_re_export_converts_within_one_interactive_sync(
     assert "second version" in page(config.docs_repo, page_rel)[1]
 
 
+def test_one_interactive_sync_waits_at_most_60s_over_every_inbox(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field N4 review: the settle wait is bounded once per sync, not once per inbox, whatever quiescence_s
+    is, so an agent's ``agentsync sync`` stays well inside its command timeout."""
+    sleeps: list[float] = []
+    start = time.time_ns()
+    offset = 570 * 1_000_000_000  # files written now look 570 s old: 30 s left of a 600 s window
+
+    class FakeClockInbox(al.InboxArm):
+        def __init__(self, cfg: Any) -> None:
+            super().__init__(cfg)
+            self._clock = lambda: start + offset + int(sum(sleeps) * 1e9)
+            self._sleep = sleeps.append
+
+    monkeypatch.setattr(cycle_mod, "InboxArm", FakeClockInbox)
+    sources = ""
+    for sid in ("inbox-a", "inbox-b"):
+        inbox = tmp_path / sid
+        inbox.mkdir()
+        (inbox / "older.md").write_text(f"# Older\n\n{sid}\n", encoding="utf-8")
+        (inbox / "fresh.md").write_text("# Fresh\n\nstill being written\n", encoding="utf-8")
+        os.utime(inbox / "fresh.md", ns=(start + offset, start + offset))  # changed just now
+        sources += INBOX_SOURCE.format(path=inbox).replace('"inbox"\n', f'"{sid}"\n', 1)
+    sources = sources.replace("quiescence_s = 0", "quiescence_s = 600")
+    config = config_with(tmp_path, local_source_dir, sources)
+    report = run(config, only=["inbox-a", "inbox-b"], mode=None)
+    assert report.exit_code == 0, report
+    assert 0 < sum(sleeps) <= 60, sleeps
+    for sid in ("inbox-a", "inbox-b"):
+        assert sid in page(config.docs_repo, f"mirror/{sid}/older.md")[1]
+        assert not (config.docs_repo / "mirror" / sid / "fresh.md").exists()
+
+
 def test_inbox_drop_matching_a_graph_file_by_name_and_size_is_refused_unread(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
