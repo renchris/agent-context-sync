@@ -641,6 +641,48 @@ def test_eml_other_declared_charset_still_decodes_by_its_label(tmp_path: Path) -
     assert "\u041f\u0440\u0438\u0432\u0435\u0442" in u.body
 
 
+@pytest.mark.parametrize(
+    ("label", "body", "kept"),
+    [
+        # Superset bytes under the legacy label: GBK under gb2312, cp932 under shift_jis, and so on.
+        (
+            "gb2312",
+            "\u6731\u9555\u57fa \u8bf4 \u4f60\u597d\n".encode("gbk"),
+            "\u6731\u9555\u57fa \u8bf4 \u4f60\u597d",
+        ),
+        (
+            "shift_jis",
+            "\u2460 \u4f1a\u8b70\u306f\u660e\u65e5\u3067\u3059\n".encode("cp932"),
+            "\u4f1a\u8b70\u306f\u660e\u65e5\u3067\u3059",
+        ),
+        (
+            "euc-kr",
+            "\uac02 \uc548\ub155\ud558\uc138\uc694\n".encode("cp949"),
+            "\uc548\ub155\ud558\uc138\uc694",
+        ),
+        ("big5", "\u7881 \u4f60\u597d\u4e16\u754c\n".encode("cp950"), "\u4f60\u597d\u4e16\u754c"),
+        # A byte no codepage of the label maps costs one replacement, not the whole body.
+        (
+            "euc-kr",
+            "\uc548\ub155 ".encode("euc-kr") + b"\xff" + "\uc138\uc694\n".encode("euc-kr"),
+            "\uc548\ub155",
+        ),
+    ],
+)
+def test_eml_cjk_label_keeps_its_text_past_an_out_of_label_byte(
+    tmp_path: Path, label: str, body: bytes, kept: str
+) -> None:
+    raw = (
+        b"From: a@example.com\r\nSubject: memo\r\nMIME-Version: 1.0\r\n"
+        + f"Content-Type: text/plain; charset={label}\r\n".encode()
+        + b"Content-Transfer-Encoding: 8bit\r\n\r\n"
+        + body
+    )
+    u = _one(EmlConverter(CFG).convert(_write(tmp_path, "j.eml", raw), name="j.eml"))
+    assert kept in u.body
+    assert not any(ch in u.body for ch in "\u00d6\u00c4\u00e4\u2030\u2021")  # no cp1252/latin-1 mojibake
+
+
 def test_eml_attached_message_is_listed_not_expanded(tmp_path: Path) -> None:
     inner = EmailMessage()
     inner["Subject"] = "Original"

@@ -31,6 +31,14 @@ _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID"
 _SMIME_ENCRYPTED = frozenset({"application/pkcs7-mime", "application/x-pkcs7-mime"})
 # codecs.lookup() names of the labels Windows mail clients put on cp1252 bytes.
 _WINDOWS_PRONE_CODECS = frozenset({"utf-8", "ascii", "iso8859-1", "cp1252"})
+# Legacy CJK labels mail clients put on bytes from the Windows superset codepage (GBK under gb2312, ...).
+_CJK_SUPERSETS: Mapping[str, str] = {
+    "gb2312": "gb18030",
+    "gbk": "gb18030",
+    "shift_jis": "cp932",
+    "euc_kr": "cp949",
+    "big5": "cp950",
+}
 
 
 def _header(msg: Message, key: str) -> str:
@@ -50,7 +58,9 @@ def _decode_part(part: Message) -> str:
     A part labelled UTF-8, ASCII, Latin-1 or cp1252, or not labelled at all, goes through ``_decode_text``
     (strict UTF-8, then cp1252): Windows mail clients send cp1252 under those labels or none, and a lenient
     decode turns its smart quotes and accents into replacement characters.  Any other declared charset is
-    decoded strictly, falling back to the same order when the charset is unknown or the bytes do not fit it.
+    decoded by its label (a legacy CJK label by its Windows superset): strictly, then as UTF-8, then leniently
+    by the label, so one out-of-label character costs one replacement, not the whole body.  An unknown or
+    bytes-only label falls back to the ``_decode_text`` order.
     """
     payload = part.get_payload(decode=True)
     if not isinstance(payload, bytes):
@@ -62,10 +72,18 @@ def _decode_part(part: Message) -> str:
         except (LookupError, ValueError):
             codec = ""
         if codec and codec not in _WINDOWS_PRONE_CODECS:
+            codec = _CJK_SUPERSETS.get(codec, codec)
             try:
                 return payload.decode(codec)
-            except (LookupError, UnicodeError):  # a bytes-only codec (base64), or bytes that do not fit
+            except LookupError:  # a bytes-only codec (base64): fall through to the cp1252 order
                 pass
+            except (
+                UnicodeError
+            ):  # bytes that do not fit the label: UTF-8 if they are, else the label leniently
+                try:
+                    return payload.decode("utf-8")
+                except UnicodeError:
+                    return payload.decode(codec, errors="replace")
     try:
         return _decode_text(payload)
     except ConversionError:
