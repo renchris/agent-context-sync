@@ -974,7 +974,8 @@ class MaterialiseError(AgentSyncError):
         super().__init__(f"{path}: {message}")
 
 class DatalessRefusedError(MaterialiseError):
-    """The kernel refused to materialise a dataless file (EDEADLK): policy is OFF for this context."""
+    """The kernel refused to materialise a dataless file (EDEADLK): policy is OFF for this context; or the
+    provider canceled every retry (ECANCELED). Either way the item is deferred, never an error."""
 
 class ProviderTimeoutError(MaterialiseError):
     """The File Provider timed out (ETIMEDOUT) after every retry; a retry-later, never a verdict."""
@@ -1990,6 +1991,8 @@ EDEADLK = 11  # macOS errno: materialisation refused for this context
 
 ETIMEDOUT = 60  # macOS errno: provider warming up; retry with backoff
 
+ECANCELED = 89  # macOS errno: the provider canceled the read; retry, then an OS refusal (deferred)
+
 @dataclass(frozen=True, slots=True)
 class MaterialiseResult:
     """Outcome of copying one source file into staging."""
@@ -2042,8 +2045,9 @@ def materialise(
     st_size when ``src`` is dataless (online-only) at that lstat and 0 for an already-local file (2026-09-30,
     L3: the byte budget bounds downloads; a budget of 0 still copies every local file). EDEADLK ->
     DatalessRefusedError (no retry);
-    ETIMEDOUT -> retry ``retries`` times with exponential backoff, then ProviderTimeoutError; ENOENT ->
-    FileNotFoundError propagates (vanished between walk and read: re-classify next cycle); size or mtime
+    ETIMEDOUT -> retry ``retries`` times with exponential backoff, then ProviderTimeoutError; ECANCELED -> the
+    same retries, then DatalessRefusedError (the caller defers it until the person chooses Download Now);
+    ENOENT -> FileNotFoundError propagates (vanished between walk and read: re-classify next cycle); size or mtime
     changed during the copy -> MaterialiseError("unstable"), dest removed. Post: dest holds exactly the bytes
     hashed into ``content_sha256``; src is never written.
     """

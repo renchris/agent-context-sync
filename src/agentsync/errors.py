@@ -38,7 +38,8 @@ class MaterialiseError(AgentSyncError):
 
 
 class DatalessRefusedError(MaterialiseError):
-    """The kernel refused to materialise a dataless file (EDEADLK): policy is OFF for this context."""
+    """The kernel refused to materialise a dataless file (EDEADLK): policy is OFF for this context; or the
+    provider canceled every retry (ECANCELED). Either way the item is deferred, never an error."""
 
 
 class ProviderTimeoutError(MaterialiseError):

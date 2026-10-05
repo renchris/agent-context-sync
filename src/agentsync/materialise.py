@@ -45,6 +45,7 @@ SF_DATALESS = 0x40000000
 
 EDEADLK = 11  # macOS errno: materialisation refused for this context
 ETIMEDOUT = 60  # macOS errno: provider warming up; retry with backoff
+ECANCELED = 89  # macOS errno: the provider canceled the read; retry, then an OS refusal (deferred)
 
 _VALID_POLICIES = frozenset(
     {
@@ -291,9 +292,11 @@ def materialise(
     dataless (online-only, SF_DATALESS) at that lstat. The byte budget bounds downloads: an already-local file
     reads no provider bytes and never consumes it, so a budget of 0 still copies every local file. EDEADLK ->
     DatalessRefusedError (no retry); ETIMEDOUT -> retry ``retries`` times with exponential backoff, then
-    ProviderTimeoutError; ENOENT -> FileNotFoundError propagates (vanished between walk and read: re-classify
-    next cycle); size or mtime changed during the copy -> MaterialiseError("unstable"), dest removed. Post:
-    dest holds exactly the bytes hashed into ``content_sha256``; src is never written."""
+    ProviderTimeoutError; ECANCELED -> the same retries, then DatalessRefusedError (the OS refused it: the
+    caller defers it until the person chooses Download Now); ENOENT -> FileNotFoundError propagates (vanished
+    between walk and read: re-classify next cycle); size or mtime changed during the copy ->
+    MaterialiseError("unstable"), dest removed. Post: dest holds exactly the bytes hashed into
+    ``content_sha256``; src is never written."""
     st0 = os.lstat(src)  # FileNotFoundError propagates
     if stat.S_ISLNK(st0.st_mode):
         raise MaterialiseError(str(src), None, "refusing to read a symlink (never followed)")
@@ -325,7 +328,16 @@ def materialise(
                             code,
                             "materialisation refused (EDEADLK): policy is OFF for this context",
                         ) from exc
-                    if code == ETIMEDOUT:
+                    if code in (ETIMEDOUT, ECANCELED):
+                        name = "ETIMEDOUT" if code == ETIMEDOUT else "ECANCELED"
+                        if attempts > retries and code == ECANCELED:
+                            # Seen in the field: OneDrive cancels every read of some online-only files until
+                            # they are downloaded in Finder, so it ends as an OS refusal, not an error.
+                            raise DatalessRefusedError(
+                                str(src),
+                                code,
+                                f"File Provider canceled the read (ECANCELED) after {attempts} attempt(s)",
+                            ) from exc
                         if attempts > retries:
                             raise ProviderTimeoutError(
                                 str(src),
@@ -333,7 +345,7 @@ def materialise(
                                 f"File Provider timed out (ETIMEDOUT) after {attempts} attempt(s)",
                             ) from exc
                         delay = backoff_s * (2 ** (attempts - 1))
-                        log.info("%s: ETIMEDOUT on attempt %d; retrying in %.1fs", src, attempts, delay)
+                        log.info("%s: %s on attempt %d; retrying in %.1fs", src, name, attempts, delay)
                         sleep(delay)
                         continue
                     if code == errno_mod.ELOOP:

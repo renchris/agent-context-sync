@@ -63,6 +63,7 @@ def test_constants_match_macos_sdk() -> None:
     assert m.SF_DATALESS == 0x40000000
     assert m.EDEADLK == errno.EDEADLK == 11
     assert m.ETIMEDOUT == errno.ETIMEDOUT == 60
+    assert m.ECANCELED == errno.ECANCELED == 89
 
 
 def test_is_dataless_reads_the_flag_only() -> None:
@@ -405,6 +406,28 @@ def test_etimedout_exhausts_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert len(attempts) == 4
     assert sleeps == [2.0, 4.0, 8.0]
     assert list(dest.parent.iterdir()) == []
+
+
+def test_ecanceled_retries_then_defers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Field report N8: OneDrive answered errno 89 until the file was downloaded in Finder. It retries like
+    # ETIMEDOUT, then ends as the OS refusal the cycle defers (HYDRATION_REFUSED), not a generic error.
+    src = _write(tmp_path / "c.docx", b"online-only")
+    attempts, fake = _failing_copy([89] * 10)
+    monkeypatch.setattr(m, "_copy_once", fake)
+    sleeps: list[float] = []
+    dest = tmp_path / "o" / "c.docx"
+    with pytest.raises(DatalessRefusedError) as exc:
+        m.materialise(src, dest, ByteBudget(100, 1), retries=2, backoff_s=1.0, sleep=sleeps.append)
+    assert exc.value.errno == 89
+    assert len(attempts) == 3
+    assert sleeps == [1.0, 2.0]
+    assert list(dest.parent.iterdir()) == []
+    # a cancel that clears on a retry copies normally
+    monkeypatch.undo()
+    _, fake = _failing_copy([89])
+    monkeypatch.setattr(m, "_copy_once", fake)
+    assert m.materialise(src, dest, ByteBudget(100, 1), sleep=sleeps.append).attempts == 2
+    assert dest.read_bytes() == b"online-only"
 
 
 def test_vanished_mid_read_propagates_file_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
