@@ -483,6 +483,24 @@ folding, two-read agreement; a drop whose canonical hash matches a live Graph ro
 **SUPERSEDED (2026-09-29, §16.9):** the walk reuses the stored `gen_count` when the lstat tuple is unchanged; inbox duplicates
 are `duplicate-of <source_id> (<mirror path>)` and are also detected by (normalised name, size) before any read.
 
+**Inbox writer contract (2026-10-05, field N4 + N14).** What a script or exporter that feeds an inbox must do:
+
+- Write each file under a temporary name in the inbox (`*.tmp`, `*.part`, `*.partial`, `*.download` or
+  `*.crdownload`, always ignored there), then rename it into place.
+- Keep names stable: one unit (a message, a chat month) keeps one file name across re-exports. Identity is
+  `volume_uuid:inode`, and a new inode at the same path pairs as a safe-save; a dated or numbered name splits one
+  unit into a tombstone plus a new page.
+- One file per unit.
+- Never remove or rotate files: the inbox is a mirror, not a queue. A removed file is a deletion, so its page is
+  tombstoned.
+- Expect about a 60 s delay: a file whose mtime, ctime or creation time is inside `quiescence_s` (default 60) is
+  withheld, and the rename resets ctime. An interactive `agentsync sync` (no `--mode`) waits once, at most
+  `quiescence_s`, when withheld files are an inbox walk's only gap, then lists that inbox again
+  (`InboxArm.settle_once`); a background sync never waits, and the next one picks them up.
+- Never set `quiescence_s = 0` in a shared inbox: a half-written file would be committed.
+
+Pinned by `tests/test_contracts.py::test_inbox_writer_contract_matches_the_arm`.
+
 ## 12. docs/ layout (publish owns every generated file)
 
 ```

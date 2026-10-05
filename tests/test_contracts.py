@@ -308,3 +308,33 @@ def test_superseded_markers_point_at_existing_amendments() -> None:
     assert refs, "no SUPERSEDED markers"
     for ref in sorted(refs):
         assert f"### {ref} " in text, f"§{ref} is referenced but missing"
+
+
+def test_inbox_writer_contract_matches_the_arm() -> None:
+    """Field N14: §11's inbox writer contract names only temporary patterns the inbox always ignores (a
+    subset of ``_INBOX_IGNORES``), each matching a temp name a writer would use, and the delay it promises
+    is the default ``quiescence_s`` that ``inbox_source_table`` tells the reader about."""
+    import dataclasses  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    from agentsync.arm_local import _INBOX_IGNORES  # noqa: PLC0415
+    from agentsync.config import SourceConfig, inbox_source_table  # noqa: PLC0415
+    from agentsync.paths import glob_match  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    section = text.split("\n## 11. ", 1)[1].split("\n## ", 1)[0]
+    contract = section.split("**Inbox writer contract", 1)[1]
+    first = contract.split("\n- ", 2)[1]  # the temp-then-rename rule
+    temps = re.findall(r"`(\*\.[a-z]+)`", first)
+    assert len(temps) >= 3, "the writer contract names no temporary patterns"
+    assert set(temps) <= set(_INBOX_IGNORES)
+    for pattern in temps:
+        assert glob_match("export.eml" + pattern[1:], pattern), pattern
+    quiescence = next(f.default for f in dataclasses.fields(SourceConfig) if f.name == "quiescence_s")
+    table = inbox_source_table("inbox", Path("/tmp/inbox"))
+    assert f"about a {quiescence} s delay" in contract
+    assert f"quiescence_s = {quiescence}" in table and f"about a {quiescence} s delay" in table
+    assert "temp name, then rename" in table
+    for rule in ("rename it into place", "Keep names stable", "One file per unit", "mirror, not a queue"):
+        assert rule in contract, rule
+    assert "Never set `quiescence_s = 0` in a shared inbox" in contract
