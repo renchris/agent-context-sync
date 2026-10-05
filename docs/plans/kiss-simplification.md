@@ -132,126 +132,29 @@ Learnings for W5:
   SYNONYMS.tsv and §15's module stubs are stale (W3 edited §14 only).
 - BOUNDARY_TEXT says `docs/mirror/` verbatim, so the no-docs/-prefix test strips it before checking.
 
-## W4 CLI surface: fewer verbs, flags and config keys
+## W4 CLI surface: fewer verbs, flags and config keys — DONE (2026-10-05)
 
-Status: upcoming.
+Landed on `main` at `49ebce7` (17 commits, `1c1fb13..49ebce7`): `1c1fb13` one inbox (K05), `36ed332` add-source
+creates everything, init hidden (K14), `e49e212` template holds only folders and one archive line (K15), `3b070e1`
+background sync optional (K11a), `db609e6` sync takes no visible option (K13b), `bc33338` graph verbs, it-request
+and --config hidden (K18), `5547b71` setup-report hidden, --no-redact/--friction deleted (K16a), `50334e7` final
+surface pinned (K19b); eight review fixes (20 findings, one partly rejected as already fixed); `49ebce7` the
+field report's N3 (the named inbox is added even when other inbox sources exist). Gate after rebase onto W3:
+ruff, format, mypy clean; pytest 2008 passed, 2 skipped. Run `wf_62274074-ae4`.
 
-Files: `src/agentsync/cli.py`, `src/agentsync/config.py`, `src/agentsync/ops/doctor.py`, `src/agentsync/ops/launchd.py`, `src/agentsync/cycle.py (messages 388, 785)`, `src/agentsync/governance.py (keep-days floor)`, `scripts/install.sh (only 1314-1343 and 1476-1480)`, `docs/deploy/README.md (§What needs IT, 79-92 only)`, `docs/design/CONTRACTS.md (§16.10, §16.16, CLI rows 3219, 3325-3329, 4226-4239)`, `tests/test_cli.py`, `tests/test_config.py`, `tests/test_ops_doctor.py`, `tests/test_ops_launchd.py`, `tests/test_it_request.py`, `tests/test_setup_report.py`, `tests/test_install_oneshot.py (stub at 308)`, `tests/test_deploy_pack.py (stub at 233)`, `tests/test_launcher.py (453, 589)`, `tests/test_contracts.py`
-
-### K05 (default, S)
-
-New helper config.ensure_inbox(config_path). It creates ~/agent-context/inbox with mode 0700 and appends inbox_source_table only when no kind="inbox" source exists. add-source and the hidden init both call it.
-
-Delete `add-source --inbox`.
-
-install.sh's HAVE_SOURCES counts only [[source]] tables whose kind is not inbox. A config with only the inbox therefore still gets 'choose a folder to sync' and exit 1 under --confirm-install-agent.
-
-- **Where:** src/agentsync/config.py:608-616, 724-725; src/agentsync/cli.py:210-216, 554-559, 591; scripts/install.sh:1340-1343
-- **Why:** On a zero-IT Mac the inbox is the only route for mail and Teams messages. No install path creates it today, and the live sources.toml has none. Fix from the refuting vote: an always-present inbox would otherwise count as 'has a source' and pass a folderless install as a success.
-- **Risk:** An empty inbox needs no macOS file-access grant and raises no doctor warning.
-
-### K14 (remove, S)
-
-add-source creates everything that is missing: sources.toml, the docs repo, the scaffold, the inbox and the state dir. It also applies init's Time Machine exclusions and remote refusal.
-
-init stays as a hidden, idempotent command with no flags; --docs-repo, --force and --source-local are removed. add-source drops --id.
-
-sync still exits 78 when sources.toml is missing; the fix text now names `agentsync add-source <folder>`. The sentinel stays a commented hint.
-
-install.sh step 4 runs add-source for each folder, or the flagless init when no folder is given. Its re-run message becomes 'exists (inbox ensured)'. The `migrate` call is deleted, since K12 migrates automatically.
-
-- **Where:** src/agentsync/cli.py:186-219, 499-600; src/agentsync/config.py:570, 596-605, 630; src/agentsync/ops/doctor.py:393, 408; scripts/install.sh:1314-1339
-- **Why:** Two verbs do one job. --force invites wiping the source list, and a non-default docs repo breaks every hard-coded path. Fixes from the refuting vote:
-- sync keeps the tested exit 78 instead of silently writing an empty config;
-- no automatically picked live sentinel, which colleagues renaming files in a shared folder would break.
-- **Risk:** Tests to move: test_cli.py:42, 93, 900; test_it_request.py:223; test_setup_report.py:50; and the install stubs at test_install_oneshot.py:308, test_deploy_pack.py:233 and test_launcher.py:453, 589.
-
-### K15 (rewrite-doc, S)
-
-The sources.toml template shrinks to:
-- one header line;
-- one commented `# [governance]` / `# archive = true` block, with a one-line explanation of on and off.
-add-source appends the [[source]] and inbox tables.
-
-Remove the [agentsync], [graph], [breaker], [convert], [network] and [policy] blocks, the live tenant line and the Graph examples. The examples move to the docs/deploy 'What needs IT' section.
-
-[graph] company is still accepted but ignored, with a status WARN naming the line to delete. principal, cadence_s and launchd_label_prefix stay parsed and honored. _check_keys and the [convert] defaults are unchanged.
-
-- **Where:** src/agentsync/config.py:483, 653-750; src/agentsync/cycle.py:388 and cli.py:1328 (User-Agent); docs/deploy/README.md:79-92
-- **Why:** About 17 live lines repeat defaults, the Graph examples read as fields to fill in, and the template ships a tenant value its own comment says is refused. Fix from the refuting vote: principal feeds the README owner and the scope fingerprint, cadence_s sets staleness thresholds, and offboard finds the LaunchAgents through launchd_label_prefix, so all three stay.
-- **Risk:** Old configs keep loading. Changing the [convert] defaults would re-convert every page, so they stay as they are.
-
-### K11a (remove, M)
-
-Background sync becomes optional in code.
-- launchd.launcher_required, and doctor's launcher and launchd checks, report INFO 'not installed (optional background sync; see docs/deploy)' with no fix, unless a com.agentsync.* plist exists or AGENTSYNC_AGENT_STEP_PENDING is set.
-- install-agent is hidden from help. It loses --interval, --reconcile-interval and --no-backup-exclusions; the Time Machine exclusion is always on.
-- uninstall-agent stays as install-agent's hidden, operator-only pair.
-- The launchd argv stays byte-identical.
-
-- **Where:** src/agentsync/ops/launchd.py:277-279, 334-343; src/agentsync/ops/doctor.py:746-780, 956-960, 1033-1051; src/agentsync/cli.py:306-316, 1357-1402; kept unchanged: ops/launchd.py:137, launcher/Sources/main.swift:58
-- **Why:** This carries out the 2026-10-01 ruling (packet eae0934f7b51) in code. Without this, every default OneDrive install would show permanent launcher FAILs pointing back at install-agent, which recreates the two-model confusion.
-- **Risk:** Macs that already run the agents keep them and keep today's ERROR/WARN checks. Compaction without agents is covered by K12. Test edits: test_cli.py:59, 314, 324.
-
-### K13b (remove, M)
-
-Trim the remaining sync and maintenance surface.
-- sync drops --dry-run and --source.
-- --mode, --once and --materialise-budget stay accepted but are hidden from help.
-- compact-history, migrate and materialise are hidden. migrate becomes a no-op that prints 'migration is automatic'. compact-history refuses --keep-days below 1.
-- Rewrite the fix strings that name dropped spellings: doctor.py:1127 and 1145, cli.py:903, cycle.py:785. The materialise remedy at cycle.py:1604 stays valid.
-- install.sh's first sync passes --materialise-budget 0 unconditionally; the `sync --help` probe is deleted.
-
-- **Where:** src/agentsync/cli.py:221-235, 283-292, 336-338, 903; src/agentsync/governance.py:2218-2220; src/agentsync/ops/doctor.py:1127-1145; src/agentsync/cycle.py:785, 1604; scripts/install.sh:1476-1480
-- **Why:** --mode dry_run looks like a sync but commits nothing, --source leaves the other sources stale, and --keep-days 0 squashes all history. Fixes from both refuting votes:
-- hiding a flag would silently disable install.sh's budget-0 first sync, so the probe goes;
-- deleting migrate would break install re-runs, so it becomes a no-op;
-- materialise is the only remedy for files over the budget, so it stays.
-- **Risk:** Hidden commands remain in the code. The pinned freeze table lists them under hidden, so removing them later is a deliberate edit.
-
-### K18 (remove, S)
-
-Hide from help:
-- the top-level login, logout, whoami and discover aliases, and the graph subcommand;
-- graph login --device-code (kept working);
-- the global --config;
-- it-request, whose --out now defaults to it_request.DEFAULT_OUT.
-hold --list, offboard --dry-run, graph --toml and purge are untouched.
-
-- **Where:** src/agentsync/cli.py:131-157, 294-304, 376-389
-- **Why:** Four extra top-level verbs bury the loop in --help, and on a zero-IT Mac they lead an agent into Entra errors it cannot fix. Fix from both refuting votes: hiding keeps about 20 fix strings and already-published docs working. --device-code is the only probe for Conditional Access when browser sign-in succeeds.
-- **Risk:** None at runtime; scripts/tenant-probes.sh keeps working unchanged.
-
-### K16a (remove, S)
-
-Delete setup-report --no-redact and --friction; the friction log's environment default stays. setup-report is hidden from help. --out stays, hidden, defaulting to ~/agent-context/setup-report.md.
-
-- **Where:** src/agentsync/cli.py:355-374; docs/design/CONTRACTS.md:4239, 4422-4434
-- **Why:** --no-redact is the one switch that can put the tenant name into a report meant for a public issue. Fix from the vote: install.sh:840/846 always passes --out, with the AGENTSYNC_SETUP_REPORT override.
-- **Risk:** Low; the tests at test_setup_report.py:183-187 and 651-652 drop their --no-redact cases.
-
-### K19b (guard, S)
-
-Set the pinned dict to the final surface:
-- visible: sync, curate, status, add-source, accept-deletions, adopt, purge, hold, offboard;
-- sync, curate and status take no visible option;
-- every other verb is listed as hidden.
-CONTRACTS §16.10 lists the same surface. Add test_template_has_only_sources and test_old_config_shapes_load, which loads the previous full template and the live config shape.
-
-- **Where:** tests/test_contracts.py; tests/test_config.py:29-60; docs/design/CONTRACTS.md §16.10 (4222-4239)
-- **Why:** This pins the target once it exists and makes regrowth a reviewed edit. test_config.py:42 is rewritten together with the template.
-- **Risk:** None.
-
-Tests that prove it:
-
-- add-source on a fresh HOME creates the config, docs repo, scaffold, inbox (0700) and state dir. Running it twice leaves one [[source]] and one kind="inbox". The hidden init adds the inbox to an old config.
-- sync with a missing sources.toml still exits 78, and the fix names add-source (test_cli.py:234, 827-830 unchanged)
-- A fresh install and a re-run both end with exactly one kind="inbox". `--confirm-install-agent` with only the inbox still exits 1 (test_install_oneshot.py:447-458 and test_launcher.py:597-602 unchanged). The first sync passes --materialise-budget 0.
-- test_old_config_shapes_load and test_template_has_only_sources. [graph] company gives one status WARN and never reaches the User-Agent.
-- doctor on a CloudStorage source with no plist: launcher and launchd report INFO and rc is 0. With a plist present: today's ERROR/WARN.
-- `--help` no longer lists graph, login, logout, whoami, discover, it-request, install-agent, setup-report, init, doctor, migrate, materialise, compact-history, checkpoint, install-skill, reconcile, curate-queue, lint or refresh-queue, and each one still parses
-- argparse rejects setup-report --no-redact and --friction. compact-history --keep-days 0 is refused. tests/test_ops_launchd.py program_arguments output is unchanged.
-- test_cli_surface_is_frozen pins the final visible and hidden sets, matching CONTRACTS §16.10
+Learnings for WF and W5:
+- Visible surface is final and pinned: sync, curate, status, add-source, accept-deletions, adopt, purge, hold,
+  offboard; 21 hidden commands still parse. WF must not change the pins.
+- The inbox sits beside the docs repo (`expand(docs_repo).parent / "inbox"`), not a hard-coded path; with the
+  default docs repo that is `~/agent-context/inbox`. An empty inbox outside CloudStorage is ok in doctor.
+- `[graph] company` is dropped from the model: `Config.graph_company_line` drives one status WARN (`fix: delete
+  line N`); every config from the old template carries it, so existing installs see that WARN once.
+- Background sync: doctor gates its launcher/launchd checks on `launchd.agents_installed(config)` or
+  `AGENTSYNC_AGENT_STEP_PENDING=1`; `launcher_required` is unchanged because install-agent still relies on it.
+- compact-history's keep-days floor lives in `governance.compact_history` (exit 1, not 2). migrate is a hidden
+  no-op. Fix strings that name a command are pinned by a test to parse.
+- setup_report.py still holds the unreachable `--no-redact` strings (`build_report(redact=False)`); W5 K16b
+  owns them.
 
 ## WF Field fixes from the corporate Mac (added 2026-10-05)
 
