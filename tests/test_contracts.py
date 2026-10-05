@@ -91,13 +91,15 @@ whose help is suppressed carries `` (hidden)``. Adding, hiding or removing a com
 positional or choice is a deliberate edit here, in the same commit as the change."""
 
 INSTALL_OPTIONS: dict[str, list[str]] = {
-    "first-argument": ["--log-start", "--log"],
+    "first-argument": ["--log-start", "--log", "--log-end"],
     "main": [
         "--confirm-install-agent",
         "--report-only",
         "--list-folders",
+        "--no-report",
         "--log-start",
         "--log",
+        "--log-end",
         "--launcher",
         "--source-local",
         "--version",
@@ -107,9 +109,15 @@ INSTALL_OPTIONS: dict[str, list[str]] = {
     ],
 }
 """The pinned install.sh options, per case block: the first-argument dispatch and the main option loop.
-KISS K17 (2026-10-05) deleted --dry-run (now AGENTSYNC_INSTALL_DRY_RUN=1), --config, --no-report and --log-end
-(folded into --report-only); ``*`` is the SOURCE test seam, left out of --help. KISS K11b (2026-10-05) turned
---rebuild-launcher into the developer variable AGENTSYNC_REBUILD_LAUNCHER=1."""
+KISS K17 (2026-10-05) deleted --dry-run (now AGENTSYNC_INSTALL_DRY_RUN=1) and --config; --no-report and
+--log-end (folded into --report-only) stay as the hidden INSTALL_HIDDEN arms; ``*`` is the SOURCE test seam,
+left out of --help. KISS K11b (2026-10-05) turned --rebuild-launcher into the developer variable
+AGENTSYNC_REBUILD_LAUNCHER=1."""
+INSTALL_HIDDEN = {"--no-report", "--log-end"}
+"""Kept out of --help and the guides, still parsed: a saved v6 prompt (its compat gate reads "6 or higher")
+runs ``--log-end && --report-only``, and the old baseline prompt's upgrade line
+``--no-report && ... install-skill``
+(K17 review). --log-end closes the attempt like --report-only; --no-report is ignored."""
 
 
 def _cli_entry(action: argparse.Action) -> str:
@@ -246,7 +254,7 @@ def _guide_offences(guides: dict[str, str], probes_script: str) -> list[str]:
 
     verbs = {**CLI_SURFACE["visible"], **CLI_SURFACE["hidden"]}
     common = spellings(CLI_GLOBAL_OPTIONS) | {"-h", "--help"}
-    install = set(INSTALL_OPTIONS["main"]) - {"*"}
+    install = set(INSTALL_OPTIONS["main"]) - {"*"} - INSTALL_HIDDEN
     probes = set(_install_case_arms(probes_script, "while [ $# -gt 0 ]; do", "done")) - {"*"}
     known = common | install | probes | {s for entries in verbs.values() for s in spellings(entries)}
     command = re.compile(r"\bagentsync ([a-z][a-z-]*)|\binstall\.sh\b")

@@ -5182,6 +5182,14 @@ last `Attempt:` has no such line, so a second `--report-only` adds none. The pre
 `--launcher PATH` a valid installed launcher is kept. The `SOURCE` positional (a checkout or wheel) still parses
 as a test seam and is left out of `--help`. The deleted options exit 2 as unknown options; the case arms are
 pinned by `tests/test_contracts.py::INSTALL_OPTIONS`.
+**CORRECTED (2026-10-05, K17 review):** the compat bump to 7 does not protect older prompts, because step 1's
+gate reads "setup-prompt-compat N or higher", so a saved v6 prompt runs against this installer. `--log-end` and
+`--no-report` therefore stay as hidden arms, left out of `--help` and the guides (`INSTALL_HIDDEN`):
+`--log-end` (first argument, no other option) is the same idempotent close as `--report-only` and exits 0, so v6's
+`--log-end && --report-only` adds one end line and still writes the report; `--no-report` is ignored, so the old
+baseline prompt's `install.sh --no-report && agentsync install-skill` still runs. `AGENTSYNC_INSTALL_DRY_RUN=1`
+covers the friction options too: `--log-start`, `--log` and `--log-end` print one `dry run:` line, write nothing
+and exit 0, and a dry-run `--report-only` leaves the attempt open.
 
 **SUPERSEDED in part (2026-10-05, KISS K11b): background sync is optional and the operator's.** Step 3 (the
 launcher) runs only with `--confirm-install-agent`, like steps 6-8; without it the `launcher` step is logged

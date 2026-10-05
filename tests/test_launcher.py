@@ -579,13 +579,8 @@ def test_install_sh_help_and_usage_errors(stubs: dict[str, str], tmp_path: Path)
     ):
         assert f"{gone} " not in cp.stdout, f"KISS K17/K11b: --help still names {gone}"
     assert install_sh(stubs, "--bogus").returncode == 2
-    for gone in (
-        ["--dry-run"],
-        ["--config", "x.toml"],
-        ["--no-report"],
-        ["--log-end"],
-        ["--rebuild-launcher"],
-    ):
+    # --no-report and --log-end are hidden arms, still parsed (test_install_oneshot.py)
+    for gone in (["--dry-run"], ["--config", "x.toml"], ["--rebuild-launcher"]):
         cp = install_sh(stubs, *gone)
         assert cp.returncode == 2 and f"unknown option {gone[0]}" in cp.stderr, gone
     assert install_sh(stubs, str(tmp_path / "nowhere")).returncode == 2

@@ -146,7 +146,8 @@
 # could not be written; neither prints a NEXT: line.
 #
 # Dry run: AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something and changes nothing (no
-# log, no install.out, no report); its NEXT: line says to re-run without it.
+# log, no install.out, no report, no friction-log line); its NEXT: line says to re-run without it. With
+# --log-start or --log it prints one "dry run:" line instead, and exits 0.
 #
 # Test-only seams, never for a real Mac: AGENTSYNC_SIMULATE_LAUNCHD=1 replaces install-agent, the kickstart
 # and the wait with "SIMULATED" lines (no plist, no launchctl write; the wait succeeds at once; the log and
@@ -249,6 +250,13 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 		fi
 		[ -z "$note" ] || printf '%s (see --help)\n' "$note" >&2
 		;;
+	--log-end) # hidden, left out of --help: step 3 of a saved v6 prompt runs "--log-end && --report-only"
+		if [ $# -ne 0 ]; then
+			printf 'usage error: --log-end takes no argument and no other option (see --help)\n' >&2
+			return 2
+		fi
+		friction_close_attempt # the same idempotent close as --report-only, so the pair adds one end line
+		;;
 	esac
 	[ "$rc" -ne 1 ] || printf 'error: could not write the friction log %s\n' "$(friction_file)" >&2
 	return "$rc"
@@ -262,13 +270,17 @@ friction_close_attempt() {
 	awk '/^Attempt:/ { open = 1; ended = 0; next } /\| end \| finished[[:space:]]*$/ { ended = 1 }
 		END { exit !(open && !ended) }' "$f" || return 0
 	if friction_append "$(date -u +%Y-%m-%dT%H:%M:%SZ) | end | finished"$'\n'; then
-		say "friction log: attempt finished in $f"
+		printf 'friction log: attempt finished in %s\n' "$f"
 	else
-		warn "could not write the friction log $f"
+		printf 'warning: could not write the friction log %s\n' "$f" >&2
 	fi
 }
 case "${1:-}" in
---log-start | --log)
+--log-start | --log | --log-end)
+	if [ "${AGENTSYNC_INSTALL_DRY_RUN:-}" = "1" ]; then # the dry run changes nothing, the friction log included
+		printf 'dry run: %s would write to the friction log %s; nothing is written\n' "$1" "$(friction_file)"
+		exit 0
+	fi
 	rc=0
 	friction_cmd "$@" || rc=$?
 	exit "$rc"
@@ -287,7 +299,7 @@ for a in "$@"; do
 		continue
 	fi
 	case "$a" in
-	--report-only | --list-folders | --version | -h | --help) ;; # the NEXT line is for the real run
+	--report-only | --no-report | --list-folders | --version | -h | --help) ;; # NEXT is for the real run
 	--source-local)
 		skip_next=1
 		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
@@ -1043,7 +1055,8 @@ while [ $# -gt 0 ]; do
 	--confirm-install-agent) INSTALL_AGENT=1 ;;
 	--report-only) REPORT_ONLY=1 ;;
 	--list-folders) LIST_FOLDERS=1 ;;
-	--log-start | --log) usage_error "$1 must be the first argument and takes no other option" ;;
+	--no-report) ;; # hidden, ignored: the old baseline prompt ran "install.sh --no-report && ... install-skill"
+	--log-start | --log | --log-end) usage_error "$1 must be the first argument and takes no other option" ;;
 	--launcher)
 		[ $# -ge 2 ] || usage_error "--launcher needs a path"
 		LAUNCHER_SRC="$2"

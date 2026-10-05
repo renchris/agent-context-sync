@@ -279,6 +279,7 @@ Tests that prove it:
 - `install.sh --source-local X` with no flag makes no launchctl call and builds no launcher. It runs the first sync, writes the skill, and its last line equals status's NEXT ('draft the baseline questions'). With --confirm-install-agent, the line also states background sync is running.
 - install.sh prints exactly one NEXT line on every path (test_install_oneshot.py:964-991)
 - AGENTSYNC_INSTALL_DRY_RUN=1 replaces --dry-run. --config, --no-report and --log-end exit 2 as unknown options. --report-only appends one end line, idempotently. The case arms equal the pinned set.
+  CORRECTED (2026-10-05, K17 review): the compat bump does not protect older prompts, because the gate reads ">= N". --log-end (the same idempotent close, exit 0) and --no-report (ignored) stay as hidden arms (INSTALL_HIDDEN), so a saved v6 prompt's `--log-end && --report-only` and the old `--no-report && ... install-skill` line still work. Only --config exits 2 as unknown. The dry run covers --log-start, --log and --log-end (one "dry run:" line, nothing written), and a dry-run --report-only leaves the attempt open.
 - Prompt v7: every agentsync subcommand the prompt or the allowlist names exists (test_deploy_pack.py:795 extended). It contains no it-request, no --confirm-install-agent and no second prompt, and closes with --report-only.
 - setup_report parses v6 and v7 logs by explicit version. A sync-only fixture reads 'Loop: synced; NEXT: draft the baseline questions' while its outcome stays 'fully one command'. The issue form has loop_stage.
 

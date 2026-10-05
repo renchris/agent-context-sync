@@ -1389,10 +1389,10 @@ def test_log_step_forms(env: dict[str, str]) -> None:
 
 def test_friction_options_are_exclusive(env: dict[str, str]) -> None:
     for argv in (
-        ["--log-start", "a", "--dry-run"],
+        ["--log-start", "a", "--report-only"],
         ["--log-start"],
         ["--log-end", "--report-only"],
-        ["--dry-run", "--log-end"],
+        ["--report-only", "--log-end"],
         ["--report-only", "--log-start", "a"],
     ):
         cp = install_sh(env, *argv)
@@ -1433,6 +1433,49 @@ def test_report_only_closes_the_current_attempt_once(env: dict[str, str]) -> Non
     attempts = setup_report.parse_friction(f.read_text()).attempts
     assert [a.finished for a in attempts] == [True, True]
     assert sum(ln.endswith(" | end | finished") for ln in f.read_text().splitlines()) == 2
+
+
+def test_a_dry_run_writes_no_friction_line(env: dict[str, str]) -> None:
+    """K17 review: AGENTSYNC_INSTALL_DRY_RUN=1 covers the friction options: one "dry run:" line, exit 0."""
+    dry = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}
+    for argv in (["--log-start", "a"], ["--log", "1", "click", "x", "-"], ["--log-end"]):
+        cp = install_sh(dry, *argv)
+        assert cp.returncode == 0, cp.stderr
+        assert cp.stdout == (
+            f"dry run: {argv[0]} would write to the friction log {friction_path(env)}; nothing is written\n"
+        )
+    assert list(Path(env["HOME"]).iterdir()) == [], "nothing written"
+
+
+def test_a_dry_run_report_only_leaves_the_attempt_open(env: dict[str, str]) -> None:
+    """K17 review: the dry run of --report-only neither closes the attempt nor writes the report."""
+    assert install_sh(env, "--log-start", "a").returncode == 0
+    before = friction_path(env).read_bytes()
+    cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert friction_path(env).read_bytes() == before and not report_path(env).exists()
+    assert [ln for ln in cp.stdout.splitlines() if ln.startswith("NEXT:")] == [
+        "NEXT: re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to write the report"
+    ]
+
+
+def test_a_saved_v6_prompt_still_closes_and_reports(env: dict[str, str]) -> None:
+    """K17 review: a saved v6 prompt passes the "6 or higher" gate against compat 7, so its step 3
+    (``--log-end && --report-only``) still works: the hidden --log-end closes the attempt once and exits 0."""
+    assert install_sh(env, "--log-start", "a").returncode == 0
+    end = install_sh(env, "--log-end")
+    assert end.returncode == 0 and end.stdout == f"friction log: attempt finished in {friction_path(env)}\n"
+    assert install_sh(env, "--report-only").returncode == 0
+    assert sum(ln.endswith(" | end | finished") for ln in friction_path(env).read_text().splitlines()) == 1
+    assert report_path(env).is_file()
+
+
+def test_no_report_is_ignored(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """K17 review: the old baseline prompt's ``install.sh --no-report && ... install-skill`` still runs."""
+    cp = install_sh(env, str(wheel), "--source-local", str(folder), "--no-report")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert sum(ln.startswith("NEXT:") for ln in cp.stdout.splitlines()) == 1
+    assert "--no-report" not in last_line(cp)
 
 
 def test_the_readme_prompt_logs_only_through_the_installer() -> None:
