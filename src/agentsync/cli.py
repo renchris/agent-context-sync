@@ -130,15 +130,10 @@ def _err(text: str) -> None:
 
 
 def _common(sub_default: object) -> argparse.ArgumentParser:
-    """--config / -v, accepted before or after the subcommand."""
+    """--config / -v, accepted before or after the subcommand. KISS K18: --config (another sources.toml,
+    default ~/agent-context/sources.toml) still parses but is hidden from help."""
     p = argparse.ArgumentParser(add_help=False)
-    p.add_argument(
-        "--config",
-        type=Path,
-        default=sub_default,
-        metavar="PATH",
-        help="sources.toml (default ~/agent-context/sources.toml)",
-    )
+    p.add_argument("--config", type=Path, default=sub_default, metavar="PATH", help=argparse.SUPPRESS)
     p.add_argument(
         "-v", "--verbose", action="count", default=sub_default, help="more logging (-v info, -vv debug)"
     )
@@ -146,11 +141,9 @@ def _common(sub_default: object) -> argparse.ArgumentParser:
 
 
 def _graph_options(p: argparse.ArgumentParser) -> None:
-    p.add_argument(
-        "--device-code",
-        action="store_true",
-        help="login: go straight to device-code sign-in (refused unless [graph] allow_device_code = true)",
-    )
+    # KISS K18: --device-code (login: go straight to device-code sign-in, refused unless [graph]
+    # allow_device_code = true) still works but is hidden: it is the only probe for Conditional Access.
+    p.add_argument("--device-code", action="store_true", help=argparse.SUPPRESS)
     p.add_argument(
         "--url",
         action="append",
@@ -275,7 +268,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     add("migrate", "a no-op: every command migrates the manifest itself", _cmd_migrate, hidden=True)
 
-    p = add("graph", "Microsoft Graph sign-in: login | logout | whoami | discover", _cmd_graph)
+    # KISS K18: graph and its four top-level aliases are hidden (they still parse): on a zero-IT Mac they
+    # lead an agent into Entra errors it cannot fix, and published fix strings and docs keep working.
+    p = add("graph", "Microsoft Graph sign-in: login | logout | whoami | discover", _cmd_graph, hidden=True)
     p.add_argument("action", choices=["login", "logout", "whoami", "discover"])
     _graph_options(p)
     for name, text in (
@@ -284,7 +279,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("whoami", "show the cached Graph account and sign-in method, offline (same as `graph whoami`)"),
         ("discover", "propose sources.toml tables for every drive, site, channel, chat and mail folder"),
     ):
-        _graph_options(add(name, text, _cmd_graph))
+        _graph_options(add(name, text, _cmd_graph, hidden=True))
         sub.choices[name].set_defaults(action=name)
 
     # KISS K11a: background sync is optional and operator-owned (docs/deploy), so both are hidden; the
@@ -369,14 +364,15 @@ def build_parser() -> argparse.ArgumentParser:
         "write the IT request (docs/deploy/it-request.md) as an email draft with this Mac's values filled in "
         "and the fields still open listed first; never sends anything",
         _cmd_it_request,
+        hidden=True,
     )
     p.add_argument(
         "--out",
         type=Path,
-        required=True,
+        default=Path(it_request.DEFAULT_OUT),
         metavar="PATH",
-        help=f"write the draft here, mode 0600 (e.g. {it_request.DEFAULT_OUT}); never inside the agentsync "
-        "checkout or the docs repo",
+        help=f"write the draft here, mode 0600 (default {it_request.DEFAULT_OUT}); never inside the "
+        "agentsync checkout or the docs repo",
     )
     return parser
 

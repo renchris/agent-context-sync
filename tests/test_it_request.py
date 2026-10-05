@@ -258,5 +258,10 @@ def test_cli_refuses_the_checkout_and_the_docs_repo(home: Path, capsys: pytest.C
         assert not out.exists()
 
 
-def test_cli_requires_out() -> None:
-    assert cli.main(["it-request"]) == 2
+def test_cli_out_defaults_to_the_default_draft(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """KISS K18: it-request is hidden from help and --out defaults to it_request.DEFAULT_OUT."""
+    assert cli.main(["it-request"]) == 0
+    out = home / "agent-context" / "it-request-draft.md"
+    assert Path(it_request.DEFAULT_OUT).expanduser() == out
+    assert stat.S_IMODE(out.stat().st_mode) == 0o600
+    assert f"wrote {out} " in capsys.readouterr().out

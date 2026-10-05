@@ -3496,11 +3496,14 @@ and `policy show` are its hidden aliases, `doctor --network` is deleted) · cura
 `lint` and `refresh-queue` are its hidden aliases) · materialise [--budget BYTES] [PATH ...] (hidden since KISS K13b) ·
 adopt SRC_DIR · migrate (KISS K13b: hidden, a no-op printing "migration is automatic") · compact-history
 [--keep-days N] [--dry-run] (KISS K13b: hidden; N below 1 is refused) · graph
-login|logout|whoami|discover (also top-level login · logout · whoami · discover) · install-agent (2026-10-05,
+login|logout|whoami|discover (also top-level login · logout · whoami · discover; 2026-10-05, KISS K18: all five
+hidden, still parse; `graph login --device-code` hidden, still works) · it-request [--out PATH] (KISS K18: hidden,
+`--out` defaults to `it_request.DEFAULT_OUT`) · install-agent (2026-10-05,
 KISS K11a: hidden, no options; `--interval`, `--reconcile-interval` and `--no-backup-exclusions` are deleted) ·
 uninstall-agent (hidden) · add-source PATH (§16.13; KISS K14 deleted `--id`).  ``sync`` is
 always one cycle (the launchd agents run ``sync --mode <m> --config <abs>``).  Every subcommand accepts
-``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand.
+``--config PATH`` (default ~/agent-context/sources.toml) and ``-v/--verbose``, before or after the subcommand
+(KISS K18, 2026-10-05: ``--config`` is hidden from help and still parses).
 
 ```python
 EXIT_OK = 0
@@ -4404,7 +4407,7 @@ class AgentSpec:
 
 | Command | Calls | Exit |
 |---|---|---|
-| `graph login` / `login` [`--device-code`] | `MsalAuth.login(_out)` (or `login_device_code`) | 0 · 1 AuthError · 77 blocked/reauth · 78 config (e.g. multi-tenant authority) |
+| `graph login` / `login` [`--device-code`] | `MsalAuth.login(_out)` (or `login_device_code`). Since KISS K18 (2026-10-05) `graph` and its four top-level aliases (`login`, `logout`, `whoami`, `discover`) are hidden from help and `--device-code` from `graph login --help`; all still parse, so fix strings, published docs and scripts/tenant-probes.sh keep working | 0 · 1 AuthError · 77 blocked/reauth · 78 config (e.g. multi-tenant authority) |
 | `graph whoami` / `whoami` | `MsalAuth.status()`, prints `sign_in_method` | 0 · 77 signed out |
 | `graph discover` / `discover` [`--url URL`…] [`--toml`] | `discover.discover_sources` / `resolve_url` → `render_sources_toml` | 0 · 1 incomplete (each IT action on stderr) |
 | `purge SELECTOR` [`--source ID`] [`--reason R`] [`--dry-run`] [`--push`] · `purge --queue` | `governance.purge` / `run_purge_queue` | 0 verified or dry run · 1 not verified / hold · 75 lock |
@@ -4421,6 +4424,7 @@ class AgentSpec:
 | `sync` (2026-10-05, KISS K13b) | `run_cycle`. No visible option: `--dry-run` and `--source` are deleted (argparse exits 2); `--once` (a no-op), `--mode poll\|reconcile\|dry_run` (the LaunchAgents' argv) and `--materialise-budget BYTES` (install.sh's first sync passes `0` unconditionally; its `sync --help` probe is deleted, since the hidden flag no longer shows there) still parse, hidden from `sync --help`. Fix strings name only `agentsync sync -v` (doctor's heartbeat checks) and `agentsync sync` (status's compaction check) | 0 · 1 · 75 · 78 |
 | `materialise` [`--budget BYTES`] [`PATH …`] (2026-10-05, KISS K13b) | unchanged, hidden from help; the remedy the over-budget alarm names | 0 · 1 · 78 |
 | `migrate` (2026-10-05, KISS K13b) | hidden, a no-op: prints `migration is automatic: …` and opens nothing; every opener migrates the manifest (§5 KISS K12 amendment). Kept so older install.sh runs and scripts exit 0 | 0 |
+| `it-request` [`--out PATH`] (2026-10-05, KISS K18) | §16.15, unchanged except: hidden from help, and `--out` defaults to `it_request.DEFAULT_OUT` (`~/agent-context/it-request-draft.md`) instead of being required | 0 · 1 · 2 `--out` inside the checkout or the docs repo |
 | `setup-report` [`--out PATH`] [`--friction PATH`] [`--no-redact`] | `setup_report.build_report` with `ReportHooks(doctor=<doctor lines, offline>, status=<status lines>)` and `friction_path` → `write_report` (§16.14); since KISS K08a both hooks read one offline status build (§16.21) | 0 · 1 only when `--out` cannot be written (the report then goes to stdout) |
 
 ```python
@@ -5030,6 +5034,9 @@ summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING
 Additive (judge finding J10; setup prompt v5 step 4). `agentsync it-request --out PATH [--config PATH]` renders
 `docs/deploy/it-request.md` into a draft email for this Mac and writes it to PATH. It never sends anything and
 makes no network call. `--out` is required.
+
+**SUPERSEDED (2026-10-05, KISS K18, §16.10):** `--out` is optional and defaults to `it_request.DEFAULT_OUT`;
+`it-request` is hidden from help.
 
 **Template.** The page and `docs/deploy/entra-app.json` come from the first agentsync source checkout that has
 both. The candidates are the tree the module runs from (`Path(__file__).parents[2]`, for an editable or in-repo run),

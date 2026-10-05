@@ -46,7 +46,7 @@ def test_module_imports_and_is_in_contract(module_name: str) -> None:
     assert not missing, f"{module_name}: undocumented public names {missing}"
 
 
-CLI_GLOBAL_OPTIONS: list[str] = ["--config", "-v/--verbose", "--version"]
+CLI_GLOBAL_OPTIONS: list[str] = ["--config (hidden)", "-v/--verbose", "--version"]
 """The pinned options of the root parser itself (-h/--help excluded)."""
 
 CLI_SURFACE: dict[str, dict[str, list[str]]] = {
@@ -57,18 +57,18 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "status": [],
         "curate": [],
         "adopt": ["src_dir"],
-        "graph": ["action{login,logout,whoami,discover}", "--device-code", "--url", "--toml"],
-        "login": ["--device-code", "--url", "--toml"],
-        "logout": ["--device-code", "--url", "--toml"],
-        "whoami": ["--device-code", "--url", "--toml"],
-        "discover": ["--device-code", "--url", "--toml"],
         "purge": ["selector", "--source", "--reason", "--queue", "--dry-run", "--push"],
         "hold": ["scope", "--reason", "--owner", "--release", "--list"],
         "offboard": ["--purge-data", "--dry-run", "--confirm"],
         "setup-report": ["--out", "--friction", "--no-redact"],
-        "it-request": ["--out"],
     },
     "hidden": {
+        "graph": ["action{login,logout,whoami,discover}", "--device-code (hidden)", "--url", "--toml"],
+        "login": ["--device-code (hidden)", "--url", "--toml"],
+        "logout": ["--device-code (hidden)", "--url", "--toml"],
+        "whoami": ["--device-code (hidden)", "--url", "--toml"],
+        "discover": ["--device-code (hidden)", "--url", "--toml"],
+        "it-request": ["--out"],
         "init": [],
         "install-agent": [],
         "uninstall-agent": [],

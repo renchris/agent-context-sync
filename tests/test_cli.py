@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 import pytest
 import yaml
 
-from agentsync import __version__, cli, gitops, governance, lints, loop, net, policy, skill
+from agentsync import __version__, cli, gitops, governance, it_request, lints, loop, net, policy, skill
 from agentsync.config import Config, inbox_source_table, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -48,13 +48,31 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     out = capsys.readouterr().out
     for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
-    for command in (
-        "add-source", "sync", "status", "accept-deletions", "graph", "purge", "hold", "offboard",
-    ):  # fmt: skip
+    for command in ("add-source", "sync", "status", "accept-deletions", "purge", "hold", "offboard"):
         assert command in out
     assert "install-agent" not in out and "uninstall-agent" not in out  # KISS K11a: hidden, still parse
     assert cli.main(["sync", "--help"]) == 0
     assert "75  skipped" in capsys.readouterr().out
+
+
+def test_graph_verbs_it_request_and_config_are_hidden_but_parse(capsys: pytest.CaptureFixture[str]) -> None:
+    """KISS K18: graph, its four top-level aliases and it-request are hidden from help, as are the global
+    --config and graph login --device-code; each still parses."""
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    for name in ("graph", "login", "logout", "whoami", "discover", "it-request"):
+        assert not re.search(rf"(?m)^    {name}\b", out), f"{name} is hidden from help"
+    assert "--config" not in out
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["graph", "login", "--help"])
+    assert "--device-code" not in capsys.readouterr().out
+    parser = cli.build_parser()
+    args = parser.parse_args(["--config", "x.toml", "graph", "login", "--device-code"])
+    assert (args.action, args.device_code, args.config) == ("login", True, Path("x.toml"))
+    for name in ("login", "logout", "whoami", "discover"):
+        assert parser.parse_args([name, "--config", "x.toml"]).action == name
+    assert parser.parse_args(["login", "--device-code"]).device_code is True
+    assert parser.parse_args(["it-request"]).out == Path(it_request.DEFAULT_OUT)
 
 
 def test_sync_takes_no_visible_option_and_the_hidden_maintenance_verbs_still_parse(
