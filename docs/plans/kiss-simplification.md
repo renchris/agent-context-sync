@@ -111,77 +111,26 @@ Learnings for W3-W5:
 - K13a note: the compaction fix names `sync --mode reconcile`, not accept-deletions, which waits for the lock
   (`run_cycle(wait_for_lock=True)`) because launchd never re-runs an operator's exit 75.
 
-## W3 What agents read: one procedure in every guide
+## W3 What agents read: one procedure in every guide — DONE (2026-10-05)
 
-Status: upcoming.
+Landed on `main` at `e8e7c8f` (6 commits, `a0e0542..e8e7c8f`): `a0e0542` shell refresh queue retired (K09b),
+`25f39c3` one procedure in every guide (K07), `631a957` STATE.md opens with `## Next`, INDEX says when no topic
+exists (K08b), then three fixes from the fresh-context review (9 findings, none rejected): `b914b6a`, `b842f7e`,
+`e8e7c8f`. Gate after rebase onto the purge and redaction fixes: ruff, format, mypy clean; pytest 1976 passed, 2
+skipped. Run `wf_62274074-ae4` (in-process, alongside W4).
 
-Files: `src/agentsync/publish.py`, `src/agentsync/skill.py`, `src/agentsync/curate.py (REFRESH_QUEUE_SH only)`, `docs/design/CONTRACTS.md (§14)`, `tests/test_publish.py`, `tests/test_skill.py`, `tests/test_curate.py`, `tests/test_frontmatter.py`
-
-### K07 (rewrite-doc, M)
-
-Root CLAUDE.md and AGENTS.md carry one procedure:
-1. Run `~/.local/bin/agentsync sync`.
-2. Do what NEXT says, and repeat.
-3. To look things up: _sync/STATE.md, INDEX.md, `rg topics/`, then `rg mirror/`.
-4. Never open _eval/answers.md or _eval/results-* to answer a question.
-5. The authoring rules, moved unchanged from the topics seed.
-Then the inbox line. BOUNDARY_TEXT stays verbatim after the procedure.
-
-Rules for these files:
-- paths are relative to the repo (no docs/ prefix, no `git -C docs`);
-- the binary is always `~/.local/bin/agentsync`;
-- the archive and snapshot lines appear only when archive = true.
-
-skill.py's skill_text is generated from the same procedure constant, plus the docs-path header and the Baseline section. Its SYNONYMS step and tmp-rename step are dropped.
-
-topics/CLAUDE.md becomes a 2-line pointer, and the current seed's sha is added to _TOPICS_CLAUDE_MD_PRIOR_SHA256. Stop seeding SYNONYMS.tsv, and INDEX lists it only if the file exists. Drop the .agentsync-*.tmp ritual; the gitops exclusion stays.
-
-Docs README:
-- keep one single-writer line, reworded to 'agentsync on this Mac (principal: …)';
-- keep the principal owner line;
-- the delete procedure becomes `agentsync offboard --confirm <docs> --purge-data`, replacing uninstall-agent and logout.
-
-STATE.md's staleness line says 'run ~/.local/bin/agentsync sync first'. The REAUTH/login line prints only when Graph sources exist.
-
-Record the SYNONYMS.tsv departure in CONTRACTS §14.
-
-- **Where:** src/agentsync/publish.py:65-124, 143, 160-207, 618-630, 668-705, 1420, 1579-1592; src/agentsync/skill.py; src/agentsync/policy.py:653-662 (BOUNDARY_TEXT, unchanged)
-- **Why:** The three guidance copies disagree. Every path in the auto-loaded guide is wrong from inside docs/. A bare `agentsync` fails because install.sh leaves ~/.local/bin off PATH. A Copilot agent sees a 6-line map with no procedure and no answer-key warning. Fixes from the votes:
-- the governance-required single-writer line and delete procedure are kept;
-- the skill text is folded into the same constant;
-- the binary path is fixed, and W5 pins uv's bin dir so it is always true.
-- **Risk:** BOUNDARY_TEXT only moves position. A hand-edited topics/CLAUDE.md is kept. A half-written page committed without the tmp ritual is caught by checkpoint_blockers and recommitted by the next sync.
-
-### K08b (rewrite-doc, S)
-
-STATE.md gains a '## Next' block at the top, rendered from loop.next_step(). INDEX.md prints 'Topics: none yet; run ~/.local/bin/agentsync sync and follow NEXT' when no curated page exists.
-
-- **Where:** src/agentsync/publish.py:1380-1428 (_topic_lines returns [] today), 1566-1600 (write_state)
-- **Why:** STATE.md is the file agents read first, and today it says nothing past sync. An INDEX with no Topics section makes the mirror look like the whole system.
-- **Risk:** None. The block is computed by the same function status uses, so the two cannot drift.
-
-### K09b (remove, S)
-
-Delete:
-- REFRESH_QUEUE_SH;
-- the awk script embedded in the docs README, and its glossary;
-- the topics guide's 'Run the refresh queue' line.
-Fix the glossary line that calls MISSING-OR-UNPARSEABLE 'a bug in the generator' (from K10).
-
-- **Where:** src/agentsync/curate.py:54-81; src/agentsync/publish.py:83, 187-200 (glossary at 198)
-- **Why:** It is a second, partial work list that shows 0 rows on a fresh install; curate (W2) replaced it.
-- **Risk:** Low; only the tests that pin the awk script are deleted.
-
-Tests that prove it:
-
-- test_generated_guides_use_absolute_binary_and_repo_relative_paths: no generated guide and no SKILL.md contains a docs/ prefix or 'git -C docs', and every 'agentsync ' mention is '~/.local/bin/agentsync'
-- BOUNDARY_TEXT is present byte for byte in root CLAUDE.md, AGENTS.md and mirror/CLAUDE.md
-- AGENTS.md carries the full procedure and the _eval answer-key warning. The archive lines appear only with archive = true.
-- An unedited topics/CLAUDE.md at the current seed upgrades to the pointer; a hand-edited one is kept
-- A fresh repo seeds no SYNONYMS.tsv and INDEX has no SYNONYMS row; an existing file is left alone
-- STATE.md opens with '## Next' equal to loop.next_step(). INDEX shows 'Topics: none yet' with no curated page. The REAUTH line appears only with Graph sources.
-- The docs README keeps the single-writer and principal lines (test_publish.py:84/239) and names offboard, not logout
-- test_publish.py:236, 247-253, 808 and 1132-1134 are updated; the awk-pinning tests are removed
+Learnings for W5:
+- The procedure is `skill.procedure(archive=)` and the root guide `publish.root_guide(archive=, inbox=)`; the
+  ROOT_CLAUDE_MD/_AGENTS_MD constants are gone. The skill has no config, so it never carries the archive lines.
+  Step 2 says "Do what the `NEXT:` line says (it comes before any `WAITING ON YOU:` and `note:` lines)": NEXT is
+  not the last line.
+- The guide's inbox line names the first live inbox source's folder (with `~`), only when one exists.
+- STATE.md: `## Next` (the exact `loop.next_lines` lines, unbulleted, so `grep '^NEXT: '` works), then
+  `## This run` with the run fields. `write_state` calls `next_step(count_queue=False)` to skip the mirror walk.
+- Left for W5 (README is W5's): README.md still has `sh refresh-queue.sh docs/DEPENDS.tsv`; docstrings in
+  paths.py:147 and frontmatter.py:4 still name the refresh-queue script. CONTRACTS §13's file tree still lists
+  SYNONYMS.tsv and §15's module stubs are stale (W3 edited §14 only).
+- BOUNDARY_TEXT says `docs/mirror/` verbatim, so the no-docs/-prefix test strips it before checking.
 
 ## W4 CLI surface: fewer verbs, flags and config keys
 
