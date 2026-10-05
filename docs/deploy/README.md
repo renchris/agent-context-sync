@@ -78,12 +78,18 @@ so set `[network] proxy`. `agentsync status` checks the whole path whenever a Gr
   `~/Library/CloudStorage/OneDrive-<Org>/`, for example a synced SharePoint library or a "shortcut to My files". It
   sees what the sync client syncs. Online-only files are downloaded within `max_materialise_bytes` per cycle, and
   the rest stay `pending` and are never read as deleted.
-- **Manual inbox.** `install.sh` and `agentsync add-source` add a `kind = "inbox"` source at `~/agent-context/inbox`
-  and create the folder. Drag in exports, attachments, PDFs or emails (drag a message out of Outlook to save it as
-  `.eml`), and they are converted once they stop changing (`quiescence_s`). Without IT this is the only route for
-  mail and Teams messages: a tenant on Microsoft's default consent policy shows "Need admin approval" for any app
-  that asks to read mail (measured on the corporate tenant, 2026-10-01).
-- **Check it:** `agentsync sync --once`, then `agentsync status`, then open `~/agent-context/docs/INDEX.md`.
+- **Manual inbox.** The inbox always exists: `install.sh`, `agentsync add-source` and every sync keep a
+  `kind = "inbox"` source beside the docs repo (`~/agent-context/inbox` by default) and create the folder; the inbox
+  folders are the `kind = "inbox"` sources in `sources.toml`. Drag in exports, attachments, PDFs or emails (drag a
+  message out of Outlook to save it as `.eml`; save a meeting transcript as `.docx` or `.vtt`), and they are
+  converted once they stop changing (`quiescence_s`). Only `.eml`, `.pdf` and the Office formats carry a sensitivity
+  label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
+  `.docx`. Files stay in the inbox: it is a mirror, not a queue, so never empty it by hand (removing a file turns its
+  page into a tombstone and queues a purge). Without IT this is the only route for mail and Teams messages: a tenant
+  on Microsoft's default consent policy shows "Need admin approval" for any app that asks to read mail (measured on
+  the corporate tenant, 2026-10-01).
+- **Check it:** `~/.local/bin/agentsync sync`, do what its `NEXT:` line says, then open
+  `~/agent-context/docs/INDEX.md`.
 
 ## What needs IT
 

@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v6) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v7) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -273,11 +273,11 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
-    """README step 1: "If --version does not end with "setup-prompt-compat 6" or higher ..."."""
+    """README step 1: "If --version does not end with "setup-prompt-compat 7" or higher ..."."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 6"
+    assert lines[-1] == "setup-prompt-compat 7"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; git pull --ff-only keeps them\))?|unknown)",
@@ -330,7 +330,7 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     assert sum(line.startswith("NEXT:") for line in cp.stdout.splitlines()) == 1
     assert report_path(env).read_text().startswith("# agentsync setup report")
     log = install_log(env)
-    assert "start install.sh compat=6 commit=- kind=wheel" in log[0] and "launchd=simulated" not in log[0]
+    assert "start install.sh compat=7 commit=- kind=wheel" in log[0] and "launchd=simulated" not in log[0]
     assert steps(log) == [
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
@@ -874,7 +874,7 @@ def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -
     assert calls(env) == [], "no uv, agentsync or launchctl: names only"
     assert not report_path(env).exists(), "no report for --list-folders"
     log = install_log(env)
-    assert " start install.sh compat=6 " in log[0] and log[0].endswith(" args=--list-folders")
+    assert " start install.sh compat=7 " in log[0] and log[0].endswith(" args=--list-folders")
     assert steps(log) == [("list-folders", "done", "0", "listed-4")]
     assert re.search(r" end rc=0 seconds=\d+$", log[-1])
 
@@ -1300,13 +1300,13 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     lines = friction_path(env).read_text().splitlines()
     t = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
     assert re.fullmatch(rf"Attempt: {t}", lines[0])
-    assert lines[1:3] == ["Prompt: v6", "Agent: Claude Code, claude-opus-5-5"]
+    assert lines[1:3] == ["Prompt: v7", "Agent: Claude Code, claude-opus-5-5"]
     assert re.fullmatch(rf"{t} \| step 1 \| question \| asked which terminal app \| -", lines[3])
     assert re.fullmatch(rf"{t} \| step 2 \| error \| install.sh exited 3 \| a longer wait", lines[4])
     assert re.fullmatch(rf"{t} \| end \| finished", lines[5]) and len(lines) == 6
     parsed = setup_report.parse_friction(friction_path(env).read_text())
     (attempt,) = parsed.attempts
-    assert attempt.header["Prompt"] == "v6" and attempt.version == 6 and attempt.finished
+    assert attempt.header["Prompt"] == "v7" and attempt.version == 7 and attempt.finished
     assert [(e.step, e.kind, e.what, e.fix) for e in attempt.events] == [
         (1, "question", "asked which terminal app", ""),
         (2, "error", "install.sh exited 3", "a longer wait"),

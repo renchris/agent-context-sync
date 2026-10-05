@@ -210,6 +210,9 @@ builds, and ends with a checkpoint so the next session sees the diff since the l
   - **2026-10-04: one prompt for it.** README "Next, on the same Mac: draft the baseline questions" is a paste-once
     block for after setup: `git pull`, `install.sh --no-report` (no `--source-local`: the dry run shows the config
     untouched, only reinstall, `migrate` and `doctor`), `install-skill`, `sync --once`, then the skill's Draft step.
+    **CORRECTED (2026-10-05):** that block is deleted (KISS K17, K04). Setup prompt v7's step 3
+    ([README "Set up on a new Mac: one prompt"](../../README.md#set-up-on-a-new-mac-one-prompt)) reaches the Draft
+    step through the sync loop's `NEXT:` line.
   - **2026-10-04: the KISS simplification supersedes both prompts.** Adoption on low-effort agents stops partway
     because the loop's order lives only in prose. [kiss-simplification.md](kiss-simplification.md) (5 waves, 19
     verified changes) makes `sync` do every automatic step and end on one NEXT line, cuts the surface to 9 commands,

@@ -58,7 +58,7 @@ body:
     attributes:
       label: Prompt version
       description: The Summary's prompt version, the vN in the prompt's first line ("setup prompt vN").
-      placeholder: "v6"
+      placeholder: "v7"
     validations:
       required: true
   - type: input

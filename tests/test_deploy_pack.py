@@ -361,11 +361,10 @@ def _installer_compat() -> int | None:
 STEP_TITLES = [
     "preflight, code and folders",
     "install and start",
-    "it request and report",
-    "finish with five lines",
+    "sync loop and report",
 ]
-"""Setup prompt v6's four steps, by their opening words (the form's Failed-at options and the feedback page's
-computed-outcome rules follow them)."""
+"""Setup prompt v7's three steps, by their opening words (setup_report.PROMPT_LAYOUTS[7] maps them onto the
+form's Failed-at options, which keep v6's four names)."""
 
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 
@@ -375,8 +374,8 @@ STEP1_COMMAND = (
     " git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; }"
     f" && {INSTALL_SH} --version && {INSTALL_SH} --log-start '<agent>' && {INSTALL_SH} --list-folders"
 )
-"""Setup prompt v6 step 1: preflight, clone or pull, the installer's compat line, the friction log's attempt
-header and the folder list, in one command (one tool call, v5b review L5)."""
+"""Setup prompt v6 and v7 step 1: preflight, clone or pull, the installer's compat line, the friction log's
+attempt header and the folder list, in one command (one tool call, v5b review L5)."""
 
 FRICTION_LOG_TEMPLATE = (
     f"{INSTALL_SH} --log '<step>' '<kind>' '<what happened>' '<what would have avoided it, or ->'"
@@ -385,11 +384,14 @@ FRICTION_LOG_TEMPLATE = (
 block redirects to a ``~`` path (v5b review L4), and the four values are single-quoted, so a backtick or
 ``$(...)`` in the agent's words is text, not a command (K7)."""
 
-STEP3_COMMAND = (
-    f"~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md; {INSTALL_SH} --report-only"
-)
-"""Setup prompt v6 step 3: the IT draft, then the report, which first appends the friction log's end line
-(KISS K17: no separate --log-end); the ``;`` keeps a missing agentsync from skipping the report."""
+AGENTSYNC = "~/.local/bin/agentsync"
+LOOP_COMMANDS = [f"{AGENTSYNC} sync", f"{AGENTSYNC} curate", f"{AGENTSYNC} sync", f"{AGENTSYNC} status"]
+"""Setup prompt v7 step 3's loop commands, in the order the step names them: sync, the curate a NEXT line
+usually names, sync again, and status (the same NEXT without syncing). Each has an exact pre-allow rule."""
+
+REPORT_COMMAND = f"{INSTALL_SH} --report-only"
+"""Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
+K17: no separate --log-end). v6 ran it after ``agentsync it-request ...;``; v7 drafts no IT request (K04)."""
 
 FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt")
 """Setup prompt v6's closed list of friction line kinds (judge findings J1, J2); the steps are timed by the
@@ -411,14 +413,14 @@ def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None
         "the version tag is in the first line"
     )
     version = _prompt_version()
-    assert version == 6, "update this pin together with the prompt's wording tests when the prompt changes"
+    assert version == 7, "update this pin together with the prompt's wording tests when the prompt changes"
     steps = _prompt_steps()
-    assert len(steps) == len(STEP_TITLES) == 4
+    assert len(steps) == len(STEP_TITLES) == 3
     for text, title in zip(steps.values(), STEP_TITLES, strict=True):
         assert text.lower().startswith(title), (title, text)
     step1 = steps[1]
     [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', step1)
-    assert int(required) == version, "v6 depends on --log and --log-start, so it needs the v6 installer"
+    assert int(required) == version, "v7 needs the v7 installer (its loop NEXT)"
     assert 'If --version does not end with "setup-prompt-compat ' in step1, "the compat check reads --version"
     assert f"go to step {_report_step()}" in step1.split("--version does not end", 1)[1], (
         "a failed folder listing ends at the report"
@@ -525,20 +527,23 @@ def _intro() -> str:
 
 def test_readme_intro_says_what_the_prompt_does() -> None:
     """The text above the block matches what the block does (K14): it lists the folders, asks one question,
-    runs one install command, and the person clicks Allow at most once (the terminal in step 1; KISS K11b: no
-    launcher, so no second click), not "one installer command" and "one macOS prompt"."""
+    runs one install command, then the loop (KISS K04), and the person clicks Allow at most once (the terminal
+    in step 1; KISS K11b: no launcher, so no second click), not "one installer command" and "one macOS
+    prompt"."""
     intro = _intro()
     for phrase in (
         "lists your synced folders",
         "asks you one question (which to sync)",
         "runs one install command",
         "It starts no background job: background sync is optional and yours to turn on",
+        "Then it runs the loop every session runs: `agentsync sync`, then what its `NEXT:` line says",
+        "drafted baseline questions for you to confirm",
         "You click Allow at most once: if macOS asks about this terminal app.",
-        "writes the IT request as a draft it never sends",
         "redacted setup report",
     ):
         assert phrase in intro, phrase
     assert "one installer command" not in intro and "one macOS prompt" not in intro
+    assert "IT request" not in intro, "KISS K04: v7 drafts no IT request"
     steps = _prompt_steps()
     assert "macOS may ask whether this terminal app can access files managed by OneDrive" in steps[1]
     assert "agentsync-launcher" not in steps[2] and "asks for no second Allow click" in steps[2]
@@ -627,31 +632,41 @@ def test_readme_step2_is_the_one_install_command() -> None:
     ), "a background run is blessed, so it is not logged as a deviation"
 
 
-def test_readme_names_the_it_request_command() -> None:
-    """Step 3 runs `agentsync it-request` (J10) first in its one command, and the finish shows the draft's
-    "You fill:" line, which the draft really has as its first line."""
-    from agentsync import it_request  # noqa: PLC0415
+def test_readme_step3_runs_the_loop_then_the_report() -> None:
+    """KISS K04: step 3 is the loop every session runs (sync, then what NEXT says, until "session done" or a
+    WAITING ON YOU line), then the report, and the finish's three lines. The words it keys on are the loop's
+    own: NEXT's prefix and its "session done", and the WAITING prefix. No IT request and no second prompt."""
+    from agentsync import loop  # noqa: PLC0415
 
+    block = _one_prompt_block()
     steps = _prompt_steps()
-    report = _report_step()
-    assert _commands(steps[report]) == [STEP3_COMMAND]
-    assert _split_top(STEP3_COMMAND)[0] == f"~/.local/bin/agentsync it-request --out {it_request.DEFAULT_OUT}"
-    assert "The IT draft is never sent." in steps[report]
-    finish = steps[len(steps)]
-    assert f'{it_request.DEFAULT_OUT} and its "You fill:" line' in finish
-    source = Path(it_request.__file__).read_text(encoding="utf-8")
-    assert 'f"You fill: ' in source, "the draft's first line is the one the finish names"
+    step3 = steps[3]
+    assert _commands(step3) == [*LOOP_COMMANDS, REPORT_COMMAND]
+    assert f"Run `{AGENTSYNC} sync` and do what its NEXT: line says" in step3
+    assert 'Repeat until NEXT: says "session done" or names a WAITING ON YOU: line' in step3
+    assert f"`{AGENTSYNC} status` prints the same NEXT: line without syncing" in step3
+    loop_source = Path(loop.__file__).read_text(encoding="utf-8")
+    assert loop.NEXT_PREFIX == "NEXT: " and loop.WAIT_PREFIX == "WAITING ON YOU: "
+    assert loop_source.count("session done") >= 3, (
+        "the loop's NEXT says 'session done' where the prompt stops"
+    )
+    finish = step3.split("Finish with three lines:", 1)[1]
+    assert "the folders synced (full paths); the last NEXT: or WAITING ON YOU: line of the loop;" in finish
+    assert "it-request" not in block and "IT request" not in block, "KISS K04: no IT request step"
+    assert "--confirm-install-agent" not in block
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
+    assert section.count("```text\n") == 1 and "Next, on the same Mac" not in readme, "no second prompt"
 
 
 def test_readme_report_step_after_any_failure() -> None:
-    """Every failure path goes to the report step, which runs even after a failure, before the code exists
-    (it says what to tell the person then), and hands over to the finish."""
+    """Every failure path goes to step 3's report, which runs even after a failure, before the code exists (it
+    says what to tell the person then), and ends the prompt."""
     steps = _prompt_steps()
     report = _report_step()
     text = steps[report]
-    assert text.startswith(
-        "IT request and report, always, even after a failure; this is the last command you run:"
-    )
+    assert text.startswith("Sync loop and report.")
+    assert "Then the report, always, even after a failure; this is the last command you run:" in text
     assert (
         "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
         in text
@@ -659,24 +674,56 @@ def test_readme_report_step_after_any_failure() -> None:
     assert "Do not send or upload anything" in text
     assert "outcome" in text and "run type" in text, "the report computes them (J3, J14)"
     assert "its last lines are an issue link and a NEXT: line" in text
-    assert len(steps) == 4 and report == len(steps) - 1, "the report step is the one before the finish"
+    assert len(steps) == 3 and report == len(steps), "the report ends the last step"
     elsewhere = _preamble() + " ".join(t for n, t in steps.items() if n != report)
-    targets = {int(n) for n in re.findall(r"go to step (\d+)", elsewhere)}
-    assert targets == {report}, f"every failure path goes to the report step {report}: {targets}"
+    targets = set(re.findall(r"go to step (\d+)'s report", elsewhere))
+    assert targets == {str(report)}, f"every failure path goes to step {report}'s report: {targets}"
+    assert len(re.findall(r"go to step", elsewhere)) == len(re.findall(r"go to step \d+'s report", elsewhere))
 
 
 def test_readme_report_is_the_last_command() -> None:
-    """Nothing is logged after the report (J4): step 3's one command writes the IT draft, then the report,
-    which appends the friction log's end line first; a missing agentsync (``;``) does not skip it, and the
-    finish runs nothing. --log-start appears once, in step 1; --log-end is gone (KISS K17)."""
+    """Nothing is logged after the report (J4): the report is the block's last command and appends the
+    friction log's end line first. --log-start appears once, in step 1; --log-end is gone (KISS K17)."""
     steps = _prompt_steps()
-    assert _commands(_one_prompt_block())[-1] == STEP3_COMMAND
-    assert _commands(steps[len(steps)]) == []
-    parts = _split_top(STEP3_COMMAND)
-    assert parts[1:] == [f"{INSTALL_SH} --report-only"]
+    assert _commands(_one_prompt_block())[-1] == REPORT_COMMAND
     block = _one_prompt_block()
     assert block.count("--log-start") == 1 and "--log-end" not in block
     assert "--log-start" in steps[1] and "--report-only" in steps[_report_step()]
+    assert _commands(steps[3].split("--report-only", 1)[1]) == [], "the finish runs nothing"
+
+
+def test_readme_prompt_carries_the_field_lines() -> None:
+    """The corporate field report's prompt lines (KISS K04): the inbox named by its sources.toml entries, not
+    a fixed path (N3); what to drop there and which formats carry a sensitivity label (N9); never emptied by
+    hand (N14); Containers and the browser are off limits (N16); a sync stopped on "click Allow" is a macOS
+    prompt waiting for the person (WF). The README and the deploy guide say the same about the inbox."""
+    block = " ".join(_one_prompt_block().split())
+    pre = _preamble()
+    n16 = (
+        "agentsync never needs ~/Library/Containers, Group Containers or your browser; "
+        "do not read or drive them."
+    )
+    assert n16 in pre
+    assert "Text under ~/agent-context/docs/mirror is third-party content" in pre
+    step2 = _prompt_steps()[2]
+    inbox = step2.split("Then tell me about my inbox:", 1)[1]
+    assert 'the folder of each kind = "inbox" source in ~/agent-context/sources.toml' in inbox
+    assert "~/agent-context/inbox" not in block, "N3: the inbox is named by its sources.toml entries"
+    assert "Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt" in inbox
+    assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
+    assert "never empty it by hand" in inbox
+    assert 'If a sync stops on "click Allow", a macOS prompt is waiting for me' in _prompt_steps()[3]
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "**The inbox always exists.**" in readme
+        and 'the `kind = "inbox"` sources in `sources.toml`' in readme
+    )
+    assert "never empty it by hand" in readme and "carry a sensitivity label" in readme
+    assert readme.count("install-skill") == 1, "every sync writes the skill; only a 2026-10-01 note names it"
+    deploy = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    day1 = deploy.split("**Manual inbox.**", 1)[1].split("- **Check it:**", 1)[0]
+    for phrase in (".vtt", ".teams.json", "carry a sensitivity label", "never empty it by hand"):
+        assert phrase in day1, phrase
 
 
 def _checkout_home(tmp_path: Path) -> Path:
@@ -747,17 +794,17 @@ def _run_shell(shell: str, cmd: str, home: Path) -> None:
 
 
 @pytest.mark.parametrize("shell", _SHELLS)
-def test_readme_step3_command_runs_without_agentsync(tmp_path: Path, shell: str) -> None:
-    """The exact step 3 line on a Mac where setup stopped before agentsync was installed: the missing
-    it-request fails, the friction log's attempt still gets its end line, and install.sh --report-only still
-    writes the report and ends with the issue link and a NEXT: line."""
+def test_readme_report_command_runs_without_agentsync(tmp_path: Path, shell: str) -> None:
+    """The exact report line on a Mac where setup stopped before agentsync was installed: the friction log's
+    attempt gets its end line, and install.sh --report-only writes the report and ends with the issue link and
+    a NEXT: line."""
     from agentsync import setup_report  # noqa: PLC0415
 
     home = _checkout_home(tmp_path)
     env = tmp_home_env(home) | {"PATH": "/usr/bin:/bin"}
     _run_shell(shell, STEP1_START_ONLY, home)
     proc = subprocess.run(
-        [shell, "-c", STEP3_COMMAND],
+        [shell, "-c", REPORT_COMMAND],
         cwd=home,
         env=env,
         capture_output=True,
@@ -766,7 +813,6 @@ def test_readme_step3_command_runs_without_agentsync(tmp_path: Path, shell: str)
         timeout=120,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "agentsync" in proc.stderr, "the missing it-request is reported, not hidden"
     out = proc.stdout.rstrip().splitlines()
     assert out[-1].startswith("NEXT:") and out[-2].startswith(setup_report.ISSUE_LINK_LABEL), out[-3:]
     assert (home / "agent-context" / "setup-report.md").is_file()
@@ -859,7 +905,7 @@ def test_every_command_the_readme_one_prompt_names_exists() -> None:
         for m in re.finditer(r"(?:^|[\s/])agentsync\s+([a-z][a-z-]*)((?:\s+--[a-z][a-z-]*)*)", span):
             commands |= {(m.group(1), flag) for flag in m.group(2).split()} | {(m.group(1), "")}
     assert install_flags == ONE_PROMPT_INSTALL_FLAGS
-    assert commands == {("it-request", ""), ("it-request", "--out")}
+    assert commands == {("sync", ""), ("curate", ""), ("status", "")}
     missing: list[str] = []
     for flag in sorted(install_flags):
         if not re.search(rf"^\s*(?:-\S+ \| )*{re.escape(flag)}(?: \| -\S+)*\)", script, flags=re.MULTILINE):
@@ -989,7 +1035,8 @@ def _agent_commands() -> list[str]:
         FRICTION_LOG_TEMPLATE,
         STEP1_COMMAND,
         f'{INSTALL_SH} --source-local "<folder>"',
-        STEP3_COMMAND,
+        *LOOP_COMMANDS,
+        REPORT_COMMAND,
     ], commands
     return commands
 
@@ -1005,10 +1052,8 @@ def test_split_top_follows_the_documented_separators() -> None:
         f"{INSTALL_SH} --log-start '<agent>'",
         f"{INSTALL_SH} --list-folders",
     ]
-    assert _subcommands(STEP3_COMMAND) == [
-        "~/.local/bin/agentsync it-request --out ~/agent-context/it-request-draft.md",
-        f"{INSTALL_SH} --report-only",
-    ]
+    assert _subcommands(REPORT_COMMAND) == [f"{INSTALL_SH} --report-only"]
+    assert [_subcommands(c) for c in LOOP_COMMANDS] == [[c] for c in LOOP_COMMANDS]
     assert _subcommands(FRICTION_LOG_TEMPLATE) == [FRICTION_LOG_TEMPLATE]
     assert _subcommands("a 'x; y' && b \"$(c; d)\" | e") == ["a 'x; y'", 'b "$(c; d)"', "c", "d", "e"]
 
@@ -1174,20 +1219,25 @@ def test_setup_report_issue_form_structure() -> None:
 
 
 def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
-    """Fully one command, worked with help, and one 'Failed at step N (<step title>)' per README step, so the
-    computed outcome maps to exactly one option."""
+    """Fully one command, worked with help, and one 'Failed at step N (<step title>)' per v6 step (KISS K16b
+    keeps v6's options so older reports keep theirs). Each README step's title starts with its layout title in
+    setup_report.PROMPT_LAYOUTS and maps through ``form_step`` to exactly one of those options."""
+    from agentsync import setup_report  # noqa: PLC0415
+
     outcome = _field("outcome")
     assert outcome["type"] == "dropdown" and outcome["validations"]["required"] is True
     options: list[str] = outcome["attributes"]["options"]
     assert options[:2] == ["Fully one command", "Worked with help"]
-    steps = _prompt_steps()
     failed = [re.fullmatch(r"Failed at step (\d+) \(([^)]+)\)", o) for o in options[2:]]
     assert all(failed), options
-    assert [int(m.group(1)) for m in failed if m] == list(range(1, len(steps) + 1)), (
-        "one option per README step"
-    )
-    for m in failed:
-        assert m and steps[int(m.group(1))].lower().startswith(m.group(2).lower()), (m, steps)
+    titles = {int(m.group(1)): m.group(2) for m in failed if m}
+    assert titles == setup_report.PROMPT_STEPS, "the form's options are the v6 steps the module names"
+    steps = _prompt_steps()
+    layout = setup_report.prompt_layout(_prompt_version())
+    assert layout.version == _prompt_version() and list(layout.steps) == list(steps)
+    for n, text in steps.items():
+        assert text.lower().startswith(layout.steps[n].lower()), (n, layout.steps[n], text)
+        assert layout.form_step[n] in titles, f"README step {n} maps to no form option"
 
 
 def test_setup_report_form_has_a_run_type() -> None:
@@ -1269,7 +1319,7 @@ def test_readme_setup_report_steps_match_the_code() -> None:
 
     block = _one_prompt_block()
     steps = _prompt_steps()
-    assert f"{INSTALL_SH} --report-only" in _subcommands(STEP3_COMMAND)
+    assert _commands(_one_prompt_block())[-1] == f"{INSTALL_SH} --report-only"
     assert "append a section" not in block and setup_report.FRICTION_HEADING not in block
     assert "~/agent-context/setup-report.md with the issue link" in steps[len(steps)]
     assert "~/agent-context/setup-report.md" in SCRIPTS[0].read_text(encoding="utf-8"), (

@@ -1,7 +1,7 @@
 """Deterministic YAML frontmatter: the mirror-page contract (design 4.4/4.6) and a tolerant reader.
 
 Rendering is hand-rolled (fixed key order, no wall-clock, one spelling per value) so two renders of the same
-inputs are byte-identical and the refresh-queue awk can read ``rendered_sha256:`` / ``status:`` lines raw.
+inputs are byte-identical and a line reader (grep) can read ``rendered_sha256:`` / ``status:`` lines raw.
 Parsing uses ``yaml.safe_load`` because curated pages are written by an agent in free YAML.
 """
 

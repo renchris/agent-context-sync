@@ -144,7 +144,7 @@ class DocsLayout:
 
     @property
     def readme_md(self) -> Path:
-        """README.md: how the folder is built, the refresh-queue command, retention owner."""
+        """README.md: how the folder is built, its sources, retention owner."""
         return self.root / "README.md"
 
     @property
