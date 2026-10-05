@@ -129,9 +129,13 @@ FOLDER_QUESTION_STEP = 1
 log it (its ``question`` kind is "something other than which folders to sync"), so every logged question is
 beyond it; in a v5 log it is the first question logged in v5's step 2."""
 ALLOW_CLICK_STEPS = (1, 2)
-"""The steps whose announced Allow click fully one command allows (the terminal's OneDrive access in step 1,
-agentsync-launcher's in step 2). Prompt v6 does not log them (its ``click`` kind is "something other than an
-Allow this prompt announced"); in a v5 log they are the first click logged in each of v5's steps 2 and 3."""
+"""Prompt v6's steps whose announced Allow click fully one command allows (the terminal's OneDrive access in
+step 1, agentsync-launcher's in step 2). Prompt v6 does not log them (its ``click`` kind is "something other
+than an Allow this prompt announced"); in a v5 log they are the first click logged in each of v5's steps 2
+and 3. Prompt v7 announces only step 1's (:data:`V7_ALLOW_CLICK_STEPS`)."""
+V7_ALLOW_CLICK_STEPS = (1,)
+"""Prompt v7's announced Allow click: the terminal's in step 1 only. Its install starts no background job, so
+agentsync-launcher asks for no Allow in step 2 (KISS K11b)."""
 INSTALL_STEP = 2
 """The prompt step that runs scripts/install.sh: the installer's failure is a failure of this step."""
 REPORT_STEP = 3
@@ -160,7 +164,7 @@ PROMPT_LAYOUTS = {
         version=7,
         steps={1: "preflight", 2: "install", 3: "sync loop and report"},
         folder_question_step=FOLDER_QUESTION_STEP,
-        allow_click_steps=ALLOW_CLICK_STEPS,
+        allow_click_steps=V7_ALLOW_CLICK_STEPS,
         install_step=INSTALL_STEP,
         report_step=REPORT_STEP,
         logs_expected_turns=False,
@@ -2437,6 +2441,11 @@ def _plural(n: int, word: str) -> str:
     return f"{n} {word}{'' if n == 1 else 's'}"
 
 
+def _allow_clicks(layout: PromptLayout) -> str:
+    """The words for the announced Allow clicks: one in v7, two in v6."""
+    return "Allow click" if len(layout.allow_click_steps) == 1 else "Allow clicks"
+
+
 def _turns_line(att: Attempt, run_type: str) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
@@ -2452,7 +2461,7 @@ def _turns_line(att: Attempt, run_type: str) -> str:
     if no_clicks is None:
         clicks = _plural(c, "click")
         if not att.layout.logs_expected_turns:
-            clicks += " beyond the announced Allow clicks (not logged)"
+            clicks += f" beyond the announced {_allow_clicks(att.layout)} (not logged)"
     elif c == 0:
         clicks = "clicks: none possible"
     else:
@@ -2466,11 +2475,12 @@ def _expected_turns_line(att: Attempt, run_type: str) -> str:
     no_clicks = _no_clicks_why(run_type)
     if not layout.logs_expected_turns:  # prompt v6 logs neither
         steps = " and ".join(str(s) for s in layout.allow_click_steps)
+        steps = f"step{'s' if len(layout.allow_click_steps) > 1 else ''} {steps}"
         parts = [f"the folder question (step {layout.folder_question_step}; not logged)"]
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
-            parts.append(f"the announced Allow clicks (steps {steps}; not logged)")
+            parts.append(f"the announced {_allow_clicks(layout)} ({steps}; not logged)")
         return "- expected turns: " + " · ".join(parts)
     folder = next((e for e in att.of_kind("question") if att.expected(e)), None)
     parts = [f"the folder question F{folder.line}" if folder else "the folder question: not logged"]

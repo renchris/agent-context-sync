@@ -125,7 +125,8 @@ install.log (a `--list-folders` run is not an install run):
 
 - **Fully one command**: the last install run exited 0, and the attempt has no `question` line and no `click`
   line (prompt v6 logs neither the folder question in step 1 nor the Allow clicks it announces in steps 1 and 2,
-  so every logged one is beyond them), no `approval` line, no error that stopped the run, and doctor shows no
+  and v7 neither that question nor the one Allow click it announces in step 1, so every logged one is beyond
+  them), no `approval` line, no error that stopped the run, and doctor shows no
   `[FAIL]`. An attempt with no event line at all is the expected case.
 - **Worked with help**: the last install run exited 0, but one of those conditions fails; the Summary says which.
   Without a friction log, or without the attempt's `Attempt:` line (from `install.sh --log-start`), the human

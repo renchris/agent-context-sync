@@ -1523,6 +1523,29 @@ def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
     ]
 
 
+def test_v7_announces_one_allow_click_in_step_1(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KISS K11b review: v7's step 2 starts no launcher, so the only announced Allow click is step 1's."""
+    v6_install_log(fake_mac, simulated=False, agent="seconds=2 rc=0 result=done")
+    write_friction(
+        fake_mac,
+        _insert_before(
+            "2026-09-29T10:01:10Z | end",
+            "2026-09-29T10:00:20Z | step 2 | click | clicked Allow on a Keychain prompt | -\n",
+            V7_HAPPY,
+        ),
+    )
+    monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")
+    _text, summary = summary_of(fake_mac)
+    assert "1 click beyond the announced Allow click (not logged)" in summary
+    assert (
+        "- expected turns: the folder question (step 1; not logged) · the announced Allow click (step 1; not "
+        "logged)" in summary
+    )
+    assert "steps 1 and 2" not in summary
+
+
 def test_v6_an_error_stops_the_run_unless_a_later_install_run_succeeded(fake_mac: dict[str, Path]) -> None:
     """v6 logs no step ends: install.log's later successful run of that step resolves an error (L-series)."""
     v6_install_log(fake_mac)

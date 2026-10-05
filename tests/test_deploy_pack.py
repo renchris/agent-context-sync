@@ -1402,6 +1402,7 @@ def test_setup_feedback_page_defines_the_computed_outcome() -> None:
         ("INSTALL_STEP", 2),
         ("FOLDER_QUESTION_STEP", 1),
         ("ALLOW_CLICK_STEPS", (1, 2)),
+        ("V7_ALLOW_CLICK_STEPS", (1,)),
         ("SANDBOX_HOMES", ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")),
     ):
         value = getattr(setup_report, name, expected)
@@ -1412,6 +1413,9 @@ def test_setup_feedback_page_defines_the_computed_outcome() -> None:
         "v6 logs neither the folder question nor an Allow"
     )
     assert "the folder question in step 1 nor the Allow clicks it announces in steps 1 and 2" in flat
+    assert "v7 neither that question nor the one Allow click it announces in step 1" in flat, (
+        "KISS K11b: v7's step 2 starts no launcher, so it announces no second Allow"
+    )
     assert "`Prompt: v5` is judged with v5's six steps" in flat, "a v5 log is still read with its own steps"
     assert all(
         f"`{home}`" in flat for home in ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")

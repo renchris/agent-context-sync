@@ -4960,7 +4960,8 @@ is said on the line ("NEXT: not read (...)"); the Status section still prints no
 issue form's Outcome options are unchanged: the outcome judges the install, the Loop line the loop. The issue
 link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
 **Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install (`INSTALL_STEP`), 3 sync loop and report
-(`REPORT_STEP`); the folder question and the Allow clicks (steps 1 and 2) are not logged, as in v6;
+(`REPORT_STEP`); the folder question and the one announced Allow click (step 1, `V7_ALLOW_CLICK_STEPS`: since
+K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v6;
 `form_step` maps 1-3 onto the form's 1-3. `prompt_layout(version)` picks by explicit version (<= 5 -> v5, 6 ->
 v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still reads as v6. A v7 attempt's
 Summary has no IT draft line unless the draft exists (v7 has no IT request step). **Redaction.** `build_report`
@@ -4980,6 +4981,7 @@ PROMPT_VERSION = 7  # KISS K16b (was 6)
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
+V7_ALLOW_CLICK_STEPS = (1,)  # v7: announced in step 1 only (K11b: step 2 starts no launcher), not logged
 INSTALL_STEP = 2
 REPORT_STEP = 3  # every run ends at the report step; an error before it, unresolved and with no later step, stopped it
 RUN_METADATA_HEADING = "### Run metadata"
