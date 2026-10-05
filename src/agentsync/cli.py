@@ -975,6 +975,14 @@ def _job_environment(config: Config) -> dict[str, str]:
     return env
 
 
+_PROXY_UNUSED_NOTE = "only Graph sources use the proxy, and none is live"
+
+
+def _unused_proxy_line(detail: str) -> doctor.CheckResult:
+    """A proxy finding that nothing acts on: no live Graph source (field N13)."""
+    return doctor.CheckResult("network.proxy", False, detail, doctor.Severity.INFO, note=_PROXY_UNUSED_NOTE)
+
+
 def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
     live_graph = any(s.kind.is_graph and s.is_live for s in config.sources)
     system = net.system_proxy()
@@ -998,19 +1006,26 @@ def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.Che
                 fix='set [network] proxy = "<url>" (or "direct") in sources.toml: both then use it',
             )
         )
-    if proxy.policy_error:
+    # Only Graph uses the proxy (cycle.py gates every consumer on a live Graph source): without one, a PAC or
+    # WPAD setting is INFO with a note, never a fix to chase (field N13).
+    if proxy.policy_error and live_graph:
         out.append(
             _check(
                 "network.proxy",
                 False,
                 proxy.policy_error,
-                doctor.Severity.ERROR if live_graph else doctor.Severity.WARN,
+                doctor.Severity.ERROR,
                 fix='set [network] proxy = "http://<proxy>:<port>" (PAC files are not evaluated)',
             )
         )
+    elif proxy.policy_error:
+        out.append(_unused_proxy_line(proxy.policy_error))
     else:
         out.append(_check("network.proxy", True, diag[0], doctor.Severity.INFO))
-    out += [_check("network.proxy", False, w, doctor.Severity.WARN) for w in diag[1:]]
+    if live_graph:
+        out += [_check("network.proxy", False, w, doctor.Severity.WARN) for w in diag[1:]]
+    else:
+        out += [_unused_proxy_line(w) for w in diag[1:]]
     if offline:  # setup-report: no network, ever
         if live_graph:
             out.append(

@@ -941,6 +941,32 @@ def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     assert not job.ok and "[network] proxy" in (job.fix or "")
 
 
+def test_pac_proxy_is_info_without_a_live_graph_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """field N13: only Graph uses the proxy, so with no live Graph source a PAC/WPAD setting is INFO with a
+    note and no fix; with a live one the PAC line stays an ERROR with its fix."""
+    pac_url = "http://wpad.example.test/proxy.pac"
+    pac = cli.net.SystemProxy(pac_enabled=True, pac_url=pac_url, wpad_enabled=True)
+    monkeypatch.setattr(cli.net, "system_proxy", lambda runner=None: pac)
+    for var in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    config, _src = make_env(tmp_path)
+    lines = [c for c in cli._network_checks(config, offline=True) if c.name == "network.proxy"]
+    assert lines and any("PAC" in c.detail for c in lines)
+    for c in lines:
+        assert c.severity is doctor.Severity.INFO and c.fix is None and c.note, c
+    assert "(fix:" not in doctor.format_results(lines)
+    graph = '[graph]\nclient_id = "00000000-0000-0000-0000-000000000001"\ntenant = "example.test"\n'
+    live, _src = make_env(
+        tmp_path, source_extra=f'\n[[source]]\nid = "mail"\nkind = "graph_mail"\nfolder = "inbox"\n\n{graph}'
+    )
+    assert any(s.kind.is_graph and s.is_live for s in live.sources)
+    policy = [c for c in cli._network_checks(live, offline=True) if c.name == "network.proxy"]
+    pac_line = next(c for c in policy if c.detail.startswith("network-policy: PAC"))
+    assert pac_line.severity is doctor.Severity.ERROR and pac_line.fix and "[network] proxy" in pac_line.fix
+
+
 def test_offboard_lists_and_removes_installer_artifacts(tmp_path: Path) -> None:
     """deploy-ops-offboard-omits-installer-artifacts."""
     config, _src = make_env(tmp_path)
