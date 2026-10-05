@@ -32,8 +32,14 @@ from agentsync.model import LintFinding, PageStatus
 
 log = logging.getLogger(__name__)
 
-TOKEN_PATTERN = re.compile(r"token=|deltatoken=|Bearer ")
-"""Mirror/topics pages matching this are reported (non-blocking) and routed through the SECRET quarantine."""
+TOKEN_PATTERN = re.compile(
+    r"\bBearer\s+[A-Za-z0-9._~+/=-]{20,}"
+    r"|(?:\$?(?:delta|skip)|access_|refresh_|id_)?token=[^\s&\"'<>]{16,}"
+)
+"""Mirror/archive/topics pages matching this are reported (non-blocking) as a review hint.  Only a
+token-shaped value counts: ``Bearer Securities``, ``Bearer <your token>`` and a short ``reset-token=``
+example do not, an opaque bearer token and an ``access_token=`` parameter do (PIPELINE_TOKEN_PATTERN would
+miss opaque bearer tokens, and gitleaks is optional)."""
 
 PIPELINE_TOKEN_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_-])\$?(?:delta|skip)token=[^\s&\"'<>]+"
@@ -373,9 +379,9 @@ def lint_no_tokens(
     repo: Path, paths: Sequence[str] | None = None, *, known_secrets: Sequence[str] = ()
 ) -> list[LintFinding]:
     """TOKEN: no pipeline-written file (``_manifest``, ``_sync``, INDEX, CHANGELOG, DEPENDS) matches
-    PIPELINE_TOKEN_PATTERN or holds one of ``known_secrets`` (the live cursor values; blocking). Mirror pages
-    matching TOKEN_PATTERN are reported non-blocking and go through the SECRET quarantine path, because
-    corporate API docs legitimately contain ``Bearer ``; a mirror page holding a known secret blocks."""
+    PIPELINE_TOKEN_PATTERN or holds one of ``known_secrets`` (the live cursor values; blocking). Pages
+    matching TOKEN_PATTERN are reported non-blocking with advice the reader can act on, because corporate API
+    docs legitimately show sample tokens; a page holding a known secret blocks."""
     known = [k for k in known_secrets if len(k) >= 16]
     if paths is None:
         candidates = [
@@ -400,7 +406,10 @@ def lint_no_tokens(
         if pipeline or leaked:
             msg = f"file holds {what!r} at line {line}: a cursor or bearer token leaked"
         else:
-            msg = f"page matches {what!r} at line {line}; route it through the SECRET quarantine"
+            msg = (
+                f"page holds a token-shaped {what!r} value at line {line} (not blocking); if it is a live "
+                "credential, rotate it and remove it from the source file or topic page"
+            )
         findings.append(LintFinding("TOKEN", path, msg, blocking=pipeline or leaked))
     return _sorted(findings)
 

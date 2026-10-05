@@ -1073,7 +1073,8 @@ def test_manifest_keeps_the_removal_reason_of_a_provider_tombstone(tmp_path: Pat
 
 
 def test_lint_accepts_the_new_tombstone_headings() -> None:
-    assert lints.TOKEN_PATTERN.search("Bearer bonds")  # mirror pages: still reported (non-blocking)
+    assert not lints.TOKEN_PATTERN.search("Bearer bonds")  # mirror pages: only token-shaped values (N7)
+    assert lints.TOKEN_PATTERN.search("Bearer 8f2kQz71mVb0aLx3TnWp9cRd")  # ... an opaque one still reported
     assert not lints.PIPELINE_TOKEN_PATTERN.search("Bearer bonds - Q3 memo.txt")
     assert lints.PIPELINE_TOKEN_PATTERN.search("https://graph.microsoft.com/v1.0/x/delta?token=abcdef")
 

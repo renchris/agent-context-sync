@@ -340,12 +340,38 @@ def test_cache_not_ignored_is_blocking(repo: Path) -> None:
 def test_token_in_pipeline_file_is_blocking_and_not_quoted(repo: Path) -> None:
     secret = "https://graph.microsoft.com/v1.0/drives/x/root/delta?token=SUPERSECRETCURSOR"
     write(repo, "_manifest/src.jsonl", '{"note": "' + secret + '"}\n')
-    write(repo, "mirror/src/api.md", page("# API\n\nAuthorization: Bearer <your token>\n"))
+    write(repo, "mirror/src/api.md", page(f"# API\n\nAuthorization: Bearer {OPAQUE_BEARER}\n"))
     write(repo, "INDEX.md", "# fine\n")
     found = lints.lint_no_tokens(repo)
     assert codes(found) == [("TOKEN", "_manifest/src.jsonl", True), ("TOKEN", "mirror/src/api.md", False)]
-    assert all("SUPERSECRETCURSOR" not in f.message for f in found)
+    assert all("SUPERSECRETCURSOR" not in f.message and OPAQUE_BEARER not in f.message for f in found)
     assert "line 1" in found[0].message
+
+
+OPAQUE_BEARER = "8f2kQz71mVb0aLx3TnWp9cRd"
+
+
+@pytest.mark.parametrize(
+    ("text", "flagged"),
+    [
+        ("Our desk covers Bearer Securities and other instruments.", False),
+        ("Authorization: Bearer <your token>", False),
+        ("See the reset-token=howto page.", False),
+        (f"Authorization: Bearer {OPAQUE_BEARER}", True),
+        ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl", True),
+        ("https://app.example.com/cb#access_token=Zm9vYmFyYmF6cXV4MTIzNDU2&state=x", True),
+        ("https://graph.microsoft.com/v1.0/me/delta?$deltatoken=Zm9vYmFyYmF6cXV4MTIz", True),
+    ],
+)
+def test_page_token_check_needs_a_token_shaped_value(repo: Path, text: str, flagged: bool) -> None:
+    """field N7: prose like "Bearer Securities" is no finding; a real-looking token is a non-blocking one
+    whose advice names an action that exists (no SECRET quarantine is fed by it)."""
+    write(repo, "mirror/src/notes.md", page(f"# Notes\n\n{text}\n"))
+    found = lints.lint_no_tokens(repo)
+    assert codes(found) == ([("TOKEN", "mirror/src/notes.md", False)] if flagged else [])
+    for f in found:
+        assert "rotate it" in f.message and "quarantine" not in f.message
+        assert OPAQUE_BEARER not in f.message and "Zm9vYmFy" not in f.message
 
 
 def test_token_lint_on_given_paths_and_skips_cache(repo: Path) -> None:
