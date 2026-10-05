@@ -193,8 +193,10 @@ Learnings:
 - Every failure path in v7 says "go to step 3's report"; step 3 follows NEXT past a non-zero exit and stops only
   when NEXT says "session done".
 - `--launcher` without `--confirm-install-agent` is a usage error; `AGENTSYNC_REBUILD_LAUNCHER=1` forces a rebuild.
-- Open: the chat-history retention decision (`7137d8ac6cbb`); if the operator picks `archive = true` for a chat
-  inbox, v7 gains one line.
+- Ruled (2026-10-05, operator): chat-history retention (`7137d8ac6cbb`) keeps the default, `archive` off, because
+  `[governance] archive` applies to every source and would keep deleted company content outside Purview; chat
+  exports stay safe by the inbox writer contract (one file per month, never renamed or removed). No exporters
+  ship (`56c300064f89`): the README and docs/deploy point a person's own scripts at that contract.
 
 ## Dropped or changed by the skeptics
 

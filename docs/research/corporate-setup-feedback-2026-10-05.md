@@ -120,6 +120,13 @@ so nothing remains.
 
 ## Open operator decisions
 
+**Ruled (2026-10-05, operator), on the KISS lead's recommendation:** D1 keeps the default (`archive` off; 80%):
+`[governance] archive` is global, so it would also keep deleted company OneDrive content outside Purview, and the
+messages themselves stay in Microsoft 365. Chat exports are protected by the N14 writer contract instead (one file
+per month, never renamed or removed). D2 and D3: ship no exporters and read no Teams cache (85%); v7 already says
+agentsync never needs `~/Library/Containers` or the browser, and the README points a person's own scripts at the
+writer contract.
+
 These are recorded, not decided. Each carries the facts measured during triage.
 
 **D1 — Retention of chat-derived history.** With `archive` off (the default), chat that a later export dropped
