@@ -561,6 +561,21 @@ already carries `SOURCE-MISSING` is not repeated.
     sources); plist `Umask = 63`.
 11. **Token cache** in the login Keychain via msal-extensions; the 0600 file fallback exists only for sessions
     without Keychain access and is logged.
+12. **One procedure in every guide (2026-10-04, KISS K07).** Root `CLAUDE.md` and `AGENTS.md` are
+    `publish.root_guide(archive=, inbox=)`: a short header, then `skill.procedure()` (run
+    `~/.local/bin/agentsync sync`, do what NEXT says and repeat, the look-up order, never open `_eval/answers.md`
+    or `_eval/results-*`, the authoring rules moved from the topics seed), then the inbox line when a live inbox
+    source exists, then `BOUNDARY_TEXT` verbatim. Paths are relative to the docs repo (no `docs/` prefix, no
+    `git -C docs`); the archive and snapshot lines appear only with `[governance] archive = true`. `skill_text`
+    is the docs-path header, `skill.procedure()` and the Baseline questions section; its SYNONYMS and
+    `.agentsync-*.tmp` rename steps are gone (the gitops `.agentsync-*.tmp` exclusion stays). `topics/CLAUDE.md`
+    is a 2-line pointer to the root guide; the K09b seed's sha joins `_TOPICS_CLAUDE_MD_PRIOR_SHA256`, and a
+    hand-edited one is kept. **Departure: `SYNONYMS.tsv` is no longer seeded** (§13's tree still lists it):
+    `ensure_scaffold` writes no header, INDEX lists it only when the file exists, an existing file
+    is left alone and still committed. The docs README's single-writer line reads "agentsync on this Mac
+    (principal: …)" and its delete procedure is `agentsync offboard --confirm <docs> --purge-data`; STATE.md's
+    staleness line says to run `~/.local/bin/agentsync sync` first, and its `REAUTH_REQUIRED` login line
+    appears only when a Graph source is configured.
 
 ## 15. Module reference (generated from the stubs)
 

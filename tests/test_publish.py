@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import hashlib
+import re
 import subprocess
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -11,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import gitops, lints, policy, publish, slug
-from agentsync.config import Config, parse_config
+from agentsync import cli, gitops, lints, policy, publish, skill, slug
+from agentsync.config import Config, SourceConfig, parse_config
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError
 from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
@@ -41,7 +43,6 @@ from agentsync.publish import (
     GITATTRIBUTES,
     GITIGNORE,
     MIRROR_CLAUDE_MD,
-    ROOT_CLAUDE_MD,
     TOPICS_CLAUDE_MD,
     PlannedPage,
     Publisher,
@@ -229,15 +230,19 @@ def assert_pages_valid(env: Env) -> None:
 
 def test_scaffold_writes_fixed_files_once(env: Env) -> None:
     repo = env.repo
-    assert (repo / "CLAUDE.md").read_text() == ROOT_CLAUDE_MD
+    assert (repo / "CLAUDE.md").read_text() == publish.root_guide()  # no archive, no inbox source
     assert (repo / "mirror/CLAUDE.md").read_text() == MIRROR_CLAUDE_MD
     assert (repo / "topics/CLAUDE.md").read_text() == TOPICS_CLAUDE_MD
     assert (repo / ".gitignore").read_text() == GITIGNORE
     assert (repo / ".gitattributes").read_text() == GITATTRIBUTES
-    assert (repo / "SYNONYMS.tsv").read_text() == "term\texpansion\towner\n"
+    assert not (repo / "SYNONYMS.tsv").exists()  # KISS K07: no longer seeded
     readme = (repo / "README.md").read_text()
     assert "Refresh queue" not in readme and "awk" not in readme  # KISS K09b: `curate` lists the work
     assert "owner@example.com" in readme and "| `lib` | graph_drive | live |" in readme
+    assert "Exactly one process writes it: agentsync on this Mac (principal: owner@example.com)." in readme
+    assert "Retention owner: owner@example.com." in readme
+    assert "`~/.local/bin/agentsync offboard --confirm <docs> --purge-data`" in readme
+    assert "logout" not in readme and "uninstall-agent" not in readme and "install-agent" not in readme
     assert str(Path.home()) not in readme  # ~-relative display paths
     assert env.pub.ensure_scaffold() == []
 
@@ -249,7 +254,7 @@ def test_scaffold_keeps_curated_and_operator_content(env: Env) -> None:
     (repo / ".gitignore").write_text("*.swp\n")
     (repo / "mirror/CLAUDE.md").write_text("tampered\n")
     written = env.pub.ensure_scaffold()
-    assert written == [".gitignore", "mirror/CLAUDE.md"]
+    assert written == [".gitignore", "mirror/CLAUDE.md"]  # an existing SYNONYMS.tsv is left alone
     assert (repo / "topics/CLAUDE.md").read_text() == "# edited aspect vocabulary\n"
     assert "PO\tpurchase order" in (repo / "SYNONYMS.tsv").read_text()
     assert (repo / ".gitignore").read_text() == "*.swp\n" + GITIGNORE
@@ -270,8 +275,65 @@ def test_scaffold_upgrades_an_unedited_earlier_topics_seed(env: Env, monkeypatch
 def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:
     current = hashlib.sha256(TOPICS_CLAUDE_MD.encode()).hexdigest()
     assert current not in publish._TOPICS_CLAUDE_MD_PRIOR_SHA256
-    assert "_index/by-entity.tsv" in TOPICS_CLAUDE_MD and "purpose:" in TOPICS_CLAUDE_MD
+    assert (
+        len(TOPICS_CLAUDE_MD.splitlines()) == 2 and "../CLAUDE.md" in TOPICS_CLAUDE_MD
+    )  # KISS K07: a pointer
     assert "refresh queue" not in TOPICS_CLAUDE_MD  # KISS K09b
+
+
+# The topics/CLAUDE.md seed as of KISS K09b (1dba99c), byte for byte: the one K07 replaced with the pointer.
+_K09B_TOPICS_SEED = """\
+# docs/topics — curated synthesis
+
+Every claim cites a docs/mirror/... page in the `sources:` frontmatter as
+`{path: <page-relative path>, at_rendered_sha256: <64 hex>, role: primary|corroborating}`;
+`entity:` is required.  A page starting with `> ⚠ STALE` is cited as of its pinned sha, never as
+current.
+Read docs/_sync/STATE.md first: incomplete sources mean a negative answer is "not found in docs/,
+and source X was incomplete", never a bare "nothing found".
+`agentsync curate-queue` lists the work: STALE pages, then UNCOVERED mirror pages no page cites yet.
+Write a page as `.agentsync-<name>.tmp` beside its target and rename it when complete: those names are
+never committed, so a sync cannot commit half a page.  `agentsync lint` checks the pins.
+
+Before writing a page, look the entity up in `_index/by-entity.tsv` and `rg -i '<term>' topics/`; if a
+page exists, extend it.  Never write -v2, -new or -final copies.  Link to the page that owns a fact
+instead of restating it.  One subject per page, read whole: keep it under 400 lines / 25 KB.
+`purpose:` is required: one line saying what the page answers and what it does not.  `aliases:` lists
+the abbreviations and phrases a user would type (`PO`, `Acme pricing`), in their words.
+Subject pages are edited in place; git keeps their history.  A `decisions/<yyyy-mm-dd>-<slug>.md` page
+is not edited once committed: a later decision gets a new dated page.
+When cited sources disagree, say in the body which one the page follows and why, and keep the other in
+`sources:`.
+`reviewed_at: <yyyy-mm-dd>` is set only when the operator says they checked the page.  Any edit you
+make to a reviewed page removes `reviewed_at:` in the same write.
+"""
+
+
+def test_the_k09b_topics_seed_upgrades_to_the_pointer_and_an_edited_one_is_kept(env: Env) -> None:
+    repo = env.repo
+    assert hashlib.sha256(_K09B_TOPICS_SEED.encode()).hexdigest() in publish._TOPICS_CLAUDE_MD_PRIOR_SHA256
+    (repo / "topics/CLAUDE.md").write_text(_K09B_TOPICS_SEED)
+    assert env.pub.ensure_scaffold() == ["topics/CLAUDE.md"]
+    assert (repo / "topics/CLAUDE.md").read_text() == TOPICS_CLAUDE_MD
+    edited = _K09B_TOPICS_SEED + "Our own rule: cite the contract first.\n"
+    (repo / "topics/CLAUDE.md").write_text(edited)
+    assert env.pub.ensure_scaffold() == []
+    assert (repo / "topics/CLAUDE.md").read_text() == edited
+    # Every authoring rule the seed carried is in the root procedure now (paths repo-relative).
+    rules = _K09B_TOPICS_SEED.split("\n\n", 2)[2].replace("docs/", "")
+    flat = " ".join(publish.root_guide().split())
+    for sentence in re.split(r"(?<=\.)\s+", " ".join(rules.split())):
+        assert sentence in flat, sentence
+
+
+def test_synonyms_row_only_when_the_file_exists(env: Env) -> None:
+    env.pub.write_index([status("src")])
+    assert "SYNONYMS" not in env.text("INDEX.md")
+    (env.repo / "SYNONYMS.tsv").write_text("term\texpansion\towner\nPO\tpurchase order\tme\n")
+    assert env.pub.ensure_scaffold() == []
+    env.pub.write_index([status("src")])
+    assert "- [SYNONYMS.tsv](SYNONYMS.tsv)" in env.text("INDEX.md")
+    assert "PO\tpurchase order" in env.text("SYNONYMS.tsv")
 
 
 # ---- path allocation ---------------------------------------------------------------------------------------
@@ -807,7 +869,7 @@ def test_index_lists_sources_and_topics_by_entity(env: Env) -> None:
     env.pub.write_index([status("src"), status("lib", baseline=False, kind=SourceKind.GRAPH_DRIVE)])
     text = env.text("INDEX.md")
     assert text.startswith("# docs — agent context index\n")
-    assert "git -C docs log --since=<date> --stat -- mirror topics" in text
+    assert "`git log --since=<date> --stat -- mirror topics`" in text
     assert "- [lib](mirror/lib/): graph_drive · baseline: INCOMPLETE" in text
     assert "- [src](mirror/src/): local · baseline complete" in text
     assert (
@@ -1129,11 +1191,110 @@ def test_a_sheet_or_sidecar_named_like_an_instruction_file_is_neutralised(env: E
 def test_generated_guides_state_the_untrusted_boundary(env: Env) -> None:
     for rel in ("CLAUDE.md", "AGENTS.md", "mirror/CLAUDE.md"):
         assert policy.BOUNDARY_TEXT in env.text(rel), rel
-    assert env.text("AGENTS.md") == ROOT_CLAUDE_MD
-    assert ROOT_CLAUDE_MD.startswith("docs/INDEX.md is the map")  # the design's three lines stay first
-    assert "search docs/archive/" in ROOT_CLAUDE_MD and "show snapshot/<date>:<path>" in ROOT_CLAUDE_MD
+    assert env.text("AGENTS.md") == env.text("CLAUDE.md") == publish.root_guide()
+    assert env.text("CLAUDE.md").endswith("\n\n" + policy.BOUNDARY_TEXT)  # verbatim, after the procedure
     assert "AGENTS.md" in gitops.COMMIT_PATHSPECS
     assert [f for f in lints.run_land_gate(env.repo, ["AGENTS.md", "mirror/CLAUDE.md"]) if f.blocking] == []
+
+
+def _cli_verbs() -> list[str]:
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    return sorted(sub.choices, key=len, reverse=True)
+
+
+def _guide_problems(text: str) -> list[str]:
+    """A ``docs/`` prefix, ``git -C docs`` or an ``agentsync <verb>`` not spelled ``~/.local/bin/agentsync``,
+    outside the verbatim BOUNDARY_TEXT (policy-owned; it names docs/mirror/ as the operator sees it)."""
+    text = text.replace(policy.BOUNDARY_TEXT, "")
+    problems = re.findall(r"(?<![\w./~-])docs/\S*", text) + re.findall(r"git -C docs", text)
+    verbs = "|".join(re.escape(v) for v in _cli_verbs())
+    for m in re.finditer(rf"(\S*)agentsync ({verbs})\b", text):
+        if m.group(1) not in ("~/.local/bin/", "`~/.local/bin/"):
+            problems.append(m.group(0))
+    return problems
+
+
+def test_generated_guides_use_absolute_binary_and_repo_relative_paths(env: Env, tmp_path: Path) -> None:
+    (tmp_path / "sources.toml").write_text("[governance]\narchive = true\n")  # every optional line present
+    env.pub.ensure_scaffold()
+    topic(env, "topics/broken.md", "entity: [unclosed")
+    env.pub.write_index([status("src"), status("lib", kind=SourceKind.GRAPH_DRIVE)])
+    env.pub.write_state(report(), [status("src"), status("lib", kind=SourceKind.GRAPH_DRIVE)])
+    env.pub.append_changelog(
+        env.run_id, TODAY, [MirrorChange(ChangeOp.ADDED, "mirror/src/a.md", "src", "vol:1")], report()
+    )
+    guides = (
+        "CLAUDE.md",
+        "AGENTS.md",
+        "mirror/CLAUDE.md",
+        "topics/CLAUDE.md",
+        "README.md",
+        "INDEX.md",
+        "CHANGELOG.md",
+        "_sync/STATE.md",
+    )
+    for rel in guides:
+        assert _guide_problems(env.text(rel)) == [], rel
+    assert "agentsync sync" in env.text("CLAUDE.md") and "agentsync curate" in env.text("INDEX.md")
+    skill_md = skill.skill_text(tmp_path / "company" / "knowledge")
+    assert _guide_problems(skill_md) == []
+    assert "git -C" not in skill_md and "SYNONYMS" not in skill_md and ".agentsync-" not in skill_md
+    assert skill.procedure() in skill_md and "## Baseline questions" in skill_md
+    # The test's own detector catches what it guards against.
+    assert _guide_problems("run `agentsync curate`; see docs/INDEX.md; git -C docs log") == [
+        "docs/INDEX.md;",
+        "git -C docs",
+        "`agentsync curate",
+    ]
+
+
+def test_agents_md_carries_the_procedure_and_archive_lines_only_with_archive(
+    env: Env, tmp_path: Path
+) -> None:
+    agents = env.text("AGENTS.md")
+    assert skill.procedure(archive=False) in agents
+    assert "1. Run `~/.local/bin/agentsync sync`." in agents and "(`NEXT:`)" in agents
+    assert "Never open `_eval/answers.md` or `_eval/results-*` to answer a question" in agents
+    assert "_sync/STATE.md` first" in agents and agents.index("`INDEX.md`") < agents.index(
+        "rg -i '<term>' mirror/"
+    )
+    assert "archive/" not in agents.replace(policy.BOUNDARY_TEXT, "") and "snapshot/" not in agents
+    assert "Mail or Teams" not in agents  # no inbox source configured
+    (tmp_path / "sources.toml").write_text("[governance]\narchive = true\n")
+    assert env.pub.ensure_scaffold() == ["AGENTS.md", "CLAUDE.md"]
+    agents = env.text("AGENTS.md")
+    assert skill.procedure(archive=True) in agents
+    assert "search `archive/`" in agents and "`git show snapshot/<date>:<path>`" in agents
+    assert agents.endswith("\n\n" + policy.BOUNDARY_TEXT)
+
+
+def test_root_guide_names_the_inbox_before_the_boundary(env: Env) -> None:
+    inbox = SourceConfig(id="inbox", kind=SourceKind.INBOX, path=Path.home() / "agent-context" / "inbox")
+    config = dataclasses.replace(env.config, sources=(*env.config.sources, inbox))
+    pub = Publisher(config, env.manifest, clock=lambda: NOW)
+    assert pub.ensure_scaffold() == ["AGENTS.md", "CLAUDE.md", "README.md"]  # README lists the inbox too
+    text = env.text("CLAUDE.md")
+    line = (
+        "Mail or Teams messages: save them as files (drag them out of Outlook) into `~/agent-context/inbox`"
+    )
+    assert line in text
+    assert text.index(skill.procedure()) < text.index(line) < text.index(policy.BOUNDARY_TEXT)
+
+
+def test_state_md_says_sync_first_and_names_login_only_with_graph_sources(env: Env) -> None:
+    env.pub.write_state(report(), [status("src")])
+    text = env.text("_sync/STATE.md")
+    assert "(if generated_at is older, run ~/.local/bin/agentsync sync first)" in text
+    assert (
+        "REAUTH_REQUIRED` → those sources are stale; a human must run `~/.local/bin/agentsync login`" in text
+    )
+    local_only = dataclasses.replace(
+        env.config, sources=tuple(s for s in env.config.sources if not s.kind.is_graph)
+    )
+    Publisher(local_only, env.manifest, clock=lambda: NOW).write_state(report(), [status("src")])
+    text = env.text("_sync/STATE.md")
+    assert "REAUTH" not in text and "login" not in text
 
 
 def test_content_trust_frontmatter_field(env: Env) -> None:

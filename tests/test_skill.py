@@ -48,10 +48,13 @@ def test_install_skill_writes_once_and_names_the_docs_repo(
     text = home_skill().read_text(encoding="utf-8")
     assert text == skill.skill_text(initialised.docs_repo)
     assert text.startswith(f"---\nname: {skill.SKILL_NAME}\n")
-    assert str(initialised.docs_repo) in text and "agentsync curate-queue" in text
-    assert ".agentsync-<page>.tmp" in text
-    assert "_index/by-entity.tsv" in text and "`purpose:`" in text and "SYNONYMS.tsv" in text
-    assert "search `archive/`" in text and "show snapshot/<date>:<path>" in text  # [governance] archive
+    assert (
+        f"`cd {initialised.docs_repo}`" in text and f"`{skill.AGENTSYNC_BIN} curate` checks the pins" in text
+    )
+    assert skill.procedure() in text  # the same procedure the root CLAUDE.md and AGENTS.md carry
+    assert ".agentsync-" not in text and "SYNONYMS" not in text  # KISS K07: no tmp-rename, no SYNONYMS step
+    assert "_index/by-entity.tsv" in text and "`purpose:`" in text
+    assert "search `archive/`" not in text and "snapshot/" not in text  # archive lines: root guide only
     assert "`_eval/questions.md`" in text and "read only `_eval/questions.md`" in text  # baseline questions
     assert "Never open `_eval/answers.md`" in text and "status: confirmed" in text
     assert "_eval" in gitops.COMMIT_PATHSPECS
@@ -66,7 +69,11 @@ def test_skill_text_names_the_fixed_binary_and_ends_with_sync() -> None:
     assert "Use at the start of any work session that needs company" in text
     assert "75" not in text and "checkpoint`" not in text  # no exit-75 advice, no manual checkpoint step
     assert "agentsync sync --once" not in text
-    assert text.rstrip().splitlines()[-2].startswith(f"5. End the session with `{skill.AGENTSYNC_BIN} sync`")
+    assert "git -C" not in text and "curate-queue" not in text
+    assert text.splitlines()[text.splitlines().index("## Every session") + 2] == (
+        f"1. Run `{skill.AGENTSYNC_BIN} sync`."
+    )
+    assert text.rstrip().endswith(f"Commit `_eval/` with `{skill.AGENTSYNC_BIN} sync`.")
 
 
 def test_sync_writes_both_copies_once(
