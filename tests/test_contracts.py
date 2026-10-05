@@ -312,13 +312,12 @@ def test_superseded_markers_point_at_existing_amendments() -> None:
 
 def test_inbox_writer_contract_matches_the_arm() -> None:
     """Field N14: §11's inbox writer contract names only temporary patterns the inbox always ignores (a
-    subset of ``_INBOX_IGNORES``), each matching a temp name a writer would use, and the delay it promises
+    subset of ``INBOX_IGNORES``), each matching a temp name a writer would use, and the delay it promises
     is the default ``quiescence_s`` that ``inbox_source_table`` tells the reader about."""
     import dataclasses  # noqa: PLC0415
     import re  # noqa: PLC0415
 
-    from agentsync.arm_local import _INBOX_IGNORES  # noqa: PLC0415
-    from agentsync.config import SourceConfig, inbox_source_table  # noqa: PLC0415
+    from agentsync.config import INBOX_IGNORES, SourceConfig, inbox_source_table  # noqa: PLC0415
     from agentsync.paths import glob_match  # noqa: PLC0415
 
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -327,7 +326,7 @@ def test_inbox_writer_contract_matches_the_arm() -> None:
     first = contract.split("\n- ", 2)[1]  # the temp-then-rename rule
     temps = re.findall(r"`(\*\.[a-z]+)`", first)
     assert len(temps) >= 3, "the writer contract names no temporary patterns"
-    assert set(temps) <= set(_INBOX_IGNORES)
+    assert set(temps) <= set(INBOX_IGNORES)
     for pattern in temps:
         assert glob_match("export.eml" + pattern[1:], pattern), pattern
     quiescence = next(f.default for f in dataclasses.fields(SourceConfig) if f.name == "quiescence_s")

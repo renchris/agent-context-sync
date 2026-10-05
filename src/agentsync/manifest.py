@@ -30,7 +30,7 @@ from types import MappingProxyType, TracebackType
 from typing import Any, NamedTuple
 
 from agentsync import tm_exclude
-from agentsync.config import SourceConfig
+from agentsync.config import SourceConfig, always_excluded
 from agentsync.errors import ConfigError, ManifestSchemaError
 from agentsync.model import (
     ChangeOp,
@@ -569,8 +569,10 @@ def _scope_fingerprint(src: SourceConfig) -> str:
     """sha256 over every key that defines WHAT a source enumerates; a change invalidates cursor and listing.
 
     Beyond path/drive/folder/mailbox/team/channel this includes include/exclude globs (a widened scope must be
-    re-enumerated or a delta cursor would never report the newly included items) and the principal (a
-    delegated view is per principal; another principal's cursor is not ours).
+    re-enumerated or a delta cursor would never report the newly included items), the globs a local arm
+    drops whatever ``exclude`` says (when they grow, the files they now hide retire as a scope change rather
+    than tombstone as deleted upstream with a purge queued) and the principal (a delegated view is per
+    principal; another principal's cursor is not ours).
     """
     scope: dict[str, object] = {
         "kind": src.kind.value,
@@ -585,6 +587,8 @@ def _scope_fingerprint(src: SourceConfig) -> str:
         "exclude": list(src.exclude),
         "principal": src.principal,
     }
+    if always := always_excluded(src.kind):
+        scope["always_excluded"] = list(always)
     return hashlib.sha256(_json_dumps(scope).encode("utf-8")).hexdigest()
 
 

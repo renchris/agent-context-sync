@@ -47,6 +47,36 @@ DEFAULT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 DEFAULT_EXCLUDES: tuple[str, ...] = ("~$*", "*.tmp", ".~lock.*#", ".DS_Store", "Icon\r", "._*")
 
+# Always ignored by every local arm, whatever ``exclude`` says: Finder metadata, AppleDouble files and the
+# custom-icon file. A hand-written ``exclude`` adds to these instead of replacing them (field N12).
+OS_JUNK_EXCLUDES: tuple[str, ...] = (".DS_Store", "._*", "Icon\r")
+
+# Always ignored in an inbox, whatever ``exclude`` says: lock files, in-flight downloads and OS junk.
+INBOX_IGNORES: tuple[str, ...] = (
+    "~$*",
+    "*.tmp",
+    ".~lock.*#",
+    "*.crdownload",
+    "*.part",
+    "*.partial",
+    "*.download",
+    *OS_JUNK_EXCLUDES,
+)
+
+
+def always_excluded(kind: SourceKind) -> tuple[str, ...]:
+    """The globs the arm for ``kind`` drops on top of ``exclude`` (none for the Graph kinds).
+
+    Part of the scope fingerprint (``manifest._scope_fingerprint``): a change here re-enumerates the source
+    and retires what left scope, instead of reading it as deleted upstream and queueing purges.
+    """
+    if kind is SourceKind.INBOX:
+        return INBOX_IGNORES
+    if kind is SourceKind.LOCAL:
+        return OS_JUNK_EXCLUDES
+    return ()
+
+
 _SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]i?b|b)?\s*$", re.IGNORECASE)
 _SIZE_UNITS = {
     "b": 1,

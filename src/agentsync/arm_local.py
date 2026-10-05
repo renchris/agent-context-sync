@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Protocol, TypeVar, cast
 
-from agentsync.config import SourceConfig
+from agentsync.config import SourceConfig, always_excluded
 from agentsync.errors import ConfigError, MaterialiseError
 from agentsync.materialise import is_dataless, materialise, materialize_allowed, sha256_file
 from agentsync.model import (
@@ -78,22 +78,6 @@ _FSOPT_ATTR_CMN_EXTENDED = 0x00000020  # required for ATTR_CMN_GEN_COUNT via get
 _HDR = 4 + 4 * _ATTR_BIT_MAP_COUNT
 _FILE_BUF = _HDR + 16 + 4
 _VOL_BUF = _HDR + 16
-
-# Always ignored by every local arm, whatever ``exclude`` says: Finder metadata, AppleDouble files and the
-# custom-icon file. A hand-written ``exclude`` adds to these instead of replacing them.
-_OS_JUNK: tuple[str, ...] = (".DS_Store", "._*", "Icon\r")
-
-# Always ignored in an inbox, whatever ``exclude`` says: lock files, in-flight downloads and OS junk.
-_INBOX_IGNORES: tuple[str, ...] = (
-    "~$*",
-    "*.tmp",
-    ".~lock.*#",
-    "*.crdownload",
-    "*.part",
-    "*.partial",
-    "*.download",
-    *_OS_JUNK,
-)
 
 _WINDOWS_DEFAULT_HOST_RE = re.compile(r"-(?:DESKTOP|LAPTOP)-[A-Z0-9]{7}$", re.IGNORECASE)
 _COPY_SUFFIX_RES: tuple[re.Pattern[str], ...] = (
@@ -715,7 +699,7 @@ class LocalArm:
     # -- helpers -------------------------------------------------------------------------------------------
 
     def _exclude(self) -> tuple[str, ...]:
-        extra = tuple(p for p in _OS_JUNK if p not in self.cfg.exclude)
+        extra = tuple(p for p in always_excluded(self.kind) if p not in self.cfg.exclude)
         return (*self.cfg.exclude, *extra)
 
     def _volume_uuid(self) -> str:
@@ -906,10 +890,6 @@ class InboxArm(LocalArm):
         # Set by the cycle for an interactive sync (field N4): when the only gap in a walk is withheld files,
         # wait until the youngest settles (at most quiescence_s) and list the inbox once more.
         self.settle_once = False
-
-    def _exclude(self) -> tuple[str, ...]:
-        extra = tuple(p for p in _INBOX_IGNORES if p not in self.cfg.exclude)
-        return (*self.cfg.exclude, *extra)
 
     def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
         """As LocalArm.scan, but items whose size/mtime changed within ``quiescence_s`` are withheld.

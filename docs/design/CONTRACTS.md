@@ -1239,6 +1239,17 @@ DEFAULT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 DEFAULT_EXCLUDES: tuple[str, ...] = ("~$*", "*.tmp", ".~lock.*#", ".DS_Store", "Icon\r", "._*")
 
+OS_JUNK_EXCLUDES: tuple[str, ...] = (".DS_Store", "._*", "Icon\r")  # every local arm, on top of ``exclude``
+
+INBOX_IGNORES: tuple[str, ...]  # the inbox arm, on top of ``exclude``: lock/temp/download globs + OS junk
+
+def always_excluded(kind: SourceKind) -> tuple[str, ...]:
+    """The globs the arm for ``kind`` drops on top of ``exclude`` (none for the Graph kinds).
+
+    Part of the scope fingerprint (``manifest._scope_fingerprint``): a change here re-enumerates the source
+    and retires what left scope, instead of reading it as deleted upstream and queueing purges.
+    """
+
 @dataclass(frozen=True, slots=True)
 class BreakerConfig:
     """Deletion circuit breaker: trip when candidates > max(fraction * live rows in scope, floor)."""

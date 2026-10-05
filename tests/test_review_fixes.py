@@ -20,6 +20,7 @@ from typing import Any, cast
 import pytest
 
 from agentsync import arm_local, cli, cycle, gitops, governance, lints, paths, policy, slug
+from agentsync import manifest as manifest_mod
 from agentsync.config import Config, canonical_source_root, parse_config
 from agentsync.cycle import run_cycle
 from agentsync.frontmatter import parse_frontmatter
@@ -872,6 +873,33 @@ def test_narrowed_scope_retires_instead_of_deleting_upstream(tmp_path: Path) -> 
     assert page_fm(narrowed, "mirror/src/other0.md")["reason"] == "retired:scope-change"
     assert "[RETIRED]" in (narrowed.docs_repo / "mirror/src/other0.md").read_text(encoding="utf-8")
     assert queued(narrowed) == []
+
+
+def test_os_junk_newly_excluded_retires_as_scope_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """field N12 review: an install that mirrored OS junk before the always-on excludes (a hand-written
+    ``exclude`` replaced the defaults; ``Icon\\r`` never matched) retires those rows on upgrade, never
+    reads them as deleted upstream or queues a purge."""
+    config, src = make_env(tmp_path, source_extra='exclude = ["drafts/"]')
+    (src / "notes.md").write_text("# notes\n", encoding="utf-8")
+    for junk in (".DS_Store", "._notes.md", "Icon\r"):
+        (src / junk).write_bytes(b"\x00\x05\x16\x07junk")
+    with monkeypatch.context() as old:
+        old.setattr(arm_local, "always_excluded", lambda _kind: ())
+        old.setattr(manifest_mod, "always_excluded", lambda _kind: ())
+        assert run(config).exit_code == 0
+    with Manifest(config.state_paths.db) as m:
+        assert {".DS_Store", "._notes.md", "Icon\r"} <= {r.name for r in m.iter_items(SID)}
+    for _ in range(2):
+        assert run(config).exit_code == 0
+    reasons = [
+        fm.get("reason")
+        for page in (config.docs_repo / "mirror" / SID).rglob("*.md")
+        if (fm := parse_frontmatter(page.read_text(encoding="utf-8"))[0]).get("status") != "current"
+    ]
+    assert len(reasons) == 3 and set(reasons) == {"retired:scope-change"}
+    assert queued(config) == []
 
 
 def test_removing_a_source_block_is_refused_not_silently_kept_current(tmp_path: Path) -> None:
