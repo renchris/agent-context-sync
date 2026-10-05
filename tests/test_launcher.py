@@ -164,10 +164,52 @@ def test_exit_status_is_the_childs(exe: Path, code: int) -> None:
 @needs_build
 def test_environment_passes_through_without_loader_and_python_overrides(exe: Path) -> None:
     env = {"PATH": launchd.LAUNCHD_PATH, "AGENTSYNC_PROBE": "a b=c"}
-    hostile = {"PYTHONUTF8": "1", "PYTHONPATH": "/tmp/evil", "DYLD_INSERT_LIBRARIES": "/tmp/evil.dylib"}
+    # dyld acts on DYLD_* in the launcher itself, before main() and so before the scrub under test. With SIP
+    # on it ignores them for the hardened launcher. GitHub's macOS runners have SIP off, and there this test
+    # got an empty stdout for as long as DYLD_INSERT_LIBRARIES named a missing file: dyld ends a process
+    # whose inserted dylib cannot be loaded, unless library validation is in force. So the inserted library
+    # is one that always loads, the search paths name an absent directory, and a launcher that dies says why.
+    hostile = {
+        "PYTHONUTF8": "1",
+        "PYTHONPATH": "/tmp/evil",
+        "DYLD_INSERT_LIBRARIES": "/usr/lib/libSystem.B.dylib",
+        "DYLD_LIBRARY_PATH": "/tmp/evil",
+        "DYLD_FRAMEWORK_PATH": "/tmp/evil",
+    }
     cp = run(exe, "--", "/usr/bin/env", env={**env, **hostile})
+    assert cp.returncode == 0, cp.stderr
     got = dict(line.split("=", 1) for line in cp.stdout.splitlines())
     assert got == env
+
+
+@needs_build
+def test_loader_overrides_the_launcher_received_never_reach_an_unrestricted_child(
+    launcher_app: Path, tmp_path: Path
+) -> None:
+    """The test above cannot fail for DYLD_* on a Mac with SIP on: dyld removes them from the hardened
+    launcher before main(), and again from /usr/bin/env.  Here a copy re-signed to honour them (test only)
+    starts this interpreter, which prints whatever it was given."""
+    code = "import os; print(sorted(k for k in os.environ if k.startswith(('DYLD_', 'PYTHON'))))"
+    hostile = {
+        "PYTHONPATH": "/tmp/evil",
+        "DYLD_INSERT_LIBRARIES": "/usr/lib/libSystem.B.dylib",
+        "DYLD_LIBRARY_PATH": "/tmp/evil",
+    }
+    env = {"PATH": launchd.LAUNCHD_PATH, **hostile}
+    direct = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False, env=env
+    )
+    if direct.stdout.strip() != str(sorted(hostile)):
+        pytest.skip("this interpreter does not show DYLD_* (a SIP-protected or hardened python)")
+    app = tmp_path / "HonoursDyld.app"
+    shutil.copytree(launcher_app, app, symlinks=True)
+    entitlements = tmp_path / "allow-dyld-env.plist"
+    entitlements.write_bytes(plistlib.dumps({"com.apple.security.cs.allow-dyld-environment-variables": True}))
+    sign = ["/usr/bin/codesign", "--force", "--sign", "-", "--identifier", launchd.LAUNCHER_IDENTIFIER]
+    sign += ["--options", "runtime", "--timestamp=none", "--entitlements", str(entitlements), str(app)]
+    subprocess.run(sign, check=True, capture_output=True)
+    cp = run(launchd.launcher_executable(app), "--", sys.executable, "-c", code, env=env)
+    assert (cp.returncode, cp.stdout.strip(), cp.stderr) == (0, "[]", "")
 
 
 def _pinned_copy(launcher_app: Path, tmp_path: Path, program: str) -> Path:
