@@ -515,6 +515,15 @@ included; every page before the first tag). `SOURCE-UNREADABLE` and `SOURCE-DELE
 land gate is unchanged: its curation findings stay `blocking=False`. `agentsync lint` prints every blocker as an
 ERROR and exits 1 on any of them; `TOPIC-BUDGET` stays a warning.
 
+Amended (2026-10-04, KISS K10 review). `SOURCE-MISSING` means what the plan says: the source is not a regular
+file, or it has no `rendered_sha256:` head (a guide file, a sidecar, broken frontmatter), which are exactly the
+rows the refresh queue calls `MISSING-OR-UNPARSEABLE`; a deleted, unreadable or refused page is never
+`SOURCE-MISSING`. In `checkpoint_blockers`, `SOURCE-MISSING` is scoped to topic pages changed since `curated`,
+like the refresh verdicts, because a cited page also vanishes through a OneDrive rename or move, a tombstone reap
+or a purge, none of them the page's fault; a typo'd path only happens on a page being written. The sync's lint
+findings still name it on every page (`blocking=False`). A `MISSING-OR-UNPARSEABLE` verdict on a page that
+already carries `SOURCE-MISSING` is not repeated.
+
 ## 14. Decisions and adaptations taken by the architect
 
 1. **Config location** `~/agent-context/sources.toml` (plan) instead of `docs/_sync/sources.toml` (design §4.2):
@@ -3161,7 +3170,8 @@ CHECKPOINT_VERDICTS: frozenset[str]  # K10: STALE, UNPINNED, BAD-PIN, MALFORMED,
 
 def checkpoint_blockers(repo: Path) -> list[LintFinding]:
     """K10: what holds the ``curated`` checkpoint (all ``blocking=True``): curation lint findings but
-    TOPIC-BUDGET, UNLISTED, and CHECKPOINT_VERDICTS of topic pages changed since the ``curated`` tag."""
+    TOPIC-BUDGET, UNLISTED, and SOURCE-MISSING plus CHECKPOINT_VERDICTS of topic pages changed since the
+    ``curated`` tag."""
 
 def adopt_pages(src_dir: Path, layout: DocsLayout, adopted_at: str) -> list[str]:
     """Copy an existing hand-made docs tree into ``topics/`` stamping ``provenance: hand-written``,
@@ -5092,7 +5102,9 @@ def curated_checkpoint(repo: Path) -> tuple[str, str] | None:
 def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) -> list[tuple[str, str]]:
     """``(A|M|D, path)`` for files under ``pathspecs`` that differ between ``rev`` and HEAD, sorted by path."""
 def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[str]:
-    """K10: paths under ``pathspecs`` differing between ``rev`` and the working tree, plus untracked ones."""
+    """K10: paths under ``pathspecs`` differing between ``rev`` and the working tree, plus untracked ones.
+    Never writes the index: ``rev``..HEAD tree diff united with ``git status`` (a commit-to-worktree diff
+    would refresh ``.git/index`` under GIT_OPTIONAL_LOCKS=0 and race a sync's add/commit)."""
 ```
 
 ### 16.18 `[governance] archive`: the point-in-time archive (2026-10-02, integrator)

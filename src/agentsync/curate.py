@@ -115,6 +115,8 @@ _VERDICT_HINTS: Mapping[str, str] = {
     "MALFORMED": "malformed DEPENDS row",
     "MISSING-OR-UNPARSEABLE": "the source has no readable rendered_sha256: fix the path",
 }
+_NAMED_BY_LINT: Mapping[str, str] = {"MISSING-OR-UNPARSEABLE": "SOURCE-MISSING"}
+"""A refresh verdict whose page already carries this lint finding for the same condition is not repeated."""
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -341,16 +343,18 @@ def _is_hand_written(layout: DocsLayout, rel_path: str) -> bool:
         return any(line.startswith(b"provenance: hand-written") for line in raw.split(b"\n"))
 
 
-def _head_readable(path: Path) -> bool:
-    """True when ``path`` is a regular file whose head can be read (SOURCE-MISSING otherwise)."""
+def _source_missing(root: Path, source: str) -> bool:
+    """SOURCE-MISSING: ``source`` is not a regular file, or its mirror head has no ``rendered_sha256:`` (a
+    guide file, a sidecar, broken frontmatter): exactly the rows the refresh queue calls
+    MISSING-OR-UNPARSEABLE.  A deleted, unreadable or refused page is SOURCE-DELETED / SOURCE-UNREADABLE
+    instead, never this."""
     try:
-        if not path.is_file():
-            return False
-        with path.open("rb") as fh:
-            fh.read(4096)
+        if not (root / source).is_file():
+            return True
     except (OSError, ValueError):
-        return False
-    return True
+        return True
+    _cur, status, ok = _read_mirror_head(root, os.fsencode(source))
+    return not ok and status not in (b"deleted", b"unreadable", b"refused")
 
 
 def _finding(code: str, path: str, message: str) -> LintFinding:
@@ -406,13 +410,14 @@ def _page_findings_and_rows(
                     "SOURCE-NOT-MIRROR", rel, f"sources[{i}] ({source}) is not a mirror/ or archive/ page"
                 )
             )
-        if not _head_readable(layout.root / source):
+        if _source_missing(layout.root, source):
             findings.append(
                 _finding(
                     "SOURCE-MISSING",
                     rel,
-                    f"sources[{i}] ({source}) is not a readable file: fix the path (mirror/… and archive/… "
-                    "resolve from the docs root, anything else from the page)",
+                    f"sources[{i}] ({source}) is not a mirror or archive page with a rendered_sha256: "
+                    "fix the path (mirror/… and archive/… resolve from the docs root, anything else from "
+                    "the page)",
                 )
             )
         rows.append(DependsRow(page=rel, source=source, pinned_sha=src.at_rendered_sha256, role=src.role))
@@ -839,20 +844,30 @@ def _pages_changed_since_checkpoint(repo: Path) -> set[str] | None:
 
 def checkpoint_blockers(repo: Path) -> list[LintFinding]:
     """Everything that holds the ``curated`` checkpoint, each finding ``blocking=True``: every curation lint
-    finding but TOPIC-BUDGET (SOURCE-MISSING included), UNLISTED, and the CHECKPOINT_VERDICTS refresh
-    verdicts of topic pages changed since the ``curated`` tag (every page before the first tag).  The verdicts
-    come from the pages as they are now, not from DEPENDS.tsv.  The sync's land gate never uses this: its
-    curation findings stay ``blocking=False``."""
+    finding but TOPIC-BUDGET, UNLISTED, and, for topic pages changed since the ``curated`` tag (every page
+    before the first tag), SOURCE-MISSING and the CHECKPOINT_VERDICTS refresh verdicts.  SOURCE-MISSING is
+    scoped like the verdicts because a source also vanishes with no fault of the page (a OneDrive rename or
+    move, a tombstone reap, a purge); a typo'd path only happens on a page being written.  The verdicts come
+    from the pages as they are now, not from DEPENDS.tsv.  The sync's land gate never uses this: its curation
+    findings stay ``blocking=False``."""
     layout = DocsLayout(root=repo)
     rows, _entities, findings = generate_depends(layout)
-    out = [replace(f, blocking=True) for f in findings if f.code != "TOPIC-BUDGET"]
+    changed = _pages_changed_since_checkpoint(repo)
+
+    def holds(f: LintFinding) -> bool:
+        if f.code == "TOPIC-BUDGET":
+            return False
+        return f.code != "SOURCE-MISSING" or changed is None or f.path in changed
+
+    out = [replace(f, blocking=True) for f in findings if holds(f)]
     out += [replace(f, blocking=True) for f in lint_unlisted_pages(layout, rows)]
     linted = {(f.code, f.path) for f in out}
-    changed = _pages_changed_since_checkpoint(repo)
     cells = [(r.page, r.source, r.pinned_sha, r.role) for r in rows]
     for v in {_queue_row(layout.root, "\t".join(c).encode("utf-8", "surrogateescape")) for c in cells}:
-        if v is None or v.verdict not in CHECKPOINT_VERDICTS or (v.verdict, v.page) in linted:
-            continue  # UNPINNED / BAD-PIN rows are already named by the lint finding of the same code
+        if v is None or v.verdict not in CHECKPOINT_VERDICTS:
+            continue
+        if (_NAMED_BY_LINT.get(v.verdict, v.verdict), v.page) in linted:
+            continue  # UNPINNED / BAD-PIN / MISSING-OR-UNPARSEABLE rows already have their lint finding
         if changed is not None and v.page not in changed:
             continue
         message = f"{v.source}: {_VERDICT_HINTS[v.verdict]}"

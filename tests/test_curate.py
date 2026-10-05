@@ -1150,12 +1150,14 @@ def test_checkpoint_blockers_wrong_pin_holds_and_source_state_does_not(layout: D
     topic_page(layout, "topics/huge.md", GOOD + sources_yaml(("mirror/s/a.md", pin, "primary")), "x\n" * 401)
     blockers = curate.checkpoint_blockers(layout.root)
     assert [(f.path, f.code) for f in blockers] == [
-        ("topics/typo.md", "MISSING-OR-UNPARSEABLE"),
-        ("topics/typo.md", "SOURCE-MISSING"),
+        (
+            "topics/typo.md",
+            "SOURCE-MISSING",
+        ),  # names the MISSING-OR-UNPARSEABLE verdict, which is not repeated
         ("topics/wrong-pin.md", "STALE"),
     ]
     assert all(f.blocking for f in blockers)
-    assert "mirror/s/a.md" in blockers[2].message
+    assert "mirror/s/a.md" in blockers[1].message
     # the land gate's own findings stay non-blocking
     assert not any(f.blocking for f in generate_depends(layout)[2])
 
@@ -1177,3 +1179,52 @@ def test_checkpoint_blockers_scope_verdicts_to_pages_changed_since_curated(layou
         ("topics/new.md", "STALE"),
         ("topics/nopurpose.md", "MISSING-PURPOSE"),  # lint findings hold whatever page they are on
     ]
+
+
+def _commit(repo: Path, message: str) -> None:
+    gitops.run_git(repo, "add", "-A")
+    gitops.run_git(repo, "commit", "-q", "-m", message)
+
+
+def test_checkpoint_blockers_hold_a_page_committed_after_curated(layout: DocsLayout) -> None:
+    repo = layout.root
+    gitops.ensure_repo(repo)
+    mirror_page(layout, "mirror/s/a.md")
+    topic_page(layout, "topics/old-stale.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    _commit(repo, "pages")
+    gitops.tag_curated(repo, "HEAD")
+    topic_page(layout, "topics/later.md", GOOD + sources_yaml(("mirror/s/a.md", H, "primary")))
+    _commit(repo, "later")  # clean working tree: only the commit since `curated` shows the page changed
+    assert [(f.path, f.code) for f in curate.checkpoint_blockers(repo)] == [("topics/later.md", "STALE")]
+
+
+def test_checkpoint_blockers_skip_a_vanished_source_on_an_unchanged_page(layout: DocsLayout) -> None:
+    repo = layout.root
+    gitops.ensure_repo(repo)
+    pin = mirror_page(layout, "mirror/s/a.md")
+    topic_page(layout, "topics/old.md", GOOD + sources_yaml(("mirror/s/a.md", pin, "primary")))
+    _commit(repo, "pages")
+    gitops.tag_curated(repo, "HEAD")
+    (repo / "mirror/s/a.md").unlink()  # a OneDrive rename, a tombstone reap or a purge: not the page's fault
+    _commit(repo, "source gone")
+    assert curate.checkpoint_blockers(repo) == []
+    assert [(f.path, f.code) for f in generate_depends(layout)[2]] == [("topics/old.md", "SOURCE-MISSING")]
+    topic_page(layout, "topics/old.md", GOOD + sources_yaml(("mirror/s/a.md", pin, "primary")), "# edit\n")
+    assert [(f.path, f.code) for f in curate.checkpoint_blockers(repo)] == [
+        ("topics/old.md", "SOURCE-MISSING")
+    ]
+
+
+def test_source_missing_names_a_file_without_a_mirror_head(layout: DocsLayout) -> None:
+    pin = mirror_page(layout, "mirror/s/a.md")
+    (layout.mirror / "s" / "CLAUDE.md").write_text("# guide, no frontmatter\n", encoding="utf-8")
+    topic_page(
+        layout,
+        "topics/p.md",
+        GOOD + sources_yaml(("mirror/s/a.md", pin, "primary"), ("mirror/s/CLAUDE.md", pin, "corroborating")),
+    )
+    (finding,) = generate_depends(layout)[2]
+    assert (finding.code, finding.path) == ("SOURCE-MISSING", "topics/p.md")
+    assert "mirror/s/CLAUDE.md" in finding.message
+    blockers = curate.checkpoint_blockers(layout.root)
+    assert [(f.path, f.code) for f in blockers] == [("topics/p.md", "SOURCE-MISSING")]

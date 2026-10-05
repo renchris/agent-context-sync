@@ -498,11 +498,22 @@ def changes_since(repo: Path, rev: str, pathspecs: Sequence[str] = ("mirror",)) 
 
 def paths_changed_since(repo: Path, rev: str, pathspecs: Sequence[str]) -> set[str]:
     """Paths under ``pathspecs`` that differ between ``rev`` and the WORKING TREE (staged or not), plus the
-    untracked, non-ignored files there: what a session wrote since ``rev``, committed or not."""
+    untracked, non-ignored files there: what a session wrote since ``rev``, committed or not.
+
+    Read-only on the index: a commit-to-worktree ``git diff <rev>`` refreshes and rewrites ``.git/index``
+    (it takes ``index.lock``) even under GIT_OPTIONAL_LOCKS=0, which would race a concurrent sync's
+    add/commit.  So the set is a tree-to-tree diff (``rev`` vs HEAD, what is committed) united with
+    ``git status``, which honours GIT_OPTIONAL_LOCKS (staged, unstaged and untracked).  A file committed since
+    ``rev`` and then reverted in the working tree still counts."""
     literal = _literal(pathspecs)
-    diff = run_git(repo, "diff", "--name-only", "-z", "--no-renames", f"{rev}^{{commit}}", "--", *literal)
-    untracked = run_git(repo, "ls-files", "-z", "--others", "--exclude-standard", "--", *literal)
-    return {p for p in (diff.stdout + "\0" + untracked.stdout).split("\0") if p}
+    diff = run_git(
+        repo, "diff", "--name-only", "-z", "--no-renames", f"{rev}^{{commit}}", "HEAD", "--", *literal
+    )
+    status = run_git(
+        repo, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", *literal
+    )
+    paths = {p for p in diff.stdout.split("\0") if p}
+    return paths | {entry[3:] for entry in status.stdout.split("\0") if len(entry) > 3}  # "XY path"
 
 
 def tracked_files(repo: Path, pathspecs: Sequence[str] = ()) -> list[str]:

@@ -290,6 +290,31 @@ def test_restore_generated_resets_generated_paths_only(repo: Path) -> None:
     assert not gitops.has_changes(repo, gitops.GENERATED_PATHSPECS)
 
 
+def test_paths_changed_since_unions_commits_and_worktree_without_writing_the_index(repo: Path) -> None:
+    for name in ("old", "committed", "edited", "staged"):
+        write(repo, f"topics/{name}.md", "a\n")
+    base = gitops.commit_cycle(repo, "sync: seed")
+    assert base is not None
+    write(repo, "topics/committed.md", "b\n")
+    gitops.commit_cycle(repo, "sync: later")
+    write(repo, "topics/edited.md", "b\n")
+    write(repo, "topics/staged.md", "b\n")
+    git(repo, "add", "topics/staged.md")
+    write(repo, "topics/new dir/untracked.md", "x\n")
+    write(repo, "mirror/src/outside.md", "x\n")
+    os.utime(repo / "topics/old.md", (0, 0))  # stat-dirty, same content: a diff against the tree refreshes it
+    index = repo / ".git" / "index"
+    before = index.stat()
+    assert gitops.paths_changed_since(repo, base, ("topics",)) == {
+        "topics/committed.md",
+        "topics/edited.md",
+        "topics/staged.md",
+        "topics/new dir/untracked.md",
+    }
+    after = index.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+
+
 def test_archive_is_pipeline_owned_and_snapshot_tags_never_move(repo: Path) -> None:
     assert "archive" in gitops.GENERATED_PATHSPECS and "archive" in gitops.COMMIT_PATHSPECS
     write(repo, "archive/src/a.md", "kept\n")
