@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
+from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -152,6 +154,10 @@ def _auth_status(config: Config) -> _AuthProbe:
 def _is_loaded(label: str) -> bool:
     """launchd.is_loaded with the real launchctl."""
     return launchd.is_loaded(label)
+
+
+# How long doctor waits for a source root's first entry (arm_local.LISTING_TIMEOUT_S); tests shorten it.
+_LISTING_TIMEOUT_S = _ARM_LISTING_TIMEOUT_S
 
 
 def _first_entry(path: Path) -> str | None:
@@ -547,7 +553,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     out: list[CheckResult] = []
     listed = False
     try:
-        first = _first_entry(root)
+        first = call_with_timeout(lambda: _first_entry(root), _LISTING_TIMEOUT_S, name="doctor-listing")
         listed = True
         if first is None and src.kind is SourceKind.INBOX and not cloud:
             # every config has an inbox since KISS K05; empty is its normal state, not a finding
@@ -568,6 +574,18 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             )
         else:
             out.append(_ok(f"{base}.listable", f"{root} is listable"))
+    except CallTimedOutError:
+        # A listing that never returns is macOS holding the read for an Allow prompt in this terminal: a FAIL
+        # like EPERM (never "empty"), and the sentinel and volume reads below would wait on it too.
+        out.append(
+            _bad(
+                f"{base}.listable",
+                f"{root}: listing did not return within {_LISTING_TIMEOUT_S:.0f}s; macOS is most likely "
+                "waiting for you to click Allow on a privacy prompt (it can sit behind other windows)",
+                fix=f"click Allow on the macOS prompt, then re-run; if no prompt shows: {_fda_fix(image)}",
+            )
+        )
+        return out
     except FileNotFoundError:
         out.append(
             _bad(

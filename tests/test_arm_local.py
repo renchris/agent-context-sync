@@ -12,6 +12,7 @@ import os
 import re
 import stat
 import sys
+import threading
 import time
 import unicodedata
 from collections.abc import Iterator
@@ -301,6 +302,37 @@ def test_provider_errors_on_listing_make_the_dir_unknown(
     items, stats = _walk(root)
     assert _rels(items) == ["ok.txt"]
     assert stats.unknown_dirs == ("slow",)
+
+
+def test_a_listing_held_by_a_privacy_prompt_times_out_as_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Field report N8: macOS holds a listing until someone clicks Allow. The walk stops at its time limit and
+    # the scan is incomplete with a "click Allow" alarm, never an empty folder.
+    root = tmp_path / "root"
+    _write(root / "ok.txt")
+    _write(root / "held" / "h.txt")
+    real = al._list_dir
+    release = threading.Event()
+
+    def held(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if path.name == "held":
+            release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    monkeypatch.setattr(al, "_list_dir", held)
+    monkeypatch.setattr(al, "LISTING_TIMEOUT_S", 0.2)
+    arm = al.LocalArm(_cfg(root))
+    try:
+        started = time.monotonic()
+        with pytest.raises(al.CallTimedOutError, match="'held' did not return"):
+            _walk(root, listing_timeout_s=0.2)
+        scan = arm.scan(None, full=True)
+        assert time.monotonic() - started < 4.0
+    finally:
+        release.set()
+    assert not scan.enumeration_complete and scan.items == ()
+    assert any("click Allow" in a and "nothing is deleted" in a for a in scan.alarms), scan.alarms
 
 
 def test_empty_dir_outside_cloud_tree_is_just_empty(tmp_path: Path) -> None:

@@ -20,11 +20,13 @@ import logging
 import os
 import plistlib
 import pwd
+import queue
 import re
 import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 import uuid
@@ -32,7 +34,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Protocol
+from typing import Protocol, TypeVar, cast
 
 from agentsync.config import SourceConfig
 from agentsync.errors import ConfigError, MaterialiseError
@@ -50,6 +52,14 @@ from agentsync.model import (
 from agentsync.paths import CLOUD_STORAGE_ROOT, _glob_regex, expand, glob_match, is_under
 
 log = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# How long one directory listing may take before agentsync stops waiting for it. A listing that never returns
+# is macOS holding the read until someone clicks Allow on a privacy (TCC) prompt (field report 2026-10-05).
+# A slow but working OneDrive listing of a large online-only folder (its children fetched in pages) should
+# stay far below two minutes, so expiry means an unanswered prompt or a stalled provider.
+LISTING_TIMEOUT_S = 120.0
 
 # sys/attr.h (macOS 15 SDK)
 _ATTR_BIT_MAP_COUNT = 5
@@ -326,6 +336,34 @@ class _WalkState:
     unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
 
 
+class CallTimedOutError(TimeoutError):
+    """:func:`call_with_timeout` gave up waiting. A subclass, because Python also raises an OS ETIMEDOUT (a
+    File Provider warming up) as TimeoutError, and only an abandoned call means a prompt may be waiting."""
+
+
+def call_with_timeout(fn: Callable[[], _T], timeout_s: float, *, name: str = "agentsync-timed") -> _T:
+    """``fn()`` in a daemon thread, bounded by ``timeout_s``: CallTimedOutError past it, ``fn``'s own
+    exception re-raised. The thread is abandoned on expiry, so a read that waits on a privacy prompt never
+    holds the caller (and never holds the interpreter's exit)."""
+    box: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+    def target() -> None:
+        try:
+            box.put((True, fn()))
+        except BaseException as exc:
+            box.put((False, exc))
+
+    threading.Thread(target=target, name=name, daemon=True).start()
+    try:
+        ok, value = box.get(timeout=timeout_s)
+    except queue.Empty:
+        raise CallTimedOutError(f"did not finish within {timeout_s:.1f}s") from None
+    if not ok:
+        assert isinstance(value, BaseException)
+        raise value
+    return cast(_T, value)
+
+
 @contextlib.contextmanager
 def _listing_policy(dir_dataless: bool) -> Iterator[None]:
     """Allow the provider to fetch a dataless directory's child list (metadata only); else no change."""
@@ -374,6 +412,7 @@ def walk(
     exclude: Sequence[str],
     with_gen_count: bool = True,
     known: Mapping[str, _KnownStat] | None = None,
+    listing_timeout_s: float = LISTING_TIMEOUT_S,
 ) -> tuple[list[SourceItem], WalkStats]:
     """Walk ``root`` with os.scandir + lstat: never follows symlinks, never opens or reads a file.
 
@@ -381,7 +420,10 @@ def walk(
     ``root``.  Directories are pruned only by ``exclude`` (``include`` applies to files).  Each item carries
     size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
     A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
-    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist.
+    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist, and
+    CallTimedOutError when one directory listing does not return within ``listing_timeout_s`` (macOS holds a
+    read until someone clicks Allow on a privacy prompt; every later listing would wait on the same prompt, so
+    the walk stops rather than reading anything as empty).
 
     ``known`` (stable_id -> stored H0, from ``Manifest.observation_index``) makes getattrlist conditional:
     a file whose lstat tuple ``(size, mtime_ns, ctime_ns, ino, mode)`` equals its stored row, and whose row
@@ -410,7 +452,15 @@ def walk(
         dir_path, rel_dir, dir_st = stack.pop()
         shown = rel_dir or "."
         try:
-            entries = _list_dir(dir_path, dir_dataless=is_dataless(dir_st))
+            entries = call_with_timeout(
+                functools.partial(_list_dir, dir_path, dir_dataless=is_dataless(dir_st)),
+                listing_timeout_s,
+                name="agentsync-listing",
+            )
+        except CallTimedOutError:
+            raise CallTimedOutError(
+                f"listing {shown!r} did not return within {listing_timeout_s:.0f}s"
+            ) from None
         except OSError as exc:
             # EPERM/EACCES (TCC), EDEADLK/ETIMEDOUT (provider), ENOENT (vanished mid-walk), anything else:
             # the directory's contents are unknown this pass, never empty.
@@ -659,6 +709,7 @@ class LocalArm:
         # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
         # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
         self.known_h0: Mapping[str, _KnownStat] | None = None
+        self.listing_timeout_s = LISTING_TIMEOUT_S  # per directory listing (see ``walk``); tests shorten it
         self._volume: str | None = None
 
     # -- helpers -------------------------------------------------------------------------------------------
@@ -729,9 +780,17 @@ class LocalArm:
                 include=self.cfg.include,
                 exclude=self._exclude(),
                 known=self.known_h0,
+                listing_timeout_s=self.listing_timeout_s,
             )
         except FileNotFoundError:
             return self._incomplete(f"source root vanished during the walk: {self.root}")
+        except CallTimedOutError as exc:
+            # Recorded like EPERM: the source is unknown this pass, never empty, so nothing is tombstoned.
+            return self._incomplete(
+                f"walk of {self.root} stopped: {exc}. macOS is most likely waiting for you to click Allow on "
+                "a privacy prompt (it can sit behind other windows): click Allow, then re-run the sync "
+                "(enumeration incomplete, nothing is deleted)"
+            )
         except OSError as exc:
             return self._incomplete(f"walk failed at {self.root}: {exc}")
         sentinel = self._sentinel_present(items)

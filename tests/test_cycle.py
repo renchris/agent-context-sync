@@ -4,7 +4,9 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 
 from __future__ import annotations
 
+import os
 import subprocess
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
+from agentsync import arm_local as al
 from agentsync import gitops, governance
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
@@ -19,7 +22,7 @@ from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import LockHeldError
 from agentsync.graph.client import GraphClient
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, CycleReport, ScanResult, Verdict
+from agentsync.model import CycleMode, CycleReport, RowState, ScanResult, Verdict
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.publish import Publisher
 from conftest import config_text
@@ -367,6 +370,38 @@ def test_git_log_holds_only_real_change(sample_config: Config, local_source_dir:
     body = git(repo, "log", "-1", "--format=%B")
     assert "Agentsync-Run: 4" in body and "Agentsync-Mode: poll" in body
     assert subprocess.run(["git", "-C", str(repo), "diff", "--quiet", "HEAD"], check=False).returncode == 0
+
+
+def test_a_walk_that_times_out_on_a_privacy_prompt_tombstones_nothing(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field report N8: a listing macOS holds for an Allow prompt ends at its time limit as an incomplete
+    source with a "click Allow" alarm. Nothing under the unlisted folder is read as gone."""
+    assert run(sample_config).commit_sha is not None
+    with Manifest(sample_config.state_paths.db) as m:
+        before = {r.stable_id: r.state for r in m.iter_items("local-fixture")}
+    assert before and RowState.TOMBSTONE not in before.values()
+    real = al._list_dir
+    release = threading.Event()
+
+    def held(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if path == local_source_dir / "projects":
+            release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    monkeypatch.setattr(al, "_list_dir", held)
+    monkeypatch.setattr(al, "LISTING_TIMEOUT_S", 0.2, raising=False)
+    try:
+        report = run(sample_config)
+    finally:
+        release.set()
+    src = report.sources[0]
+    assert not src.enumeration_complete
+    assert any("click Allow" in a for a in src.alarms), src.alarms
+    assert not any(c.op.value == "D" for c in report.changes), report.changes
+    with Manifest(sample_config.state_paths.db) as m:
+        after = {r.stable_id: r.state for r in m.iter_items("local-fixture")}
+    assert after == before
 
 
 # ---------------------------------------------------------------------------------------------------------

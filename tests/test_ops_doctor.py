@@ -14,6 +14,8 @@ import re
 import shlex
 import shutil
 import subprocess
+import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -404,6 +406,38 @@ def test_cloud_source_empty_hints_fda(sample_config: Config) -> None:
         "source.local-fixture.listable"
     ]
     assert not r.ok and "not been enumerated" in r.detail and "Full Disk Access" in (r.fix or "")
+
+
+def test_cloud_source_listing_times_out_with_click_allow_hint(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field report N8: macOS holds a cloud listing until someone clicks Allow. doctor stops waiting at its
+    time limit with a blocking FAIL (like EPERM, never "empty") and skips the reads that would wait too."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Held"
+    root.mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    release = threading.Event()
+
+    def held(p: Path) -> str | None:
+        release.wait(5.0)
+        return "a.docx"
+
+    monkeypatch.setattr(doctor, "_first_entry", held)
+    monkeypatch.setattr(doctor, "_LISTING_TIMEOUT_S", 0.2, raising=False)
+    monkeypatch.setattr(
+        doctor, "_volume_uuid", lambda p: pytest.fail("read the volume behind a held listing")
+    )
+    src = dataclasses.replace(sample_config.sources[0], path=root, sentinel="README.txt")
+    try:
+        started = time.monotonic()
+        r = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))
+        assert time.monotonic() - started < 4.0
+    finally:
+        release.set()
+    listable = r["source.local-fixture.listable"]
+    assert not listable.ok and listable.severity is Severity.ERROR, listable
+    assert "did not return" in listable.detail and "click Allow" in (listable.fix or "")
+    assert "source.local-fixture.sentinel" not in r and "source.local-fixture.volume" not in r
 
 
 def test_tcc_note_inside_launchd(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -54,14 +54,12 @@ import os
 import platform
 import plistlib
 import pwd
-import queue
 import re
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
@@ -71,6 +69,7 @@ from typing import TypeVar, cast
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
+from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, load_config
 from agentsync.paths import default_config_path, expand
 
@@ -1390,23 +1389,10 @@ class _Run:
         limit = min(timeout, self.remaining() - _RESERVE_S)
         if limit <= 0.2:
             raise TimeoutError("the report's time budget is used up")
-        box: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
-
-        def target() -> None:
-            try:
-                box.put((True, fn()))
-            except BaseException as exc:
-                box.put((False, exc))
-
-        threading.Thread(target=target, name="setup-report", daemon=True).start()
         try:
-            ok, value = box.get(timeout=limit)
-        except queue.Empty:
-            raise TimeoutError(f"did not finish within {limit:.1f}s") from None
-        if not ok:
-            assert isinstance(value, BaseException)
-            raise value
-        return cast(_T, value)
+            return call_with_timeout(fn, limit, name="setup-report")
+        except CallTimedOutError as exc:  # the report names it TimeoutError, as it always has
+            raise TimeoutError(str(exc)) from None
 
     def devtools(self) -> bool:
         rc, out = self.run(["/usr/bin/xcode-select", "-p"], 3.0)

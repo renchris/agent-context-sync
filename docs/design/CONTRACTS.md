@@ -1894,6 +1894,18 @@ class WalkStats:
     unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
 
+LISTING_TIMEOUT_S = 120.0  # one directory listing; past it macOS is holding the read for an Allow prompt
+
+class CallTimedOutError(TimeoutError):
+    """:func:`call_with_timeout` gave up waiting. A subclass, because Python also raises an OS ETIMEDOUT (a
+    File Provider warming up) as TimeoutError, and only an abandoned call means a prompt may be waiting."""
+
+def call_with_timeout(fn: Callable[[], _T], timeout_s: float, *, name: str = "agentsync-timed") -> _T:
+    """``fn()`` in a daemon thread, bounded by ``timeout_s``: CallTimedOutError past it, ``fn``'s own
+    exception re-raised. The thread is abandoned on expiry, so a read that waits on a privacy prompt never
+    holds the caller (and never holds the interpreter's exit). Also the seam of doctor's source listing and
+    setup-report's probes (field report N8, 2026-10-05)."""
+
 def volume_uuid(path: Path) -> str:
     """Return the UUID of the volume holding ``path`` (getattrlist ATTR_VOL_UUID on its mount point).
 
@@ -1915,6 +1927,7 @@ def walk(
     include: Sequence[str],
     exclude: Sequence[str],
     with_gen_count: bool = True,
+    listing_timeout_s: float = LISTING_TIMEOUT_S,
 ) -> tuple[list[SourceItem], WalkStats]:
     """Walk ``root`` with os.scandir + lstat: never follows symlinks, never opens or reads a file.
 
@@ -1922,7 +1935,10 @@ def walk(
     ``root``.  Directories are pruned only by ``exclude`` (``include`` applies to files).  Each item carries
     size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
     A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
-    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist.
+    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist, and
+    CallTimedOutError when one directory listing does not return within ``listing_timeout_s`` (macOS holds a
+    read until someone clicks Allow on a privacy prompt; every later listing would wait on the same prompt, so
+    the walk stops rather than reading anything as empty).
     """
 
 def fold_conflict_suffix(name: str) -> str:
@@ -1941,7 +1957,9 @@ class LocalArm:
 
         enumeration_complete is True only if the root exists, the sentinel (if configured) is present, and
         ``unknown_dirs`` is empty; otherwise False with an alarm naming the cause.  Root missing -> an empty
-        ScanResult with enumeration_complete=False (never mass deletion).
+        ScanResult with enumeration_complete=False (never mass deletion). A listing past
+        ``self.listing_timeout_s`` (default LISTING_TIMEOUT_S) -> the same empty, incomplete ScanResult with a
+        "click Allow, then re-run" alarm (recorded like EPERM; nothing is tombstoned).
         """
 
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:
