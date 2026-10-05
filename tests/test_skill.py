@@ -86,7 +86,7 @@ def test_sync_writes_both_copies_once(
 
 
 def test_sync_without_claude_config_dir_writes_only_the_home_copy(
-    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert "CLAUDE_CONFIG_DIR" not in os.environ  # conftest isolation
     assert skill.skill_paths() == [home_skill()]
@@ -94,8 +94,7 @@ def test_sync_without_claude_config_dir_writes_only_the_home_copy(
     assert skill.skill_paths() == [home_skill()]
     monkeypatch.delenv("CLAUDE_CONFIG_DIR")
     assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
-    assert home_skill().is_file()
-    assert list(tmp_path.rglob("SKILL.md")) == []  # nothing outside HOME
+    assert sorted(Path.home().rglob("SKILL.md")) == [home_skill()]  # one copy, nowhere else under HOME
 
 
 def test_dry_run_writes_no_skill(initialised: Config) -> None:
@@ -115,6 +114,21 @@ def test_unwritable_skills_folder_still_exits_0(
     assert "skill: cannot write" in caplog.text
     assert cli.main(["install-skill", "--config", cfg]) == cli.EXIT_OK
     assert "wrote skill" not in capsys.readouterr().out
+
+
+def test_symlink_loop_config_skills_still_exits_0(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Python 3.11's ``Path.resolve()`` raises RuntimeError on a symlink loop; the skill write stays a
+    warning and the HOME copy is still written."""
+    config_dir = tmp_path / "claude-config"
+    config_dir.mkdir()
+    (config_dir / "skills").symlink_to(config_dir / "skills")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    with caplog.at_level(logging.WARNING, logger="agentsync.skill"):
+        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    assert "skill: cannot write" in caplog.text
+    assert home_skill().is_file()
 
 
 def test_monkeypatch_undo_keeps_home_isolated(monkeypatch: pytest.MonkeyPatch) -> None:

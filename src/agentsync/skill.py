@@ -111,7 +111,11 @@ def skill_paths() -> list[Path]:
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
     if config_dir:
         extra = expand(config_dir) / "skills"
-        if extra.resolve() != dirs[0].resolve():
+        try:
+            same = extra.resolve() == dirs[0].resolve()
+        except (OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop; the write then warns
+            same = False
+        if not same:
             dirs.append(extra)
     return [d / SKILL_NAME / "SKILL.md" for d in dirs]
 
@@ -131,12 +135,12 @@ def _write_if_changed(path: Path, text: str) -> bool:
 def write_skill(docs_repo: Path) -> list[tuple[Path, bool]]:
     """Write :func:`skill_text` to every :func:`skill_paths` entry; ``(path, written)`` per copy that is now
     current (False: already up to date). A copy that cannot be read or written is logged as a warning and left
-    out; this never raises OSError, so it cannot fail a cycle."""
+    out; this never raises, so it cannot fail a cycle (best-effort by contract, CONTRACTS §16.16)."""
     text = skill_text(docs_repo)
     done: list[tuple[Path, bool]] = []
     for path in skill_paths():
         try:
             done.append((path, _write_if_changed(path, text)))
-        except (OSError, UnicodeError) as exc:
+        except Exception as exc:  # any failure here is a warning, never a run status
             log.warning("skill: cannot write %s: %s", path, exc)
     return done
