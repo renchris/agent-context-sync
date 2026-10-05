@@ -1419,6 +1419,8 @@ class Publisher:
             "(its names are untrusted third-party text)",
         ]
         entries = self._topic_entries()
+        if not entries:  # KISS K08b: an INDEX with no Topics section reads as if the mirror were everything
+            head += ["", f"Topics: none yet; run `{skill.AGENTSYNC_BIN} sync` and follow NEXT"]
         full = "\n".join([*head, *self._topic_lines(entries, ""), *tail]) + "\n"
         areas: dict[str, list[tuple[str, str, str, str]]] = {}
         for e in entries:
@@ -1558,7 +1560,15 @@ class Publisher:
         return "STALE" if (now - last).total_seconds() > limit else "fresh"
 
     def write_state(self, report: CycleReport, statuses: Sequence[SourceStatus]) -> None:
-        """Write the gitignored ``_sync/STATE.md`` (read-side contract fields of design 4.6), every cycle."""
+        """Write the gitignored ``_sync/STATE.md`` (read-side contract fields of design 4.6), every cycle.
+
+        It opens with ``## Next``: :func:`loop.next_lines`, the NEXT / WAITING ON YOU / note lines ``status``
+        prints (KISS K08b), worked out from disk after this cycle's commit and checkpoint."""
+        from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
+
+        next_lines = loop.next_lines(self._config) or [
+            f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
+        ]
         now = self._now()
         reports = {r.source_id: r for r in report.sources}
         commit = report.commit_sha[:12] if report.commit_sha else "none (nothing content-changing)"
@@ -1567,6 +1577,12 @@ class Publisher:
         )
         lines = [
             "# agentsync STATE — read this first",
+            "",
+            "## Next",
+            "",
+            *next_lines,
+            "",
+            "## This run",
             "",
             f"generated_at: {_iso(now)}",
             f"run: {report.run_id} · mode: {report.mode.value} · exit: {report.exit_code} · commit: {commit}",

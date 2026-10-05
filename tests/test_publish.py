@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, gitops, lints, policy, publish, skill, slug
+from agentsync import cli, gitops, lints, loop, policy, publish, skill, slug
 from agentsync.config import Config, SourceConfig, parse_config
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError
@@ -1295,6 +1295,49 @@ def test_state_md_says_sync_first_and_names_login_only_with_graph_sources(env: E
     Publisher(local_only, env.manifest, clock=lambda: NOW).write_state(report(), [status("src")])
     text = env.text("_sync/STATE.md")
     assert "REAUTH" not in text and "login" not in text
+
+
+def _state_next_block(text: str) -> list[str]:
+    lines = text.split("\n")
+    assert lines[:4] == ["# agentsync STATE — read this first", "", "## Next", ""]
+    return lines[4 : lines.index("## This run") - 1]
+
+
+def test_state_md_opens_with_the_next_step(env: Env) -> None:
+    """KISS K08b: STATE.md's first section is ``loop.next_step()``'s lines, the ones ``status`` prints."""
+    env.pub.write_state(report(), [status("src")])
+    first = loop.next_step(env.config)
+    assert first.rule == 1  # no skill copy yet
+    assert _state_next_block(env.text("_sync/STATE.md")) == first.lines()
+    skill.write_skill(env.repo)  # under the isolated HOME
+    env.pub.write_state(report(), [status("src")])
+    later = loop.next_step(env.config)
+    assert later.step != first.step
+    text = env.text("_sync/STATE.md")
+    assert _state_next_block(text) == later.lines() and later.lines()[0].startswith("NEXT: ")
+    assert text.index("## Next") < text.index("generated_at:") < text.index("## Read-side contract")
+    assert "mirror/" not in "\n".join(later.lines())
+
+
+def test_state_md_next_block_says_so_when_the_state_cannot_be_read(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(loop, "next_lines", lambda config: [])
+    env.pub.write_state(report(), [status("src")])
+    assert _state_next_block(env.text("_sync/STATE.md")) == [
+        "(the next step could not be worked out: run `~/.local/bin/agentsync status`)"
+    ]
+
+
+def test_index_says_topics_none_yet_until_a_curated_page_exists(env: Env) -> None:
+    line = "Topics: none yet; run `~/.local/bin/agentsync sync` and follow NEXT"
+    env.pub.write_index([status("src")])
+    text = env.text("INDEX.md")
+    assert line in text and text.index("## Sources") < text.index(line) < text.index("## Optional")
+    topic(env, "topics/a/first.md", "entity: a\npurpose: Terms.")
+    env.pub.write_index([status("src")])
+    text = env.text("INDEX.md")
+    assert "Topics: none yet" not in text and "## Topics: a" in text
 
 
 def test_content_trust_frontmatter_field(env: Env) -> None:

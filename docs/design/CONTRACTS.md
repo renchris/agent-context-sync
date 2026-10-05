@@ -576,6 +576,14 @@ already carries `SOURCE-MISSING` is not repeated.
     (principal: …)" and its delete procedure is `agentsync offboard --confirm <docs> --purge-data`; STATE.md's
     staleness line says to run `~/.local/bin/agentsync sync` first, and its `REAUTH_REQUIRED` login line
     appears only when a Graph source is configured.
+13. **STATE.md and INDEX.md name the next step (2026-10-05, KISS K08b).** `Publisher.write_state` opens STATE.md
+    with `## Next`: the `loop.next_lines(config)` lines (`NEXT:`, `WAITING ON YOU:`, `note:`), the same ones
+    `status` prints, worked out from disk at cycle step 13 (after the commit and the checkpoint), so the two
+    cannot drift; no mirror path or file name appears in them. When the loop state cannot be read the block
+    says so and names `~/.local/bin/agentsync status`. The run fields that used to follow the H1 now sit under
+    `## This run`. `publish` imports `loop` inside `write_state` (loop imports cycle, which imports publish).
+    INDEX.md prints `Topics: none yet; run ~/.local/bin/agentsync sync and follow NEXT` (the command in
+    backticks) after `## Sources` while no curated page exists.
 
 ## 15. Module reference (generated from the stubs)
 
