@@ -620,7 +620,7 @@ def _capped(name: str, data: bytes) -> ConversionResult:
 
 
 def _path_findings(env: Env) -> list[LintFinding]:
-    return [f for f in lints.lint_paths(env.repo) if f.lint_id == "PATH"]
+    return [f for f in lints.lint_paths(env.repo) if f.code == "PATH"]
 
 
 def test_sidecar_rel_is_within_the_cap_under_mirror_and_archive_for_every_page_length() -> None:
@@ -704,7 +704,8 @@ def test_rewrite_frontmatter_renames_a_sidecar_for_the_new_page_length(
     assert side.read_bytes() == b"a,b\n1,2\n" and [f.name for f in side.parent.iterdir()] == [side.name]
     assert (side.name == "full-table.csv") is (after == 160)
     assert cycle._pages_intact(env.repo, [new])
-    assert not (env.repo / old.output_path).exists() and not (env.repo / old.output_path[:-3]).exists()
+    assert not (env.repo / old.output_path).exists()
+    assert not (env.repo / publish._sidecar_dir(old.output_path)).exists()  # the old file went with it
     assert _path_findings(env) == []
 
 

@@ -743,7 +743,7 @@ def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantine
     [src] = first.sources
     assert first.exit_code == 0 and first.commit_sha is not None, first
     assert src.errors == () and src.counts.get(Verdict.QUARANTINED) == 1
-    assert not [f for f in first.lint_findings if f.lint_id == "PATH"]
+    assert not [f for f in first.lint_findings if f.code == "PATH"]
     repo = sample_config.docs_repo
     assert (repo / "mirror" / SID / "projects" / "sample.docx.md").is_file()
     assert "status: unreadable" in (repo / page).read_text(encoding="utf-8")
