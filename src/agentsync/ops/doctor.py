@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
-from agentsync.arm_local import CallTimedOutError, call_with_timeout, empty_cloud_dirs, exclude_advice
+from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -63,6 +63,9 @@ _OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 # install-agent or a bootstrap (LaunchAgents left by an earlier install) is the person's to refresh, so it
 # reads this note, with no ``fix:``. A FAIL keeps its fix.
 _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
+# Also under NO_NEXT_HINT_ENV: a local folder's listing that stays incomplete is the person's to settle (an
+# empty cloud folder, a folder without access), and install.sh prints the loop's line for it.
+_LISTING_YOURS_NOTE = "yours: see WAITING ON YOU"
 
 
 class Severity(enum.StrEnum):
@@ -1292,32 +1295,26 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
                 )
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
-            out.append(
-                _bad(
-                    name,
-                    f"enumeration incomplete for {incomplete} consecutive passes (deletions held)",
-                    Severity.WARN,
-                    fix=_incomplete_fix(src),
-                )
-            )
+            detail = f"enumeration incomplete for {incomplete} consecutive passes (deletions held)"
+            if src.kind is SourceKind.LOCAL and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+                out.append(CheckResult(name, False, detail, Severity.WARN, note=_LISTING_YOURS_NOTE))
+            else:
+                out.append(_bad(name, detail, Severity.WARN, fix=_incomplete_fix(src)))
         else:
             out.append(_ok(name, f"last success {last} ({age}s ago, {entry.get('pass_kind')})"))
     return out
 
 
 def _incomplete_fix(src: SourceConfig) -> str:
-    """The fix for a source whose listing stays incomplete. A Graph pass resumes, so another sync clears it;
-    a local walk is always a full pass, so the same folder stops it again: name the empty cloud folders and
-    the exclude line to paste (as the loop's WAITING ON YOU line does), or say what names the folder."""
-    if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+    """The fix for a source whose listing stays incomplete. A Graph pass resumes, and an inbox is incomplete
+    while a file in it is still being written, so another sync clears those. A local folder's walk is
+    always a full pass, so the same folder stops it again: the loop's WAITING ON YOU line, which status
+    prints above the checks, says which case it is and what to do (it names the empty cloud folders)."""
+    if src.kind is not SourceKind.LOCAL:
         return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
-    empty = empty_cloud_dirs(src)
-    if empty:
-        advice = exclude_advice(src, empty)
-        return f"if its {len(empty)} empty cloud folder(s) are meant to be empty, {advice}"
     return (
-        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
-        "access or add that folder to the source's exclude in sources.toml)"
+        f"agentsync status (its WAITING ON YOU line about {src.id} says what stops the listing and what to "
+        "do: another sync does not clear it)"
     )
 
 

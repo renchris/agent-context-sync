@@ -129,6 +129,7 @@ class WalkStats:
     symlinks_skipped: int
     unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
+    empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -332,6 +333,7 @@ class _WalkState:
     excluded: int = 0
     symlinks: int = 0
     unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
+    empty: list[str] = dataclasses.field(default_factory=list)  # zero-child cloud dirs below the root
 
 
 class CallTimedOutError(TimeoutError):
@@ -514,6 +516,8 @@ def walk(
             state.unknown[shown] = "zero children in a cloud tree" + (
                 " (dataless)" if is_dataless(dir_st) else ""
             )
+            if rel_dir:
+                state.empty.append(rel_dir)
             # info: the scan's one alarm names these each pass; a line per folder per pass filled the logs.
             log.info(
                 "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
@@ -600,72 +604,34 @@ def walk(
         symlinks_skipped=state.symlinks,
         unknown_dirs=tuple(sorted(state.unknown)),
         sentinel_present=None,
+        empty_cloud_dirs=tuple(sorted(state.empty)),
     )
     return items, stats
 
 
-_EMPTY_SCAN_TIMEOUT_S = 10.0  # status and doctor wait this long for the folder names, then go without
 _EXCLUDE_SHOWN = 5  # folders named in one ready-to-paste exclude line; the rest are a count
 _GLOB_CHARS = re.compile(r"[*?\[]")
 
 
-def empty_cloud_dirs(cfg: SourceConfig, *, timeout_s: float = _EMPTY_SCAN_TIMEOUT_S) -> tuple[str, ...]:
-    """The folders below a local source's root that :func:`walk` records as "zero children in a cloud tree",
-    as sorted POSIX paths relative to the root: what status and doctor name when a pass stays incomplete.
-
-    Read-only and directories only: scandir plus one lstat per directory, the source's own ``exclude``, no
-    symlink followed, no other volume entered. A folder that cannot be listed is skipped (it is unknown for
-    another reason), and the root itself is never returned. ``()`` for a source outside
-    ``~/Library/CloudStorage``, a missing root, or a listing that does not return within ``timeout_s`` (a
-    privacy prompt may be holding it)."""
-    if cfg.path is None or cfg.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
-        return ()
-    root = expand(cfg.path)
-    if not _is_cloud_tree(root, _cloud_roots()):
-        return ()
+def _unexcluded(cfg: SourceConfig, dirs: Sequence[str]) -> list[str]:
+    """``dirs`` (folders of the source, as relative POSIX paths) without those its ``exclude`` prunes today,
+    at the folder itself or at a folder above it: what a walk under the current sources.toml still reaches."""
     exclude = (*cfg.exclude, *(p for p in always_excluded(cfg.kind) if p not in cfg.exclude))
 
-    def scan() -> tuple[str, ...]:
-        root_st = os.lstat(root)
-        if not stat.S_ISDIR(root_st.st_mode):
-            return ()
-        found: list[str] = []
-        stack: list[tuple[Path, str, os.stat_result]] = [(root, "", root_st)]
-        while stack:
-            dir_path, rel_dir, dir_st = stack.pop()
-            try:
-                entries = _list_dir(dir_path, dir_dataless=is_dataless(dir_st))
-            except OSError:
-                continue
-            if not entries:
-                if rel_dir:
-                    found.append(rel_dir)
-                continue
-            prefix = f"{rel_dir}/" if rel_dir else ""
-            for entry in entries:
-                rel = prefix + _nfc(entry.name)
-                try:
-                    if not entry.is_dir(follow_symlinks=False) or _dir_excluded(rel, exclude):
-                        continue
-                    st = entry.stat(follow_symlinks=False)
-                except OSError:
-                    continue
-                if st.st_dev == root_st.st_dev:
-                    stack.append((Path(entry.path), rel, st))
-        return tuple(sorted(found))
+    def pruned(rel: str) -> bool:
+        parts = rel.split("/")
+        return any(_dir_excluded("/".join(parts[: i + 1]), exclude) for i in range(len(parts)))
 
-    try:
-        return call_with_timeout(scan, timeout_s, name="agentsync-empty-dirs")
-    except (OSError, TimeoutError):
-        return ()
+    return [d for d in dirs if not pruned(d)]
 
 
 def exclude_advice(cfg: SourceConfig, empty: Sequence[str]) -> str:
-    """What to do about ``empty`` (:func:`empty_cloud_dirs`): a ready-to-paste ``exclude = [...]`` line for
-    the source's table in sources.toml. It keeps the globs in force (the configured or default ``exclude``,
-    without the always-excluded ones, which a hand-written list cannot drop) and adds the first five folders,
-    each anchored at the root (``/<path>/``) with its glob characters made literal; more than five are a
-    count."""
+    """What to do about ``empty`` (zero-child cloud folders of the source, ``WalkStats.empty_cloud_dirs``):
+    a ready-to-paste ``exclude = [...]`` line for the source's table in sources.toml. The caller passes only
+    folders with no mirrored file below them: excluding a folder retires its pages. The line keeps the globs
+    in force (the configured or default ``exclude``, without the always-excluded ones, which a hand-written
+    list cannot drop) and adds the first five folders, each anchored at the root (``/<path>/``) with its glob
+    characters made literal; more than five are a count."""
     kept = [g for g in cfg.exclude if g not in always_excluded(cfg.kind)]
     globs = [f"/{_GLOB_CHARS.sub(_glob_literal, rel)}/" for rel in empty[:_EXCLUDE_SHOWN]]
     listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in (*kept, *globs))

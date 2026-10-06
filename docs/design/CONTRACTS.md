@@ -1938,6 +1938,7 @@ class WalkStats:
     symlinks_skipped: int
     unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
+    empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
 
 LISTING_TIMEOUT_S = 120.0  # one directory listing; past it macOS is holding the read for an Allow prompt
 INBOX_SETTLE_MAX_S = 60.0  # the most one interactive sync waits for settling inbox files, all inboxes
@@ -3523,8 +3524,8 @@ so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix
 `agentsync doctor` run by hand prints the fix itself.
 
 **Amended (2026-10-06, §16.22):** under the same variable, with no agent step pending, a `launchd.*` warn whose
-fix is `agentsync install-agent` or `launchctl bootstrap ...` and the `governance.purge_queue` warn carry a note
-and no `fix:` either.
+fix is `agentsync install-agent` or `launchctl bootstrap ...`, the `governance.purge_queue` warn and a local
+source's incomplete `heartbeat.<id>` warn carry a note and no `fix:` either.
 
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
@@ -5615,8 +5616,9 @@ the row is next processed: Finder's Download Now, then `sync`); a local source w
 FULL pass with `enumeration_complete` 0 (a folder it cannot list: TCC, an empty cloud folder, a missing root or
 sentinel; grant access or exclude it); a Graph source whose newest pass was skipped with a `NETWORK_POLICY_FAILED`
 reason (`it-request`). None of these is rule 3: another sync would not clear them. **Amended (2026-10-06,
-§16.22):** the local-source wait names the empty cloud folders and prints the exclude line to paste; with none
-to name it points at `sync -v`. An inbox whose newest FULL pass
+§16.22):** the local-source wait names the empty cloud folders its last walk stored and prints the exclude line
+to paste, but only for folders with no mirrored file below them; with none stored it points at `sync -v`; once
+sources.toml excludes them all it is rule 3 (sync again). An inbox whose newest FULL pass
 was incomplete (often a file still being written) is a `note:`. Online-only files within the budget
 are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. Item
 errors are retried by every sync and are not rule 3 (they would make it loop). The text is fixed wording plus
@@ -6290,33 +6292,49 @@ before the `…`, never inside a word.
 deletions are held until the folder gains a child or is excluded. What changed is the guidance, which was false
 or empty for this case (a source sat incomplete for 900 passes):
 
-- `arm_local.empty_cloud_dirs(cfg, *, timeout_s=10.0) -> tuple[str, ...]`: the folders below a local or inbox
-  source's root that `walk` would record as zero children in a cloud tree, as sorted POSIX paths relative to the
-  root. Read-only and directories only (scandir, one lstat per directory), under the source's `exclude` plus
-  the always-excluded globs; no symlink followed, no other volume entered. A folder that cannot be listed is
-  skipped, the root is never returned, and the result is `()` for a source outside CloudStorage, a missing root
-  or a scan that does not return in `timeout_s` (a privacy prompt may hold it). It is computed when `status`
-  or doctor needs it; nothing is stored, so no folder name enters the manifest or heartbeat.json.
+- The names come from the walk a sync already does, never from a second listing. `arm_local.WalkStats` has
+  a new last field, `empty_cloud_dirs: tuple[str, ...] = ()`: the zero-child cloud folders below the root that
+  this walk recorded as unknown, sorted POSIX paths relative to the root (a subset of `unknown_dirs`; never
+  the root, never a folder unknown for another reason). After each local or inbox scan a non-dry cycle stores
+  them as manifest meta `empty_cloud_dirs:<source id>` (`cycle._EMPTY_DIRS_META`): a JSON list, `""` when the
+  walk found none or could not run, written only when it changes, in the transaction that records the pass. A
+  dry run stores nothing. The manifest already holds every mirrored file's path; heartbeat.json gains nothing.
 - `arm_local.exclude_advice(cfg, empty) -> str`: `set exclude = [...] in [[source]] id = '<id>' in
   sources.toml[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
   later gains files`. The list is the globs in force (the configured or default `exclude`, without the
   always-excluded ones, so pasting it drops nothing) plus the first five folders as `/<path>/`: anchored at the
   root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
-- `loop.next_step`: per unlisted local source with such folders, `WAITING ON YOU: N empty cloud folder(s) keep
-  the listing of <id> incomplete (deletions held; another sync does not clear it): if they are meant to be
-  empty, <exclude_advice>`. The sources with none to name share one line: `a folder in <ids> could not be listed
-  (no access, or a missing folder or sentinel; another sync does not clear it)`, then that `agentsync sync -v`
-  names it, and to grant Files and Folders access or add it to that source's exclude in sources.toml.
-- doctor `heartbeat.<id>` (incomplete for 3 passes or more): a Graph source keeps `agentsync sync -v (a full
-  pass that lists all of <id> clears this)`. A local or inbox source reads `if its N empty cloud folder(s) are
-  meant to be empty, <exclude_advice>`, else `agentsync sync -v (names the folder it could not list: ...)`.
-  "A full pass clears this" was never true of a local walk, which is always a full pass.
+- `loop.next_step` stays disk-only (it reads that meta; `Publisher.write_state` calls it in every cycle, under
+  the writer lock, and the setup report gives it 4 s). For a local source whose newest FULL pass was incomplete
+  it takes the stored folders that today's `exclude` does not prune (at the folder or a folder above it) and
+  counts, per folder, the files the manifest still holds below it (rows in a present state):
+  - folders with none: `WAITING ON YOU: N empty cloud folder(s) keep the listing of <id> incomplete (deletions
+    held; another sync does not clear it): if they are meant to be empty, <exclude_advice>`;
+  - folders that held mirrored files get no paste line: `WAITING ON YOU: N empty cloud folder(s) in <id> held M
+    file(s) the mirror still has (the listing stays incomplete, so their deletion is held; another sync does
+    not clear it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive too,
+    and later syncs take the pages out with the usual deletion check; excluding such a folder instead retires
+    its pages at once, with no deletion check and no purge queued. \`agentsync sync -v\` names the folders`.
+    A folder usually became empty because its files were removed upstream, and an exclude edit is a scope
+    change: §9 retires what left scope as `retired:scope-change`, past the deletion breaker and with no purge;
+  - every stored folder is excluded by now (the line was pasted, no sync ran yet): the source is "not fully
+    listed" under rule 3, whose step is to sync again;
+  - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
+    could not be listed (no access, or a missing folder or sentinel; another sync does not clear it)`, then
+    that `agentsync sync -v` names it, and to grant Files and Folders access or add it to that source's exclude.
+- doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
+  an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
+  while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
+  status (its WAITING ON YOU line about <id> says what stops the listing and what to do: another sync does not
+  clear it)`: "a full pass clears this" was never true of a local walk, which is always a full pass, and
+  status prints the loop's lines above the checks. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
+  `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
 - setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
   Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
-  registered nothing, and the line reaches the report through the Loop line, the Doctor section and the
-  install.out tail.
+  registered nothing, and the line reaches the report through the Loop line, the install.out tail and
+  whatever the agent logged.
 
 **doctor and status wording.**
 

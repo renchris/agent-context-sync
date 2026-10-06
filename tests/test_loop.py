@@ -274,14 +274,70 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
-    # The line is ready to paste: with it in the source's table, the next pass is complete and the wait gone.
+        assert manifest.get_meta("empty_cloud_dirs:work") == '["Empty"]', "what the sync's walk found"
+    state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert _lines(config)[1] in state.splitlines(), "STATE.md and status give the same wait"
+    # The names come from that walk: status lists no folder of the source, here not even a missing one.
+    shutil.move(root, root.with_name("Work moved"))
+    assert f'"/Empty/"] in [[source]] id = {"work"!r}' in _lines(config)[1]
+    shutil.move(root.with_name("Work moved"), root)
+    # The line is ready to paste. With it in the source's table the wait is gone and the step is to sync;
+    # that pass is complete.
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + paste + "\n", encoding="utf-8")
     config = load_config(path)
+    assert _lines(config) == [
+        f"NEXT: 1 source(s) not fully listed or converted yet (work): run `{BIN} sync` again"
+    ]
     run_cycle(config, mode=None)
     assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
     with Manifest(config.state_paths.db) as manifest:
         assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+        assert manifest.get_meta("empty_cloud_dirs:work") == ""
+
+
+def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp_path: Path) -> None:
+    """A folder usually becomes empty because its files were removed upstream, and while the listing is
+    incomplete those deletions are held. Excluding the folder would retire their pages as a scope change:
+    no deletion breaker, no purge queued. So the line to paste names only folders with nothing mirrored
+    below them, and the other folders get the count and the consequence instead."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    for name in ("first.txt", "second.txt"):
+        _write(root / "Reports" / "2026" / name, "The quarter closed on time.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    shutil.rmtree(root / "Reports" / "2026")
+    (root / "Reports" / "2026").mkdir()
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.live_count("work") == 3, "the listing is incomplete: both deletions are held"
+    waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert waits == [
+        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
+        'another sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "*.tmp", '
+        '".~lock.*#", "/Empty/"] in [[source]] id = \'work\' in sources.toml; an excluded folder is not '
+        "mirrored if it later gains files",
+        "WAITING ON YOU: 1 empty cloud folder(s) in work held 2 file(s) the mirror still has (the listing "
+        "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
+        "removed on purpose, remove the empty folder(s) from the cloud drive too, and later syncs take the "
+        "pages out with the usual deletion check; excluding such a folder instead retires its pages at "
+        f"once, with no deletion check and no purge queued. `{BIN} sync -v` names the folders",
+    ]
+    assert not any("Reports" in ln or "2026" in ln for ln in _lines(config))
+    # Removed upstream too, the folder no longer stops the listing once the other one is excluded, and the
+    # deletions take the usual path: absent from two complete passes, then gone.
+    shutil.rmtree(root / "Reports")
+    (root / "Empty").rmdir()
+    for _ in range(3):
+        run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+        assert manifest.live_count("work") == 1
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
+        f"WAITING ON YOU: 2 queued purge(s): run `{BIN} purge --queue`"
+    ], "deleted upstream, not retired: each deletion queued its purge"
 
 
 def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:

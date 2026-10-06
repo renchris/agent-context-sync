@@ -321,6 +321,43 @@ def test_dry_run_classifies_without_writing(sample_config: Config) -> None:
     assert run(sample_config).commit_sha is not None
 
 
+def test_a_cycle_stores_the_empty_cloud_folders_its_walk_found(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """``loop.next_step`` names the folders that keep a listing incomplete from manifest meta, so status and
+    STATE.md never walk the source a second time. Each real pass rewrites the list (empty once the walk
+    finds none, or cannot walk); a dry run writes nothing."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Bids" / "Old").mkdir(parents=True)
+    (root / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    text = config_text(tmp_docs_repo, tmp_state_dir, tmp_path / "cache", root)
+    config = parse_config(text, config_path=tmp_path / "sources.toml")
+    key = cycle_mod._EMPTY_DIRS_META + SID
+
+    def stored() -> str | None:
+        with Manifest(config.state_paths.db) as m:
+            return m.get_meta(key)
+
+    report = run(config)
+    assert not report.sources[0].enumeration_complete
+    assert stored() == '["Bids/Old"]'
+    (root / "Plans — Draft").mkdir()
+    assert run(config, mode=CycleMode.DRY_RUN).exit_code == 0
+    assert stored() == '["Bids/Old"]', "a dry run stores nothing"
+    run(config)
+    assert stored() == '["Bids/Old", "Plans — Draft"]', "sorted, names as they are"
+    (root / "Bids" / "Old" / "a.txt").write_text("x\n", encoding="utf-8")
+    (root / "Plans — Draft").rmdir()
+    assert run(config).sources[0].enumeration_complete
+    assert stored() == ""
+    (root / "Bids" / "Empty").mkdir()
+    run(config)
+    assert stored() == '["Bids/Empty"]'
+    root.rename(root.with_name("Work moved"))
+    assert not run(config).sources[0].enumeration_complete
+    assert stored() == "", "a walk that could not run knows no empty folder"
+
+
 def test_a_cycle_makes_agent_written_paths_owner_only_and_a_dry_run_does_not(sample_config: Config) -> None:
     """Field report 2026-10-06: the baseline draft, written by an agent under umask 022, left ``_eval/``
     readable by group and other, and the next status ended on a ``docs_repo.permissions`` FAIL."""

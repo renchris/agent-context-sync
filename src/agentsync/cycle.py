@@ -26,6 +26,7 @@ import dataclasses
 import enum
 import gc
 import hashlib
+import json
 import logging
 import os
 import re
@@ -43,7 +44,14 @@ from pathlib import Path
 
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
-from agentsync.arm_local import InboxArm, LocalArm, SettleBudget, cloud_provider_root, fold_conflict_suffix
+from agentsync.arm_local import (
+    InboxArm,
+    LocalArm,
+    SettleBudget,
+    WalkStats,
+    cloud_provider_root,
+    fold_conflict_suffix,
+)
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
@@ -128,6 +136,10 @@ _SCOPE_ROOT_META = "scope_root:"
 _RESCREEN_META = "policy_rescreen_pending"
 _CHECKPOINT_PENDING_META = "checkpoint_pending"  # KISS K06: the HEAD a held or failed checkpoint retries
 _SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
+_EMPTY_DIRS_META = "empty_cloud_dirs:"
+"""Manifest meta ``empty_cloud_dirs:<source id>``: the zero-child cloud folders the source's last walk found,
+a JSON list of paths relative to its root ("" when it found none, or could not walk). ``loop.next_step``
+names them from here, so status and STATE.md never walk a source to explain why its listing is incomplete."""
 HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
@@ -1438,6 +1450,14 @@ class _Cycle:
         )
         return scan, pc, rows, fast_ids, restamp
 
+    def _note_empty_dirs(self, source_id: str, stats: WalkStats | None) -> None:
+        """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), written only on a change."""
+        key = _EMPTY_DIRS_META + source_id
+        found = stats.empty_cloud_dirs if stats is not None else ()
+        value = json.dumps(list(found), ensure_ascii=False) if found else ""
+        if (self.manifest.get_meta(key) or "") != value:
+            self.manifest.set_meta(key, value)
+
     @staticmethod
     def _observed_state(item: SourceItem, row: ItemRow | None) -> RowState:
         """State to store for an observation (quarantine/refusal sticks until a re-conversion clears it)."""
@@ -1491,6 +1511,8 @@ class _Cycle:
                 self.manifest.set_page_link(src.id, None)
                 if scan.pass_kind is PassKind.FULL:
                     self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
+                if isinstance(arm, LocalArm):
+                    self._note_empty_dirs(src.id, arm.last_stats)
                 self.manifest.record_source_pass(
                     self.run_id,
                     src.id,

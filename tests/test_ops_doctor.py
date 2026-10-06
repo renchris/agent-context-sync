@@ -710,9 +710,10 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "incomplete for 3" in r.detail
     # Bring-back S11: a local walk is always a full pass, so "another sync clears this" was false for it.
+    # The loop's WAITING ON YOU line, which status prints above the checks, says what to do.
     assert r.fix == (
-        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
-        "access or add that folder to the source's exclude in sources.toml)"
+        "agentsync status (its WAITING ON YOU line about local-fixture says what stops the listing and what "
+        "to do: another sync does not clear it)"
     )
     assert_fix_parses(r.fix)
 
@@ -729,25 +730,36 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     assert_fix_parses(r.fix)
 
 
-def test_heartbeat_incomplete_fix_by_source_kind(sample_config: Config) -> None:
-    """Bring-back S11: a Graph pass resumes, so sync again is its fix; a cloud folder source names its empty
-    folders and the exclude line to paste, the same line the loop's WAITING ON YOU prints."""
+def test_heartbeat_incomplete_fix_by_source_kind(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bring-back S11: a Graph pass resumes and an inbox is incomplete while a file is being written, so
+    sync again is their fix. A local folder points at the loop's WAITING ON YOU line, the one place that
+    names the empty cloud folders and weighs what excluding them would retire: no folder name here, and no
+    walk of the source. Under install.sh the line is a note, since install.sh prints the loop's line."""
     local = sample_config.sources[0]
-    graph = dataclasses.replace(local, id="team-drive", kind=SourceKind.GRAPH_DRIVE, path=None)
-    fix = doctor._incomplete_fix(graph)
-    assert fix == "agentsync sync -v (a full pass that lists all of team-drive clears this)"
-    assert_fix_parses(fix)
+    for kind in (SourceKind.GRAPH_DRIVE, SourceKind.INBOX):
+        fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=kind))
+        assert fix == "agentsync sync -v (a full pass that lists all of team-drive clears this)"
+        assert_fix_parses(fix)
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     (root / "Bids").mkdir(parents=True)
     (root / "a.docx").write_bytes(b"x")
-    cloud = dataclasses.replace(local, path=root, sentinel=None)
+    cloud = dataclasses.replace(
+        sample_config, sources=(dataclasses.replace(local, path=root, sentinel=None),)
+    )
     for _ in range(3):
         _beat(sample_config, enumeration_complete=False)
-    r = by_name(run_checks(dataclasses.replace(sample_config, sources=(cloud,))))["heartbeat.local-fixture"]
-    assert r.fix is not None and r.fix.startswith(
-        "if its 1 empty cloud folder(s) are meant to be empty, set exclude = ["
-    )
-    assert "\"/Bids/\"] in [[source]] id = 'local-fixture' in sources.toml" in r.fix
+    monkeypatch.setattr(os, "scandir", lambda *a, **k: pytest.fail("the heartbeat check lists no folder"))
+    r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
+    assert r.fix is not None and r.fix.startswith("agentsync status (its WAITING ON YOU line about ")
+    assert "Bids" not in r.fix and r.note is None
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
+    assert not r.ok and r.severity is Severity.WARN and r.fix is None
+    assert r.note == "yours: see WAITING ON YOU"
+    [line] = format_results([r]).splitlines()
+    assert line.endswith("consecutive passes (deletions held) (yours: see WAITING ON YOU)")
 
 
 def assert_fix_parses(fix: str | None) -> None:

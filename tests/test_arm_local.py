@@ -390,25 +390,27 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     assert "2 unknown dir(s)" in alarm and "'One', 'Two'" in alarm
 
 
-def test_empty_cloud_dirs_names_what_the_walk_calls_zero_children(tmp_path: Path) -> None:
-    """Bring-back S11: the folders status and doctor name are the walk's zero-child cloud folders, under the
-    same excludes; the root, an unreadable folder and a folder outside CloudStorage are not named."""
+def test_the_walk_records_its_zero_child_cloud_folders(tmp_path: Path) -> None:
+    """Bring-back S11: the folders status names are the ones the walk itself found with zero children in a
+    cloud tree (no second listing of the source): under its excludes, never the root, never a folder that is
+    unknown for another reason, and none outside CloudStorage."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
     for rel in ("Bids", "Plans/Old [2019]", "Skipped", "Locked/inner"):
         (root / rel).mkdir(parents=True)
     _write(root / "Plans" / "a.docx")
     (root / "link").symlink_to(root / "Bids", target_is_directory=True)
-    cfg = _cfg(root, exclude=("Skipped/",))
     with _chmod(root / "Locked", 0):
-        found = al.empty_cloud_dirs(cfg)
-        _, stats = _walk(root, exclude=cfg.exclude)
-    assert found == ("Bids", "Plans/Old [2019]")
-    assert set(found) | {"Locked"} == set(stats.unknown_dirs), "the same folders the walk records"
-    assert al.empty_cloud_dirs(_cfg(root / "Bids")) == (), "an empty root is not something to exclude"
-    assert al.empty_cloud_dirs(_cfg(root / "missing")) == ()
+        _, stats = _walk(root, exclude=("Skipped/",))
+    assert stats.empty_cloud_dirs == ("Bids", "Plans/Old [2019]")
+    assert stats.unknown_dirs == ("Bids", "Locked", "Plans/Old [2019]")
+    _, stats = _walk(root / "Bids")
+    assert stats.unknown_dirs == (".",) and stats.empty_cloud_dirs == (), "an empty root is not excluded"
     plain = tmp_path / "plain"
     (plain / "empty").mkdir(parents=True)
-    assert al.empty_cloud_dirs(_cfg(plain)) == ()
+    assert _walk(plain)[1].empty_cloud_dirs == ()
+    arm = al.LocalArm(_cfg(root, exclude=("Skipped/", "Locked/")))
+    arm.scan(None, full=True)
+    assert arm.last_stats is not None and arm.last_stats.empty_cloud_dirs == ("Bids", "Plans/Old [2019]")
 
 
 def test_exclude_advice_is_a_line_that_clears_the_folders_it_names() -> None:
@@ -419,7 +421,7 @@ def test_exclude_advice_is_a_line_that_clears_the_folders_it_names() -> None:
     (root / "Keep" / "Bids").mkdir(parents=True)  # same name deeper: the anchored glob leaves it alone
     _write(root / "Keep" / "Bids" / "a.docx")
     cfg = _cfg(root, exclude=("Archive/", ".DS_Store"))
-    empty = al.empty_cloud_dirs(cfg)
+    empty = _walk(root, exclude=cfg.exclude)[1].empty_cloud_dirs
     assert len(empty) == 8
     advice = al.exclude_advice(cfg, empty)
     assert advice == (
@@ -427,14 +429,18 @@ def test_exclude_advice_is_a_line_that_clears_the_folders_it_names() -> None:
         "[[source]] id = 'local-test' in sources.toml (+3 more: status names them once these are "
         "excluded); an excluded folder is not mirrored if it later gains files"
     )
-    # pasted, round after round, the line empties the list and the walk has no unknown folder left
+    # Pasted, round after round, the line empties the list: the stored folders the new exclude prunes drop
+    # out before any walk (status names the next ones at once), and the walk has no unknown folder left.
     for _ in range(2):
-        advice = al.exclude_advice(cfg, al.empty_cloud_dirs(cfg))
+        advice = al.exclude_advice(cfg, al._unexcluded(cfg, empty))
         line = advice.removeprefix("set ").split(" in [[source]]")[0]
         cfg = _cfg(root, exclude=tuple(tomllib.loads(line)["exclude"]))
-    assert al.empty_cloud_dirs(cfg) == ()
+    assert al._unexcluded(cfg, empty) == []
     items, stats = _walk(root, exclude=cfg.exclude)
     assert stats.unknown_dirs == () and _rels(items) == ["Keep/Bids/a.docx"]
+    assert al._unexcluded(_cfg(root, exclude=("Plans/",)), ["Plans/Old [2019]", "Bids"]) == ["Bids"], (
+        "a folder below an excluded one is pruned with it"
+    )
 
 
 def test_dataless_files_are_recorded_not_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

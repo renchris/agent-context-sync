@@ -9,7 +9,8 @@ rule wins:
 2. no live source other than the inbox: ask which folders, then ``add-source``;
 3. a source was never listed, a Graph listing is INCOMPLETE, or files already on this Mac are not converted
    yet: sync again (online-only files waiting for a download budget are a note, and a folder listing a sync
-   ran but could not finish is an operator wait, never this rule: another sync would not clear either);
+   ran but could not finish is an operator wait, never this rule: another sync would not clear either,
+   unless sources.toml by now excludes every empty cloud folder that stopped it);
 4. no curated page and no ``_eval/questions.md``: draft the baseline questions;
 5. ``_eval`` is still a draft: stop, the operator confirms;
 6. no curated page and no ``_eval/results-*-before.md``: run the 'before' baseline in a fresh session;
@@ -19,11 +20,14 @@ rule wins:
 10. nothing to do: session done.
 
 The text is fixed wording plus counts and source ids, never a mirror path or file name (a page name is
-third-party content). ``sync`` (without ``--mode``) and ``status`` print :meth:`NextStep.lines`.
+third-party content). One wait is the exception: the ``exclude = [...]`` line for a source's empty cloud
+folders names them, since the operator has to paste it; the setup report shows that list as ``<path>``.
+``sync`` (without ``--mode``) and ``status`` print :meth:`NextStep.lines`.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable, Sequence
@@ -31,10 +35,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
-from agentsync.arm_local import empty_cloud_dirs, exclude_advice
+from agentsync.arm_local import _unexcluded, exclude_advice
 from agentsync.config import Config, SourceConfig
 from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
+    _EMPTY_DIRS_META,
+    _PRESENT,
     _SEED_PAGE_NAMES,
     HYDRATION_REFUSED,
     LISTING_HELD,
@@ -178,6 +184,31 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     return out
 
 
+def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, int]]:
+    """The zero-child cloud folders the source's last walk stored (manifest meta ``empty_cloud_dirs:<id>``):
+    whether it stored any, and those sources.toml does not exclude today, each with the number of files the
+    mirror still holds below it. A folder usually became empty because its files were removed upstream; while
+    the listing is incomplete those deletions are held, and excluding the folder would retire the pages as a
+    scope change, past the deletion breaker and with no purge queued."""
+    try:
+        stored = json.loads(manifest.get_meta(_EMPTY_DIRS_META + src.id) or "[]")
+    except ValueError:
+        stored = []
+    names = [d for d in stored if isinstance(d, str)] if isinstance(stored, list) else []
+    below = dict.fromkeys(_unexcluded(src, names), 0)
+    if below:
+        for row in manifest.iter_items(src.id, states=_PRESENT):
+            if row.is_dir:
+                continue
+            parent = row.rel_path
+            while "/" in parent:
+                parent = parent.rsplit("/", 1)[0]
+                if parent in below:
+                    below[parent] += 1
+                    break
+    return bool(names), below
+
+
 def _checkpoint_base(docs: Path, head: str, pending: str | None) -> str:
     """The base the next sync checks the checkpoint from: the held checkpoint's base (manifest meta
     ``checkpoint_pending``) while it is still an ancestor of HEAD, else HEAD (history compaction or a purge
@@ -231,7 +262,8 @@ def queue_rows(config: Config) -> int:
 
 
 def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True) -> NextStep:
-    """The first unmet rule of the loop (module docstring) and the operator's waits, from disk only.
+    """The first unmet rule of the loop (module docstring) and the operator's waits, from disk only (no
+    source folder is listed: the empty cloud folders it names are the ones the last sync's walk stored).
 
     ``fixes`` are the fixes of status FAILs the caller already ran (rule 1, after the disk checks here).
     ``count_queue=False`` (STATE.md, written by every cycle) skips rule 9's count, which reads every uncited
@@ -261,7 +293,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     db = config.state_paths.db
     files = _Files()
     incomplete: list[str] = []
-    unlisted: list[SourceConfig] = []  # a local listing ran but could not finish: the operator's to fix
+    unlisted: list[str] = []  # a local listing ran but could not finish: the operator's to fix
+    empty: list[tuple[SourceConfig, dict[str, int]]] = []  # ... because of these empty cloud folders
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
@@ -288,7 +321,13 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     # sync does not clear. A Graph FULL pass resumes, so sync again is right for it.
                     ran_full = last is not None and last.pass_kind is PassKind.FULL
                     if ran_full and src.kind is SourceKind.LOCAL:
-                        unlisted.append(src)
+                        stored, below = _empty_dirs(manifest, src)
+                        if below:
+                            empty.append((src, below))
+                        elif stored:
+                            incomplete.append(src.id)  # all excluded since that walk: the next sync lists it
+                        else:
+                            unlisted.append(src.id)
                     elif ran_full and src.kind is SourceKind.INBOX:
                         inbox_partial.append(src.id)
                     else:
@@ -321,24 +360,32 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"macOS held the listing of {', '.join(sorted(held))} for a privacy prompt: click Allow on the "
             f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
-    hidden: list[str] = []
-    for src in unlisted:
-        # An empty cloud folder is unknown, never empty, on every pass: name the folders and the line to
-        # paste. Anything else (no access, a missing folder or sentinel) is what `sync -v` names.
-        empty = empty_cloud_dirs(src)
-        if empty:
+    for src, below in empty:
+        # An empty cloud folder is unknown, never empty, on every pass. The line to paste names only the
+        # folders with nothing mirrored below them; one that held mirrored files gets no paste line, since
+        # excluding it retires those pages in one pass, past the deletion breaker (as for a held listing).
+        clear = [d for d, files in below.items() if not files]
+        gone = [files for files in below.values() if files]
+        if clear:
             waits.append(
-                f"{len(empty)} empty cloud folder(s) keep the listing of {src.id} incomplete (deletions "
+                f"{len(clear)} empty cloud folder(s) keep the listing of {src.id} incomplete (deletions "
                 "held; another sync does not clear it): if they are meant to be empty, "
-                f"{exclude_advice(src, empty)}"
+                f"{exclude_advice(src, clear)}"
             )
-        else:
-            hidden.append(src.id)
-    if hidden:
+        if gone:
+            waits.append(
+                f"{len(gone)} empty cloud folder(s) in {src.id} held {sum(gone)} file(s) the mirror still "
+                "has (the listing stays incomplete, so their deletion is held; another sync does not clear "
+                "it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive "
+                "too, and later syncs take the pages out with the usual deletion check; excluding such a "
+                "folder instead retires its pages at once, with no deletion check and no purge queued. "
+                f"`{BIN} sync -v` names the folders"
+            )
+    if unlisted:
         waits.append(
-            f"a folder in {', '.join(sorted(hidden))} could not be listed (no access, or a missing folder or "
-            f"sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders "
-            "access, or add it to that source's exclude in sources.toml"
+            f"a folder in {', '.join(sorted(unlisted))} could not be listed (no access, or a missing folder "
+            f"or sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and "
+            "Folders access, or add it to that source's exclude in sources.toml"
         )
     if blocked:
         waits.append(
