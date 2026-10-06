@@ -6432,8 +6432,8 @@ versions with the same options, so every page it has stays byte for byte what it
 It covers the image converter, the PDF converter, the deck converter, the Word and OpenDocument converter
 and their wiring.
 
-**At a glance.** Every string below is fixed wording, and every limit is a count, so a file gives the same
-page on every run.
+**At a glance.** Every string below is fixed wording. Every limit but the two of time is a count, so a
+file gives the same page on every run; past a time limit a document gets the page it has without OCR.
 
 | | image | PDF | deck | Word, OpenDocument |
 |---|---|---|---|---|
@@ -6907,6 +6907,8 @@ Approved \| 12 May
   (`_MAX_SCAN_BYTES`): pictures first used after that are not found. Then the bounds of `_read_pictures`:
   100 distinct pictures, 256 MiB, in the `.ocr-*` folder beside the staged file, within `_DOCUMENT_BUDGET_S`
   (300 seconds; pandoc then has its own 300). When a limit left a raster picture unread the summary says so.
+  The entries looked at have no count limit of their own: one that is no raster image costs its first 16
+  bytes, and 20,000 of them took 0.16 s here (measured).
 - **Finding the pictures can only find fewer.** A package `zipfile` cannot open is left to pandoc, which
   reads it its own way. An error while the parts are looked through ends the looking, and the pictures
   found so far are read. An entry that cannot be opened (missing, encrypted, a compression `zipfile` does
