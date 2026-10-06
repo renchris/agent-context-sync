@@ -4494,6 +4494,7 @@ class AgentSpec:
 
 - `.pdf` → `pdf-pypdfium2` (PDFium via pypdfium2; pdfminer.six only when PDFium cannot load a file for a
   non-encryption reason). A PDF with no text on any page is `UnreadableSourceError`, never an empty page.
+  **SUPERSEDED (2026-10-06, §16.24):** a PDF with no text and no comment on any page; one with comments is a page.
 - H0 refinement (§11): when a file's lstat tuple `(size, mtime_ns, ctime_ns, ino, mode)` equals its row, the walk
   reuses the stored `gen_count` and creation time instead of `getattrlist`. `ClassifyContext.h0_unchanged` rows are
   stamped by `Manifest.touch_observed` without decoding.
@@ -5700,3 +5701,79 @@ only in Doctor, no probe), and the frozen CLI surface (`doctor` and `policy` hid
 - The canary is due when the newest run of either job (its newest event and the events before it with the same
   launcher pid) left a `TCC_PENDING` / `TCC_DENIED` line uncleared: a `CANARY_OK` clears only its own `path=`,
   `CHILD_EXIT` clears them all. The `launcher:` status lines use the same rule, one per uncleared line.
+
+### 16.24 PDF comments (2026-10-06)
+
+A reviewer's comments on a PDF are annotations. They sit outside the text layer, so a commented copy converted
+to the same page as the original. `pdf-pypdfium2` emitter **2.1.0** keeps them. No command, flag, config key or
+converter option is added: `options()` is unchanged and the emitter version alone moves the action key.
+
+Each page's comments follow its text (or its `[scanned page: no text layer]` marker):
+
+```text
+<!-- page: 1 -->
+
+Contoso widget overview
+Draft wording of the summary
+
+[comments on this page (PDF annotations):]
+- Highlight by Roe, John on “Contoso widget overview”: Use the Q3 figures here
+- Note by Doe, Jane Q: Add units → revenue split by region
+  - reply by Roe, John: Agreed
+- Insert by Roe, John: final wording
+  - Strikethrough by Roe, John on “Draft wording”
+```
+
+One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets
+no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary).
+
+- **What counts.** Fifteen annotation subtypes, each with the word a reader knows it by: Text `Note`, FreeText
+  `Text box`, Line `Line`, Square `Box`, Circle `Circle`, Polygon `Polygon`, PolyLine `Polyline`, Highlight
+  `Highlight`, Underline `Underline`, Squiggly `Squiggly underline`, StrikeOut `Strikethrough`, Stamp `Stamp`,
+  Caret `Insert`, Ink `Drawing`, FileAttachment `Attachment`. Every other subtype is skipped (links, popups, form
+  fields, redactions, media, watermarks). A comment is kept only when it has `/Contents` text or, for the four
+  text markups, marks page text: a bare drawing, stamp or empty note is skipped.
+- **Not shown, not listed.** An annotation with the Hidden or NoView flag is skipped. No viewer shows it on
+  screen, so listing it would present text no reviewer saw as a colleague's comment. A review-status entry
+  ("Accepted set by …") that a viewer wrote with the Hidden flag is therefore not listed. An answer to a
+  skipped annotation is listed on its own.
+- **Fields.** The author is `/T`, kept as written (as xlsx comment authors and mail senders are). The text is
+  `/Contents`. The marked text of a highlight, underline, squiggly or strikethrough is the page text under its
+  `/QuadPoints` (its `/Rect` when it has none): the characters whose loose box (the font's full line height) has
+  its centre inside a quad's bounding box, in text order, separate runs joined by a space. PDFium's own bounded
+  read is not used: on single-spaced text it returns glyphs of the lines above and below. The marked text is cut
+  at 300 characters with `…`. The text is left out when it equals the marked text (several tools copy one into
+  the other).
+- **One line.** Author, text and marked text are NFC with stray controls dropped and every whitespace run made
+  one space: line breaks, tabs, form feed, U+0085, U+2028 and U+2029 included. A comment therefore cannot pose
+  as a second comment, a reply, a heading, a rule or a code fence. `<!--` becomes `&lt;!--`, so it cannot pose
+  as a page anchor.
+- **Order.** Comments run top to bottom, then left to right, by `/Rect` in PDF space: a page's `/Rotate` is not
+  applied. Ties keep file order. A comment that answers another (`/IRT`) is nested under it, in file order, two
+  spaces per level, with at most four levels of indent. A nested Note is labelled `reply`; any other nested kind
+  keeps its word, which is how the strikethrough of a replace-text pair (`/IRT` with `/RT /Group`) stays
+  readable. A comment whose `/IRT` names itself or an annotation that is not listed stands on its own. Comments
+  in an `/IRT` cycle come after the others, in file order. Every comment read is emitted once.
+- **Summary.** `; N comment(s) on M page(s)` follows the page count and the scanned clause. N is the number of
+  comments emitted, M the number of pages with a block. The summary carries no comment text and no author.
+- **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
+  …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
+- **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
+  returns `(page texts, {page index: comments})`. An exception while one page's comments are read costs that
+  page its comments and nothing else: the page keeps its text, the file stays with PDFium (never the pdfminer
+  fallback) and the conversion does not fail. One WARNING per file says so: `<name>: comments not read on N
+  page(s), first on page K: <type>: <message>`. The summary does not.
+- **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
+  not read`, so a reader can tell "no comments" from "comments not read".
+- **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
+  Nothing here re-reads PDFs that are already mirrored.
+
+Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_PageChars`, `_page_comments`,
+`_read_comment`, `_marked_text`, `_annot_string`, `_one_line`, `_comment_line`, `_render_comments`).
+
+Tests: `test_convert_formats.py` (the page of `build_commented_pdf` byte for byte, with text and without; the
+centre rule against PDFium's bounded read; hidden and no-view annotations; a comment that tries to leave its
+line; every subtype's word and PDFium's subtype and flag numbers; reply links that are cyclic, self-referring,
+dangling or 1,200 deep; the quote cap and a repeated text; a page whose comments raise; the fallback),
+`test_convert_determinism.py` (`commented.pdf` converted twice), `test_convert_builders.py`
+(`build_annotated_pdf`, `build_commented_pdf`).

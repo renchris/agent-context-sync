@@ -141,6 +141,114 @@ def build_pdf(path: Path, pages: list[list[str]], *, encrypt: bool = False) -> P
     return path
 
 
+def pdf_text(s: str) -> str:
+    """A PDF text string: a literal when printable ASCII, else UTF-16BE with a BOM in hex (how a viewer
+    writes a comment that has an arrow, an accent or a line break in it)."""
+    if s.isascii() and s.isprintable():
+        return f"({_pdf_escape(s)})"
+    return f"<FEFF{s.encode('utf-16-be').hex().upper()}>"
+
+
+def build_annotated_pdf(path: Path, pages: list[tuple[list[str], list[str]]], *, leading: int = 12) -> Path:
+    """A born-digital PDF whose pages carry annotations.
+
+    A page is ``(text lines, annotation dictionary bodies)``.  Text is 12 pt Helvetica from x = 72; line
+    ``i`` has its baseline at y = 720 - leading * i, and PDFium's loose character box runs from 2.5 below
+    the baseline to 10.9 above it.  The default leading is single spacing, where a marked line touches its
+    neighbours.  ``{N}`` in a body is the reference to annotation ``N`` of the same page (/IRT, /Popup).
+    """
+    objs: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"",  # the page tree, written once the page numbers are known
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    kids: list[str] = []
+    for lines, annots in pages:
+        page_no = len(objs) + 1
+        refs = [f"{page_no + 2 + i} 0 R" for i in range(len(annots))]
+        ops = ["BT", "/F1 12 Tf", "72 720 Td", f"{leading} TL"]
+        ops += [f"({_pdf_escape(line)}) Tj T*" for line in lines]
+        stream = "\n".join([*ops, "ET"]).encode()
+        kids.append(f"{page_no} 0 R")
+        objs.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> "
+            f"/Contents {page_no + 1} 0 R /Annots [{' '.join(refs)}] >>".encode()
+        )
+        objs.append(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")
+        objs += [f"<< /Type /Annot {body.format(*refs)} >>".encode() for body in annots]
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>".encode()
+    out = bytearray(b"%PDF-1.6\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{off:010d} 00000 n \n".encode() for off in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.write_bytes(bytes(out))
+    return path
+
+
+def pdf_line_quad(line: int, *, left: int = 70, right: int = 300) -> str:
+    """``/Rect`` and ``/QuadPoints`` of a text markup over line ``line`` of a ``build_annotated_pdf`` page
+    (single spacing), from x = ``left`` to ``right``: the box a viewer draws, a little taller than the
+    font, so it overlaps the lines above and below."""
+    low, high = 720 - 12 * line - 2.6, 720 - 12 * line + 11.1
+    return (
+        f"/Rect [{left} {low:.1f} {right} {high:.1f}] "
+        f"/QuadPoints [{left} {high:.1f} {right} {high:.1f} {left} {low:.1f} {right} {low:.1f}]"
+    )
+
+
+def build_commented_pdf(path: Path, *, text: bool = True) -> Path:
+    """Three single-spaced pages for the PDF comment tests; ``text=False`` leaves every page without text
+    (comments drawn on a scan).
+
+    Page 1 has each case the converter keeps: a note with a reply, a highlight with a comment, an underline
+    without one, a typed text box of several lines, and a replace-text pair (an insert with the
+    strikethrough grouped under it); and each it skips: the note's popup, a link, a drawing without text.
+    Page 2 has only annotations that are skipped.  Page 3 has a highlight whose comment repeats the marked
+    line and a squiggly underline over two lines.
+    """
+    doe, roe = "/T (Doe, Jane Q)", "/T (Roe, John)"
+    typed = "Typed note:\r# not a heading\r- reply by Roe, John: approved"
+    page1 = [
+        f"/Subtype /Text /Rect [400 700 420 720] /F 4 {doe} /Popup {{1}} "
+        f"/Contents {pdf_text('Add units → revenue split by region')}",
+        "/Subtype /Popup /Rect [420 600 600 700] /Parent {0} /Contents (popup copy of the note)",
+        f"/Subtype /Highlight {pdf_line_quad(0)} {roe} /Contents (Use the Q3 figures here)",
+        f"/Subtype /FreeText /Rect [72 500 300 540] /DA (/Helv 12 Tf 0 g) /Contents {pdf_text(typed)}",
+        f"/Subtype /Text /Rect [400 700 420 720] {roe} /IRT {{0}} /Contents (Agreed)",
+        "/Subtype /Link /Rect [72 590 200 610] /Contents (a link is not a comment) "
+        "/A << /S /URI /URI (https://example.com) >>",
+        "/Subtype /Ink /Rect [300 300 350 350] /InkList [[300 300 350 350]]",
+        f"/Subtype /Underline {pdf_line_quad(1)} {doe}",
+        f"/Subtype /Caret /Rect [143 693.4 147 707.1] {roe} /Contents (final wording)",
+        # No /QuadPoints: the rectangle marks the text.  It ends after "Draft wording" (x = 143.4).
+        f"/Subtype /StrikeOut /Rect [70 693.4 144 707.1] {roe} /IRT {{8}} /RT /Group",
+    ]
+    page2 = [
+        "/Subtype /Link /Rect [72 700 200 732] /A << /S /URI /URI (https://example.com) >>",
+        f"/Subtype /Text /Rect [400 700 420 720] /F 2 {doe} /Contents (hidden: no viewer shows this)",
+        f"/Subtype /Highlight {pdf_line_quad(0)} /F 32 {doe} /Contents (not shown on screen)",
+        f"/Subtype /Text /Rect [400 600 420 620] {roe}",
+    ]
+    marked = "Middle TARGET line, ok. a_b"
+    two_lines = "/QuadPoints [70 719.1 300 719.1 70 705.4 300 705.4 70 707.1 300 707.1 70 693.4 300 693.4]"
+    page3 = [
+        f"/Subtype /Highlight {pdf_line_quad(1)} {doe} /Contents ({marked})",
+        f"/Subtype /Squiggly /Rect [70 693.4 300 719.1] {two_lines} {roe} /Contents (tighten this)",
+    ]
+    lines = [
+        ["Contoso widget overview", "Quarterly totals by region", "Draft wording of the summary"],
+        ["Second page: nothing on it is a comment."],
+        ["Alpha gyp line above, jq.", marked, "Omega line below"],
+    ]
+    pages = [(ln if text else [], annots) for ln, annots in zip(lines, (page1, page2, page3), strict=True)]
+    return build_annotated_pdf(path, pages)
+
+
 def build_xlsx_rich(path: Path, *, rows: int = 10) -> Path:
     """Workbook with formulas (no cached values), a comment, a chart, a hidden sheet, a defined name, odd
     values (integral float, date, bool, pipe/newline text) and ``rows`` data rows."""
@@ -294,6 +402,12 @@ def test_builders_produce_valid_containers(tmp_path: Path) -> None:
     assert zipfile.is_zipfile(build_xlsx_rich(tmp_path / "r.xlsx"))
     assert zipfile.is_zipfile(build_pptx_rich(tmp_path / "r.pptx"))
     assert build_pdf(tmp_path / "a.pdf", [["x"]]).read_bytes().startswith(b"%PDF-1.4")
+    commented = build_commented_pdf(tmp_path / "c.pdf").read_bytes()
+    assert commented.startswith(b"%PDF-1.6") and commented.count(b"/Type /Annot") == 16
+    assert (
+        b") Tj" in commented
+        and b") Tj" not in build_commented_pdf(tmp_path / "s.pdf", text=False).read_bytes()
+    )
 
 
 def test_png_is_stable() -> None:

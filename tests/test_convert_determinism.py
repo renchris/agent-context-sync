@@ -15,6 +15,7 @@ from agentsync.convert.canonical import canonical_hash
 from agentsync.model import ConversionResult, ConversionStatus
 from fixtures.make_fixtures import make_fixtures
 from test_convert_builders import (
+    build_commented_pdf,
     build_docx_image,
     build_docx_merged,
     build_pdf,
@@ -44,6 +45,7 @@ def extra_inputs(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
         "rich.xlsx": build_xlsx_rich(d / "rich.xlsx", rows=40),
         "rich.pptx": build_pptx_rich(d / "rich.pptx"),
         "two.pdf": build_pdf(d / "two.pdf", [["alpha", "beta"], []]),
+        "commented.pdf": build_commented_pdf(d / "commented.pdf"),
         "minutes.odt": pandoc_build("# Minutes\n\ntext\n", "markdown", d / "minutes.odt"),
         "minutes.rtf": pandoc_build("# Minutes\n\ntext\n", "markdown", d / "minutes.rtf"),
     }

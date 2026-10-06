@@ -7,14 +7,23 @@ reading order (``FPDFText_GetText`` over the whole page).  pdfminer.six (MIT) is
 for a PDF PDFium cannot load for a reason other than encryption (and for an install where pypdfium2 cannot
 be imported); the summary line says when it was used.  Neither engine has a table model: tables come out as
 lines of cell text.
+
+Comments are kept (emitter 2.1.0).  A reviewer's notes, replies, text boxes and markup are annotations, which
+sit outside the text layer, so a commented copy used to convert to the same text as the original.  They are
+read from the page PDFium already has open and follow that page's text under ``[comments on this page (PDF
+annotations):]``, one line per comment.  An annotation that carries no text and marks none is skipped, and so
+is one no viewer shows (the Hidden or NoView flag).  The pdfminer fallback reads none; the summary says so.
 """
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import math
 import re
 import unicodedata
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +32,7 @@ from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _dist_version,
+    _escape_line,
     _escape_plain,
 )
 from agentsync.convert.base import OptionValue, make_unit
@@ -31,7 +41,7 @@ from agentsync.model import RenderedUnit, UnitKind
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "2.0.0"
+_EMITTER_VERSION = "2.1.0"  # 2.1.0: reviewer comments (annotations) follow each page's text
 _SCANNED_MIN_CHARS = 20
 _SCANNED = "[scanned page: no text layer]"
 _ENGINE = "pypdfium2:text-range"
@@ -43,6 +53,40 @@ _ERR_PASSWORD = 4
 _ERR_SECURITY = 5
 # C0 controls PDFium can emit for generated hyphens/placeholders (\x02, \x00...); \t \n \r \f are kept.
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f￾￿]")
+
+_COMMENTS_HEAD = "[comments on this page (PDF annotations):]"
+# Annotation subtypes that are comments (fpdf_annot.h, FPDF_ANNOT_*), with the word a reader knows each by.
+# Every other subtype (links, popups, form fields, media, watermarks, redactions...) is skipped.
+_NOTE = "Note"
+_COMMENT_KINDS: dict[int, str] = {
+    1: _NOTE,  # TEXT
+    3: "Text box",  # FREETEXT
+    4: "Line",
+    5: "Box",  # SQUARE
+    6: "Circle",
+    7: "Polygon",
+    8: "Polyline",
+    9: "Highlight",
+    10: "Underline",
+    11: "Squiggly underline",
+    12: "Strikethrough",  # STRIKEOUT
+    13: "Stamp",
+    14: "Insert",  # CARET
+    15: "Drawing",  # INK
+    17: "Attachment",  # FILEATTACHMENT
+}
+_TEXT_MARKUP = frozenset({9, 10, 11, 12})  # drawn over page text: that text is quoted
+# FPDF_ANNOT_FLAG_HIDDEN | FPDF_ANNOT_FLAG_NOVIEW: no viewer shows the annotation on screen, so a page that
+# listed it would present text no reviewer saw as a colleague's comment.
+_UNSEEN_FLAGS = (1 << 1) | (1 << 5)
+_QUOTE_MAX_CHARS = 300
+_MAX_INDENT = 4  # reply levels drawn; a deeper reply keeps this indent
+# A comment is one output line, so every run of whitespace becomes one space.  NEL (U+0085) and the Unicode
+# line and paragraph separators are spelled out, although ``\s`` covers them, because PDFium returns them
+# intact from /Contents and ``str.splitlines`` breaks a line on each.
+_WS_RE = re.compile(r"[\s\x85\N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR}]+")
+
+_Box = tuple[float, float, float, float]  # left, bottom, right, top in PDF space (y grows upward)
 
 # Fixed layout-analysis parameters of the pdfminer fallback (its defaults pinned explicitly, plus all_texts
 # so text inside Form XObjects/figures is not lost).  Any change here changes output, so it is in options().
@@ -77,9 +121,10 @@ def _pdfium_version() -> str | None:
     return f"pypdfium2-{_dist_version('pypdfium2')}+pdfium-{pypdfium2.PDFIUM_INFO}"
 
 
-def _pdfium_pages(src: Path) -> list[str]:
-    """Raw text of every page via PDFium; raises UnreadableSourceError when encrypted, else
-    _EngineUnavailableError when PDFium cannot load the file."""
+def _pdfium_pages(src: Path, name: str) -> tuple[list[str], dict[int, list[_Comment]]]:
+    """Raw text of every page via PDFium, plus the comments of each page that has any (by page index);
+    raises UnreadableSourceError when encrypted, else _EngineUnavailableError when PDFium cannot load the
+    file.  ``name`` only labels the log line for pages whose comments cannot be read."""
     try:
         import pypdfium2  # noqa: PLC0415 - heavy native import
         import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # noqa: PLC0415
@@ -98,17 +143,32 @@ def _pdfium_pages(src: Path) -> list[str]:
         if int(pdfium_c.FPDF_GetSecurityHandlerRevision(doc.raw)) != -1:
             raise UnreadableSourceError(f"{_ENCRYPTED_PDF} (/Encrypt in the trailer)")
         pages: list[str] = []
+        comments: dict[int, list[_Comment]] = {}
+        unread, first_error = 0, ""  # pages whose comments could not be read
         for index in range(len(doc)):
             page = doc[index]
             try:
                 textpage = page.get_textpage()
                 try:
                     pages.append(str(textpage.get_text_range()))
+                    # Comments are read here, on the page and text page already open.  A failure costs
+                    # this page its comments only: it must not reach the handler below, which would hand
+                    # a file PDFium reads to the fallback.
+                    try:
+                        found = _page_comments(pdfium_c, page, textpage)
+                    except Exception as exc:
+                        unread += 1
+                        first_error = first_error or f"page {index + 1}: {type(exc).__name__}: {exc}"
+                        found = []
+                    if found:
+                        comments[index] = found
                 finally:
                     textpage.close()
             finally:
                 page.close()
-        return pages
+        if unread:  # one line per file: a build that cannot read annotations would log every page
+            log.warning("%s: comments not read on %d page(s), first on %s", name, unread, first_error)
+        return pages, comments
     except pypdfium2.PdfiumError as exc:
         raise _EngineUnavailableError(f"PDFium failed on a page: {exc}") from exc
     finally:
@@ -147,14 +207,197 @@ def _pdfminer_pages(src: Path) -> list[str]:
     return pages
 
 
+@dataclass(frozen=True, slots=True)
+class _Comment:
+    """One comment annotation of a page.  ``author``, ``text`` and ``quote`` are one line each; ``index``
+    and ``parent`` (the annotation it answers, /IRT) are positions in the page's annotation list."""
+
+    index: int
+    kind: str
+    author: str
+    text: str
+    quote: str
+    top: float
+    left: float
+    parent: int | None
+
+
+def _one_line(text: str) -> str:
+    """NFC on one line: every whitespace run (line breaks, form feed, U+0085, U+2028, U+2029) becomes one
+    space and stray controls are dropped."""
+    flat = _CONTROL_RE.sub("", _WS_RE.sub(" ", text))
+    return _WS_RE.sub(" ", unicodedata.normalize("NFC", flat)).strip()
+
+
+def _annot_string(pdfium_c: Any, annot: Any, key: bytes) -> str:
+    """A text entry of an annotation dictionary (``Contents``, ``T``); "" when absent or empty."""
+    size = int(pdfium_c.FPDFAnnot_GetStringValue(annot, key, None, 0))  # bytes of UTF-16LE, NUL included
+    if size <= 2:
+        return ""
+    buf = ctypes.create_string_buffer(size)
+    pdfium_c.FPDFAnnot_GetStringValue(annot, key, ctypes.cast(buf, ctypes.POINTER(pdfium_c.FPDF_WCHAR)), size)
+    return buf.raw[: size - 2].decode("utf-16-le", errors="replace")
+
+
+class _PageChars:
+    """Where each character of one text page sits, read once and only for a page with a text markup.
+
+    A character belongs to a marked area when the centre of its loose box (the font's full line height) is
+    inside it.  PDFium's own bounded read takes every character whose tight box touches the area, which
+    pulls in the lines above and below on single-spaced text; a band through the middle of the area drops
+    commas, periods and underscores instead.
+    """
+
+    def __init__(self, pdfium_c: Any, textpage: Any) -> None:
+        """Bind the open text page; nothing is read yet."""
+        self._pdfium_c = pdfium_c
+        self._textpage = textpage
+        self._centres: list[tuple[float, float]] | None = None
+
+    def text_in(self, boxes: Sequence[_Box]) -> str:
+        """The page text whose characters are centred inside one of ``boxes``, in text order, on one line."""
+        if self._centres is None:
+            rect = self._pdfium_c.FS_RECTF()
+            self._centres = []
+            for i in range(int(self._textpage.count_chars())):
+                ok = self._pdfium_c.FPDFText_GetLooseCharBox(self._textpage, i, ctypes.byref(rect))
+                at = (
+                    ((rect.left + rect.right) / 2, (rect.bottom + rect.top) / 2)
+                    if ok
+                    else (math.nan, math.nan)
+                )
+                self._centres.append(at)
+        runs: list[list[int]] = []  # [first character, count] of each unbroken run of marked characters
+        for i, (x, y) in enumerate(self._centres):
+            if not any(left <= x <= right and bottom <= y <= top for left, bottom, right, top in boxes):
+                continue
+            if runs and runs[-1][0] + runs[-1][1] == i:
+                runs[-1][1] += 1
+            else:
+                runs.append([i, 1])
+        return _one_line(" ".join(str(self._textpage.get_text_range(first, count)) for first, count in runs))
+
+
+def _marked_text(pdfium_c: Any, annot: Any, chars: _PageChars, rect: _Box) -> str:
+    """The page text under a highlight, underline, squiggly or strikethrough (its quads, else its
+    rectangle)."""
+    boxes: list[_Box] = []
+    for q in range(int(pdfium_c.FPDFAnnot_CountAttachmentPoints(annot))):
+        quad = pdfium_c.FS_QUADPOINTSF()
+        if pdfium_c.FPDFAnnot_GetAttachmentPoints(annot, q, ctypes.byref(quad)):
+            xs = (quad.x1, quad.x2, quad.x3, quad.x4)
+            ys = (quad.y1, quad.y2, quad.y3, quad.y4)
+            boxes.append((min(xs), min(ys), max(xs), max(ys)))
+    return chars.text_in(boxes or [rect])
+
+
+def _read_comment(pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _PageChars) -> _Comment | None:
+    """One open annotation as a comment; None when it is not one, is not shown, or says and marks nothing."""
+    subtype = int(pdfium_c.FPDFAnnot_GetSubtype(annot))
+    kind = _COMMENT_KINDS.get(subtype)
+    if kind is None or int(pdfium_c.FPDFAnnot_GetFlags(annot)) & _UNSEEN_FLAGS:
+        return None
+    rect = pdfium_c.FS_RECTF()
+    box: _Box = (0.0, 0.0, 0.0, 0.0)
+    if pdfium_c.FPDFAnnot_GetRect(annot, ctypes.byref(rect)):
+        xs, ys = (rect.left, rect.right), (rect.bottom, rect.top)
+        box = (min(xs), min(ys), max(xs), max(ys))
+    text = _one_line(_annot_string(pdfium_c, annot, b"Contents"))
+    quote = _marked_text(pdfium_c, annot, chars, box) if subtype in _TEXT_MARKUP else ""
+    if not text and not quote:
+        return None  # a bare drawing, stamp or empty note: nothing a reader could use
+    parent: int | None = None
+    linked = pdfium_c.FPDFAnnot_GetLinkedAnnot(annot, b"IRT")
+    if linked:
+        try:
+            found = int(pdfium_c.FPDFPage_GetAnnotIndex(page.raw, linked))
+        finally:
+            pdfium_c.FPDFPage_CloseAnnot(linked)
+        parent = found if found >= 0 else None
+    return _Comment(
+        index=index,
+        kind=kind,
+        author=_one_line(_annot_string(pdfium_c, annot, b"T")),
+        text=text,
+        quote=quote,
+        top=box[3],
+        left=box[0],
+        parent=parent,
+    )
+
+
+def _page_comments(pdfium_c: Any, page: Any, textpage: Any) -> list[_Comment]:
+    """The comments among one open page's annotations, in file order (``textpage`` is that page's)."""
+    chars = _PageChars(pdfium_c, textpage)
+    out: list[_Comment] = []
+    for index in range(int(pdfium_c.FPDFPage_GetAnnotCount(page.raw))):
+        annot = pdfium_c.FPDFPage_GetAnnot(page.raw, index)
+        if not annot:
+            continue
+        try:
+            comment = _read_comment(pdfium_c, page, annot, index=index, chars=chars)
+        finally:
+            pdfium_c.FPDFPage_CloseAnnot(annot)
+        if comment is not None:
+            out.append(comment)
+    return out
+
+
+def _comment_line(c: _Comment, depth: int) -> str:
+    """One comment as one list item: ``<kind> by <author> on “<marked text>”: <text>``."""
+    # Only a note under another comment is a reply.  A markup grouped with its parent (the strikethrough of
+    # a replace-text pair, /IRT with /RT /Group) keeps its own word, or the reader cannot tell what it did.
+    label = "reply" if depth and c.kind == _NOTE else c.kind
+    if c.author:
+        label += f" by {c.author}"
+    if c.quote:
+        shown = c.quote
+        if len(shown) > _QUOTE_MAX_CHARS:
+            shown = shown[:_QUOTE_MAX_CHARS].rstrip() + "…"
+        label += f" on “{shown}”"
+    # Several tools copy the marked text into /Contents: say it once.
+    line = f"{label}: {c.text}" if c.text and c.text != c.quote else label
+    return "  " * min(depth, _MAX_INDENT) + "- " + _escape_line(line)
+
+
+def _render_comments(comments: Sequence[_Comment]) -> list[str]:
+    """Markdown list of one page's comments, one item each: top to bottom then left to right in PDF space
+    (a rotated page is not turned), each one's answers nested under it in file order."""
+    by_index = {c.index: c for c in comments}
+    answers: dict[int, list[_Comment]] = {}
+    roots: list[_Comment] = []
+    for c in comments:
+        if c.parent is not None and c.parent != c.index and c.parent in by_index:
+            answers.setdefault(c.parent, []).append(c)
+        else:
+            roots.append(c)  # no parent, or one that is not a comment here (skipped, or on no page)
+    roots.sort(key=lambda c: (-round(c.top, 1), round(c.left, 1), c.index))
+    out: list[str] = []
+    emitted: set[int] = set()
+    # An explicit stack: a damaged file can chain replies deeper than the interpreter's recursion limit.
+    # After the roots come the comments no root reaches (an /IRT cycle), in file order, so none is lost.
+    for start in (*roots, *comments):
+        stack = [(start, 0)]
+        while stack:
+            c, depth = stack.pop()
+            if c.index in emitted:
+                continue
+            emitted.add(c.index)
+            out.append(_comment_line(c, depth))
+            stack.extend((answer, depth + 1) for answer in reversed(answers.get(c.index, ())))
+    return out
+
+
 class PdfConverter:
     """PDFium (pypdfium2) text extraction, pdfminer.six fallback: one WHOLE unit with page anchors.
 
     ``<!-- page: N -->`` anchor per page; a page with < 20 chars of text is marked ``[scanned page: no text
     layer]`` (OCR is a later budgeted tier).  Encrypted PDFs (a password is needed, or ``/Encrypt`` in the
-    trailer) raise UnreadableSourceError(``encrypted-pdf ...``); a PDF with no text on any page raises
-    UnreadableSourceError (C15: an empty conversion is a stub, never an empty page).  pdfminer.six is used
-    only when PDFium cannot load a file for another reason (the summary says so).
+    trailer) raise UnreadableSourceError(``encrypted-pdf ...``); a PDF with no text and no comment on any
+    page raises UnreadableSourceError (C15: an empty conversion is a stub, never an empty page).  A page's
+    comments follow its text; a page with comments and no text is still a page.  pdfminer.six is used
+    only when PDFium cannot load a file for another reason (the summary says so, and that it read no
+    comments).
     """
 
     converter_id = "pdf-pypdfium2"
@@ -183,8 +426,9 @@ class PdfConverter:
             if b"%PDF-" not in fh.read(1024):
                 raise ConversionError("not a PDF (no %PDF- header)")
         engine = "pdfium"
+        found: dict[int, list[_Comment]] = {}
         try:
-            raw_pages = _pdfium_pages(src)
+            raw_pages, found = _pdfium_pages(src, name)
         except _EngineUnavailableError as exc:
             log.info("%s: %s; falling back to pdfminer.six", name, exc)
             engine = "pdfminer"
@@ -192,7 +436,9 @@ class PdfConverter:
         pages = [_clean(p) for p in raw_pages]
         if not pages:
             raise UnreadableSourceError("empty PDF: no pages")
-        if not any("".join(p.split()) for p in pages):
+        # Rendered before the refusal below: a page counts as commented only when a line comes out.
+        comments = {i: lines for i in sorted(found) if (lines := _render_comments(found[i]))}
+        if not comments and not any("".join(p.split()) for p in pages):
             raise UnreadableSourceError(_NO_TEXT)
         out: list[str] = []
         scanned = 0
@@ -203,14 +449,19 @@ class PdfConverter:
                 out += [_SCANNED if not text.strip() else f"{text}\n\n{_SCANNED}", ""]
             else:
                 out += [text, ""]
+            if n - 1 in comments:
+                out += [_COMMENTS_HEAD, *comments[n - 1], ""]
         body = "\n".join(out)
         first = next((ln.strip() for p in pages for ln in p.split("\n") if len(ln.strip()) >= 3), "")
         title = first.lstrip("\\")[:120] if first else "Untitled PDF"
         summary = f"PDF: {len(pages)} page(s)"
         if scanned:
             summary += f", {scanned} without a text layer (scanned; OCR not run)"
+        if comments:
+            # One line is one comment, so this counts the comments emitted, not lines of their text.
+            summary += f"; {sum(map(len, comments.values()))} comment(s) on {len(comments)} page(s)"
         if engine == "pdfminer":
-            summary += "; text by the pdfminer.six fallback (PDFium could not load it)"
+            summary += "; text by the pdfminer.six fallback (PDFium could not load it); comments not read"
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
         return (
             make_unit(

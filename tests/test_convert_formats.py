@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 import unicodedata
 import zipfile
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from agentsync.config import ConvertConfig
+from agentsync.convert import pdf as pdf_mod
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.markdown import MarkdownConverter
 from agentsync.convert.pandoc import PandocConverter, _bundled_pandoc, _PandocRunner
@@ -26,6 +28,8 @@ from agentsync.convert.xlsx import XlsxConverter
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 from test_convert_builders import (
+    build_annotated_pdf,
+    build_commented_pdf,
     build_docx_image,
     build_docx_merged,
     build_pdf,
@@ -35,6 +39,7 @@ from test_convert_builders import (
     make_zip,
     ole_encrypted,
     pandoc_build,
+    pdf_text,
     teams_doc,
     teams_msg,
     with_cached_values,
@@ -412,25 +417,26 @@ def test_pdf_is_pypdfium2_and_says_so() -> None:
     assert conv.converter_id == "pdf-pypdfium2"
     assert Registry.default(CFG).for_name("Statement.PDF") is not None
     assert Registry.default(CFG).for_name("Statement.PDF").converter_id == "pdf-pypdfium2"  # type: ignore[union-attr]
-    assert re.fullmatch(r"2\.0\.0\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
+    assert re.fullmatch(r"2\.1\.0\+pypdfium2-[\d.]+\+pdfium-[\d.]+\+pdfminer\.six-\S+", conv.version())
     opts = conv.options()
     assert opts["engine"] == "pypdfium2:text-range" and opts["fallback"] == "pdfminer.six"
+    assert not any("comment" in key for key in opts)  # the emitter version alone moves the action key
+
+
+def _pdfium_cannot_load(_src: Path, _name: str) -> tuple[list[str], dict[int, list[object]]]:
+    raise pdf_mod._EngineUnavailableError("PDFium cannot load the PDF: Data format error")
 
 
 def test_pdf_falls_back_to_pdfminer_only_when_pdfium_cannot_load(
     fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from agentsync.convert import pdf as pdf_mod  # noqa: PLC0415
-
     primary = _one(PdfConverter(CFG).convert(fixture_files["sample.pdf"], name="sample.pdf"))
-
-    def broken(_src: Path) -> list[str]:
-        raise pdf_mod._EngineUnavailableError("PDFium cannot load the PDF: Data format error")
-
-    monkeypatch.setattr(pdf_mod, "_pdfium_pages", broken)
+    monkeypatch.setattr(pdf_mod, "_pdfium_pages", _pdfium_cannot_load)
     fallback = _one(PdfConverter(CFG).convert(fixture_files["sample.pdf"], name="sample.pdf"))
     assert fallback.body == primary.body  # same page anchors and text on a simple born-digital PDF
-    assert fallback.summary.endswith("; text by the pdfminer.six fallback (PDFium could not load it)")
+    assert fallback.summary == (
+        "PDF: 2 page(s); text by the pdfminer.six fallback (PDFium could not load it); comments not read"
+    )
     assert "fallback" not in primary.summary
 
 
@@ -484,6 +490,294 @@ def test_pdf_cap_keeps_the_full_text_in_a_sidecar(tmp_path: Path) -> None:
     assert len(u.body.encode()) <= 4000
     assert "the full text is in the sidecar `full-text.txt`" in u.body
     assert u.sidecars[0][0] == "full-text.txt" and b"line 39 of page 19" in u.sidecars[0][1]
+
+
+_COMMENTS_HEAD = "[comments on this page (PDF annotations):]"
+_COMMENTED_PDF_BODY = """\
+<!-- page: 1 -->
+
+Contoso widget overview
+Quarterly totals by region
+Draft wording of the summary
+
+[comments on this page (PDF annotations):]
+- Highlight by Roe, John on “Contoso widget overview”: Use the Q3 figures here
+- Note by Doe, Jane Q: Add units → revenue split by region
+  - reply by Roe, John: Agreed
+- Underline by Doe, Jane Q on “Quarterly totals by region”
+- Insert by Roe, John: final wording
+  - Strikethrough by Roe, John on “Draft wording”
+- Text box: Typed note: # not a heading - reply by Roe, John: approved
+
+<!-- page: 2 -->
+
+Second page: nothing on it is a comment.
+
+<!-- page: 3 -->
+
+Alpha gyp line above, jq.
+Middle TARGET line, ok. a_b
+Omega line below
+
+[comments on this page (PDF annotations):]
+- Highlight by Doe, Jane Q on “Middle TARGET line, ok. a_b”
+- Squiggly underline by Roe, John on “Middle TARGET line, ok. a_b Omega line below”: tighten this
+"""
+
+
+def test_pdf_comments_follow_their_page_text(tmp_path: Path) -> None:
+    """Each page's comments sit under its own anchor, one line each, top to bottom; a page whose
+    annotations are all skipped (page 2: a link, a hidden note, a no-view highlight, an empty note) gets no
+    block.  ``build_commented_pdf`` says which case each line is."""
+    u = _one(PdfConverter(CFG).convert(build_commented_pdf(tmp_path / "c.pdf"), name="c.pdf"))
+    assert u.body == _COMMENTED_PDF_BODY
+    # Comments are counted, not lines of their text: the text box holds a line shaped like a reply.
+    assert u.summary == "PDF: 3 page(s); 9 comment(s) on 2 page(s)"
+    assert u.title == "Contoso widget overview"
+
+
+def test_pdf_page_with_only_comments_is_not_refused(tmp_path: Path) -> None:
+    """Comments drawn on a scan: no text on any page, yet there is something to read.  A markup that marks
+    no text and says nothing (the underline, the strikethrough) is dropped."""
+    src = build_commented_pdf(tmp_path / "scan.pdf", text=False)
+    u = _one(PdfConverter(CFG).convert(src, name="scan.pdf"))
+    assert u.body == (
+        f"<!-- page: 1 -->\n\n[scanned page: no text layer]\n\n{_COMMENTS_HEAD}\n"
+        "- Highlight by Roe, John: Use the Q3 figures here\n"
+        "- Note by Doe, Jane Q: Add units → revenue split by region\n"
+        "  - reply by Roe, John: Agreed\n"
+        "- Insert by Roe, John: final wording\n"
+        "- Text box: Typed note: # not a heading - reply by Roe, John: approved\n\n"
+        "<!-- page: 2 -->\n\n[scanned page: no text layer]\n\n"
+        f"<!-- page: 3 -->\n\n[scanned page: no text layer]\n\n{_COMMENTS_HEAD}\n"
+        "- Highlight by Doe, Jane Q: Middle TARGET line, ok. a_b\n"
+        "- Squiggly underline by Roe, John: tighten this\n"
+    )
+    assert u.summary == (
+        "PDF: 3 page(s), 3 without a text layer (scanned; OCR not run); 7 comment(s) on 2 page(s)"
+    )
+    assert u.title == "Untitled PDF"
+    # Annotations that are all skipped are not comments: such a file is still refused.
+    unseen = "/Subtype /Text /Rect [400 700 420 720] /F 2 /Contents (no viewer shows this)"
+    with pytest.raises(UnreadableSourceError, match="no text layer"):
+        PdfConverter(CFG).convert(build_annotated_pdf(tmp_path / "h.pdf", [([], [unseen])]), name="h.pdf")
+
+
+def test_pdf_marked_text_is_chosen_by_character_centre(tmp_path: Path) -> None:
+    """On single-spaced text the box a viewer draws overlaps the lines above and below.  PDFium's bounded
+    read of that box returns their glyphs too; the quote is the marked line, punctuation included."""
+    import pypdfium2  # noqa: PLC0415
+
+    src = build_commented_pdf(tmp_path / "c.pdf")
+    doc = pypdfium2.PdfDocument(str(src))
+    try:
+        textpage = doc[2].get_textpage()
+        bounded = str(textpage.get_text_bounded(left=70, bottom=705.4, right=300, top=719.1))
+    finally:
+        doc.close()
+    # The fixture is the hard case.  If a PDFium upgrade makes this fail, its bounded read no longer leaks.
+    assert "Middle TARGET line, ok. a_b" in bounded and bounded.strip() != "Middle TARGET line, ok. a_b"
+    body = _one(PdfConverter(CFG).convert(src, name="c.pdf")).body
+    assert "- Highlight by Doe, Jane Q on “Middle TARGET line, ok. a_b”\n" in body
+    # A rectangle that ends inside the line (no quads) quotes the part it covers.
+    assert "  - Strikethrough by Roe, John on “Draft wording”\n" in body
+
+
+def test_pdf_comments_no_viewer_shows_are_skipped(tmp_path: Path) -> None:
+    """Hidden and NoView annotations are left out: a page that listed them would present text no reviewer
+    saw as a colleague's comment.  Other flags do not hide a comment; an answer to a skipped one stands
+    alone."""
+    at = "/Subtype /Text /Rect [400 {y} 420 {top}]"
+    annots = [
+        at.format(y=700, top=720) + " /F 2 /T (Roe, John) /Contents (hidden instruction)",
+        at.format(y=660, top=680) + " /F 32 /T (Roe, John) /Contents (no-view instruction)",
+        at.format(y=620, top=640) + " /F 34 /T (Roe, John) /Contents (both flags)",
+        at.format(y=580, top=600) + " /F 28 /T (Doe, Jane Q) /Contents (printed, no zoom, no rotate)",
+        at.format(y=700, top=720) + " /T (Doe, Jane Q) /IRT {0} /Contents (answer to the hidden one)",
+    ]
+    src = build_annotated_pdf(tmp_path / "f.pdf", [(["Enough text on this page to count."], annots)])
+    u = _one(PdfConverter(CFG).convert(src, name="f.pdf"))
+    assert u.body.split(f"{_COMMENTS_HEAD}\n")[1] == (
+        "- Note by Doe, Jane Q: answer to the hidden one\n"
+        "- Note by Doe, Jane Q: printed, no zoom, no rotate\n"
+    )
+    assert u.summary == "PDF: 1 page(s); 2 comment(s) on 1 page(s)"
+
+
+def test_pdf_comment_cannot_leave_its_line(tmp_path: Path) -> None:
+    """A comment is one list item whatever line breaks it carries, so text inside it cannot pose as a
+    reply, a heading, a rule, a code fence or a page anchor, and the summary counts it once."""
+    text = (
+        "Fix these:\r- add X\n- reply by Roe, John: approved\r\n# h\x0c<!-- page: 9 -->\x85---"
+        "\N{LINE SEPARATOR}```\N{PARAGRAPH SEPARATOR}1. z"
+    )
+    author = pdf_text("Doe, Jane <!-- page: 8 -->")
+    note = f"/Subtype /Text /Rect [400 700 420 720] /T {author} /Contents {pdf_text(text)}"
+    src = build_annotated_pdf(tmp_path / "n.pdf", [(["Enough text on this page to count."], [note])])
+    u = _one(PdfConverter(CFG).convert(src, name="n.pdf"))
+    block = u.body.split(f"{_COMMENTS_HEAD}\n")[1]
+    assert block == (
+        "- Note by Doe, Jane &lt;!-- page: 8 -->: Fix these: - add X - reply by Roe, John: approved # h "
+        "&lt;!-- page: 9 --> --- ``` 1. z\n"
+    )
+    assert len(block.splitlines()) == 1 and u.body.count("<!-- page:") == 1
+    assert u.summary == "PDF: 1 page(s); 1 comment(s) on 1 page(s)"
+
+
+def test_pdf_comment_text_is_one_line() -> None:
+    raw = (
+        " a\rb\nc\x0cd\x85e\N{LINE SEPARATOR}f\N{PARAGRAPH SEPARATOR}g\x0bh\x1ci \t\xa0 j "
+        "co\x02operate Cafe\N{COMBINING ACUTE ACCENT} "
+    )
+    assert pdf_mod._one_line(raw) == "a b c d e f g h i j cooperate Café"
+    assert pdf_mod._one_line(" \r\n\x0c ") == ""
+
+
+def test_pdf_shapes_and_stamps_with_text_are_comments(tmp_path: Path) -> None:
+    """Every comment subtype has its word; a form field, a redaction or a sound with text is not one."""
+    kinds = [
+        ("Line", "Line"),
+        ("Square", "Box"),
+        ("Circle", "Circle"),
+        ("Polygon", "Polygon"),
+        ("PolyLine", "Polyline"),
+        ("Stamp", "Stamp"),
+        ("Ink", "Drawing"),
+        ("FileAttachment", "Attachment"),
+    ]
+    annots = [
+        f"/Subtype /{subtype} /Rect [100 {700 - 20 * i} 120 {715 - 20 * i}] /Contents (see the {word})"
+        for i, (subtype, word) in enumerate(kinds)
+    ]
+    annots += [
+        f"/Subtype /{subtype} /Rect [300 700 320 715] /Contents (not a comment)"
+        for subtype in ("Widget", "Redact", "Sound", "Watermark")
+    ]
+    src = build_annotated_pdf(tmp_path / "k.pdf", [(["Enough text on this page to count."], annots)])
+    block = _one(PdfConverter(CFG).convert(src, name="k.pdf")).body.split(f"{_COMMENTS_HEAD}\n")[1]
+    assert block.splitlines() == [f"- {word}: see the {word}" for _subtype, word in kinds]
+
+
+def test_pdf_comment_kinds_are_the_pdfium_subtypes() -> None:
+    """The subtype and flag numbers in the converter are PDFium's (fpdf_annot.h)."""
+    import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    words = {
+        "TEXT": "Note",
+        "FREETEXT": "Text box",
+        "LINE": "Line",
+        "SQUARE": "Box",
+        "CIRCLE": "Circle",
+        "POLYGON": "Polygon",
+        "POLYLINE": "Polyline",
+        "HIGHLIGHT": "Highlight",
+        "UNDERLINE": "Underline",
+        "SQUIGGLY": "Squiggly underline",
+        "STRIKEOUT": "Strikethrough",
+        "STAMP": "Stamp",
+        "CARET": "Insert",
+        "INK": "Drawing",
+        "FILEATTACHMENT": "Attachment",
+    }
+    assert {getattr(pdfium_c, f"FPDF_ANNOT_{name}"): word for name, word in words.items()} == (
+        pdf_mod._COMMENT_KINDS
+    )
+    markup = ("HIGHLIGHT", "UNDERLINE", "SQUIGGLY", "STRIKEOUT")
+    assert {getattr(pdfium_c, f"FPDF_ANNOT_{name}") for name in markup} == pdf_mod._TEXT_MARKUP
+    assert pdfium_c.FPDF_ANNOT_FLAG_HIDDEN | pdfium_c.FPDF_ANNOT_FLAG_NOVIEW == pdf_mod._UNSEEN_FLAGS
+
+
+def _comment(
+    index: int, parent: int | None = None, *, kind: str = "Note", text: str | None = None, quote: str = ""
+) -> pdf_mod._Comment:
+    """A comment ``c<index>``; a lower index sits higher on the page."""
+    body = f"c{index}" if text is None else text
+    return pdf_mod._Comment(
+        index=index, kind=kind, author="", text=body, quote=quote, top=-float(index), left=0.0, parent=parent
+    )
+
+
+def test_pdf_comment_threads_keep_every_comment() -> None:
+    render = pdf_mod._render_comments
+    # Answers nest under their comment in file order; roots run top to bottom.
+    thread = [_comment(0), _comment(1), _comment(2, 0), _comment(3, 0), _comment(4, 2)]
+    assert render(thread) == ["- Note: c0", "  - reply: c2", "    - reply: c4", "  - reply: c3", "- Note: c1"]
+    # Two comments answering each other: no root reaches them, yet both come out, once each.
+    assert render([_comment(0, 1), _comment(1, 0)]) == ["- Note: c0", "  - reply: c1"]
+    # A parent that is not a comment on this page, and a comment answering itself, stand alone.
+    assert render([_comment(0, 7), _comment(1, 1)]) == ["- Note: c0", "- Note: c1"]
+    # A chain deeper than the interpreter's recursion limit: every comment, the indent capped at 4 levels.
+    chain = render([_comment(i, i - 1 if i else None) for i in range(1200)])
+    assert len(chain) == 1200 and chain[:2] == ["- Note: c0", "  - reply: c1"]
+    assert chain[4] == "        - reply: c4" and chain[-1] == "        - reply: c1199"
+
+
+def test_pdf_comment_line_labels_quote_cap_and_repeated_text() -> None:
+    render = pdf_mod._render_comments
+    # Only a note under another comment is a reply: the strikethrough of a replace-text pair keeps its word.
+    pair = [
+        _comment(0, kind="Insert", text="new"),
+        _comment(1, 0, kind="Strikethrough", text="", quote="old"),
+    ]
+    assert render(pair) == ["- Insert: new", "  - Strikethrough on “old”"]
+    # A tool that copies the marked text into the comment: said once, whatever the quote's length.
+    quote = ("word " * 80).strip()
+    assert render([_comment(0, kind="Highlight", text="same words", quote="same words")]) == [
+        "- Highlight on “same words”"
+    ]
+    capped = "- Highlight on “" + ("word " * 60).strip() + "…”"
+    assert render([_comment(0, kind="Highlight", text=quote, quote=quote)]) == [capped]
+    assert render([_comment(0, kind="Highlight", text="why", quote=quote)]) == [capped + ": why"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "failing", "blocks_lost", "summary"),
+    [("pdfium", 1, 1, "PDF: 3 page(s); 2 comment(s) on 1 page(s)"), ("other", 3, 2, "PDF: 3 page(s)")],
+)
+def test_pdf_comment_failure_keeps_the_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    kind: str,
+    failing: int,
+    blocks_lost: int,
+    summary: str,
+) -> None:
+    """Comments that cannot be read cost a page its comments, not the file its PDFium text: a PdfiumError
+    here must not send the file to the pdfminer fallback.  One log line per file, however many pages."""
+    import pypdfium2  # noqa: PLC0415
+
+    error: Exception = RuntimeError("boom")
+    if kind == "pdfium":
+        error = pypdfium2.PdfiumError("Failed to load annotation.")
+    real = pdf_mod._page_comments
+    seen: list[object] = []
+
+    def first_pages_fail(pdfium_c: object, page: object, textpage: object) -> list[pdf_mod._Comment]:
+        seen.append(page)
+        if len(seen) <= failing:
+            raise error
+        return real(pdfium_c, page, textpage)
+
+    monkeypatch.setattr(pdf_mod, "_page_comments", first_pages_fail)
+    with caplog.at_level(logging.WARNING, logger="agentsync.convert.pdf"):
+        u = _one(PdfConverter(CFG).convert(build_commented_pdf(tmp_path / "c.pdf"), name="c.pdf"))
+    block = rf"\n{re.escape(_COMMENTS_HEAD)}\n(?:.+\n)+"  # a page's block and the blank line before it
+    assert u.body == re.sub(block, "", _COMMENTED_PDF_BODY, count=blocks_lost)
+    assert u.summary == summary
+    assert [r.getMessage() for r in caplog.records] == [
+        f"c.pdf: comments not read on {failing} page(s), first on page 1: {type(error).__name__}: {error}"
+    ]
+
+
+def test_pdf_fallback_reads_no_comments_and_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pdf_mod, "_pdfium_pages", _pdfium_cannot_load)
+    u = _one(PdfConverter(CFG).convert(build_commented_pdf(tmp_path / "c.pdf"), name="c.pdf"))
+    assert "Contoso widget overview" in u.body and "Omega line below" in u.body
+    assert "comments on this page" not in u.body and "Agreed" not in u.body
+    assert u.summary == (
+        "PDF: 3 page(s); text by the pdfminer.six fallback (PDFium could not load it); comments not read"
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------
