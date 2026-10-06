@@ -336,11 +336,24 @@ _AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, u
 
 def _clear_group_other(path: Path) -> bool:
     """Clear ``path``'s group/other permission bits; True when they were set.  A symlink is left alone (its
-    target may lie outside the docs repo), and so is anything that is not a regular file or a folder."""
-    mode = path.lstat().st_mode
-    if not mode & 0o077 or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+    target may lie outside the docs repo), and so is anything that is not a regular file or a folder.  The
+    mode is read again and changed through one descriptor opened without following a link: these are
+    entries others can still write, so one swapped for a symlink after the first look is an error (ELOOP),
+    never a chmod of its target."""
+
+    def loose(mode: int) -> bool:
+        return bool(mode & 0o077) and (stat.S_ISREG(mode) or stat.S_ISDIR(mode))
+
+    if not loose(path.lstat().st_mode):
         return False
-    path.chmod(stat.S_IMODE(mode) & ~0o077)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        mode = os.fstat(fd).st_mode
+        if not loose(mode):
+            return False
+        os.fchmod(fd, stat.S_IMODE(mode) & ~0o077)
+    finally:
+        os.close(fd)
     return True
 
 

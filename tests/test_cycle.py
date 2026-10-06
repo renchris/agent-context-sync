@@ -418,6 +418,33 @@ def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publish
     assert cycle_mod._tighten_agent_writes(tmp_path / "missing") == 0
 
 
+def test_tightening_never_follows_an_entry_swapped_for_a_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The entries it tightens are the ones others can still write, so one can be replaced between the look
+    and the change. The mode is changed through a descriptor opened without following a link: a symlink put
+    there in between is an error for that path, and its target outside the docs repo keeps its mode."""
+    repo, outside = tmp_path / "docs", tmp_path / "outside"
+    (repo / "_eval").mkdir(parents=True)
+    outside.mkdir()
+    outside.chmod(0o755)
+    before = tmp_path / "before.md"
+    before.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+    before.chmod(0o644)
+    swapped = repo / "_eval" / "notes.md"
+    swapped.symlink_to(outside, target_is_directory=True)
+    lstat = Path.lstat
+
+    def first_look(self: Path) -> os.stat_result:  # what the entry was before the swap: a loose file
+        return lstat(before) if self == swapped else lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", first_look)
+    with pytest.raises(OSError):
+        cycle_mod._clear_group_other(swapped)
+    cycle_mod._tighten_agent_writes(repo)
+    assert outside.stat().st_mode & 0o777 == 0o755
+
+
 def test_paused_source_is_skipped_and_retired_source_is_tombstoned_with_banners(
     tmp_path: Path, local_source_dir: Path
 ) -> None:

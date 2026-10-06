@@ -6371,7 +6371,9 @@ write to `_eval/`, therefore left that folder readable by group and other, and t
 `docs_repo.permissions` FAIL that the loop itself had caused. Every non-dry cycle now clears the group and
 other bits right after `Publisher.ensure_scaffold` (`cycle._tighten_agent_writes`, private): on each entry at
 the top of the docs repo (the entry itself) and on everything below `_eval/` and `topics/`. Regular files and
-folders only; a symlink is never followed or changed, so nothing outside the docs repo is touched. `mirror/`
+folders only; a symlink is never followed or changed, so nothing outside the docs repo is touched: each mode is
+read again and changed through one descriptor opened with `O_NOFOLLOW` (`fstat`, `fchmod`), so an entry swapped
+for a symlink after the first `lstat` is an error for that path, not a chmod of its target. `mirror/`
 and `.git` are not walked (the publisher writes 0600, git writes under `core.sharedRepository`), so a loose
 mode there is still doctor's to report, as is a path the cycle could not change (one warning with a count, no
 path). Modes are not content, so this alone never makes a commit. A dry run changes nothing, and sync still
