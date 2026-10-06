@@ -987,7 +987,7 @@ def test_pac_proxy_is_info_without_a_live_graph_source(
         monkeypatch.delenv(var, raising=False)
     config, _src = make_env(tmp_path)
     lines = [c for c in cli._network_checks(config, offline=True) if c.name == "network.proxy"]
-    assert lines and any("PAC" in c.detail for c in lines)
+    assert len(lines) == 1 and "PAC" in lines[0].detail, "one PAC fact, one line (bring-back S13)"
     for c in lines:
         assert c.severity is doctor.Severity.INFO and c.fix is None and c.note, c
     assert "(fix:" not in doctor.format_results(lines)

@@ -1109,6 +1109,27 @@ def test_purge_queue_dry_run_previews_and_writes_nothing(
     assert len(governance.pending_purges(initialised.state_paths.root)) == 1
 
 
+def test_purge_queue_check_names_no_command_under_no_next_hint(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bring-back S16: install.sh prints the loop's WAITING ON YOU line for queued purges, so its status
+    check carries a note and no second ``fix:``; by hand the fix is the command."""
+    selector = governance.PurgeSelector(source_id="source", path_glob="*")
+    assert governance.enqueue_purge(initialised.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+
+    def check() -> doctor.CheckResult:
+        (found,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
+        return found
+
+    by_hand = check()
+    assert by_hand.severity is doctor.Severity.WARN and by_hand.fix == "agentsync purge --queue"
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+    quiet = check()
+    assert not quiet.ok and quiet.severity is doctor.Severity.WARN and quiet.detail == by_hand.detail
+    assert quiet.fix is None and quiet.note == "yours: see WAITING ON YOU"
+    assert doctor.format_results([quiet]).endswith("(yours: see WAITING ON YOU)")
+
+
 def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1826,6 +1847,10 @@ def test_add_source_on_a_fresh_home_creates_everything_once(
     out = capsys.readouterr().out
     assert out.count("wrote ") == 1 and out.count("added source 'source'") == 1
     assert "already configured: source 'source'" in out
+    # bring-back S15: the scaffold count carries its verb, so the second call reads as a no-op
+    first, second = [ln for ln in out.splitlines() if ln.startswith("docs repo ")]
+    assert re.search(r"\(created, no remote; [1-9]\d* scaffold file\(s\) written\)$", first), first
+    assert second.endswith("(exists, no remote; scaffold up to date)"), second
     cfg = ctx / "sources.toml"
     assert cfg.stat().st_mode & 0o777 == 0o600
     config = load_config(cfg)

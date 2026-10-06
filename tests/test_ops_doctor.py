@@ -406,9 +406,16 @@ def test_cloud_source_without_sentinel_and_tcc_note(sample_config: Config) -> No
     (root / "a.docx").write_bytes(b"x")
     src = dataclasses.replace(sample_config.sources[0], path=root, sentinel=None)
     r = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))
-    assert r["source.local-fixture.sentinel"].severity is Severity.WARN
+    # Bring-back S9: add-source writes no sentinel, and the walk already holds deletions for a cloud folder
+    # it finds empty or cannot list, so the missing sentinel is an ok line, not a warn with a hand edit.
+    sentinel = r["source.local-fixture.sentinel"]
+    assert sentinel.ok and sentinel.fix is None and "optional" in sentinel.detail
     assert "File Provider root UUID" in r["source.local-fixture.volume"].detail
+    # Bring-back S21: an [ok] line is a note, never the Full Disk Access instruction, and points at lines
+    # that exist in every branch.
     assert r["tcc"].ok and "needs its own" in r["tcc"].detail
+    assert "grant Full Disk Access" not in r["tcc"].detail and "tcc.<source>" not in r["tcc"].detail
+    assert r["tcc"].detail.endswith("(the launcher and tcc.* lines below report it)")
 
 
 def test_cloud_source_empty_hints_fda(sample_config: Config) -> None:
@@ -722,13 +729,6 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     assert_fix_parses(r.fix)
 
 
-def assert_fix_parses(fix: str | None) -> None:
-    """A fix naming an agentsync command names one the CLI still parses (KISS K13b: no deleted spelling
-    such as ``sync --source`` or ``sync --dry-run``). The text after ``;`` and any parenthetical are prose."""
-    assert fix is not None and fix.startswith("agentsync "), fix
-    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
-    try:
-        cli.build_parser().parse_args(shlex.split(command))
 def test_heartbeat_incomplete_fix_by_source_kind(sample_config: Config) -> None:
     """Bring-back S11: a Graph pass resumes, so sync again is its fix; a cloud folder source names its empty
     folders and the exclude line to paste, the same line the loop's WAITING ON YOU prints."""
@@ -750,6 +750,13 @@ def test_heartbeat_incomplete_fix_by_source_kind(sample_config: Config) -> None:
     assert "\"/Bids/\"] in [[source]] id = 'local-fixture' in sources.toml" in r.fix
 
 
+def assert_fix_parses(fix: str | None) -> None:
+    """A fix naming an agentsync command names one the CLI still parses (KISS K13b: no deleted spelling
+    such as ``sync --source`` or ``sync --dry-run``). The text after ``;`` and any parenthetical are prose."""
+    assert fix is not None and fix.startswith("agentsync "), fix
+    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
+    try:
+        cli.build_parser().parse_args(shlex.split(command))
     except SystemExit:
         pytest.fail(f"the fix names a command the CLI rejects: {fix}")
 
@@ -1021,6 +1028,8 @@ def test_tcc_canary_through_the_launcher(
     if rc == launchd.EXIT_TCC_DENIED:
         fix = t.fix or ""
         assert "Full Disk Access" in fix and "tccutil reset All com.agentsync.launcher" in fix
+    if rc == launchd.EXIT_DISCLAIM_UNAVAILABLE:  # its own instruction: the ok tcc note no longer carries one
+        assert "grant Full Disk Access to" in (t.fix or "") and "AgentSyncLauncher.app" in (t.fix or "")
     assert "AgentSyncLauncher.app" in r["tcc"].detail, "the note names the launcher, not the interpreter"
 
 
@@ -1109,6 +1118,40 @@ def test_launchd_fix_reads_agent_step_below_while_the_installer_step_is_pending(
     # a failed check with neither fix nor note renders as before
     plain = CheckResult("x", False, "broken", Severity.WARN)
     assert format_results([plain]) == "[warn] x — broken"
+
+
+def test_launchd_warn_fix_is_the_operators_under_no_next_hint(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bring-back S16: install.sh without --confirm-install-agent on a Mac whose LaunchAgents an earlier
+    install left: a launchd.* warn (not loaded, plist differs) is the operator's to refresh, so under
+    AGENTSYNC_NO_NEXT_HINT=1 it carries a note and no ``fix:``. A FAIL keeps its fix, and so does every line
+    outside install.sh."""
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    install_agents(sample_config, loaded)
+    loaded.clear()
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert r.severity is Severity.WARN and (r.fix or "").startswith("launchctl bootstrap ") and r.note is None
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    results = run_checks(sample_config)
+    for name in ("launchd.poll", "launchd.reconcile"):
+        r = by_name(results)[name]
+        assert (
+            not r.ok and r.fix is None and r.note == "background sync is yours to refresh, not a setup step"
+        )
+        [line] = [ln for ln in format_results(results).splitlines() if f"] {name} " in ln]
+        assert "installed but not loaded" in line and "fix:" not in line
+    # the agent step's own note wins when install.sh is about to install them
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
+    assert by_name(run_checks(sample_config))["launchd.poll"].note == doctor.AGENT_STEP_NOTE
+    monkeypatch.delenv(doctor.AGENT_STEP_PENDING_ENV)
+    # a FAIL is something to fix before syncing: its fix stays
+    plist = launchd.plist_path(launchd.poll_spec(sample_config).label)
+    data = plistlib.loads(plist.read_bytes())
+    data["MaterializeDatalessFiles"] = True
+    plist.write_bytes(plistlib.dumps(data))
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert r.severity is Severity.ERROR and r.fix == "agentsync install-agent" and r.note is None
 
 
 def test_adhoc_launcher_fix_is_worded_for_it_under_no_next_hint(

@@ -483,7 +483,7 @@ def test_status_line_tracks_skill_baseline_topics_and_queue(tmp_path: Path, fold
     config = _synced(tmp_path, folder)
     line = loop.status_line(config)
     assert line == (
-        "loop: skill current · inbox off · baseline missing · topics 0 · checkpoint never · queue 1 · "
+        "loop: skill current · inbox off · baseline missing · topics 0 · checkpoint never · to curate 1 · "
         "archive off"
     )
     (path,) = skill.skill_paths()

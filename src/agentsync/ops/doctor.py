@@ -59,6 +59,11 @@ _OCR_NOT_BUILT_NO_DEVTOOLS = (
 )
 _OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 
+# Also under NO_NEXT_HINT_ENV, when install.sh was not asked for the agent step: a launchd.* warn whose fix is
+# install-agent or a bootstrap (LaunchAgents left by an earlier install) is the person's to refresh, so it
+# reads this note, with no ``fix:``. A FAIL keeps its fix.
+_AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
+
 
 class Severity(enum.StrEnum):
     """How bad a failed check is."""
@@ -684,12 +689,13 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         except PermissionError:
             out.append(_bad(f"{base}.sentinel", f"{target}: not permitted (TCC)", fix=_fda_fix(image)))
     elif cloud:
+        # add-source writes the sentinel as a commented recommendation, and the walk already holds deletions
+        # for a cloud folder it cannot list or finds empty: optional, so not a warn to chase.
         out.append(
-            _bad(
+            _ok(
                 f"{base}.sentinel",
-                "no sentinel: a TCC-hidden or unenumerated tree cannot be told apart from an empty one",
-                Severity.WARN,
-                fix=f'set sentinel = "<a file that always exists>" in [[source]] id = {src.id!r}',
+                "no sentinel configured (optional: a cloud folder that is empty or cannot be listed already "
+                "holds deletions)",
             )
         )
     else:
@@ -747,7 +753,7 @@ def _check_sources(config: Config) -> list[CheckResult]:
                 _ok(
                     "tcc",
                     f"cloud roots were listed with this terminal's privacy grants; the LaunchAgent runs "
-                    f"{subject} and needs its own (tcc.<source> below probes it): {_fda_fix(subject)}",
+                    f"{subject} and needs its own (the launcher and tcc.* lines below report it)",
                 )
             )
     return out
@@ -1041,9 +1047,9 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
             out.append(
                 _bad(
                     name,
-                    "cannot probe as the launcher (responsibility_spawnattrs_setdisclaim unavailable); "
-                    "the tcc note below applies",
+                    "cannot probe as the launcher (responsibility_spawnattrs_setdisclaim unavailable)",
                     Severity.WARN,
+                    fix=_fda_fix(target),
                 )
             )
         else:
@@ -1189,6 +1195,8 @@ def _check_launchd(config: Config) -> list[CheckResult]:
             )
     if os.environ.get(AGENT_STEP_PENDING_ENV, "").strip() == "1":
         out = [_agent_step_pending(r) for r in out]
+    elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        out = [_agent_yours(r) for r in out]
     return out
 
 
@@ -1197,6 +1205,16 @@ def _agent_step_pending(result: CheckResult) -> CheckResult:
     if result.ok or result.fix is None or not result.fix.startswith(_AGENT_STEP_FIXES):
         return result
     return CheckResult(result.name, result.ok, result.detail, result.severity, fix=None, note=AGENT_STEP_NOTE)
+
+
+def _agent_yours(result: CheckResult) -> CheckResult:
+    """A launchd.* warn with an install-agent (or bootstrap) fix, worded as ``_AGENT_YOURS_NOTE`` with no
+    ``fix:`` (under :data:`NO_NEXT_HINT_ENV` with no agent step pending)."""
+    if result.ok or result.severity is not Severity.WARN:
+        return result
+    if result.fix is None or not result.fix.startswith(_AGENT_STEP_FIXES):
+        return result
+    return CheckResult(result.name, result.ok, result.detail, result.severity, note=_AGENT_YOURS_NOTE)
 
 
 def _check_lock(config: Config) -> list[CheckResult]:
@@ -1287,6 +1305,22 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
     return out
 
 
+def _incomplete_fix(src: SourceConfig) -> str:
+    """The fix for a source whose listing stays incomplete. A Graph pass resumes, so another sync clears it;
+    a local walk is always a full pass, so the same folder stops it again: name the empty cloud folders and
+    the exclude line to paste (as the loop's WAITING ON YOU line does), or say what names the folder."""
+    if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+        return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
+    empty = empty_cloud_dirs(src)
+    if empty:
+        advice = exclude_advice(src, empty)
+        return f"if its {len(empty)} empty cloud folder(s) are meant to be empty, {advice}"
+    return (
+        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
+        "access or add that folder to the source's exclude in sources.toml)"
+    )
+
+
 def _check_logs(config: Config) -> list[CheckResult]:
     """launchd never rotates StandardOut/ErrorPath: warn before a log grows without bound."""
     log_dir = expand(config.log_dir)
@@ -1303,22 +1337,6 @@ def _check_logs(config: Config) -> list[CheckResult]:
 
 
 _PERM_SAMPLE = 500  # files per tree whose mode is checked (a bounded walk, newest pages first is not needed)
-
-def _incomplete_fix(src: SourceConfig) -> str:
-    """The fix for a source whose listing stays incomplete. A Graph pass resumes, so another sync clears it;
-    a local walk is always a full pass, so the same folder stops it again: name the empty cloud folders and
-    the exclude line to paste (as the loop's WAITING ON YOU line does), or say what names the folder."""
-    if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
-        return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
-    empty = empty_cloud_dirs(src)
-    if empty:
-        advice = exclude_advice(src, empty)
-        return f"if its {len(empty)} empty cloud folder(s) are meant to be empty, {advice}"
-    return (
-        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
-        "access or add that folder to the source's exclude in sources.toml)"
-    )
-
 
 
 def _group_other_readable(root: Path) -> list[Path]:

@@ -513,10 +513,10 @@ def _ensure_setup(config: Config) -> int:
             _out(f"tightened {d} to 0700 (was {mode:04o}): it holds tenant data")
     with Manifest(config.state_paths.db) as manifest:
         written = Publisher(config, manifest).ensure_scaffold()
-    _out(
-        f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, no remote; "
-        f"{len(written)} scaffold file(s))"
-    )
+    # The count carries its verb: install.sh calls add-source once per folder, and a bare "0 scaffold
+    # file(s)" on the second call read as the first call's files undone.
+    scaffold = f"{len(written)} scaffold file(s) written" if written else "scaffold up to date"
+    _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, no remote; {scaffold})")
     findings = _refuse_remotes(config, gov)
     for f in findings:
         _err(f"governance: {f}")
@@ -941,6 +941,8 @@ def _check(
     return doctor.CheckResult(name, ok, detail, doctor.Severity.INFO if ok else severity, fix)
 
 
+_PURGE_YOURS_NOTE = "yours: see WAITING ON YOU"
+
 _PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy")
 
 
@@ -1028,7 +1030,7 @@ def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.Che
         out.append(_check("network.proxy", True, diag[0], doctor.Severity.INFO))
     if live_graph:
         out += [_check("network.proxy", False, w, doctor.Severity.WARN) for w in diag[1:]]
-    else:
+    elif not proxy.policy_error:  # a PAC policy error already says what its warning would (one line)
         out += [_unused_proxy_line(w) for w in diag[1:]]
     if offline:  # setup-report: no network, ever
         if live_graph:
@@ -1130,15 +1132,24 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
-        out.append(
-            _check(
-                "governance.purge_queue",
-                False,
-                f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations)",
-                doctor.Severity.WARN,
-                fix="agentsync purge --queue",
+        detail = f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations)"
+        if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+            # install.sh prints the loop's WAITING ON YOU line for the queue: no second instruction here.
+            out.append(
+                doctor.CheckResult(
+                    "governance.purge_queue", False, detail, doctor.Severity.WARN, note=_PURGE_YOURS_NOTE
+                )
             )
-        )
+        else:
+            out.append(
+                _check(
+                    "governance.purge_queue",
+                    False,
+                    detail,
+                    doctor.Severity.WARN,
+                    fix="agentsync purge --queue",
+                )
+            )
     return out
 
 

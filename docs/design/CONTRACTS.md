@@ -3521,6 +3521,10 @@ fleet-signing action for IT, nothing the person or their agent does), have `fix=
 so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix:`. Any other value, or none, and
 `agentsync doctor` run by hand prints the fix itself.
 
+**Amended (2026-10-06, §16.22):** under the same variable, with no agent step pending, a `launchd.*` warn whose
+fix is `agentsync install-agent` or `launchctl bootstrap ...` and the `governance.purge_queue` warn carry a note
+and no `fix:` either.
+
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
 missing launcher is one `[info] launcher`
@@ -5666,8 +5670,9 @@ A green doctor or a full-looking status read as "done" while the curation half h
 1. `loop.next_lines(config, fixes=<each FAIL check's "the <name> check failed: <fix>">)`: NEXT, WAITING ON YOU and
    note lines (none under `AGENTSYNC_NO_NEXT_HINT=1`: install.sh still calls `doctor` and keeps one NEXT).
 2. `loop.status_line(config)`: `loop: skill <current|stale|missing> · inbox <on|missing|off> · baseline
-   <missing|draft|confirmed|before|after> · topics N · checkpoint <curated tag date|never> · queue N · archive
-   <on|off>` (a part that cannot be read shows `?`).
+   <missing|draft|confirmed|before|after> · topics N · checkpoint <curated tag date|never> · to curate N ·
+   archive <on|off>` (a part that cannot be read shows `?`). **Amended (2026-10-06, §16.22):** the part was
+   labelled `queue`, which read as the purge queue printed two lines below.
 3. `doctor.format_results(doctor.run_checks(config, tcc_canary=<due>) + cli._extra_checks(config))`: doctor's
    lines byte for byte, so install.sh's `^\[FAIL` parsing is unchanged.
 4. The status lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
@@ -6278,3 +6283,22 @@ or empty for this case (a source sat incomplete for 900 passes):
   Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
   registered nothing, and the line reaches the report through the Loop line, the Doctor section and the
   install.out tail.
+
+**doctor and status wording.**
+
+- `source.<id>.sentinel` for a cloud source with no sentinel is ok ("no sentinel configured (optional: ...)"),
+  not a warn whose fix was a hand edit of sources.toml: `add-source` writes the sentinel as a comment, and the
+  walk already holds deletions for a cloud folder it finds empty or cannot list.
+- The ok `tcc` note ends "(the launcher and tcc.* lines below report it)" and no longer carries the Full Disk
+  Access instruction or points at `tcc.<source>` lines that most runs do not print. The
+  `EXIT_DISCLAIM_UNAVAILABLE` warn, which leaned on that note, has the instruction as its own fix.
+- Under `AGENTSYNC_NO_NEXT_HINT=1` with no agent step pending (install.sh without `--confirm-install-agent` on
+  a Mac whose LaunchAgents an earlier install left), a `launchd.*` **warn** whose fix is `agentsync
+  install-agent` or `launchctl bootstrap ...` has `fix=None` and the note "background sync is yours to refresh,
+  not a setup step". A FAIL keeps its fix. `governance.purge_queue` has the note "yours: see WAITING ON YOU":
+  install.sh prints the loop's line for the queue. By hand both print their fix as before.
+- `network.proxy`: with a PAC file and no explicit proxy on a Mac with no live Graph source, one info line (the
+  policy error), not that line and its warning twin. With a live Graph source the ERROR and the WARN both stay.
+- `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
+  install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
+- `status`'s loop line says `to curate N` where it said `queue N`.

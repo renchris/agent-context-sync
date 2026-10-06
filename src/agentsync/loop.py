@@ -460,8 +460,9 @@ def next_lines(config: Config, *, fixes: Sequence[str] = (), count_queue: bool =
 
 def status_line(config: Config) -> str:
     """``status``'s one loop line (KISS K08a): ``loop: skill <current|stale|missing> · inbox <on|missing|off>
-    · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · queue N ·
-    archive <on|off>``. Disk only; a part that cannot be read shows ``?``."""
+    · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · to curate N ·
+    archive <on|off>``. ``to curate`` is :func:`queue_rows` (not the purge queue, which status prints on its
+    own line). Disk only; a part that cannot be read shows ``?``."""
     docs = expand(config.docs_repo)
 
     def part(name: str, fn: Callable[[], object]) -> str:
@@ -490,7 +491,7 @@ def status_line(config: Config) -> str:
         part("baseline", lambda: baseline_state(docs)),
         part("topics", lambda: len(curate.iter_topic_pages(config.layout))),
         part("checkpoint", checkpoint),
-        part("queue", lambda: queue_rows(config) if (docs / ".git").exists() else 0),
+        part("to curate", lambda: queue_rows(config) if (docs / ".git").exists() else 0),
         part("archive", archive),
     )
     return "loop: " + " · ".join(parts)
