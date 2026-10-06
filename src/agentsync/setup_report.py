@@ -33,15 +33,20 @@ path (``~``), the login name (``<user>``), the full name (``<name>``), the organ
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
 folder listing shows, configured or not; a few generic names such as ``Documents`` are kept) and every
 configured source folder path component (``<folder-N>``; a name made only of coding-agent product words such
-as ``Copilot`` is kept, so the agent's own name stays readable), the source ids derived from those folders
-(``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex fingerprints of 16 or more
-digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids (``<commit-N>``), the serial number
-(``<serial>``), the host and computer names (``<host>``), proxy hosts (``<proxy-N>``) and this account's
-temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``). Folder, library,
-organisation and full-name values also match their case, space, hyphen, underscore and CamelCase variants.
-install.sh run ids are shown without their process id. The friction log is redacted with the same map. The
-login name is registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue
-check runs over the whole redacted report, listing its hits by section.
+as ``Copilot`` is kept, so the agent's own name stays readable), a configured source folder elsewhere under
+the home folder from its project folder down, and that project folder's name (``<folder-N>`` too; folders
+beside the docs repo are agentsync's own), every configured source id but agentsync's own words such as
+``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex
+fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
+(``<commit-N>``), the serial number (``<serial>``), the host and computer names (``<host>``), proxy hosts
+(``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
+Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
+CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). Names
+nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,
+and those in the install.out tail) show item paths and document names as ``<path>``. install.sh run ids
+are shown without their process id. The friction log is redacted with the same map. The login name is
+registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue check runs over
+the whole redacted report, listing its hits by section.
 """
 
 from __future__ import annotations
@@ -340,6 +345,55 @@ _AGENT_WORDS = frozenset({"claude", "codex", "copilot", "cursor", "gemini", "git
 (configured or listed, any case): registered, "Copilot" would turn the ``Agent:`` line's "GitHub Copilot CLI"
 into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). The agent string
 itself is still redacted like any other text."""
+_GENERIC_IDS = frozenset(
+    {
+        "agent",
+        "agentsync",
+        "archive",
+        "calendar",
+        "chats",
+        "config",
+        "docs",
+        "drive",
+        "files",
+        "graph",
+        "inbox",
+        "local",
+        "mail",
+        "mirror",
+        "notes",
+        "onedrive",
+        "sharepoint",
+        "source",
+        "sources",
+        "status",
+        "sync",
+        "teams",
+    }
+)
+"""Source ids that are agentsync's own words: kept when the source is not a cloud folder, because a registered
+``mail`` or ``docs`` would turn ``graph_mail`` and "the docs repo" into placeholders all over the report."""
+_GENERIC_HOME_DIRS = frozenset(
+    {
+        "applications",
+        "code",
+        "desktop",
+        "dev",
+        "development",
+        "documents",
+        "downloads",
+        "git",
+        "library",
+        "projects",
+        "repos",
+        "sites",
+        "source",
+        "src",
+        "work",
+        "workspace",
+    }
+)
+"""Folders below the home folder that name no project (lower-case): :func:`_project_values` skips them."""
 _LISTING_MAX = 2000
 _LEGEND = {
     "home": "~ home folder",
@@ -362,8 +416,11 @@ _TEMPLATE_NOTE = (
     "Unnumbered <org>, <team>, <Org>, <TEAMID>, <serial> and the IT request's other <field> names inside "
     "doctor fixes or the IT-draft line are template placeholders, not redactions."
 )
-_SEP_RE = re.compile(r"[ \t_-]+")
-_FUZZY_SEP = r"[ \t_-]*"
+_SEP_RE = re.compile(r"[ \t_\\-]+")
+_FUZZY_SEP = r"[ \t_\\-]*"
+"""Between the words of a fuzzy value. The backslash covers ``printf %q`` text (install.log's ``args=``,
+install.out's run header and re-run lines): ``Client\\ Alpha`` is ``Client Alpha``."""
+_Q_ESCAPE_RE = re.compile(r"[^A-Za-z0-9]")  # in a word: ``printf %q`` may put a backslash before it
 _CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
 _RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+)>"
@@ -446,6 +503,11 @@ def _norm(text: str) -> str:
     return _SEP_RE.sub("", text).lower()
 
 
+def _word_pattern(word: str) -> str:
+    """A regex for one word of a fuzzy value, also as ``printf %q`` writes it (``R&D`` and ``R\\&D``)."""
+    return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), word)
+
+
 def _agent_words(name: str) -> bool:
     """Whether ``name`` is made of :data:`_AGENT_WORDS` only ("Copilot", "github-copilot")."""
     words = [w for w in _SEP_RE.split(name.casefold()) if w]
@@ -458,8 +520,8 @@ class Redactor:
     text unchanged.
 
     A value registered ``fuzzy`` (folder, library, organisation and full-name values) also matches its case,
-    space, hyphen, underscore and CamelCase variants: ``Client Alpha`` covers ``client-alpha``,
-    ``CLIENT_ALPHA`` and ``ClientAlpha``."""
+    space, hyphen, underscore and CamelCase variants, and its shell-escaped form: ``Client Alpha`` covers
+    ``client-alpha``, ``CLIENT_ALPHA``, ``ClientAlpha`` and ``Client\\ Alpha``."""
 
     def __init__(self, *, enabled: bool = True) -> None:
         """An empty redactor; :meth:`add` and :meth:`add_commit` register values."""
@@ -550,7 +612,7 @@ class Redactor:
             literals = []
             for value, mode in sorted(self._literals, key=lambda item: -len(item[0])):
                 if mode == "fuzzy":
-                    body = _FUZZY_SEP.join(re.escape(t) for t in _tokens(value))
+                    body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(value))
                 else:
                     body = re.escape(value)
                 lead = r"(?<![A-Za-z0-9])" if value[0].isalnum() else ""
@@ -1587,6 +1649,27 @@ def _docs_commits(r: _Run) -> list[str]:
     return shas[-500:]
 
 
+def _project_values(path: Path) -> list[str]:
+    """What to register for a configured source folder outside ~/Library/CloudStorage (a project checkout,
+    say): below the home folder, the path from its first component that names something (leading
+    :data:`_GENERIC_HOME_DIRS` and dot folders skipped) and that component alone, so a sibling path does not
+    show the project's name either; anywhere else, the whole path. Single components are not registered: a
+    registered ``correspondence`` or ``team-files`` would replace ordinary words."""
+    home = Path.home()
+    parts: list[str] | None = None
+    for base in (home, home.resolve()):
+        with contextlib.suppress(ValueError):
+            parts = list(path.relative_to(base).parts)
+            break
+    if parts is None:
+        return [str(path)]
+    while parts and (parts[0].casefold() in _GENERIC_HOME_DIRS or parts[0].startswith(".")):
+        parts.pop(0)
+    if not parts or _agent_words(parts[0]):
+        return []
+    return ["/".join(parts), parts[0]] if len(parts) > 1 else parts
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
@@ -1621,7 +1704,10 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(OSError):
         orgs += [o for o in (_org_of(p.name) for p in sorted(cloud_storage_root().iterdir())) if o]
     cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
+    project_paths: list[Path] = []  # configured folders outside CloudStorage and outside agentsync's own
     if r.config is not None:
+        beside = expand(r.config.docs_repo).parent  # ~/agent-context: the docs repo, the inbox, the setup log
+        own = {beside, beside.resolve()} - {home, home.resolve()}
         for src in r.config.sources:
             parts = _cloud_parts(src.path) if src.path is not None else None
             if parts is not None:
@@ -1629,6 +1715,8 @@ def _build_redactor(r: _Run) -> Redactor:
                 org = _org_of(parts[0])
                 if org:
                     orgs.append(org)
+            elif src.path is not None and not any(expand(src.path).is_relative_to(o) for o in own):
+                project_paths.append(expand(src.path))
         tenant = r.config.graph.tenant
         if tenant and "." in tenant:
             orgs.append(tenant.split(".", 1)[0])
@@ -1659,9 +1747,15 @@ def _build_redactor(r: _Run) -> Redactor:
             continue
         shared = provider.startswith("OneDrive-SharedLibraries-")
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
-    for sid, _provider, _comps in cloud_sources:
-        if not _agent_words(sid):
-            red.add("source", sid)
+    for path in project_paths:
+        for value in _project_values(path):
+            red.add("folder", value, ignore_case=True)
+    # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
+    # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
+    cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
+    for src in r.config.sources if r.config is not None else ():
+        if not _agent_words(src.id) and (src.id in cloud_ids or src.id not in _GENERIC_IDS):
+            red.add("source", src.id)
     for host in _proxy_hosts(r):
         red.add("proxy", host, ignore_case=True)
     with contextlib.suppress(Exception):
@@ -2005,14 +2099,15 @@ def _installer_output(r: _Run) -> list[str]:
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:
         r.facts.first_sync = (int(synced[-1].group(1)), int(synced[-1].group(2)))
-    shown = lines[-INSTALL_OUT_TAIL:]
+    shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     return [
         f"Installer output: {_instruction_text(counts, len(lines), runs)}. An instruction-like line other "
-        "than NEXT: is a hint the agent may act on before install.sh's own next step.",
+        "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
+        "WARNING and ERROR log lines show item paths and document names as <path>, as in Recent errors.",
         "",
         f"<details><summary>the last {len(shown)} line(s) of {path} (what the agent saw)</summary>",
         "",
-        *_fence(_PID_SUFFIX_RE.sub(r"\1", ln) for ln in shown),
+        *_fence(_scrub_item_paths(ln) if _PY_LOG_RE.search(ln) else ln for ln in shown),
         "",
         "</details>",
     ]
@@ -2317,15 +2412,19 @@ _PATH_IN_LOG_RE = re.compile(
     r"key|vsdx?|one|html?|json|xml|zip|png|jpe?g|gif|heic|tiff?|mp4|mov|m4a|wav)\b",
     re.IGNORECASE,
 )
+_PY_LOG_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL) agentsync\.")
+"""One of agentsync's own log lines (``<time> WARNING agentsync.<module>: ...``). install.sh's and git's
+``error:`` and ``fatal:`` lines are not: they keep their path or URL in the install.out tail."""
 _KEY_PATH_RE = re.compile(r"\b(\w+=)(?:[^=]*?)(?=\s\w+=|$)")
 _ABS_PATH_RE = re.compile(r"(?:(?<=\s)|(?<=^)|(?<=['\"(]))(?:~|/)\S*/.*$")
 
 
 def _scrub_item_paths(line: str) -> str:
-    """``line`` (``<log file>: <log line>``) with item paths and document names replaced by ``<path>``, per
-    ``: ``-separated segment: a ``key=`` value or an absolute path (``/…`` or ``~/…``, to the segment's end)
-    in place, and any segment still naming a path or document whole. The local log keeps the detail; the
-    report, which may go to a public issue, never carries an item's path or name."""
+    """``line`` (``<log file>: <log line>``, or a log line alone) with item paths and document names replaced
+    by ``<path>``, per ``: ``-separated segment after the first: a ``key=`` value or an absolute path (``/…``
+    or ``~/…``, to the segment's end) in place, and any segment still naming a path or document whole. The
+    local log keeps the detail; the report, which may go to a public issue, never carries an item's path or
+    name."""
     name, sep, rest = line.partition(": ")
     return name + sep + ": ".join(_scrub_segment(part) for part in rest.split(": "))
 

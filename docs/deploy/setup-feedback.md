@@ -42,7 +42,8 @@ Redaction is on by default and consistent, so the same value is always the same 
 | `~` | the home folder path |
 | `<user>`, `<name>` | the login name and the full name (`id -F`) |
 | `<org-N>` | the organization in `OneDrive-<org>`, `OneDrive-SharedLibraries-<org>` and `OneDrive - <org>`, the tenant's and SharePoint host's first label |
-| `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names, each configured folder name below `CloudStorage/<provider>/`, the source ids made from them |
+| `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except agentsync's own words such as `inbox` or `mail` |
+| `<path>` | an item's path or a document's name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail) |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host name, proxy hosts |
 
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping

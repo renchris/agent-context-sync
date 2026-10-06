@@ -1366,6 +1366,170 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     }
 
 
+# ---- field report 2026-10-06: leaks in the redacted section, one test per leak class ----------------------
+
+PROJECT = "quay-ledger"
+PROJECT_ID = "nw-client-alpha-mail"
+"""A source id that embeds a registered folder name (``Client Alpha``): unregistered, the folder rule left it
+half-redacted."""
+
+
+def add_project_source(fake_mac: dict[str, Path]) -> Path:
+    """An inbox source in a project checkout under the home folder (outside ~/Library/CloudStorage), and one
+    with a generic id beside the docs repo."""
+    path = fake_mac["home"] / "Development" / PROJECT / "docs-source" / "correspondence" / "mail"
+    beside = fake_mac["home"] / "agent-context" / "mailbox"
+    for d in (path, beside):
+        d.mkdir(parents=True)
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f'\n[[source]]\nid = "{PROJECT_ID}"\nkind = "inbox"\npath = "{path}"\n'
+        + f'\n[[source]]\nid = "mail"\nkind = "inbox"\npath = "{beside}"\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_shell_escaped_folder_names_are_redacted(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """install.sh writes its arguments with ``printf %q``: a folder name's spaces arrive as ``\\ `` and a
+    ``&`` or a bracket inside a word as ``\\&``, in install.log's ``args=`` and in install.out's header."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    (cloud / "R&D Notes (old)").mkdir()
+    one = str(fake_mac["one"]).replace(" ", "\\ ")
+    args = f"--source-local {one} --source-local {cloud}/R\\&D\\ Notes\\ \\(old\\)"
+    run = "20260929T100000Z-4242"
+    (fake_mac["setup"] / "install.log").write_text(
+        f"2026-09-29T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout source=- "
+        f"args={args}\n2026-09-29T10:00:57Z run={run} end rc=0 seconds=57\n",
+        encoding="utf-8",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        f"# run={run} 2026-09-29T10:00:00Z install.sh {args}\nNEXT: re-run: scripts/install.sh {args}\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    inst = section(text, "Installer")
+    shown = "--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<folder-2> --source-local "
+    assert inst.count("args=" + shown) == 1 and inst.count("install.sh " + shown) == 2
+    for raw in ("Projects", "Alpha", "Notes", "R\\&D", "(old", "\\ "):
+        assert raw not in text, raw
+    red = setup_report.Redactor()
+    red.add("folder", "R&D Notes (old)", fuzzy=True)
+    assert (
+        red.redact("R\\&D\\ Notes\\ \\(old\\) r&d-notes-(old) R&D Notes") == "<folder-1> <folder-1> R&D Notes"
+    )
+
+
+def test_installer_output_log_lines_never_carry_a_nested_name(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Directory names nested below a source are registered nowhere: agentsync's own WARNING and ERROR lines
+    in the install.out tail get the Recent errors scrub. install.sh's and git's own error lines keep their
+    path or URL, and so does every other line (the tail is what the agent saw)."""
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "2026-09-29 10:00:20,000 WARNING agentsync.arm_local: src-x: directory 'Wharf Plans/04 - Tide Tables/"
+        "Old Charts' has zero children in a cloud tree; treated as unknown\n"
+        "2026-09-29 10:00:21,000 ERROR agentsync.cycle: src-x: fetch of Wharf Plans/Lighthouse budget.xlsx "
+        "failed: [Errno 89] Operation canceled\n"
+        "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve host\n"
+        "error: the sync step failed; see ~/agent-context/setup/install.out\n"
+        "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n"
+        "NEXT: review ~/agent-context/setup-report.md\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    inst = section(text, "Installer")
+    for name in ("Wharf", "Tide Tables", "Old Charts", "Lighthouse"):
+        assert name not in text, name
+    assert "WARNING agentsync.arm_local: src-x: <path>\n" in inst
+    assert "ERROR agentsync.cycle: src-x: <path>: [Errno 89] Operation canceled\n" in inst
+    assert "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve" in inst
+    assert "error: the sync step failed; see ~/agent-context/setup/install.out\n" in inst
+    assert "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n" in inst
+    assert "WARNING and ERROR log lines show item paths and document names as <path>" in inst
+
+
+def test_every_configured_source_id_is_a_placeholder(fake_mac: dict[str, Path]) -> None:
+    """Only cloud folders' ids were registered: an inbox or project source's id was shown as typed, or
+    half-redacted by a folder name inside it. A generic id (agentsync's own word) is kept, so ``graph_mail``
+    and "the docs repo" stay readable."""
+    add_project_source(fake_mac)
+
+    def doctor(config: object) -> list[str]:
+        return [
+            f"[warn] heartbeat.{PROJECT_ID} — no completed pass recorded yet",
+            "[warn] source.mail.sentinel — no sentinel; graph_mail needs none; the docs repo is fine",
+        ]
+
+    def status(config: object) -> list[str]:
+        return [f"  {PROJECT_ID} (inbox): baseline complete", "  mail (inbox): baseline complete"]
+
+    text, _summary = summary_of(fake_mac, doctor=doctor, status=status)
+    assert PROJECT_ID not in text and "nw-" not in text and "-mail" not in text
+    source = re.search(r"heartbeat\.(<source-\d+>) — no completed pass", section(text, "Doctor"))
+    assert source, "the whole id is one placeholder, not a folder placeholder inside it"
+    assert f"  {source.group(1)} (inbox): baseline complete" in section(text, "Status")
+    assert "source.mail.sentinel — no sentinel; graph_mail needs none; the docs repo is fine" in text
+    assert "  mail (inbox): baseline complete" in section(text, "Status")
+    assert "sources: 5 (by kind: inbox 3, local 2" in section(text, "Configuration")
+
+
+def test_a_project_path_under_the_home_folder_is_redacted(fake_mac: dict[str, Path]) -> None:
+    """A source folder outside ~/Library/CloudStorage: the path from the project's folder down is one
+    placeholder and the project's name another, so a sibling path does not show it either. Ordinary words in
+    the path (``correspondence``) are not registered on their own."""
+    path = add_project_source(fake_mac)
+    sibling = path.parents[2] / "notes"
+
+    def doctor(config: object) -> list[str]:
+        return [
+            f"[warn] source.x.listable — cannot list {path}",
+            f"[warn] source.y.listable — cannot list {sibling}; internal correspondence is fine",
+            "[warn] source.z.listable — cannot list ~/Development/Quay-Ledger/docs-source/correspondence/"
+            "mail",
+        ]
+
+    text, _summary = summary_of(fake_mac, doctor=doctor)
+    shown = section(text, "Doctor")
+    assert PROJECT not in text.lower() and "docs-source" not in text
+    whole = re.search(r"source\.x\.listable — cannot list ~/Development/(<folder-\d+>)\n", shown)
+    name = re.search(r"cannot list ~/Development/(<folder-\d+>)/notes; internal correspondence is", shown)
+    assert whole and name and whole.group(1) != name.group(1)
+    assert f"source.z.listable — cannot list ~/Development/{whole.group(1)}\n" in shown, "any case, ~/ form"
+    assert "~/agent-context/setup/friction.md" in text, "agentsync's own folder is not a project"
+
+
+def test_friction_prose_gets_the_same_redaction(fake_mac: dict[str, Path]) -> None:
+    """The agent's own words name what it synced: a source id, a shell-escaped folder name and a project
+    path are replaced in the embedded log and in the Summary's item lines alike."""
+    add_project_source(fake_mac)
+    v6_install_log(fake_mac)
+    said = (
+        f"added {PROJECT_ID} from ~/Development/{PROJECT}/docs-source/correspondence/mail and "
+        f"{FOLDERS[0]}/Client\\ Alpha"
+    )
+    write_friction(
+        fake_mac,
+        _insert_before(
+            "2026-09-29T10:01:10Z | end",
+            f"2026-09-29T10:01:00Z | step 2 | deviation | {said} | quote {PROJECT_ID} less\n",
+            V7_HAPPY,
+        ),
+    )
+    text, summary = summary_of(fake_mac)
+    for raw in (PROJECT_ID, PROJECT, "docs-source", "Alpha", "Projects"):
+        assert raw not in text, raw
+    item = re.search(
+        r"- F4 · step 2 · deviation · added (<source-\d+>) from ~/Development/<folder-\d+> and "
+        r"<folder-1>/<folder-2> → quote (<source-\d+>) less",
+        summary,
+    )
+    assert item and item.group(1) == item.group(2)
+    assert f"| deviation | added {item.group(1)} from ~/Development/" in section(text, "Agent friction log")
+
+
 # ---- setup prompt v6: install.sh --log-start / --log / --log-end, L3, L6-L10 ------------------------------
 
 

@@ -4815,7 +4815,9 @@ a file) and from status's `last runs:` line (`<commit-N>`, every abbreviation sh
 same placeholder), and the ComputerName and LocalHostName (`scutil --get`) as `<host>`, which also covers run ids that
 embed a host name. The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
 **Amended (2026-10-06, §16.22):** a folder name or source id made only of coding-agent product words (`Copilot`)
-is kept too, listed or configured.
+is kept too, listed or configured; every configured source id is registered, not only a cloud folder's; a source
+folder outside CloudStorage is registered from its project folder down; the shell-escaped form of a fuzzy value
+matches; and the install.out tail's agentsync log lines get the Recent errors scrub.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -6185,3 +6187,26 @@ folder named `Copilot` otherwise turned the `Agent:` line's "GitHub Copilot CLI"
 the Summary, the attempt list and the issue link. The agent string is not exempt: it is free text, and any other
 registered value in it is still replaced (the link is still built with `Redactor.scrub`). Limit: a folder whose
 name mixes a product word with another word (`Copilot Pilots`) is registered whole, as before.
+
+**setup-report: four leaks in the redacted section closed.** All in `_build_redactor`, the `Redactor`'s fuzzy
+match and the Installer section:
+
+- *Shell-escaped names.* install.sh writes its arguments with `printf %q` (install.log's `args=`, install.out's
+  `# run=` header and its re-run lines), so `Client Alpha` arrives as `Client\ Alpha`. A fuzzy value now also
+  matches with a backslash between its words and before a non-alphanumeric character inside a word (`R\&D`).
+- *Nested names in the install.out tail.* A line of agentsync's own logging (`WARNING`, `ERROR` or `CRITICAL`
+  followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does. Other
+  lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines keep their path or URL.
+- *Source ids.* Every configured source id is registered as a `<source-N>`, in config order. Before, only a
+  source under `~/Library/CloudStorage` was, so an inbox or project source's id was shown as typed, or with a
+  folder placeholder in its middle. Kept as typed: an id that is one of agentsync's own words (`_GENERIC_IDS`:
+  `inbox`, `mail`, `docs`, ...) on a source outside CloudStorage, since `graph_mail` and "the docs repo" would
+  become placeholders.
+- *Project paths.* For a configured source folder outside CloudStorage and not beside the docs repo
+  (`_project_values`): below the home folder, the path from the first component that names something (leading
+  generic folders such as `Development` and dot folders skipped) is one `<folder-N>` and that component alone
+  another, any case; elsewhere the whole path is one. Deeper components are not registered alone.
+
+Not covered, by design (docs/deploy/setup-feedback.md section 2): a name agentsync has never seen in the
+agent's own words, such as an abbreviation of a source id. The friction log gets the same map as every other
+section, no more.
