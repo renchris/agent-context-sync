@@ -1705,10 +1705,10 @@ exit "${STUB_OCR_RC:-0}"
 def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    """Decision D4: install.sh is the one place the helper is compiled (python -m agentsync.convert.ocr with
-    the tool's interpreter), with or without background sync.  OCR is optional: whatever the build does, the
-    run's exit status and its install.log steps are those of a run without it.  Without developer tools
-    nothing is tried and one line says so: status's ocr line sends the reader to this script."""
+    """Decision D4: install.sh is the one place the helper is compiled (python -I -m agentsync.convert.ocr
+    with the tool's interpreter), with or without background sync.  OCR is optional: whatever the build
+    does, the run's exit status and its install.log steps are those of a run without it.  Without developer
+    tools nothing is tried and one line says so: status's ocr line sends the reader to this script."""
     home = Path(env["HOME"])
     cfg = home / "agent-context" / "sources.toml"
     tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
@@ -1747,7 +1747,7 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         if line == no_tools or not _have_git():  # nothing is tried, and the one line says why
             assert ran == [] and said(cp) == [no_tools]
             continue
-        assert ran == [f"python -m agentsync.convert.ocr config={cfg}"], ran
+        assert ran == [f"python -I -m agentsync.convert.ocr config={cfg}"], ran
         assert said(cp) == [line]
         assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
         log = calls(env)
@@ -1760,7 +1760,9 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     Path(env["STUB_LOG"]).unlink()
     dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
     planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert.ocr" in ln]
-    assert planned == ([f"[dry-run] {tool_py} -m agentsync.convert.ocr"] if _have_git() else []), dry.stdout
+    assert planned == ([f"[dry-run] {tool_py} -I -m agentsync.convert.ocr"] if _have_git() else []), (
+        dry.stdout
+    )
     assert said(dry) == ([] if _have_git() else [no_tools])
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
 

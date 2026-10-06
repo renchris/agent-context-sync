@@ -5965,7 +5965,7 @@ no command, option or installer option.
 options) and `AGENTSYNC_OCR=0` (or `off`) for the test suite. Nothing else: no environment variable names a
 helper to run, and the languages and page cap are the constants `LANGUAGES` and `MAX_PAGES`.
 
-**Who builds.** Only `scripts/install.sh`, by running the module: `python -m agentsync.convert.ocr`. It is
+**Who builds.** Only `scripts/install.sh`, by running the module: `python -I -m agentsync.convert.ocr`. It is
 not an agentsync command. It reads the config (`$AGENTSYNC_CONFIG`, else the default path; no config yet means
 the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 when it is not built:
 `OCR helper: ready (apple-vision revision 3, helper 2.0.0)`, `OCR helper: off ([convert] ocr = false)`,
@@ -6038,7 +6038,9 @@ warn, leaves the outcome as it was.
 
 **Installer** (`scripts/install.sh`, inside the `launcher` step; no new step in `install.log`, no option).
 With or without `--confirm-install-agent`, when `xcode-select -p` names a folder and the tool's interpreter
-exists, it runs `<tool python> -m agentsync.convert.ocr` with `AGENTSYNC_CONFIG` set to the run's config and
+exists, it runs `<tool python> -I -m agentsync.convert.ocr` with `AGENTSYNC_CONFIG` set to the run's config
+(`-I`: with `-m` alone the folder the script is run from comes first on the import path, and a `random.py`
+lying there would be imported in place of the standard library's) and
 prints the first line of its stdout (`OCR helper: ...`; `OCR helper: not built (the build did not run)` when
 there is none). The exit status and stderr are dropped: the step's result and the run's exit status are those
 of a run without it. A dry run prints the command. Without developer tools nothing is tried and the run

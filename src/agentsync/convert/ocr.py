@@ -3,7 +3,7 @@
 The engine is ``VNRecognizeTextRequest`` at the accurate level.  Nothing leaves the Mac: no network, no model
 download, no third-party service.  The helper's source ships in this package (``vision_ocr.swift``).
 
-Who builds it: only ``scripts/install.sh``, by running ``python -m agentsync.convert.ocr``.  :func:`build`
+Who builds it: only ``scripts/install.sh``, by running ``python -I -m agentsync.convert.ocr``.  :func:`build`
 compiles the source with the Command Line Tools' ``swiftc`` into ``<cache_dir>/ocr/``, mode 0700 in a 0700
 folder, under a name that is the digest of the source and the build flags.  Nothing else compiles:
 :func:`probe` and :func:`engine` only look, so ``status``, a dry run and the LaunchAgent never start a

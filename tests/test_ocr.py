@@ -1066,18 +1066,26 @@ def test_what_an_earlier_build_left_is_tidied_when_nothing_is_built(
     assert ocr.probe(CFG, cache)[0] == "failed"
 
 
-def test_python_dash_m_prints_one_line_and_exits_0(tmp_path: Path) -> None:
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "AGENTSYNC_OCR": "off"}
+def test_python_dash_i_dash_m_prints_one_line_and_exits_0_wherever_it_is_run(tmp_path: Path) -> None:
+    """The command scripts/install.sh runs, from a folder that holds files named like standard-library
+    modules.  With ``-m`` alone Python puts the working directory first on its import path and would import
+    them; ``-I`` leaves it out."""
+    home, project = tmp_path / "home", tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    for name in ("random.py", "types.py", "json.py"):
+        (project / name).write_text('raise SystemExit("imported a file from the working directory")\n')
     cp = subprocess.run(
-        [sys.executable, "-m", "agentsync.convert.ocr"],
-        env=env,
+        [sys.executable, "-I", "-m", "agentsync.convert.ocr"],
+        cwd=project,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(home), "AGENTSYNC_OCR": "off"},
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
     assert (cp.returncode, cp.stdout, cp.stderr) == (0, "OCR helper: off (AGENTSYNC_OCR=off)\n", "")
-    assert list(tmp_path.iterdir()) == []
+    assert list(home.iterdir()) == []
 
 
 # ---------------------------------------------------------------------------------------------------------

@@ -58,7 +58,7 @@
 #      rebuilt, because an ad-hoc rebuild is a new TCC identity and macOS would ask again (the developer
 #      variable AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds it anyway)
 #      In the same step, with or without that option, when developer tools exist: the on-device OCR helper
-#      (python -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it). It
+#      (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it). It
 #      prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
@@ -1368,11 +1368,13 @@ fi
 # itself (off builds nothing) and prints one line. OCR is optional: a helper that does not build is that
 # line, never a failed step. Without developer tools nothing is tried, and the line says so: status sends the
 # reader here for the helper, and a run that said nothing would send them round again.
+# -I: with -m alone Python puts the folder this script is run from first on its import path, so a random.py
+# or types.py lying there would be imported in place of the standard library's.
 if have_devtools; then
 	if [ "$DRY_RUN" -eq 1 ]; then
-		run "$TOOL_PY" -m agentsync.convert.ocr
+		run "$TOOL_PY" -I -m agentsync.convert.ocr
 	elif [ -x "$TOOL_PY" ]; then
-		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
+		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
 	fi
 else
