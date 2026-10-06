@@ -5725,7 +5725,8 @@ Draft wording of the summary
 ```
 
 One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets
-no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary).
+no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary). The one
+exception is the summary of a PDF the pdfminer fallback converts (Fallback, below): its body is unchanged.
 
 - **What counts.** Fifteen annotation subtypes, each with the word a reader knows it by: Text `Note`, FreeText
   `Text box`, Line `Line`, Square `Box`, Circle `Circle`, Polygon `Polygon`, PolyLine `Polyline`, Highlight
@@ -5764,7 +5765,8 @@ no block, and a PDF without comments renders byte for byte as under 2.0.0 (body,
   fallback) and the conversion does not fail. One WARNING per file says so: `<name>: comments not read on N
   page(s), first on page K: <type>: <message>`. The summary does not.
 - **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
-  not read`, so a reader can tell "no comments" from "comments not read".
+  not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
+  file has any, so every PDF it converts carries the clause.
 - **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
   Nothing here re-reads PDFs that are already mirrored.
 
