@@ -6209,7 +6209,18 @@ match and the Installer section:
 
 - *Shell-escaped names.* install.sh writes its arguments with `printf %q` (install.log's `args=`, install.out's
   `# run=` header and its re-run lines), so `Client Alpha` arrives as `Client\ Alpha`. A fuzzy value now also
-  matches with a backslash between its words and before a non-alphanumeric character inside a word (`R\&D`).
+  matches with a backslash between its words and before a non-alphanumeric character inside a word (`R\&D`),
+  and a case-insensitive value (a project path, a host) with a backslash before any such character.
+- *`--source-local` arguments, by structure.* macOS's bash 3.2 writes an argument holding a byte it finds
+  non-printable as `$'...'`, spaces bare and bytes as octal: every non-ASCII name under `LC_ALL=C`, and an em
+  dash even under UTF-8 with its first byte left raw, which no pattern for the plain name matches. So after a
+  line is redacted, `_redact_lines` settles each `--source-local <word>` in it (`_source_local_shown`): the
+  word (`$'...'`, `"..."`, `'...'` or bare with backslash escapes) is unquoted and redacted once more, then cut
+  to `<path>` at the first path component that is not a placeholder, a fixed macOS component, the provider
+  folder below `CloudStorage`, or a generic folder. A folder the Redactor does not know (one that no longer
+  exists, or a name that did not survive the log's encoding) is therefore never shown, whatever quoting the
+  shell chose: `--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<path>`. A word with no
+  quote, slash or backslash is not a path (prose such as "the --source-local option") and is left as it is.
 - *Nested names in the install.out tail.* A line of agentsync's own logging (`WARNING`, `ERROR` or `CRITICAL`
   followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does. Other
   lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines keep their path or URL.

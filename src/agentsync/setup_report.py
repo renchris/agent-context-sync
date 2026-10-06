@@ -41,7 +41,9 @@ fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs
 (``<commit-N>``), the serial number (``<serial>``), the host and computer names (``<host>``), proxy hosts
 (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
-CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). Names
+CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). A
+``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
+and cut to ``<path>`` at the first path component the Redactor does not know. Names
 nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,
 and those in the install.out tail) show item paths and document names as ``<path>``. install.sh run ids
 are shown without their process id. The friction log is redacted with the same map. The login name is
@@ -505,7 +507,8 @@ def _norm(text: str) -> str:
 
 
 def _word_pattern(word: str) -> str:
-    """A regex for one word of a fuzzy value, also as ``printf %q`` writes it (``R&D`` and ``R\\&D``)."""
+    """A regex for one word of a fuzzy value, or for a whole case-insensitive value, also as ``printf %q``
+    writes it (``R&D`` and ``R\\&D``; ``Old Plans/in tray`` and ``Old\\ Plans/in\\ tray``)."""
     return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), word)
 
 
@@ -564,7 +567,12 @@ class Redactor:
         return f"<{kind}-{self._numbers[kind]}>"
 
     def _known(self, value: str) -> str | None:
-        return self._exact.get(value) or self._folded.get(value.lower()) or self._fuzzy.get(_norm(value))
+        return (
+            self._exact.get(value)
+            or self._folded.get(value.lower())
+            or self._folded.get(value.replace("\\", "").lower())  # the shell-escaped form of a fold value
+            or self._fuzzy.get(_norm(value))
+        )
 
     def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
@@ -614,6 +622,8 @@ class Redactor:
             for value, mode in sorted(self._literals, key=lambda item: -len(item[0])):
                 if mode == "fuzzy":
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(value))
+                elif mode == "fold":
+                    body = _word_pattern(value)
                 else:
                     body = re.escape(value)
                 lead = r"(?<![A-Za-z0-9])" if value[0].isalnum() else ""
@@ -2988,13 +2998,97 @@ _EXCLUDE_LIST_RE = re.compile(r"\bexclude = \[.*?(?:\] in \[\[source\]\]|$)")
 fix): it names folders below a source root, which the Redactor has never seen. Also a line cut short."""
 
 
+_SOURCE_LOCAL_RE = re.compile(
+    r"""(--source-local[ =])(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
+)
+"""``--source-local`` and the shell word after it: ``$'...'``, ``"..."``, ``'...'`` or a bare word with
+backslash escapes (install.log's ``args=``, install.out's run header and re-run lines, an agent's own
+text)."""
+_ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
+_ANSI_C_LETTERS = {
+    "a": "\a",
+    "b": "\b",
+    "e": "\x1b",
+    "E": "\x1b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+}
+_PLACEHOLDER_RE = re.compile(r"(<[a-z]+(?:-\d+)?>)")
+_PLACEHOLDERS_ONLY_RE = re.compile(r"(?:<[a-z]+(?:-\d+)?>)+")
+
+
+def _shell_unquote(word: str) -> str:
+    """The text a shell reads ``word`` as, for the forms bash's ``printf %q`` writes and the quotes a person
+    types: ``$'...'`` (octal, hex and letter escapes, the bytes read as UTF-8), ``"..."``, ``'...'`` and a
+    bare word's backslash escapes. Control characters become spaces (one argument, one line)."""
+    if word.startswith("$'"):
+        body = word[2:-1] if re.fullmatch(r"\$'(?:[^'\\]|\\.)*'", word) else word[2:]
+        raw = bytearray()
+        pos = 0
+        for m in _ANSI_C_RE.finditer(body):
+            raw += body[pos : m.start()].encode("utf-8")
+            if m.group(1) is not None:
+                raw.append(int(m.group(1), 8) & 0xFF)
+            elif m.group(2) is not None:
+                raw.append(int(m.group(2), 16))
+            else:
+                raw += _ANSI_C_LETTERS.get(m.group(3), m.group(3)).encode("utf-8")
+            pos = m.end()
+        raw += body[pos:].encode("utf-8")
+        text = raw.decode("utf-8", errors="replace")
+    elif word.startswith('"'):
+        text = re.sub(r'\\(["\\$`])', r"\1", word[1:].removesuffix('"'))
+    elif word.startswith("'"):
+        text = word[1:].removesuffix("'")
+    else:
+        text = re.sub(r"\\(.)", r"\1", word)
+    return re.sub(r"[\x00-\x1f\x7f]", " ", text)
+
+
+def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
+    """One ``--source-local`` argument as the report shows it. The line is already redacted; the argument is
+    unquoted and redacted once more (a name ``printf %q`` wrote as ``$'Z\\303\\274rich'`` only matches once
+    decoded), then cut to ``<path>`` at the first path component that is not a placeholder, a fixed macOS
+    component, the provider folder or a generic folder. So the argument never shows a folder name the
+    Redactor does not know, whatever quoting the shell chose. A word with no quote, slash or backslash is
+    not a path (an agent's prose): it is left as it is."""
+    word = m.group(2)
+    if not re.search(r"""[/\\'"]""", word):
+        return m.group(0)
+    pieces = _PLACEHOLDER_RE.split(_shell_unquote(word))
+    text = "".join(piece if i % 2 else red.redact(piece) for i, piece in enumerate(pieces))
+    parts = text.split("/")
+    for i, part in enumerate(parts):
+        known = (
+            part in ("", "~", ".", "..")
+            or _PLACEHOLDERS_ONLY_RE.fullmatch(part) is not None
+            or part in _PATH_COMPONENTS
+            or part in _GENERIC_FOLDERS
+            or part.casefold() in _GENERIC_HOME_DIRS
+            or (i > 0 and parts[i - 1] == "CloudStorage")
+        )
+        if not known:
+            return m.group(1) + "/".join([*parts[:i], "<path>"])
+    return m.group(1) + text
+
+
 def _redact_lines(red: Redactor, lines: list[str]) -> str:
     """Redact every line but the report's own headings (a folder named like a section must not break it).
-    An exclude line's globs become ``<path>`` first: they are folder names from inside a source."""
+    An exclude line's globs become ``<path>`` first: they are folder names from inside a source. Each
+    ``--source-local`` argument is then settled by structure (:func:`_source_local_shown`)."""
     keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
-    if red.enabled:
-        lines = [ln if ln in keep else _EXCLUDE_LIST_RE.sub(_exclude_placeholder, ln) for ln in lines]
-    return "\n".join(ln if ln in keep else red.redact(ln) for ln in lines)
+    if not red.enabled:
+        return "\n".join(lines)
+    shown = functools.partial(_source_local_shown, red)
+
+    def one(line: str) -> str:
+        line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
+        return _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line else line
+
+    return "\n".join(ln if ln in keep else one(ln) for ln in lines)
 
 
 def _exclude_placeholder(m: re.Match[str]) -> str:

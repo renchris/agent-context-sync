@@ -1455,6 +1455,57 @@ def test_shell_escaped_folder_names_are_redacted(fake_mac: dict[str, Path], tmp_
     assert (
         red.redact("R\\&D\\ Notes\\ \\(old\\) r&d-notes-(old) R&D Notes") == "<folder-1> <folder-1> R&D Notes"
     )
+    red.add("folder", "Tide Tables/mail drop", ignore_case=True)  # a project path: one literal, any case
+    assert (
+        red.redact("~/Development/Tide\\ Tables/mail\\ drop and TIDE TABLES/MAIL DROP")
+        == "~/Development/<folder-2> and <folder-2>"
+    )
+
+
+def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """bash 3.2's ``printf %q`` writes an argument holding a byte it finds non-printable as ``$'...'``: spaces
+    bare, bytes as octal (every non-ASCII name under LC_ALL=C; an em dash even under UTF-8, its first byte
+    left raw). No pattern for the plain name matches that. The argument is unquoted before it is matched,
+    and a path component still unknown is cut to <path>: also a folder that no longer exists."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    for name in ("Zürich Büro", "Tide — Tables"):
+        (cloud / name).mkdir()
+    base = str(cloud).encode()
+    args = (
+        b"--source-local $'" + base + b"/Z\\303\\274rich B\\303\\274ro'"
+        b" --source-local $'" + base + b"/Tide \xe2\\200\\224 Tables'"
+        b" --source-local " + base + b"/Gone\\ Folder/Lower\\ Deck"
+    )
+    run = b"20260929T100000Z-4242"
+    (fake_mac["setup"] / "install.log").write_bytes(
+        b"2026-09-29T10:00:00Z run=" + run + b" start install.sh commit=0123456789ab kind=checkout source=- "
+        b"args=" + args + b"\n2026-09-29T10:00:57Z run=" + run + b" end rc=0 seconds=57\n"
+    )
+    (fake_mac["setup"] / "install.out").write_bytes(
+        b"# run=" + run + b" 2026-09-29T10:00:00Z install.sh " + args + b"\n"
+        b"NEXT: re-run: scripts/install.sh " + args + b"\n"
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    inst = section(text, "Installer")
+    under = "--source-local ~/Library/CloudStorage/OneDrive-<org-1>/"
+    shown = re.search(rf"args={under}(<folder-\d+>) {under}<path> {under}<path>\n", inst)
+    assert shown, "the decoded name is a known folder; the other two are cut below the provider folder"
+    assert inst.count(f"install.sh {under}{shown.group(1)} {under}<path> {under}<path>\n") == 2
+    for raw in ("rich", "Tide", "Tables", "Gone", "Deck", "\\303", "\\200", "$'", "\ufffd"):
+        assert raw not in text, raw
+
+    red = setup_report.Redactor()
+    red.add("home", "/Users/jdoe")
+    red.add("folder", "Client Alpha", fuzzy=True)
+    typed = (
+        'ran install.sh --source-local "/Users/jdoe/Library/CloudStorage/Dropbox/Client Alpha/Old Bids" twice'
+    )
+    assert setup_report._redact_lines(red, [typed, "the --source-local option is unclear"]) == (
+        "ran install.sh --source-local ~/Library/CloudStorage/Dropbox/<folder-1>/<path> twice\n"
+        "the --source-local option is unclear"
+    )
 
 
 def test_installer_output_log_lines_never_carry_a_nested_name(
