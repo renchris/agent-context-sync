@@ -6237,3 +6237,8 @@ stays on the agent friction line. Unchanged: a last install run that did not end
 before any friction line is read; a v7 step-1 error still needs a run started after it; v6 (its step 2 also
 started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
 printed link and the Summary's outcome are the same value.
+
+**setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised word(s)" counts the
+words as listed (a word found in two sections is listed and counted twice; it counted distinct words, so the
+number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
+before the `…`, never inside a word.

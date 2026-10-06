@@ -165,8 +165,10 @@ The outcome judges only the install. How far the loop got after it is the Summar
 `baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
 status's loop line; the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 (`~/.local/bin/agentsync` is `agentsync`). So a setup that synced and stopped before drafting the baseline
-questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. The line holds
-no path, so redaction is unchanged; its stage prefills the form's Loop stage.
+questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
+something waits on the person, the line ends with the first `WAITING ON YOU:` line and `(+N more)` for the
+rest; `agentsync status` prints them all. The line holds no path, so redaction is unchanged; its stage prefills
+the form's Loop stage.
 
 The run type is computed too:
 

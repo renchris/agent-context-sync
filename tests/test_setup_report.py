@@ -1321,6 +1321,16 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
         ("A", ["Alpha"]),
         ("C", ["Beta"]),
     ]
+    twice = setup_report._redaction_section(
+        setup_report.Redactor(), [("A", ["Alpha", "Beta"]), ("C", ["Beta"])]
+    )
+    assert (
+        "Residue check: 3 capitalised word(s) next to a placeholder in this report (A: Alpha, Beta; C: Beta)"
+        in ("\n".join(twice))
+    ), "the count is the number of words listed (field report 2026-10-06: 5 counted, 7 listed)"
+    assert setup_report._shorten("word " * 60, 22) == "word word word word…", "never cut inside a word"
+    assert setup_report._shorten("abcdefghij klmnopqrst uvwxyz", 12) == "abcdefghij…"
+    assert setup_report._shorten("a" * 30, 12) == "a" * 11 + "…" and setup_report._shorten("short") == "short"
 
 
 def test_installer_output_is_embedded_and_its_hints_counted(

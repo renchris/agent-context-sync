@@ -1618,7 +1618,12 @@ def _plist_version(app: str) -> str | None:
 
 def _shorten(text: str, limit: int = 220) -> str:
     text = " ".join(text.split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    if text[limit - 1] != " " and " " in cut:  # end at a word's end, never inside a word
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip() + "…"
 
 
 # ---- facts for redaction --------------------------------------------------------------------------------
@@ -2946,9 +2951,9 @@ def residue_by_section(report: str) -> list[tuple[str, list[str]]]:
 def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
-    words = {w for _title, found in hits for w in found}
+    listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     check = (
-        f"Residue check: {len(words)} capitalised word(s) next to a placeholder in this report ("
+        f"Residue check: {listed} capitalised word(s) next to a placeholder in this report ("
         + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
         + "); check them."
         if hits
