@@ -2467,12 +2467,20 @@ def _background(r: _Run) -> list[str]:
 
 # An item's path or document name in a log line: a slash inside a word, or a document extension. Field report
 # 2026-10-05: client folder and file names nested BELOW a configured source (never registered with the
-# Redactor) reached the report through "fetch of <rel_path> failed" lines and inbox .eml names.
+# Redactor) reached the report through "fetch of <rel_path> failed" lines and inbox .eml names. The extension
+# list holds every suffix a converter claims (tests/test_setup_report.py checks it against the registry and
+# the image converter): a file the cycle reads is a file its log lines can name.
 _PATH_IN_LOG_RE = re.compile(
-    r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|csv|tsv|rtf|odt|ods|odp|pages|numbers|"
-    r"key|vsdx?|one|html?|json|xml|zip|png|jpe?g|gif|heic|tiff?|mp4|mov|m4a|wav)\b",
+    r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|markdown|csv|tsv|rtf|odt|ods|odp|"
+    r"pages|numbers|key|vsdx?|one|html?|json|xml|ya?ml|log|vtt|zip|png|jpe?g|gif|bmp|webp|hei[cf]|tiff?|mp4|"
+    r"mov|m4a|wav)\b",
     re.IGNORECASE,
 )
+_LOG_HEAD_RE = re.compile(
+    r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} (?:WARNING|ERROR|CRITICAL) agentsync(?:\.\w+)+"
+)
+"""A segment that is the head of one of agentsync's own log lines, whole: time, level, logger. A logger is
+named after its module, and ``agentsync.convert.pdf`` is not a document."""
 _PY_LOG_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL) agentsync\.")
 """One of agentsync's own log lines (``<time> WARNING agentsync.<module>: ...``). install.sh's and git's
 ``error:`` and ``fatal:`` lines are not: they keep their path or URL in the install.out tail."""
@@ -2504,7 +2512,7 @@ def _scrub_item_paths(line: str) -> str:
 
 
 def _scrub_segment(part: str) -> str:
-    if not _PATH_IN_LOG_RE.search(part.replace("agentsync.", "")):
+    if _LOG_HEAD_RE.fullmatch(part) or not _PATH_IN_LOG_RE.search(part.replace("agentsync.", "")):
         return part
     out = _KEY_PATH_RE.sub(
         lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(m.group(0)) else m.group(0), part

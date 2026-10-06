@@ -6619,3 +6619,18 @@ image is read when its file next changes.
 Tests: `tests/test_cycle.py` (an image page published with no label rule becomes a stub in the cycle after
 one is added; a new image under the rule is never fetched; the helper is not run; no purge is queued and the
 re-screen marker ends empty).
+
+**Setup report** (amends §16.14 and §16.22). A file the cycle converts is a file its WARNING lines can name
+(`fetch of <name> failed`, `converter image-ocr broke its contract on <name>`, `<name>: on-device OCR
+failed`), and a file at the top of a source has no slash to know it by: its extension is all
+`_scrub_item_paths` has. `_PATH_IN_LOG_RE` now knows every suffix a converter claims. It gains `.bmp`, `.heif`
+and `.webp` for the image converter, and `.log`, `.markdown`, `.vtt`, `.yaml` and `.yml`, which were converted
+and not scrubbed. A logger is named after its module, and `agentsync.convert.pdf` read as a document: the
+first segment of such a line (`<time> WARNING agentsync.convert.pdf`) became `<path>`, and the line lost its
+time and its level. A segment that is the whole head of a log line (time, level, logger: `_LOG_HEAD_RE`) is
+now left as it is; a name that only looks like a logger inside another segment is still scrubbed.
+
+Tests: `tests/test_setup_report.py` (one case per suffix, the list taken from
+`Registry.default(...).extensions()` and `ImageConverter.extensions`, so a suffix registered later fails
+there until the scrub knows it; three kinds of line, the name in lower and upper case; a line from each
+logger named like a document keeps its time and level).

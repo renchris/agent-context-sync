@@ -19,7 +19,9 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from agentsync import cli, net, setup_report
-from agentsync.config import Config, load_config
+from agentsync.config import Config, ConvertConfig, load_config
+from agentsync.convert.image import ImageConverter
+from agentsync.convert.registry import Registry
 from agentsync.ops import doctor
 from agentsync.paths import expand
 
@@ -170,6 +172,48 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
     assert "inbox: <path>: read failed: Operation canceled" in errors
     assert "src-x: read failed: [Errno 89] Operation canceled: '<path>" in errors
     assert "(item paths and document names shown as <path>)" in errors
+
+
+CONVERTED_SUFFIXES = sorted({*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions})
+"""Every suffix a converter claims: the default registry's, and the image converter's, which the registry
+holds only on a Mac with an OCR engine."""
+LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05 09:00:00,000 WARNING agentsync."
+
+
+@pytest.mark.parametrize("suffix", CONVERTED_SUFFIXES)
+def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
+    """A file at the top of a source has no slash to know it by: its extension is all the scrub has. A file
+    the cycle fetches and converts is a file its WARNING lines can name, so every claimed suffix is known."""
+    assert len(CONVERTED_SUFFIXES) == 32 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
+        *CONVERTED_SUFFIXES
+    }
+    for name in (f"Contoso Roadmap{suffix}", f"Fabrikam Org Chart{suffix.upper()}"):
+        fetch = f"{LOG_HEAD}cycle: src-x: fetch of {name} failed: timed out"
+        assert setup_report._scrub_item_paths(fetch) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
+        broke = f"{LOG_HEAD}convert: converter image-ocr broke its contract on {name}: unit whole: empty body"
+        assert setup_report._scrub_item_paths(broke) == f"{LOG_HEAD}convert: <path>: unit whole: empty body"
+        failed = f"{LOG_HEAD}convert.image: {name}: on-device OCR failed: the OCR helper ran out of time"
+        assert setup_report._scrub_item_paths(failed) == (
+            f"{LOG_HEAD}convert.image: <path>: on-device OCR failed: the OCR helper ran out of time"
+        )
+
+
+@pytest.mark.parametrize("module", ["pdf", "xlsx", "pptx", "eml", "markdown", "image"])
+def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) -> None:
+    """A logger is named after its module: ``agentsync.convert.pdf`` is not a document, and a line that
+    lost its first segment to ``<path>`` lost its time and its level with it."""
+    line = f"{LOG_HEAD}convert.{module}: Contoso Plan.pdf: comments not read on 1 page(s), first on page 2"
+    assert setup_report._scrub_item_paths(line) == (
+        f"{LOG_HEAD}convert.{module}: <path>: comments not read on 1 page(s), first on page 2"
+    )
+    # Only a segment that is a whole log-line head is left alone: a file named like a logger is a file.
+    for posing in (
+        f"fetch of WARNING agentsync.convert.{module} failed",
+        f"unreadable ERROR agentsync.convert.{module}",
+    ):
+        if module != "image":  # ``.image`` is no document extension: nothing to scrub in it
+            line = f"{LOG_HEAD}cycle: src-x: {posing}: timed out"
+            assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
 
 
 def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> None:
