@@ -597,15 +597,19 @@ class Publisher:
                 self._prune_empty_dirs(root.parent)
         return changed
 
-    def _read_sidecars(self, page_path: str) -> list[tuple[str, bytes]]:
+    def _sidecar_files(self, page_path: str) -> list[str]:
+        """Docs-repo-relative paths of the files in ``<page>.files/``, sorted."""
         root = self._abs(_sidecar_dir(page_path))
         if not root.is_dir() or root.is_symlink():
             return []
         return [
-            (f.relative_to(self._root).as_posix(), f.read_bytes())
+            f.relative_to(self._root).as_posix()
             for f in sorted(root.rglob("*"))
             if f.is_file() and not f.is_symlink()
         ]
+
+    def _read_sidecars(self, page_path: str) -> list[tuple[str, bytes]]:
+        return [(rel, self._abs(rel).read_bytes()) for rel in self._sidecar_files(page_path)]
 
     def _last_commit(self) -> str | None:
         try:
@@ -1154,43 +1158,49 @@ class Publisher:
         suffix = "-" + hashlib.sha256(stable_id.encode("utf-8")).hexdigest()[:8]
         return stem.removesuffix(suffix) if stem.endswith(suffix) and len(stem) > len(suffix) else stem
 
-    def _moved_sidecars(self, old_path: str, new_path: str, body: str) -> list[tuple[str, bytes]]:
-        """The sidecars of ``old_path`` under the names they take next to ``new_path``.
+    def _sidecar_moves(self, old_path: str, new_path: str, body: str) -> list[tuple[str, str]]:
+        """Where each sidecar of ``old_path`` goes when its page moves to ``new_path``: (from, to) pairs.
 
         A sidecar's leaf depends on its page's length (``sidecar_rel``), so each file the body lists is
-        mapped by its name; a file the body does not list keeps its leaf.  ``SidecarPathError`` when one
-        does not fit beside the new page: the caller re-fetches the item and it settles as a stub.
+        mapped by its name.  ``SidecarPathError`` when a listed one has no name that fits beside the new
+        page: the page cannot move, and the caller publishes the item as a stub.  A file the body does not
+        list keeps its leaf, and stays behind when that leaf is taken or does not fit.
         """
         listed = {
             sidecar_rel(old_path, name): sidecar_rel(new_path, name)
             for name, _digest in sidecar_digest_lines(body)
         }
-        moved: dict[str, bytes] = {}
-        for rel, data in self._read_sidecars(old_path):
-            dest = listed.get(rel) or f"{_sidecar_dir(new_path)}/{rel.rsplit('/', 1)[-1]}"
-            if not _sidecar_fits(dest):
-                raise SidecarPathError(
-                    f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap; "
-                    "the item needs a re-conversion"
-                )
-            if rel in listed or dest not in moved:  # a listed file wins the name over a stray one
-                moved[dest] = data
-        return sorted(moved.items())
+        if not all(_sidecar_fits(dest) for dest in listed.values()):
+            raise SidecarPathError(
+                f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
+            )
+        taken: dict[str, str] = {}  # destination -> the file that gets it
+        for rel in self._sidecar_files(old_path):
+            dest = listed.get(rel)
+            if dest is None:
+                dest = f"{_sidecar_dir(new_path)}/{rel.rsplit('/', 1)[-1]}"
+                if dest in taken or not _sidecar_fits(dest):
+                    continue
+            taken[dest] = rel  # a listed file wins the name over a stray one
+        return sorted((rel, dest) for dest, rel in taken.items())
 
     def rewrite_frontmatter(self, item: ItemRow, run_id: int) -> list[MirrorChange]:
         """METADATA_ONLY / rename without content change: re-render frontmatter (and move paths), keep
-        bodies."""
+        bodies.
+
+        Every page is planned before the first is written, so a refusal (``PublishError``: a missing or
+        unparseable page; ``SidecarPathError``: a sidecar with no room beside its page's new path) leaves
+        all of the item's pages where they are."""
         sid, stable = item.source_id, item.stable_id
         try:
             source = self._config.source(sid)
         except ConfigError:
             raise PublishError(f"{sid}: not a configured source") from None
         prov = self._provenance(source, item)
-        changes: list[MirrorChange] = []
-        rows: list[OutputRow] = []
-        for out in self._manifest.outputs_for(sid, stable):
+        outs = self._manifest.outputs_for(sid, stable)
+        planned: dict[str, tuple[str, str, list[tuple[str, str]]]] = {}  # old path -> new path, text, moves
+        for out in outs:
             if out.status is OutputStatus.TOMBSTONE:
-                rows.append(out)
                 continue
             text = self._read_text(out.output_path)
             if text is None:
@@ -1210,8 +1220,19 @@ class Publisher:
             )
             new_text = render_mirror_page(_with_trust(new_fm), body)
             new_path = self.allocate_path(sid, stable, self._alloc_rel(item), self._file_stem_of(out, stable))
+            moves = (
+                self._sidecar_moves(out.output_path, new_path, body) if new_path != out.output_path else []
+            )
+            planned[out.output_path] = (new_path, new_text, moves)
+        changes: list[MirrorChange] = []
+        rows: list[OutputRow] = []
+        for out in outs:
+            if out.status is OutputStatus.TOMBSTONE:
+                rows.append(out)
+                continue
+            new_path, new_text, moves = planned[out.output_path]
             if new_path != out.output_path:
-                sidecars = self._moved_sidecars(out.output_path, new_path, body)
+                sidecars = [(dest, self._abs(rel).read_bytes()) for rel, dest in moves]
                 self._write_text(new_path, new_text)
                 self._sync_sidecars(new_path, sidecars)
                 if slug.collision_key(new_path) != slug.collision_key(out.output_path):

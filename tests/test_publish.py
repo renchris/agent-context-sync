@@ -709,14 +709,71 @@ def test_rewrite_frontmatter_renames_a_sidecar_for_the_new_page_length(
     assert _path_findings(env) == []
 
 
+def _mirror_files(env: Env) -> list[str]:
+    return sorted(
+        f.relative_to(env.repo).as_posix()
+        for f in (env.repo / "mirror" / "src").rglob("*")
+        if f.is_file() and f.name != "CLAUDE.md"
+    )
+
+
 def test_rewrite_frontmatter_refuses_a_rename_that_leaves_no_room_for_the_sidecar(env: Env) -> None:
     env.publish(env.observe("vol:1", _long_rel(160)), _capped("full-text.txt", b"all of it\n"))
     [old] = env.manifest.outputs_for("src", "vol:1")
+    files = _mirror_files(env)
     moved = env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR + 1))
-    with pytest.raises(PublishError, match="needs a re-conversion"):  # both callers queue a re-fetch on this
+    with pytest.raises(SidecarPathError, match="no sidecar name fits"):  # the cycle then writes the stub
         env.pub.rewrite_frontmatter(moved, env.run_id)
-    assert env.manifest.outputs_for("src", "vol:1") == [old]
-    assert not any(len(p.relative_to(env.repo).as_posix()) > 199 for p in (env.repo / "mirror").rglob("*"))
+    assert env.manifest.outputs_for("src", "vol:1") == [old] and _mirror_files(env) == files
+
+
+def test_rewrite_frontmatter_moves_no_page_of_a_workbook_when_one_sheet_has_no_room_for_its_sidecar(
+    env: Env,
+) -> None:
+    """The refusal comes before the first write: the index and the first sheet do not move ahead of the
+    sheet that cannot, which would leave pages on disk that no manifest row owns."""
+    stem = "02-" + "b" * 57  # the longest unit stem
+    sheets = (
+        unit("# Book\n", unit_id="index", kind=UnitKind.INDEX, of=3, file_stem="00-index"),
+        unit("# A\n", unit_id="sheet:1", kind=UnitKind.SHEET, index=1, of=3, name="A", file_stem="01-a"),
+        unit(
+            "# B\n",
+            unit_id="sheet:2",
+            kind=UnitKind.SHEET,
+            index=2,
+            of=3,
+            name="B",
+            file_stem=stem,
+            sidecars=((f"{stem}.csv", b"a\n1\n"),),
+        ),
+    )
+    env.publish(env.observe("vol:1", "short/book.xlsx"), result(*map(_with_sidecar_digests, sheets)))
+    before, files = env.manifest.outputs_for("src", "vol:1"), _mirror_files(env)
+    assert len(files) == 4
+    deep = f"{'d' * 40}/{'e' * 40}/{'f' * 22}/book.xlsx"  # the longest folder path that is not cut
+    assert len(slug.mirror_rel_path("src", deep, file_stem=stem)) > LONGEST_PAGE_WITH_A_SIDECAR
+    with pytest.raises(SidecarPathError, match="no sidecar name fits"):
+        env.pub.rewrite_frontmatter(env.observe("vol:1", deep), env.run_id)
+    assert env.manifest.outputs_for("src", "vol:1") == before and _mirror_files(env) == files
+
+
+def test_rewrite_frontmatter_leaves_behind_a_file_the_page_does_not_list_when_it_has_no_room(
+    env: Env,
+) -> None:
+    """Only a sidecar the body lists can refuse a rename. A stray file in ``.files/`` keeps its name where
+    that fits and is dropped where it does not; the page still moves."""
+    env.publish(env.observe("vol:1", _long_rel(160)), _capped("full-table.csv", b"a,b\n1,2\n"))
+    [old] = env.manifest.outputs_for("src", "vol:1")
+    stray = env.repo / publish._sidecar_dir(old.output_path) / "a-note-someone-left-here.txt"
+    stray.write_bytes(b"not listed\n")
+    env.pub.rewrite_frontmatter(env.observe("vol:1", _long_rel(165)), env.run_id)
+    [mid] = env.manifest.outputs_for("src", "vol:1")
+    assert (env.repo / publish._sidecar_dir(mid.output_path) / stray.name).read_bytes() == b"not listed\n"
+    env.pub.rewrite_frontmatter(env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR)), env.run_id)
+    [new] = env.manifest.outputs_for("src", "vol:1")
+    side = publish.sidecar_rel(new.output_path, "full-table.csv")
+    assert _mirror_files(env) == sorted([new.output_path, side])
+    assert cycle._pages_intact(env.repo, [new]) and _path_findings(env) == []
 
 
 # ---- tombstones --------------------------------------------------------------------------------------------

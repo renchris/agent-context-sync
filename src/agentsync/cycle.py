@@ -1471,7 +1471,7 @@ class _Cycle:
             row = self.manifest.get_item(src.id, stable_id)
             if row is None or row.is_dir or row.state is RowState.TOMBSTONE:
                 continue
-            self._rewrite(row)
+            self._rewrite(src, row, acc)
         # ---- removals -------------------------------------------------------------------------------------
         outside: list[str] = []
         if isinstance(arm, LocalArm) and not complete_full:
@@ -1529,15 +1529,25 @@ class _Cycle:
                 out.add(row.stable_id)
         return out
 
-    def _rewrite(self, row: ItemRow) -> None:
+    def _rewrite(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> bool:
+        """Re-render ``row``'s pages for the path and metadata it has now, bodies kept (a rename, a
+        METADATA_ONLY change).
+
+        False when the pages could not follow the file because a sidecar has no name that fits beside the
+        new path: the item is then published as the stub ``_publish`` writes for such a page, and the caller
+        must not mark the row unchanged.  Any other failure is logged and the row queued for a re-fetch."""
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         if not any(o.status is not OutputStatus.TOMBSTONE for o in outs):
-            return
+            return True
         try:
             self.changes += self.publisher.rewrite_frontmatter(row, self.run_id)
+        except SidecarPathError as exc:
+            self._publish_path_stub(src, row, acc, exc)
+            return False
         except PublishError as exc:
             log.warning("%s/%s: frontmatter rewrite failed (%s); queued for re-fetch", *_row_ids(row), exc)
             self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.MAYBE_CHANGED)
+        return True
 
     def _removals(
         self,
@@ -1831,9 +1841,9 @@ class _Cycle:
         outs = self.manifest.outputs_for(sid, stable)
         intact = _pages_intact(self.repo, outs)
         if c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact:
-            acc.counts[Verdict.TOUCHED_NOT_CHANGED] += 1
-            self._rewrite_if_moved(src, fresh, outs)
-            self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
+            if self._rewrite_if_moved(src, fresh, outs, acc):
+                acc.counts[Verdict.TOUCHED_NOT_CHANGED] += 1
+                self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
             return
         acc.converted += 1
         result = convert_file(
@@ -1861,7 +1871,6 @@ class _Cycle:
             result = dataclasses.replace(result, status=ConversionStatus.REFUSED, units=(), reason=duplicate)
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
-            acc.counts[Verdict.OUTPUT_UNCHANGED] += 1
             if any(o.action_key != result.action_key for o in outs if o.status is OutputStatus.OK):
                 self.manifest.replace_outputs(
                     sid,
@@ -1873,8 +1882,9 @@ class _Cycle:
                         for o in outs
                     ],
                 )
-            self._rewrite_if_moved(src, fresh, outs)
-            self.manifest.set_verdict(sid, stable, Verdict.OUTPUT_UNCHANGED)
+            if self._rewrite_if_moved(src, fresh, outs, acc):
+                acc.counts[Verdict.OUTPUT_UNCHANGED] += 1
+                self.manifest.set_verdict(sid, stable, Verdict.OUTPUT_UNCHANGED)
             return
         acc.counts[Verdict.CHANGED] += 1
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
@@ -1936,10 +1946,25 @@ class _Cycle:
                 return self._duplicate_reason(other)
         return None
 
-    def _rewrite_if_moved(self, src: SourceConfig, row: ItemRow, outs: Sequence[OutputRow]) -> None:
+    def _rewrite_if_moved(
+        self, src: SourceConfig, row: ItemRow, outs: Sequence[OutputRow], acc: _SourceAcc
+    ) -> bool:
+        """Bring the pages' frontmatter and paths up to ``row`` when they name another path, eTag or id.
+        False when ``_rewrite`` settled the item as a stub instead (see there)."""
         durable = self.manifest.durable_id(row.source_id, row.stable_id)
-        if not _page_provenance_matches(self.repo, row, outs, src.kind.is_graph, durable):
-            self._rewrite(row)
+        if _page_provenance_matches(self.repo, row, outs, src.kind.is_graph, durable):
+            return True
+        return self._rewrite(src, row, acc)
+
+    def _publish_path_stub(
+        self, src: SourceConfig, row: ItemRow, acc: _SourceAcc, exc: SidecarPathError
+    ) -> None:
+        """Settle ``row`` as an unreadable stub: its page has no room for the sidecar it needs.  One item's
+        refusal: an uncaught error would fail the source at the same row every cycle, and an over-long
+        sidecar would block the commit for every source."""
+        log.warning("%s/%s quarantined: %s", *_row_ids(row), exc)
+        stub = self._stub(row, ConversionStatus.UNREADABLE, _SIDECAR_PATH)
+        self._publish(src, row, stub, acc, quarantine_reason=_SIDECAR_PATH)
 
     def _publish(
         self,
@@ -1955,12 +1980,8 @@ class _Cycle:
         try:
             pages = self.publisher.plan_pages(src, row, result)
         except SidecarPathError as exc:
-            # Settle this one item as a stub: an uncaught error here fails the source at the same row every
-            # cycle, and an over-long sidecar blocks the commit for every source.
-            log.warning("%s/%s quarantined: %s", sid, stable, exc)
-            result = self._stub(row, ConversionStatus.UNREADABLE, _SIDECAR_PATH)
-            quarantine_reason = _SIDECAR_PATH
-            pages = self.publisher.plan_pages(src, row, result)
+            self._publish_path_stub(src, row, acc, exc)
+            return
         self.changes += self.publisher.write_pages(row, pages, self.run_id)
         if prior_ok and any(p.refusal for p in pages) and quarantine_reason is None:
             self._label_escalation(row, prior_ok)

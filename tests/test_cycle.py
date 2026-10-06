@@ -29,7 +29,7 @@ from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, PassKind, RowState, ScanResult, Verdict
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
-from agentsync.publish import Publisher
+from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
 from test_e2e import GRAPH_SOURCE, SID, FakeDrive, FakeTokens, clock, config_with, git, page, porcelain
 
@@ -725,20 +725,64 @@ def test_budget_0_converts_every_local_file_and_defers_only_online_only_ones(
 # a page too long for any sidecar settles as one quarantined item
 # ---------------------------------------------------------------------------------------------------------
 
+APPENDIX_ROWS = 45_000
+"""Enough rows to pass ``max_page_bytes``: the page of such a file needs a ``full-text.txt`` sidecar."""
+_EXPORT = "Fabrikam Totals By Quarter - FY26 Forecast - All Regions - Final Export From The Data Warehouse v2"
+CRAMPED = f"Contoso Travel Forms/Charlie Photo Shoots/{_EXPORT} - Appendix With Every Row.txt"
+"""A made-up path whose page is over 183 characters: no ``.files/<8 hex>.txt`` fits beside it."""
+MOVES = {
+    # what is renamed: (a path with room for the sidecar, one without)
+    "file": ("Contoso Travel Forms/appendix.txt", CRAMPED),
+    "folder": (
+        f"Forms/{_EXPORT}.txt",
+        f"Contoso Travel Forms And Photo Shoots - Kept For Next Year/{_EXPORT}.txt",
+    ),
+}
+
+
+def _move(root: Path, old: str, new: str, *, folder: bool) -> None:
+    """Rename the file at ``old`` to ``new``, or the folder above it. A file's own rename moves its ctime,
+    so the next pass reads it again; under a renamed folder its stat holds and nothing is read."""
+    src, dst = root / old, root / new
+    if folder:
+        src, dst = src.parent, dst.parent
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+
+
+def _capped_at(root: Path, rel: str) -> None:
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_text("every row of the appendix\n" * APPENDIX_ROWS, encoding="utf-8")
+
+
+def _appendix_rows(sidecar: Path) -> int:
+    """How many of the file's rows ``sidecar`` holds (a count, so a failure prints no megabyte diff)."""
+    return sidecar.read_bytes().count(b"every row of the appendix\n")
+
+
+def _path_stub(config: Config, rel: str) -> bool:
+    """True when ``rel`` is settled as the stub for a page with no room for its sidecar, and nothing else is
+    beside that page."""
+    repo, at = config.docs_repo, slug.mirror_rel_path(SID, rel)
+    fm = page(repo, at)[0]
+    row = _file_rows(config)[rel]
+    return (
+        (fm["status"], fm["source_path"]) == ("unreadable", rel)
+        and "path too long" in fm["reason"]
+        and not (repo / at).with_suffix(".files").exists()
+        and (row.state, row.last_verdict) == (RowState.QUARANTINED, Verdict.QUARANTINED)
+        and "path too long" in (row.state_reason or "")
+    )
+
 
 def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantined_item(
     sample_config: Config, local_source_dir: Path
 ) -> None:
     """The item gets a stub and is settled; every other file is converted and the commit lands."""
-    rel = (
-        "Contoso Travel Forms/Charlie Photo Shoots/Fabrikam Totals By Quarter - FY26 Forecast - "
-        "All Regions - Final Export From The Data Warehouse v2 - Appendix With Every Row.txt"
-    )
+    rel = CRAMPED
     page = slug.mirror_rel_path(SID, rel)
-    assert len(page) > 183  # no ``.files/<8 hex>.txt`` fits beside it
-    big = local_source_dir / rel
-    big.parent.mkdir(parents=True)
-    big.write_text("every row of the appendix\n" * 45_000, encoding="utf-8")  # past max_page_bytes
+    assert len(page) > 183
+    _capped_at(local_source_dir, rel)
     first = run(sample_config)
     [src] = first.sources
     assert first.exit_code == 0 and first.commit_sha is not None, first
@@ -757,6 +801,35 @@ def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantine
     second = run(sample_config)  # settled: not read again, nothing to commit
     [src] = second.sources
     assert (second.exit_code, second.commit_sha, src.converted, src.errors) == (0, None, 0, ())
+
+
+@pytest.mark.parametrize("renamed", ["file", "folder"])
+def test_a_rename_that_leaves_no_room_for_the_sidecar_settles_as_the_stub_at_the_new_path(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, renamed: str
+) -> None:
+    """The page cannot follow the file, because its sidecar has no name that fits there. The item becomes
+    the stub a first conversion at that path gets: at the new path, nothing left at the old one, settled.
+    A renamed folder needs no read for that."""
+    roomy, cramped = MOVES[renamed]
+    old, new = slug.mirror_rel_path(SID, roomy), slug.mirror_rel_path(SID, cramped)
+    assert len(old) <= 183 < len(new)
+    _capped_at(local_source_dir, roomy)
+    assert run(sample_config).exit_code == 0
+    repo = sample_config.docs_repo
+    side = repo / sidecar_rel(old, "full-text.txt")
+    assert page(repo, old)[0]["status"] == "current" and _appendix_rows(side) == APPENDIX_ROWS
+    _move(local_source_dir, roomy, cramped, folder=renamed == "folder")
+    fetched = _fetches(monkeypatch)
+    second = run(sample_config)
+    [src] = second.sources
+    assert second.exit_code == 0 and second.commit_sha is not None and src.errors == ()
+    assert fetched == ([cramped] if renamed == "file" else [])
+    assert _path_stub(sample_config, cramped)
+    assert not (repo / old).exists() and not side.parent.exists()
+    assert not [f for f in second.lint_findings if f.code == "PATH"]
+    third = run(sample_config)  # settled: not read again, nothing to commit
+    assert (third.exit_code, third.commit_sha, third.sources[0].converted) == (0, None, 0)
+    assert len(fetched) == (1 if renamed == "file" else 0) and porcelain(repo) == ""
 
 
 # ---------------------------------------------------------------------------------------------------------
