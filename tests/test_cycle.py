@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -943,3 +944,31 @@ def test_an_arm_without_a_path_scope_has_every_queued_row_worked(
     report = run(_incomplete(sample_config, "sample.pptx"))
     assert report.exit_code == 0 and fetched == [deck]
     assert _file_rows(sample_config)[deck].state is not RowState.TOMBSTONE
+
+
+# ---------------------------------------------------------------------------------------------------------
+# [policy] re-screen backlog: a finished re-screen stays finished
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_a_finished_policy_rescreen_reports_no_backlog_for_a_file_that_waits_later(
+    tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A finished re-screen stores "" as its marker. A label-capable file that waits afterwards for another
+    reason (online-only, no download budget) is not re-screen backlog, and STATE.md does not say it is."""
+    assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
+    policy = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
+    config = config_with(tmp_path, local_source_dir, policy)
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+    assert run(config).exit_code == 0  # the changed policy re-screens every label-capable file in this run
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+    assert "## Content policy" not in state_md.read_text(encoding="utf-8")
+    late = local_source_dir / "projects" / "late.pdf"
+    shutil.copy2(fixture_files["sample.pdf"], late)
+    _mark_online_only(monkeypatch, late)
+    report = run(config, budget_bytes=0)
+    assert report.exit_code == 0 and report.sources[0].deferred_online_only == 1
+    assert "## Content policy" not in state_md.read_text(encoding="utf-8")
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._RESCREEN_META) == ""

@@ -4594,7 +4594,8 @@ file), and `gitops.COMMIT_PATHSPECS` includes it.
 earlier conversions from the cache (`ConverterCache.delete(keys)`) and queues a `LABEL_ESCALATION` purge. The
 manifest meta keeps `policy_fingerprint`; when the effective policy changes, every label-capable file
 (`OOXML_SUFFIXES`, `.pdf`, `.eml`) that is published or refused by policy is re-screened (content hashes
-forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty. An OOXML name
+forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty (**amended
+2026-10-06:** and not again until the next policy change, §16.23). An OOXML name
 whose bytes are not a ZIP at offset 0 is never converted: `policy.screen_file` refuses it by label when labels
 are active, else stubs it `policy.NOT_OOXML_REASON`; `read_labels` reads such a package's labels anyway and
 reports `policy.NOT_ZIP_AT_OFFSET_0` (refused under `refuse_unlabelled`).
@@ -5893,3 +5894,12 @@ by a file glob, a bare folder name, an anchored folder and `name/`: not fetched,
 by `loop.next_step`, while a queued row still in scope is read and an in-scope row the walk did not list stays
 live; a published page retired and brought back; an inbox; a drive row not downloaded; an arm with no
 `in_scope`).
+
+**A finished re-screen stays finished.** The manifest meta `policy_rescreen_pending` holds the policy fingerprint
+while a `[policy]` re-screen has files left, and `""` once none is left. `cycle._rescreen_lines` tested only for
+a missing key, so after the first finished re-screen every pending `.pdf`, OOXML or `.eml` file was reported in
+STATE.md as `[policy] changed: N label-capable file(s) not yet re-screened`, whatever it was waiting for (a
+download budget, a retry). The guard now reads `""` as no re-screen pending.
+
+Tests: `test_cycle.py` (a policy change re-screens and clears the marker; an online-only PDF deferred afterwards
+adds no `## Content policy` section).

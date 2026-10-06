@@ -955,7 +955,7 @@ class _Cycle:
 
     def _rescreen_lines(self) -> list[str]:
         """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left)."""
-        if self.manifest.get_meta(_RESCREEN_META) is None:
+        if not self.manifest.get_meta(_RESCREEN_META):  # never set, or "" since the last re-screen finished
             return []
         left = self.manifest.pending_named(_LABEL_CAPABLE)
         if left == 0:
