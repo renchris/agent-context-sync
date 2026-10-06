@@ -285,7 +285,8 @@ def test_version_prints_the_prompt_compat_line_last() -> None:
     assert lines[-1] == "setup-prompt-compat 7"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
-        r"( dirty [0-9a-f]{12} \(local changes in this checkout; git pull --ff-only keeps them\))?|unknown)",
+        r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
+        r" branch before it updates\))?|unknown)",
         lines[0],
     )
 
@@ -876,7 +877,7 @@ def test_version_of_a_dirty_checkout_names_its_diff(tmp_path: Path) -> None:
     dirty = subprocess.run(script, capture_output=True, text=True, check=True)
     assert dirty.stdout.splitlines()[0] == (
         f"source commit: {sha.stdout.strip()} dirty {_fingerprint(git)} "
-        "(local changes in this checkout; git pull --ff-only keeps them)"
+        "(local changes in this checkout; setup prompt step 1 keeps them on a local branch before it updates)"
     )
 
 

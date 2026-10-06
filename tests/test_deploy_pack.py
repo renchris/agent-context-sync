@@ -377,6 +377,20 @@ STEP1_COMMAND = (
 """Setup prompt v6 and v7 step 1: preflight, clone or pull, the installer's compat line, the friction log's
 attempt header and the folder list, in one command (one tool call, v5b review L5)."""
 
+_CHECKOUT = "~/src/agent-context-sync"
+KEEP_LOCAL_WORK = (
+    f"git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} add -A"
+    f" && git -C {_CHECKOUT} -c user.name=agentsync -c user.email=agentsync@localhost commit -q"
+    f" -m 'local changes kept before update'"
+    f" && git -C {_CHECKOUT} format-patch -q -1 -o ~/agent-context/setup/local-work"
+    f" && git -C {_CHECKOUT} switch main && git -C {_CHECKOUT} pull --ff-only"
+)
+"""Step 1's recovery when the pull fails on local changes (field report 2026-10-05: an agent
+stopped at step 1 because uncommitted work sat in the checkout and the prompt forbids stash and
+reset). It also writes that work as a patch beside the setup report, so it comes back with the
+report. It commits and switches branches, so no allow rule covers it: it runs only on a failed
+pull, and the tool asks first."""
+
 FRICTION_LOG_TEMPLATE = (
     f"{INSTALL_SH} --log '<step>' '<kind>' '<what happened>' '<what would have avoided it, or ->'"
 )
@@ -447,11 +461,66 @@ def test_readme_step1_is_one_command() -> None:
     assert step1.startswith(
         "Preflight, code and folders, in one command (replace <agent> with your tool and model id):"
     )
-    assert _commands(step1) == [STEP1_COMMAND, "xcode-select --install"]
+    assert _commands(step1) == [STEP1_COMMAND, "xcode-select --install", KEEP_LOCAL_WORK]
     assert 'tell me: "Install the Xcode Command Line Tools with `xcode-select --install`' in step1
     assert "If --list-folders printed no folder paths (only a NEXT: line)" in step1
     assert "ask which to sync" in step1, "the folder question is step 1's, after the list"
     assert _commands(_preamble()) == [FRICTION_LOG_TEMPLATE]
+
+
+def test_step1_keeps_local_changes_on_a_branch_and_updates(tmp_path: Path) -> None:
+    """Field report 2026-10-05: a checkout with uncommitted edits and new files that the update also touches.
+    Step 1's recovery command keeps every change on a local branch, nothing stashed, reset or deleted, and
+    leaves main fast-forwarded to the published commit."""
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
+    upstream, home = tmp_path / "upstream", tmp_path / "home"
+    checkout = home / "src" / "agent-context-sync"
+    subprocess.run([*git, "init", "-q", str(upstream)], check=True)
+    (upstream / "convert.py").write_text("v6\n", encoding="utf-8")
+    subprocess.run([*git, "-C", str(upstream), "add", "-A"], check=True)
+    subprocess.run([*git, "-C", str(upstream), "commit", "-q", "-m", "v6"], check=True)
+    subprocess.run([*git, "clone", "-q", str(upstream), str(checkout)], check=True)
+    (upstream / "convert.py").write_text("v7\n", encoding="utf-8")
+    subprocess.run([*git, "-C", str(upstream), "commit", "-q", "-am", "v7"], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    (checkout / "ocr.py").write_text("new local file\n", encoding="utf-8")
+    pull = subprocess.run(
+        ["git", "-C", str(checkout), "pull", "-q", "--ff-only"], capture_output=True, check=False
+    )
+    assert pull.returncode != 0, "the pull this recovery is for fails on the local edit"
+
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    proc = subprocess.run(
+        ["/bin/zsh", "-c", KEEP_LOCAL_WORK], cwd=home, env=env, capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (checkout / "convert.py").read_text(encoding="utf-8") == "v7\n" and not (
+        checkout / "ocr.py"
+    ).exists()
+    branches = subprocess.run(
+        ["git", "-C", str(checkout), "branch", "--list", "local-work-*", "--format=%(refname:short)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert len(branches) == 1
+    kept = {
+        name: subprocess.run(
+            ["git", "-C", str(checkout), "show", f"{branches[0]}:{name}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for name in ("convert.py", "ocr.py")
+    }
+    assert kept == {"convert.py": "local edit\n", "ocr.py": "new local file\n"}
+    [patch] = (home / "agent-context" / "setup" / "local-work").iterdir()
+    text = patch.read_text(encoding="utf-8")
+    assert "+local edit" in text and "+new local file" in text
+    status = subprocess.run(
+        ["git", "-C", str(checkout), "status", "--porcelain"], capture_output=True, text=True, check=True
+    )
+    assert status.stdout == ""
 
 
 def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
@@ -1097,8 +1166,11 @@ def _copilot_rule_matches(rule: str, command: str) -> bool:
 
 
 def _agent_commands() -> list[str]:
-    """Every command the block has the agent run (``xcode-select --install`` is the person's to run)."""
-    commands = [c for c in _commands(_one_prompt_block()) if c != "xcode-select --install"]
+    """Every command the block has the agent run on its normal path (``xcode-select --install`` is
+    the person's to run; :data:`KEEP_LOCAL_WORK` runs only after a failed pull, and asks first)."""
+    commands = [
+        c for c in _commands(_one_prompt_block()) if c not in ("xcode-select --install", KEEP_LOCAL_WORK)
+    ]
     assert commands == [
         FRICTION_LOG_TEMPLATE,
         STEP1_COMMAND,

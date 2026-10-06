@@ -434,7 +434,7 @@ show_version() { # the compat line last: step 1 of the setup prompt reads the la
 		c="$(checkout_commit "$repo")"
 		[ -n "$c" ] || c="$(git_head_file "$repo")"
 		case "$c" in
-		*" dirty "*) say "source commit: $c (local changes in this checkout; git pull --ff-only keeps them)" ;;
+		*" dirty "*) say "source commit: $c (local changes in this checkout; setup prompt step 1 keeps them on a local branch before it updates)" ;;
 		*) say "source commit: ${c:-unknown}" ;;
 		esac
 	fi
