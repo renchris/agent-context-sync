@@ -226,7 +226,8 @@ class Registry:
 
         Its converters are the ones a Mac without an engine has, version for version and option for option,
         behind the same policy guard.  A file converted through it gets the action key it would get there
-        (plan D10): ``convert_file`` uses it for a file the engine failed on."""
+        (plan D10): ``convert_file`` uses it for a file the engine failed on, and the cycle for every file
+        once its OCR time is used up."""
         return self._without_ocr
 
     def screen(self, src: Path, *, name: str) -> Screening | None:

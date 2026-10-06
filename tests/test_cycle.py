@@ -36,6 +36,7 @@ from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
+from test_convert_builders import build_picture_pdf, page_picture, shade_engine
 from test_convert_image import picture, picture_bytes, reads
 from test_e2e import GRAPH_SOURCE, SID, FakeDrive, FakeTokens, clock, config_with, git, page, porcelain
 from test_ocr import calls, fake_engine, write_fake
@@ -1439,6 +1440,45 @@ def test_the_ocr_budget_defers_the_images_past_it_and_a_cache_hit_costs_nothing(
         shutil.copyfile(shot, local_source_dir / "shots" / f"copy {n}.png")
     [rep] = run(sample_config).sources
     assert (rep.converted, rep.deferred) == (3, 0) and len(reads(engine.helper)) == 5
+
+
+def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budget_a_pdf_converts_without(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A document does not wait as an image does. Each read here 'takes' 100 s, so the second PDF passes
+    the 180 s budget and the third is converted as on a Mac without an engine: the page it would have
+    there, under that version, which is what tells a later re-read that OCR has not read it."""
+    assert run(sample_config).exit_code == 0
+    engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(3)})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    ticks = itertools.count(0.0, 100.0)
+    monkeypatch.setattr(cycle_mod, "_ocr_clock", lambda: next(ticks))
+    (local_source_dir / "scans").mkdir()
+    for n in range(3):
+        pages = [(["The cover page has a text layer of its own"], []), ([], [page_picture(90 + n)])]
+        build_picture_pdf(local_source_dir / "scans" / f"scan {n}.pdf", pages)
+    [rep] = run(sample_config).sources
+    assert (rep.converted, rep.deferred, rep.errors) == (3, 0, ())
+    read, unread = [], []
+    for n in range(3):
+        fm, body = page(sample_config.docs_repo, slug.mirror_rel_path(SID, f"scans/scan {n}.pdf"))
+        assert fm["status"] == "current" and body.startswith("> [UNTRUSTED CONTENT]")
+        if "+ocr-paper-vision-" in fm["converter"]:
+            assert fm["summary"] == "PDF: 2 page(s), 1 read by on-device OCR"
+            assert body.rstrip().endswith(f"(Apple Vision)]\n\nDelivery note {n}")
+            read.append(n)
+        else:
+            assert fm["summary"] == "PDF: 2 page(s), 1 without a text layer (scanned; OCR not run)"
+            assert body.rstrip().endswith("[scanned page: no text layer]") and "Delivery" not in body
+            unread.append(n)
+    assert (len(read), len(unread)) == (2, 1), "two reads pass the budget; the third file does not wait"
+    staging = sample_config.state_paths.staging.resolve()
+    runs = calls(engine.helper)
+    assert len(runs) == 2 and all(Path(c["cwd"]).parent.parent == staging for c in runs)
+    assert all(Path(c["cwd"]).name.startswith(".ocr-") for c in runs) and list(staging.iterdir()) == []
+    again = run(sample_config)
+    assert again.commit_sha is None and len(calls(engine.helper)) == 2, "a settled row is not converted again"
+    assert loop.next_step(sample_config).rule != 3, "nothing waits on this Mac"
 
 
 def test_an_online_only_image_is_not_downloaded_for_ocr(

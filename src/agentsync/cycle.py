@@ -135,7 +135,8 @@ _OCR_BUDGET_S = 180.0
 """The seconds of on-device OCR one cycle may use before it starts no more: the images still waiting are
 deferred like files past ``max_files``, so a folder of thousands of screenshots is read over many cycles and
 never holds one cycle (or the installer's first sync) for an hour. The read that passes the budget finishes;
-a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``)."""
+a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``). A document does not wait:
+past the budget it is converted without OCR (``_Cycle._converting``)."""
 _NO_CONVERTERS = Registry([])
 _ocr_clock = time.monotonic
 _POLICY_META = "policy_fingerprint"
@@ -1903,6 +1904,17 @@ class _Cycle:
         """True when ``row`` is an image for OCR and this cycle has used its OCR time (``_OCR_BUDGET_S``)."""
         return self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S and self._ocr_image(row)
 
+    def _converting(self) -> Registry:
+        """The registry the next file is converted with. Once the cycle has used its OCR time
+        (``_OCR_BUDGET_S``) it is the one without an engine (``Registry.without_ocr``): a document that
+        converts without OCR does not wait for the next cycle as an image does, and does not hold this one
+        for its own share of helper time. It gets the page, the version and the action key of a Mac without
+        an engine, which is how a later re-read can tell OCR has not read it."""
+        plain = self.registry.without_ocr
+        if plain is not None and self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S:
+            return plain
+        return self.registry
+
     def _process(
         self, src: SourceConfig, arm: SourceArm, row: ItemRow, budget: ByteBudget, acc: _SourceAcc
     ) -> None:
@@ -2047,7 +2059,7 @@ class _Cycle:
             name=row.name,
             content_sha256=fetched.content_sha256,
             canonical_sha256=h1.sha256,
-            registry=self.registry,
+            registry=self._converting(),
             cache=self.cache,
         )
         if result.action_key and result.status in (ConversionStatus.OK, ConversionStatus.UNREADABLE):

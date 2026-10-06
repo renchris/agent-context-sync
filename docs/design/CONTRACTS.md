@@ -6763,6 +6763,12 @@ for the fake helper of `tests/test_ocr.py`.
   says to sync again while files on this Mac wait. The read that passes the budget finishes, so one cycle
   spends at most the budget plus one document's 300 seconds. A folder of thousands of screenshots is read
   over many cycles; no cycle, and not the installer's first sync, is held for an hour by it.
+- **A document does not wait.** A PDF converts without OCR, so past the budget it is neither deferred nor
+  read: `_Cycle._converting` hands `convert_file` the registry without an engine (`Registry.without_ocr`),
+  and the file gets the page, the version and the action key of a Mac without one. Nothing waits and `loop`
+  has nothing to say about it. The version without `+ocr-` on its page is how a later re-read can tell that
+  OCR has not read it; nothing in this section re-reads it. Deferring it instead would hold back every PDF
+  behind a folder of scans, the ones with nothing to read included.
 - **A failed read.** `OcrError` makes the result FAILED: the `conversion failed: on-device OCR failed` stub,
   never cached, and the file's line in the source's errors. The cycle then treats the row as it treats every
   failed conversion: the next cycle reads the file again, finds the same bytes and an intact stub, and
@@ -6776,7 +6782,10 @@ not again by the next cycle; the engine looked for once per cycle and never unde
 `_cycle_ocr` against a helper in `<cache_dir>/ocr` with the two switches; `_CycleOcr` adding up a read that
 worked and one that failed; five images against a budget two reads pass, converted 2, 2 and 1 over three
 cycles with rule 3 between them, then three copies served by the cache in a cycle whose budget one read would
-pass; an online-only image beside a local one, under a byte budget, named to `materialise`, and after it
+pass; three PDFs with a scanned page against a budget two reads pass: two read by OCR under the staging
+folder, the third converted without it under the version without OCR, none deferred, and no second
+conversion by the next cycle; an online-only image beside a local one, under a byte budget, named to
+`materialise`, and after it
 is downloaded; a Graph image whose content is never requested; an image the
 helper failed on: its stub, one error line, no second read by the next cycle, and its new bytes converted;
 an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
