@@ -5736,114 +5736,220 @@ only in Doctor, no probe), and the frozen CLI surface (`doctor` and `policy` hid
   launcher pid) left a `TCC_PENDING` / `TCC_DENIED` line uncleared: a `CANARY_OK` clears only its own `path=`,
   `CHILD_EXIT` clears them all. The `launcher:` status lines use the same rule, one per uncleared line.
 
-### 16.24 PDF comments (2026-10-06)
+### 16.22 Field fixes from the bring-back report (2026-10-06)
 
-A reviewer's comments on a PDF are annotations. They sit outside the text layer, so a commented copy converted
-to the same page as the original. `pdf-pypdfium2` emitter **2.1.0** keeps them. No command, flag, config key or
-converter option is added: `options()` is unchanged and the emitter version alone moves the action key.
+No command, flag, installer option or config key. Each item changes one statement above, which carries a dated
+Amended note pointing here.
 
-Each page's comments follow its text (or its `[scanned page: no text layer]` marker):
+**setup-report: a listed folder named like a coding agent is not registered.** A folder under
+`~/Library/CloudStorage` that is only listed (depth 2-3, not configured) and whose name is made only of the words
+Claude, Codex, Copilot, Cursor, Gemini and GitHub (any case; words split at spaces, hyphens and underscores, so
+`GitHub Copilot` and `github-copilot` count) is not registered with the Redactor. Registered, a listed folder
+named `Copilot` turned the `Agent:` line's "GitHub Copilot CLI" into `GitHub <folder-N> CLI` in the Summary, the
+attempt list and the issue link. The agent string is not exempt: it is free text, and any other registered value
+in it is still replaced (the link is still built with `Redactor.scrub`). Limits: a configured source's path
+component or source id with such a name is registered like any other (Gemini, Codex, Cursor and Claude are also
+project codenames and first names), so the agent's name then shows the placeholder; `residue` lists these words
+like any other; a folder whose name mixes a product word with another word (`Copilot Pilots`) is registered
+whole, as before.
 
-```text
-<!-- page: 1 -->
+**setup-report: four leaks in the redacted section closed.** All in `_build_redactor`, the `Redactor`'s fuzzy
+match and the Installer section:
 
-Contoso widget overview
-Draft wording of the summary
+- *Shell-escaped names.* install.sh writes its arguments with `printf %q` (install.log's `args=`, install.out's
+  `# run=` header and its re-run lines), so `Client Alpha` arrives as `Client\ Alpha`. A fuzzy value now also
+  matches with a backslash between its words and before a non-alphanumeric character inside a word (`R\&D`),
+  and a case-insensitive value (a project path, a host) with a backslash before any such character.
+- *`--source-local` arguments, by structure.* macOS's bash 3.2 writes an argument holding a byte it finds
+  non-printable as `$'...'`, spaces bare and bytes as octal: every non-ASCII name under `LC_ALL=C`, and an em
+  dash even under UTF-8 with its first byte left raw, which no pattern for the plain name matches. So after a
+  line is redacted, `_redact_lines` settles each `--source-local <word>` in it (`_source_local_shown`): the
+  word (`$'...'`, `"..."`, `'...'` or bare with backslash escapes) is unquoted and redacted once more, then cut
+  to `<path>` at the first path component that is not a placeholder, a fixed macOS component, the provider
+  folder below `CloudStorage`, or a generic folder. A folder the Redactor does not know (one that no longer
+  exists, or a name that did not survive the log's encoding) is therefore never shown, whatever quoting the
+  shell chose: `--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<path>`. A word with no
+  quote, slash or backslash is not a path (prose such as "the --source-local option") and is left as it is.
+- *Nested names in the install.out tail.* A line of agentsync's own logging (`WARNING`, `ERROR` or `CRITICAL`
+  followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does, and so
+  does an indented `alarm:` or `error:` line of a sync's report, which install.sh prints in full when its sync
+  step fails. Other lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines (at
+  the margin) keep their path or URL.
+- *Quoted names.* In those lines, and in agentsync's log lines under Recent errors, `_scrub_item_paths` first
+  replaces what stands between the quotes of every quoted `%r` with `<path>` (`directory '<path>' is unknown
+  (EPERM: ...)`, `zero children in a cloud tree: '<path>', '<path>'; ...`). The older rule knew a name only by a
+  slash or a document extension, so a folder one level below a source root came through.
+- *Source ids.* Every configured source id is registered as a `<source-N>`, in config order. Before, only a
+  source under `~/Library/CloudStorage` was, so an inbox or project source's id was shown as typed, or with a
+  folder placeholder in its middle. Kept as typed: an id that is one of agentsync's own words (`_GENERIC_IDS`:
+  `inbox`, `mail`, `docs`, ...) on a source outside CloudStorage, since `graph_mail` and "the docs repo" would
+  become placeholders.
+- *Project paths.* For a configured source folder outside CloudStorage (`_project_values`): below the home
+  folder, the path from the first component that names something is one `<folder-N>` and that component alone
+  another, any case; elsewhere the whole path is one. Skipped as containers: generic folders such as
+  `Development`, dot folders, and a folder above the source named only with coding-agent product words
+  (`~/Documents/GitHub/<project>`; the source folder itself is registered whatever its name). Deeper components
+  are not registered alone. agentsync's own folders are left as they are: the inbox it keeps beside the docs
+  repo, and every folder beside the docs repo unless `docs_repo`'s parent is itself a generic folder (a hand-set
+  `~/Documents/agent-docs`), where the person's own projects live too.
 
-[comments on this page (PDF annotations):]
-- Highlight by Roe, John on “Contoso widget overview”: Use the Q3 figures here
-- Note by Doe, Jane Q: Add units → revenue split by region
-  - reply by Roe, John: Agreed
-- Insert by Roe, John: Final
-  - Strikethrough by Roe, John on “Draft”
-```
+Not covered, by design (docs/deploy/setup-feedback.md section 2): a name agentsync has never seen in the
+agent's own words, such as an abbreviation of a source id. The friction log gets the same map as every other
+section, no more.
 
-One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets
-no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary). The two
-exceptions are summaries, never bodies: a PDF the pdfminer fallback converts (Fallback, below) and one with a
-page whose comments could not be read (Failure, below).
+**setup-report: a line after an attempt's closing line.** `install.sh --log` appends with no check that an attempt
+is open, and step 1's command chain stops before `--log-start` when an earlier command fails, so a session can
+log a line with no `Attempt:` header after an older attempt's `end | finished`. Two rules:
 
-- **What counts.** Fifteen annotation subtypes, each with the word a reader knows it by: Text `Note`, FreeText
-  `Text box`, Line `Line`, Square `Box`, Circle `Circle`, Polygon `Polygon`, PolyLine `Polyline`, Highlight
-  `Highlight`, Underline `Underline`, Squiggly `Squiggly underline`, StrikeOut `Strikethrough`, Stamp `Stamp`,
-  Caret `Insert`, Ink `Drawing`, FileAttachment `Attachment`. Every other subtype is skipped (links, popups, form
-  fields, redactions, media, watermarks). A comment is kept only when it has `/Contents` text or, for the four
-  text markups, marks page text: a bare drawing, stamp or empty note is skipped. (A review status is kept for
-  its state: below.)
-- **Not drawn, not listed.** An annotation with the Hidden or NoView flag is skipped. No viewer draws it, so
-  listing its text would present words no reviewer saw as a colleague's comment. An answer to a skipped
-  annotation is listed on its own.
-- **Review status.** One hidden annotation is kept. The status a reviewer sets on a comment is a Text
-  annotation that answers it (`/IRT`) and carries `/StateModel` and `/State` (ISO 32000-1, 12.5.6.3). A viewer
-  lists it under that comment and draws nothing, so it has the Hidden flag; skipping it made a rejected or
-  completed comment read as an open one. A hidden Text annotation whose `/IRT` is on its page is listed as
-  `status by <author>: <state>` when the state is one its model defines: `Marked` or `Unmarked` for `Marked`;
-  `Accepted`, `Rejected`, `Cancelled`, `Completed` or `None` for `Review`. Only the author and that word are
-  taken from it: the `/Contents` of a hidden annotation is never shown. Every other hidden annotation is
-  skipped, a note whose state is some other word included. A status nests like any answer (a later status
-  answers the one before it), counts as a comment in the summary, and stands on its own when its comment is not
-  listed. A status without the Hidden flag is a reply like any other, with its own text. That viewers write a
-  status with the Hidden flag is taken from the review of this change and was not checked here: no file a
-  viewer wrote with one was at hand.
-- **Fields.** The author is `/T`, kept as written (as xlsx comment authors and mail senders are). The text is
-  `/Contents`. The marked text of a highlight, underline, squiggly or strikethrough is the page text under its
-  `/QuadPoints` (its `/Rect` when it has none): the characters whose loose box (the font's full line height) has
-  its centre inside a quad's bounding box, in text order, separate runs joined by a space. PDFium's own bounded
-  read is not used: on single-spaced text it returns glyphs of the lines above and below. The marked text is cut
-  at 300 characters with `…`. The text is left out when it equals the marked text (several tools copy one into
-  the other); the two are compared whole, then the marked text is cut as the comment is read, so a comment
-  never holds more of it than a line shows.
-- **One line.** Author, text and marked text are NFC with stray controls dropped and every whitespace run made
-  one space: line breaks, tabs, form feed, U+0085, U+2028 and U+2029 included. A comment therefore cannot pose
-  as a second comment, a reply, a heading, a rule or a code fence. `<!--` becomes `&lt;!--`, so it cannot pose
-  as a page anchor.
-- **Order.** Comments run top to bottom, then left to right, by `/Rect` in PDF space: a page's `/Rotate` is not
-  applied. Ties keep file order. A comment that answers another (`/IRT`) is nested under it, in file order, two
-  spaces per level, with at most four levels of indent. A nested Note is labelled `reply`; any other nested kind
-  keeps its word, which is how the strikethrough of a replace-text pair (`/IRT` with `/RT /Group`) stays
-  readable. A comment whose `/IRT` names itself or an annotation that is not listed stands on its own. Comments
-  in an `/IRT` cycle come after the others, in file order. Every comment read is emitted once.
-- **Summary.** `; N comment(s) on M page(s)` follows the page count and the scanned clause. N is the number of
-  comments emitted, M the number of pages with a block. `; comments not read on K page(s)` follows it when K
-  pages' comments could not be read (Failure, below). The summary carries no comment text and no author.
-- **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
-  …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
-- **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
-  returns `(page texts, {page index: comments}, pages whose comments were not read)`. An exception while one
-  page's comments are read costs that page its comments and nothing else: the page keeps its text, the file
-  stays with PDFium (never the pdfminer fallback) and the conversion does not fail. The summary ends `; comments
-  not read on K page(s)`, a count only, so such a page does not read as one nobody commented on and the comment
-  count does not read as complete. One WARNING per file gives the first cause: `<name>: comments not read on K
-  page(s), first on page P: <type>: <message>`. A PDF with no text on any page and no comment read is still
-  refused as `no text layer …`, whatever K is.
-- **Allowance.** One file's comments may cost 10,000,000 characters (`_COMMENT_CHARS_MAX`, counted by
-  `_CommentBudget`): every annotation string read (charged before it is copied), the characters of each page
-  that has a text markup (once, to find where they sit), and the characters at the height of each quad. The
-  conversion runs in the agent's own process, and without a limit a small file can hold it: 400 notes whose
-  `/Contents` is one shared 1 MB string took 30 s, 1.9 GB and a 400 MB sidecar; 1,000 highlights that each
-  cover a page of 34,000 characters took 9 s. With it both stop after about 2 s. 1,000 pages of 4,000 characters
-  with every line highlighted once cost about 8,000,000. The page that passes the allowance raises
-  `_CommentLimitError`, which is a Failure as above: that page and every later page with comments keep their
-  text, lose their comments and are counted in the summary. The allowance is a count, not a clock, so a file
-  converts the same way on every run. Work that grows only with the annotation data PDFium itself parses (one
-  step per annotation and per quad) is not counted.
-- **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
-  not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
-  file has any, so every PDF it converts carries the clause.
-- **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
-  Nothing here re-reads PDFs that are already mirrored.
+- `stopping_error` (and the no-install-run fallback) judge only the events before the attempt's first
+  `finished` event. A line logged after the run finished cannot have stopped it; it is still counted on the
+  agent friction line.
+- `parse_friction` starts a header-less attempt at a step 1 `error` event dated more than 10 minutes
+  (`_NEW_SESSION_GAP`) after the current attempt's last `finished` event; the lines after it, up to the next
+  `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`, and the prompt's rule for it is "log
+  it and go to step 3's report", so this is the one line such a session writes. The friction section labels the
+  attempt "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
+  read with the newest layout. It needs no later `Attempt:` line: when it is the last attempt, the Summary
+  judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had
+  finished before it. `install.sh --report-only` closes only an attempt with a header, so instead of the
+  stale-report WARNING the Summary says "note: attempt N has no Attempt: line. ...".
+- Every other line after a closing line stays in its attempt: a deviation, a prompt line, an error of another
+  step, a step 1 error inside the 10 minutes, a line with no time. A line logged after `--report-only` in the
+  same session must not become the latest attempt and take the Summary's headline, and a late deviation
+  followed by a later `Attempt:` header must not read as a failed attempt with no install run.
 
-Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_CommentBudget`, `_CommentLimitError`,
-`_PageChars`, `_page_comments`, `_read_comment`, `_review_state`, `_marked_text`, `_annot_string`, `_one_line`,
-`_comment_line`, `_render_comments`).
+**setup-report: a v7 step 2 error logged after install.sh exited 0 is agent friction.** `stopping_error`
+resolved an install-step error only by an install run that started at or after the line's time. No step lies
+between the install step (2) and the report step (3), and an agent logs after the command returns, so every
+`--log 2 error` line written after a successful install made the outcome "failed at step 2", whatever it said.
+In v7 step 2 runs one command, install.sh, and starts no background job: for a v7 attempt (and a header-less
+one, read as v7) an install-step error is resolved by any install run of the attempt that ended rc 0. The line
+stays on the agent friction line. Unchanged: a last install run that did not end rc 0 is "failed at step 2"
+before any friction line is read; a v7 step-1 error still needs a run started after it; v6 (its step 2 also
+started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
+printed link and the Summary's outcome are the same value.
 
-Tests: `test_convert_formats.py` (the page of `build_commented_pdf` byte for byte, with text and without; the
-centre rule against PDFium's bounded read; hidden and no-view annotations; a review status, and the hidden
-annotations that are not one; a comment that tries to leave its line; every subtype's word and PDFium's subtype
-and flag numbers; reply links that are cyclic, self-referring, dangling or 1,200 deep; the quote cap and a
-repeated text; a page whose comments raise; a scan whose comments raise; the allowance, by markup, by page and
-by string; the fallback), `test_convert_determinism.py` (`commented.pdf` converted twice),
-`test_convert_builders.py` (`build_annotated_pdf`, `build_commented_pdf`).
+**setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised word(s)" counts the
+words as listed (a word found in two sections is listed and counted twice; it counted distinct words, so the
+number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
+before the `…`, never inside a word.
+
+**Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
+`~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
+deletions are held until the folder gains a child or is excluded. What changed is the guidance, which was false
+or empty for this case (a source sat incomplete for 900 passes):
+
+- The names come from the walk a sync already does, never from a second listing. `arm_local.WalkStats` has
+  a new last field, `empty_cloud_dirs: tuple[str, ...] = ()`: the zero-child cloud folders below the root that
+  this walk recorded as unknown, sorted POSIX paths relative to the root (a subset of `unknown_dirs`; never
+  the root, never a folder unknown for another reason). After each local or inbox scan a non-dry cycle stores
+  them as manifest meta `empty_cloud_dirs:<source id>` (`cycle._EMPTY_DIRS_META`): a JSON list, `""` when the
+  walk found none or could not run, written only when it changes, in the transaction that records the pass. A
+  dry run stores nothing. The manifest already holds every mirrored file's path; heartbeat.json gains nothing.
+- `arm_local.exclude_advice(cfg, empty) -> str`: `set exclude = [...] in [[source]] id = '<id>' in
+  sources.toml[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
+  later gains files`. The list is the globs in force (the configured or default `exclude`, without the
+  always-excluded ones, so pasting it drops nothing) plus the first five folders as `/<path>/`: anchored at the
+  root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
+- `loop.next_step` stays disk-only (it reads that meta; `Publisher.write_state` calls it in every cycle, under
+  the writer lock, and the setup report gives it 4 s). For a local source whose newest FULL pass was incomplete
+  it takes the stored folders that today's `exclude` does not prune (at the folder or a folder above it) and
+  counts, per folder, the files the manifest still holds below it (rows in a present state):
+  - folders with none: `WAITING ON YOU: N empty cloud folder(s) keep the listing of <id> incomplete (deletions
+    held; another sync does not clear it): if they are meant to be empty, <exclude_advice>`;
+  - folders that held mirrored files get no paste line: `WAITING ON YOU: N empty cloud folder(s) in <id> held M
+    file(s) the mirror still has (the listing stays incomplete, so their deletion is held; another sync does
+    not clear it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive too,
+    and later syncs take the pages out with the usual deletion check; excluding such a folder instead retires
+    its pages at once, with no deletion check and no purge queued. \`agentsync sync -v\` names the folders`.
+    A folder usually became empty because its files were removed upstream, and an exclude edit is a scope
+    change: §9 retires what left scope as `retired:scope-change`, past the deletion breaker and with no purge;
+  - every stored folder is excluded by now (the line was pasted, no sync ran yet): the source is "not fully
+    listed" under rule 3, whose step is to sync again;
+  - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
+    could not be listed (no access, or a missing folder or sentinel; another sync does not clear it)`, then
+    that `agentsync sync -v` names it, and to grant Files and Folders access or add it to that source's exclude.
+- doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
+  an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
+  while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
+  status (its WAITING ON YOU line about <id> says what stops the listing and what to do: another sync does not
+  clear it)`: "a full pass clears this" was never true of a local walk, which is always a full pass, and
+  status prints the loop's lines above the checks. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
+  `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
+- `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
+  each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
+- setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
+  Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
+  registered nothing, and the line reaches the report through the Loop line, the install.out tail and
+  whatever the agent logged. install.sh's shell fallback report does the same (`scrub_exclude_lists`, after
+  `redact_stream`).
+
+**doctor and status wording.**
+
+- `source.<id>.sentinel` for a cloud source with no sentinel is ok ("no sentinel configured (optional: ...)"),
+  not a warn whose fix was a hand edit of sources.toml: `add-source` writes the sentinel as a comment, and the
+  walk already holds deletions for a cloud folder it finds empty or cannot list.
+- The ok `tcc` note ends "(the launcher and tcc.* lines below report it)" and no longer carries the Full Disk
+  Access instruction or points at `tcc.<source>` lines that most runs do not print. The
+  `EXIT_DISCLAIM_UNAVAILABLE` warn, which leaned on that note, has the instruction as its own fix.
+- Under `AGENTSYNC_NO_NEXT_HINT=1` with no agent step pending (install.sh without `--confirm-install-agent` on
+  a Mac whose LaunchAgents an earlier install left), a `launchd.*` **warn** whose fix is `agentsync
+  install-agent` or `launchctl bootstrap ...` has `fix=None` and the note "background sync is yours to refresh,
+  not a setup step". A FAIL keeps its fix. `governance.purge_queue` has the note "yours: see WAITING ON YOU":
+  install.sh prints the loop's line for the queue. By hand both print their fix as before.
+- `network.proxy`: with a PAC file and no explicit proxy on a Mac with no live Graph source, one info line (the
+  policy error), not that line and its warning twin. With a live Graph source the ERROR and the WARN both stay.
+- `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
+  install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
+- `status`'s loop line says `to curate N` where it said `queue N`.
+
+**Root guides: the inbox line names the kept inbox.** `Publisher.root_guide` named the first live inbox source
+by id, so on a Mac with project inbox sources whose ids sort before `inbox`, CLAUDE.md and AGENTS.md sent mail
+and Teams drops to one of them. Now, in order: the live inbox source on the folder `config.ensure_inbox` keeps
+(`docs_repo`'s parent `/inbox`, canonical; matched by path, since its id is derived and can differ); else the
+only live inbox source; else, with several and none on that folder, every one of them, sorted by id, under
+"into one of these inbox folders (its source id in brackets)" as one `` - `<path>` (<id>) `` line each. No live
+inbox source: no line, as before. `publish.root_guide(archive=, inbox=)` takes the one display path or that
+list of entries. The skill carries no inbox line (it has no config), so the guides are its only place.
+
+**Sync makes agent-written paths owner-only.** agentsync writes under umask 077, but a coding agent's file tool
+runs under the agent's own umask (usually 022). The baseline Draft step, which the skill tells the agent to
+write to `_eval/`, therefore left that folder readable by group and other, and the next `status` ended on a
+`docs_repo.permissions` FAIL that the loop itself had caused. Every non-dry cycle now clears the group and
+other bits right after `Publisher.ensure_scaffold` (`cycle._tighten_agent_writes`, private): on each entry at
+the top of the docs repo (the entry itself) and on everything below `_eval/` and `topics/`. Regular files and
+folders only; a symlink is never followed or changed, so nothing outside the docs repo is touched: each mode is
+read again and changed through one descriptor opened with `O_NOFOLLOW` (`fstat`, `fchmod`), so an entry swapped
+for a symlink after the first `lstat` is an error for that path, not a chmod of its target. `mirror/`
+and `.git` are not walked (the publisher writes 0600, git writes under `core.sharedRepository`), so a loose
+mode there is still doctor's to report, as is a path the cycle could not change (one warning with a count, no
+path). Modes are not content, so this alone never makes a commit. A dry run changes nothing, and sync still
+runs no doctor check: the FAIL simply has no cause left when `status` next looks.
+
+**install.sh.**
+
+- On a Mac whose sources.toml already existed, step 6's lines start `sync:` instead of `first sync:` (the
+  command line, the progress line, the converted/deferred summary, "skipped, lock busy"). install.log's step is
+  still `first-sync`, and the report's `- first sync:` line and the error texts are unchanged.
+- When the agent step is skipped as `not-requested` and `~/Library/LaunchAgents/com.agentsync.poll.plist`
+  exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
+  it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
+  call, and the skip note is unchanged.
+- `bring-back.md`: the headings of sections 2 and 3 name the setup folder with `~`
+  (`## 2. Fix request (~/agent-context/setup/fix-request.md)`), not by the expanded home path, which holds the
+  login name. The line under the title reads "Private: copy this file back as it is, and never paste it into
+  the public issue form. Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so
+  review them before sending." Sections 2 and 3 stay unredacted on purpose: redacting them would corrupt the
+  patch and hide over-redaction bugs.
+
+**Setup prompt (still v7: wording only, nothing new for the installer to do).** Step 1 ends: if the agent
+cannot ask (unattended, or the question comes back unanswered), it does not choose folders: it logs a
+deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps its sources, history and
+background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
+not run their commands. The rules say how to write `fix-request.md`, which comes back unredacted: name a folder,
+a file or a person by its role or by the report's placeholder, not by its real name, unless the name itself is
+the bug. docs/deploy/setup-feedback.md's private route names `~/agent-context/bring-back.md` and what its three
+sections hold.
 
 ### 16.23 Riders from the bring-back patch (2026-10-06)
 
@@ -5965,6 +6071,115 @@ download budget, a retry). The guard now reads `""` as no re-screen pending.
 
 Tests: `test_cycle.py` (a policy change re-screens and clears the marker; an online-only PDF deferred afterwards
 adds no `## Content policy` section).
+
+### 16.24 PDF comments (2026-10-06)
+
+A reviewer's comments on a PDF are annotations. They sit outside the text layer, so a commented copy converted
+to the same page as the original. `pdf-pypdfium2` emitter **2.1.0** keeps them. No command, flag, config key or
+converter option is added: `options()` is unchanged and the emitter version alone moves the action key.
+
+Each page's comments follow its text (or its `[scanned page: no text layer]` marker):
+
+```text
+<!-- page: 1 -->
+
+Contoso widget overview
+Draft wording of the summary
+
+[comments on this page (PDF annotations):]
+- Highlight by Roe, John on “Contoso widget overview”: Use the Q3 figures here
+- Note by Doe, Jane Q: Add units → revenue split by region
+  - reply by Roe, John: Agreed
+- Insert by Roe, John: Final
+  - Strikethrough by Roe, John on “Draft”
+```
+
+One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets
+no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary). The two
+exceptions are summaries, never bodies: a PDF the pdfminer fallback converts (Fallback, below) and one with a
+page whose comments could not be read (Failure, below).
+
+- **What counts.** Fifteen annotation subtypes, each with the word a reader knows it by: Text `Note`, FreeText
+  `Text box`, Line `Line`, Square `Box`, Circle `Circle`, Polygon `Polygon`, PolyLine `Polyline`, Highlight
+  `Highlight`, Underline `Underline`, Squiggly `Squiggly underline`, StrikeOut `Strikethrough`, Stamp `Stamp`,
+  Caret `Insert`, Ink `Drawing`, FileAttachment `Attachment`. Every other subtype is skipped (links, popups, form
+  fields, redactions, media, watermarks). A comment is kept only when it has `/Contents` text or, for the four
+  text markups, marks page text: a bare drawing, stamp or empty note is skipped. (A review status is kept for
+  its state: below.)
+- **Not drawn, not listed.** An annotation with the Hidden or NoView flag is skipped. No viewer draws it, so
+  listing its text would present words no reviewer saw as a colleague's comment. An answer to a skipped
+  annotation is listed on its own.
+- **Review status.** One hidden annotation is kept. The status a reviewer sets on a comment is a Text
+  annotation that answers it (`/IRT`) and carries `/StateModel` and `/State` (ISO 32000-1, 12.5.6.3). A viewer
+  lists it under that comment and draws nothing, so it has the Hidden flag; skipping it made a rejected or
+  completed comment read as an open one. A hidden Text annotation whose `/IRT` is on its page is listed as
+  `status by <author>: <state>` when the state is one its model defines: `Marked` or `Unmarked` for `Marked`;
+  `Accepted`, `Rejected`, `Cancelled`, `Completed` or `None` for `Review`. Only the author and that word are
+  taken from it: the `/Contents` of a hidden annotation is never shown. Every other hidden annotation is
+  skipped, a note whose state is some other word included. A status nests like any answer (a later status
+  answers the one before it), counts as a comment in the summary, and stands on its own when its comment is not
+  listed. A status without the Hidden flag is a reply like any other, with its own text. That viewers write a
+  status with the Hidden flag is taken from the review of this change and was not checked here: no file a
+  viewer wrote with one was at hand.
+- **Fields.** The author is `/T`, kept as written (as xlsx comment authors and mail senders are). The text is
+  `/Contents`. The marked text of a highlight, underline, squiggly or strikethrough is the page text under its
+  `/QuadPoints` (its `/Rect` when it has none): the characters whose loose box (the font's full line height) has
+  its centre inside a quad's bounding box, in text order, separate runs joined by a space. PDFium's own bounded
+  read is not used: on single-spaced text it returns glyphs of the lines above and below. The marked text is cut
+  at 300 characters with `…`. The text is left out when it equals the marked text (several tools copy one into
+  the other); the two are compared whole, then the marked text is cut as the comment is read, so a comment
+  never holds more of it than a line shows.
+- **One line.** Author, text and marked text are NFC with stray controls dropped and every whitespace run made
+  one space: line breaks, tabs, form feed, U+0085, U+2028 and U+2029 included. A comment therefore cannot pose
+  as a second comment, a reply, a heading, a rule or a code fence. `<!--` becomes `&lt;!--`, so it cannot pose
+  as a page anchor.
+- **Order.** Comments run top to bottom, then left to right, by `/Rect` in PDF space: a page's `/Rotate` is not
+  applied. Ties keep file order. A comment that answers another (`/IRT`) is nested under it, in file order, two
+  spaces per level, with at most four levels of indent. A nested Note is labelled `reply`; any other nested kind
+  keeps its word, which is how the strikethrough of a replace-text pair (`/IRT` with `/RT /Group`) stays
+  readable. A comment whose `/IRT` names itself or an annotation that is not listed stands on its own. Comments
+  in an `/IRT` cycle come after the others, in file order. Every comment read is emitted once.
+- **Summary.** `; N comment(s) on M page(s)` follows the page count and the scanned clause. N is the number of
+  comments emitted, M the number of pages with a block. `; comments not read on K page(s)` follows it when K
+  pages' comments could not be read (Failure, below). The summary carries no comment text and no author.
+- **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
+  …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
+- **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
+  returns `(page texts, {page index: comments}, pages whose comments were not read)`. An exception while one
+  page's comments are read costs that page its comments and nothing else: the page keeps its text, the file
+  stays with PDFium (never the pdfminer fallback) and the conversion does not fail. The summary ends `; comments
+  not read on K page(s)`, a count only, so such a page does not read as one nobody commented on and the comment
+  count does not read as complete. One WARNING per file gives the first cause: `<name>: comments not read on K
+  page(s), first on page P: <type>: <message>`. A PDF with no text on any page and no comment read is still
+  refused as `no text layer …`, whatever K is.
+- **Allowance.** One file's comments may cost 10,000,000 characters (`_COMMENT_CHARS_MAX`, counted by
+  `_CommentBudget`): every annotation string read (charged before it is copied), the characters of each page
+  that has a text markup (once, to find where they sit), and the characters at the height of each quad. The
+  conversion runs in the agent's own process, and without a limit a small file can hold it: 400 notes whose
+  `/Contents` is one shared 1 MB string took 30 s, 1.9 GB and a 400 MB sidecar; 1,000 highlights that each
+  cover a page of 34,000 characters took 9 s. With it both stop after about 2 s. 1,000 pages of 4,000 characters
+  with every line highlighted once cost about 8,000,000. The page that passes the allowance raises
+  `_CommentLimitError`, which is a Failure as above: that page and every later page with comments keep their
+  text, lose their comments and are counted in the summary. The allowance is a count, not a clock, so a file
+  converts the same way on every run. Work that grows only with the annotation data PDFium itself parses (one
+  step per annotation and per quad) is not counted.
+- **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
+  not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
+  file has any, so every PDF it converts carries the clause.
+- **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
+  Nothing here re-reads PDFs that are already mirrored.
+
+Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_CommentBudget`, `_CommentLimitError`,
+`_PageChars`, `_page_comments`, `_read_comment`, `_review_state`, `_marked_text`, `_annot_string`, `_one_line`,
+`_comment_line`, `_render_comments`).
+
+Tests: `test_convert_formats.py` (the page of `build_commented_pdf` byte for byte, with text and without; the
+centre rule against PDFium's bounded read; hidden and no-view annotations; a review status, and the hidden
+annotations that are not one; a comment that tries to leave its line; every subtype's word and PDFium's subtype
+and flag numbers; reply links that are cyclic, self-referring, dangling or 1,200 deep; the quote cap and a
+repeated text; a page whose comments raise; a scan whose comments raise; the allowance, by markup, by page and
+by string; the fallback), `test_convert_determinism.py` (`commented.pdf` converted twice),
+`test_convert_builders.py` (`build_annotated_pdf`, `build_commented_pdf`).
 
 ### 16.25 On-device OCR engine (2026-10-06)
 
@@ -6193,218 +6408,3 @@ the not-built wording and the fix without developer tools; a probe that crashes)
 `tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
 crashing build changes neither the exit status nor the steps; the one line without developer tools, forced
 with `DEVELOPER_DIR`; the dry run).
-
-### 16.22 Field fixes from the bring-back report (2026-10-06)
-
-No command, flag, installer option or config key. Each item changes one statement above, which carries a dated
-Amended note pointing here.
-
-**setup-report: a listed folder named like a coding agent is not registered.** A folder under
-`~/Library/CloudStorage` that is only listed (depth 2-3, not configured) and whose name is made only of the words
-Claude, Codex, Copilot, Cursor, Gemini and GitHub (any case; words split at spaces, hyphens and underscores, so
-`GitHub Copilot` and `github-copilot` count) is not registered with the Redactor. Registered, a listed folder
-named `Copilot` turned the `Agent:` line's "GitHub Copilot CLI" into `GitHub <folder-N> CLI` in the Summary, the
-attempt list and the issue link. The agent string is not exempt: it is free text, and any other registered value
-in it is still replaced (the link is still built with `Redactor.scrub`). Limits: a configured source's path
-component or source id with such a name is registered like any other (Gemini, Codex, Cursor and Claude are also
-project codenames and first names), so the agent's name then shows the placeholder; `residue` lists these words
-like any other; a folder whose name mixes a product word with another word (`Copilot Pilots`) is registered
-whole, as before.
-
-**setup-report: four leaks in the redacted section closed.** All in `_build_redactor`, the `Redactor`'s fuzzy
-match and the Installer section:
-
-- *Shell-escaped names.* install.sh writes its arguments with `printf %q` (install.log's `args=`, install.out's
-  `# run=` header and its re-run lines), so `Client Alpha` arrives as `Client\ Alpha`. A fuzzy value now also
-  matches with a backslash between its words and before a non-alphanumeric character inside a word (`R\&D`),
-  and a case-insensitive value (a project path, a host) with a backslash before any such character.
-- *`--source-local` arguments, by structure.* macOS's bash 3.2 writes an argument holding a byte it finds
-  non-printable as `$'...'`, spaces bare and bytes as octal: every non-ASCII name under `LC_ALL=C`, and an em
-  dash even under UTF-8 with its first byte left raw, which no pattern for the plain name matches. So after a
-  line is redacted, `_redact_lines` settles each `--source-local <word>` in it (`_source_local_shown`): the
-  word (`$'...'`, `"..."`, `'...'` or bare with backslash escapes) is unquoted and redacted once more, then cut
-  to `<path>` at the first path component that is not a placeholder, a fixed macOS component, the provider
-  folder below `CloudStorage`, or a generic folder. A folder the Redactor does not know (one that no longer
-  exists, or a name that did not survive the log's encoding) is therefore never shown, whatever quoting the
-  shell chose: `--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<path>`. A word with no
-  quote, slash or backslash is not a path (prose such as "the --source-local option") and is left as it is.
-- *Nested names in the install.out tail.* A line of agentsync's own logging (`WARNING`, `ERROR` or `CRITICAL`
-  followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does, and so
-  does an indented `alarm:` or `error:` line of a sync's report, which install.sh prints in full when its sync
-  step fails. Other lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines (at
-  the margin) keep their path or URL.
-- *Quoted names.* In those lines, and in agentsync's log lines under Recent errors, `_scrub_item_paths` first
-  replaces what stands between the quotes of every quoted `%r` with `<path>` (`directory '<path>' is unknown
-  (EPERM: ...)`, `zero children in a cloud tree: '<path>', '<path>'; ...`). The older rule knew a name only by a
-  slash or a document extension, so a folder one level below a source root came through.
-- *Source ids.* Every configured source id is registered as a `<source-N>`, in config order. Before, only a
-  source under `~/Library/CloudStorage` was, so an inbox or project source's id was shown as typed, or with a
-  folder placeholder in its middle. Kept as typed: an id that is one of agentsync's own words (`_GENERIC_IDS`:
-  `inbox`, `mail`, `docs`, ...) on a source outside CloudStorage, since `graph_mail` and "the docs repo" would
-  become placeholders.
-- *Project paths.* For a configured source folder outside CloudStorage (`_project_values`): below the home
-  folder, the path from the first component that names something is one `<folder-N>` and that component alone
-  another, any case; elsewhere the whole path is one. Skipped as containers: generic folders such as
-  `Development`, dot folders, and a folder above the source named only with coding-agent product words
-  (`~/Documents/GitHub/<project>`; the source folder itself is registered whatever its name). Deeper components
-  are not registered alone. agentsync's own folders are left as they are: the inbox it keeps beside the docs
-  repo, and every folder beside the docs repo unless `docs_repo`'s parent is itself a generic folder (a hand-set
-  `~/Documents/agent-docs`), where the person's own projects live too.
-
-Not covered, by design (docs/deploy/setup-feedback.md section 2): a name agentsync has never seen in the
-agent's own words, such as an abbreviation of a source id. The friction log gets the same map as every other
-section, no more.
-
-**setup-report: a line after an attempt's closing line.** `install.sh --log` appends with no check that an attempt
-is open, and step 1's command chain stops before `--log-start` when an earlier command fails, so a session can
-log a line with no `Attempt:` header after an older attempt's `end | finished`. Two rules:
-
-- `stopping_error` (and the no-install-run fallback) judge only the events before the attempt's first
-  `finished` event. A line logged after the run finished cannot have stopped it; it is still counted on the
-  agent friction line.
-- `parse_friction` starts a header-less attempt at a step 1 `error` event dated more than 10 minutes
-  (`_NEW_SESSION_GAP`) after the current attempt's last `finished` event; the lines after it, up to the next
-  `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`, and the prompt's rule for it is "log
-  it and go to step 3's report", so this is the one line such a session writes. The friction section labels the
-  attempt "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
-  read with the newest layout. It needs no later `Attempt:` line: when it is the last attempt, the Summary
-  judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had
-  finished before it. `install.sh --report-only` closes only an attempt with a header, so instead of the
-  stale-report WARNING the Summary says "note: attempt N has no Attempt: line. ...".
-- Every other line after a closing line stays in its attempt: a deviation, a prompt line, an error of another
-  step, a step 1 error inside the 10 minutes, a line with no time. A line logged after `--report-only` in the
-  same session must not become the latest attempt and take the Summary's headline, and a late deviation
-  followed by a later `Attempt:` header must not read as a failed attempt with no install run.
-
-**setup-report: a v7 step 2 error logged after install.sh exited 0 is agent friction.** `stopping_error`
-resolved an install-step error only by an install run that started at or after the line's time. No step lies
-between the install step (2) and the report step (3), and an agent logs after the command returns, so every
-`--log 2 error` line written after a successful install made the outcome "failed at step 2", whatever it said.
-In v7 step 2 runs one command, install.sh, and starts no background job: for a v7 attempt (and a header-less
-one, read as v7) an install-step error is resolved by any install run of the attempt that ended rc 0. The line
-stays on the agent friction line. Unchanged: a last install run that did not end rc 0 is "failed at step 2"
-before any friction line is read; a v7 step-1 error still needs a run started after it; v6 (its step 2 also
-started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
-printed link and the Summary's outcome are the same value.
-
-**setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised word(s)" counts the
-words as listed (a word found in two sections is listed and counted twice; it counted distinct words, so the
-number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
-before the `…`, never inside a word.
-
-**Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
-`~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
-deletions are held until the folder gains a child or is excluded. What changed is the guidance, which was false
-or empty for this case (a source sat incomplete for 900 passes):
-
-- The names come from the walk a sync already does, never from a second listing. `arm_local.WalkStats` has
-  a new last field, `empty_cloud_dirs: tuple[str, ...] = ()`: the zero-child cloud folders below the root that
-  this walk recorded as unknown, sorted POSIX paths relative to the root (a subset of `unknown_dirs`; never
-  the root, never a folder unknown for another reason). After each local or inbox scan a non-dry cycle stores
-  them as manifest meta `empty_cloud_dirs:<source id>` (`cycle._EMPTY_DIRS_META`): a JSON list, `""` when the
-  walk found none or could not run, written only when it changes, in the transaction that records the pass. A
-  dry run stores nothing. The manifest already holds every mirrored file's path; heartbeat.json gains nothing.
-- `arm_local.exclude_advice(cfg, empty) -> str`: `set exclude = [...] in [[source]] id = '<id>' in
-  sources.toml[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
-  later gains files`. The list is the globs in force (the configured or default `exclude`, without the
-  always-excluded ones, so pasting it drops nothing) plus the first five folders as `/<path>/`: anchored at the
-  root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
-- `loop.next_step` stays disk-only (it reads that meta; `Publisher.write_state` calls it in every cycle, under
-  the writer lock, and the setup report gives it 4 s). For a local source whose newest FULL pass was incomplete
-  it takes the stored folders that today's `exclude` does not prune (at the folder or a folder above it) and
-  counts, per folder, the files the manifest still holds below it (rows in a present state):
-  - folders with none: `WAITING ON YOU: N empty cloud folder(s) keep the listing of <id> incomplete (deletions
-    held; another sync does not clear it): if they are meant to be empty, <exclude_advice>`;
-  - folders that held mirrored files get no paste line: `WAITING ON YOU: N empty cloud folder(s) in <id> held M
-    file(s) the mirror still has (the listing stays incomplete, so their deletion is held; another sync does
-    not clear it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive too,
-    and later syncs take the pages out with the usual deletion check; excluding such a folder instead retires
-    its pages at once, with no deletion check and no purge queued. \`agentsync sync -v\` names the folders`.
-    A folder usually became empty because its files were removed upstream, and an exclude edit is a scope
-    change: §9 retires what left scope as `retired:scope-change`, past the deletion breaker and with no purge;
-  - every stored folder is excluded by now (the line was pasted, no sync ran yet): the source is "not fully
-    listed" under rule 3, whose step is to sync again;
-  - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
-    could not be listed (no access, or a missing folder or sentinel; another sync does not clear it)`, then
-    that `agentsync sync -v` names it, and to grant Files and Folders access or add it to that source's exclude.
-- doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
-  an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
-  while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
-  status (its WAITING ON YOU line about <id> says what stops the listing and what to do: another sync does not
-  clear it)`: "a full pass clears this" was never true of a local walk, which is always a full pass, and
-  status prints the loop's lines above the checks. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
-  `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
-- `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
-  each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
-- setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
-  Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
-  registered nothing, and the line reaches the report through the Loop line, the install.out tail and
-  whatever the agent logged. install.sh's shell fallback report does the same (`scrub_exclude_lists`, after
-  `redact_stream`).
-
-**doctor and status wording.**
-
-- `source.<id>.sentinel` for a cloud source with no sentinel is ok ("no sentinel configured (optional: ...)"),
-  not a warn whose fix was a hand edit of sources.toml: `add-source` writes the sentinel as a comment, and the
-  walk already holds deletions for a cloud folder it finds empty or cannot list.
-- The ok `tcc` note ends "(the launcher and tcc.* lines below report it)" and no longer carries the Full Disk
-  Access instruction or points at `tcc.<source>` lines that most runs do not print. The
-  `EXIT_DISCLAIM_UNAVAILABLE` warn, which leaned on that note, has the instruction as its own fix.
-- Under `AGENTSYNC_NO_NEXT_HINT=1` with no agent step pending (install.sh without `--confirm-install-agent` on
-  a Mac whose LaunchAgents an earlier install left), a `launchd.*` **warn** whose fix is `agentsync
-  install-agent` or `launchctl bootstrap ...` has `fix=None` and the note "background sync is yours to refresh,
-  not a setup step". A FAIL keeps its fix. `governance.purge_queue` has the note "yours: see WAITING ON YOU":
-  install.sh prints the loop's line for the queue. By hand both print their fix as before.
-- `network.proxy`: with a PAC file and no explicit proxy on a Mac with no live Graph source, one info line (the
-  policy error), not that line and its warning twin. With a live Graph source the ERROR and the WARN both stay.
-- `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
-  install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
-- `status`'s loop line says `to curate N` where it said `queue N`.
-
-**Root guides: the inbox line names the kept inbox.** `Publisher.root_guide` named the first live inbox source
-by id, so on a Mac with project inbox sources whose ids sort before `inbox`, CLAUDE.md and AGENTS.md sent mail
-and Teams drops to one of them. Now, in order: the live inbox source on the folder `config.ensure_inbox` keeps
-(`docs_repo`'s parent `/inbox`, canonical; matched by path, since its id is derived and can differ); else the
-only live inbox source; else, with several and none on that folder, every one of them, sorted by id, under
-"into one of these inbox folders (its source id in brackets)" as one `` - `<path>` (<id>) `` line each. No live
-inbox source: no line, as before. `publish.root_guide(archive=, inbox=)` takes the one display path or that
-list of entries. The skill carries no inbox line (it has no config), so the guides are its only place.
-
-**Sync makes agent-written paths owner-only.** agentsync writes under umask 077, but a coding agent's file tool
-runs under the agent's own umask (usually 022). The baseline Draft step, which the skill tells the agent to
-write to `_eval/`, therefore left that folder readable by group and other, and the next `status` ended on a
-`docs_repo.permissions` FAIL that the loop itself had caused. Every non-dry cycle now clears the group and
-other bits right after `Publisher.ensure_scaffold` (`cycle._tighten_agent_writes`, private): on each entry at
-the top of the docs repo (the entry itself) and on everything below `_eval/` and `topics/`. Regular files and
-folders only; a symlink is never followed or changed, so nothing outside the docs repo is touched: each mode is
-read again and changed through one descriptor opened with `O_NOFOLLOW` (`fstat`, `fchmod`), so an entry swapped
-for a symlink after the first `lstat` is an error for that path, not a chmod of its target. `mirror/`
-and `.git` are not walked (the publisher writes 0600, git writes under `core.sharedRepository`), so a loose
-mode there is still doctor's to report, as is a path the cycle could not change (one warning with a count, no
-path). Modes are not content, so this alone never makes a commit. A dry run changes nothing, and sync still
-runs no doctor check: the FAIL simply has no cause left when `status` next looks.
-
-**install.sh.**
-
-- On a Mac whose sources.toml already existed, step 6's lines start `sync:` instead of `first sync:` (the
-  command line, the progress line, the converted/deferred summary, "skipped, lock busy"). install.log's step is
-  still `first-sync`, and the report's `- first sync:` line and the error texts are unchanged.
-- When the agent step is skipped as `not-requested` and `~/Library/LaunchAgents/com.agentsync.poll.plist`
-  exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
-  it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
-  call, and the skip note is unchanged.
-- `bring-back.md`: the headings of sections 2 and 3 name the setup folder with `~`
-  (`## 2. Fix request (~/agent-context/setup/fix-request.md)`), not by the expanded home path, which holds the
-  login name. The line under the title reads "Private: copy this file back as it is, and never paste it into
-  the public issue form. Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so
-  review them before sending." Sections 2 and 3 stay unredacted on purpose: redacting them would corrupt the
-  patch and hide over-redaction bugs.
-
-**Setup prompt (still v7: wording only, nothing new for the installer to do).** Step 1 ends: if the agent
-cannot ask (unattended, or the question comes back unanswered), it does not choose folders: it logs a
-deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps its sources, history and
-background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
-not run their commands. The rules say how to write `fix-request.md`, which comes back unredacted: name a folder,
-a file or a person by its role or by the report's placeholder, not by its real name, unless the name itself is
-the bug. docs/deploy/setup-feedback.md's private route names `~/agent-context/bring-back.md` and what its three
-sections hold.
