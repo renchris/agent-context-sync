@@ -10,6 +10,8 @@ stub (C15 §9 #26), and prefixes every unit body with ``policy.UNTRUSTED_BANNER`
 
 The registry never looks for an OCR engine: the cycle resolves one and hands it in (``ocr=``).  Without one
 the default registry is the one from before OCR existed, converter for converter and version for version.
+With one it also keeps that registry (``without_ocr``): OCR may never fail a document that converts without
+it, so ``convert_file`` converts a file the engine failed on with the converter that has no engine.
 """
 
 from __future__ import annotations
@@ -143,7 +145,7 @@ class _GuardedConverter:
 class Registry:
     """An immutable extension -> converter map."""
 
-    __slots__ = ("_by_ext", "_converters", "_longest_first", "_policy")
+    __slots__ = ("_by_ext", "_converters", "_longest_first", "_policy", "_without_ocr")
 
     def __init__(
         self, converters: Sequence[Converter], *, policy: PolicyConfig | None = None, banner: bool = False
@@ -170,6 +172,7 @@ class Registry:
         self._by_ext = MappingProxyType(by_ext)
         self._converters = tuple(sorted(converters, key=lambda c: c.converter_id))
         self._longest_first = tuple(sorted(by_ext, key=lambda e: (-len(e), e)))
+        self._without_ocr: Registry | None = None
 
     @classmethod
     def default(
@@ -180,7 +183,8 @@ class Registry:
 
         With ``ocr`` (the engine the cycle resolved) raster images get a converter too, ``image-ocr``, unless
         a ``[policy]`` label rule is active: an image can carry a sensitivity label the screen cannot read,
-        so it then stays the ``no converter`` stub it is without an engine."""
+        so it then stays the ``no converter`` stub it is without an engine.  Such a registry keeps the one
+        without an engine as ``without_ocr``."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter  # noqa: PLC0415
@@ -205,12 +209,25 @@ class Registry:
             from agentsync.convert.image import ImageConverter  # noqa: PLC0415
 
             converters.append(ImageConverter(cfg, ocr))
-        return cls(converters, policy=content_policy, banner=True)
+        registry = cls(converters, policy=content_policy, banner=True)
+        if ocr is not None:
+            registry._without_ocr = cls.default(cfg, policy=policy)
+        return registry
 
     @property
     def policy(self) -> PolicyConfig:
         """The content policy this registry's guard enforces."""
         return self._policy
+
+    @property
+    def without_ocr(self) -> Registry | None:
+        """The same registry built without an OCR engine, when this one was built with one
+        (``Registry.default(..., ocr=engine)``); else None.
+
+        Its converters are the ones a Mac without an engine has, version for version and option for option,
+        behind the same policy guard.  A file converted through it gets the action key it would get there
+        (plan D10): ``convert_file`` uses it for a file the engine failed on."""
+        return self._without_ocr
 
     def screen(self, src: Path, *, name: str) -> Screening | None:
         """Pre-conversion screen of a staged file (call BEFORE the cache lookup; ``policy.screen_file``)."""

@@ -6532,6 +6532,11 @@ The converter is behind the guard like the other eight: the encryption screen ru
 `policy.UNTRUSTED_BANNER`, and a text sidecar gets the banner and its digest line. With `ocr=None` the
 registry is the one from before OCR existed.
 
+A registry built with an engine keeps the one built without: `Registry.without_ocr`, which is
+`Registry.default(cfg, policy=policy)`. Its converters are the ones a Mac without an engine has, version for
+version and option for option, behind the same policy guard and banner. For every other registry
+(`Registry.default` without an engine, `Registry([...])`) it is None.
+
 ```python
 # agentsync.convert.image
 class ImageConverter:                        # converter_id = "image-ocr"
@@ -6546,7 +6551,32 @@ class Registry:
     @classmethod
     def default(cls, cfg: ConvertConfig, *, policy: PolicyConfig | None = None,
                 ocr: OcrEngine | None = None) -> Registry: ...
+    @property
+    def without_ocr(self) -> Registry | None: ...   # the same registry built without an engine, or None
 ```
+
+**OCR never fails a document that converts without it** (plan D10; amends §7, `convert_file`). The cache
+stores every OK result, so a page that says "OCR failed" would be kept until the file's bytes change, and a
+FAILED result would replace a page that was good. `convert_file` therefore does neither. When the converter
+it routed to raises `OcrError`, and `registry.without_ocr` routes the same name to a converter with the same
+`converter_id`, the file is converted again through that registry and that conversion is the result:
+
+- Its status, units, `converter_version`, `options_hash` and `action_key` are the ones a Mac without an
+  engine gets for those bytes, and it is cached under that key: an OK page, or the UNREADABLE stub the
+  converter raises without OCR. A FAILED result is not cached, as ever.
+- Nothing the engine said is in it. One INFO line records the fallback: `<name>: on-device OCR failed;
+  converted by <converter_id> without it`.
+- The key with OCR holds nothing, so a later conversion of the same bytes tries OCR again. The published
+  page carries a converter version without `+ocr-`, which is how a later re-read can tell that OCR has not
+  read the file. Nothing in this section re-reads it: until its bytes change it stays as it is.
+- A converter with no such twin fails as before. An image has no converter without an engine, so its failed
+  read stays the FAILED stub above. An exception that is not `OcrError` is never converted again.
+
+Tests: `tests/test_convert_file.py` (an `OcrError` gives the result, the key and the cache entry of the
+registry without an engine, and the next read tries OCR again; an UNREADABLE and a FAILED twin; no twin, an
+empty twin registry and a twin of another converter; another exception) and `tests/test_convert_core.py`
+(`without_ocr` is the registry of a Mac without an engine, under each label rule too, and holds no image
+converter).
 
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
 `_PictureText`, `_read_pictures`, `_read_each`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`,

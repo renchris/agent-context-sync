@@ -13,6 +13,7 @@ import pytest
 from agentsync.convert import ConverterCache, Registry, convert_file, double_conversion_differs
 from agentsync.convert.base import make_unit, options_hash
 from agentsync.convert.cache import action_key
+from agentsync.convert.ocr import OcrError
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import ConversionStatus, RenderedUnit, UnitKind
 
@@ -191,6 +192,100 @@ def test_cache_write_failure_still_returns_ok(
         r = _run(src, Registry([Fake(lambda s, n: (_unit("x\n"),))]), cache)
     assert r.status is ConversionStatus.OK
     assert "cache write failed" in caplog.text
+
+
+# ---------------------------------------------------------------------------------------------------------
+# an OCR failure is not the last word (plan D10)
+# ---------------------------------------------------------------------------------------------------------
+
+WITH_OCR = "1.0.0+fake-1+ocr-paper-vision-r2-h0.3.0-l1"
+
+
+def _ocr_fails(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+    raise OcrError("on-device OCR failed")
+
+
+def _reading(with_ocr: Fake, without: Fake | None) -> Registry:
+    """A registry built with an engine, as ``Registry.default(..., ocr=engine)`` leaves one: it keeps the
+    registry without an engine."""
+    reg = Registry([with_ocr])
+    reg._without_ocr = Registry([without] if without is not None else [])
+    return reg
+
+
+def test_an_ocr_failure_is_converted_again_without_ocr_under_the_key_of_no_engine(
+    src: Path, cache: ConverterCache, caplog: pytest.LogCaptureFixture
+) -> None:
+    reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
+    plain = Fake(lambda s, n: (_unit("the page without OCR\n"),))
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _run(src, _reading(reading, plain), cache)
+    assert got == _run(src, Registry([plain]), ConverterCache(cache.root.parent / "other-mac"))
+    assert got.status is ConversionStatus.OK and got.reason is None and not got.from_cache
+    assert got.converter_version == "1.0.0+fake-1" and got.action_key == action_key(
+        converter_id="fake",
+        converter_version="1.0.0+fake-1",
+        options_hash=options_hash({"k": 1, "input_suffix": ".fk"}),
+        canonical_sha256=H1,
+    )
+    assert caplog.messages == ["doc.fk: on-device OCR failed; converted by fake without it"]
+    # The key with OCR holds nothing, so the next read tries OCR again; the page without it is served.
+    again = _run(src, _reading(reading, plain), cache)
+    assert again.from_cache and again.units == got.units and (reading.calls, plain.calls) == (2, 2)
+    # Once the engine works, its result is stored under its own key.
+    working = Fake(lambda s, n: (_unit("the page with OCR\n"),), version=lambda: WITH_OCR)
+    read = _run(src, _reading(working, plain), cache)
+    assert read.status is ConversionStatus.OK and read.converter_version == WITH_OCR and not read.from_cache
+    assert read.action_key != got.action_key and plain.calls == 2
+
+
+def test_what_the_converter_without_ocr_decides_is_the_result(src: Path, cache: ConverterCache) -> None:
+    def no_text(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise UnreadableSourceError("no text layer")
+
+    def broken(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise ConversionError("not a PDF")
+
+    reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
+    stub = _run(src, _reading(reading, Fake(no_text)), cache)
+    assert (stub.status, stub.reason, stub.converter_version) == (
+        ConversionStatus.UNREADABLE,
+        "no text layer",
+        "1.0.0+fake-1",
+    )
+    assert _run(src, _reading(reading, Fake(no_text)), cache).from_cache, "a settled stub, cached"
+    failed = _run(src, _reading(reading, Fake(broken)), cache, name="other.fk2")
+    assert (failed.status, failed.reason, failed.converter_version) == (
+        ConversionStatus.FAILED,
+        "conversion failed: not a PDF",
+        "1.0.0+fake-1",
+    )
+
+
+def test_an_ocr_failure_with_no_converter_without_ocr_fails_as_any_other(
+    src: Path, cache: ConverterCache
+) -> None:
+    """An image has no converter without an engine: its failed read stays a failure, never cached."""
+    reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
+    other = Fake(lambda s, n: (_unit("another converter's page\n"),), cid="other")
+    for registry in (Registry([reading]), _reading(reading, None), _reading(reading, other)):
+        got = _run(src, registry, cache)
+        assert (got.status, got.reason, got.converter_version) == (
+            ConversionStatus.FAILED,
+            "conversion failed: on-device OCR failed",
+            WITH_OCR,
+        )
+    assert reading.calls == 3 and other.calls == 0
+
+
+def test_only_an_ocr_failure_is_converted_again(src: Path, cache: ConverterCache) -> None:
+    def broken(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise ConversionError("pandoc exited 64")
+
+    plain = Fake(lambda s, n: (_unit("never asked for\n"),))
+    got = _run(src, _reading(Fake(broken, version=lambda: WITH_OCR), plain), cache)
+    assert got.status is ConversionStatus.FAILED and got.reason == "conversion failed: pandoc exited 64"
+    assert got.converter_version == WITH_OCR and plain.calls == 0
 
 
 def test_double_conversion_detects_nondeterminism(src: Path) -> None:

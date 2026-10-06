@@ -464,6 +464,27 @@ def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() ->
     assert reg.for_name("clip.mp4") is None and reg.for_name("drawing.svg") is None
 
 
+def test_a_registry_with_an_engine_keeps_the_one_without() -> None:
+    """Plan D10: a file the engine failed on is converted by the converter a Mac without an engine has, so
+    under that Mac's version, options and action key."""
+    plain = Registry.default(ConvertConfig())
+    assert plain.without_ocr is None and Registry([]).without_ocr is None
+    reg = Registry.default(ConvertConfig(), ocr=_engine())
+    twin = reg.without_ocr
+    assert twin is not None and twin.without_ocr is None
+    assert _identity(twin) == _identity(plain) and twin.extensions() == plain.extensions()
+    assert twin.for_name("scan.png") is None, "an image has no converter there, so a failed read stays one"
+
+
+@pytest.mark.parametrize("rule", LABEL_RULES.values(), ids=LABEL_RULES.keys())
+def test_the_registry_without_an_engine_enforces_the_same_policy(rule: PolicyConfig) -> None:
+    reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
+    twin = reg.without_ocr
+    assert twin is not None and twin.policy == reg.policy == rule
+    assert _identity(twin) == _identity(Registry.default(ConvertConfig(), policy=rule))
+    assert _identity(twin)["pdf-pypdfium2"][1]["label_policy"] == rule.fingerprint()
+
+
 @pytest.mark.parametrize("rule", LABEL_RULES.values(), ids=LABEL_RULES.keys())
 def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: PolicyConfig) -> None:
     """An image can carry a sensitivity label the screen cannot read, so any label rule fails closed."""
