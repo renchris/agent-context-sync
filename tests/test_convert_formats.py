@@ -11,8 +11,14 @@ import zipfile
 from dataclasses import replace
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Any
 
 import pytest
+from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
+from pptx.oxml.chart.series import CT_NumDataSource
+from pptx.util import Inches
 
 from agentsync.config import ConvertConfig
 from agentsync.convert import pdf as pdf_mod
@@ -315,6 +321,63 @@ def test_pptx_rich_deck(tmp_path: Path) -> None:
     assert "| Q1 | 10 |" in body and "| Q2 | 12.5 |" in body
     assert "<!-- Slide number: 2 -->\n\ninside group" in body
     assert "<!-- Slide number: 3 -->\n\n## Hidden one\n\n[hidden slide]" in body
+
+
+def _chart_deck(
+    path: Path, categories: list[str], *series: tuple[str, list[float | None]]
+) -> tuple[Any, Any]:
+    """A one-slide deck holding one line chart; returns (presentation, chart) so a test can edit the XML."""
+    prs = Presentation()
+    data = CategoryChartData()
+    data.categories = categories
+    for name, values in series:
+        data.add_series(name, values)
+    frame = prs.slides.add_slide(prs.slide_layouts[6]).shapes.add_chart(
+        XL_CHART_TYPE.LINE, Inches(1), Inches(1), Inches(6), Inches(4), data
+    )
+    prs.save(str(path))
+    return prs, frame.chart
+
+
+def test_pptx_large_chart_reads_each_series_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """python-pptx's per-point lookup is never called: a chart costs one pass per series, not one per cell."""
+    n = 300
+    units: list[float | None] = [float(i) for i in range(n)]
+    units[7] = None
+    cost: list[float | None] = [i + 0.5 for i in range(n)]
+    path = tmp_path / "big.pptx"
+    _chart_deck(path, [f"day {i}" for i in range(n)], ("Units", units), ("Cost", cost))
+
+    def quadratic(self: object, idx: int) -> float:
+        raise RuntimeError("series.values was called")  # not an error _chart_lines swallows
+
+    monkeypatch.setattr(CT_NumDataSource, "pt_v", quadratic)
+    body = _one(PptxConverter(CFG).convert(path, name="big.pptx")).body
+    assert "| Category | Units | Cost |" in body
+    assert "| day 0 | 0 | 0.5 |" in body and "| day 299 | 299 | 299.5 |" in body
+    assert "| day 7 |  | 7.5 |" in body  # the missing point stays blank
+    assert sum(line.startswith("| day ") for line in body.splitlines()) == n
+
+
+def test_pptx_chart_table_matches_python_pptx_values_on_odd_caches(tmp_path: Path) -> None:
+    """Same cells as ``series.values`` gave (emitter 1.0.0): points at or past ptCount are ignored, the first
+    point of an index wins, and a series shorter than the categories ends in blanks."""
+    path = tmp_path / "odd.pptx"
+    prs, chart = _chart_deck(
+        path, ["a", "b", "c", "d", "e"], ("Low count", [1.0, 2.0, 3.0, 4.0, 5.0]), ("Twice", [6.0, 7.0])
+    )
+    low, twice = (ser.val for ser in chart._chartSpace.xpath(".//c:ser"))
+    low.xpath(".//c:ptCount")[0].set("val", "3")  # five points, a count of three
+    points = twice.xpath(".//c:pt")
+    points[1].set("idx", "0")  # two points claim index 0; none claims index 1
+    prs.save(str(path))
+    plot = Presentation(str(path)).slides[0].shapes[0].chart.plots[0]
+    expected = [tuple(s.values) for s in plot.series]
+    assert expected[0] == (1.0, 2.0, 3.0) and expected[1][:2] == (6.0, None)
+    body = _one(PptxConverter(CFG).convert(path, name="odd.pptx")).body
+    for i, cat in enumerate(plot.categories):
+        cells = ["" if i >= len(v) or v[i] is None else f"{v[i]:g}" for v in expected]
+        assert f"| {cat} | {cells[0]} | {cells[1]} |" in body
 
 
 def test_pptx_unreadable_and_corrupt(tmp_path: Path) -> None:

@@ -144,18 +144,45 @@ def _chart_lines(chart: Any) -> list[str]:
         series = list(plot.series)
         if categories and series:
             header = ["Category", *(_cell(str(s.name or f"Series {i}")) for i, s in enumerate(series, 1))]
+            columns = [_series_values(s, len(categories)) for s in series]
             data = []
             for i, cat in enumerate(categories):
                 row = [_cell(cat)]
-                for s in series:
-                    values = list(s.values)
-                    v = values[i] if i < len(values) else None
+                for values in columns:
+                    v = values[i]
                     row.append("" if v is None else _fmt_number(v))
                 data.append(row)
             lines += ["", *_gfm_table(header, data)]
     except (AttributeError, IndexError, KeyError, ValueError, TypeError, NotImplementedError):
         pass
     return lines
+
+
+def _series_values(series: Any, n: int) -> list[float | None]:
+    """The series' first ``n`` cached values, read in ONE pass over its points (None where a point is absent).
+
+    python-pptx's ``series.values`` runs one XPath per point, and calling it per table cell made a large
+    chart take hours.  The result is what ``values`` returns: the first ``c:pt`` of each index below
+    ``c:ptCount`` counts, and a point at or above it is ignored.
+    """
+    out: list[float | None] = [None] * n
+    val = series._element.val
+    if val is None:
+        return out
+    count = val.ptCount_val
+    seen: set[int] = set()
+    for pt in val.xpath(".//c:pt"):
+        try:
+            idx = int(pt.get("idx"))
+        except (TypeError, ValueError):
+            continue
+        if not 0 <= idx < count or idx in seen:
+            continue
+        seen.add(idx)
+        value = pt.value  # read past ``n`` too: a point with no value drops the table, as ``values`` did
+        if idx < n:
+            out[idx] = value
+    return out
 
 
 def _fmt_number(v: object) -> str:

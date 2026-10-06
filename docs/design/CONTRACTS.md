@@ -5810,3 +5810,17 @@ and flag numbers; reply links that are cyclic, self-referring, dangling or 1,200
 repeated text; a page whose comments raise; a scan whose comments raise; the allowance, by markup, by page and
 by string; the fallback), `test_convert_determinism.py` (`commented.pdf` converted twice),
 `test_convert_builders.py` (`build_annotated_pdf`, `build_commented_pdf`).
+
+### 16.23 Riders from the bring-back patch (2026-10-06)
+
+Fixes the corporate Mac's patch carried beside its OCR work, rebuilt on main. No command, flag or config key.
+
+**Deck charts are read in one pass.** `convert.pptx._chart_lines` called python-pptx's `series.values` once per
+table cell, and `values` runs one XPath per point, so a chart with a few thousand points took hours.
+`_series_values(series, n)` walks the series' cached `c:pt` elements once. It returns what `values` returned:
+the first point of each index below `c:ptCount` counts, a point at or above the count is ignored, and a missing
+point is a blank cell. The page bytes are unchanged, so `pptx-python-pptx` stays at emitter 1.0.0 and nothing is
+converted again.
+
+Tests: `test_convert_formats.py` (a 300-point chart with python-pptx's per-point lookup made to raise; a count
+lower than the points, a repeated index and a short series against `series.values`).
