@@ -127,8 +127,10 @@ _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED wo
 _PRESENT = (RowState.LIVE, RowState.DATALESS, RowState.QUARANTINED, RowState.REFUSED)
 _NEVER_TRIPS = BreakerConfig(fraction=1.0, floor=10**12, hold_days=0)
 _WORK_BATCH = 256  # work-queue rows per manifest transaction (one commit + fsync per batch)
-_LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml")
-"""Names whose content can carry a sensitivity label: re-screened when the effective [policy] changes."""
+_LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml", *ImageConverter.extensions)
+"""Names whose content can carry a sensitivity label: re-screened when the effective [policy] changes. An
+image's label cannot be read, so under a label rule an image is not converted at all (``Registry.default``);
+the re-screen is what turns an image page published before the rule into the ``no converter`` stub."""
 _OCR_BUDGET_S = 180.0
 """The seconds of on-device OCR one cycle may use before it starts no more: the images still waiting are
 deferred like files past ``max_files``, so a folder of thousands of screenshots is read over many cycles and

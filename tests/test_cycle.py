@@ -1502,6 +1502,34 @@ def test_a_graph_image_is_not_downloaded_for_ocr(
     assert (fm["status"], fm["reason"]) == ("refused", "no converter for .png") and reads(engine.helper) == []
 
 
+LABEL_RULE = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
+
+
+def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a_stub(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An image can carry a sensitivity label nothing here reads, so a label rule fails closed: no image
+    converter. The [policy] re-screen covers images, so the page published before the rule does not stay."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    open_config = config_with(tmp_path, local_source_dir)
+    assert run(open_config).exit_code == 0
+    assert _image_page(open_config, SITE_PLAN)[0]["status"] == "current" and len(reads(engine.helper)) == 1
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    picture(local_source_dir / "projects" / "Contoso Badge Scan.jpg", "Visitor")
+    fetched = _fetches(monkeypatch)
+    report = run(labelled)
+    assert report.exit_code == 0 and not [rel for rel in fetched if rel.endswith((".png", ".jpg"))]
+    for rel, suffix in ((SITE_PLAN, ".png"), ("projects/Contoso Badge Scan.jpg", ".jpg")):
+        fm, body = _image_page(labelled, rel)
+        assert (fm["status"], fm["reason"]) == ("refused", f"no converter for {suffix}")
+        assert "Loading dock" not in body and "Visitor" not in body
+    assert len(reads(engine.helper)) == 1, "the helper is not run under a label rule"
+    assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
+    with Manifest(labelled.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+
+
 def test_an_image_the_helper_failed_on_gets_a_stub_with_fixed_wording_and_is_settled_like_any_failure(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

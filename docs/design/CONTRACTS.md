@@ -4610,7 +4610,8 @@ file), and `gitops.COMMIT_PATHSPECS` includes it.
 **Content policy (security-governance-04/05/06).** A published item refused by the label policy deletes its
 earlier conversions from the cache (`ConverterCache.delete(keys)`) and queues a `LABEL_ESCALATION` purge. The
 manifest meta keeps `policy_fingerprint`; when the effective policy changes, every label-capable file
-(`OOXML_SUFFIXES`, `.pdf`, `.eml`) that is published or refused by policy is re-screened (content hashes
+(`OOXML_SUFFIXES`, `.pdf`, `.eml`; **amended 2026-10-06, §16.26:** and the image suffixes) that is
+published or refused by policy is re-screened (content hashes
 forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty (**amended
 2026-10-06:** and not again until the next policy change, §16.23). An OOXML name
 whose bytes are not a ZIP at offset 0 is never converted: `policy.screen_file` refuses it by label when labels
@@ -6605,3 +6606,16 @@ helper failed on: its stub, one error line, no second read by the next cycle, an
 an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
 image's text: a `contains a credential` stub, the key in no committed object)
 and `tests/test_e2e.py` (without an engine a `.png` is refused unread, as a `.mp4` is).
+
+**A label rule and the pages from before it** (amends §16.6, "Content policy"). `cycle._LABEL_CAPABLE` also
+holds the image suffixes, so the `[policy]` re-screen covers images. `Manifest.mark_for_rescreen` marks
+published rows (and rows refused by policy). When a label rule becomes active, an image page published before
+it is therefore queued, finds no converter, and becomes the `no converter` stub in that cycle; no byte is
+read. No purge is queued, because no label was read: the page's earlier text stays in history, as for any
+file that lost its converter. An image row that already is a `no converter` stub is not marked, so on a Mac
+without OCR a policy change does exactly the work it did. Taking the rule away marks no stub either: such an
+image is read when its file next changes.
+
+Tests: `tests/test_cycle.py` (an image page published with no label rule becomes a stub in the cycle after
+one is added; a new image under the rule is never fetched; the helper is not run; no purge is queued and the
+re-screen marker ends empty).
