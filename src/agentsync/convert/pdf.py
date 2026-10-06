@@ -22,6 +22,7 @@ import logging
 import math
 import re
 import unicodedata
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -252,7 +253,8 @@ class _PageChars:
         """Bind the open text page; nothing is read yet."""
         self._pdfium_c = pdfium_c
         self._textpage = textpage
-        self._centres: list[tuple[float, float]] | None = None
+        self._centres: list[tuple[float, float, int]] | None = None  # (y, x, character), sorted
+        self._ys: list[float] = []
 
     def text_in(self, boxes: Sequence[_Box]) -> str:
         """The page text whose characters are centred inside one of ``boxes``, in text order, on one line."""
@@ -260,17 +262,20 @@ class _PageChars:
             rect = self._pdfium_c.FS_RECTF()
             self._centres = []
             for i in range(int(self._textpage.count_chars())):
-                ok = self._pdfium_c.FPDFText_GetLooseCharBox(self._textpage, i, ctypes.byref(rect))
-                at = (
-                    ((rect.left + rect.right) / 2, (rect.bottom + rect.top) / 2)
-                    if ok
-                    else (math.nan, math.nan)
-                )
-                self._centres.append(at)
+                if self._pdfium_c.FPDFText_GetLooseCharBox(self._textpage, i, ctypes.byref(rect)):
+                    at = ((rect.bottom + rect.top) / 2, (rect.left + rect.right) / 2, i)
+                    if math.isfinite(at[0]) and math.isfinite(at[1]):
+                        self._centres.append(at)
+            # Sorted by height, so a marked line costs its own characters, not the page's: a heavily
+            # highlighted page would otherwise test every character against every highlight.
+            self._centres.sort()
+            self._ys = [at[0] for at in self._centres]
+        marked: set[int] = set()
+        for left, bottom, right, top in boxes:
+            band = self._centres[bisect_left(self._ys, bottom) : bisect_right(self._ys, top)]
+            marked.update(i for y, x, i in band if left <= x <= right and bottom <= y <= top)
         runs: list[list[int]] = []  # [first character, count] of each unbroken run of marked characters
-        for i, (x, y) in enumerate(self._centres):
-            if not any(left <= x <= right and bottom <= y <= top for left, bottom, right, top in boxes):
-                continue
+        for i in sorted(marked):
             if runs and runs[-1][0] + runs[-1][1] == i:
                 runs[-1][1] += 1
             else:
