@@ -2129,6 +2129,35 @@ def test_an_opendocument_picture_stored_under_several_names_is_printed_once(tmp_
     assert [len(run) for run in reads(engine.helper)] == [2], "the second copy is not read again"
 
 
+def test_a_footnotes_picture_text_goes_with_the_note_unless_the_body_shows_the_picture_too(
+    tmp_path: Path,
+) -> None:
+    """The page shows the body, then the notes, so that is the order a picture is first shown in."""
+    pictures = {"a.png": text_png("In the body"), "b.png": text_png("In the note", "- a bullet", "---")}
+    engine = fake_engine(tmp_path / "bin")
+    note = "[^1]: See ![fn](b.png) for the figures.\n"
+    src = _staged_doc(tmp_path, f"Sales ![a](a.png) rose[^1].\n\nEnd.\n\n{note}", pictures, name="note.odt")
+    on = _doc_one(src, engine)
+    assert on.body == (
+        f"Sales [image: Pictures/0.png] rose[^1].\n\n{_PICTURE_HEAD}\n\nIn the body\n\nEnd.\n\n"
+        "[^1]: See [image: Pictures/1.png] for the figures.\n\n"
+        f"    {_PICTURE_HEAD}\n\n    In the note\\\n    \\- a bullet\\\n    \\---\n"
+    ), "the paragraph shows one picture, so its head counts one: the note's picture is not above it"
+    blocks, kinds = _gfm_blocks(on.body)
+    assert blocks == ["Para", "Para", "Para", "Para"]
+    assert kinds <= {"Para", "Str", "Space", "LineBreak", "SoftBreak", "Note"}
+    assert on.summary == "OpenDocument text; text of 2 picture(s) read by on-device OCR"
+    assert on.title == _doc_one(src, None).title
+    # The body shows the note's picture as well: its text is there, once.
+    both = f"Sales rose[^1].\n\nAgain ![b](b.png) here.\n\n{note}"
+    on = _doc_one(_staged_doc(tmp_path, both, pictures, name="both.odt"), engine)
+    assert on.body == (
+        "Sales rose[^1].\n\nAgain [image: Pictures/1.png] here.\n\n"
+        f"{_PICTURE_HEAD}\n\nIn the note\\\n\\- a bullet\\\n\\---\n\n"
+        "[^1]: See [image: Pictures/0.png] for the figures.\n"
+    )
+
+
 def test_word_pictures_are_read_in_order_of_first_use_and_only_the_ones_the_body_uses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

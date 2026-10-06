@@ -6920,8 +6920,11 @@ Approved \| 12 May
   the picture, never inside it: every block of the document is written exactly as it is without OCR.
   First a head line of its own, `[text in the image above, read by on-device OCR (Apple Vision):]`
   (`_PICTURE_HEAD`). When the block shows more than one picture the head says which:
-  `[text in image N above, …]`, where N counts the `[image…]` references of that block in order. Then one
-  paragraph per block of lines `ocr.text_lines` read, its lines kept apart by hard line breaks (a backslash
+  `[text in image N above, …]`, where N counts the `[image…]` references of that block in order. A picture
+  in a footnote is shown where the note is written out, at the end of the page, so its text follows the
+  block of the note that shows it, indented with the note, and it does not count for the paragraph that
+  refers to the note. The body is placed first, then the notes: a picture both show has its text in the
+  body. Then one paragraph per block of lines `ocr.text_lines` read, its lines kept apart by hard line breaks (a backslash
   at the end of a line), which is how pandoc writes a line break of the document's own.
 - **The filter** (`_LUA_FILTER`; its first pass, `ocr`). The converter writes `agentsync-ocr.json` into
   pandoc's job folder: `{"pictures": {source: key}, "text": {key: [lines]}}`, the lines as read
@@ -6978,7 +6981,8 @@ Tests: `tests/test_convert_formats.py` (suffixes, version and options with and w
 `_PandocWithoutOcr`; the page of `build_docx_image` and of an odt without an engine, byte for byte, and the
 same pages with an engine when no picture holds text; a picture shown by a figure, a paragraph and a table
 printed once, a paragraph of three pictures naming the second, an icon skipped, one run of the helper beside
-the staged file; an odt picture stored under three names; order of first use against the order of names, an
+the staged file; an odt picture stored under three names; a picture in a footnote, and one the body shows
+too; order of first use against the order of names, an
 entry nothing uses and a header's logo never read, a third picture never opened past a limit of one; the
 count limit and the byte limit; every kind of line that could pose as structure, in a docx and an odt, as
 written and as pandoc's own reader parses the page back; a marker as the first and as the last line of a

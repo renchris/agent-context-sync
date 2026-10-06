@@ -102,11 +102,12 @@ _PANDOC_FLAGS: tuple[str, ...] = (
 #
 # The first pass (``ocr``) is for a docx or odt whose pictures on-device OCR read text in.  The converter
 # then writes ``_OCR_SIDE_FILE`` into the job folder: ``pictures`` (image source -> picture key) and ``text``
-# (picture key -> the lines read, not escaped).  After each top-level block that shows such a picture the
-# pass adds a head line and the lines, once per key however many sources share it.  The lines are built as
-# words and spaces, which the gfm writer escapes as it escapes the document's own text: nothing read in a
-# picture is ever written raw.  Without the file the pass changes nothing, so the output is what it was.
-# Whatever goes wrong in it leaves the document as it is and unreported (``_PLACED_RE``), never failed.
+# (picture key -> the lines read, not escaped).  After each top-level block that shows such a picture, and
+# after each block of a footnote that does, the pass adds a head line and the lines, once per key however
+# many sources share it.  The lines are built as words and spaces, which the gfm writer escapes as it
+# escapes the document's own text: nothing read in a picture is ever written raw.  Without the file the pass
+# changes nothing, so the output is what it was.  Whatever goes wrong in it leaves the document as it is
+# and unreported (``_PLACED_RE``), never failed.
 _LUA_FILTER = r"""
 local ocr_text = nil
 pcall(function()
@@ -159,25 +160,41 @@ local function ocr_blocks(head, lines)
   if #block > 0 then out:insert(pandoc.LineBlock(block)) end
   return out
 end
-local function ocr_place(doc)
-  local printed, count = {}, 0
+-- The pictures a block shows where it stands: those of its footnotes are shown with the notes.
+local function ocr_sources(block)
+  local sources = {}
+  local bare = block:walk({ Note = function() return {} end })
+  bare:walk({ Image = function(img) sources[#sources + 1] = img.src end })
+  return sources
+end
+-- ``blocks`` with the text of each picture a block shows added after that block.
+local function ocr_after(blocks, state)
   local out = pandoc.Blocks({})
-  for _, block in ipairs(doc.blocks) do
+  for _, block in ipairs(blocks) do
     out:insert(block)
-    local sources = {}
-    block:walk({ Image = function(img) sources[#sources + 1] = img.src end })
+    local sources = ocr_sources(block)
     for n, source in ipairs(sources) do
       local key = ocr_text.pictures[source]
       local lines = key ~= nil and ocr_text.text[key] or nil
-      if type(lines) == "table" and not printed[key] then
-        printed[key] = true
-        count = count + 1
+      if type(lines) == "table" and not state.printed[key] then
+        state.printed[key] = true
+        state.count = state.count + 1
         out:extend(ocr_blocks(ocr_head(n, #sources), lines))
       end
     end
   end
-  doc.blocks = out
-  return doc, count
+  return out
+end
+-- The body, then the footnotes: the order the page shows them in.  ``doc`` itself is left as it is.
+local function ocr_place(doc)
+  local state = { printed = {}, count = 0 }
+  local placed = pandoc.Pandoc(ocr_after(doc.blocks, state), doc.meta):walk({
+    Note = function(note)
+      note.content = ocr_after(note.content, state)
+      return note
+    end,
+  })
+  return placed, state.count
 end
 local ocr = {
   Pandoc = function(doc)
