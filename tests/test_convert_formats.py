@@ -29,6 +29,7 @@ from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
 from agentsync.convert import pdf as pdf_mod
+from agentsync.convert import pptx as pptx_mod
 from agentsync.convert._common import _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.eml import EmlConverter
@@ -64,7 +65,7 @@ from test_convert_builders import (
     teams_msg,
     with_cached_values,
 )
-from test_convert_image import Recording, reads
+from test_convert_image import Recording, reads, text_png
 from test_ocr import calls, fake_engine
 
 CFG = ConvertConfig()
@@ -1469,7 +1470,7 @@ def _through_the_cache(src: Path, registry: Registry, cache: Path) -> Conversion
         src,
         name=src.name,
         content_sha256=hashlib.sha256(src.read_bytes()).hexdigest(),
-        canonical_sha256=canonical_hash(src, suffix=".pdf").sha256,
+        canonical_sha256=canonical_hash(src, suffix=src.suffix).sha256,
         registry=registry,
         cache=ConverterCache(cache),
     )
@@ -1648,6 +1649,304 @@ def test_a_pdfium_bitmap_is_written_as_a_gray_or_rgb_png_whatever_its_byte_order
     assert (got_width, got_height, colour) == (width, height, 0 if mode == "L" else 2)
     assert [list(row) for row in rows] == want
     bitmap.close()
+
+
+# ---------------------------------------------------------------------------------------------------------
+# pptx with an OCR engine
+# ---------------------------------------------------------------------------------------------------------
+
+_PICTURE_HEAD = "[text in the image above, read by on-device OCR (Apple Vision):]"
+_PICTURES_CUT = "; pictures past the OCR picture limit not read"
+# What the converter without an engine makes of ``build_pptx_rich``, as it did before OCR existed.
+_RICH_DECK_BODY = """\
+<!-- Slide number: 1 -->
+
+## Numbers
+
+LEFT box
+
+RIGHT box
+
+| k | v |
+|---|---|
+| rate | 4.2% |
+| merged row | merged row |
+
+[chart: column_clustered]
+
+| Category | Revenue |
+|---|---|
+| Q1 | 10 |
+| Q2 | 12.5 |
+
+[image: Company logo]
+
+<!-- Slide number: 2 -->
+
+inside group
+
+<!-- Slide number: 3 -->
+
+## Hidden one
+
+[hidden slide]
+"""
+
+
+def _add_picture(shapes: Any, data: bytes, alt: str = "", *, top: float = 2.0) -> Any:
+    """A picture shape holding ``data``, ``top`` inches down, with ``alt`` as its alt text."""
+    pic = shapes.add_picture(io.BytesIO(data), Inches(1), Inches(top))
+    pic._element.nvPicPr.cNvPr.set("descr", alt)
+    return pic
+
+
+def _staged_deck(tmp_path: Path, prs: Any, name: str = "deck.pptx") -> Path:
+    """``prs`` saved in a folder of its own, as the cycle stages a file."""
+    folder = tmp_path / "staging" / "0123456789abcdef"
+    folder.mkdir(parents=True, exist_ok=True)
+    prs.save(str(folder / name))
+    return folder / name
+
+
+def _deck_of(tmp_path: Path, *pictures: bytes, name: str = "deck.pptx") -> Path:
+    """A staged deck of one slide holding ``pictures`` from top to bottom, with alt texts ``picture N``."""
+    prs = Presentation()
+    shapes = prs.slides.add_slide(prs.slide_layouts[6]).shapes
+    for n, data in enumerate(pictures):
+        _add_picture(shapes, data, f"picture {n}", top=1.0 + n)
+    return _staged_deck(tmp_path, prs, name)
+
+
+def _deck_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG) -> RenderedUnit:
+    return _one(PptxConverter(cfg, ocr=engine).convert(src, name=src.name))
+
+
+def test_pptx_version_and_options_change_only_with_an_engine(tmp_path: Path) -> None:
+    plain, reading = PptxConverter(CFG), PptxConverter(CFG, ocr=fake_engine(tmp_path / "bin"))
+    assert re.fullmatch(r"1\.0\.0\+python-pptx-\d+(\.\d+)+", plain.version())
+    assert plain.options() == {"max_page_bytes": CFG.max_page_bytes, "row_tolerance_emu": 45_720}
+    assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
+    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 1}
+
+
+def test_a_deck_without_an_engine_is_the_page_from_before_ocr(tmp_path: Path) -> None:
+    """Byte for byte, and so is a deck whose pictures hold no text when there is an engine."""
+    src = build_pptx_rich(tmp_path / "rich.pptx")
+    off = _deck_one(src, None)
+    assert off.body == _RICH_DECK_BODY
+    assert (off.title, off.summary) == ("Numbers", "Presentation: 3 slide(s); titles: Numbers; Hidden one")
+    engine = fake_engine(tmp_path / "bin")
+    assert _deck_one(src, engine) == off, "the logo is read, holds no text, and adds nothing"
+    assert [len(run) for run in reads(engine.helper)] == [1]
+
+
+def test_a_deck_pictures_text_follows_its_image_line_once_per_distinct_picture(tmp_path: Path) -> None:
+    chart = text_png("Units by region", "North | 12")
+    stamp, icon = text_png("Approved | 12 May"), text_png(skipped=True)
+    prs = Presentation()
+    first = prs.slides.add_slide(prs.slide_layouts[5])  # title only
+    first.shapes.title.text = "Contoso tourer launch"
+    _add_picture(first.shapes, chart, "Sales by region", top=2)
+    _add_picture(first.shapes, icon, top=4)
+    group = prs.slides.add_slide(prs.slide_layouts[6]).shapes.add_group_shape()
+    _add_picture(group.shapes, chart, "Sales by region", top=1)
+    _add_picture(group.shapes, stamp, "Approval stamp", top=3)
+    _add_picture(prs.slides.add_slide(prs.slide_layouts[6]).shapes, chart, "The same chart")
+    src = _staged_deck(tmp_path, prs)
+    engine = fake_engine(tmp_path / "bin")
+
+    def body(*, read: bool) -> str:
+        said = {"chart": "Units by region\nNorth | 12", "stamp": "Approved | 12 May"}
+        text = {key: f"\n{_PICTURE_HEAD}\n{lines}" if read else "" for key, lines in said.items()}
+        return (
+            "<!-- Slide number: 1 -->\n\n## Contoso tourer launch\n\n"
+            f"[image: Sales by region]{text['chart']}\n\n[image]\n\n"
+            "<!-- Slide number: 2 -->\n\n"
+            f"[image: Sales by region]\n\n[image: Approval stamp]{text['stamp']}\n\n"
+            "<!-- Slide number: 3 -->\n\n[image: The same chart]\n"
+        )
+
+    off, on = _deck_one(src, None), _deck_one(src, engine)
+    assert off.body == body(read=False) and on.body == body(read=True)
+    assert on.title == off.title == "Contoso tourer launch"
+    assert off.summary == "Presentation: 3 slide(s); titles: Contoso tourer launch"
+    assert on.summary == (
+        "Presentation: 3 slide(s); text of 2 picture(s) read by on-device OCR; titles: Contoso tourer launch"
+    )
+    # One run of the helper, on the three distinct pictures in the order the slides show them, in a folder
+    # made beside the staged file and removed.
+    (call,) = calls(engine.helper)
+    (run,) = reads(engine.helper)
+    work = Path(call["cwd"])
+    assert work.parent == src.parent.resolve() and work.name.startswith(".ocr-")
+    assert [Path(p).name for p in run] == ["00000.png", "00001.png", "00002.png"]
+    assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
+    assert _deck_one(src, engine) == on, "the same deck gives the same page"
+
+
+def test_a_picture_with_no_bytes_in_the_deck_is_an_image_line_and_nothing_more(tmp_path: Path) -> None:
+    """A linked picture keeps its bytes in another file, and a relationship can lead nowhere."""
+    prs = Presentation()
+    shapes = prs.slides.add_slide(prs.slide_layouts[6]).shapes
+    linked = _add_picture(shapes, text_png("never read", salt=1), "Linked", top=1)
+    lost = _add_picture(shapes, text_png("never read", salt=2), "Lost", top=2)
+    _add_picture(shapes, text_png("Stock on hand"), "Kept", top=3)
+    blip = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+    del linked._element.blipFill.blip.attrib[blip]
+    lost._element.blipFill.blip.set(blip, "rId999")
+    src = _staged_deck(tmp_path, prs)
+    engine = fake_engine(tmp_path / "bin")
+    on = _deck_one(src, engine)
+    assert on.body == (
+        "<!-- Slide number: 1 -->\n\n[image: Linked]\n\n[image: Lost]\n\n"
+        f"[image: Kept]\n{_PICTURE_HEAD}\nStock on hand\n"
+    )
+    assert [len(run) for run in reads(engine.helper)] == [1]
+    assert on.body.replace(f"\n{_PICTURE_HEAD}\nStock on hand", "") == _deck_one(src, None).body
+
+
+def test_deck_picture_limits_are_counts_and_the_summary_says_when_one_cut_the_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pictures = [text_png(f"picture text {n}") for n in range(3)]
+    src = _deck_of(tmp_path, *pictures, pictures[0])
+    engine = fake_engine(tmp_path / "bin")
+
+    def read(**limits: int) -> tuple[list[str], str]:
+        with monkeypatch.context() as mp:
+            mp.setattr(pptx_mod, "_read_pictures", functools.partial(image._read_pictures, **limits))
+            u = _deck_one(src, engine)
+        return [ln for ln in u.body.split("\n") if ln.startswith("picture text")], u.summary
+
+    everything = ([f"picture text {n}" for n in range(3)], "Presentation: 1 slide(s)")
+    read_all = "; text of 3 picture(s) read by on-device OCR"
+    assert read() == (everything[0], everything[1] + read_all)
+    assert read(limit=3) == (everything[0], everything[1] + read_all), "a limit reached and not passed"
+    lines, summary = read(limit=2)
+    assert lines == ["picture text 0", "picture text 1"]
+    assert summary == "Presentation: 1 slide(s); text of 2 picture(s) read by on-device OCR" + _PICTURES_CUT
+    lines, summary = read(max_bytes=len(pictures[0]) + len(pictures[1]) - 1)
+    assert lines == ["picture text 0"] and summary.endswith(
+        "1 picture(s) read by on-device OCR" + _PICTURES_CUT
+    )
+    assert read(max_bytes=sum(map(len, pictures))) == (everything[0], everything[1] + read_all)
+
+
+def test_text_ocr_read_in_a_deck_cannot_pose_as_slide_structure(tmp_path: Path) -> None:
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Roadmap"
+    _add_picture(slide.shapes, text_png(*_HOSTILE), "Screenshot", top=2)
+    closing = prs.slides.add_slide(prs.slide_layouts[5])
+    closing.shapes.title.text = "Next steps"
+    src = _staged_deck(tmp_path, prs)
+    off, on = _deck_one(src, None), _deck_one(src, fake_engine(tmp_path / "bin"))
+    neutral = "\n".join(_NEUTRAL)
+    assert on.body == (
+        f"<!-- Slide number: 1 -->\n\n## Roadmap\n\n[image: Screenshot]\n{_PICTURE_HEAD}\n{neutral}\n\n"
+        "<!-- Slide number: 2 -->\n\n## Next steps\n"
+    )
+    lines = on.body.split("\n")
+    assert [ln for ln in lines if ln.startswith("<!--")] == [f"<!-- Slide number: {n} -->" for n in (1, 2)]
+    assert _open_fence(on.body) is None
+    assert (
+        _headings(on.body, max_level=6)
+        == _headings(off.body, max_level=6)
+        == [(2, "Roadmap"), (2, "Next steps")]
+    )
+    assert not [ln for ln in lines if ln.startswith("<") and not ln.startswith("<!-- Slide number: ")]
+    assert not [ln for ln in lines if ln and set(ln) <= set("=-")], "no setext underline, no rule"
+    assert on.title == off.title == "Roadmap"
+    assert on.summary == (
+        "Presentation: 2 slide(s); text of 1 picture(s) read by on-device OCR; titles: Roadmap; Next steps"
+    ), "a summary is counts and the deck's own titles, never what OCR read"
+
+
+def test_a_deck_with_no_title_is_never_titled_by_what_ocr_read(tmp_path: Path) -> None:
+    src = _deck_of(tmp_path, text_png("Not the title of this deck"))
+    off, on = _deck_one(src, None), _deck_one(src, fake_engine(tmp_path / "bin"))
+    assert "Not the title of this deck" in on.body and on.title == off.title == "[image: picture 0]"
+
+
+def test_a_helper_failure_on_a_deck_is_one_fixed_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    src = _deck_of(tmp_path, text_png("never read"), name="Contoso Launch.pptx")
+    engine = fake_engine(tmp_path / "bin", fail=True)
+    with caplog.at_level(logging.WARNING, logger="agentsync.convert"), pytest.raises(ocr.OcrError) as err:
+        _deck_one(src, engine)
+    assert str(err.value) == "on-device OCR failed" and err.value.__cause__ is None
+    assert caplog.messages == [
+        "on-device OCR left 1 of 1 picture(s) unread: "
+        "the OCR helper exited 3: error: the fake helper was told to fail",
+        "Contoso Launch.pptx: on-device OCR failed: the OCR helper left pictures unread",
+    ]
+    assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
+
+
+def test_anything_the_deck_picture_pass_raises_is_the_same_fixed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The error's own text (it can hold a path) reaches neither the exception nor the log."""
+    src = _deck_of(tmp_path, text_png("never read"))
+    engine = fake_engine(tmp_path / "bin")
+
+    def no_room(*_args: Any, **_kw: Any) -> Any:
+        raise OSError(28, "No space left on device", "/Users/someone/staging/00000.png")
+
+    def no_memory(*_args: Any, **_kw: Any) -> Any:
+        raise MemoryError
+
+    for fault, logged in ((no_room, "OSError"), (no_memory, "MemoryError")):
+        caplog.clear()
+        with monkeypatch.context() as mp, caplog.at_level(logging.WARNING, logger="agentsync.convert.pptx"):
+            mp.setattr(pptx_mod, "_read_pictures", fault)
+            with pytest.raises(ocr.OcrError) as err:
+                _deck_one(src, engine)
+        assert str(err.value) == "on-device OCR failed" and err.value.__cause__ is None
+        assert caplog.messages == [f"deck.pptx: on-device OCR failed: {logged}"]
+    assert calls(engine.helper) == []
+
+
+def test_a_deck_the_helper_failed_on_is_the_page_of_a_mac_without_ocr_under_its_key(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Plan D10: the no-OCR page under the no-OCR version, so a later re-read can tell it was not read."""
+    src = _deck_of(tmp_path, text_png("Stock on hand"), name="Fabrikam.pptx")
+    failing = fake_engine(tmp_path / "failing", fail=True)
+    without = _through_the_cache(src, Registry.default(CFG), tmp_path / "other-mac")
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _through_the_cache(src, Registry.default(CFG, ocr=failing), tmp_path / "cache")
+    assert got == without, "status, units, version, options hash and action key: byte for byte"
+    assert got.status is ConversionStatus.OK and not got.from_cache
+    assert got.converter_version == PptxConverter(CFG).version() and "ocr" not in got.converter_version
+    (unit,) = got.units
+    assert unit.body == policy.with_banner("<!-- Slide number: 1 -->\n\n[image: picture 0]\n")
+    page = unit.body + unit.title + unit.summary
+    for word in ("exited", "helper", "failed", "Fabrikam", "OCR", str(tmp_path)):
+        assert word not in page, word
+    assert [r.getMessage() for r in caplog.records if r.name == "agentsync.convert"] == [
+        "Fabrikam.pptx: on-device OCR failed; converted by pptx-python-pptx without it"
+    ]
+    # It is cached under the key of a Mac without an engine, and only under that one.
+    assert _through_the_cache(src, Registry.default(CFG), tmp_path / "cache").from_cache
+    working = fake_engine(tmp_path / "working")
+    later = _through_the_cache(src, Registry.default(CFG, ocr=working), tmp_path / "cache")
+    assert later.status is ConversionStatus.OK and not later.from_cache
+    assert later.converter_version == f"{without.converter_version}+{_OCR_IDENTITY}"
+    assert later.action_key != without.action_key and later.options_hash != without.options_hash
+    assert later.units[0].body == policy.with_banner(
+        f"<!-- Slide number: 1 -->\n\n[image: picture 0]\n{_PICTURE_HEAD}\nStock on hand\n"
+    )
+    assert "Stock" not in later.units[0].summary + later.units[0].title
+
+
+def test_the_document_time_limit_is_the_one_a_deck_gives_the_helper(tmp_path: Path) -> None:
+    src = _deck_of(tmp_path, text_png("Stock on hand"))
+    engine = Recording(fake_engine(tmp_path / "bin"))
+    _deck_one(src, engine)
+    (asked,) = engine.asked
+    assert asked["work_dir"].parent == src.parent and 0 < asked["budget_s"] <= image._DOCUMENT_BUDGET_S
 
 
 # ---------------------------------------------------------------------------------------------------------

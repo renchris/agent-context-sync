@@ -28,7 +28,7 @@ import logging
 import re
 import tempfile
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -67,6 +67,11 @@ _TOO_SMALL = "image too small to hold text"
 _NO_TEXT = "no text found in the image by on-device OCR"
 _FAILED = "on-device OCR failed"
 _NO_PAGE_TEXT = "[no text on this page]"
+# In a deck and in a Word document: the line between a picture's ``[image…]`` line and the text read in it.
+_PICTURE_HEAD = f"[text in the image above, read by on-device OCR ({_ENGINE_LABEL}):]"
+# A document's summary clauses about its pictures.  Counts only: a summary never holds text OCR read.
+_PICTURES_READ = "text of {} picture(s) read by on-device OCR"
+_PICTURES_CUT = "pictures past the OCR picture limit not read"
 # C0 controls are no part of what a picture shows; ``text_lines`` has already made whitespace one space.
 # Half a surrogate pair goes with them: a page that holds one cannot be written as UTF-8, so one in a
 # helper's answer would fail the document it was read in.
@@ -140,12 +145,14 @@ class _PictureText:
     limit).  It is shorter than the pictures offered when a limit stopped the reading.  ``lines`` holds the
     escaped lines of each picture text was read in, by that digest.  ``unread`` counts the pictures taken
     that a helper failure or the time limit left unread: 0 means every picture without an entry in ``lines``
-    holds no text.
+    holds no text.  ``over_bytes`` says the byte limit stopped the reading: the last picture looked at passed
+    it and was not read.
     """
 
     digests: tuple[str | None, ...]
     lines: Mapping[str, list[str]]
     unread: int
+    over_bytes: bool = False
 
 
 def _read_each(
@@ -221,6 +228,7 @@ def _read_pictures(
     digests: list[str | None] = []
     kept: dict[str, Path] = {}
     spent = 0
+    over_bytes = False
     offered = iter(pictures)
     with tempfile.TemporaryDirectory(dir=work_dir, prefix=".ocr-", ignore_cleanup_errors=True) as tmp:
         # The next picture is asked for only while there is room for one: none is opened to be turned away.
@@ -245,6 +253,7 @@ def _read_pictures(
                 continue
             if spent > max_bytes:  # the picture that passed the limit is not read, nor any after it
                 digests.append(None)
+                over_bytes = True
                 break
             digest = sha.hexdigest()
             digests.append(digest)
@@ -264,7 +273,20 @@ def _read_pictures(
         log.warning(
             "on-device OCR left %d of %d picture(s) unread: %s", unread, len(kept), reason or _GAVE_UP
         )
-    return _PictureText(tuple(digests), lines, unread)
+    return _PictureText(tuple(digests), lines, unread, over_bytes)
+
+
+def _raster_left(pictures: Iterator[BinaryIO]) -> bool:
+    """True when a picture :func:`_read_pictures` did not ask for is a raster image: a limit left it unread.
+
+    ``pictures`` is the iterator that call was given.  Each stream still in it is read no further than its
+    first bytes and closed, and the looking stops at the first raster image."""
+    for stream in pictures:
+        with stream:
+            head = _next_bytes(stream, _HEAD_BYTES)
+        if head and _raster_suffix(head) is not None:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------------------------------------

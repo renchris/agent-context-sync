@@ -1,12 +1,21 @@
-"""Converter: python-pptx emitter: one WHOLE unit with slide anchors (owner: convert)."""
+"""Converter: python-pptx emitter: one WHOLE unit with slide anchors (owner: convert).
+
+With an OCR engine (``PptxConverter(cfg, ocr=engine)``; ``convert/ocr.py``) the text in a deck's pictures
+follows each picture's ``[image…]`` line.  Without one nothing here runs: the version, the options and every
+page are the ones from before OCR existed.  A failure of the helper is ``OcrError`` with fixed wording, raised
+before anything is written: ``convert_file`` then converts the deck with the registry's converter that has
+no engine.
+"""
 
 from __future__ import annotations
 
+import io
+import logging
 import re
 import zipfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import (
@@ -21,8 +30,21 @@ from agentsync.convert._common import (
     _join_limited,
 )
 from agentsync.convert.base import OptionValue, make_unit
+from agentsync.convert.image import (
+    _DOCUMENT_BUDGET_S,
+    _OCR_OPTIONS,
+    _PICTURE_HEAD,
+    _PICTURES_CUT,
+    _PICTURES_READ,
+    _raster_left,
+    _read_pictures,
+)
+from agentsync.convert.image import _FAILED as _OCR_FAILED
+from agentsync.convert.ocr import OcrEngine, OcrError
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+
+log = logging.getLogger(__name__)
 
 _EMITTER_VERSION = "1.0.0"
 _ROW_TOLERANCE_EMU = (
@@ -30,6 +52,11 @@ _ROW_TOLERANCE_EMU = (
 )
 _WS_RE = re.compile(r"[ \t\f]+")
 _BULLET_PLACEHOLDERS = frozenset({"BODY", "OBJECT"})
+_PICTURE_SHAPES = ("Picture", "PlaceholderPicture")
+_OCR_RULES = 1
+"""Bumped when a rule here that decides which pictures OCR reads, or how a slide shows their text, changes.
+It is in the options only with an engine, so it moves no key of a Mac without one (the emitter version
+would)."""
 
 
 def _norm(text: str) -> str:
@@ -192,15 +219,79 @@ def _fmt_number(v: object) -> str:
     return str(v)
 
 
-def _shape_blocks(shape: Any, title_id: int | None) -> list[list[str]]:
-    """Markdown blocks for one shape (groups recurse in reading order)."""
+def _picture_blob(shape: Any) -> bytes | None:
+    """The stored bytes of the picture a shape shows; None for a linked picture (its bytes are in another
+    file), an empty picture placeholder, and a relationship that leads to no image."""
+    try:
+        blob = shape.image.blob
+    except Exception:  # ValueError: no embedded image; KeyError: no such relationship; AttributeError
+        return None
+    return blob if isinstance(blob, bytes) else None
+
+
+def _picture_blobs(shapes: Iterable[Any]) -> Iterator[bytes]:
+    """The stored bytes of each picture among ``shapes``, groups included, in the order ``_shape_blocks``
+    shows them."""
+    for shape in _reading_order(shapes):
+        type_name = type(shape).__name__
+        if type_name == "GroupShape":
+            yield from _picture_blobs(shape.shapes)
+        elif type_name in _PICTURE_SHAPES:
+            blob = _picture_blob(shape)
+            if blob is not None:
+                yield blob
+
+
+def _picture_text(
+    engine: OcrEngine, slides: Sequence[Any], work_dir: Path
+) -> tuple[dict[bytes, list[str]], bool]:
+    """(The escaped lines on-device OCR read in each picture of the deck that holds text, by the picture's
+    stored bytes; whether a limit left pictures unread.)
+
+    Each distinct picture is offered to ``image._read_pictures`` once, in the order the slides show them, so
+    a logo on every slide is read once and a deck gives the same pictures on every run.  python-pptx has the
+    whole package in memory already, so a picture is its part's bytes, not a second copy.  The helper works
+    in a folder made inside ``work_dir`` and has ``_DOCUMENT_BUDGET_S`` seconds.
+
+    Raises OcrError when the helper left a picture unread: a deck that kept the other pictures' text would
+    look complete."""
+    offered: list[bytes] = []
+
+    def streams() -> Iterator[BinaryIO]:
+        seen: set[bytes] = set()
+        for slide in slides:
+            for blob in _picture_blobs(slide.shapes):
+                if blob not in seen:
+                    seen.add(blob)
+                    offered.append(blob)
+                    yield io.BytesIO(blob)
+
+    pictures = streams()
+    got = _read_pictures(engine, pictures, work_dir=work_dir, budget_s=_DOCUMENT_BUDGET_S)
+    if got.unread:  # _read_pictures has logged how many, and the helper's reason
+        raise OcrError("the OCR helper left pictures unread")
+    texts = {
+        blob: got.lines[digest]
+        for blob, digest in zip(offered, got.digests, strict=True)
+        if digest is not None and digest in got.lines
+    }
+    return texts, got.over_bytes or _raster_left(pictures)
+
+
+def _shape_blocks(
+    shape: Any, title_id: int | None, texts: dict[bytes, list[str]] | None = None
+) -> list[list[str]]:
+    """Markdown blocks for one shape (groups recurse in reading order).
+
+    ``texts`` holds the lines OCR read in the deck's pictures.  A picture's lines are taken out of it for
+    the first ``[image…]`` line of that picture, so each distinct picture's text is on the page once."""
     if title_id is not None and getattr(shape, "shape_id", None) == title_id:
         return []
     blocks: list[list[str]] = []
     type_name = type(shape).__name__
     if type_name == "GroupShape":
         for child in _reading_order(shape.shapes):
-            blocks += _shape_blocks(child, title_id)
+            blocks += _shape_blocks(child, title_id, texts)
         return blocks
     if getattr(shape, "has_table", False):
         lines = _table_lines(shape.table)
@@ -210,9 +301,14 @@ def _shape_blocks(shape: Any, title_id: int | None) -> list[list[str]]:
     if getattr(shape, "has_chart", False):
         blocks.append(_chart_lines(shape.chart))
         return blocks
-    if type_name in ("Picture", "PlaceholderPicture"):
+    if type_name in _PICTURE_SHAPES:
         alt = _alt_text(shape)
-        blocks.append([f"[image: {alt}]" if alt else "[image]"])
+        block = [f"[image: {alt}]" if alt else "[image]"]
+        if texts:  # never without an engine, nor once every picture's text is on the page
+            blob = _picture_blob(shape)
+            if blob is not None and blob in texts:
+                block += [_PICTURE_HEAD, *texts.pop(blob)]
+        blocks.append(block)
         return blocks
     if type_name == "Movie":
         blocks.append(["[media]"])
@@ -233,25 +329,42 @@ class PptxConverter:
 
     ``<!-- Slide number: N -->`` anchor per slide, title as ``## ``, text frames in reading order, tables as
     GFM, speaker notes under ``### Notes:``.  Pictures become ``[image: <alt text>]`` lines.
+
+    With an OCR engine the text read in a picture follows its ``[image…]`` line, under ``[text in the image
+    above, read by on-device OCR (Apple Vision):]``, once per distinct picture.  When the engine fails,
+    ``convert`` raises OcrError with fixed wording and ``convert_file`` converts the deck without OCR.
     """
 
     converter_id = "pptx-python-pptx"
     extensions: tuple[str, ...] = (".pptx",)
 
-    def __init__(self, cfg: ConvertConfig) -> None:
-        """Bind converter options from config."""
+    def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None:
+        """Bind converter options from config, and the cycle's OCR engine when there is one."""
         self._cfg = cfg
+        self._ocr = ocr
 
     def version(self) -> str:
-        """Version as run (emitter version + underlying library/tool version)."""
-        return f"{_EMITTER_VERSION}+python-pptx-{_dist_version('python-pptx')}"
+        """Version as run (emitter version + underlying library/tool version); with an OCR engine its
+        identity comes last.  Without one this is the version from before OCR existed."""
+        version = f"{_EMITTER_VERSION}+python-pptx-{_dist_version('python-pptx')}"
+        return version if self._ocr is None else f"{version}+{self._ocr.identity}"
 
     def options(self) -> Mapping[str, OptionValue]:
-        """Normalised options hashed into options_hash."""
-        return {"max_page_bytes": self._cfg.max_page_bytes, "row_tolerance_emu": _ROW_TOLERANCE_EMU}
+        """Normalised options hashed into options_hash; the OCR ones only with an engine."""
+        opts: dict[str, OptionValue] = {
+            "max_page_bytes": self._cfg.max_page_bytes,
+            "row_tolerance_emu": _ROW_TOLERANCE_EMU,
+        }
+        if self._ocr is not None:
+            opts.update(_OCR_OPTIONS)
+            opts["ocr_pptx_rules"] = _OCR_RULES
+        return opts
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
-        """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
+        """Convert one staged file; see the Converter protocol for pre/postconditions and errors.
+
+        With an OCR engine the helper works in a folder made beside ``src``, and OcrError (fixed wording)
+        means the engine failed on a deck that converts without it."""
         _check_ooxml_container(src)
         from pptx import Presentation  # noqa: PLC0415 - heavy import, only when a deck is converted
 
@@ -263,10 +376,22 @@ class PptxConverter:
             raise ConversionError(f"python-pptx cannot read the deck: {type(exc).__name__}: {exc}") from exc
         out: list[str] = []
         titles: list[str] = []
+        texts: dict[bytes, list[str]] = {}  # stays empty without an engine
+        cut = False
         try:
             slides = list(prs.slides)
+            if self._ocr is not None:
+                try:
+                    texts, cut = _picture_text(self._ocr, slides, src.parent)
+                except Exception as exc:  # OcrError, or whatever else the pass let through
+                    # What went wrong goes to the log, never into a page or a reason, and nothing half-read
+                    # is returned: convert_file converts the deck again without OCR.
+                    detail = str(exc) if isinstance(exc, OcrError) else type(exc).__name__
+                    log.warning("%s: on-device OCR failed: %s", name, detail)
+                    raise OcrError(_OCR_FAILED) from None
+            found = len(texts)
             for n, slide in enumerate(slides, start=1):
-                out += self._slide(n, slide, titles)
+                out += self._slide(n, slide, titles, texts)
         except ConversionError:
             raise
         except Exception as exc:
@@ -274,9 +399,15 @@ class PptxConverter:
         if not slides:
             out = ["[empty presentation: no slides]"]
         body = "\n".join(out)
+        # A picture's text follows its own ``[image…]`` line, so the first line is never one OCR read.
         title = next((t for t in titles if t), "") or _first_line(body) or "Untitled presentation"
         named = [t for t in titles if t]
         summary = f"Presentation: {len(slides)} slide(s)"
+        # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
+        if found > len(texts):
+            summary += "; " + _PICTURES_READ.format(found - len(texts))
+        if cut:
+            summary += "; " + _PICTURES_CUT
         if named:
             summary += "; titles: " + _join_limited(named, limit=170)
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
@@ -295,8 +426,8 @@ class PptxConverter:
             ),
         )
 
-    def _slide(self, n: int, slide: Any, titles: list[str]) -> list[str]:
-        """Markdown lines for one slide (anchor, title, blocks, notes)."""
+    def _slide(self, n: int, slide: Any, titles: list[str], texts: dict[bytes, list[str]]) -> list[str]:
+        """Markdown lines for one slide (anchor, title, blocks, notes); ``texts`` as for ``_shape_blocks``."""
         out = [f"<!-- Slide number: {n} -->", ""]
         hidden = str(slide.element.get("show", "1")) in ("0", "false")
         title_shape = slide.shapes.title
@@ -312,7 +443,7 @@ class PptxConverter:
             out += ["[hidden slide]", ""]
         title_id = None if title_shape is None else int(title_shape.shape_id)
         for shape in _reading_order(slide.shapes):
-            for block in _shape_blocks(shape, title_id):
+            for block in _shape_blocks(shape, title_id, texts):
                 out += [*block, ""]
         if slide.has_notes_slide:
             frame = slide.notes_slide.notes_text_frame

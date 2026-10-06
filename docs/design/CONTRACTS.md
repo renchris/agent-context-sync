@@ -2406,6 +2406,8 @@ class PptxConverter:
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
+    # SUPERSEDED (2026-10-06, §16.26): __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None);
+    # with an engine the text read in a picture follows its [image…] line
 
     def version(self) -> str:
         """Version as run (emitter version + underlying library/tool version)."""
@@ -6423,8 +6425,8 @@ command, flag, installer option, config key or environment variable. A Mac witho
 built, `[convert] ocr = false`, `AGENTSYNC_OCR=0`) converts as before: the same eight converters at the same
 versions with the same options, so every page it has stays byte for byte what it was.
 
-This part is the image converter, the PDF converter and their wiring. The pictures inside decks and Word
-documents are added to this section with the converters that read them.
+This part is the image converter, the PDF converter, the deck converter and their wiring. The pictures
+inside Word documents are added to this section with the converter that reads them.
 
 **Rules.**
 
@@ -6498,8 +6500,8 @@ a picture inside a document alike (`_raster_suffix`). EMF, WMF, SVG, PDF and AVI
 types the helper allows; the helper, which looks at the whole file, has the last word.
 
 **Pictures inside a document.** `_read_pictures(engine, pictures, *, work_dir, budget_s, limit=100,
-max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. The PDF converter calls
-it (below).
+max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. The PDF and deck
+converters call it (below).
 
 - **Streamed.** `pictures` is an iterable of binary streams. Each is read once, in 1 MiB chunks, and closed,
   and the next is asked for only while there is room for it: a caller that passes a generator opens no
@@ -6525,16 +6527,26 @@ it (below).
   escaped lines, as above, for each picture text was read in. `unread`: the pictures taken that a helper
   failure, the time limit or `recognition failed` left unread; 0 means every picture without lines holds no
   text. One WARNING per document says `on-device OCR left N of M picture(s) unread: <first reason>`, with no
-  name in it.
+  name in it. `over_bytes`: the byte limit stopped the reading, so the last picture looked at was not read.
+- **What a limit left.** `_read_pictures` opens no picture it has no room for, so it cannot say whether one
+  was left. `_raster_left(pictures)` is for a caller that says so in a summary: it is handed the iterator
+  the call was given, reads no more than the first 16 bytes of each stream still in it, and stops at the
+  first raster image. Vector art and a picture that cannot be read are not pictures a limit left unread.
+
+**One wording for every document.** A deck and a Word document put `[text in the image above, read by
+on-device OCR (Apple Vision):]` (`_PICTURE_HEAD`) between a picture's `[image…]` line and the text read in
+it. The summary clauses are `text of N picture(s) read by on-device OCR` (`_PICTURES_READ`) and `pictures
+past the OCR picture limit not read` (`_PICTURES_CUT`), for a PDF too.
 
 **Shared options.** `_OCR_OPTIONS` (`ocr_languages`, `ocr_max_pages`, `ocr_max_pictures`,
 `ocr_max_picture_bytes`) is the one set for every converter that has an engine: the limits here that can
 change a page. What the helper is run with is in `OcrEngine.identity`, so in the version.
 
 **Registry** (amends §7 and §16.6). `Registry.default(cfg, *, policy=None, ocr=None)`. The registry never
-looks for an engine: the cycle resolves one and hands it in. The PDF converter is built with it
-(`PdfConverter(cfg, ocr=ocr)`), under a label rule too: a PDF's own label is screened before it is converted,
-and its pictures are part of it. `ImageConverter(cfg, ocr)` is registered when
+looks for an engine: the cycle resolves one and hands it in. The PDF and deck converters are built with it
+(`PdfConverter(cfg, ocr=ocr)`, `PptxConverter(cfg, ocr=ocr)`), under a label rule too: a document's own
+label is screened before it is converted, and its pictures are part of it. `ImageConverter(cfg, ocr)` is
+registered when
 `ocr` is not None and `policy.labels_active` is false (plan D8). An image can carry a sensitivity label and
 `policy.read_labels` reads none from an image, so under any label rule (`exclude_label_ids`,
 `exclude_label_names`, `refuse_unlabelled`) an image keeps the `no converter for .png` stub and is never read.
@@ -6586,8 +6598,8 @@ Tests: `tests/test_convert_file.py` (an `OcrError` gives the result, the key and
 registry without an engine, and the next read tries OCR again; an UNREADABLE and a FAILED twin; no twin, an
 empty twin registry and a twin of another converter; another exception) and `tests/test_convert_core.py`
 (`without_ocr` is the registry of a Mac without an engine, under each label rule too, and holds no image
-converter; with an engine the PDF converter's version ends in its identity and its options gain the OCR
-ones).
+converter; with an engine the version of each converter that reads with it ends in its identity and its
+options gain the OCR ones, and every other converter keeps its version and options).
 
 #### Pages and pictures in a PDF: `agentsync.convert.pdf`
 
@@ -6730,9 +6742,88 @@ converter wrote). `PdfPicture`, `page_picture`, `build_picture_pdf` and `shade_e
 `tests/test_convert_builders.py` build the files and the fake helper that tells images apart by their first
 pixel.
 
+#### Pictures in a deck: `agentsync.convert.pptx`
+
+Plan decisions D6 and D10. `PptxConverter(cfg, ocr=None)`. Without an engine nothing in this part runs:
+`version()`, `options()` and every page are the ones from before OCR existed, byte for byte, and the emitter
+stays **1.0.0**. With an engine `version()` ends in its identity
+(`1.0.0+python-pptx-1.0.2+ocr-apple-vision-r3-h2.0.0-l1`) and `options()` gains the shared OCR options and
+`ocr_pptx_rules` (1; bumped when a rule below changes).
+
+```text
+<!-- Slide number: 1 -->
+
+## Contoso tourer launch
+
+[image: Sales by region]
+[text in the image above, read by on-device OCR (Apple Vision):]
+Units by region
+North | 12
+
+[image]
+
+<!-- Slide number: 2 -->
+
+[image: Sales by region]
+```
+
+- **Which pictures.** Every picture shape (`Picture`, `PlaceholderPicture`) of every slide, hidden slides
+  and pictures inside groups included, in the order the page shows them: slide by slide, each slide in
+  reading order. A picture is the stored bytes of its image part (`shape.image.blob`). A linked picture
+  (its bytes are in another file), an empty picture placeholder and a relationship that leads to no image
+  have none: they keep their `[image…]` line and nothing is read. Pictures on a slide layout or master,
+  and in the notes, are not on the page and are not read.
+- **Once per distinct picture.** Each distinct picture (by its bytes) is offered to `_read_pictures` once,
+  so a logo on every slide is read once. Its text is printed under the first `[image…]` line of that
+  picture and nowhere else: the head line (`_PICTURE_HEAD`), then its lines, in the same block.
+- **What decides whether there is text.** The helper's own rules (§16.25): a picture with a side under
+  48 px (an icon, a bullet) is skipped, one over 50 megapixels is not decoded, and vector art (EMF, WMF) is
+  no raster type and is not read past its first bytes.
+- **Bounds.** Those of `_read_pictures`: the first 100 distinct pictures and 256 MiB of picture bytes, in
+  the helper's `.ocr-*` folder beside the staged file, within `_DOCUMENT_BUDGET_S` (300 seconds). python-pptx
+  has the whole package in memory before a slide is read, with or without an engine, so a picture is
+  handed over as its part's bytes and no second copy is held. When a limit left a raster picture unread
+  the summary says so.
+- **Escaping.** Every line goes through `image._ocr_lines`: no heading, rule, setext underline, code
+  fence, HTML block or `<!-- Slide number: N -->` anchor can come out of a picture.
+- **Title and summary.** The title is the deck's first slide title, else the first line of the page, as
+  before. That line is never one OCR read: a picture's text follows its own `[image…]` line. The summary
+  gains counts only, before the titles: `Presentation: 3 slide(s); text of 2 picture(s) read by on-device
+  OCR; titles: …`, and `; pictures past the OCR picture limit not read` when a limit cut the reading.
+- **Failure** (plan D10). Any failure of the pass is one `OcrError("on-device OCR failed")`, raised before
+  a slide is written: `_read_pictures` left a picture unread (the helper may not be run, exits non-zero,
+  runs out of time, answers something else, or Vision gave up), a copy cannot be written, memory runs out,
+  the pass itself raises. `convert_file` then converts the deck without OCR (above). The log gets
+  `WARNING <name>: on-device OCR failed: <reason>`, where the reason is the engine's own (it holds no path)
+  or, for any other exception, its type name only.
+
+```python
+# agentsync.convert.pptx
+class PptxConverter:                         # converter_id = "pptx-python-pptx"
+    def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None: ...
+    def version(self) -> str: ...            # with an engine: the version from before + "+" + engine.identity
+    def options(self) -> Mapping[str, OptionValue]: ...   # with an engine: + the OCR options
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...   # may raise OcrError
+```
+
+Every new name in `agentsync.convert.pptx` is private (`_picture_blob`, `_picture_blobs`, `_picture_text`,
+`_PICTURE_SHAPES`, `_OCR_RULES`).
+
+Tests: `tests/test_convert_formats.py` (version and options with and without an engine; the page of
+`build_pptx_rich` without an engine, byte for byte, and the same page with an engine when its picture holds
+no text; a picture used on three slides and inside a group printed once, an icon skipped, one run of the
+helper in a folder beside the staged file; a linked picture and a relationship that leads nowhere; the
+count limit and the byte limit, and a limit that is reached and not passed; every kind of line that could
+pose as structure; a deck with no title; a helper failure, its fixed wording and its log lines; a full disk
+and no memory; through `convert_file`: the page, version and key of a Mac without an engine after a
+failure, the cache entry, the later read that works, the banner; the document's time limit) and
+`tests/test_convert_determinism.py` (a deck read by OCR twice, from the cache under a second name, and from
+a cold cache). `text_png` in `tests/test_convert_image.py` is a real PNG the fake helper reads text in.
+
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
-`_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`,
-`_MAX_PICTURES`, `_MAX_PICTURE_BYTES`).
+`_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_raster_left`, `_OCR_OPTIONS`,
+`_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
+`_PICTURES_CUT`).
 
 Tests: `tests/test_convert_image.py` (the raster table, one case per type and per look-alike; the page byte
 for byte; the helper's working folder, time limit and frame count; every claimed suffix; the same page under
@@ -6743,8 +6834,9 @@ sidecar through `Registry.default`; an unreadable image cached and a failure not
 container named `.png` refused by the screen, the helper not started; `_read_pictures`: order,
 one read per distinct picture, vector art not read past its head, the folder removed, a picture that cannot
 be read from its first byte, part-way and at its end, the count limit and the
-byte limit without opening the next picture, one failing picture among five, the shared time limit,
-`recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
+byte limit without opening the next picture, `over_bytes` only for the picture that passed the limit,
+`_raster_left` for a raster image, vector art and a damaged picture left over, one failing picture among
+five, the shared time limit, `recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
 rule) and `tests/test_convert_determinism.py` (an image converted twice, and from the cache under a second
 name). `picture`, `picture_bytes`, `rows` and `MAGIC` in `tests/test_convert_image.py` build test images
 for the fake helper of `tests/test_ocr.py`.

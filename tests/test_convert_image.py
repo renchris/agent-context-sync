@@ -3,7 +3,8 @@
 Every test runs the fake OCR helper of tests/test_ocr.py.  A test image is a real image's first bytes (so it
 passes the raster table) followed by what the fake helper is to say it read.
 
-``MAGIC``, ``rows``, ``picture`` and ``picture_bytes`` are for the other converter and cycle tests too.
+``MAGIC``, ``rows``, ``picture``, ``picture_bytes`` and ``text_png`` are for the other converter and cycle
+tests too.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.image import ImageConverter
 from agentsync.errors import UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, UnitKind
-from test_convert_builders import ole_encrypted
+from test_convert_builders import ole_encrypted, png_bytes
 from test_ocr import calls, fake_engine, fake_image
 
 CFG = ConvertConfig()
@@ -64,6 +65,12 @@ def picture_bytes(*texts: str, kind: str = ".png", **spec: Any) -> bytes:
     """The bytes of such an image, for a picture inside a document."""
     doc = {"size": [800, 600], "frames": [rows(*texts)], **spec}
     return MAGIC[kind] + b"FAKE-OCR:" + json.dumps(doc).encode()
+
+
+def text_png(*texts: str, **spec: Any) -> bytes:
+    """A real 1x1 PNG, so python-pptx and pandoc take it for a picture, in which the fake helper 'reads'
+    ``texts``: what follows a PNG's last chunk is no part of the image.  ``spec`` as for ``picture_bytes``."""
+    return png_bytes() + picture_bytes(*texts, **spec).removeprefix(MAGIC[".png"])
 
 
 def sha(data: bytes) -> str:
@@ -656,6 +663,35 @@ def test_reading_stops_at_the_byte_limit_and_the_picture_that_passes_it_is_not_r
     twice = [io.BytesIO(first), io.BytesIO(first), io.BytesIO(second)]
     counted = image._read_pictures(engine, twice, work_dir=staged, budget_s=60, max_bytes=2 * len(first))
     assert counted.digests == (sha(first), sha(first)), "the copies of a repeated picture count"
+    # Only the picture that passed the limit says so: a limit that is reached, and vector art, do not.
+    assert got.over_bytes and not exact.over_bytes and not counted.over_bytes
+    vector = [io.BytesIO(first), io.BytesIO(NOT_RASTER_HEADS["EMF"] + b"\x00" * 4096)]
+    assert not image._read_pictures(engine, vector, work_dir=staged, budget_s=60, max_bytes=room).over_bytes
+
+
+def test_a_caller_can_ask_whether_a_limit_left_a_raster_picture_unread(
+    staged: Path, engine: ocr.OcrEngine
+) -> None:
+    """``_read_pictures`` opens no picture it has no room for, so it cannot say what is left.  A caller
+    that wants to say so in a summary looks at the rest: at the first bytes of each, up to the first one
+    OCR would have read."""
+    drawing = NOT_RASTER_HEADS["EMF"] + b"\x00" * 4096
+    pictures = [picture_bytes("picture 0"), picture_bytes("picture 1"), drawing, picture_bytes("picture 3")]
+
+    def left_after(limit: int, rest: list[io.BytesIO]) -> bool:
+        offered = iter([*map(Counting, pictures[:limit]), *rest])
+        got = image._read_pictures(engine, offered, work_dir=staged, budget_s=60, limit=limit)
+        assert len(got.digests) == limit and not got.over_bytes
+        return image._raster_left(offered)
+
+    rest = [Counting(data) for data in pictures[2:]]
+    assert left_after(2, rest) and all(s.closed for s in rest)
+    assert [s.asked for s in rest] == [[image._HEAD_BYTES], [image._HEAD_BYTES]], "first bytes only"
+    assert not left_after(2, [Counting(drawing), Counting(b"")]), "vector art is not a picture left unread"
+    assert not left_after(2, []) and not left_after(4, [])
+    damaged = [Damaged(pictures[3], 0), Counting(drawing)]
+    assert not left_after(2, damaged), "nor is a picture that cannot be read"
+    assert left_after(2, [Damaged(pictures[3], 0), Counting(pictures[3])])
 
 
 def test_a_picture_that_sinks_the_helper_costs_only_itself(

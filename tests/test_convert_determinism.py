@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import shutil
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from pptx import Presentation
+from pptx.util import Inches
 
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, Registry, convert_file, double_conversion_differs
@@ -30,7 +33,7 @@ from test_convert_builders import (
     teams_doc,
     teams_msg,
 )
-from test_convert_image import picture
+from test_convert_image import picture, text_png
 from test_ocr import calls, fake_engine
 
 CFG = ConvertConfig()
@@ -234,3 +237,30 @@ def test_a_pdf_read_by_ocr_converts_the_same_twice_and_under_any_name(tmp_path: 
     for word in ("Contoso", "Scan", "Fabrikam", "Copy", ".pdf"):
         assert word not in unit.body + unit.title + unit.summary, word
     assert "Delivery note\nPallets | 14\n" in unit.body and "\nGate B\n" in unit.body
+
+
+def test_a_deck_read_by_ocr_converts_the_same_twice_and_under_any_name(tmp_path: Path) -> None:
+    """With an engine a deck's page holds what OCR read in its pictures: the same bytes still give the same
+    page, whatever the file is called, and the page names neither file."""
+    engine = fake_engine(tmp_path / "bin")
+    registry = Registry.default(CFG, ocr=engine)
+    prs = Presentation()
+    shapes = prs.slides.add_slide(prs.slide_layouts[6]).shapes
+    shapes.add_picture(io.BytesIO(text_png("Delivery note", "Pallets | 14")), Inches(1), Inches(1))
+    (tmp_path / "a").mkdir()
+    first = tmp_path / "a" / "Contoso Review.pptx"
+    prs.save(str(first))
+    second = tmp_path / "b" / "Fabrikam Copy.pptx"
+    second.parent.mkdir()
+    shutil.copyfile(first, second)
+    assert not double_conversion_differs(first, name=first.name, registry=registry)
+    a = _convert(first, first.name, registry, tmp_path / "cache")
+    b = _convert(second, second.name, registry, tmp_path / "cache")
+    assert a.status is ConversionStatus.OK and a.converter_id == "pptx-python-pptx" and not a.from_cache
+    assert a.converter_version.endswith("+ocr-paper-vision-r2-h0.3.0-l1")
+    assert b.from_cache and b.action_key == a.action_key and b.units == a.units
+    assert _convert(second, second.name, registry, tmp_path / "cold") == a, "a cold cache gives the same page"
+    (unit,) = a.units
+    for word in ("Contoso", "Review", "Fabrikam", "Copy", ".pptx"):
+        assert word not in unit.body + unit.title + unit.summary, word
+    assert "\nDelivery note\nPallets | 14\n" in unit.body

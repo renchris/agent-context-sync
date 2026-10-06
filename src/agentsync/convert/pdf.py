@@ -58,6 +58,8 @@ from agentsync.convert.image import (
     _DOCUMENT_BUDGET_S,
     _ENGINE_LABEL,
     _OCR_OPTIONS,
+    _PICTURES_CUT,
+    _PICTURES_READ,
     _ocr_lines,
     _read_pictures,
 )
@@ -941,9 +943,9 @@ class PdfConverter:
                 summary += f", {outcomes[marker]} {clause}"
         if read.pictures:
             # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
-            summary += f"; text of {sum(map(len, read.pictures.values()))} picture(s) read by on-device OCR"
+            summary += "; " + _PICTURES_READ.format(sum(map(len, read.pictures.values())))
         if read.pictures_cut:
-            summary += "; pictures past the OCR picture limit not read"
+            summary += "; " + _PICTURES_CUT
         if comments:
             # One line is one comment, so this counts the comments emitted, not lines of their text.
             summary += f"; {sum(map(len, comments.values()))} comment(s) on {len(comments)} page(s)"
