@@ -156,13 +156,16 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
         + "2026-10-05 09:00:01,000 WARNING agentsync.cycle: inbox: Re Northwind pricing call.eml: "
         "read failed: Operation canceled\n"
         + "2026-10-05 09:00:02,000 ERROR agentsync.cycle: src-x: read failed: [Errno 89] Operation canceled: "
-        "'/Users/someone/Library/CloudStorage/OneDrive-Acme/Clients/Initech Deal/term sheet.docx'\n",
+        "'/Users/someone/Library/CloudStorage/OneDrive-Acme/Clients/Initech Deal/term sheet.docx'\n"
+        + "2026-10-05 09:00:03,000 WARNING agentsync.arm_local: src-x: directory 'Mooring Ledger' is unknown "
+        "(EPERM: Operation not permitted)\n",
         encoding="utf-8",
     )
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     errors = section(text, "Recent errors")
-    for name in ("Big Bank", "Merger", "Globex", "Northwind", "Initech", "term sheet", "Clients"):
+    for name in ("Big Bank", "Merger", "Globex", "Northwind", "Initech", "term sheet", "Clients", "Mooring"):
         assert name not in text, name
+    assert "src-x: directory '<path>' is unknown (EPERM: Operation not permitted)" in errors
     assert "src-x: <path>: [Errno 89] Operation canceled" in errors
     assert "inbox: <path>: read failed: Operation canceled" in errors
     assert "src-x: read failed: [Errno 89] Operation canceled: '<path>" in errors
@@ -1512,14 +1515,24 @@ def test_installer_output_log_lines_never_carry_a_nested_name(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
     """Directory names nested below a source are registered nowhere: agentsync's own WARNING and ERROR lines
-    in the install.out tail get the Recent errors scrub. install.sh's and git's own error lines keep their
-    path or URL, and so does every other line (the tail is what the agent saw)."""
+    in the install.out tail get the Recent errors scrub, and so do the alarm and error lines of a failed
+    sync's report, which install.sh prints in full. A quoted name is scrubbed whatever it looks like: a
+    folder one level below the source root has no slash and no extension. install.sh's and git's own error
+    lines keep their path or URL, and so does every other line (the tail is what the agent saw)."""
     (fake_mac["setup"] / "install.out").write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
         "2026-09-29 10:00:20,000 WARNING agentsync.arm_local: src-x: directory 'Wharf Plans/04 - Tide Tables/"
         "Old Charts' has zero children in a cloud tree; treated as unknown\n"
         "2026-09-29 10:00:21,000 ERROR agentsync.cycle: src-x: fetch of Wharf Plans/Lighthouse budget.xlsx "
         "failed: [Errno 89] Operation canceled\n"
+        "2026-09-29 10:00:22,000 WARNING agentsync.arm_local: src-x: directory 'Mooring Ledger' is unknown "
+        "(EPERM: Operation not permitted)\n"
+        "2026-09-29 10:00:23,000 WARNING agentsync.arm_local: src-x: not crossing into another volume at "
+        '"Pilot\'s Berth"\n'
+        "  src-x: full · INCOMPLETE · cursor held\n"
+        "    alarm: 2 unknown dir(s) — permission denied (TCC), provider error, or zero children in a cloud "
+        "tree: 'Fabrikam Bids/Old', 'Tailspin'; enumeration incomplete, no deletions this pass\n"
+        "    error: OSError: [Errno 13] Permission denied: 'Breakwater'\n"
         "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve host\n"
         "error: the sync step failed; see ~/agent-context/setup/install.out\n"
         "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n"
@@ -1528,14 +1541,20 @@ def test_installer_output_log_lines_never_carry_a_nested_name(
     )
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     inst = section(text, "Installer")
-    for name in ("Wharf", "Tide Tables", "Old Charts", "Lighthouse"):
+    for name in ("Wharf", "Tide Tables", "Old Charts", "Lighthouse", "Mooring", "Berth", "Fabrikam"):
         assert name not in text, name
-    assert "WARNING agentsync.arm_local: src-x: <path>\n" in inst
+    assert "Tailspin" not in text and "Breakwater" not in text
+    assert "src-x: directory '<path>' has zero children in a cloud tree; treated as unknown\n" in inst
+    assert "src-x: directory '<path>' is unknown (EPERM: Operation not permitted)\n" in inst
+    assert 'src-x: not crossing into another volume at "<path>"\n' in inst
+    assert "zero children in a cloud tree: '<path>', '<path>'; enumeration incomplete, no deletions" in inst
+    assert "    error: OSError: [Errno 13] Permission denied: '<path>'\n" in inst
+    assert "  src-x: full · INCOMPLETE · cursor held\n" in inst
     assert "ERROR agentsync.cycle: src-x: <path>: [Errno 89] Operation canceled\n" in inst
     assert "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve" in inst
     assert "error: the sync step failed; see ~/agent-context/setup/install.out\n" in inst
     assert "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n" in inst
-    assert "WARNING and ERROR log lines show item paths and document names as <path>" in inst
+    assert "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and" in inst
 
 
 def test_every_configured_source_id_is_a_placeholder(fake_mac: dict[str, Path]) -> None:

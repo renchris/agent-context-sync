@@ -45,7 +45,8 @@ CamelCase variants, and the shell-escaped form install.sh logs its arguments in 
 ``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
 and cut to ``<path>`` at the first path component the Redactor does not know. Names
 nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,
-and those in the install.out tail) show item paths and document names as ``<path>``. install.sh run ids
+and those in the install.out tail, with a sync's ``alarm:`` and ``error:`` lines there) show item paths,
+document names and every quoted name as ``<path>``. install.sh run ids
 are shown without their process id. The friction log is redacted with the same map. The login name is
 registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue check runs over
 the whole redacted report, listing its hits by section.
@@ -2155,11 +2156,12 @@ def _installer_output(r: _Run) -> list[str]:
     return [
         f"Installer output: {_instruction_text(counts, len(lines), runs)}. An instruction-like line other "
         "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
-        "WARNING and ERROR log lines show item paths and document names as <path>, as in Recent errors.",
+        "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
+        "as <path>, as in Recent errors.",
         "",
         f"<details><summary>the last {len(shown)} line(s) of {path} (what the agent saw)</summary>",
         "",
-        *_fence(_scrub_item_paths(ln) if _PY_LOG_RE.search(ln) else ln for ln in shown),
+        *_fence(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown),
         "",
         "</details>",
     ]
@@ -2467,17 +2469,30 @@ _PATH_IN_LOG_RE = re.compile(
 _PY_LOG_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL) agentsync\.")
 """One of agentsync's own log lines (``<time> WARNING agentsync.<module>: ...``). install.sh's and git's
 ``error:`` and ``fatal:`` lines are not: they keep their path or URL in the install.out tail."""
+_SYNC_OUT_RE = re.compile(r"^\s+(?:alarm|error): ")
+"""An alarm or error line of ``agentsync sync``'s own report (indented under its source), which install.sh
+prints in full when its sync step fails. install.sh's own ``error:`` lines start at the margin."""
+_QUOTED_RE = re.compile(r"""(?<![A-Za-z0-9])(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")(?![A-Za-z0-9])""")
+"""A ``%r`` of a string: in agentsync's own lines it is a folder, file or sentinel name."""
 _KEY_PATH_RE = re.compile(r"\b(\w+=)(?:[^=]*?)(?=\s\w+=|$)")
 _ABS_PATH_RE = re.compile(r"(?:(?<=\s)|(?<=^)|(?<=['\"(]))(?:~|/)\S*/.*$")
 
 
+def _own_line(line: str) -> bool:
+    """Whether ``line`` is agentsync's own text: one of its log lines, or an alarm or error line of a sync."""
+    return _PY_LOG_RE.search(line) is not None or _SYNC_OUT_RE.match(line) is not None
+
+
 def _scrub_item_paths(line: str) -> str:
     """``line`` (``<log file>: <log line>``, or a log line alone) with item paths and document names replaced
-    by ``<path>``, per ``: ``-separated segment after the first: a ``key=`` value or an absolute path (``/…``
-    or ``~/…``, to the segment's end) in place, and any segment still naming a path or document whole. The
-    local log keeps the detail; the report, which may go to a public issue, never carries an item's path or
-    name."""
+    by ``<path>``. In one of agentsync's own lines (:func:`_own_line`) every quoted ``%r`` first, between its
+    quotes: a folder one level below a source root has no slash and no extension to know it by. Then, per
+    ``: ``-separated segment after the first: a ``key=`` value or an absolute path (``/…`` or ``~/…``, to the
+    segment's end) in place, and any segment still naming a path or document whole. The local log keeps the
+    detail; the report, which may go to a public issue, never carries an item's path or name."""
     name, sep, rest = line.partition(": ")
+    if _own_line(line):
+        rest = _QUOTED_RE.sub(lambda m: f"{m.group(0)[0]}<path>{m.group(0)[-1]}", rest)
     return name + sep + ": ".join(_scrub_segment(part) for part in rest.split(": "))
 
 

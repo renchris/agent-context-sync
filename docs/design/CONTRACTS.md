@@ -6222,8 +6222,14 @@ match and the Installer section:
   shell chose: `--source-local ~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<path>`. A word with no
   quote, slash or backslash is not a path (prose such as "the --source-local option") and is left as it is.
 - *Nested names in the install.out tail.* A line of agentsync's own logging (`WARNING`, `ERROR` or `CRITICAL`
-  followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does. Other
-  lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines keep their path or URL.
+  followed by `agentsync.<module>:`) goes through `_scrub_item_paths`, as every Recent errors line does, and so
+  does an indented `alarm:` or `error:` line of a sync's report, which install.sh prints in full when its sync
+  step fails. Other lines of the tail are unchanged: install.sh's and git's `error:` and `fatal:` lines (at
+  the margin) keep their path or URL.
+- *Quoted names.* In those lines, and in agentsync's log lines under Recent errors, `_scrub_item_paths` first
+  replaces what stands between the quotes of every quoted `%r` with `<path>` (`directory '<path>' is unknown
+  (EPERM: ...)`, `zero children in a cloud tree: '<path>', '<path>'; ...`). The older rule knew a name only by a
+  slash or a document extension, so a folder one level below a source root came through.
 - *Source ids.* Every configured source id is registered as a `<source-N>`, in config order. Before, only a
   source under `~/Library/CloudStorage` was, so an inbox or project source's id was shown as typed, or with a
   folder placeholder in its middle. Kept as typed: an id that is one of agentsync's own words (`_GENERIC_IDS`:
