@@ -28,6 +28,7 @@ from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, PassKind, RowState, ScanResult, Verdict
+from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
@@ -318,6 +319,66 @@ def test_dry_run_classifies_without_writing(sample_config: Config) -> None:
     with Manifest(sample_config.state_paths.db) as m:
         assert list(m.iter_items(SID)) == [] and m.last_runs(1) == []
     assert run(sample_config).commit_sha is not None
+
+
+def test_a_cycle_makes_agent_written_paths_owner_only_and_a_dry_run_does_not(sample_config: Config) -> None:
+    """Field report 2026-10-06: the baseline draft, written by an agent under umask 022, left ``_eval/``
+    readable by group and other, and the next status ended on a ``docs_repo.permissions`` FAIL."""
+    repo = sample_config.docs_repo
+    run(sample_config)
+    eval_dir, topic_dir = repo / "_eval", repo / "topics" / "contoso" / "notes"
+    eval_dir.mkdir()
+    topic_dir.mkdir(parents=True)
+    files = [eval_dir / "questions.md", topic_dir / "scratch.txt", repo / "NOTES.txt"]
+    for f in files:
+        f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+        f.chmod(0o644)
+    script = topic_dir / "run.sh"
+    script.write_text("#!/bin/sh\n", encoding="utf-8")
+    script.chmod(0o755)
+    dirs = [eval_dir, topic_dir, topic_dir.parent]
+    for d in dirs:
+        d.chmod(0o755)
+
+    def modes(paths: list[Path]) -> set[int]:
+        return {p.stat().st_mode & 0o777 for p in paths}
+
+    def permissions() -> doctor.CheckResult:
+        return next(r for r in doctor.run_checks(sample_config) if r.name == "docs_repo.permissions")
+
+    assert not permissions().ok and "_eval" in permissions().detail
+    assert run(sample_config, mode=CycleMode.DRY_RUN).exit_code == 0
+    assert modes(files) == {0o644} and modes(dirs) == {0o755} and not permissions().ok
+
+    assert run(sample_config).exit_code == 0
+    assert modes(files) == {0o600} and modes(dirs) == {0o700} and modes([script]) == {0o700}
+    assert permissions().ok, permissions().detail
+    # The draft rode in the cycle's commit and a mode change dirties nothing; the stray file is not a
+    # path the cycle commits.
+    assert porcelain(repo) == "?? NOTES.txt\n"
+
+
+def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publisher(tmp_path: Path) -> None:
+    repo, outside = tmp_path / "docs", tmp_path / "outside"
+    for d in (repo / "_eval", repo / "topics", repo / "mirror" / "src", repo / "other" / "deep", outside):
+        d.mkdir(parents=True)
+    loose = [outside / "kept.txt", repo / "mirror" / "src" / "page.md", repo / "other" / "deep" / "f.txt"]
+    for f in loose:
+        f.write_text("x\n", encoding="utf-8")
+        f.chmod(0o644)
+    for d in (outside, repo / "mirror" / "src", repo / "other" / "deep", repo / "other", repo / "mirror"):
+        d.chmod(0o755)
+    (repo / "_eval" / "file-link").symlink_to(outside / "kept.txt")
+    (repo / "topics" / "dir-link").symlink_to(outside, target_is_directory=True)
+    (repo / "top-link").symlink_to(outside / "kept.txt")
+    assert cycle_mod._tighten_agent_writes(repo) == 2  # the two top-level folders themselves, nothing else
+    assert (repo / "mirror").stat().st_mode & 0o777 == (repo / "other").stat().st_mode & 0o777 == 0o700
+    assert {f.stat().st_mode & 0o777 for f in loose} == {0o644}
+    assert (
+        outside.stat().st_mode & 0o777 == 0o755 and (repo / "mirror" / "src").stat().st_mode & 0o777 == 0o755
+    )
+    assert cycle_mod._tighten_agent_writes(repo) == 0
+    assert cycle_mod._tighten_agent_writes(tmp_path / "missing") == 0
 
 
 def test_paused_source_is_skipped_and_retired_source_is_tombstoned_with_banners(

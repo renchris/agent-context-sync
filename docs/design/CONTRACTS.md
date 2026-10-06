@@ -4657,7 +4657,8 @@ development only; DYLD_*/PYTHON* never reach the child; refusals exit 64 `PROGRA
 `launchd.rotate_logs(log_dir, max_bytes=LOG_ROTATE_BYTES, keep=LOG_ROTATE_KEEP)` runs at the start of every
 non-dry cycle. `paths.CONFIG_ENV` (`AGENTSYNC_CONFIG`) is honoured by `default_config_path`. `cli.main` runs under
 umask 077 (restored on return); `gitops.ensure_repo` creates the repo (and missing parents) 0700 and sets
-`core.sharedRepository=0600`; pages and curate outputs are written 0600; doctor adds `docs_repo.permissions`
+`core.sharedRepository=0600`; pages and curate outputs are written 0600 (**amended 2026-10-06, §16.22:** every
+non-dry cycle also makes what an agent wrote owner-only); doctor adds `docs_repo.permissions`
 (after `docs_repo.symlinks`), a child-interpreter check inside `launchd.*`, and the CLI adds
 `network.proxy.job` (the LaunchAgent's own proxy resolution). `install-agent` refuses (78) a live Graph config
 whose proxy comes only from the shell environment. `offboard` also handles `launcher-app`, `tcc-grant`
@@ -6312,6 +6313,18 @@ only live inbox source; else, with several and none on that folder, every one of
 "into one of these inbox folders (its source id in brackets)" as one `` - `<path>` (<id>) `` line each. No live
 inbox source: no line, as before. `publish.root_guide(archive=, inbox=)` takes the one display path or that
 list of entries. The skill carries no inbox line (it has no config), so the guides are its only place.
+
+**Sync makes agent-written paths owner-only.** agentsync writes under umask 077, but a coding agent's file tool
+runs under the agent's own umask (usually 022). The baseline Draft step, which the skill tells the agent to
+write to `_eval/`, therefore left that folder readable by group and other, and the next `status` ended on a
+`docs_repo.permissions` FAIL that the loop itself had caused. Every non-dry cycle now clears the group and
+other bits right after `Publisher.ensure_scaffold` (`cycle._tighten_agent_writes`, private): on each entry at
+the top of the docs repo (the entry itself) and on everything below `_eval/` and `topics/`. Regular files and
+folders only; a symlink is never followed or changed, so nothing outside the docs repo is touched. `mirror/`
+and `.git` are not walked (the publisher writes 0600, git writes under `core.sharedRepository`), so a loose
+mode there is still doctor's to report, as is a path the cycle could not change (one warning with a count, no
+path). Modes are not content, so this alone never makes a commit. A dry run changes nothing, and sync still
+runs no doctor check: the FAIL simply has no cause left when `status` next looks.
 
 **install.sh.**
 

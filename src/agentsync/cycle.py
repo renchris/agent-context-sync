@@ -32,6 +32,7 @@ import re
 import secrets
 import shutil
 import socket
+import stat
 import time
 import unicodedata
 from collections import Counter
@@ -316,6 +317,61 @@ def _clear_staging(staging: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
     staging.chmod(0o700)
+
+
+_AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, under its own umask
+
+
+def _clear_group_other(path: Path) -> bool:
+    """Clear ``path``'s group/other permission bits; True when they were set.  A symlink is left alone (its
+    target may lie outside the docs repo), and so is anything that is not a regular file or a folder."""
+    mode = path.lstat().st_mode
+    if not mode & 0o077 or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+        return False
+    path.chmod(stat.S_IMODE(mode) & ~0o077)
+    return True
+
+
+def _tighten_agent_writes(repo: Path) -> int:
+    """Make owner-only what a coding agent writes into the docs repo; return how many paths changed.
+
+    agentsync writes under umask 077, but an agent's file tool runs under the agent's umask (usually 022),
+    so the baseline draft left ``_eval/`` readable by group and other and the next ``status`` ended on a
+    ``docs_repo.permissions`` FAIL the loop itself had caused.  Covered: every entry at the top of the docs
+    repo (the entry itself, not its contents) and everything below :data:`_AGENT_TREES`.  ``mirror/`` and
+    ``.git`` are not walked: the publisher writes pages 0600 and git writes under
+    ``core.sharedRepository``.  No symlink is followed or changed.  Modes are not content: git tracks only
+    the executable bit, so this never dirties the tree.  A path that cannot be changed is skipped with one
+    warning (the doctor check still reports it)."""
+    changed, failed = 0, 0
+
+    def tighten(path: Path) -> None:
+        nonlocal changed, failed
+        try:
+            changed += _clear_group_other(path)
+        except OSError:
+            failed += 1
+
+    try:
+        top = sorted(repo.iterdir())
+    except OSError:
+        return 0
+    for entry in top:
+        tighten(entry)
+    for name in _AGENT_TREES:
+        tree = repo / name
+        if tree.is_symlink() or not tree.is_dir():
+            continue
+        for dirpath, dirnames, filenames in os.walk(tree, followlinks=False):
+            for child in (*dirnames, *filenames):
+                tighten(Path(dirpath) / child)
+    if changed:
+        log.info("docs repo: cleared group/other access on %d path(s) an agent wrote", changed)
+    if failed:
+        log.warning(
+            "docs repo: %d path(s) could not be made owner-only (agentsync doctor names them)", failed
+        )
+    return changed
 
 
 def _discard_staged(fetched: FetchResult, staging: Path) -> None:
@@ -733,6 +789,9 @@ class _Cycle:
             self._note_roots(fp_changed)
             self._check_policy_change()
             self.publisher.ensure_scaffold()
+            _tighten_agent_writes(
+                self.repo
+            )  # an agent's umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
