@@ -60,7 +60,7 @@
 #      In the same step, with or without that option, when developer tools exist: the on-device OCR helper
 #      (python -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it). It
 #      prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
-#      build is that line, never a failed run
+#      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema)
@@ -1366,7 +1366,8 @@ fi
 # The on-device OCR helper (agentsync.convert.ocr), with or without background sync: this is the one place it
 # is compiled, so status, a sync and the LaunchAgent never start a compiler. The module reads [convert] ocr
 # itself (off builds nothing) and prints one line. OCR is optional: a helper that does not build is that
-# line, never a failed step, and without developer tools nothing is tried.
+# line, never a failed step. Without developer tools nothing is tried, and the line says so: status sends the
+# reader here for the helper, and a run that said nothing would send them round again.
 if have_devtools; then
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$TOOL_PY" -m agentsync.convert.ocr
@@ -1374,6 +1375,8 @@ if have_devtools; then
 		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
 	fi
+else
+	say "OCR helper: not built (no Xcode or Command Line Tools)"
 fi
 step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
 if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then

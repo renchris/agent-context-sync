@@ -1128,8 +1128,10 @@ def test_ocr_not_built_is_an_info_line_and_doctor_never_builds(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Decision D4: only scripts/install.sh compiles the helper.  With OCR on and nothing built, status
-    starts no build and no developer tool, writes nothing, and says who builds it."""
+    starts no build and no compiler, writes nothing, and says who builds it.  The one thing it asks is
+    whether there are developer tools (``xcode-select -p``, see the next test)."""
     _real_ocr(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
 
     def no_build(*args: object, **kwargs: object) -> None:
         pytest.fail(f"doctor reached the OCR build: {args}")
@@ -1144,6 +1146,25 @@ def test_ocr_not_built_is_an_info_line_and_doctor_never_builds(
     assert not (sample_config.cache_dir / "ocr").exists()
     line = format_results([r])
     assert line.startswith("[info] ocr") and "fix:" not in line
+
+
+def test_ocr_not_built_without_developer_tools_says_what_the_build_waits_for(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scripts/install.sh tries no build on a Mac without developer tools and so leaves no failure to
+    report: the state stays not-built.  The line must not send the reader to a script that will build nothing
+    again.  It stays INFO with no fix: OCR is optional."""
+    monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("not-built", "the OCR helper is not built"))
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    results = run_checks(sample_config)
+    r = by_name(results)["ocr"]
+    assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
+    assert r.detail == (
+        "the OCR helper is not built; scripts/install.sh builds it once the Command Line Tools are "
+        "installed (xcode-select --install)"
+    )
+    line = format_results([r])
+    assert line.startswith("[info] ocr") and "fix:" not in line and errors(results) == []
 
 
 def test_ocr_reads_the_helper_under_the_configured_cache_dir(

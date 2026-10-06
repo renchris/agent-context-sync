@@ -5970,7 +5970,8 @@ not an agentsync command. It reads the config (`$AGENTSYNC_CONFIG`, else the def
 the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 when it is not built:
 `OCR helper: ready (apple-vision revision 3, helper 2.0.0)`, `OCR helper: off ([convert] ocr = false)`,
 `OCR helper: not built (<reason>)`. A switched-off OCR builds nothing. `probe` and `engine` never compile, so
-`status`, a dry run and the LaunchAgent never start `xcode-select`, `xcrun` or `swiftc`.
+`status`, a dry run and the LaunchAgent never start `xcrun` or `swiftc`. (Doctor itself asks
+`/usr/bin/xcode-select -p` to word its line; see Doctor.)
 
 **Where.** `<cache_dir>/ocr/agentsync-ocr-<digest>`: the first 16 hex digits of sha256 over the Swift source
 and the build flags, so a new source gets a new name. The file is 0700 in a 0700 folder under any umask
@@ -6014,18 +6015,22 @@ A helper that is there and does not answer is `failed`, not `not-built`: OCR sto
 runs without it. The next build replaces such a helper.
 
 **Doctor** (`ops.doctor`, check `ocr`, after `pandoc`). It calls `probe` only, through the private probe
-`doctor._ocr_status`, so it never compiles; the one program it may start is a built helper's `--version`
-(limit 5 s). OCR is optional, so the line is never a FAIL:
+`doctor._ocr_status`, so it never compiles; the programs it may start are a built helper's `--version` and,
+in the `not-built` and `failed` states, `/usr/bin/xcode-select -p` (limit 5 s each). OCR is optional, so the
+line is never a FAIL:
 
 | `probe` state | Line |
 |---|---|
 | `ready` | ok: `on-device OCR is ready: <detail>` |
 | `off` | ok: `on-device OCR is off: <detail>` |
 | `not-built` | not-ok INFO, no fix (the shape of the `skill` check): `<detail>; scripts/install.sh builds it` |
+| `not-built`, no developer tools | the same INFO, no fix: `<detail>; scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)` |
 | `failed` | WARN: `on-device OCR is not working: <detail>` |
 | the probe raised | WARN: `on-device OCR could not be checked: <exception type>` (no exception text: it can hold a path) |
 
-A `failed` line carries a fix only when `/usr/bin/xcode-select -p` (limit 5 s) names no folder:
+"No developer tools" is `/usr/bin/xcode-select -p` naming no folder. The installer builds nothing on such a
+Mac and so leaves no failure to report: the state stays `not-built`, and the plain line would send the reader
+to a script that builds nothing again. A `failed` line carries a fix only in that same case:
 `xcode-select --install, then run scripts/install.sh again`. Any other failure prints its reason and no fix,
 and no line names `agentsync doctor`. In the setup report the INFO line is shown and not counted;
 `setup_report.expected_warn` has no entry for `ocr`, so an `ocr` warn is an unexpected warn and, like every
@@ -6036,8 +6041,8 @@ With or without `--confirm-install-agent`, when `xcode-select -p` names a folder
 exists, it runs `<tool python> -m agentsync.convert.ocr` with `AGENTSYNC_CONFIG` set to the run's config and
 prints the first line of its stdout (`OCR helper: ...`; `OCR helper: not built (the build did not run)` when
 there is none). The exit status and stderr are dropped: the step's result and the run's exit status are those
-of a run without it. A dry run prints the command. Without developer tools nothing is tried and nothing is
-printed.
+of a run without it. A dry run prints the command. Without developer tools nothing is tried and the run
+prints `OCR helper: not built (no Xcode or Command Line Tools)`, so its output and doctor's line agree.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -6156,7 +6161,9 @@ wider than a tile, a row of dots, a misreading by the less sure tile, two parts 
 `tests/test_config.py` pins the key.
 The fake helper kit (`write_fake`, `fake_image`, `fake_engine`) is there for the converter tests.
 `tests/test_ops_doctor.py` (the `ocr` line in each state; with OCR on and nothing built, `run_checks` and
-`cli._status_checks` reach no build, no developer tool and no helper; the fix only without developer tools; a
-probe that crashes), `tests/test_setup_report.py` (the INFO line is not counted, a warn is unexpected) and
+`cli._status_checks` reach no build, no compiler and no helper; a built helper that does not answer is a WARN;
+the not-built wording and the fix without developer tools; a probe that crashes),
+`tests/test_setup_report.py` (the INFO line is not counted, a warn is unexpected) and
 `tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
-crashing build changes neither the exit status nor the steps; the dry run).
+crashing build changes neither the exit status nor the steps; the one line without developer tools, forced
+with `DEVELOPER_DIR`; the dry run).

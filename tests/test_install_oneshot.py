@@ -1707,10 +1707,12 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
 ) -> None:
     """Decision D4: install.sh is the one place the helper is compiled (python -m agentsync.convert.ocr with
     the tool's interpreter), with or without background sync.  OCR is optional: whatever the build does, the
-    run's exit status and its install.log steps are those of a run without it."""
+    run's exit status and its install.log steps are those of a run without it.  Without developer tools
+    nothing is tried and one line says so: status's ocr line sends the reader to this script."""
     home = Path(env["HOME"])
     cfg = home / "agent-context" / "sources.toml"
     tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    no_tools = "OCR helper: not built (no Xcode or Command Line Tools)"
 
     def run(**stub: str) -> tuple[subprocess.CompletedProcess[str], list[tuple[str, str, str, str]]]:
         for leftover in (Path(env["STUB_LOG"]), cfg, home / "agent-context" / "setup" / "install.log"):
@@ -1718,9 +1720,13 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         cp = install_sh({**env, **stub}, str(wheel), "--source-local", str(folder))
         return cp, steps(install_log(env))
 
+    def said(cp: subprocess.CompletedProcess[str]) -> list[str]:
+        assert "OCR helper" not in cp.stderr
+        return [ln for ln in cp.stdout.splitlines() if "OCR helper" in ln]
+
     plain, plain_steps = run()  # the tool environment has no interpreter yet: nothing to run
     assert not any(c.startswith("python ") for c in calls(env))
-    assert "OCR helper" not in plain.stdout + plain.stderr
+    assert said(plain) == ([] if _have_git() else [no_tools])
     tool_py.parent.mkdir(parents=True, exist_ok=True)
     _write_exe(tool_py, STUB_TOOL_PYTHON)
 
@@ -1731,16 +1737,18 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         ({"STUB_OCR_OUT": ready}, ready),
         ({"STUB_OCR_OUT": failed + "\nsecond line", "STUB_OCR_RC": "1"}, failed),
         (crash, "OCR helper: not built (the build did not run)"),
+        # xcode-select -p answers with DEVELOPER_DIR: a folder that is not there is a Mac without the tools.
+        ({"STUB_OCR_OUT": ready, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
     ):
         cp, got = run(**stub)
         assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
         assert one_next(cp)
         ran = [c for c in calls(env) if c.startswith("python ")]
-        if not _have_git():  # no developer tools: nothing is tried, and nothing is said
-            assert ran == [] and "OCR helper" not in cp.stdout
+        if line == no_tools or not _have_git():  # nothing is tried, and the one line says why
+            assert ran == [] and said(cp) == [no_tools]
             continue
         assert ran == [f"python -m agentsync.convert.ocr config={cfg}"], ran
-        assert [ln for ln in cp.stdout.splitlines() if "OCR helper" in ln] == [line]
+        assert said(cp) == [line]
         assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
         log = calls(env)
         assert (
@@ -1753,6 +1761,7 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
     planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert.ocr" in ln]
     assert planned == ([f"[dry-run] {tool_py} -m agentsync.convert.ocr"] if _have_git() else []), dry.stdout
+    assert said(dry) == ([] if _have_git() else [no_tools])
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
 
 

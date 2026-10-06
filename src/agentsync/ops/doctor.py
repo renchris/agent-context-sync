@@ -51,8 +51,12 @@ _AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 _XCODE_SELECT = "/usr/bin/xcode-select"
 _DEVTOOLS_TIMEOUT_S = 5.0
-# Only scripts/install.sh builds the OCR helper (convert/ocr.py), so both ocr texts name it and no command.
+# Only scripts/install.sh builds the OCR helper (convert/ocr.py), so the ocr texts name it and no agentsync
+# command.  Without developer tools it builds nothing, so there the not-built line says what it waits for.
 _OCR_NOT_BUILT = "scripts/install.sh builds it"
+_OCR_NOT_BUILT_NO_DEVTOOLS = (
+    "scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)"
+)
 _OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 
 
@@ -403,7 +407,10 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
     the reason when the last build failed, or the helper is there and may not be run or does not answer,
     with a fix only when the developer tools are missing.  Never a FAIL: a probe that crashes is a WARN
-    too."""
+    too.
+
+    scripts/install.sh builds nothing on a Mac without developer tools and leaves no failure to report, so
+    the not-built line says there that the build waits for them.  It stays INFO with no fix."""
     try:
         state, detail = _ocr_status(config)
     except Exception as exc:
@@ -414,7 +421,8 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     if state == "off":
         return [_ok("ocr", f"on-device OCR is off: {detail}")]
     if state == "not-built":
-        return [_bad("ocr", f"{detail}; {_OCR_NOT_BUILT}", Severity.INFO)]
+        how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
+        return [_bad("ocr", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
     return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
 
