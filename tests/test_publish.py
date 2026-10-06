@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, gitops, lints, loop, policy, publish, skill, slug
+from agentsync import cli, cycle, gitops, lints, loop, policy, publish, skill, slug
 from agentsync.config import Config, SourceConfig, parse_config
+from agentsync.convert.registry import _with_sidecar_digests
 from agentsync.curate import refresh_queue
-from agentsync.errors import PublishError
+from agentsync.errors import PublishError, SidecarPathError
 from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
 from agentsync.manifest import ItemRow, Manifest, TombstoneRow
 from agentsync.model import (
@@ -596,6 +597,125 @@ def test_rewrite_frontmatter_keeps_a_disambiguated_unit_stem(env: Env) -> None:
         "mirror/src/c.xlsx.d/00-index.md",
         "mirror/src/c.xlsx.d/01-q3.md",
     ]
+
+
+# ---- sidecars and the path cap -----------------------------------------------------------------------------
+
+EMITTED_SIDECARS = ("full-text.txt", "full-table.csv", "09-northwind-additional-ledger.csv")
+"""The names converters give a sidecar: a capped page's text, a capped table, a capped sheet."""
+LONGEST_PAGE_WITH_A_SIDECAR = 183
+"""``<page minus .md>.files/<8 hex>.<3-letter ext>`` is 16 characters longer than the page; 183 + 16 = 199."""
+
+
+def _long_rel(page_len: int) -> str:
+    """A made-up source path whose WHOLE page under source ``src`` is exactly ``page_len`` characters."""
+    rel = f"Contoso Working Sessions/{'r' * (page_len - 43)}.csv"
+    assert len(slug.mirror_rel_path("src", rel)) == page_len
+    return rel
+
+
+def _capped(name: str, data: bytes) -> ConversionResult:
+    """A WHOLE unit with one sidecar, its digest footer written as the registry writes it."""
+    return result(_with_sidecar_digests(unit(sidecars=((name, data),))))
+
+
+def _path_findings(env: Env) -> list[LintFinding]:
+    return [f for f in lints.lint_paths(env.repo) if f.lint_id == "PATH"]
+
+
+def test_sidecar_rel_is_within_the_cap_under_mirror_and_archive_for_every_page_length() -> None:
+    for n in range(150, slug.MAX_PATH_CHARS + 1):
+        page = f"mirror/contoso-shared-general/{'p' * (n - 33)}.md"
+        assert len(page) == n
+        rels = [publish.sidecar_rel(page, name) for name in EMITTED_SIDECARS]
+        assert len(set(rels)) == len(rels)
+        for name, rel in zip(EMITTED_SIDECARS, rels, strict=True):
+            folder, leaf = rel.rsplit("/", 1)
+            assert folder == page[:-3] + ".files"
+            assert all(slug.slugify(seg) == seg for seg in rel.split("/")) and slug.is_safe_mirror_path(rel)
+            if len(f"{folder}/{name}") < slug.MAX_PATH_CHARS:
+                assert leaf == name  # a name that fits under archive/ too is never renamed
+            else:
+                assert re.fullmatch(r"(?:.*[^-.]-)?[0-9a-f]{8}\.(?:csv|txt)", leaf), leaf
+                assert name.startswith(leaf[:-13]) and leaf.endswith(name[-4:])
+            fits = n <= LONGEST_PAGE_WITH_A_SIDECAR
+            assert (len(archive_path(rel)) <= slug.MAX_PATH_CHARS) is fits, (n, name)
+            assert publish._sidecar_fits(rel) is fits
+
+
+def test_sidecar_rel_shortens_the_sheet_sidecar_of_a_deep_workbook() -> None:
+    page = slug.mirror_rel_path(
+        "contoso-shared-general",
+        "Engineering/Business/Document Repository/Contoso Working Sessions/"
+        "Regional Sales Summary - FY26 Q3 Review Pack.xlsx",
+        file_stem="09-Northwind - Additional Ledger",
+    )
+    name = EMITTED_SIDECARS[2]
+    assert len(f"{page[:-3]}.files/{name}") > slug.MAX_PATH_CHARS  # what was written before
+    rel = publish.sidecar_rel(page, name)
+    assert rel == f"{page[:-3]}.files/09-northwind-additi-{sha(name)[:8]}.csv"
+    assert len(archive_path(rel)) == slug.MAX_PATH_CHARS
+    for other in EMITTED_SIDECARS[:2]:  # the short names still fit as they are
+        assert publish.sidecar_rel(page, other) == f"{page[:-3]}.files/{other}"
+
+
+def test_a_long_page_publishes_and_archives_its_sidecar_under_a_shorter_name(env: Env) -> None:
+    item = env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR))
+    env.publish(item, _capped("full-table.csv", b"a,b\n1,2\n"))
+    [out] = env.manifest.outputs_for("src", "vol:1")
+    side = publish.sidecar_rel(out.output_path, "full-table.csv")
+    assert side.endswith(f".files/{sha('full-table.csv')[:8]}.csv")
+    assert (env.repo / side).read_bytes() == b"a,b\n1,2\n"
+    assert cycle._pages_intact(env.repo, [out])  # the page's digest line finds the renamed file
+    env.pub.tombstone(
+        "src",
+        "vol:1",
+        reason="deleted-upstream",
+        run_id=env.run_id,
+        today=TODAY,
+        last_commit=None,
+        archive=True,
+    )
+    assert (env.repo / archive_path(side)).read_bytes() == b"a,b\n1,2\n"
+    assert _path_findings(env) == []
+
+
+def test_a_page_too_long_for_any_sidecar_is_refused_before_anything_is_written(env: Env) -> None:
+    item = env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR + 1))
+    with pytest.raises(SidecarPathError, match="no sidecar name fits"):
+        env.publish(item, _capped("full-text.txt", b"all of it\n"))
+    assert env.manifest.outputs_for("src", "vol:1") == []
+    assert not (env.repo / "mirror/src/contoso-working-sessions").exists()
+    env.publish(item, result(unit()))  # the same page with no sidecar is fine
+    assert _path_findings(env) == []
+
+
+@pytest.mark.parametrize(("before", "after"), [(160, 183), (183, 160), (181, 182)])
+def test_rewrite_frontmatter_renames_a_sidecar_for_the_new_page_length(
+    env: Env, before: int, after: int
+) -> None:
+    env.publish(env.observe("vol:1", _long_rel(before)), _capped("full-table.csv", b"a,b\n1,2\n"))
+    [old] = env.manifest.outputs_for("src", "vol:1")
+    ch = env.pub.rewrite_frontmatter(env.observe("vol:1", _long_rel(after)), env.run_id)
+    [new] = env.manifest.outputs_for("src", "vol:1")
+    assert [(c.op, c.prev_path) for c in ch] == [(ChangeOp.RENAMED, old.output_path)]
+    assert len(new.output_path) == after
+    side = env.repo / publish.sidecar_rel(new.output_path, "full-table.csv")
+    assert side.read_bytes() == b"a,b\n1,2\n" and [f.name for f in side.parent.iterdir()] == [side.name]
+    assert (side.name == "full-table.csv") is (after == 160)
+    assert cycle._pages_intact(env.repo, [new])
+    assert not (env.repo / old.output_path).exists() and not (env.repo / old.output_path[:-3]).exists()
+    assert _path_findings(env) == []
+
+
+def test_rewrite_frontmatter_refuses_a_rename_that_leaves_no_room_for_the_sidecar(env: Env) -> None:
+    env.publish(env.observe("vol:1", _long_rel(160)), _capped("full-text.txt", b"all of it\n"))
+    [old] = env.manifest.outputs_for("src", "vol:1")
+    moved = env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR + 1))
+    with pytest.raises(PublishError, match="needs a re-conversion"):  # both callers queue a re-fetch on this
+        env.pub.rewrite_frontmatter(moved, env.run_id)
+    assert env.manifest.outputs_for("src", "vol:1") == [old]
+    assert not any(len(p.relative_to(env.repo).as_posix()) > 199 for p in (env.repo / "mirror").rglob("*"))
 
 
 # ---- tombstones --------------------------------------------------------------------------------------------

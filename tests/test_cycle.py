@@ -716,3 +716,43 @@ def test_budget_0_converts_every_local_file_and_defers_only_online_only_ones(
     assert (src.converted, src.deferred, src.deferred_online_only) == (2, 0, 0)
     assert src.materialised_bytes == sum(p.stat().st_size for p in online), "only downloads are charged"
     assert any(mirror.glob("sample.pptx*")) and (mirror / "sample.pdf.md").is_file()
+
+
+# ---------------------------------------------------------------------------------------------------------
+# a page too long for any sidecar settles as one quarantined item
+# ---------------------------------------------------------------------------------------------------------
+
+
+def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantined_item(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """The item gets a stub and is settled; every other file is converted and the commit lands."""
+    from agentsync import slug  # noqa: PLC0415
+
+    rel = (
+        "Contoso Working Sessions/Document Repository/Regional Sales Summary - FY26 Q3 Review Pack - "
+        "All Regions - Final Export From The Data Warehouse v2 - Appendix With Every Row.txt"
+    )
+    page = slug.mirror_rel_path(SID, rel)
+    assert len(page) > 183  # no ``.files/<8 hex>.txt`` fits beside it
+    big = local_source_dir / rel
+    big.parent.mkdir(parents=True)
+    big.write_text("every row of the appendix\n" * 45_000, encoding="utf-8")  # past max_page_bytes
+    first = run(sample_config)
+    [src] = first.sources
+    assert first.exit_code == 0 and first.commit_sha is not None, first
+    assert src.errors == () and src.counts.get(Verdict.QUARANTINED) == 1
+    assert not [f for f in first.lint_findings if f.lint_id == "PATH"]
+    repo = sample_config.docs_repo
+    assert (repo / "mirror" / SID / "projects" / "sample.docx.md").is_file()
+    assert "status: unreadable" in (repo / page).read_text(encoding="utf-8")
+    assert not (repo / page).with_suffix(".files").exists()
+    assert max(len(p.relative_to(repo).as_posix()) for p in (repo / "mirror").rglob("*")) <= 200
+    with Manifest(sample_config.state_paths.db) as m:
+        rows = {r.rel_path: r for r in m.iter_items(SID)}
+    assert (rows[rel].state, rows[rel].last_verdict) == (RowState.QUARANTINED, Verdict.QUARANTINED)
+    assert "path too long" in (rows[rel].state_reason or "")
+    assert all(r.state is RowState.LIVE for name, r in rows.items() if name.startswith("projects/sample."))
+    second = run(sample_config)  # settled: not read again, nothing to commit
+    [src] = second.sources
+    assert (second.exit_code, second.commit_sha, src.converted, src.errors) == (0, None, 0, ())

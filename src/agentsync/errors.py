@@ -62,6 +62,10 @@ class PublishError(AgentSyncError):
     """Writing docs/ or committing it failed; the cycle must not advance any cursor."""
 
 
+class SidecarPathError(PublishError):
+    """A page's path leaves no room for a sidecar under the path cap; that one item is published as a stub."""
+
+
 class LintError(AgentSyncError):
     """A land-gate lint failed; the cycle must not commit."""
 

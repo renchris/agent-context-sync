@@ -69,6 +69,8 @@ not call another W1b module's stubbed functions in their own unit tests (they ra
 - **Docs paths** are docs-repo-relative POSIX strings (`mirror/<source_id>/…`, `topics/…`), produced only by
   `slug.mirror_rel_path` / `Publisher.allocate_path`. Every path ≤ 200 chars; collisions (NFC + casefold) are
   disambiguated with `-<sha256(stable_id)[:8]>`, and an existing owner keeps its path (sticky, via `outputs`).
+  **Amended (2026-10-06):** a sidecar path is capped too, under `mirror/` and under `archive/`; a long one gets a
+  shorter leaf (§16.23).
 - **Mirror names:** WHOLE unit `mirror/<sid>/<slug dirs>/<slug(name)>.md` where `name` keeps its extension
   (`fy26-budget.xlsx` → `fy26-budget.xlsx.md`; suffixes `.md .markdown .teams.json .eml` are dropped);
   multi-unit `…/<slug(name)>.d/<slug(file_stem)>.md` (`fy26-budget.xlsx.d/00-index.md`, `01-q3-budget.md`).
@@ -4603,7 +4605,8 @@ QUARANTINE.tsv, CHANGELOG and commit body, and a `redacted-<hex>` mirror path; a
 redaction blocks the commit. The converter guard lists every sidecar's sha256 at the end of the unit body
 (`convert.registry.SIDECAR_DIGEST_PREFIX`, `SIDECAR_DIGEST_VERSION` in the options, `sidecar_digest_lines`;
 text sidecars start with the banner), so H2 covers sidecars (correctness-h2-cutoff) and `_pages_intact` verifies
-them (`publish.sidecar_rel`). STATE.md quotes alarms, errors, skipped reasons and lint text in code spans;
+them (`publish.sidecar_rel`; **amended 2026-10-06:** the file may carry a shorter name than the one the page
+lists, §16.23). STATE.md quotes alarms, errors, skipped reasons and lint text in code spans;
 QUARANTINE.tsv and new CHANGELOG month files start with an untrusted-names line; `policy.BOUNDARY_TEXT` names
 `_sync/`, CHANGELOG, `_manifest/` and sidecars as untrusted.
 
@@ -5824,3 +5827,31 @@ converted again.
 
 Tests: `test_convert_formats.py` (a 300-point chart with python-pptx's per-point lookup made to raise; a count
 lower than the points, a repeated index and a short series against `series.values`).
+
+**A sidecar path stays within the path cap.** `publish.sidecar_rel(page_path, name)` returned
+`<page minus .md>.files/<slug(name)>` whatever its length, so a capped sheet of a deeply nested workbook, or any
+capped page of 183 characters or more, wrote a file past 200 characters and the PATH lint blocked the commit for
+every source. The rule is now:
+
+- The limit for a sidecar is 199 characters, not 200: `archive_path` moves it under `archive/`, one character
+  longer than `mirror/`, and it must fit there too.
+- A name that fits keeps its leaf. A name that does not is written as `<cut stem>-<8 hex><ext>`, or `<8 hex><ext>`
+  when no stem fits; the hex is the first 8 of `sha256` of the full slugged name. The page body and its digest
+  line still give the converter's name (`full-text.txt`, `full-table.csv`, `<nn>-<sheet>.csv`): look the file up
+  with `sidecar_rel`, or open the only file in the page's `.files/` folder.
+- `sidecar_rel` always returns a path. For a page of 184 characters or more no name with a three-letter extension
+  fits; `Publisher.plan_pages` then raises `errors.SidecarPathError` (a `PublishError`) and writes nothing.
+  `cycle._publish` catches it and publishes that one item as an unreadable stub, QUARANTINED with the reason `path
+  too long for the full-content file this page needs (shorten a folder or file name)`. The source carries on and
+  the item is not read again until it changes. A capped page that long could not be committed before either.
+- `Publisher.rewrite_frontmatter` moves each sidecar the body lists to `sidecar_rel(new_path, name)`, so the leaf
+  follows the new page length; a file the body does not list keeps its leaf. When no name fits beside the new
+  page it raises `SidecarPathError` before writing that page, and both callers queue a re-fetch, which ends in
+  the stub above.
+- A sidecar committed earlier at exactly 200 characters is renamed once: `_pages_intact` no longer finds it
+  under the old leaf, and the repair pass publishes it again from the cache.
+
+Tests: `test_publish.py` (every page length 150 to 200 with the three emitted names, under `mirror/` and
+`archive/`; the deep workbook sheet; publish, digest check and archive of a renamed sidecar; a refused plan
+writes nothing; renames in both directions and one that leaves no room), `test_cycle.py` (a capped file with an
+over-long page is one quarantined item, the other files convert, the commit lands, the next run reads nothing).

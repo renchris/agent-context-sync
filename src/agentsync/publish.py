@@ -31,7 +31,8 @@ from typing import Any
 
 from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig
-from agentsync.errors import ConfigError, GitError, PublishError
+from agentsync.convert.registry import sidecar_digest_lines
+from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
     HEX64_RE,
     FrontmatterError,
@@ -298,10 +299,37 @@ def archive_path(mirror_path: str) -> str:
     return f"{ARCHIVE_DIR}/{mirror_path[len('mirror/') :]}"
 
 
+_SIDECAR_PATH_CAP = slug.MAX_PATH_CHARS - max(0, len(ARCHIVE_DIR) - len("mirror"))
+"""A sidecar must also fit the cap once ``archive_path`` moves it under the longer ``archive/``."""
+
+
 def sidecar_rel(page_path: str, name: str) -> str:
     """Docs-repo-relative path of a unit's sidecar ``name`` next to ``page_path``
-    (``<page>.files/<slug>``)."""
-    return f"{_sidecar_dir(page_path)}/{slug.safe_segment(name)}"
+    (``<page>.files/<slug>``).
+
+    A path that would pass the cap gets a shorter leaf, ``<cut stem>-<8 hex><ext>`` (the hex is of the full
+    slug, so two names never meet), or ``<8 hex><ext>`` when no stem fits.  Always returns a path:
+    ``_plan_unit`` and a rename refuse one that is still over the cap (``SidecarPathError``).
+    """
+    folder = _sidecar_dir(page_path)
+    leaf = slug.safe_segment(name)
+    full = f"{folder}/{leaf}"
+    if len(full) <= _SIDECAR_PATH_CAP:
+        return full
+    stem, dot, ext = leaf.rpartition(".")
+    if not stem:  # no extension (or only a leading dot, which safe_segment never leaves)
+        stem, ext = leaf, ""
+    else:
+        ext = dot + ext
+    h = hashlib.sha256(leaf.encode("utf-8")).hexdigest()[:8]
+    room = _SIDECAR_PATH_CAP - len(folder) - len(f"/-{h}{ext}")
+    head = stem[:room].rstrip(".-") if room > 0 else ""
+    return f"{folder}/{head}-{h}{ext}" if head else f"{folder}/{h}{ext}"
+
+
+def _sidecar_fits(rel: str) -> bool:
+    """True when a ``sidecar_rel`` path is within the path cap, under ``mirror/`` and under ``archive/``."""
+    return len(rel) <= _SIDECAR_PATH_CAP
 
 
 def _display_path(path: Path) -> str:
@@ -829,6 +857,10 @@ class Publisher:
         sidecars: list[tuple[str, bytes]] = []
         for name, data in unit.sidecars:
             rel = sidecar_rel(path, name)
+            if not _sidecar_fits(rel):
+                raise SidecarPathError(
+                    f"{path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
+                )
             if any(rel == s[0] for s in sidecars):
                 raise PublishError(f"{path}: two sidecars map to {rel}")
             sidecars.append((rel, data))
@@ -1122,6 +1154,29 @@ class Publisher:
         suffix = "-" + hashlib.sha256(stable_id.encode("utf-8")).hexdigest()[:8]
         return stem.removesuffix(suffix) if stem.endswith(suffix) and len(stem) > len(suffix) else stem
 
+    def _moved_sidecars(self, old_path: str, new_path: str, body: str) -> list[tuple[str, bytes]]:
+        """The sidecars of ``old_path`` under the names they take next to ``new_path``.
+
+        A sidecar's leaf depends on its page's length (``sidecar_rel``), so each file the body lists is
+        mapped by its name; a file the body does not list keeps its leaf.  ``SidecarPathError`` when one
+        does not fit beside the new page: the caller re-fetches the item and it settles as a stub.
+        """
+        listed = {
+            sidecar_rel(old_path, name): sidecar_rel(new_path, name)
+            for name, _digest in sidecar_digest_lines(body)
+        }
+        moved: dict[str, bytes] = {}
+        for rel, data in self._read_sidecars(old_path):
+            dest = listed.get(rel) or f"{_sidecar_dir(new_path)}/{rel.rsplit('/', 1)[-1]}"
+            if not _sidecar_fits(dest):
+                raise SidecarPathError(
+                    f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap; "
+                    "the item needs a re-conversion"
+                )
+            if rel in listed or dest not in moved:  # a listed file wins the name over a stray one
+                moved[dest] = data
+        return sorted(moved.items())
+
     def rewrite_frontmatter(self, item: ItemRow, run_id: int) -> list[MirrorChange]:
         """METADATA_ONLY / rename without content change: re-render frontmatter (and move paths), keep
         bodies."""
@@ -1156,10 +1211,7 @@ class Publisher:
             new_text = render_mirror_page(_with_trust(new_fm), body)
             new_path = self.allocate_path(sid, stable, self._alloc_rel(item), self._file_stem_of(out, stable))
             if new_path != out.output_path:
-                sidecars = [
-                    (f"{_sidecar_dir(new_path)}/{rel.rsplit('/', 1)[-1]}", data)
-                    for rel, data in self._read_sidecars(out.output_path)
-                ]
+                sidecars = self._moved_sidecars(out.output_path, new_path, body)
                 self._write_text(new_path, new_text)
                 self._sync_sidecars(new_path, sidecars)
                 if slug.collision_key(new_path) != slug.collision_key(out.output_path):

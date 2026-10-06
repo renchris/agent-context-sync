@@ -59,6 +59,7 @@ from agentsync.errors import (
     GraphThrottled,
     LockHeldError,
     PublishError,
+    SidecarPathError,
 )
 from agentsync.frontmatter import FrontmatterError, parse_frontmatter
 from agentsync.graph.auth import MsalAuth, settings_from_config
@@ -1915,7 +1916,15 @@ class _Cycle:
     ) -> None:
         sid, stable = row.source_id, row.stable_id
         prior_ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
-        pages = self.publisher.plan_pages(src, row, result)
+        try:
+            pages = self.publisher.plan_pages(src, row, result)
+        except SidecarPathError as exc:
+            # Settle this one item as a stub: an uncaught error here fails the source at the same row every
+            # cycle, and an over-long sidecar blocks the commit for every source.
+            log.warning("%s/%s quarantined: %s", sid, stable, exc)
+            result = self._stub(row, ConversionStatus.UNREADABLE, _SIDECAR_PATH)
+            quarantine_reason = _SIDECAR_PATH
+            pages = self.publisher.plan_pages(src, row, result)
         self.changes += self.publisher.write_pages(row, pages, self.run_id)
         if prior_ok and any(p.refusal for p in pages) and quarantine_reason is None:
             self._label_escalation(row, prior_ok)
@@ -2081,6 +2090,7 @@ def _row_ids(row: ItemRow) -> tuple[str, str]:
 
 
 _CREDENTIAL = "contains a credential"
+_SIDECAR_PATH = "path too long for the full-content file this page needs (shorten a folder or file name)"
 
 
 def _removal_reason(why: str) -> str:
