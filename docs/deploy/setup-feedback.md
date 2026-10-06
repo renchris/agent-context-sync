@@ -135,7 +135,9 @@ install.log (a `--list-folders` run is not an install run):
 - **Failed at step N**: the last install run did not exit 0 or has no end line (stopped early); then N is 2, the
   step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an error logged
   in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a `--list-folders` re-run
-  included; for step 2 an install run), with no later step logged before the report. If no install run
+  included; for step 2 an install run), with no later step logged before the report. In prompt v7, step 2 is the
+  one install.sh command, so any install run of the attempt that ended 0 resolves a step 2 error, whenever the
+  line was logged: a step 2 `error` line written after install.sh exited 0 is agent friction. If no install run
   happened, N is the step of the last `error` line, failing that the last step logged, and failing that 1 when
   only `--list-folders` ran.
 

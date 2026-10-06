@@ -4933,7 +4933,8 @@ runs)`: a v6 error (no step `end` lines) is resolved by a later install.log run 
 step-1 error, an install run for an install-step error); a v5 error still by a later `end` of its step. With only
 a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Amended (2026-10-06, §16.22):**
 only events before the attempt's closing line can stop it, and a line between a finished attempt and the next
-`Attempt:` header is an attempt of its own. **Summary.** `human turns: N (q
+`Attempt:` header is an attempt of its own; a v7 install-step error is resolved by any install run of the attempt
+that ended rc 0, whenever it was logged. **Summary.** `human turns: N (q
 question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: none possible; approvals: not
 observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
 logged, though none is possible" when some were logged there, and on a real Mac "c click(s)" (v6: "beyond the
@@ -6225,3 +6226,14 @@ log a line with no `Attempt:` header after an older attempt's `end | finished`. 
   labels it "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
   read with the newest layout. With no later `Attempt:` line the late line stays in its attempt: a line logged
   after `--report-only` in the same session must not become the latest attempt and take the Summary's headline.
+
+**setup-report: a v7 step 2 error logged after install.sh exited 0 is agent friction.** `stopping_error`
+resolved an install-step error only by an install run that started at or after the line's time. No step lies
+between the install step (2) and the report step (3), and an agent logs after the command returns, so every
+`--log 2 error` line written after a successful install made the outcome "failed at step 2", whatever it said.
+In v7 step 2 runs one command, install.sh, and starts no background job: for a v7 attempt (and a header-less
+one, read as v7) an install-step error is resolved by any install run of the attempt that ended rc 0. The line
+stays on the agent friction line. Unchanged: a last install run that did not end rc 0 is "failed at step 2"
+before any friction line is read; a v7 step-1 error still needs a run started after it; v6 (its step 2 also
+started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
+printed link and the Summary's outcome are the same value.

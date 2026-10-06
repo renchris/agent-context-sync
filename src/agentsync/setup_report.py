@@ -1097,7 +1097,8 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
     and go to step 3") and not resolved. v5 resolves it with a later ``end`` of its step; v6 (no step lines)
     with a later install.sh run in ``runs`` that ended rc 0: any such run for a step-1 error (a
     ``--list-folders`` re-run, or the install run that step 2 starts), an install run for an error of the
-    install step."""
+    install step. v7's install step is the one install.sh command, so any install run of the attempt that
+    ended rc 0 resolves its error, whenever the line was logged: an agent logs after the command returns."""
     layout = attempt.layout
     events = _run_events(attempt)
     last_step = layout.report_step
@@ -1108,11 +1109,14 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
         later = events[i + 1 :]
         resolved = any(x.kind == "end" and x.step == e.step for x in later)
         went_on = any(x.step is not None and e.step < x.step < last_step for x in later)
-        if not layout.logs_steps and e.at is not None:
-            after = [r for r in runs if r.started is not None and r.started >= e.at and r.rc == 0]
+        if not layout.logs_steps:
+            done = [r for r in runs if r.rc == 0]
             if e.step >= layout.install_step:
-                after = install_runs_only(after)
-            resolved = resolved or bool(after)
+                done = install_runs_only(done)
+            if layout.version < 7 or e.step < layout.install_step:
+                at = e.at
+                done = [r for r in done if at is not None and r.started is not None and r.started >= at]
+            resolved = resolved or bool(done)
         if not resolved and not went_on:
             return e
     return None

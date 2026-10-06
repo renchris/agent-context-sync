@@ -1902,6 +1902,53 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_v7_a_step_2_error_logged_after_the_install_ended_0_is_agent_friction(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Field report 2026-10-06: v7's step 2 is the one install.sh command. The agent logged its lines in a
+    batch after that command exited 0, one of them a step 2 ``error`` that said "Exit 0, no failure", and
+    the outcome read "failed at step 2". Any install run of the attempt that ended 0 resolves it; the
+    Summary and the issue link agree."""
+    v6_install_log(fake_mac)
+    batch = (
+        "2026-09-29T10:01:00Z | step 2 | prompt | the prompt does not say what a second run prints | say it\n"
+        "2026-09-29T10:01:00Z | step 2 | error | Exit 0, no failure: the link shows a placeholder | -\n"
+        "2026-09-29T10:01:00Z | step 3 | deviation | wrote the questions in three parts | -\n"
+    )
+    friction = _insert_before("2026-09-29T10:01:10Z | end", batch, V7_HAPPY)
+    write_friction(fake_mac, friction)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert rc == 0 and summary.strip().splitlines()[0] == (
+        "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
+    )
+    assert (
+        "- agent friction: 1 deviation, 1 prompt, 1 error (F4, F5, F6); none of these changes the outcome "
+        "by itself" in summary
+    )
+    assert "stopped the run" not in summary and "- F5 · step 2 · error · Exit 0, no failure" in summary
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v7"]
+
+    [attempt] = setup_report.parse_friction(friction).attempts
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report.stopping_error(attempt, runs) is None
+    assert setup_report.stopping_error(attempt, [r for r in runs if r.list_only]) is attempt.events[1], (
+        "only an install run resolves it"
+    )
+    step_1 = friction.replace("| step 2 | error |", "| step 1 | error |")
+    [attempt] = setup_report.parse_friction(step_1).attempts
+    assert setup_report.stopping_error(attempt, runs) is attempt.events[1], (
+        "a step 1 error still needs a run started after it"
+    )
+    v6_install_log(fake_mac, rc=1)
+    _text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: failed at step 2** (computed: install.sh exited 1"), (
+        "a failed install is still a failed step 2"
+    )
+
+
 def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, Path]) -> None:
     """L8, V3: an expected warn's fix is nothing for this setup to do: the Doctor section says why it is
     expected instead; an unexpected warn keeps its fix."""
