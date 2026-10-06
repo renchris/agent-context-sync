@@ -139,6 +139,12 @@ install.log (a `--list-folders` run is not an install run):
   happened, N is the step of the last `error` line, failing that the last step logged, and failing that 1 when
   only `--list-folders` ran.
 
+A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
+attempt's outcome. When a later `Attempt:` header follows it in the log, it came from a session whose step 1
+stopped before `install.sh --log-start` wrote a header: the report lists it as an attempt of its own, with "no
+Attempt: line (logged after the previous attempt finished)". With no later header it stays in its attempt (run
+`install.sh --report-only` again to put it in the report).
+
 `deviation` and `prompt` lines, and `error` lines that did not stop the run, are agent friction: the Summary counts
 them on their own "agent friction" line with their F-ids, and they do not change the outcome. They are still
 triaged like every other line (below).

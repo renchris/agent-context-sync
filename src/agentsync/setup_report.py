@@ -709,7 +709,8 @@ class FrictionEvent:
 @dataclasses.dataclass(frozen=True, slots=True)
 class Attempt:
     """One run of the setup prompt: the lines from one ``Attempt: <time>`` header (or, in a v4 log, one
-    ``Prompt:`` header block) to the next."""
+    ``Prompt:`` header block) to the next. Lines logged after an attempt's closing line and before the next
+    header are an attempt of their own, with no header (:func:`parse_friction`)."""
 
     number: int
     started: datetime | None  # the Attempt: line's time
@@ -865,9 +866,21 @@ def parse_friction(text: str) -> Friction:
     ``Outcome:``, ``Run:`` lines (a leading ``- `` or ``**`` is tolerated), every
     ``<time> | step <n> | <kind> | <what> | <fix>`` line (a ``|`` inside the what text is kept: the fix is the
     text after the last ``|``), the ``<time> | end | finished`` line, and v4 ``F<n> | ...`` lines as legacy.
-    Other lines are kept only in the text."""
+    Other lines are kept only in the text.
+
+    A line after an attempt's ``end | finished`` line belongs to a session that never got its header (step
+    1's command stopped before ``install.sh --log-start``): when an ``Attempt:`` line follows later in the
+    file, it starts a header-less attempt of its own, so it cannot change the finished attempt's outcome.
+    With no later ``Attempt:`` line it stays where it is (a line logged late in the same session must not
+    become the latest attempt); :func:`stopping_error` ignores it either way."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
+    lines = text.splitlines()
+    last_header = max((n for n, ln in enumerate(lines, start=1) if _ATTEMPT_RE.match(ln)), default=0)
+
+    def orphan(line_no: int) -> bool:
+        events = cast("list[FrictionEvent]", cur["events"]) if cur is not None else []
+        return line_no < last_header and any(e.kind == "finished" for e in events)
 
     def close() -> None:
         if cur is not None:
@@ -894,7 +907,7 @@ def parse_friction(text: str) -> Friction:
             "last": line_no,
         }
 
-    for n, line in enumerate(text.splitlines(), start=1):
+    for n, line in enumerate(lines, start=1):
         attempt = _ATTEMPT_RE.match(line)
         if attempt is not None:
             cur = begin(n, parse_time(attempt.group(1)))
@@ -909,10 +922,10 @@ def parse_friction(text: str) -> Friction:
         if key is not None:
             name = key.group(1).capitalize()
             header = cast("dict[str, str]", cur["header"]) if cur is not None else None
-            if cur is None or (name == "Prompt" and header is not None and "Prompt" in header):
+            if cur is None or orphan(n) or (name == "Prompt" and header is not None and "Prompt" in header):
                 cur = begin(n, None)
             cast("dict[str, str]", cur["header"]).setdefault(name, key.group(2).strip("*").strip())
-        elif cur is None:
+        elif cur is None or orphan(n):
             cur = begin(n, None)
         if event is not None:
             cast("list[FrictionEvent]", cur["events"]).append(_parse_event(n, event.group(1), event.group(2)))
@@ -1060,9 +1073,17 @@ class Outcome:
         return None
 
 
+def _run_events(attempt: Attempt) -> list[FrictionEvent]:
+    """The attempt's events up to its closing ``finished`` line: a line logged after the run finished cannot
+    have stopped it."""
+    events = list(attempt.events)
+    end = next((i for i, e in enumerate(events) if e.kind == "finished"), len(events))
+    return events[:end]
+
+
 def _unresolved_error(attempt: Attempt) -> FrictionEvent | None:
     """The last error with no later ``end`` of the same step."""
-    events = list(attempt.events)
+    events = _run_events(attempt)
     for i in range(len(events) - 1, -1, -1):
         e = events[i]
         if e.kind == "error" and not any(x.kind == "end" and x.step == e.step for x in events[i + 1 :]):
@@ -1071,13 +1092,14 @@ def _unresolved_error(attempt: Attempt) -> FrictionEvent | None:
 
 
 def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> FrictionEvent | None:
-    """The last error that stopped the run: logged in a step before the report step (v6: 3, v5: 5), with no
-    later event of a later step before the report (the prompt's "log it and go to step 3") and not resolved.
-    v5 resolves it with a later ``end`` of its step; v6 (no step lines) with a later install.sh run in
-    ``runs`` that ended rc 0: any such run for a step-1 error (a ``--list-folders`` re-run, or the install
-    run that step 2 starts), an install run for an error of the install step."""
+    """The last error that stopped the run: logged in a step before the report step (v6: 3, v5: 5) and before
+    the attempt's closing line, with no later event of a later step before the report (the prompt's "log it
+    and go to step 3") and not resolved. v5 resolves it with a later ``end`` of its step; v6 (no step lines)
+    with a later install.sh run in ``runs`` that ended rc 0: any such run for a step-1 error (a
+    ``--list-folders`` re-run, or the install run that step 2 starts), an install run for an error of the
+    install step."""
     layout = attempt.layout
-    events = list(attempt.events)
+    events = _run_events(attempt)
     last_step = layout.report_step
     for i in range(len(events) - 1, -1, -1):
         e = events[i]
@@ -2525,8 +2547,10 @@ def _friction_section(r: _Run) -> list[str]:
     ]
     for i, att in enumerate(fr.attempts):
         outcome = _attempt_outcome(r, i)
+        late = i > 0 and not att.header and fr.attempts[i - 1].finished
+        no_header = "logged after the previous attempt finished" if late else "v4 format"
         bits = [
-            f"started {_iso(att.started)}" if att.started else "no Attempt: line (v4 format)",
+            f"started {_iso(att.started)}" if att.started else f"no Attempt: line ({no_header})",
             f"prompt {_prompt_version(att) or 'not stated'}",
             f"agent {att.header.get('Agent') or 'not stated'}",
         ]

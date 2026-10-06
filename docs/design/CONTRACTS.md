@@ -4931,7 +4931,9 @@ expected). `Outcome.version` records the numbering; `form_label` maps a v5 step 
 only to a v5/v4 attempt with no event line, or a v6 attempt with no `Attempt:` line. `stopping_error(attempt,
 runs)`: a v6 error (no step `end` lines) is resolved by a later install.log run that ended rc 0 (any run for a
 step-1 error, an install run for an install-step error); a v5 error still by a later `end` of its step. With only
-a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Summary.** `human turns: N (q
+a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Amended (2026-10-06, §16.22):**
+only events before the attempt's closing line can stop it, and a line between a finished attempt and the next
+`Attempt:` header is an attempt of its own. **Summary.** `human turns: N (q
 question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: none possible; approvals: not
 observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
 logged, though none is possible" when some were logged there, and on a real Mac "c click(s)" (v6: "beyond the
@@ -6210,3 +6212,16 @@ match and the Installer section:
 Not covered, by design (docs/deploy/setup-feedback.md section 2): a name agentsync has never seen in the
 agent's own words, such as an abbreviation of a source id. The friction log gets the same map as every other
 section, no more.
+
+**setup-report: a line after an attempt's closing line.** `install.sh --log` appends with no check that an attempt
+is open, and step 1's command chain stops before `--log-start` when an earlier command fails, so a session can
+log a line with no `Attempt:` header after an older attempt's `end | finished`. Two rules:
+
+- `stopping_error` (and the no-install-run fallback) judge only the events before the attempt's first
+  `finished` event. A line logged after the run finished cannot have stopped it; it is still counted on the
+  agent friction line.
+- `parse_friction` starts a header-less attempt at a line (an event, a legacy line or a header key) that follows
+  the current attempt's `finished` event when an `Attempt:` line comes later in the file. The friction section
+  labels it "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
+  read with the newest layout. With no later `Attempt:` line the late line stays in its attempt: a line logged
+  after `--report-only` in the same session must not become the latest attempt and take the Summary's headline.

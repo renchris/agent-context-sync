@@ -1855,6 +1855,53 @@ def test_v6_an_error_stops_the_run_unless_a_later_install_run_succeeded(fake_mac
     )
 
 
+LATE_LINE = "2026-10-02T08:00:00Z | step 1 | error | git pull --ff-only exited 1 | -\n"
+"""Logged by a session whose step 1 stopped before ``install.sh --log-start``: no ``Attempt:`` header."""
+
+
+def test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attempt(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Field report 2026-10-06: a session days later logged one error with no header. Folded into the
+    finished attempt before it, it made that attempt "failed at step 1" although its install had ended 0."""
+    v6_install_log(fake_mac)
+    write_install_log(fake_mac, start="2026-10-03T09:00:30Z", run="20261003T090030Z-7", append=True)
+    third = V7_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
+        "2026-09-29T10:01:10Z", "2026-10-03T09:03:00Z"
+    )
+    write_friction(fake_mac, V6_HAPPY + LATE_LINE + third)
+    text, summary = summary_of(fake_mac)
+    fr = section(text, "Agent friction log")
+    assert "3 attempt(s):" in fr
+    assert "- attempt 1 (lines 1-4; started 2026-09-29T09:58:00Z, prompt v6, " in fr
+    assert re.search(r"^- attempt 1 \(.*\): fully one command; 1 event line\(s\): 1 finished", fr, re.M)
+    assert (
+        "- attempt 2 (lines 5-5; no Attempt: line (logged after the previous attempt finished), prompt not "
+        'stated, agent not stated): failed at step 1; 1 event line(s): 1 error; no "end | finished" line'
+        in fr
+    )
+    assert "- attempt 3 (lines 6-9; started 2026-10-03T09:00:00Z, prompt v7, " in fr
+    assert "- attempt: 3 of 3 (earlier: attempt 1 fully one command, attempt 2 failed at step 1)" in summary
+    assert "- friction (attempt 3): 1 event line(s): 1 finished" in summary
+
+
+def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
+    fake_mac: dict[str, Path],
+) -> None:
+    """With no later ``Attempt:`` line, a late line is the same session's (the report says "run setup-report
+    again" for it): it must not become a header-less latest attempt, and it did not stop a finished run."""
+    v6_install_log(fake_mac)
+    late = "2026-09-29T10:02:00Z | step 1 | error | noticed the listing was slow (exit 0) | -\n"
+    write_friction(fake_mac, V7_HAPPY + late)
+    [attempt] = setup_report.parse_friction(V7_HAPPY + late).attempts
+    assert attempt.finished and attempt.last_line == 5
+    assert setup_report.stopping_error(attempt, ()) is None
+    text, summary = summary_of(fake_mac)
+    assert "1 attempt(s):" in section(text, "Agent friction log") and "- attempt:" not in summary
+    assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
+    assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
+
+
 def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, Path]) -> None:
     """L8, V3: an expected warn's fix is nothing for this setup to do: the Doctor section says why it is
     expected instead; an unexpected warn keeps its fix."""
