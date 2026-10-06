@@ -5866,12 +5866,17 @@ every source. The rule is now:
   its sidecar go. `_rewrite` returns False for that, and `_after_fetch` then leaves the row QUARANTINED instead
   of marking it unchanged. The repair pass (`_repair_outputs`) queues the item, and its next read settles it the
   same way.
-- A sidecar committed earlier at exactly 200 characters is renamed once: `_pages_intact` no longer finds it
-  under the old leaf, and the repair pass publishes it again from the cache.
+- A sidecar committed earlier at exactly 200 characters keeps its full name until its item is read again: it is
+  within the cap under `mirror/`, and no pass renames it on its own. `_pages_intact` looks for the shorter leaf
+  and does not find it, so the next read of the item (or a repair pass after a crash) publishes it again and
+  `_sync_sidecars` replaces the file. Two things can come first, and both give the file the shorter leaf: a
+  rename that reads no bytes (`rewrite_frontmatter` maps a listed file found under its full name) and a deletion
+  with `[governance] archive` on (`_archive_output` re-leafs any sidecar that would pass the cap under
+  `archive/`, and leaves out with a warning one that has no name there at all).
 
 Tests: `test_publish.py` (every page length 150 to 200 with the three emitted names, under `mirror/` and
-`archive/`; the deep workbook sheet; publish, digest check and archive of a renamed sidecar; a refused plan
-writes nothing; renames in both directions; a rename that leaves no room moves nothing, for one page and for a
+`archive/`; the deep workbook sheet; publish, digest check and archive of a renamed sidecar, and the archive
+and the byte-free rename of one still under its 200-character name; a refused plan writes nothing; renames in both directions; a rename that leaves no room moves nothing, for one page and for a
 workbook whose last sheet is the one that does not fit; a file the page does not list never refuses a rename),
 `test_cycle.py` (a capped file with an over-long page is one quarantined item, the other files convert, the
 commit lands, the next run reads nothing; a file renamed, or a folder above it renamed, into a path with no room

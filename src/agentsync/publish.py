@@ -1061,7 +1061,16 @@ class Publisher:
         self._write_text(
             dest, render_archive_page(current, fallback=fallback, deleted_at=today, last_commit=last_commit)
         )
-        self._sync_sidecars(dest, [(archive_path(rel), data) for rel, data in self._read_sidecars(path)])
+        sidecars: list[tuple[str, bytes]] = []
+        for rel, data in self._read_sidecars(path):
+            # A file written before sidecars were capped can sit at the cap itself, one character too long
+            # for archive/: it is archived under the leaf ``sidecar_rel`` gives that name now.
+            fitted = rel if _sidecar_fits(rel) else sidecar_rel(path, rel.rsplit("/", 1)[-1])
+            if _sidecar_fits(fitted):
+                sidecars.append((archive_path(fitted), data))
+            else:
+                log.warning("%s: not archived, no name fits the path cap under %s/", rel, ARCHIVE_DIR)
+        self._sync_sidecars(dest, sidecars)
         return True
 
     def write_pages(self, item: ItemRow, pages: Sequence[PlannedPage], run_id: int) -> list[MirrorChange]:
@@ -1163,17 +1172,20 @@ class Publisher:
 
         A sidecar's leaf depends on its page's length (``sidecar_rel``), so each file the body lists is
         mapped by its name.  ``SidecarPathError`` when a listed one has no name that fits beside the new
-        page: the page cannot move, and the caller publishes the item as a stub.  A file the body does not
-        list keeps its leaf, and stays behind when that leaf is taken or does not fit.
+        page: the page cannot move, and the caller publishes the item as a stub.  A listed file still under
+        its full name (written before sidecars were capped) moves to the same place.  A file the body does
+        not list keeps its leaf, and stays behind when that leaf is taken or does not fit.
         """
-        listed = {
-            sidecar_rel(old_path, name): sidecar_rel(new_path, name)
-            for name, _digest in sidecar_digest_lines(body)
-        }
-        if not all(_sidecar_fits(dest) for dest in listed.values()):
-            raise SidecarPathError(
-                f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
-            )
+        old_dir = _sidecar_dir(old_path)
+        listed: dict[str, str] = {}
+        for name, _digest in sidecar_digest_lines(body):
+            new_rel = sidecar_rel(new_path, name)
+            if not _sidecar_fits(new_rel):
+                raise SidecarPathError(
+                    f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
+                )
+            listed[sidecar_rel(old_path, name)] = new_rel
+            listed.setdefault(f"{old_dir}/{slug.safe_segment(name)}", new_rel)  # its leaf before the cap
         taken: dict[str, str] = {}  # destination -> the file that gets it
         for rel in self._sidecar_files(old_path):
             dest = listed.get(rel)

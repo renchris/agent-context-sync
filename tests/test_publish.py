@@ -619,6 +619,14 @@ def _capped(name: str, data: bytes) -> ConversionResult:
     return result(_with_sidecar_digests(unit(sidecars=((name, data),))))
 
 
+def _mirror_files(env: Env) -> list[str]:
+    return sorted(
+        f.relative_to(env.repo).as_posix()
+        for f in (env.repo / "mirror" / "src").rglob("*")
+        if f.is_file() and f.name != "CLAUDE.md"
+    )
+
+
 def _path_findings(env: Env) -> list[LintFinding]:
     return [f for f in lints.lint_paths(env.repo) if f.code == "PATH"]
 
@@ -659,14 +667,31 @@ def test_sidecar_rel_shortens_the_sheet_sidecar_of_a_deep_workbook() -> None:
         assert publish.sidecar_rel(page, other) == f"{page[:-3]}.files/{other}"
 
 
-def test_a_long_page_publishes_and_archives_its_sidecar_under_a_shorter_name(env: Env) -> None:
-    item = env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR))
+def _as_written_before_the_cap(env: Env, page_path: str, name: str) -> None:
+    """Rename the sidecar of ``page_path`` to its full name, as a release before the sidecar cap wrote it:
+    exactly 200 characters, which fit under ``mirror/`` and pass the cap by one under ``archive/``."""
+    full = f"{publish._sidecar_dir(page_path)}/{name}"
+    assert len(full) == slug.MAX_PATH_CHARS
+    (env.repo / publish.sidecar_rel(page_path, name)).rename(env.repo / full)
+
+
+@pytest.mark.parametrize(
+    ("page_len", "legacy"),
+    [(LONGEST_PAGE_WITH_A_SIDECAR, False), (LONGEST_PAGE_WITH_A_SIDECAR - 1, True)],
+    ids=["written-now", "written-before-the-cap"],
+)
+def test_a_long_page_publishes_and_archives_its_sidecar_under_a_shorter_name(
+    env: Env, page_len: int, legacy: bool
+) -> None:
+    item = env.observe("vol:1", _long_rel(page_len))
     env.publish(item, _capped("full-table.csv", b"a,b\n1,2\n"))
     [out] = env.manifest.outputs_for("src", "vol:1")
     side = publish.sidecar_rel(out.output_path, "full-table.csv")
     assert side.endswith(f".files/{sha('full-table.csv')[:8]}.csv")
     assert (env.repo / side).read_bytes() == b"a,b\n1,2\n"
     assert cycle._pages_intact(env.repo, [out])  # the page's digest line finds the renamed file
+    if legacy:  # deleted upstream before anything read the item again
+        _as_written_before_the_cap(env, out.output_path, "full-table.csv")
     env.pub.tombstone(
         "src",
         "vol:1",
@@ -677,7 +702,30 @@ def test_a_long_page_publishes_and_archives_its_sidecar_under_a_shorter_name(env
         archive=True,
     )
     assert (env.repo / archive_path(side)).read_bytes() == b"a,b\n1,2\n"
+    assert [f.name for f in (env.repo / archive_path(side)).parent.iterdir()] == [side.rsplit("/", 1)[-1]]
     assert _path_findings(env) == []
+
+
+def test_archiving_leaves_out_a_file_that_has_no_name_under_the_cap(env: Env) -> None:
+    """No release wrote such a file (its page has no room for any sidecar), so the archive copy of the
+    page is all there is to keep; an over-long copy would block the commit for every source."""
+    env.publish(env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR + 1)), result(unit()))
+    [out] = env.manifest.outputs_for("src", "vol:1")
+    stray = env.repo / publish._sidecar_dir(out.output_path) / "left-behind-notes.txt"
+    stray.parent.mkdir()
+    stray.write_bytes(b"not listed\n")
+    env.pub.tombstone(
+        "src",
+        "vol:1",
+        reason="deleted-upstream",
+        run_id=env.run_id,
+        today=TODAY,
+        last_commit=None,
+        archive=True,
+    )
+    kept = archive_path(out.output_path)
+    assert "\nstatus: archived\n" in env.text(kept)
+    assert not (env.repo / publish._sidecar_dir(kept)).exists() and _path_findings(env) == []
 
 
 def test_a_page_too_long_for_any_sidecar_is_refused_before_anything_is_written(env: Env) -> None:
@@ -709,12 +757,21 @@ def test_rewrite_frontmatter_renames_a_sidecar_for_the_new_page_length(
     assert _path_findings(env) == []
 
 
-def _mirror_files(env: Env) -> list[str]:
-    return sorted(
-        f.relative_to(env.repo).as_posix()
-        for f in (env.repo / "mirror" / "src").rglob("*")
-        if f.is_file() and f.name != "CLAUDE.md"
+def test_rewrite_frontmatter_gives_a_sidecar_written_before_the_cap_its_shorter_name(env: Env) -> None:
+    """A rename that reads no bytes still leaves the page with a sidecar its digest line finds."""
+    n = LONGEST_PAGE_WITH_A_SIDECAR - 1
+    env.publish(env.observe("vol:1", _long_rel(n)), _capped("full-table.csv", b"a,b\n1,2\n"))
+    [old] = env.manifest.outputs_for("src", "vol:1")
+    _as_written_before_the_cap(env, old.output_path, "full-table.csv")
+    assert not cycle._pages_intact(env.repo, [old])  # which is what gets the item published again when read
+    moved = env.observe("vol:1", _long_rel(n).replace("Contoso Exports/r", "Contoso Exports/s"))
+    env.pub.rewrite_frontmatter(moved, env.run_id)
+    [new] = env.manifest.outputs_for("src", "vol:1")
+    assert new.output_path != old.output_path and len(new.output_path) == n
+    assert _mirror_files(env) == sorted(
+        [new.output_path, publish.sidecar_rel(new.output_path, "full-table.csv")]
     )
+    assert cycle._pages_intact(env.repo, [new]) and _path_findings(env) == []
 
 
 def test_rewrite_frontmatter_refuses_a_rename_that_leaves_no_room_for_the_sidecar(env: Env) -> None:
