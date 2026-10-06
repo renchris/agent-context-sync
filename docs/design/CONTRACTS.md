@@ -6302,3 +6302,13 @@ or empty for this case (a source sat incomplete for 900 passes):
 - `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
   install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
 - `status`'s loop line says `to curate N` where it said `queue N`.
+
+**install.sh.**
+
+- On a Mac whose sources.toml already existed, step 6's lines start `sync:` instead of `first sync:` (the
+  command line, the progress line, the converted/deferred summary, "skipped, lock busy"). install.log's step is
+  still `first-sync`, and the report's `- first sync:` line and the error texts are unchanged.
+- When the agent step is skipped as `not-requested` and `~/Library/LaunchAgents/com.agentsync.poll.plist`
+  exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
+  it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
+  call, and the skip note is unchanged.

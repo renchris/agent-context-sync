@@ -1546,6 +1546,10 @@ fi
 # online-only files it deferred.
 FIRST_SYNC=(sync --once --materialise-budget 0)
 FIRST_SYNC_NOTE=""
+# What this step's lines call it: on a Mac whose sources.toml already existed it is one more sync, not the
+# first. The install.log step stays "first-sync" either way (setup-report reads that name).
+SYNC_LABEL="first sync"
+[ "$CONFIG_STATE" = "created" ] || SYNC_LABEL="sync"
 SYNC_SUMMARY_RE='converted [0-9]+, deferred [0-9]+ online-only'
 first_sync_run() { "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"; } # stderr as it comes
 # What the first sync printed: its "converted N, deferred M online-only" line(s) after a success, else all of
@@ -1554,7 +1558,7 @@ show_first_sync() { # RC
 	local summary
 	summary="$(grep -E "$SYNC_SUMMARY_RE" "$SYNC_OUT" 2>/dev/null || true)"
 	if [ "$1" -eq 0 ] && [ -n "$summary" ]; then
-		printf '%s\n' "$summary" | sed 's/^[[:space:]]*/first sync: /'
+		printf '%s\n' "$summary" | sed "s/^[[:space:]]*/$SYNC_LABEL: /"
 		[ -n "$FIRST_SYNC_NOTE" ] || FIRST_SYNC_NOTE="$(printf '%s\n' "$summary" | awk '
 			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1) } }
 			END { printf "converted-%d-deferred-%d", c, d }')"
@@ -1570,9 +1574,9 @@ elif [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG"
 	step_end "done"
 else
-	say "first sync: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; each later sync downloads and converts the online-only ones)"
+	say "$SYNC_LABEL: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; each later sync downloads and converts the online-only ones)"
 	SYNC_OUT="$(mktemp)"
-	with_progress "first sync" first_sync_run || SYNC_RC=$?
+	with_progress "$SYNC_LABEL" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then
 		step_end "done" 0 "$FIRST_SYNC_NOTE"
@@ -1585,7 +1589,7 @@ else
 		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$ORIG_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -eq 75 ]; then
-		say "first sync: skipped, $(rc_meaning 75)"
+		say "$SYNC_LABEL: skipped, $(rc_meaning 75)"
 		step_end skipped 75 lock-busy
 	else
 		step_end failed "$SYNC_RC"
@@ -1602,6 +1606,12 @@ AGENT_RC=0
 WAIT_SINCE="$STEP_AT" # the wait reads the launcher lines logged from here on (the RunAtLoad run's too)
 if [ "$GO" -eq 0 ]; then
 	if [ "$INSTALL_AGENT" -eq 1 ]; then AGENT_RC=1; fi
+	# Not asked for, but an earlier install left the LaunchAgents: say so, or the run reads as "no background
+	# sync" on a Mac where it runs. Only the plist is checked (no launchctl call in a run that was not asked
+	# for the agent step), so the line claims no more than "installed".
+	if [ "$INSTALL_AGENT" -eq 0 ] && [ -e "$HOME/Library/LaunchAgents/$POLL_LABEL.plist" ]; then
+		say "background sync: already installed by an earlier run ($POLL_LABEL); this run left it as it is, and $AGENTSYNC install-agent refreshes it"
+	fi
 	step_end skipped "$AGENT_RC" "$SKIP_NOTE"
 elif [ "$SIMULATE" -eq 1 ]; then
 	say "SIMULATED: $AGENTSYNC install-agent --config $CONFIG (no plist written, no launchctl call)"

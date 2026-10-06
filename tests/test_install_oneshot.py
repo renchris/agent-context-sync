@@ -473,6 +473,36 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
     ]
 
 
+def test_a_rerun_on_a_configured_mac_says_sync_and_that_background_sync_is_installed(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """Bring-back S22 and S24: on a Mac whose sources.toml already existed the step's lines say "sync", not
+    "first sync" (install.log keeps the step name), and a run not asked for the agent step says so when an
+    earlier install left the LaunchAgents, from the plist alone: no launchctl call."""
+    e = {**env, "STUB_SYNC_OUT": "  alpha: converted 3, deferred 2 online-only"}
+    first = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "first sync: alpha: converted 3, deferred 2 online-only" in first.stdout.splitlines()
+    assert "background sync:" not in first.stdout, "no LaunchAgent plist: nothing to say"
+    plist = Path(env["HOME"]) / "Library" / "LaunchAgents" / "com.agentsync.poll.plist"
+    plist.parent.mkdir(parents=True)
+    plist.write_text("<plist/>")
+    Path(env["STUB_LOG"]).unlink()
+    second = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert second.returncode == 0, second.stdout + second.stderr
+    out = second.stdout.splitlines()
+    assert "sync: alpha: converted 3, deferred 2 online-only" in out
+    assert not any(ln.startswith("first sync") for ln in out), second.stdout
+    [line] = [ln for ln in out if ln.startswith("background sync: ")]
+    assert "already installed by an earlier run (com.agentsync.poll)" in line
+    assert line.endswith("/.local/bin/agentsync install-agent refreshes it")
+    assert not any(c.startswith(("launchctl", "agentsync install-agent")) for c in calls(env))
+    assert one_next(second)
+    done = steps(install_log(env))
+    assert done.count(("first-sync", "done", "0", "converted-3-deferred-2")) == 2
+    assert done.count(("agent", "skipped", "0", "not-requested")) == 2
+
+
 def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder: Path, wheel: Path) -> None:
     cp = install_sh(
         {**env, "STUB_SYNC_RC": "75"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"
