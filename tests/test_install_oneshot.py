@@ -1692,6 +1692,70 @@ def test_first_sync_prints_its_converted_and_deferred_line(
     assert ("first-sync", "done", "0", "converted-4-deferred-2") in steps(install_log(env))
 
 
+# ---- the on-device OCR helper is built in the launcher step ------------------------------------------------
+
+STUB_TOOL_PYTHON = """#!/bin/bash
+echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
+[ -z "${STUB_OCR_ERR:-}" ] || printf '%s\\n' "$STUB_OCR_ERR" >&2
+[ -z "${STUB_OCR_OUT:-}" ] || printf '%s\\n' "$STUB_OCR_OUT"
+exit "${STUB_OCR_RC:-0}"
+"""
+
+
+def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """Decision D4: install.sh is the one place the helper is compiled (python -m agentsync.convert.ocr with
+    the tool's interpreter), with or without background sync.  OCR is optional: whatever the build does, the
+    run's exit status and its install.log steps are those of a run without it."""
+    home = Path(env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+
+    def run(**stub: str) -> tuple[subprocess.CompletedProcess[str], list[tuple[str, str, str, str]]]:
+        for leftover in (Path(env["STUB_LOG"]), cfg, home / "agent-context" / "setup" / "install.log"):
+            leftover.unlink(missing_ok=True)  # every run is a first run
+        cp = install_sh({**env, **stub}, str(wheel), "--source-local", str(folder))
+        return cp, steps(install_log(env))
+
+    plain, plain_steps = run()  # the tool environment has no interpreter yet: nothing to run
+    assert not any(c.startswith("python ") for c in calls(env))
+    assert "OCR helper" not in plain.stdout + plain.stderr
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+
+    ready = "OCR helper: ready (paper-vision revision 2, helper 0.3.0)"
+    failed = "OCR helper: not built (swiftc did not build the OCR helper (exit 1): error: stub)"
+    crash = {"STUB_OCR_RC": "1", "STUB_OCR_ERR": "Traceback (most recent call last): stub"}
+    for stub, line in (
+        ({"STUB_OCR_OUT": ready}, ready),
+        ({"STUB_OCR_OUT": failed + "\nsecond line", "STUB_OCR_RC": "1"}, failed),
+        (crash, "OCR helper: not built (the build did not run)"),
+    ):
+        cp, got = run(**stub)
+        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        assert one_next(cp)
+        ran = [c for c in calls(env) if c.startswith("python ")]
+        if not _have_git():  # no developer tools: nothing is tried, and nothing is said
+            assert ran == [] and "OCR helper" not in cp.stdout
+            continue
+        assert ran == [f"python -m agentsync.convert.ocr config={cfg}"], ran
+        assert [ln for ln in cp.stdout.splitlines() if "OCR helper" in ln] == [line]
+        assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
+        log = calls(env)
+        assert (
+            index_of(log, "uv tool install")
+            < index_of(log, "python ")
+            < index_of(log, "agentsync add-source")
+        )
+    assert [name for name, *_ in plain_steps][:4] == ["uv", "agentsync", "launcher", "config"]
+    Path(env["STUB_LOG"]).unlink()
+    dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
+    planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert.ocr" in ln]
+    assert planned == ([f"[dry-run] {tool_py} -m agentsync.convert.ocr"] if _have_git() else []), dry.stdout
+    assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
+
+
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------
 
 
