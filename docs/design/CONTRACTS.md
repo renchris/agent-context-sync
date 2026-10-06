@@ -5734,11 +5734,23 @@ page whose comments could not be read (Failure, below).
   `Highlight`, Underline `Underline`, Squiggly `Squiggly underline`, StrikeOut `Strikethrough`, Stamp `Stamp`,
   Caret `Insert`, Ink `Drawing`, FileAttachment `Attachment`. Every other subtype is skipped (links, popups, form
   fields, redactions, media, watermarks). A comment is kept only when it has `/Contents` text or, for the four
-  text markups, marks page text: a bare drawing, stamp or empty note is skipped.
-- **Not shown, not listed.** An annotation with the Hidden or NoView flag is skipped. No viewer shows it on
-  screen, so listing it would present text no reviewer saw as a colleague's comment. A review-status entry
-  ("Accepted set by …") that a viewer wrote with the Hidden flag is therefore not listed. An answer to a
-  skipped annotation is listed on its own.
+  text markups, marks page text: a bare drawing, stamp or empty note is skipped. (A review status is kept for
+  its state: below.)
+- **Not drawn, not listed.** An annotation with the Hidden or NoView flag is skipped. No viewer draws it, so
+  listing its text would present words no reviewer saw as a colleague's comment. An answer to a skipped
+  annotation is listed on its own.
+- **Review status.** One hidden annotation is kept. The status a reviewer sets on a comment is a Text
+  annotation that answers it (`/IRT`) and carries `/StateModel` and `/State` (ISO 32000-1, 12.5.6.3). A viewer
+  lists it under that comment and draws nothing, so it has the Hidden flag; skipping it made a rejected or
+  completed comment read as an open one. A hidden Text annotation whose `/IRT` is on its page is listed as
+  `status by <author>: <state>` when the state is one its model defines: `Marked` or `Unmarked` for `Marked`;
+  `Accepted`, `Rejected`, `Cancelled`, `Completed` or `None` for `Review`. Only the author and that word are
+  taken from it: the `/Contents` of a hidden annotation is never shown. Every other hidden annotation is
+  skipped, a note whose state is some other word included. A status nests like any answer (a later status
+  answers the one before it), counts as a comment in the summary, and stands on its own when its comment is not
+  listed. A status without the Hidden flag is a reply like any other, with its own text. That viewers write a
+  status with the Hidden flag is taken from the review of this change and was not checked here: no file a
+  viewer wrote with one was at hand.
 - **Fields.** The author is `/T`, kept as written (as xlsx comment authors and mail senders are). The text is
   `/Contents`. The marked text of a highlight, underline, squiggly or strikethrough is the page text under its
   `/QuadPoints` (its `/Rect` when it has none): the characters whose loose box (the font's full line height) has
@@ -5788,13 +5800,13 @@ page whose comments could not be read (Failure, below).
   Nothing here re-reads PDFs that are already mirrored.
 
 Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_CommentBudget`, `_CommentLimitError`,
-`_PageChars`, `_page_comments`, `_read_comment`, `_marked_text`, `_annot_string`, `_one_line`, `_comment_line`,
-`_render_comments`).
+`_PageChars`, `_page_comments`, `_read_comment`, `_review_state`, `_marked_text`, `_annot_string`, `_one_line`,
+`_comment_line`, `_render_comments`).
 
 Tests: `test_convert_formats.py` (the page of `build_commented_pdf` byte for byte, with text and without; the
-centre rule against PDFium's bounded read; hidden and no-view annotations; a comment that tries to leave its
-line; every subtype's word and PDFium's subtype and flag numbers; reply links that are cyclic, self-referring,
-dangling or 1,200 deep; the quote cap and a repeated text; a page whose comments raise; a scan whose comments
-raise; the allowance, by markup, by page and by string; the fallback),
-`test_convert_determinism.py` (`commented.pdf` converted twice), `test_convert_builders.py`
-(`build_annotated_pdf`, `build_commented_pdf`).
+centre rule against PDFium's bounded read; hidden and no-view annotations; a review status, and the hidden
+annotations that are not one; a comment that tries to leave its line; every subtype's word and PDFium's subtype
+and flag numbers; reply links that are cyclic, self-referring, dangling or 1,200 deep; the quote cap and a
+repeated text; a page whose comments raise; a scan whose comments raise; the allowance, by markup, by page and
+by string; the fallback), `test_convert_determinism.py` (`commented.pdf` converted twice),
+`test_convert_builders.py` (`build_annotated_pdf`, `build_commented_pdf`).

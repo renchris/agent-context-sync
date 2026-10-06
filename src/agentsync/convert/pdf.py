@@ -12,9 +12,10 @@ Comments are kept (emitter 2.1.0).  A reviewer's notes, replies, text boxes and 
 sit outside the text layer, so a commented copy used to convert to the same text as the original.  They are
 read from the page PDFium already has open and follow that page's text under ``[comments on this page (PDF
 annotations):]``, one line per comment.  An annotation that carries no text and marks none is skipped, and so
-is one no viewer shows (the Hidden or NoView flag).  The pdfminer fallback reads none, and a page whose
-comments PDFium cannot read keeps its text; the summary says so in both cases.  What one file's comments may
-cost is bounded (``_CommentBudget``).
+is one no viewer draws (the Hidden or NoView flag), except a review status ("Accepted", "Completed"), which a
+viewer lists under the comment it is about.  The pdfminer fallback reads none, and a page whose comments
+PDFium cannot read keeps its text; the summary says so in both cases.  What one file's comments may cost is
+bounded (``_CommentBudget``).
 """
 
 from __future__ import annotations
@@ -79,9 +80,18 @@ _COMMENT_KINDS: dict[int, str] = {
     17: "Attachment",  # FILEATTACHMENT
 }
 _TEXT_MARKUP = frozenset({9, 10, 11, 12})  # drawn over page text: that text is quoted
-# FPDF_ANNOT_FLAG_HIDDEN | FPDF_ANNOT_FLAG_NOVIEW: no viewer shows the annotation on screen, so a page that
-# listed it would present text no reviewer saw as a colleague's comment.
+# FPDF_ANNOT_FLAG_HIDDEN | FPDF_ANNOT_FLAG_NOVIEW: no viewer draws the annotation, so a page that listed its
+# text would present words no reviewer saw as a colleague's comment.
 _UNSEEN_FLAGS = (1 << 1) | (1 << 5)
+# The one exception: a review status.  The status a reviewer sets on a comment is a note that answers it,
+# with /StateModel and /State (ISO 32000-1, 12.5.6.3); a viewer lists it under that comment and draws nothing,
+# so it is written with the Hidden flag.  Its states by model are below.  Only its author and one of these
+# words are taken from it: the /Contents of a hidden annotation is never shown.
+_STATUS = "status"
+_REVIEW_STATES: dict[str, frozenset[str]] = {
+    "Marked": frozenset({"Marked", "Unmarked"}),
+    "Review": frozenset({"Accepted", "Rejected", "Cancelled", "Completed", "None"}),
+}
 _QUOTE_MAX_CHARS = 300
 _MAX_INDENT = 4  # reply levels drawn; a deeper reply keeps this indent
 # Characters one file's comments may cost (``_CommentBudget``).  1,000 pages of 4,000 characters with every
@@ -339,29 +349,27 @@ def _marked_text(pdfium_c: Any, annot: Any, chars: _PageChars, rect: _Box) -> st
     return chars.text_in(boxes or [rect])
 
 
+def _review_state(pdfium_c: Any, annot: Any, budget: _CommentBudget) -> str:
+    """The state a review-status note sets, a word of ``_REVIEW_STATES``; "" when it sets none."""
+    model = _annot_string(pdfium_c, annot, b"StateModel", budget)
+    state = _annot_string(pdfium_c, annot, b"State", budget)
+    return state if state in _REVIEW_STATES.get(model, ()) else ""
+
+
 def _read_comment(
     pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _PageChars, budget: _CommentBudget
 ) -> _Comment | None:
-    """One open annotation as a comment; None when it is not one, is not shown, or says and marks nothing."""
+    """One open annotation as a comment; None when it is not one, is not drawn (a review status apart), or
+    says and marks nothing."""
     subtype = int(pdfium_c.FPDFAnnot_GetSubtype(annot))
     kind = _COMMENT_KINDS.get(subtype)
-    if kind is None or int(pdfium_c.FPDFAnnot_GetFlags(annot)) & _UNSEEN_FLAGS:
+    if kind is None:
         return None
     rect = pdfium_c.FS_RECTF()
     box: _Box = (0.0, 0.0, 0.0, 0.0)
     if pdfium_c.FPDFAnnot_GetRect(annot, ctypes.byref(rect)):
         xs, ys = (rect.left, rect.right), (rect.bottom, rect.top)
         box = (min(xs), min(ys), max(xs), max(ys))
-    text = _one_line(_annot_string(pdfium_c, annot, b"Contents", budget))
-    quote = _marked_text(pdfium_c, annot, chars, box) if subtype in _TEXT_MARKUP else ""
-    if text == quote:
-        text = ""  # several tools copy the marked text into /Contents: it is said once, as the quote
-    if not text and not quote:
-        return None  # a bare drawing, stamp or empty note: nothing a reader could use
-    # Cut here, not where the line is written: a comment is held until the whole file is read, and a
-    # markup can cover its page.
-    if len(quote) > _QUOTE_MAX_CHARS:
-        quote = quote[:_QUOTE_MAX_CHARS].rstrip() + "…"
     parent: int | None = None
     linked = pdfium_c.FPDFAnnot_GetLinkedAnnot(annot, b"IRT")
     if linked:
@@ -370,6 +378,22 @@ def _read_comment(
         finally:
             pdfium_c.FPDFPage_CloseAnnot(linked)
         parent = found if found >= 0 else None
+    if int(pdfium_c.FPDFAnnot_GetFlags(annot)) & _UNSEEN_FLAGS:
+        # No viewer draws it.  Only a review status is kept (``_REVIEW_STATES``), as the state it sets.
+        if kind != _NOTE or parent is None:
+            return None
+        kind, text, quote = _STATUS, _review_state(pdfium_c, annot, budget), ""
+    else:
+        text = _one_line(_annot_string(pdfium_c, annot, b"Contents", budget))
+        quote = _marked_text(pdfium_c, annot, chars, box) if subtype in _TEXT_MARKUP else ""
+        if text == quote:
+            text = ""  # several tools copy the marked text into /Contents: it is said once, as the quote
+    if not text and not quote:
+        return None  # a bare drawing, stamp or empty note, or a hidden note that sets no state
+    # Cut here, not where the line is written: a comment is held until the whole file is read, and a
+    # markup can cover its page.
+    if len(quote) > _QUOTE_MAX_CHARS:
+        quote = quote[:_QUOTE_MAX_CHARS].rstrip() + "…"
     return _Comment(
         index=index,
         kind=kind,
@@ -404,6 +428,7 @@ def _comment_line(c: _Comment, depth: int) -> str:
     """One comment as one list item: ``<kind> by <author> on “<marked text>”: <text>``."""
     # Only a note under another comment is a reply.  A markup grouped with its parent (the strikethrough of
     # a replace-text pair, /IRT with /RT /Group) keeps its own word, or the reader cannot tell what it did.
+    # So does a review status.
     label = "reply" if depth and c.kind == _NOTE else c.kind
     if c.author:
         label += f" by {c.author}"

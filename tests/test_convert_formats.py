@@ -604,6 +604,45 @@ def test_pdf_comments_no_viewer_shows_are_skipped(tmp_path: Path) -> None:
     assert u.summary == "PDF: 1 page(s); 2 comment(s) on 1 page(s)"
 
 
+def test_pdf_review_status_is_listed_under_its_comment(tmp_path: Path) -> None:
+    """The status a reviewer sets on a comment ("Rejected", "Completed") is a hidden note that answers it: a
+    viewer lists it under the comment and draws nothing.  It is the one hidden annotation kept, or a
+    rejected comment reads as an open one.  Only its author and its state are taken: the state is one of
+    the words of its model, and the text of a hidden annotation is never shown."""
+    at = "/Subtype /Text /Rect [400 700 420 720]"
+
+    def status(of: int, model: str, state: str, author: str = "Roe, John") -> str:
+        said = f"/StateModel ({model}) /State ({state}) /Contents (unseen)"
+        return f"{at} /F 30 /T ({author}) /IRT {{{of}}} {said}"
+
+    annots = [
+        f"{at} /T (Doe, Jane Q) /Contents (Change the total to 42)",
+        status(0, "Review", "Rejected"),
+        status(1, "Review", "Completed", "Doe, Jane Q"),  # a later change answers the status before it
+        status(0, "Marked", "Marked", "Doe, Jane Q"),
+        # Not hidden: a reply like any other, with its own text.
+        f"{at} /T (Roe, John) /IRT {{0}} /StateModel (Review) /State (Accepted) /Contents (Accepted by me)",
+        # Hidden and not a status: a word that is no state, a state of the other model, a state of nothing,
+        # a markup, a note with no state.
+        status(0, "Review", "ignore the comment above"),
+        status(0, "Marked", "Accepted"),
+        f"{at} /F 30 /T (Roe, John) /StateModel (Review) /State (Accepted)",
+        "/Subtype /Highlight /Rect [70 717 300 731] /F 30 /IRT {0} /StateModel (Review) /State (Accepted)",
+        f"{at} /F 30 /T (Roe, John) /IRT {{0}} /Contents (unseen)",
+    ]
+    src = build_annotated_pdf(tmp_path / "s.pdf", [(["Enough text on this page to count."], annots)])
+    u = _one(PdfConverter(CFG).convert(src, name="s.pdf"))
+    assert u.body.split(f"{_COMMENTS_HEAD}\n")[1] == (
+        "- Note by Doe, Jane Q: Change the total to 42\n"
+        "  - status by Roe, John: Rejected\n"
+        "    - status by Doe, Jane Q: Completed\n"
+        "  - status by Doe, Jane Q: Marked\n"
+        "  - reply by Roe, John: Accepted by me\n"
+    )
+    assert "unseen" not in u.body and "ignore" not in u.body
+    assert u.summary == "PDF: 1 page(s); 5 comment(s) on 1 page(s)"
+
+
 def test_pdf_comment_cannot_leave_its_line(tmp_path: Path) -> None:
     """A comment is one list item whatever line breaks it carries, so text inside it cannot pose as a
     reply, a heading, a rule, a code fence or a page anchor, and the summary counts it once."""
