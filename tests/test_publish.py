@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, cycle, gitops, lints, loop, policy, publish, skill, slug
-from agentsync.config import Config, SourceConfig, parse_config
+from agentsync.config import Config, SourceConfig, canonical_source_root, parse_config
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, _with_sidecar_digests
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError, SidecarPathError
@@ -36,6 +36,7 @@ from agentsync.model import (
     SourceItem,
     SourceKind,
     SourceReport,
+    SourceState,
     UnitKind,
     Verdict,
 )
@@ -1522,6 +1523,48 @@ def test_root_guide_names_the_inbox_before_the_boundary(env: Env) -> None:
     )
     assert line in text
     assert text.index(skill.procedure()) < text.index(line) < text.index(policy.BOUNDARY_TEXT)
+
+
+def _inbox_guide(env: Env, *sources: SourceConfig) -> str:
+    config = dataclasses.replace(env.config, sources=(*env.config.sources, *sources))
+    return Publisher(config, env.manifest, clock=lambda: NOW).root_guide()
+
+
+def test_root_guide_names_the_kept_inbox_whatever_the_other_inbox_ids(env: Env) -> None:
+    """Field report 2026-10-06: with project inbox sources whose ids sort before ``inbox``, the guide sent
+    mail to the first of them.  The folder ``ensure_inbox`` keeps wins, by path (its id can differ)."""
+    kept = canonical_source_root(env.repo.parent / "inbox")
+    bridge_dir = env.repo.parent / "alpha-bridge"
+    bridge = SourceConfig(id="alpha-bridge", kind=SourceKind.INBOX, path=bridge_dir)
+    for sid in ("inbox", "zz-drop"):
+        text = _inbox_guide(env, bridge, SourceConfig(id=sid, kind=SourceKind.INBOX, path=kept))
+        assert f"into `{publish._display_path(kept)}`; the next\nsync converts them.\n\n" in text
+        assert "alpha-bridge" not in text
+    # A paused source on the kept folder is not a place to drop mail: the one live inbox is named.
+    paused = SourceConfig(id="inbox", kind=SourceKind.INBOX, path=kept, state=SourceState.PAUSED)
+    text = _inbox_guide(env, bridge, paused)
+    assert f"into `{publish._display_path(bridge_dir)}`; the next" in text
+
+
+def test_root_guide_lists_every_live_inbox_when_none_is_the_kept_one(env: Env) -> None:
+    home = Path.home()
+    beta = SourceConfig(id="beta-notes", kind=SourceKind.INBOX, path=home / "Contoso" / "beta notes")
+    alpha = SourceConfig(id="alpha-bridge", kind=SourceKind.INBOX, path=home / "Contoso" / "alpha")
+    retired = SourceConfig(
+        id="aa-old", kind=SourceKind.INBOX, path=home / "Contoso" / "old", state=SourceState.RETIRED
+    )
+    local = SourceConfig(id="aa-local", kind=SourceKind.LOCAL, path=home / "Contoso" / "files")
+    text = _inbox_guide(env, beta, retired, local, alpha)
+    listed = (
+        "Mail or Teams messages: save them as files (drag them out of Outlook) into one of these inbox\n"
+        "folders (its source id in brackets); the next sync converts them:\n\n"
+        "- `~/Contoso/alpha` (alpha-bridge)\n"
+        "- `~/Contoso/beta notes` (beta-notes)\n\n"
+    )
+    assert listed in text and "aa-old" not in text and "aa-local" not in text
+    assert text.index(skill.procedure()) < text.index(listed) < text.index(policy.BOUNDARY_TEXT)
+    assert text.endswith(listed + policy.BOUNDARY_TEXT)
+    assert publish.root_guide(inbox=[]) == publish.root_guide()
 
 
 def test_state_md_says_sync_first_and_names_login_only_with_graph_sources(env: Env) -> None:

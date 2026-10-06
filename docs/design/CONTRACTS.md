@@ -603,7 +603,8 @@ already carries `SOURCE-MISSING` is not repeated.
     or `_eval/results-*`, the authoring rules moved from the topics seed, what each `curate` row asks), then
     `skill.BASELINE`, the Baseline questions section the skill also carries (loop rules 4, 6 and 8 send every
     agent there, and an AGENTS.md reader never loads the skill), then the inbox line when a live inbox
-    source exists, then `BOUNDARY_TEXT` verbatim. Paths are relative to the docs repo (no `docs/` prefix, no
+    source exists (**amended 2026-10-06, §16.22:** which folder it names), then `BOUNDARY_TEXT` verbatim.
+    Paths are relative to the docs repo (no `docs/` prefix, no
     `git -C docs`); the archive and snapshot lines appear only with `[governance] archive = true`. `skill_text`
     is the docs-path header, `skill.procedure()` and `skill.BASELINE`; its SYNONYMS and
     `.agentsync-*.tmp` rename steps are gone (the gitops `.agentsync-*.tmp` exclusion stays). This supersedes
@@ -6302,6 +6303,15 @@ or empty for this case (a source sat incomplete for 900 passes):
 - `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
   install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
 - `status`'s loop line says `to curate N` where it said `queue N`.
+
+**Root guides: the inbox line names the kept inbox.** `Publisher.root_guide` named the first live inbox source
+by id, so on a Mac with project inbox sources whose ids sort before `inbox`, CLAUDE.md and AGENTS.md sent mail
+and Teams drops to one of them. Now, in order: the live inbox source on the folder `config.ensure_inbox` keeps
+(`docs_repo`'s parent `/inbox`, canonical; matched by path, since its id is derived and can differ); else the
+only live inbox source; else, with several and none on that folder, every one of them, sorted by id, under
+"into one of these inbox folders (its source id in brackets)" as one `` - `<path>` (<id>) `` line each. No live
+inbox source: no line, as before. `publish.root_guide(archive=, inbox=)` takes the one display path or that
+list of entries. The skill carries no inbox line (it has no config), so the guides are its only place.
 
 **install.sh.**
 

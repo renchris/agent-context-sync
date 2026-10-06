@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from agentsync import gitops, governance, policy, skill, slug
-from agentsync.config import Config, SourceConfig
+from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert.registry import sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
@@ -59,6 +59,7 @@ from agentsync.model import (
     SourceState,
     UnitKind,
 )
+from agentsync.paths import expand
 
 log = logging.getLogger(__name__)
 
@@ -102,18 +103,24 @@ Baseline questions (the agentsync-docs skill's section of that name; before the 
 """
 
 
-def root_guide(*, archive: bool = False, inbox: str | None = None) -> str:
+def root_guide(*, archive: bool = False, inbox: str | Sequence[str] | None = None) -> str:
     """The root CLAUDE.md and AGENTS.md (Codex, Jules, opencode, Amp, Copilot read AGENTS.md): one procedure
     (``skill.procedure``), then the skill's Baseline questions section (``skill.BASELINE``: the NEXT lines of
     loop rules 4, 6 and 8 point there, and an AGENTS.md reader never loads the skill), then the inbox line
-    when an inbox source exists (``inbox`` is its display path), then :data:`policy.BOUNDARY_TEXT`
-    verbatim."""
-    inbox_line = (
-        f"Mail or Teams messages: save them as files (drag them out of Outlook) into `{inbox}`; the next\n"
-        "sync converts them.\n\n"
-        if inbox
-        else ""
-    )
+    when an inbox source exists (``inbox`` is its display path; or, when no one folder is the inbox, the
+    folders to choose from, one entry each, written as a backticked path and ``(id)``), then
+    :data:`policy.BOUNDARY_TEXT` verbatim."""
+    drop = "Mail or Teams messages: save them as files (drag them out of Outlook) into"
+    if not inbox:
+        inbox_line = ""
+    elif isinstance(inbox, str):
+        inbox_line = f"{drop} `{inbox}`; the next\nsync converts them.\n\n"
+    else:
+        entries = "".join(f"- {entry}\n" for entry in inbox)
+        inbox_line = (
+            f"{drop} one of these inbox\nfolders (its source id in brackets); "
+            f"the next sync converts them:\n\n{entries}\n"
+        )
     return (
         _ROOT_GUIDE_HEAD
         + skill.procedure(archive=archive)
@@ -693,12 +700,25 @@ class Publisher:
 
     def root_guide(self) -> str:
         """:func:`root_guide` for this config: archive lines under ``[governance] archive``, and the inbox
-        line naming the first live inbox source's folder."""
+        line.  It names the live inbox source on the folder :func:`config.ensure_inbox` keeps (``inbox``
+        beside the docs repo, matched by path: its id may differ), else the only live inbox source; with
+        several and none on that folder it lists them all by id, since no one of them is the inbox."""
         inboxes = sorted(
-            (s for s in self._config.sources if s.kind is SourceKind.INBOX and s.is_live and s.path),
-            key=lambda s: s.id,
+            (
+                (s.path, s.id)
+                for s in self._config.sources
+                if s.kind is SourceKind.INBOX and s.is_live and s.path is not None
+            ),
+            key=lambda pair: pair[1],
         )
-        inbox = _display_path(inboxes[0].path) if inboxes and inboxes[0].path else None
+        kept = canonical_source_root(expand(self._config.docs_repo).parent / "inbox")
+        inbox: str | list[str] | None = None
+        if any(path == kept for path, _ in inboxes):
+            inbox = _display_path(kept)
+        elif len(inboxes) == 1:
+            inbox = _display_path(inboxes[0][0])
+        elif inboxes:
+            inbox = [f"`{_display_path(path)}` ({sid})" for path, sid in inboxes]
         return root_guide(archive=self._archive_on(), inbox=inbox)
 
     def ensure_scaffold(self) -> list[str]:

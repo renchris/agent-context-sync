@@ -125,6 +125,8 @@ Learnings for W5:
   Step 2 says "Do what the `NEXT:` line says (it comes before any `WAITING ON YOU:` and `note:` lines)": NEXT is
   not the last line.
 - The guide's inbox line names the first live inbox source's folder (with `~`), only when one exists.
+  **Changed 2026-10-06 (CONTRACTS §16.22):** it names the inbox `ensure_inbox` keeps beside the docs repo; with no
+  live source on that folder, the only live inbox source, or all of them listed by id.
 - STATE.md: `## Next` (the exact `loop.next_lines` lines, unbulleted, so `grep '^NEXT: '` works), then
   `## This run` with the run fields. `write_state` calls `next_step(count_queue=False)` to skip the mirror walk.
 - Left for W5 (README is W5's): README.md still has `sh refresh-queue.sh docs/DEPENDS.tsv`; docstrings in
