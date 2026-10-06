@@ -3088,10 +3088,15 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     decoded), then cut to ``<path>`` at the first path component that is not a placeholder, a fixed macOS
     component, the provider folder or a generic folder. So the argument never shows a folder name the
     Redactor does not know, whatever quoting the shell chose. A word with no quote, slash or backslash is
-    not a path (an agent's prose): it is left as it is."""
-    word = m.group(2)
+    not a path (an agent's prose): it is left as it is, and so is the punctuation that closes a bare word
+    in prose (a backtick, a bracket, a full stop)."""
+    word, tail = m.group(2), ""
     if not re.search(r"""[/\\'"]""", word):
         return m.group(0)
+    if word[0] not in "$'\"":
+        bare = re.fullmatch(r"((?:\\.|[^\\])*?)([)\]}.,;:`]*)", word, re.DOTALL)
+        if bare is not None:
+            word, tail = bare.group(1), bare.group(2)
     pieces = _PLACEHOLDER_RE.split(_shell_unquote(word))
     text = "".join(piece if i % 2 else red.redact(piece) for i, piece in enumerate(pieces))
     parts = text.split("/")
@@ -3105,8 +3110,8 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
             or (i > 0 and parts[i - 1] == "CloudStorage")
         )
         if not known:
-            return m.group(1) + "/".join([*parts[:i], "<path>"])
-    return m.group(1) + text
+            return m.group(1) + "/".join([*parts[:i], "<path>"]) + tail
+    return m.group(1) + text + tail
 
 
 def _redact_lines(red: Redactor, lines: list[str]) -> str:

@@ -1505,9 +1505,11 @@ def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know
     typed = (
         'ran install.sh --source-local "/Users/jdoe/Library/CloudStorage/Dropbox/Client Alpha/Old Bids" twice'
     )
-    assert setup_report._redact_lines(red, [typed, "the --source-local option is unclear"]) == (
+    quoted = "I ran (`install.sh --source-local /Users/jdoe/Development/Client\\ Alpha/Notes\\ \\(old\\)`)."
+    assert setup_report._redact_lines(red, [typed, "the --source-local option is unclear", quoted]) == (
         "ran install.sh --source-local ~/Library/CloudStorage/Dropbox/<folder-1>/<path> twice\n"
-        "the --source-local option is unclear"
+        "the --source-local option is unclear\n"
+        "I ran (`install.sh --source-local ~/Development/<folder-1>/<path>`)."
     )
 
 
