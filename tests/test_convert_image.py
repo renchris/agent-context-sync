@@ -624,6 +624,15 @@ def test_a_picture_that_cannot_be_read_to_its_end_is_not_taken_and_the_rest_are_
     # The log has the kind of error and not its text, which names the entry.
     assert caplog.messages == ["a picture inside a document could not be read to its end: error"] * 3
 
+    class Starved(io.BytesIO):
+        def read(self, size: int | None = -1) -> bytes:
+            raise MemoryError
+
+    # No memory is not a fact about a picture: skipping it would settle a document as read.
+    with pytest.raises(MemoryError):
+        image._read_pictures(engine, [io.BytesIO(before), Starved(after)], work_dir=staged, budget_s=60)
+    assert list(staged.iterdir()) == []
+
 
 def test_reading_stops_at_the_picture_limit_without_opening_the_next(
     staged: Path, engine: ocr.OcrEngine

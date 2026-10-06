@@ -200,9 +200,12 @@ def _next_bytes(stream: BinaryIO, size: int) -> bytes | None:
 
     A stream that raises is a damaged entry of the document (a ZIP member that does not inflate, or whose
     checksum is wrong): a fact about the bytes, so the picture is not taken and the rest are still read.
-    Only the exception's type is logged: its text can name the entry."""
+    Only the exception's type is logged: its text can name the entry.  Running out of memory is no fact
+    about the bytes: it is raised, and fails the reading."""
     try:
         return stream.read(size)
+    except MemoryError:
+        raise
     except Exception as exc:
         log.debug("a picture inside a document could not be read to its end: %s", type(exc).__name__)
         return None

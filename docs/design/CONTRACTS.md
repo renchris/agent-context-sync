@@ -6538,7 +6538,8 @@ deck and pandoc converters call it (below).
 - **A damaged picture costs only itself.** A stream whose `read` raises (`_next_bytes`: a ZIP member that
   does not inflate, or whose checksum is wrong) is a fact about the document's bytes. That picture is not
   taken, what was copied of it is removed unread, and the rest are still read. The log gets the type of the
-  error at DEBUG and never its text, which can name the entry.
+  error at DEBUG and never its text, which can name the entry. `MemoryError` is no fact about the bytes: it
+  is raised, and every caller turns it into a failed reading.
 - **Where.** The rest are copied into a `.ocr-*` folder made inside `work_dir` and removed before the call
   returns. `work_dir` is the staged file's own folder, so it is under the cycle's staging folder (0700,
   excluded from Time Machine, wiped at the start of every cycle), never `$TMPDIR` (plan D13).
@@ -7014,7 +7015,7 @@ page limit, a page that could not be read, pages decided from the bytes; the ban
 sidecar through `Registry.default`; an unreadable image cached and a failure not; an encrypted Office
 container named `.png` refused by the screen, the helper not started; `_read_pictures`: order,
 one read per distinct picture, vector art not read past its head, the folder removed, a picture that cannot
-be read from its first byte, part-way and at its end, the count limit and the
+be read from its first byte, part-way and at its end, and no memory, the count limit and the
 byte limit without opening the next picture, `over_bytes` only for the picture that passed the limit,
 `_raster_left` for a raster image, vector art and a damaged picture left over, one failing picture among
 five, the shared time limit, `recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
