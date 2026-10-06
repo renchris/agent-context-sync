@@ -22,7 +22,8 @@ npm run diagrams:check
 make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 ```
 
-pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on 10 cores against 11 serial. Every
+pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on a busy 10-core machine against 11
+serial. Every
 test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a new
 test that writes outside `tmp_path` breaks it. To debug one test, drop `-n auto`.
 
