@@ -736,12 +736,43 @@ def test_report_only_runs_just_the_report(env: dict[str, str]) -> None:
     assert cp.returncode == 0, cp.stderr
     cfg = home / "agent-context" / "sources.toml"
     assert calls(env) == [f"agentsync setup-report --out {out} --config {cfg}"]
-    assert out.is_file() and not (home / "agent-context").exists(), "no install.log for --report-only"
+    setup = home / "agent-context" / "setup"
+    assert out.is_file() and not (setup / "install.log").exists(), "no install.log for --report-only"
     assert cp.stdout.splitlines()[-2] == LINK_LINE
     assert last_line(cp) == (
-        "NEXT: review the setup report, then paste it into the issue the link above opens, or send it "
-        f"privately (nothing is sent for you) [setup report: {out}]"
+        f"NEXT: review {out.parent}/bring-back.md and copy that one file back privately, or paste the setup "
+        f"report into the issue the link above opens (nothing is sent for you) [setup report: {out}]"
     )
+
+
+def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
+    """Field report 2026-10-05: one file comes back, not three. bring-back.md holds the redacted report, the
+    fix request and step 1's local-work patch, 0600 beside the report."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    setup = home / "agent-context" / "setup"
+    (setup / "local-work").mkdir(parents=True)
+    (setup / "fix-request.md").write_text(
+        "- OCR scanned PDFs: they convert to empty pages\n", encoding="utf-8"
+    )
+    (setup / "local-work" / "0001-local.patch").write_text("+def ocr(): ...\n", encoding="utf-8")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    back = report_path(env).parent / "bring-back.md"
+    text = back.read_text(encoding="utf-8")
+    assert back.stat().st_mode & 0o777 == 0o600
+    assert text.index("## 1. Setup report") < text.index(report_path(env).read_text(encoding="utf-8")[:30])
+    assert "- OCR scanned PDFs: they convert to empty pages" in text.split("## 2. Fix request", 1)[1]
+    assert "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~" in text.split("## 3. Local work", 1)[1]
+    assert f"bring back: {back} (one file: report, fix request, local work)" in cp.stdout
+
+    (setup / "fix-request.md").unlink()
+    (setup / "local-work" / "0001-local.patch").unlink()
+    install_sh(env, "--report-only")
+    text = back.read_text(encoding="utf-8")
+    assert text.split("## 2. Fix request", 1)[1].split("\n\n", 2)[1] == "none"
+    assert text.rstrip().endswith("none")
 
 
 def test_report_only_falls_back_when_setup_report_fails(env: dict[str, str]) -> None:
@@ -1147,9 +1178,11 @@ def test_report_only_without_a_link_prints_no_link_line(env: dict[str, str]) -> 
     cp = install_sh({**env, "STUB_REPORT_NO_LINK": "1"}, "--report-only")
     assert cp.returncode == 0, cp.stderr
     assert "issue link" not in cp.stdout
-    assert cp.stdout.splitlines()[-2] == f"report: {report_path(env)} (agentsync setup-report)"
+    back = report_path(env).parent / "bring-back.md"
+    assert cp.stdout.splitlines()[-3] == f"report: {report_path(env)} (agentsync setup-report)"
+    assert cp.stdout.splitlines()[-2].startswith(f"bring back: {back}")
     assert last_line(cp) == (
-        "NEXT: review the setup report, then send it as it says (nothing is sent for you) "
+        f"NEXT: review {back} and copy that one file back privately (nothing is sent for you) "
         f"[setup report: {report_path(env)}]"
     )
 

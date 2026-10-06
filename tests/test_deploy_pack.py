@@ -468,6 +468,32 @@ def test_readme_step1_is_one_command() -> None:
     assert _commands(_preamble()) == [FRICTION_LOG_TEMPLATE]
 
 
+def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
+    """Field report 2026-10-05: an agent on the corporate Mac built converters and OCR in the checkout itself.
+    The prompt forbids editing the checkout and sends wanted changes to fix-request.md; the finish lines name
+    the one bring-back file, which carries the report, the fix request and step 1's local-work patch."""
+    block = " ".join(_one_prompt_block().split())
+    assert "Do not edit any file in ~/src/agent-context-sync" in block
+    assert "write what and why to ~/agent-context/setup/fix-request.md" in block
+    finish = _prompt_steps()[3].rsplit("Finish with three lines", 1)[1]
+    assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
+    step3 = _prompt_steps()[3]
+    assert 'add a "## Not used" section to the end of ~/agent-context/setup/fix-request.md' in step3
+    assert step3.index("## Not used") < step3.index("Then the report, always")
+    for verb in (
+        "sync",
+        "curate",
+        "status",
+        "add-source",
+        "accept-deletions",
+        "adopt",
+        "purge",
+        "hold",
+        "offboard",
+    ):
+        assert verb in step3.split("## Not used", 1)[1].split("saying why", 1)[0], verb
+
+
 def test_step1_keeps_local_changes_on_a_branch_and_updates(tmp_path: Path) -> None:
     """Field report 2026-10-05: a checkout with uncommitted edits and new files that the update also touches.
     Step 1's recovery command keeps every change on a local branch, nothing stashed, reset or deleted, and
@@ -1464,7 +1490,7 @@ def test_readme_setup_report_steps_match_the_code() -> None:
     steps = _prompt_steps()
     assert _commands(_one_prompt_block())[-1] == f"{INSTALL_SH} --report-only"
     assert "append a section" not in block and setup_report.FRICTION_HEADING not in block
-    assert "~/agent-context/setup-report.md with the issue link" in steps[len(steps)]
+    assert "~/agent-context/bring-back.md, the one file I review and copy back" in steps[len(steps)]
     assert "~/agent-context/setup-report.md" in SCRIPTS[0].read_text(encoding="utf-8"), (
         "--report-only's default"
     )

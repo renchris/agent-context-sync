@@ -874,6 +874,33 @@ write_fallback_report() { # RC WHY
 	}
 	mv -f "$tmp" "$REPORT_PATH"
 }
+# The one file the person copies back (field report 2026-10-05): the redacted setup report, then the fix request
+# and the local work step 1 of the prompt kept, which are NOT redacted, so the person reviews it first.
+write_bring_back() {
+	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence="~~~~~~~~~~"
+	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
+	{
+		printf '# agentsync: the one file to bring back\n\n'
+		printf 'Review before sending: section 1 is redacted; sections 2 and 3 are not.\n\n'
+		printf '## 1. Setup report\n\n'
+		cat "$REPORT_PATH"
+		printf '\n## 2. Fix request (%s)\n\n' "$SETUP_DIR/fix-request.md"
+		if [ -s "$SETUP_DIR/fix-request.md" ]; then cat "$SETUP_DIR/fix-request.md"; else printf 'none\n'; fi
+		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$SETUP_DIR/local-work"
+		set -- "$SETUP_DIR"/local-work/*.patch
+		if [ -e "$1" ]; then
+			printf '%sdiff\n' "$fence"
+			for p in "$@"; do cat "$p"; done
+			printf '%s\n' "$fence"
+		else
+			printf 'none\n'
+		fi
+	} >"$tmp" 2>/dev/null || {
+		rm -f "$tmp"
+		return 1
+	}
+	chmod 600 "$tmp" && mv -f "$tmp" "$out" && say "bring back: $out (one file: report, fix request, local work)"
+}
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -924,10 +951,11 @@ on_exit() {
 		case $? in
 		0)
 			suffix=" [setup report: $REPORT_PATH]"
+			write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
 			link="$(report_issue_link)"
 			if [ -n "$link" ]; then
 				[ "$REPORT_ONLY" -eq 0 ] ||
-					NEXT_MSG="review the setup report, then paste it into the issue the link above opens, or send it privately (nothing is sent for you)"
+					NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
 				say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
 			fi
 			;;
@@ -1116,7 +1144,7 @@ if [ "$LIST_FOLDERS" -eq 1 ]; then # names only: no install, no report, one list
 	exit "$rc"
 fi
 if [ "$REPORT_ONLY" -eq 1 ]; then # the attempt's end line, then step 9 alone (the EXIT trap writes it)
-	NEXT_MSG="review the setup report, then send it as it says (nothing is sent for you)"
+	NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately (nothing is sent for you)"
 	if [ "$DRY_RUN" -eq 1 ]; then
 		NEXT_MSG="re-run without AGENTSYNC_INSTALL_DRY_RUN=1 to write the report"
 	else
