@@ -832,6 +832,68 @@ def test_a_rename_that_leaves_no_room_for_the_sidecar_settles_as_the_stub_at_the
     assert len(fetched) == (1 if renamed == "file" else 0) and porcelain(repo) == ""
 
 
+@pytest.mark.parametrize("renamed", ["file", "folder"])
+def test_shortening_the_path_of_a_stubbed_capped_file_publishes_it(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, renamed: str
+) -> None:
+    """The stub says to shorten a folder or file name, and doing so clears it although the bytes did not
+    change. A renamed file is read in the same pass; a file under a renamed folder is queued by that pass
+    and read by the next one."""
+    roomy, cramped = MOVES[renamed]
+    _capped_at(local_source_dir, cramped)
+    assert run(sample_config).exit_code == 0 and _path_stub(sample_config, cramped)
+    _move(local_source_dir, cramped, roomy, folder=renamed == "folder")
+    fetched = _fetches(monkeypatch)
+    report = run(sample_config)
+    if renamed == "folder":
+        assert report.exit_code == 0 and fetched == []
+        assert _file_rows(sample_config)[roomy].last_verdict is Verdict.MAYBE_CHANGED
+        report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None and fetched == [roomy]
+    repo, new = sample_config.docs_repo, slug.mirror_rel_path(SID, roomy)
+    fm = page(repo, new)[0]
+    assert (fm["status"], fm["source_path"]) == ("current", roomy)
+    assert _appendix_rows(repo / sidecar_rel(new, "full-text.txt")) == APPENDIX_ROWS
+    assert not (repo / slug.mirror_rel_path(SID, cramped)).exists()
+    row = _file_rows(sample_config)[roomy]
+    assert (row.state, row.state_reason, row.last_verdict) == (RowState.LIVE, None, Verdict.UNCHANGED)
+    settled = run(sample_config)
+    assert (settled.exit_code, settled.commit_sha, fetched) == (0, None, [roomy])
+
+
+def test_renaming_a_stubbed_drive_file_to_a_shorter_name_downloads_and_publishes_it(
+    drive_env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A drive rename is METADATA_ONLY (the hash holds), so nothing is downloaded for it. The stub of a page
+    with no room for its sidecar is the exception: the rename queues one download, and the next pass
+    publishes the content. A later change that is not a rename downloads nothing."""
+    config, drive, client = drive_env
+    data = b"every row of the appendix\n" * APPENDIX_ROWS
+    long_name = f"{_EXPORT} - Appendix With Every Row And Every Column Of Every Sheet.txt"
+    drive.files["I1"] = (long_name, data)
+    stub = slug.mirror_rel_path("drive", f"Projects/{long_name}")
+    assert len(stub) > 183
+    assert run(config, client=client, only=["drive"]).exit_code == 0
+    repo = config.docs_repo
+    assert "path too long" in page(repo, stub)[0]["reason"]
+    fetched = _fetches(monkeypatch, DriveArm)
+    drive.version["I1"] += 1  # a metadata change that is not a rename: the stub stays, nothing is read
+    assert run(config, client=client, only=["drive"]).exit_code == 0 and fetched == []
+    assert page(repo, stub)[0]["status"] == "unreadable"
+    drive.version["I1"] += 1
+    drive.files["I1"] = ("appendix.txt", data)  # renamed: same bytes, same quickXorHash
+    assert run(config, client=client, only=["drive"]).exit_code == 0 and fetched == []
+    [row] = _file_rows(config, "drive").values()
+    assert (row.rel_path, row.last_verdict) == ("Projects/appendix.txt", Verdict.MAYBE_CHANGED)
+    report = run(config, client=client, only=["drive"])
+    assert report.exit_code == 0 and fetched == ["Projects/appendix.txt"]
+    new = "mirror/drive/projects/appendix.txt.md"
+    assert page(repo, new)[0]["status"] == "current" and not (repo / stub).exists()
+    assert _appendix_rows(repo / sidecar_rel(new, "full-text.txt")) == APPENDIX_ROWS
+    [row] = _file_rows(config, "drive").values()
+    assert (row.state, row.state_reason, row.last_verdict) == (RowState.LIVE, None, Verdict.UNCHANGED)
+
+
 # ---------------------------------------------------------------------------------------------------------
 # scope: a row the config no longer covers is never work, and is retired on an incomplete walk too
 # ---------------------------------------------------------------------------------------------------------

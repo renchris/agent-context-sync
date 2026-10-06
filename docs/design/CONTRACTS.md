@@ -5848,7 +5848,15 @@ every source. The rule is now:
   fits; `Publisher.plan_pages` then raises `errors.SidecarPathError` (a `PublishError`) and writes nothing.
   `cycle._publish` catches it and publishes that one item as an unreadable stub, QUARANTINED with the reason `path
   too long for the full-content file this page needs (shorten a folder or file name)`. The source carries on and
-  the item is not read again until it changes. A capped page that long could not be committed before either.
+  the item is not read again until it changes or is renamed. A capped page that long could not be committed
+  before either.
+- The stub's cause is the path, so a shorter path clears it although the bytes are the same
+  (`cycle._stubbed_for_path`: state QUARANTINED with that reason). Whenever such a row is read, its pages are
+  planned again at the path it has now: `_after_fetch` takes neither the TOUCHED_NOT_CHANGED nor the
+  OUTPUT_UNCHANGED short cut for it. A renamed local file is read in the same pass. A rename that needs no read
+  (a folder above a local file, a drive item renamed or moved) sets the row MAYBE_CHANGED instead of moving the
+  stub, and the next pass reads it: one download for a drive item or an online-only file. A METADATA_ONLY change
+  that is not a rename queues nothing.
 - `Publisher.rewrite_frontmatter` moves each sidecar the body lists to `sidecar_rel(new_path, name)`, so the leaf
   follows the new page length. A file the body does not list keeps its leaf, and stays behind when that leaf does
   not fit. Every page of the item is planned before the first is written. When a listed sidecar has no name that
@@ -5867,7 +5875,9 @@ writes nothing; renames in both directions; a rename that leaves no room moves n
 workbook whose last sheet is the one that does not fit; a file the page does not list never refuses a rename),
 `test_cycle.py` (a capped file with an over-long page is one quarantined item, the other files convert, the
 commit lands, the next run reads nothing; a file renamed, or a folder above it renamed, into a path with no room
-becomes the stub at the new path and nothing is left at the old one).
+becomes the stub at the new path and nothing is left at the old one; a stubbed file renamed, or a folder above it
+renamed, to a path with room is published with its sidecar; a stubbed drive file renamed is downloaded once and
+published, and an eTag change alone downloads nothing).
 
 **One scope rule for the walk and the work queue.** An incomplete pass prunes no row. So a file that was queued
 for a read and then excluded in sources.toml was still fetched, converted and published by a source whose walk

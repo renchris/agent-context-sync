@@ -1393,6 +1393,7 @@ class _Cycle:
                 c.stable_id: rows.get(c.stable_id) for c in slow_verdicts
             }
             moved: set[str] = set()
+            renamed: set[str] = set()  # the rows of ``moved`` whose path changed
             # ---- one transaction: observations, safe-save rekeys, derived paths, pending cursor -----------
             with self.manifest.transaction():
                 self.manifest.touch_observed(src.id, fast_ids, run_id=self.run_id, verdict_changed=restamp)
@@ -1409,6 +1410,8 @@ class _Cycle:
                     observations.append((item, c.verdict, state))
                     if c.prev_path is not None or c.verdict is Verdict.METADATA_ONLY:
                         moved.add(c.stable_id)
+                    if c.prev_path is not None:
+                        renamed.add(c.stable_id)
                 self.manifest.upsert_observed_many(observations, run_id=self.run_id, existing=rows)
                 for new_id, old_id in pc.safe_saves:
                     self.manifest.rekey(src.id, old_id, new_id)
@@ -1419,6 +1422,7 @@ class _Cycle:
                         src.id, root_id if isinstance(root_id, str) else None
                     ):
                         moved.add(stable_id)
+                        renamed.add(stable_id)
                 self.manifest.stage_cursor(src.id, scan.new_cursor, self.run_id)
                 acc.staged_cursor = scan.new_cursor is not None
                 self.manifest.set_page_link(src.id, None)
@@ -1470,6 +1474,10 @@ class _Cycle:
         for stable_id in sorted(moved - queued):
             row = self.manifest.get_item(src.id, stable_id)
             if row is None or row.is_dir or row.state is RowState.TOMBSTONE:
+                continue
+            if stable_id in renamed and _stubbed_for_path(row):
+                # The stub holds no content to move, and its cause was the old path: read the file again.
+                self.manifest.set_verdict(src.id, stable_id, Verdict.MAYBE_CHANGED)
                 continue
             self._rewrite(src, row, acc)
         # ---- removals -------------------------------------------------------------------------------------
@@ -1839,7 +1847,9 @@ class _Cycle:
         )
         fresh = self.manifest.get_item(sid, stable) or row
         outs = self.manifest.outputs_for(sid, stable)
-        intact = _pages_intact(self.repo, outs)
+        # The stub of a page with no room for its sidecar is never the last word on the bytes: its cause is
+        # the path, so every read plans the item again at the path it has now.
+        intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
         if c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact:
             if self._rewrite_if_moved(src, fresh, outs, acc):
                 acc.counts[Verdict.TOUCHED_NOT_CHANGED] += 1
@@ -2148,6 +2158,12 @@ def _row_ids(row: ItemRow) -> tuple[str, str]:
 
 _CREDENTIAL = "contains a credential"
 _SIDECAR_PATH = "path too long for the full-content file this page needs (shorten a folder or file name)"
+
+
+def _stubbed_for_path(row: ItemRow) -> bool:
+    """True when ``row`` is settled as the stub ``_publish_path_stub`` writes.  Its bytes were never the
+    problem, so a rename must bring it back to the work queue although nothing in the file changed."""
+    return row.state is RowState.QUARANTINED and row.state_reason == _SIDECAR_PATH
 
 
 def _removal_reason(why: str) -> str:
