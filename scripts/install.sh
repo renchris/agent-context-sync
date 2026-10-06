@@ -857,6 +857,13 @@ friction_text() {
 			grep -v '^<!-- agent:' | grep -v '^No friction log at ' | sed '/./,$!d'
 	fi
 }
+# An exclude line (the loop's WAITING ON YOU text for an empty cloud folder, which an agent may log) names
+# folders below a source root, which redact_stream has never seen: the list is shown as <path>, as
+# `agentsync setup-report` shows it. The second expression is a line cut inside the list.
+scrub_exclude_lists() {
+	sed -e 's/exclude = \[.*\] in \[\[source\]\]/exclude = [<path>] in [[source]]/' \
+		-e 's/exclude = \[".*$/exclude = [<path>]/'
+}
 write_fallback_report() { # RC WHY
 	local dir tmp friction
 	dir="$(dirname "$REPORT_PATH")"
@@ -869,7 +876,7 @@ write_fallback_report() { # RC WHY
 	(
 		umask 077
 		{
-			fallback_body "$1" "$2" "$friction" | redact_stream
+			fallback_body "$1" "$2" "$friction" | redact_stream | scrub_exclude_lists
 			printf '\n%s\n' "$ISSUE_URL" # the issue form, after redaction (a login may match the URL's owner)
 		} >"$tmp"
 	) 2>/dev/null || {
@@ -1787,7 +1794,8 @@ esac
 # The loop's NEXT (KISS K02): status once more, with its NEXT line on (AGENTSYNC_NO_NEXT_HINT unset). Only its
 # [FAIL] and WAITING ON YOU lines are printed, above the one NEXT: its detail and policy lines would put label
 # names into install.out. WAITING lines name source ids, which setup-report redacts, and one names folders
-# in an exclude line (an empty cloud folder), which setup-report replaces whole.
+# in an exclude line (an empty cloud folder), which setup-report and the shell report show as <path>. The
+# status step's own output (DOCTOR_LOG) never has that line: its heartbeat check names no folder.
 loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
 	local fails blocking held waits

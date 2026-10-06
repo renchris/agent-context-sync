@@ -820,6 +820,28 @@ def test_report_only_falls_back_when_setup_report_fails(env: dict[str, str]) -> 
     assert report_path(env).read_text().startswith("# agentsync setup report\n")
 
 
+def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> None:
+    """The loop's wait for an empty cloud folder prints an exclude line naming folders below a source root,
+    which the shell report's redaction has never seen. An agent may log that line: the list is shown as
+    <path>, as agentsync setup-report shows it, also when the line was cut inside the list."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    said = 'set exclude = ["~$*", "/Fabrikam Bids/", "/Plans/Tailspin [[]old]/"] in [[source]] id = \'one\''
+    (setup / "friction.md").write_text(
+        "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7\nAgent: x\n"
+        f"2026-09-29T10:00:00Z | step 2 | deviation | status said: {said} in sources.toml | -\n"
+        '2026-09-29T10:00:01Z | step 2 | deviation | and then: set exclude = ["~$*", "/Fabrikam Bi\n',
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert f"report: {report_path(env)} (shell fallback: agentsync is not installed)" in cp.stdout
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "status said: set exclude = [<path>] in [[source]] id = 'one' in sources.toml | -\n" in text
+    assert "and then: set exclude = [<path>]\n" in text
+    assert "Fabrikam" not in text and "Tailspin" not in text
+
+
 def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
     report_path(env).parent.mkdir(parents=True)
     report_path(env).write_text(

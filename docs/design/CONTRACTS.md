@@ -6334,7 +6334,8 @@ or empty for this case (a source sat incomplete for 900 passes):
 - setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
   Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
   registered nothing, and the line reaches the report through the Loop line, the install.out tail and
-  whatever the agent logged.
+  whatever the agent logged. install.sh's shell fallback report does the same (`scrub_exclude_lists`, after
+  `redact_stream`).
 
 **doctor and status wording.**
 
