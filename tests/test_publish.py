@@ -601,7 +601,7 @@ def test_rewrite_frontmatter_keeps_a_disambiguated_unit_stem(env: Env) -> None:
 
 # ---- sidecars and the path cap -----------------------------------------------------------------------------
 
-EMITTED_SIDECARS = ("full-text.txt", "full-table.csv", "09-northwind-additional-ledger.csv")
+EMITTED_SIDECARS = ("full-text.txt", "full-table.csv", "07-quarterly-totals-by-region-and-product.csv")
 """The names converters give a sidecar: a capped page's text, a capped table, a capped sheet."""
 LONGEST_PAGE_WITH_A_SIDECAR = 183
 """``<page minus .md>.files/<8 hex>.<3-letter ext>`` is 16 characters longer than the page; 183 + 16 = 199."""
@@ -609,7 +609,7 @@ LONGEST_PAGE_WITH_A_SIDECAR = 183
 
 def _long_rel(page_len: int) -> str:
     """A made-up source path whose WHOLE page under source ``src`` is exactly ``page_len`` characters."""
-    rel = f"Contoso Working Sessions/{'r' * (page_len - 43)}.csv"
+    rel = f"Contoso Exports/{'r' * (page_len - 34)}.csv"
     assert len(slug.mirror_rel_path("src", rel)) == page_len
     return rel
 
@@ -625,7 +625,7 @@ def _path_findings(env: Env) -> list[LintFinding]:
 
 def test_sidecar_rel_is_within_the_cap_under_mirror_and_archive_for_every_page_length() -> None:
     for n in range(150, slug.MAX_PATH_CHARS + 1):
-        page = f"mirror/contoso-shared-general/{'p' * (n - 33)}.md"
+        page = f"mirror/contoso-team-site/{'p' * (n - 28)}.md"
         assert len(page) == n
         rels = [publish.sidecar_rel(page, name) for name in EMITTED_SIDECARS]
         assert len(set(rels)) == len(rels)
@@ -645,15 +645,15 @@ def test_sidecar_rel_is_within_the_cap_under_mirror_and_archive_for_every_page_l
 
 def test_sidecar_rel_shortens_the_sheet_sidecar_of_a_deep_workbook() -> None:
     page = slug.mirror_rel_path(
-        "contoso-shared-general",
-        "Engineering/Business/Document Repository/Contoso Working Sessions/"
-        "Regional Sales Summary - FY26 Q3 Review Pack.xlsx",
-        file_stem="09-Northwind - Additional Ledger",
+        "contoso-team-site",
+        "Alpha Plans/Bravo Budgets/Charlie Photo Shoots/Delta Travel Forms/"
+        "Fabrikam Totals By Quarter - FY26 Forecast.xlsx",
+        file_stem="07-Quarterly Totals By Region And Product",
     )
     name = EMITTED_SIDECARS[2]
     assert len(f"{page[:-3]}.files/{name}") > slug.MAX_PATH_CHARS  # what was written before
     rel = publish.sidecar_rel(page, name)
-    assert rel == f"{page[:-3]}.files/09-northwind-additi-{sha(name)[:8]}.csv"
+    assert rel == f"{page[:-3]}.files/07-quarter-{sha(name)[:8]}.csv"
     assert len(archive_path(rel)) == slug.MAX_PATH_CHARS
     for other in EMITTED_SIDECARS[:2]:  # the short names still fit as they are
         assert publish.sidecar_rel(page, other) == f"{page[:-3]}.files/{other}"
@@ -685,7 +685,7 @@ def test_a_page_too_long_for_any_sidecar_is_refused_before_anything_is_written(e
     with pytest.raises(SidecarPathError, match="no sidecar name fits"):
         env.publish(item, _capped("full-text.txt", b"all of it\n"))
     assert env.manifest.outputs_for("src", "vol:1") == []
-    assert not (env.repo / "mirror/src/contoso-working-sessions").exists()
+    assert not (env.repo / "mirror/src/contoso-exports").exists()
     env.publish(item, result(unit()))  # the same page with no sidecar is fine
     assert _path_findings(env) == []
 

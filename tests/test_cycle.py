@@ -731,7 +731,7 @@ def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantine
 ) -> None:
     """The item gets a stub and is settled; every other file is converted and the commit lands."""
     rel = (
-        "Contoso Working Sessions/Document Repository/Regional Sales Summary - FY26 Q3 Review Pack - "
+        "Contoso Travel Forms/Charlie Photo Shoots/Fabrikam Totals By Quarter - FY26 Forecast - "
         "All Regions - Final Export From The Data Warehouse v2 - Appendix With Every Row.txt"
     )
     page = slug.mirror_rel_path(SID, rel)
