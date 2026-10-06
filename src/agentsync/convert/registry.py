@@ -181,10 +181,10 @@ class Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams), each
         behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
 
-        With ``ocr`` (the engine the cycle resolved) raster images get a converter too, ``image-ocr``, unless
-        a ``[policy]`` label rule is active: an image can carry a sensitivity label the screen cannot read,
-        so it then stays the ``no converter`` stub it is without an engine.  Such a registry keeps the one
-        without an engine as ``without_ocr``."""
+        With ``ocr`` (the engine the cycle resolved) the pdf converter reads with it, and raster images
+        get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image can carry a
+        sensitivity label the screen cannot read, so it then stays the ``no converter`` stub it is without
+        an engine.  Such a registry keeps the one without an engine as ``without_ocr``."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter  # noqa: PLC0415
@@ -199,7 +199,7 @@ class Registry:
             PandocConverter(cfg),
             XlsxConverter(cfg),
             PptxConverter(cfg),
-            PdfConverter(cfg),
+            PdfConverter(cfg, ocr=ocr),
             MarkdownConverter(cfg),
             PlainTextConverter(cfg),
             EmlConverter(cfg),

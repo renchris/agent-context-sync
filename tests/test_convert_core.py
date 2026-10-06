@@ -473,6 +473,11 @@ def test_a_registry_with_an_engine_keeps_the_one_without() -> None:
     twin = reg.without_ocr
     assert twin is not None and twin.without_ocr is None
     assert _identity(twin) == _identity(plain) and twin.extensions() == plain.extensions()
+    version, options, _exts = _identity(reg)["pdf-pypdfium2"]
+    plain_version, plain_options, _exts = _identity(plain)["pdf-pypdfium2"]
+    assert version == f"{plain_version}+ocr-paper-vision-r2-h0.3.0-l1"
+    assert {key: value for key, value in options.items() if not key.startswith("ocr")} == plain_options
+    assert options["ocr_languages"] == "en-US" and options["ocr_max_pages"] == 100
     assert twin.for_name("scan.png") is None, "an image has no converter there, so a failed read stays one"
 
 

@@ -2435,6 +2435,8 @@ class PdfConverter:
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
+    # SUPERSEDED (2026-10-06, §16.26): __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None);
+    # with an engine a page without a text layer is read by on-device OCR
 
     def version(self) -> str:
         """Version as run (emitter version + underlying library/tool version)."""
@@ -6421,8 +6423,8 @@ command, flag, installer option, config key or environment variable. A Mac witho
 built, `[convert] ocr = false`, `AGENTSYNC_OCR=0`) converts as before: the same eight converters at the same
 versions with the same options, so every page it has stays byte for byte what it was.
 
-This part is the image converter and its wiring. Scanned PDF pages and the pictures inside PDFs, decks and
-Word documents are added to this section with the converters that read them.
+This part is the image converter, the PDF converter and their wiring. The pictures inside decks and Word
+documents are added to this section with the converters that read them.
 
 **Rules.**
 
@@ -6495,8 +6497,8 @@ a picture inside a document alike (`_raster_suffix`). EMF, WMF, SVG, PDF and AVI
 types the helper allows; the helper, which looks at the whole file, has the last word.
 
 **Pictures inside a document.** `_read_pictures(engine, pictures, *, work_dir, budget_s, limit=100,
-max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. No converter calls it
-yet.
+max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. The PDF converter calls
+it (below).
 
 - **Streamed.** `pictures` is an iterable of binary streams. Each is read once, in 1 MiB chunks, and closed,
   and the next is asked for only while there is room for it: a caller that passes a generator opens no
@@ -6524,7 +6526,9 @@ yet.
 change a page. What the helper is run with is in `OcrEngine.identity`, so in the version.
 
 **Registry** (amends §7 and §16.6). `Registry.default(cfg, *, policy=None, ocr=None)`. The registry never
-looks for an engine: the cycle resolves one and hands it in. `ImageConverter(cfg, ocr)` is registered when
+looks for an engine: the cycle resolves one and hands it in. The PDF converter is built with it
+(`PdfConverter(cfg, ocr=ocr)`), under a label rule too: a PDF's own label is screened before it is converted,
+and its pictures are part of it. `ImageConverter(cfg, ocr)` is registered when
 `ocr` is not None and `policy.labels_active` is false (plan D8). An image can carry a sensitivity label and
 `policy.read_labels` reads none from an image, so under any label rule (`exclude_label_ids`,
 `exclude_label_names`, `refuse_unlabelled`) an image keeps the `no converter for .png` stub and is never read.
@@ -6576,7 +6580,146 @@ Tests: `tests/test_convert_file.py` (an `OcrError` gives the result, the key and
 registry without an engine, and the next read tries OCR again; an UNREADABLE and a FAILED twin; no twin, an
 empty twin registry and a twin of another converter; another exception) and `tests/test_convert_core.py`
 (`without_ocr` is the registry of a Mac without an engine, under each label rule too, and holds no image
-converter).
+converter; with an engine the PDF converter's version ends in its identity and its options gain the OCR
+ones).
+
+#### Pages and pictures in a PDF: `agentsync.convert.pdf`
+
+Plan decisions D6, D10 and D13. `PdfConverter(cfg, ocr=None)`. Without an engine nothing in this part runs:
+`version()`, `options()` and every page are those of §16.24, byte for byte, and the emitter stays **2.1.0**.
+The same holds, engine or not, for a file the pdfminer fallback converts: PDFium renders what OCR reads.
+With an engine `version()` ends in its identity (`2.1.0+pypdfium2-…+pdfminer.six-…+ocr-apple-vision-r3-h2.0.0-l1`)
+and `options()` gains the shared OCR options and five of its own: `ocr_pdf_rules` (1; bumped when a rule
+below changes without one of the numbers changing), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
+`ocr_pictures_seen` (400) and `ocr_picture_pixels` (400,000,000). The emitter version is not what moves
+with an OCR rule: it would move the key of every PDF on a Mac without an engine.
+
+```text
+<!-- page: 1 -->
+
+Contoso supply agreement, signed copy
+A screenshot of the order book follows.
+
+[text in an image on this page, read by on-device OCR (Apple Vision):]
+Orders by month
+March 412 | April 388
+
+<!-- page: 2 -->
+
+Page 2
+
+[page image without a text layer: text read by on-device OCR (Apple Vision)]
+
+Clause 4: delivery within thirty days
+Signed in Rotterdam
+
+[comments on this page (PDF annotations):]
+- Note by Roe, John: Check the date
+
+<!-- page: 3 -->
+
+[scanned page: no text layer; OCR found no text]
+```
+
+- **A page without a text layer** is a page with under 20 characters of text (`_SCANNED_MIN_CHARS`, as
+  before). PDFium renders it as a viewer shows it (its `/Rotate` applied) but without its annotations, which
+  the comments block lists. 300 dpi; a page whose longer side would pass 6000 px is rendered below that, so
+  a page image has at most 36 megapixels and never passes the helper's 50. The page keeps its own short
+  text (a stamped page number is text a search finds today), then the marker, then the lines OCR read, then
+  its comments.
+- **Four outcomes, four markers.** Fixed wording; the summary counts each.
+
+  | The page | Marker | Summary clause |
+  |---|---|---|
+  | read, with text | `[page image without a text layer: text read by on-device OCR (Apple Vision)]` | `, N read by on-device OCR` |
+  | read, no text (also a page too small to hold any) | `[scanned page: no text layer; OCR found no text]` | `, N without a text layer (OCR found no text)` |
+  | past the page limit | `[scanned page: no text layer; over the OCR page limit]` | `, N without a text layer (over the OCR page limit)` |
+  | not read: no engine, the fallback, a page PDFium cannot render | `[scanned page: no text layer]` | `, N without a text layer (scanned; OCR not run)` |
+
+- **The page limit.** The first `ocr.MAX_PAGES` (100) such pages of a file are read. They are rendered four
+  at a time (`_PAGES_PER_RUN`) into a `.ocr-*` folder made beside the staged file, read by one run of the
+  helper and removed, so a long scan never has more than four page images on disk. The folder is under the
+  cycle's staging folder (plan D13), never `$TMPDIR`, and is gone when `convert` returns or raises.
+- **The page image** is an 8-bit PNG, RGB or gray, written by `_png` from PDFium's bitmap a row at a time: no
+  imaging library is imported, the pixels are never copied whole, and the file holds nothing but them, so the
+  same pixels give the same bytes.
+- **A picture on a page with text** is read when all of these hold. Its stored size passes the helper's own
+  rule (no side under 48 px, no more than `ocr.MAX_MEGAPIXELS`), checked before a pixel is decoded. It is
+  drawn with a size: a picture under 1 pt wide or high on the page (a collapsed or hidden placement) is one
+  no viewer shows. And the text layer does not cover it: fewer than 20 characters of the page's text lie
+  inside its box, drawn in by 2 pt because PDFium counts a character that only touches the box. A searchable
+  scan is a picture behind its own text, and reading it would say the page twice. The box of a picture
+  inside a form XObject is placed by the form's matrix and by that of each form around it (a picture up to
+  three forms deep is found).
+- **Its stored pixels are read**, not a rendering of the page (`PdfImage.get_bitmap()`: the image's matrix
+  and mask are not applied). The same image object gives the same bytes wherever it is drawn, so
+  `_read_pictures` reads a logo on every page once, and its text is printed under the first page it is on.
+  A picture stored on its side is read on its side. Each picture with text gets a block after its page's
+  text: the head line `[text in an image on this page, read by on-device OCR (Apple Vision):]`, then its
+  lines. A picture PDFium cannot place or decode is skipped: nothing a picture holds can fail the document.
+- **Picture limits.** At most 400 image objects of a file are looked at (`_MAX_PICTURES_SEEN`) and
+  400,000,000 pixels decoded (`_MAX_PICTURE_PIXELS`), on top of the 100 distinct pictures and 256 MiB of
+  `_read_pictures`. All four are counts, so a file gives the same pictures on every run. When one of them
+  left a picture unread, the summary ends `; pictures past the OCR picture limit not read`.
+- **Time.** One limit per file, `_DOCUMENT_BUDGET_S` (300 seconds, below the 1800 the launcher gives a whole
+  background job), counted from the start of the OCR pass and shared by the page reads, the looking for
+  pictures and the pictures' read, rendering included. Past it no helper run is started and the pass fails
+  (Failure, below). By the measurements of §16.25 (about 6 s for a 300 dpi letter page) some 50 such pages
+  fit: a longer scan runs out of time and is converted without OCR.
+- **Title and summary.** The title is the first line of three characters or more in page order, whoever read
+  it: a scanned cover now gives the title, where the second page did. The summary is counts only: `PDF: 3
+  page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text); text of 1 picture(s) read by
+  on-device OCR; 1 comment(s) on 1 page(s)`. It never holds text OCR read.
+- **A PDF of page images** is a page as soon as OCR reads a line on any page. When OCR reads every page it
+  may and finds nothing, and no comment is listed, it is refused with the reason it has without an engine,
+  `no text layer (scanned or image-only PDF; OCR not run)`: a settled UNREADABLE result, cached under the
+  version with OCR. The reason keeps its wording from before OCR, although OCR did run here; the stub's
+  `converter:` line, which ends in the engine's identity, is what says so. When pages past the limit were
+  not read the reason says so: `no text layer (scanned or image-only PDF; OCR found no text on the first
+  100 pages, the rest are over the OCR page limit)`.
+- **Escaping.** Every line OCR read goes through `image._ocr_lines` (above): no heading, rule, setext
+  underline, code fence, HTML block or `<!-- page: N -->` anchor can come out of a picture.
+- **Failure** (plan D10). Any failure of the OCR pass is one `OcrError("on-device OCR failed")`, raised
+  before anything is returned, so no page holds half of what OCR read: the helper may not be run, exits
+  non-zero, runs out of time or answers something else; it reports a page image it cannot read
+  (`recognition failed` included: the image was written here, so that is the helper's failure and no fact
+  about the file); `_read_pictures` left a picture unread; an image cannot be written; memory runs out; the
+  pass itself raises. `convert_file` then converts the file without OCR (above). What went wrong goes to the
+  log as `WARNING <name>: on-device OCR failed: <reason>`, where the reason is the engine's own (it holds no
+  path) or, for any other exception, its type name only. After a failed run of the helper on a page no
+  further run is started for that file. (`_read_pictures` reads the pictures of a failed run again one at a
+  time, within the same time limit, before the pass gives up.)
+
+```python
+# agentsync.convert.pdf
+class PdfConverter:                          # converter_id = "pdf-pypdfium2"
+    def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None: ...
+    def version(self) -> str: ...            # with an engine: the version of §16.24 + "+" + engine.identity
+    def options(self) -> Mapping[str, OptionValue]: ...   # with an engine: + the OCR options
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...   # may raise OcrError
+```
+
+Every new name in `agentsync.convert.pdf` is private (`_OcrText`, `_ocr_text`, `_read_pages`,
+`_read_page_pictures`, `_PagePictures`, `_render_page`, `_png`, `_page_box`, `_covered`, `_SCANNED_OUTCOMES`,
+`_PDF_OCR_OPTIONS`, `_OCR_RULES`).
+
+Tests: `tests/test_convert_formats.py` (version and options with and without an engine, and the two
+relations between the limits; a page read beside a page of text, the helper's folder and what it leaves;
+a PDF of page images read, and refused when nothing is found; the page limit and its reason; pages rendered
+a few at a time; a page's own short text; the title in page order; comments after a page OCR read; a picture
+behind the text, beside it, and inside a form either way; each distinct picture once, an icon and an
+oversized picture never decoded; a picture drawn with no size, four ways; a picture that cannot be decoded;
+the three picture limits and a limit that is reached and not passed; every kind of line that could pose as
+structure, on a page and in a picture; the same page twice; a helper failure, its fixed wording, its log
+line and no further run; a page image the helper cannot read; a picture left unread; memory and a full
+disk; a page PDFium cannot render; one time limit for pages and pictures; the pdfminer fallback; through
+`convert_file`: the page, version and key of a Mac without an engine after a failure, the cache entry, the
+later read that works, the stub of a PDF of page images, the banner; `_png` for each bitmap format and a
+padded row), `tests/test_convert_determinism.py` (a PDF read by OCR twice, from the cache under a second
+name, and from a cold cache) and `tests/test_ocr.py` (the real helper reads a page image and a picture the
+converter wrote). `PdfPicture`, `page_picture`, `build_picture_pdf` and `shade_engine` in
+`tests/test_convert_builders.py` build the files and the fake helper that tells images apart by their first
+pixel.
 
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
 `_PictureText`, `_read_pictures`, `_read_each`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`,

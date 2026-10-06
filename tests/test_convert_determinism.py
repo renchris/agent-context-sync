@@ -15,14 +15,18 @@ from agentsync.convert.canonical import canonical_hash
 from agentsync.model import ConversionResult, ConversionStatus
 from fixtures.make_fixtures import make_fixtures
 from test_convert_builders import (
+    PdfPicture,
     build_commented_pdf,
     build_docx_image,
     build_docx_merged,
     build_pdf,
+    build_picture_pdf,
     build_pptx_rich,
     build_xlsx_rich,
     eml_bytes,
+    page_picture,
     pandoc_build,
+    shade_engine,
     teams_doc,
     teams_msg,
 )
@@ -204,3 +208,29 @@ def test_options_change_moves_the_key(fixture_files: dict[str, Path], tmp_path: 
     b = _convert(src, "sample.csv", Registry.default(replace(CFG, max_rows_per_sheet=1)), tmp_path / "c")
     assert a.options_hash != b.options_hash and a.action_key != b.action_key
     assert not b.from_cache
+
+
+def test_a_pdf_read_by_ocr_converts_the_same_twice_and_under_any_name(tmp_path: Path) -> None:
+    """With an engine a PDF's pages hold what OCR read: the same bytes still give the same page, whatever
+    the file is called, and the page names neither file."""
+    said = {90: ["Delivery note", "Pallets | 14"], 40: ["Gate B"]}
+    engine = shade_engine(tmp_path / "bin", said)
+    registry = Registry.default(CFG, ocr=engine)
+    text = ["A page with a text layer and a picture below it"]
+    pages = [([], [page_picture(90)]), (text, [PdfPicture(40, "96 0 0 64 150 20")])]
+    (tmp_path / "a").mkdir()
+    first = build_picture_pdf(tmp_path / "a" / "Contoso Scan.pdf", pages)
+    second = tmp_path / "b" / "Fabrikam Copy.pdf"
+    second.parent.mkdir()
+    shutil.copyfile(first, second)
+    assert not double_conversion_differs(first, name=first.name, registry=registry)
+    a = _convert(first, first.name, registry, tmp_path / "cache")
+    b = _convert(second, second.name, registry, tmp_path / "cache")
+    assert a.status is ConversionStatus.OK and a.converter_id == "pdf-pypdfium2" and not a.from_cache
+    assert a.converter_version.endswith("+ocr-paper-vision-r2-h0.3.0-l1")
+    assert b.from_cache and b.action_key == a.action_key and b.units == a.units
+    assert _convert(second, second.name, registry, tmp_path / "cold") == a, "a cold cache gives the same page"
+    (unit,) = a.units
+    for word in ("Contoso", "Scan", "Fabrikam", "Copy", ".pdf"):
+        assert word not in unit.body + unit.title + unit.summary, word
+    assert "Delivery note\nPallets | 14\n" in unit.body and "\nGate B\n" in unit.body

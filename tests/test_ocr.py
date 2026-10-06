@@ -1228,6 +1228,50 @@ def test_the_real_helper_reads_whole_lines_across_tiles_rotations_and_frames(
         assert usage.returncode == 64 and usage.stdout == b"", bad
 
 
+def test_the_real_helper_reads_a_pdf_page_without_a_text_layer_and_a_picture_beside_text(
+    vision: ocr.OcrEngine, tmp_path: Path
+) -> None:
+    """The PDF converter's own page images and pictures (PNG files it writes without an imaging library),
+    through the real helper."""
+    pil = pytest.importorskip("PIL.Image")
+    draw_module = pytest.importorskip("PIL.ImageDraw")
+    font_module = pytest.importorskip("PIL.ImageFont")
+    from agentsync.convert.pdf import PdfConverter  # noqa: PLC0415
+    from test_convert_builders import PdfPicture, build_picture_pdf  # noqa: PLC0415 - it imports this module
+
+    def gray(width: int, height: int, *texts: tuple[int, int, str]) -> PdfPicture:
+        im = pil.new("L", (width, height), 255)
+        for x, y, text in texts:
+            draw_module.Draw(im).text((x, y), text, fill=0, font=font_module.truetype(FONT, 40))
+        placed = "300 0 0 200 0 0" if width > 1000 else "216 0 0 72 60 30"
+        return PdfPicture(0, placed, px=(width, height), pixels=im.tobytes())
+
+    scan = gray(1250, 834, (80, 100, "Contoso supply agreement"), (80, 600, "Signed in Rotterdam"))
+    shot = gray(900, 300, (40, 60, "Orders by month"), (40, 180, "March 412 April 388"))
+    text = ["This page has a text layer of its own.", "A screenshot follows below."]
+    src = build_picture_pdf(tmp_path / "agreement.pdf", [([], [scan]), (text, [shot])])
+    try:
+        (unit,) = PdfConverter(CFG, ocr=vision).convert(src, name=src.name)
+    except ocr.OcrError:
+        pytest.skip("Apple Vision text recognition does not run on this machine")
+    assert [ln.casefold() for ln in unit.body.split("\n") if ln] == [
+        "<!-- page: 1 -->",
+        "[page image without a text layer: text read by on-device ocr (apple vision)]",
+        "contoso supply agreement",
+        "signed in rotterdam",
+        "<!-- page: 2 -->",
+        *(ln.casefold() for ln in text),
+        "[text in an image on this page, read by on-device ocr (apple vision):]",
+        "orders by month",
+        "march 412 april 388",
+    ]
+    assert (
+        unit.summary == "PDF: 2 page(s), 1 read by on-device OCR; text of 1 picture(s) read by on-device OCR"
+    )
+    assert unit.title.casefold() == "contoso supply agreement"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [src.name]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # the helper's tile joining on made-up readings (developer tools only; Vision recognises nothing here)
 # ---------------------------------------------------------------------------------------------------------

@@ -16,20 +16,34 @@ is one no viewer draws (the Hidden or NoView flag), except a review status ("Acc
 viewer lists under the comment it is about.  The pdfminer fallback reads none, and a page whose comments
 PDFium cannot read keeps its text; the summary says so in both cases.  What one file's comments may cost is
 bounded (``_CommentBudget``).
+
+With an OCR engine (``PdfConverter(cfg, ocr=engine)``; ``convert/ocr.py``) the converter also reads what the
+text layer lacks.  A page with under 20 characters of text is rendered and read, and so is a picture on a
+page with text, unless the text layer already covers it.  Without an engine nothing here runs: the version,
+the options and every page are the ones from before OCR existed.  The same holds for a file the pdfminer
+fallback converts.  A failure of the helper is ``OcrError`` with fixed wording, raised before anything is
+written: ``convert_file`` then converts the file with the registry's converter that has no engine, so no page
+ever holds a half-read document or what a helper said.
 """
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
+import io
 import logging
 import math
 import re
+import struct
+import tempfile
+import time
 import unicodedata
+import zlib
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Generator, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import (
@@ -40,6 +54,15 @@ from agentsync.convert._common import (
     _escape_plain,
 )
 from agentsync.convert.base import OptionValue, make_unit
+from agentsync.convert.image import (
+    _DOCUMENT_BUDGET_S,
+    _ENGINE_LABEL,
+    _OCR_OPTIONS,
+    _ocr_lines,
+    _read_pictures,
+)
+from agentsync.convert.image import _FAILED as _OCR_FAILED
+from agentsync.convert.ocr import _MIN_PX, MAX_MEGAPIXELS, MAX_PAGES, OcrEngine, OcrError
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 
@@ -52,6 +75,43 @@ _ENGINE = "pypdfium2:text-range"
 # Reasons of the typed errors (the stub page's ``reason``); C15 section 9 item 25 names the quarantine code.
 _ENCRYPTED_PDF = "encrypted-pdf"
 _NO_TEXT = "no text layer (scanned or image-only PDF; OCR not run)"
+_NO_TEXT_PAST_LIMIT = (  # {}: the page limit
+    "no text layer (scanned or image-only PDF; OCR found no text on the first {} pages, "
+    "the rest are over the OCR page limit)"
+)
+# What a page says about on-device OCR.  Fixed wording: no file name, no path and nothing a helper said.
+_OCR_READ = f"[page image without a text layer: text read by on-device OCR ({_ENGINE_LABEL})]"
+_OCR_NO_TEXT = "[scanned page: no text layer; OCR found no text]"
+_OCR_OVER_LIMIT = "[scanned page: no text layer; over the OCR page limit]"
+_OCR_PICTURE = f"[text in an image on this page, read by on-device OCR ({_ENGINE_LABEL}):]"
+# How a page under _SCANNED_MIN_CHARS came out: its marker, and the clause the summary counts it under, in
+# the summary's order.  Without an engine only the last one occurs.
+_SCANNED_OUTCOMES: dict[str, str] = {
+    _OCR_READ: "read by on-device OCR",
+    _OCR_NO_TEXT: "without a text layer (OCR found no text)",
+    _OCR_OVER_LIMIT: "without a text layer (over the OCR page limit)",
+    _SCANNED: "without a text layer (scanned; OCR not run)",
+}
+_RENDER_DPI = 300
+_RENDER_MAX_PX = 6000  # the longer side of a page image: a poster is read below 300 dpi
+_PAGES_PER_RUN = 4  # page images written, read and removed together
+_FORM_DEPTH = 4  # levels of page objects looked at: the page's own and three of nested form XObjects
+_PICTURE_MIN_PT = 1.0  # a picture drawn narrower or lower than this has no size on the page
+_PICTURE_INSET_PT = 2.0  # text that only touches a picture's edge (a caption) is not text in it
+_MAX_PICTURES_SEEN = 4 * MAX_PAGES  # image objects of one file that are looked at
+_MAX_PICTURE_PIXELS = 8 * MAX_MEGAPIXELS * 1_000_000  # pixels of one file's pictures decoded here
+_OCR_RULES = 1
+"""Bumped when a rule here that decides what OCR reads, or how a page shows it, changes without one of the
+numbers below changing.  It is in the options only with an engine, so it moves no key of a Mac without one
+(the emitter version would)."""
+_PDF_OCR_OPTIONS: dict[str, OptionValue] = {
+    "ocr_pdf_rules": _OCR_RULES,
+    "ocr_page_dpi": _RENDER_DPI,
+    "ocr_page_max_px": _RENDER_MAX_PX,
+    "ocr_pictures_seen": _MAX_PICTURES_SEEN,
+    "ocr_picture_pixels": _MAX_PICTURE_PIXELS,
+}
+_clock = time.monotonic
 # PDFium document-load error codes (fpdfview.h): FPDF_ERR_PASSWORD, FPDF_ERR_SECURITY.
 _ERR_PASSWORD = 4
 _ERR_SECURITY = 5
@@ -466,40 +526,347 @@ def _render_comments(comments: Sequence[_Comment]) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------
+# on-device OCR (only with an engine)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _png_chunk(tag: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+
+def _png(bitmap: Any) -> bytes:
+    """A PDFium bitmap as an 8-bit PNG, gray or RGB; a fourth byte per pixel (alpha, padding) is dropped.
+
+    Written here, a row at a time, and not through an imaging library: the pixels are never copied whole,
+    and the file holds nothing but them (no time, no text chunk), so the same pixels give the same bytes."""
+    count, width, height, stride = bitmap.n_channels, bitmap.width, bitmap.height, bitmap.stride
+    if count not in (1, 3, 4) or width < 1 or height < 1:
+        raise ValueError("not a bitmap this writes")
+    view = memoryview(bitmap.buffer).cast("B")
+    red, blue = (0, 2) if bitmap.rev_byteorder else (2, 0)
+    packer = zlib.compressobj(1)
+    parts: list[bytes] = []
+    row = bytearray(width * 3)
+    for at in range(0, height * stride, stride):
+        parts.append(packer.compress(b"\x00"))  # the row's filter type: none
+        if count == 1:
+            parts.append(packer.compress(view[at : at + width]))
+            continue
+        end = at + width * count
+        row[0::3] = view[at + red : end : count]
+        row[1::3] = view[at + 1 : end : count]
+        row[2::3] = view[at + blue : end : count]
+        parts.append(packer.compress(row))
+    parts.append(packer.flush())
+    head = struct.pack(">IIBBBBB", width, height, 8, 0 if count == 1 else 2, 0, 0, 0)
+    return b"".join(
+        (
+            b"\x89PNG\r\n\x1a\n",
+            _png_chunk(b"IHDR", head),
+            _png_chunk(b"IDAT", b"".join(parts)),
+            _png_chunk(b"IEND", b""),
+        )
+    )
+
+
+def _render_page(doc: Any, index: int, path: Path) -> bool:
+    """Write page ``index`` of the open document to ``path`` as a PNG, as a viewer shows it (its /Rotate
+    applied) but without its annotations, which the comments block lists.  300 dpi, less for a page whose
+    longer side would pass ``_RENDER_MAX_PX``.  False when PDFium cannot render the page: that is a fact
+    about the file, and the page then stays the scanned page it is without OCR."""
+    try:
+        page = doc[index]
+        try:
+            longest = max(page.get_size())
+            if not (math.isfinite(longest) and longest > 0):
+                return False
+            scale = min(_RENDER_DPI / 72, _RENDER_MAX_PX / longest)
+            bitmap = page.render(scale=scale, rev_byteorder=True, draw_annots=False, may_draw_forms=False)
+            try:
+                data = _png(bitmap)
+            finally:
+                bitmap.close()
+        finally:
+            page.close()
+    except MemoryError:  # not a fact about the file: the whole OCR pass fails, and the file is read again
+        raise
+    except Exception as exc:
+        log.debug("page %d not rendered for OCR: %s", index + 1, type(exc).__name__)
+        return False
+    path.write_bytes(data)
+    return True
+
+
+def _page_box(obj: Any) -> _Box | None:
+    """Where a picture sits on its page, in PDF space; None for one drawn with no width or no height (a
+    collapsed or hidden placement: no viewer shows it).  A picture inside a form XObject is placed by the
+    form's matrix, and by that of each form around it."""
+    box: _Box = obj.get_bounds()
+    form = obj.container
+    while form is not None:
+        box = form.get_matrix().on_rect(*box)
+        form = form.container
+    left, bottom, right, top = box
+    if not all(map(math.isfinite, box)) or min(right - left, top - bottom) < _PICTURE_MIN_PT:
+        return None
+    return box
+
+
+def _covered(textpage: Any, box: _Box) -> bool:
+    """True when the text layer already holds what is in ``box``: ``_SCANNED_MIN_CHARS`` characters or more
+    lie inside it (a searchable scan, a picture behind the page's text).  Reading such a picture would say
+    the page twice.  The box is drawn in a little first, because PDFium counts a character that only touches
+    it."""
+    left, bottom, right, top = box
+    dx = min(_PICTURE_INSET_PT, (right - left) / 4)
+    dy = min(_PICTURE_INSET_PT, (top - bottom) / 4)
+    text = str(textpage.get_text_bounded(left + dx, bottom + dy, right - dx, top - dy))
+    return len("".join(text.split())) >= _SCANNED_MIN_CHARS
+
+
+class _PagePictures:
+    """The pictures on a PDF's pages with text that may hold text the text layer lacks, as PNG streams for
+    ``image._read_pictures``, in page order.
+
+    A picture is offered when it passes the helper's own size rule (no side under 48 px, no more than
+    ``MAX_MEGAPIXELS``; checked from its stored size, before a pixel is decoded), is drawn with a size, and
+    is not covered by the text layer (``_covered``).  Its stored pixels are offered, not a rendering of the
+    page: the same image object gives the same bytes wherever it is drawn, so a logo on every page is read
+    once.  A picture PDFium cannot place or decode is skipped; nothing here can fail the document but the
+    time limit and memory.
+
+    At most ``_MAX_PICTURES_SEEN`` image objects are looked at and ``_MAX_PICTURE_PIXELS`` pixels decoded.
+    Both are counts, so a file gives the same pictures on every run.  ``pages`` holds the page index of each
+    picture offered so far, ``cut`` says one of the two limits stopped the looking, and ``done`` that every
+    page was looked at.
+    """
+
+    def __init__(self, doc: Any, pdfium_c: Any, indexes: Sequence[int], deadline: float) -> None:
+        """Bind the open document, the pages to look at and when the document's OCR time ends."""
+        self._doc = doc
+        self._image = pdfium_c.FPDF_PAGEOBJ_IMAGE
+        self._indexes = indexes
+        self._deadline = deadline
+        self._seen = 0
+        self._pixels = 0
+        self.pages: list[int] = []
+        self.cut = False
+        self.done = False
+
+    def _picture(self, obj: Any, textpage: Any) -> bytes | None:
+        """One image object as PNG bytes, or None when it is not one to read."""
+        if self._seen >= _MAX_PICTURES_SEEN:
+            self.cut = True
+            return None
+        self._seen += 1
+        width, height = obj.get_px_size()
+        pixels = width * height
+        if min(width, height) < _MIN_PX or pixels > MAX_MEGAPIXELS * 1_000_000:
+            return None
+        box = _page_box(obj)
+        if box is None or _covered(textpage, box):
+            return None
+        if self._pixels + pixels > _MAX_PICTURE_PIXELS:
+            self.cut = True
+            return None
+        self._pixels += pixels
+        bitmap = obj.get_bitmap()  # the stored image: its matrix and mask are not applied
+        try:
+            return _png(bitmap)
+        finally:
+            bitmap.close()
+
+    def _on_page(self, page: Any, textpage: Any) -> Iterator[bytes]:
+        objects = iter(page.get_objects(filter=(self._image,), max_depth=_FORM_DEPTH))
+        while not self.cut:
+            try:
+                obj = next(objects, None)
+                if obj is None:
+                    return
+                data = self._picture(obj, textpage)
+            except MemoryError:
+                raise
+            except Exception as exc:  # this picture is skipped (when the listing failed, the page's rest)
+                log.debug("a picture was not read for OCR: %s", type(exc).__name__)
+                continue
+            if data is not None:
+                yield data
+
+    def streams(self) -> Generator[BinaryIO, None, None]:
+        """The pictures, one PNG stream at a time; OcrError once the document's OCR time is over."""
+        for index in self._indexes:
+            if self.cut:
+                return
+            if _clock() >= self._deadline:
+                raise OcrError("the document's OCR time ran out before its pictures were looked at")
+            try:
+                page = self._doc[index]
+            except Exception:
+                continue
+            try:
+                textpage = page.get_textpage()
+            except Exception:
+                page.close()
+                continue
+            try:
+                for data in self._on_page(page, textpage):
+                    self.pages.append(index)
+                    yield io.BytesIO(data)
+            finally:
+                textpage.close()
+                page.close()
+        self.done = not self.cut
+
+
+@dataclass(slots=True)
+class _OcrText:
+    """What on-device OCR read in one PDF, by page index.
+
+    ``pages``: the escaped lines of each page without a text layer that was read; no lines when OCR found
+    no text on it.  ``over_limit``: such pages past ``MAX_PAGES``, which were not read.  ``pictures``: for a
+    page with a text layer, the lines of each picture first seen on it.  ``pictures_cut``: a limit stopped
+    the reading of pictures, so the later ones were not read.
+    """
+
+    pages: dict[int, list[str]] = field(default_factory=dict)
+    over_limit: frozenset[int] = frozenset()
+    pictures: dict[int, list[list[str]]] = field(default_factory=dict)
+    pictures_cut: bool = False
+
+
+def _read_pages(
+    doc: Any, engine: OcrEngine, wanted: Sequence[int], folder: Path, deadline: float
+) -> dict[int, list[str]]:
+    """The escaped lines OCR read on each of the pages ``wanted`` (no lines where it found no text).
+
+    The pages are rendered into ``folder`` ``_PAGES_PER_RUN`` at a time, read and removed, so a long scan
+    never has more than a few page images on disk.  A page PDFium cannot render gets no entry.  Raises
+    OcrError when the helper fails, runs out of time, or reports a page image it cannot read: the image was
+    written here, so that is the helper's failure and no fact about the file.  After the first failure the
+    helper is not started for another page."""
+    out: dict[int, list[str]] = {}
+    for start in range(0, len(wanted), _PAGES_PER_RUN):
+        rendered: list[tuple[int, Path]] = []
+        for index in wanted[start : start + _PAGES_PER_RUN]:
+            path = folder / f"page-{index + 1:05d}.png"
+            if _render_page(doc, index, path):
+                rendered.append((index, path))
+        if not rendered:
+            continue
+        paths = [path for _index, path in rendered]
+        answers = engine.read(paths, work_dir=folder, budget_s=deadline - _clock())
+        for (index, path), frames in zip(rendered, answers, strict=True):
+            if frames[0].error:
+                raise OcrError(f"the OCR helper could not read a page image ({frames[0].error})")
+            lines = _ocr_lines(frames[0])
+            out[index] = lines if any(lines) else []
+            path.unlink()
+    return out
+
+
+def _read_page_pictures(
+    scan: _PagePictures, engine: OcrEngine, work_dir: Path, deadline: float
+) -> tuple[dict[int, list[list[str]]], bool]:
+    """(the lines of each picture ``scan`` offers, under the page it is first seen on; whether a limit left
+    later pictures unread).  Raises OcrError when the helper left a picture unread: a page that kept the
+    other pictures' text would look complete."""
+    pictures: dict[int, list[list[str]]] = {}
+    with contextlib.closing(scan.streams()) as streams:
+        got = _read_pictures(engine, streams, work_dir=work_dir, budget_s=deadline - _clock())
+        if got.unread:  # _read_pictures has logged how many, and the helper's reason
+            raise OcrError("the OCR helper left pictures unread")
+        first_seen: set[str] = set()
+        for index, digest in zip(scan.pages, got.digests, strict=True):
+            if digest is not None and digest not in first_seen and digest in got.lines:
+                first_seen.add(digest)
+                pictures.setdefault(index, []).append(got.lines[digest])
+        # A limit of _read_pictures stops it asking.  One more is asked for, to know whether any was left.
+        left = None if scan.done else next(streams, None)
+        if left is not None:
+            left.close()
+    return pictures, scan.cut or left is not None or None in got.digests
+
+
+def _ocr_text(src: Path, engine: OcrEngine, scanned: Sequence[int], texted: Sequence[int]) -> _OcrText:
+    """Read what the text layer of ``src`` lacks: the pages ``scanned`` (those under ``_SCANNED_MIN_CHARS``
+    characters; at most ``MAX_PAGES`` of them) and the pictures on the pages ``texted``.
+
+    Every image is written into a folder made beside the staged file, so under the cycle's staging folder
+    and never ``$TMPDIR``, and removed before this returns.  Pages and pictures share one time limit:
+    ``_DOCUMENT_BUDGET_S`` seconds from this call, rendering included.
+
+    Raises OcrError when the helper fails or the time runs out; an image that cannot be written or a
+    document that cannot be opened again raises what it raises.  The caller treats every exception alike.
+    """
+    import pypdfium2  # noqa: PLC0415 - heavy native import
+    import pypdfium2.raw as pdfium_c  # noqa: PLC0415
+
+    deadline = _clock() + _DOCUMENT_BUDGET_S
+    wanted = scanned[:MAX_PAGES]
+    found = _OcrText(over_limit=frozenset(scanned[MAX_PAGES:]))
+    doc = pypdfium2.PdfDocument(str(src))
+    try:
+        if wanted:
+            with tempfile.TemporaryDirectory(
+                dir=src.parent, prefix=".ocr-", ignore_cleanup_errors=True
+            ) as tmp:
+                found.pages = _read_pages(doc, engine, wanted, Path(tmp), deadline)
+        if texted:
+            scan = _PagePictures(doc, pdfium_c, texted, deadline)
+            found.pictures, found.pictures_cut = _read_page_pictures(scan, engine, src.parent, deadline)
+    finally:
+        doc.close()
+    return found
+
+
 class PdfConverter:
     """PDFium (pypdfium2) text extraction, pdfminer.six fallback: one WHOLE unit with page anchors.
 
     ``<!-- page: N -->`` anchor per page; a page with < 20 chars of text is marked ``[scanned page: no text
-    layer]`` (OCR is a later budgeted tier).  Encrypted PDFs (a password is needed, or ``/Encrypt`` in the
-    trailer) raise UnreadableSourceError(``encrypted-pdf ...``); a PDF with no text and no comment on any
-    page raises UnreadableSourceError (C15: an empty conversion is a stub, never an empty page).  A page's
-    comments follow its text; a page with comments and no text is still a page.  pdfminer.six is used
-    only when PDFium cannot load a file for another reason (the summary says so, and that it read no
-    comments).
+    layer]``.  Encrypted PDFs (a password is needed, or ``/Encrypt`` in the trailer) raise
+    UnreadableSourceError(``encrypted-pdf ...``); a PDF with no text and no comment on any page raises
+    UnreadableSourceError (C15: an empty conversion is a stub, never an empty page).  A page's comments
+    follow its text; a page with comments and no text is still a page.  pdfminer.six is used only when
+    PDFium cannot load a file for another reason (the summary says so, and that it read no comments).
+
+    With an OCR engine a page with < 20 chars of text is read by it (the page keeps its own short text and
+    its comments), and so is each distinct picture on a page with text that the text layer does not cover.
+    A PDF of page images is a page when OCR reads text in it.  When the engine fails, ``convert`` raises
+    OcrError with fixed wording and ``convert_file`` converts the file without OCR.
     """
 
     converter_id = "pdf-pypdfium2"
     extensions: tuple[str, ...] = (".pdf",)
 
-    def __init__(self, cfg: ConvertConfig) -> None:
-        """Bind converter options from config."""
+    def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None:
+        """Bind converter options from config, and the cycle's OCR engine when there is one."""
         self._cfg = cfg
+        self._ocr = ocr
 
     def version(self) -> str:
-        """Version as run (emitter + PDFium/pypdfium2 + the pdfminer.six fallback)."""
+        """Version as run (emitter + PDFium/pypdfium2 + the pdfminer.six fallback); with an OCR engine its
+        identity comes last.  Without one this is the version from before OCR existed."""
         pdfium = _pdfium_version() or "pypdfium2-unavailable"
-        return f"{_EMITTER_VERSION}+{pdfium}+pdfminer.six-{_dist_version('pdfminer.six')}"
+        version = f"{_EMITTER_VERSION}+{pdfium}+pdfminer.six-{_dist_version('pdfminer.six')}"
+        return version if self._ocr is None else f"{version}+{self._ocr.identity}"
 
     def options(self) -> Mapping[str, OptionValue]:
-        """Normalised options hashed into options_hash."""
+        """Normalised options hashed into options_hash; the OCR ones only with an engine."""
         opts: dict[str, OptionValue] = {"engine": _ENGINE, "fallback": "pdfminer.six"}
         opts.update({f"fallback.laparams.{k}": v for k, v in _LAPARAMS.items()})
         opts["max_page_bytes"] = self._cfg.max_page_bytes
         opts["scanned_min_chars"] = _SCANNED_MIN_CHARS
+        if self._ocr is not None:
+            opts.update(_OCR_OPTIONS)
+            opts.update(_PDF_OCR_OPTIONS)
         return opts
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
-        """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
+        """Convert one staged file; see the Converter protocol for pre/postconditions and errors.
+
+        With an OCR engine the helper works in a folder made beside ``src``, and OcrError (fixed wording)
+        means the engine failed on a file that converts without it."""
         with src.open("rb") as fh:
             if b"%PDF-" not in fh.read(1024):
                 raise ConversionError("not a PDF (no %PDF- header)")
@@ -517,25 +884,66 @@ class PdfConverter:
             raise UnreadableSourceError("empty PDF: no pages")
         # Rendered before the refusal below: a page counts as commented only when a line comes out.
         comments = {i: lines for i in sorted(found) if (lines := _render_comments(found[i]))}
-        if not comments and not any("".join(p.split()) for p in pages):
-            raise UnreadableSourceError(_NO_TEXT)
+        scanned = [i for i, text in enumerate(pages) if len("".join(text.split())) < _SCANNED_MIN_CHARS]
+        read = _OcrText()
+        if self._ocr is not None and engine == "pdfium":
+            texted = sorted(set(range(len(pages))).difference(scanned))
+            try:
+                read = _ocr_text(src, self._ocr, scanned, texted)
+            except Exception as exc:  # OcrError, or whatever else the pass let through
+                # What went wrong goes to the log, never into a page or a reason, and nothing half-read is
+                # returned: convert_file converts the file again without OCR.
+                detail = str(exc) if isinstance(exc, OcrError) else type(exc).__name__
+                log.warning("%s: on-device OCR failed: %s", name, detail)
+                raise OcrError(_OCR_FAILED) from None
+        if not comments and not any("".join(p.split()) for p in pages) and not any(read.pages.values()):
+            # _NO_TEXT is also the reason of a file OCR read to its end and found no text in.
+            raise UnreadableSourceError(
+                _NO_TEXT_PAST_LIMIT.format(MAX_PAGES) if read.over_limit else _NO_TEXT
+            )
         out: list[str] = []
-        scanned = 0
-        for n, text in enumerate(pages, start=1):
-            out += [f"<!-- page: {n} -->", ""]
-            if len("".join(text.split())) < _SCANNED_MIN_CHARS:
-                scanned += 1
-                out += [_SCANNED if not text.strip() else f"{text}\n\n{_SCANNED}", ""]
-            else:
+        outcomes = dict.fromkeys(_SCANNED_OUTCOMES, 0)  # marker -> the pages without a text layer it is on
+        without_text = set(scanned)
+        for i, text in enumerate(pages):
+            out += [f"<!-- page: {i + 1} -->", ""]
+            if i not in without_text:
                 out += [text, ""]
-            if n - 1 in comments:
-                out += [_COMMENTS_HEAD, *comments[n - 1], ""]
+                for lines in read.pictures.get(i, ()):
+                    out += [_OCR_PICTURE, *lines, ""]
+            elif read.pages.get(i):
+                outcomes[_OCR_READ] += 1
+                out += [*([text, ""] if text.strip() else []), _OCR_READ, "", *read.pages[i], ""]
+            else:
+                marker = _SCANNED  # not read: no engine, the fallback, or a page PDFium cannot render
+                if i in read.pages:
+                    marker = _OCR_NO_TEXT
+                elif i in read.over_limit:
+                    marker = _OCR_OVER_LIMIT
+                outcomes[marker] += 1
+                out += [marker if not text.strip() else f"{text}\n\n{marker}", ""]
+            if i in comments:
+                out += [_COMMENTS_HEAD, *comments[i], ""]
         body = "\n".join(out)
-        first = next((ln.strip() for p in pages for ln in p.split("\n") if len(ln.strip()) >= 3), "")
+        # The first line of three characters or more, in page order: a scanned cover gives the title.
+        first = next(
+            (
+                ln.strip()
+                for i, p in enumerate(pages)
+                for ln in (*p.split("\n"), *read.pages.get(i, ()))
+                if len(ln.strip()) >= 3
+            ),
+            "",
+        )
         title = first.lstrip("\\")[:120] if first else "Untitled PDF"
         summary = f"PDF: {len(pages)} page(s)"
-        if scanned:
-            summary += f", {scanned} without a text layer (scanned; OCR not run)"
+        for marker, clause in _SCANNED_OUTCOMES.items():
+            if outcomes[marker]:
+                summary += f", {outcomes[marker]} {clause}"
+        if read.pictures:
+            # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
+            summary += f"; text of {sum(map(len, read.pictures.values()))} picture(s) read by on-device OCR"
+        if read.pictures_cut:
+            summary += "; pictures past the OCR picture limit not read"
         if comments:
             # One line is one comment, so this counts the comments emitted, not lines of their text.
             summary += f"; {sum(map(len, comments.values()))} comment(s) on {len(comments)} page(s)"

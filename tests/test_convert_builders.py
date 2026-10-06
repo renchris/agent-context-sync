@@ -13,9 +13,11 @@ import struct
 import subprocess
 import zipfile
 import zlib
+from collections.abc import Mapping
 from email.message import EmailMessage
 from email.utils import format_datetime
 from pathlib import Path
+from typing import Any, NamedTuple
 
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
@@ -26,7 +28,9 @@ from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches
 
+from agentsync.convert.ocr import OcrEngine
 from agentsync.convert.pandoc import _bundled_pandoc
+from test_ocr import fake_engine
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
@@ -251,6 +255,141 @@ def build_commented_pdf(path: Path, *, text: bool = True) -> Path:
     return build_annotated_pdf(path, pages)
 
 
+class PdfPicture(NamedTuple):
+    """One picture of a ``build_picture_pdf`` page: an 8-bit gray image whose every pixel is ``shade``.
+
+    ``matrix`` is the PDF matrix it is drawn with (``"a b c d e f"``: a wide and d high from (e, f) when b
+    and c are 0).  ``px`` is its stored size.  With ``form`` it is drawn inside a form XObject that is itself
+    placed with that matrix.  ``pixels``, when given, are its gray pixels row by row in place of the one
+    shade (a real picture of text, for the real helper).  Pictures of one shade, size and pixels are one
+    image object."""
+
+    shade: int
+    matrix: str
+    px: tuple[int, int] = (96, 64)
+    form: str = ""
+    pixels: bytes = b""
+
+
+PICTURE_PAGE = (300, 200)
+"""The page size of ``build_picture_pdf``, in points: small, so a page renders fast at 300 dpi."""
+
+
+def page_picture(shade: int) -> PdfPicture:
+    """A picture that covers a whole ``build_picture_pdf`` page: what a scanner writes."""
+    return PdfPicture(shade, f"{PICTURE_PAGE[0]} 0 0 {PICTURE_PAGE[1]} 0 0")
+
+
+def build_picture_pdf(path: Path, pages: list[tuple[list[str], list[PdfPicture]]]) -> Path:
+    """A PDF whose pages hold text and pictures, for the OCR tests.
+
+    A page is ``(text lines, pictures)``, ``PICTURE_PAGE`` points in size.  Text is 12 pt Helvetica from
+    x = 20; line ``i`` has its baseline at y = 180 - 14 * i.  A page with no text line and a ``page_picture``
+    is a scanned page.  Rendered, such a page is the picture's shade from corner to corner, and a page with
+    no picture is white: the fake OCR helper of the converter tests tells images apart by that."""
+    width, height = PICTURE_PAGE
+    objs: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"",  # the page tree, written once the page numbers are known
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    images: dict[tuple[int, tuple[int, int], bytes], int] = {}
+    for _lines, pictures in pages:
+        for pic in pictures:
+            if (pic.shade, pic.px, pic.pixels) not in images:
+                data = zlib.compress(pic.pixels or bytes([pic.shade]) * (pic.px[0] * pic.px[1]))
+                objs.append(
+                    f"<< /Type /XObject /Subtype /Image /Width {pic.px[0]} /Height {pic.px[1]} "
+                    f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
+                    f"/Length {len(data)} >>\nstream\n".encode()
+                    + data
+                    + b"\nendstream"
+                )
+                images[pic.shade, pic.px, pic.pixels] = len(objs)
+    kids: list[str] = []
+    for lines, pictures in pages:
+        ops = ["BT", "/F1 12 Tf", "20 180 Td", "14 TL"]
+        ops += [f"({_pdf_escape(line)}) Tj T*" for line in lines]
+        ops.append("ET")
+        xobjects: list[str] = []
+        for n, pic in enumerate(pictures):
+            image = images[pic.shade, pic.px, pic.pixels]
+            if pic.form:  # the picture is the form's content; the form is what the page draws
+                inner = f"q {pic.matrix} cm /Im Do Q".encode()
+                head = (
+                    f"<< /Type /XObject /Subtype /Form /BBox [0 0 {width} {height}] "
+                    f"/Resources << /XObject << /Im {image} 0 R >> >> /Length {len(inner)} >>"
+                )
+                objs.append(head.encode() + b"\nstream\n" + inner + b"\nendstream")
+                image, matrix = len(objs), pic.form
+            else:
+                matrix = pic.matrix
+            xobjects.append(f"/X{n} {image} 0 R")
+            ops.append(f"q {matrix} cm /X{n} Do Q")
+        stream = "\n".join(ops).encode()
+        page_no = len(objs) + 1
+        kids.append(f"{page_no} 0 R")
+        objs.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources << /Font "
+            f"<< /F1 3 0 R >> /XObject << {' '.join(xobjects)} >> >> /Contents {page_no + 1} 0 R >>".encode()
+        )
+        objs.append(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>".encode()
+    out = bytearray(b"%PDF-1.6\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{off:010d} 00000 n \n".encode() for off in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.write_bytes(bytes(out))
+    return path
+
+
+# The fake OCR helper of tests/test_ocr.py reads what a test wrote into an image file.  A page PDFium rendered
+# and a picture it decoded hold only pixels, so this hook tells images apart by the gray of their first
+# pixel and answers from a table beside the helper.
+SHADE_HOOK = """\
+if "--" in args:
+    import struct, zlib
+    table = json.loads(Path(sys.argv[0] + ".shades").read_text())
+    results = []
+    for index, p in enumerate(args[args.index("--") + 1:]):
+        data = Path(p).read_bytes()
+        width, height = struct.unpack(">II", data[16:24])
+        said = table.get(str(zlib.decompressobj().decompress(data[data.index(b"IDAT") + 4:], 2)[1]), [])
+        if said == "fail":
+            sys.exit(3)
+        item = {"index": index, "frame": 0, "frames": 1, "width": width, "height": height, "lines": [],
+                "skipped": False}
+        if isinstance(said, dict):
+            item.update(said)
+        else:
+            item["lines"] = [{"text": t, "confidence": 1.0, "x": 0.1, "y": 0.1 + 0.06 * n, "w": 0.6,
+                              "h": 0.05} for n, t in enumerate(said)]
+        results.append(item)
+    print(json.dumps({"results": results}))
+    sys.exit(0)
+"""
+
+
+def shade_engine(folder: Path, said: Mapping[int, Any]) -> OcrEngine:
+    """An OCR engine for ``build_picture_pdf`` files: its fake helper 'reads' a PNG by the shade of its
+    first pixel.  ``said`` maps a shade to the lines read there, to the fields of an image the helper
+    reports instead (``{"error": "recognition failed"}``, ``{"skipped": True}``), or to ``"fail"``, which
+    makes a run that holds such an image exit 3.  A shade it does not name has no text.  255 is a page with
+    no picture on it."""
+    engine = fake_engine(folder)
+    text = engine.helper.read_text(encoding="utf-8")
+    at = 'if "--version" in args:'
+    assert at in text
+    engine.helper.write_text(text.replace(at, SHADE_HOOK + at, 1), encoding="utf-8")
+    Path(str(engine.helper) + ".shades").write_text(json.dumps(said), encoding="utf-8")
+    return engine
+
+
 def build_xlsx_rich(path: Path, *, rows: int = 10) -> Path:
     """Workbook with formulas (no cached values), a comment, a chart, a hidden sheet, a defined name, odd
     values (integral float, date, bool, pipe/newline text) and ``rows`` data rows."""
@@ -404,6 +543,9 @@ def test_builders_produce_valid_containers(tmp_path: Path) -> None:
     assert zipfile.is_zipfile(build_xlsx_rich(tmp_path / "r.xlsx"))
     assert zipfile.is_zipfile(build_pptx_rich(tmp_path / "r.pptx"))
     assert build_pdf(tmp_path / "a.pdf", [["x"]]).read_bytes().startswith(b"%PDF-1.4")
+    logo = PdfPicture(40, "96 0 0 64 150 20")
+    pictured = build_picture_pdf(tmp_path / "p.pdf", [(["x"], [logo]), ([], [logo, page_picture(90)])])
+    assert pictured.read_bytes().startswith(b"%PDF-1.6") and pictured.read_bytes().count(b"/Image") == 2
     commented = build_commented_pdf(tmp_path / "c.pdf").read_bytes()
     assert commented.startswith(b"%PDF-1.6") and commented.count(b"/Type /Annot") == 16
     assert (
