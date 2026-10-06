@@ -1586,6 +1586,20 @@ def test_the_pdfminer_fallback_runs_no_ocr(tmp_path: Path, monkeypatch: pytest.M
     assert calls(engine.helper) == [] and sorted(p.name for p in tmp_path.iterdir()) == ["bin", "s.pdf"]
 
 
+def test_an_encrypted_pdf_is_refused_before_ocr_looks_at_it(tmp_path: Path) -> None:
+    """A page of a PDF that may not be read is not rendered either: no page image, no run of the helper."""
+    engine = shade_engine(tmp_path / "bin", {255: ["never read"]})
+    locked = build_pdf(tmp_path / "locked.pdf", [[]], encrypt=True)
+    restricted = _owner_only_encrypted_pdf(tmp_path / "restricted.pdf")
+    for src in (locked, restricted):
+        with pytest.raises(UnreadableSourceError, match=r"^encrypted-pdf "):
+            _ocr_one(src, engine)
+    got = _through_the_cache(locked, Registry.default(CFG, ocr=engine), tmp_path / "cache")
+    assert got.status is ConversionStatus.UNREADABLE and str(got.reason).startswith("encrypted-pdf (")
+    assert calls(engine.helper) == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bin", "cache", "locked.pdf", "restricted.pdf"]
+
+
 def _png_pixels(data: bytes) -> tuple[int, int, int, list[bytes]]:
     """(width, height, colour type, rows) of a PNG as ``pdf._png`` writes one: one IDAT, no row filter."""
     assert data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82")
