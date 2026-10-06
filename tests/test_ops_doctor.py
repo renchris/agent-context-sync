@@ -14,6 +14,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Sequence
@@ -24,16 +25,21 @@ import pytest
 
 from agentsync import cli, gitops
 from agentsync.config import Config, parse_config
+from agentsync.convert import ocr
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results, run_checks
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
+from test_ocr import write_fake
 
 GIT = shutil.which("git") or "/usr/bin/git"
 REAL_GIT_PATH = doctor._git_path
 REAL_IN_LAUNCHD = doctor._in_launchd_job
 REAL_CODESIGN_INFO = doctor._codesign_info
 REAL_LAUNCHER_CANARY = doctor._launcher_canary
+REAL_OCR_STATUS = doctor._ocr_status
+REAL_DEVTOOLS_MISSING = doctor._devtools_missing
+OCR_READY = "paper-vision revision 2, helper 0.3.0"
 
 
 @pytest.fixture(autouse=True)
@@ -58,8 +64,13 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     def no_canary(exe: Path, path: Path, timeout_s: float) -> tuple[int, str]:
         raise AssertionError(f"reached a real launcher canary: {path}")
 
+    def no_xcode_select() -> bool:
+        raise AssertionError("reached real xcode-select")
+
     monkeypatch.setattr(doctor, "_codesign_info", no_codesign)
     monkeypatch.setattr(doctor, "_launcher_canary", no_canary)
+    monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("ready", OCR_READY))
+    monkeypatch.setattr(doctor, "_devtools_missing", no_xcode_select)
 
     def refuse(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         raise AssertionError(f"reached real launchctl: {argv}")
@@ -102,6 +113,7 @@ EXPECTED_ORDER = [
     "python",
     "git",
     "pandoc",
+    "ocr",
     "docs_repo.location",
     "docs_repo.git",
     "docs_repo.symlinks",
@@ -137,6 +149,7 @@ def test_happy_path_has_no_errors_and_fixed_order(sample_config: Config) -> None
         assert not r[name].ok and r[name].severity is Severity.INFO and r[name].fix is None, name
         assert r[name].detail.endswith(" not installed (optional background sync; see docs/deploy)"), name
     assert r["pandoc"].ok and r["pandoc"].detail.startswith("pandoc ")
+    assert r["ocr"].ok and r["ocr"].detail == f"on-device OCR is ready: {OCR_READY}"
     assert r["git"].ok and "git version" in r["git"].detail
     assert r["materialise.policy"].detail.startswith("process policy off")
     assert [x.name for x in run_checks(sample_config)] == names, "stable order"
@@ -1093,3 +1106,111 @@ def test_adhoc_launcher_fix_is_worded_for_it_under_no_next_hint(
         monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, value)
         r = by_name(run_checks(sample_config))["launcher.signature"]
         assert r.note is None and "SIGN_IDENTITY=" in (r.fix or "")
+
+
+# ------------------------------------------------------------------------------------------------ ocr
+
+
+def _real_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real probe on a Mac with OCR switched on (the suite switches it off, see conftest)."""
+    monkeypatch.setattr(doctor, "_ocr_status", REAL_OCR_STATUS)
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+
+def test_ocr_ready_and_off_are_ok(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("off", "[convert] ocr = false"))
+    r = by_name(run_checks(sample_config))["ocr"]
+    assert r.ok and r.detail == "on-device OCR is off: [convert] ocr = false"
+
+
+def test_ocr_not_built_is_an_info_line_and_doctor_never_builds(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decision D4: only scripts/install.sh compiles the helper.  With OCR on and nothing built, status
+    starts no build and no developer tool, writes nothing, and says who builds it."""
+    _real_ocr(monkeypatch)
+
+    def no_build(*args: object, **kwargs: object) -> None:
+        pytest.fail(f"doctor reached the OCR build: {args}")
+
+    for name in ("build", "_compile", "_tool", "_run_helper"):
+        monkeypatch.setattr(ocr, name, no_build)
+    for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
+        r = by_name(results)["ocr"]
+        assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
+        assert r.detail == "the OCR helper is not built; scripts/install.sh builds it"
+        assert errors([r]) == []
+    assert not (sample_config.cache_dir / "ocr").exists()
+    line = format_results([r])
+    assert line.startswith("[info] ocr") and "fix:" not in line
+
+
+def test_ocr_reads_the_helper_under_the_configured_cache_dir(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _real_ocr(monkeypatch)
+    helper = write_fake(ocr._helper_path(sample_config.cache_dir))
+    r = by_name(run_checks(sample_config))["ocr"]
+    assert r.ok and r.detail == f"on-device OCR is ready: {OCR_READY}"
+    assert by_name(run_checks(sample_config))["docs_repo.permissions"].ok, "the helper is owner-only"
+    helper.unlink()
+    ocr._marker(helper).write_text("swiftc did not build the OCR helper (exit 1): error: no such module\n")
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    r = by_name(run_checks(sample_config))["ocr"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
+    assert r.detail == (
+        "on-device OCR is not working: swiftc did not build the OCR helper (exit 1): error: no such module"
+    )
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_ocr_failed_is_a_warn_with_a_fix_only_without_developer_tools(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, missing: bool
+) -> None:
+    reason = "no Xcode or Command Line Tools (xcode-select -p names no folder)"
+    monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("failed", reason))
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: missing)
+    results = run_checks(sample_config)
+    r = by_name(results)["ocr"]
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"on-device OCR is not working: {reason}")
+    assert r.fix == ("xcode-select --install, then run scripts/install.sh again" if missing else None)
+    assert errors(results) == [], "OCR is optional: never a FAIL"
+    assert "agentsync doctor" not in format_results([r])
+
+
+def test_ocr_probe_crash_is_a_warn_without_the_exception_text(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def crash(cfg: Config) -> tuple[str, str]:
+        raise PermissionError(errno.EACCES, "Permission denied", str(cfg.cache_dir))
+
+    monkeypatch.setattr(doctor, "_ocr_status", crash)
+    results = run_checks(sample_config)
+    r = by_name(results)["ocr"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
+    assert r.detail == "on-device OCR could not be checked: PermissionError"
+    assert errors(results) == []
+
+
+def test_devtools_missing_asks_xcode_select_by_full_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[tuple[list[str], float]] = []
+    answers = iter([(0, f"{tmp_path}\n"), (0, f"{tmp_path / 'gone'}\n"), (2, ""), (0, "\n")])
+
+    def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        seen.append((list(argv), timeout))
+        rc, out = next(answers)
+        return subprocess.CompletedProcess(list(argv), rc, out, "")
+
+    monkeypatch.setattr(doctor, "_run", run)
+    assert [REAL_DEVTOOLS_MISSING() for _ in range(4)] == [False, True, True, True]
+    assert set(map(tuple, (argv for argv, _ in seen))) == {("/usr/bin/xcode-select", "-p")}
+    assert all(timeout <= 5.0 for _, timeout in seen)
+
+    def hang(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(list(argv), timeout)
+
+    monkeypatch.setattr(doctor, "_run", hang)
+    assert REAL_DEVTOOLS_MISSING() is False, "unknown: no fix is better than a wrong one"

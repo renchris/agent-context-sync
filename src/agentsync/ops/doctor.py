@@ -49,6 +49,11 @@ _AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
 # the only instruction in its output, so the ad hoc launcher's Developer ID fix (an IT action, nothing the
 # person or their agent does) reads ADHOC_IT_NOTE, with no ``fix:``.
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
+_XCODE_SELECT = "/usr/bin/xcode-select"
+_DEVTOOLS_TIMEOUT_S = 5.0
+# Only scripts/install.sh builds the OCR helper (convert/ocr.py), so both ocr texts name it and no command.
+_OCR_NOT_BUILT = "scripts/install.sh builds it"
+_OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 
 
 class Severity(enum.StrEnum):
@@ -126,6 +131,24 @@ def _pandoc_path(config: Config) -> Path:
     import pypandoc  # noqa: PLC0415 - lazy: optional at doctor import time
 
     return Path(pypandoc.__file__).parent / "files" / "pandoc"
+
+
+def _ocr_status(config: Config) -> tuple[str, str]:
+    """(state, detail) of the on-device OCR helper, from ``convert.ocr.probe``: it looks and never compiles;
+    the one program it may start is a built helper's ``--version``, which it gives 5 s."""
+    from agentsync.convert import ocr  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+
+    return ocr.probe(config.convert, config.cache_dir)
+
+
+def _devtools_missing() -> bool:
+    """True when ``xcode-select -p`` names no folder: no Xcode and no Command Line Tools.  Asked by full
+    path, never through the ``/usr/bin`` tool shims, which would open the install dialog."""
+    try:
+        cp = _run([_XCODE_SELECT, "-p"], timeout=_DEVTOOLS_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired):
+        return False  # unknown: no fix is better than a wrong one
+    return not (cp.returncode == 0 and cp.stdout.strip() and Path(cp.stdout.strip()).is_dir())
 
 
 def _materialize_policy() -> int:
@@ -373,6 +396,26 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
             "pandoc", f"{pandoc} --version failed (exit {cp.returncode}): {cp.stderr.strip()[:200]}", fix=fix
         )
     ]
+
+
+def _check_ocr(config: Config) -> list[CheckResult]:
+    """On-device OCR, which is optional: ok when the helper is ready or OCR is switched off; a not-ok INFO
+    line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
+    the reason when the last build failed or the helper may not be run, with a fix only when the developer
+    tools are missing.  Never a FAIL: a probe that crashes is a WARN too."""
+    try:
+        state, detail = _ocr_status(config)
+    except Exception as exc:
+        log.debug("doctor: the OCR probe crashed", exc_info=True)
+        return [_bad("ocr", f"on-device OCR could not be checked: {type(exc).__name__}", Severity.WARN)]
+    if state == "ready":
+        return [_ok("ocr", f"on-device OCR is ready: {detail}")]
+    if state == "off":
+        return [_ok("ocr", f"on-device OCR is off: {detail}")]
+    if state == "not-built":
+        return [_bad("ocr", f"{detail}; {_OCR_NOT_BUILT}", Severity.INFO)]
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
 
 
 def _check_config(config: Config) -> list[CheckResult]:
@@ -1316,6 +1359,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("python", _check_python),
     ("git", _check_git),
     ("pandoc", _check_pandoc),
+    ("ocr", _check_ocr),
     ("config", _check_config),
     ("docs_repo", _check_docs_repo),
     ("permissions", _check_permissions),
@@ -1355,7 +1399,8 @@ def _tcc_canary_skipped(config: Config) -> list[CheckResult]:
 def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
 
-    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; docs_repo
+    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; on-device
+    OCR ready, off, not built (INFO) or failed (WARN), never built here and never a FAIL; docs_repo
     outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
     sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:

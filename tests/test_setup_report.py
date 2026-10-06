@@ -1694,6 +1694,33 @@ def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, P
     assert "unexpected 1: network.proxy warn" in summary
 
 
+def test_ocr_not_built_is_an_info_line_and_an_ocr_warn_is_unexpected(fake_mac: dict[str, Path]) -> None:
+    """Doctor's ``ocr`` line when the helper is not built is INFO: shown, never counted as a problem, so
+    ``expected_warn`` needs no entry for it.  An ``ocr`` warn means OCR is broken: unexpected, with its fix,
+    and (OCR being optional) with the same outcome."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    info = "[info] ocr — the OCR helper is not built; scripts/install.sh builds it"
+    warn = (
+        "[warn] ocr — on-device OCR is not working: no Xcode or Command Line Tools (xcode-select -p names "
+        "no folder) (fix: xcode-select --install, then run scripts/install.sh again)"
+    )
+
+    def outcome(text: str) -> str:
+        return next(ln for ln in section(text, "Summary").splitlines() if ln.startswith("- **outcome:"))
+
+    text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", info])
+    assert info in section(text, "Doctor")
+    assert "- doctor: 0 FAIL, 0 warn (2 checks) · unexpected 0" in summary
+    assert setup_report.expected_warn("ocr", info.split(" — ", 1)[1], agents_installed=False) is None
+    built = outcome(text)
+
+    text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
+    assert warn in section(text, "Doctor"), "an unexpected warn keeps its fix"
+    assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: ocr warn" in summary
+    assert outcome(text) == built
+
+
 def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
