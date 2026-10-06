@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 ---
 
 # Plan: the fastest test suite that still earns its place
@@ -160,3 +160,12 @@ Same machine, same night, load average never under 20.
 About 5 times faster under heavier load than the baseline had. All seven parallel full-suite runs this session
 were green (four before the audit edits, three after), and `~/.claude/skills/agentsync-docs` did not exist after
 any pytest run.
+
+CI, on the 3-core `macos-15` runner: the pytest step went from 10 min 55 s (run 37422459338, the commit before)
+to 5 min 29 s (run 37427410960), and the whole `ci` run from 11 min 26 s to 6 min 18 s.
+
+## DONE (2026-10-06)
+
+Landed on `main` as 455c67a (43551fd parallel gate, 1496b2d test edits, d44fe78 and 455c67a this plan); `ci`
+and `diagrams` both green for that sha. All five work items are closed: measured, parallelised, pruned on
+evidence, gate shape decided (full suite, parallel), and no removal large enough to need the operator.

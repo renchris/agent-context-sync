@@ -42,7 +42,7 @@ for id in $(gh run list --commit "$(git rev-parse HEAD)" --json databaseId --jq 
 done
 ```
 
-The list can be empty for a few seconds after the push; retry. `ci` takes about 10 minutes.
+The list can be empty for a few seconds after the push; retry. `ci` takes about 6 minutes.
 
 Before starting work, check trunk: `gh run list --branch main --limit 5`. A red run on `main` is fixed
 before unrelated work lands on top of it. Read the failure with `gh run view <id> --log-failed`.
