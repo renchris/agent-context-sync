@@ -99,7 +99,10 @@ All hashes are lowercase hex sha256 (64 chars) unless named otherwise.
 Opened with `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`. `meta` keys: `manifest_schema_version`
 (= `MANIFEST_SCHEMA_VERSION`), `key_schema_version` (= `convert.cache.KEY_SCHEMA_VERSION`), `tree_sha`,
 `written_at_ns`. A version mismatch raises `ManifestSchemaError` (never silently re-derived). The `cursors` table
-is secret: it is never exported, and the DB lives outside `docs/` on the state volume.
+is secret: it is never exported, and the DB lives outside `docs/` on the state volume. **Amended (2026-10-06,
+§16.22):** one more key per local or inbox source, `empty_cloud_dirs:<source id>`: the zero-child cloud folders
+its last walk found, a JSON list of root-relative paths (`""` for none), written by the cycle and read by
+`loop.next_step`.
 
 **Amended (2026-10-04, KISS K12):** opening the manifest, from any caller (a cycle, `status`, `purge`), migrates an
 OLDER `manifest_schema_version` or `key_schema_version` forward in one `BEGIN IMMEDIATE` transaction, after copying
@@ -477,7 +480,9 @@ discovery lives in `graph/discover.py` (`agentsync discover`).
 `arm_local.walk` uses `os.scandir` + `lstat` only: never follows symlinks, never opens a file, emits files only,
 records `SF_DATALESS` (0x40000000 in `st_flags`) as `dataless`, `gen_count` via `getattrlist(ATTR_CMN_GEN_COUNT)`
 (None/0 = unknown ⇒ hash to confirm), and reports zero-child cloud directories and EPERM (TCC) directories as
-`unknown_dirs` (never empty). A configured `sentinel` must be present or the pass is incomplete. `materialise`
+`unknown_dirs` (never empty). **Amended (2026-10-06, §16.22):** the zero-child cloud directories below the root
+are also returned on their own, as `WalkStats.empty_cloud_dirs`. A configured `sentinel` must be present or the
+pass is incomplete. `materialise`
 is the only place bytes of a sync-root file are read: THREAD-scope `IOPOL_MATERIALIZE_DATALESS_FILES_ON` around a
 tmp-copy, budget charged first, EDEADLK (11) → `DatalessRefusedError`, ETIMEDOUT (60) → retry with backoff then
 `ProviderTimeoutError`, vanished → `FileNotFoundError`, changed mid-copy → `MaterialiseError`. Converters only

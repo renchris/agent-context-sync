@@ -35,9 +35,10 @@ folder listing shows, configured or not; kept when only listed: a few generic na
 and a name made only of coding-agent product words such as ``Copilot``, so the agent's own name stays
 readable) and every configured source folder path component (``<folder-N>``), a configured source folder
 elsewhere under the home folder from its project folder down, and that project folder's name (``<folder-N>``
-too; folders beside the docs repo are agentsync's own), every configured source id but agentsync's own words
-such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex
-fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
+too; the inbox kept beside the docs repo is agentsync's own, and so is every folder beside it unless that
+parent is itself a generic folder such as ``~/Documents``), every configured source id but agentsync's own
+words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``),
+hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
 (``<commit-N>``), the serial number (``<serial>``), the host and computer names (``<host>``), proxy hosts
 (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
