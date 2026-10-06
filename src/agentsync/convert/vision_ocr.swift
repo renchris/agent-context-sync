@@ -237,38 +237,91 @@ func withoutCopies(_ reads: [Read]) -> [Read] {
     return kept
 }
 
+/// The one word that the last word of a piece and the first word of the next piece are both readings of, or
+/// nil when they have neither text nor a box in common.
+///
+/// `head` and `tail` lie over each other: a word wider than the band, cut in both tiles, or a word inside the
+/// band that one tile or both hold whole.  `tailIsSurer` says which line Vision read with more confidence.
+/// The end of `head` and the start of `tail` are the same ink, so the same characters, but for the glyph at
+/// each end (Vision misreads half a glyph: it is not compared) and one misreading in eight.  Of the lengths
+/// at which they agree, the one nearest what the shared width predicts is taken: the longest would shorten
+/// a word that repeats itself (a row of dots).  The shared run is the surer reading's, but for the glyph at
+/// the end where that reading may be cut, which is the other one's.
+func meeting(_ head: Word, _ tail: Word, lineHeight: Double, tailIsSurer: Bool) -> Word? {
+    let (h, t) = (Array(head.text), Array(tail.text))
+    let perCharacter = (head.x1 - head.x0 + tail.x1 - tail.x0) / Double(max(h.count + t.count, 1))
+    let expected = perCharacter > 0 ? (head.x1 - tail.x0) / perCharacter : 0
+    var best: (shared: Int, off: Double)?
+    for shared in stride(from: min(h.count, t.count), through: 2, by: -1) {
+        let off = abs(Double(shared) - expected)
+        guard Double(2 * shared) >= expected, off < (best?.off ?? .infinity) else { continue }
+        let compared = shared >= 4 ? 1..<(shared - 1) : 0..<shared
+        let misread = compared.filter { h[h.count - shared + $0] != t[$0] }.count
+        if misread <= compared.count / 8 { best = (shared, off) }
+    }
+    guard let shared = best?.shared else {
+        // No text in common.  Two boxes that coincide are still one whole word read twice: keep the surer.
+        let near = 0.5 * lineHeight
+        guard abs(head.x0 - tail.x0) < near, abs(head.x1 - tail.x1) < near else { return nil }
+        return tailIsSurer ? tail : head
+    }
+    let (ours, theirs) = (h.suffix(shared), t.prefix(shared))  // the same ink, read twice
+    let run = tailIsSurer ? ours.prefix(1) + theirs.dropFirst() : ours.dropLast() + theirs.suffix(1)
+    let text = String(h.dropLast(shared) + run + t.dropFirst(shared))
+    return Word(text: text, x0: min(head.x0, tail.x0), x1: max(head.x1, tail.x1))
+}
+
 /// One reading from the pieces of a line that neighbouring tiles each saw part of.
 ///
 /// The tiles share a band a quarter of a tile wide.  A word at a tile edge may be cut, so the last word of
 /// the left piece and the first of the right piece are never used: each is taken from the other piece, which
-/// sees it whole.  The seam sits mid-band, moved so that it falls between two words.
+/// sees it whole.  The seam sits mid-band, moved so that it falls between two words.  When those two words
+/// lie over each other they are one word, in both pieces: `meeting` says which, and it goes in once.
 func joined(_ parts: [Read], columns: [(x: Double, width: Double)]) -> Read {
     var out = parts[0]
     out.open = parts[0].cutLeft || parts[parts.count - 1].cutRight
     guard parts.count > 1 else { return out }
+    func most(_ word: Word, in others: [Word]) -> Int? {  // the one that shares the most width with `word`
+        func shared(_ i: Int) -> Double { min(word.x1, others[i].x1) - max(word.x0, others[i].x0) }
+        return others.indices.max(by: { shared($0) < shared($1) })
+    }
     var words: [Word] = []
-    var carried: [Word] = []
+    var carried: [Word] = []  // the word joined at the seam before: it stands for this piece's first `taken`
+    var taken = 0
     var from = -Double.infinity
     for (n, part) in parts.enumerated() {
+        var mine = carried + part.words.dropFirst(taken)
         var to = Double.infinity
-        var carry: [Word] = []
+        (carried, taken) = ([], 0)
         if n + 1 < parts.count {
             let other = parts[n + 1]
+            let theirs = other.words
             let band = (lo: columns[other.col].x, hi: columns[part.col].x + columns[part.col].width)
-            let upper = part.words.last?.x0 ?? band.hi
-            let lower = other.words.first?.x1 ?? band.lo
+            let upper = mine.last?.x0 ?? band.hi
+            let lower = theirs.first?.x1 ?? band.lo
             to = min(max((band.lo + band.hi) / 2, lower), upper)
-            if lower > upper {
-                // One word wider than the band is cut in both pieces.  Keep the right piece's copy.
-                out.open = true
-                carry = Array(other.words.prefix(1))
-            } else if let word = part.words.dropLast().first(where: { $0.x0 < to && to < $0.x1 }) {
+            if lower > upper, let last = mine.last, let tailAt = most(last, in: theirs),
+                let headAt = most(theirs[tailAt], in: mine)
+            {
+                // Vision may split the glyph at a cut off as a word of its own, so the two readings are the
+                // pair of words that share the most width; a word between them is such a splinter.
+                let (head, tail) = (mine[headAt], theirs[tailAt])
+                let lineHeight = min(part.lineHeight, other.lineHeight)
+                let surer = other.confidence > part.confidence
+                if let whole = meeting(head, tail, lineHeight: lineHeight, tailIsSurer: surer) {
+                    carried = [whole]
+                } else {  // the two readings do not meet: keep both, as a piece
+                    out.open = true
+                    carried = [head, tail]
+                }
+                mine.removeSubrange(headAt...)
+                (taken, to) = (tailAt + 1, .infinity)
+            } else if let word = mine.dropLast().first(where: { $0.x0 < to && to < $0.x1 }) {
                 to = min(word.x1, upper)
             }
         }
-        words += carried
-        words += part.words.filter { ($0.x0 + $0.x1) / 2 >= from && ($0.x0 + $0.x1) / 2 < to }
-        (carried, from) = (carry, to)
+        words += mine.filter { ($0.x0 + $0.x1) / 2 >= from && ($0.x0 + $0.x1) / 2 < to }
+        from = carried.isEmpty ? to : -.infinity
         out.x0 = min(out.x0, part.x0)
         out.y0 = min(out.y0, part.y0)
         out.x1 = max(out.x1, part.x1)

@@ -6054,7 +6054,11 @@ whenever it was written, 64 on a usage error.
   the next by a quarter. A tile reads small text at full size, so a line that a tile holds from end to end
   replaces the whole-image reading of it. A line cut by a tile edge is only a piece: its pieces from
   neighbouring tiles are joined word by word (the word at each cut edge is taken from the other tile, which
-  sees it whole). A piece with an end still cut never replaces and never removes another reading: it is kept
+  sees it whole). A word wider than the overlap is cut in both tiles: its two parts are joined where their
+  texts repeat each other, at the length the shared width predicts (the glyph at each cut is not compared and
+  one letter in eight may differ; the shared letters are the surer reading's). A word inside the overlap,
+  whole in both tiles, is kept once. Two parts whose texts do not meet are both kept, and the line stays a
+  piece. A piece with an end still cut never replaces and never removes another reading: it is kept
   only where nothing else read that line. A whole-image line is dropped only when the complete tile readings
   of that line hold at least 90% as many characters (text, not width: the whole-image box of small text is
   off by a character or two). Two readings are the same line by the line's centre, not its box, so the
@@ -6129,9 +6133,14 @@ page both ways, a tall label, input order, the depth limit; `read`: arguments, w
 budget, every helper failure, each malformed answer; `probe` and `engine`: the four states, no tool started,
 each trust refusal, each bad `--version`, `OSError`s; `build` with stub `xcode-select`, `xcrun` and `swiftc`
 under umask 022: modes and `doctor._group_other_readable`, the marker's life, pruning; the module entry point;
-the packaged source; and one test that builds and runs the real helper where developer tools exist: a line
-across a tile seam whole and once, small labels on a large canvas, EXIF orientation 6, a three-page TIFF, an
-icon, an over-limit image, a PDF named `.png`, an empty file). `tests/test_config.py` pins the key.
+the packaged source; and two tests that need developer tools. One builds and runs the real helper: a line
+across a tile seam whole and once, small labels on a large canvas, a word wider than the tile overlap and one
+inside it, EXIF orientation 6, a three-page TIFF, an icon, an over-limit image, a PDF named `.png`, an empty
+file. The other compiles the helper's source with a test main in place of its argument handling and runs
+`stitched` on made-up tile readings, so the joining is tested without Vision: a sentence, a word each tile
+cuts, misread cut glyphs, a splinter at the cut, a word inside the overlap, one a glyph wider than it, a word
+wider than a tile, a row of dots, a misreading by the less sure tile, two parts that do not meet).
+`tests/test_config.py` pins the key.
 The fake helper kit (`write_fake`, `fake_image`, `fake_engine`) is there for the converter tests.
 `tests/test_ops_doctor.py` (the `ocr` line in each state; with OCR on and nothing built, `run_checks` and
 `cli._status_checks` reach no build, no developer tool and no helper; the fix only without developer tools; a

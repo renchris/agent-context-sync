@@ -1044,11 +1044,23 @@ def test_the_real_helper_reads_whole_lines_across_tiles_rotations_and_frames(
     # 6. A three-page TIFF.
     pages = [sheet(1200, 800, (100, 100, 48, f"Scanned page number {n}")) for n in (1, 2, 3)]
     pages[0].save(tmp_path / "pages.tiff", save_all=True, append_images=pages[1:])
+    # 7. Words wider than the 384 px two tiles share, small on a canvas so wide that only the tiles read
+    #    them.  The first starts at x = 1090 and runs past 1536: each tile of the seam cuts it.  The second
+    #    sits inside the shared 1152..1536: both tiles read all of it.
+    chain, fits = "-".join(words[:11]), "-".join(words[:8])
+    measure = font_module.truetype(FONT, 16).getlength
+    wide_texts = [f"see {chain} for the details", fits]
+    sheet(
+        8000,
+        1500,
+        (1090 - round(measure("see ")), 400, 16, wide_texts[0]),
+        (1152 + round((384 - measure(fits)) / 2), 1000, 16, fits),
+    ).save(tmp_path / "wide.png")
 
     names = ["plain.png", "seam.png", "labels.png", "turned.jpg"]
-    names += ["icon.png", "huge.png", "renamed.png", "empty.png"]
+    names += ["icon.png", "huge.png", "renamed.png", "empty.png", "wide.png"]
     results = vision.read([tmp_path / n for n in names], work_dir=tmp_path, budget_s=300)
-    (plain,), (seam,), (small,), (turned,), (icon,), (huge,), (renamed,), (empty,) = results
+    (plain,), (seam,), (small,), (turned,), (icon,), (huge,), (renamed,), (empty,), (wide,) = results
     if plain.error == "recognition failed":
         pytest.skip("Apple Vision text recognition does not run on this machine")
 
@@ -1070,6 +1082,12 @@ def test_the_real_helper_reads_whole_lines_across_tiles_rotations_and_frames(
     assert (huge.error, huge.skipped, huge.width) == ("too large", False, 8000)
     assert (renamed.error, empty.error) == ("unsupported image type", "not an image")
 
+    def outline(text: str) -> list[tuple[int, str, str]]:
+        """Each word's length and ends, not every letter: a word a seam repeats, splits or shortens shows."""
+        return [(len(word), word[:3], word[-3:]) for word in text.casefold().split()]
+
+    assert [outline(ln.text) for ln in wide.lines] == [outline(text) for text in wide_texts]
+
     (frames,) = vision.read([tmp_path / "pages.tiff"], work_dir=tmp_path, budget_s=300, frames=ocr.MAX_PAGES)
     assert [(f.frame, f.frames, said(f)) for f in frames] == [
         (n, 3, [f"scanned page number {n + 1}"]) for n in range(3)
@@ -1084,3 +1102,164 @@ def test_the_real_helper_reads_whole_lines_across_tiles_rotations_and_frames(
     for bad in ([], ["--no-correction", "x.png"], ["--tile", "100", "x.png"], ["--frames", "0", "x.png"]):
         usage = subprocess.run([str(vision.helper), *bad], capture_output=True, check=False)
         assert usage.returncode == 64 and usage.stdout == b"", bad
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the helper's tile joining on made-up readings (developer tools only; Vision recognises nothing here)
+# ---------------------------------------------------------------------------------------------------------
+
+SEAM_MAIN = """
+struct SeamWord: Decodable { let text: String; let x0: Double; let x1: Double }
+struct SeamRead: Decodable {
+    let col: Int
+    let confidence: Float
+    let cutLeft: Bool
+    let cutRight: Bool
+    let words: [SeamWord]
+}
+struct SeamLine: Encodable { let text: String; let open: Bool }
+let seamCases = try! JSONDecoder().decode(
+    [[SeamRead]].self, from: FileHandle.standardInput.readDataToEndOfFile())
+let seamColumns = starts(PAGE, TILE).map { (x: Double($0), width: Double(min(TILE, PAGE - $0))) }
+emit(seamCases.map { readings -> [SeamLine] in
+    let reads = readings.map { reading -> Read in
+        let words = reading.words.map { Word(text: $0.text, x0: $0.x0, x1: $0.x1) }
+        var read = Read(
+            text: words.map { $0.text }.joined(separator: " "), confidence: reading.confidence,
+            x0: words[0].x0, y0: 100, x1: words[words.count - 1].x1, y1: 120, leftY: 110, rightY: 110,
+            lineHeight: 20, words: words)
+        (read.col, read.cutLeft, read.cutRight) = (reading.col, reading.cutLeft, reading.cutRight)
+        return read
+    }
+    return stitched(reads, columns: seamColumns).map { SeamLine(text: $0.text, open: $0.open) }
+})
+"""
+PAGE = 4000
+COLUMNS = (0, 1152, 2304, 3456)  # where the helper's 1536 px tiles start on a page 4000 px wide
+GLYPH = 10
+NEAR = 30  # the helper takes an end this close to an inner tile edge for a cut one (1.5 line heights of 20)
+
+
+@pytest.fixture(scope="session")
+def seams(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The packaged helper source with its argument handling replaced by a test main: tile readings in on
+    stdin, the lines ``stitched`` makes of them out.  The joining code is the helper's own, compiled as is."""
+    if not _have_devtools():
+        pytest.skip("needs macOS with developer tools (swiftc) to compile the helper's tile joining")
+    folder = tmp_path_factory.mktemp("ocr-seams")
+    code, banner, _ = ocr._source().decode("utf-8").partition("// arguments\n")
+    assert banner, "the helper source no longer has its '// arguments' section"
+    main = SEAM_MAIN.replace("PAGE", str(PAGE)).replace("TILE", str(ocr._TILE_PX))
+    (folder / "main.swift").write_text(code + main, encoding="utf-8")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HOME", str(tmp_path_factory.mktemp("ocr-seams-home")))
+        subprocess.run(
+            ["/usr/bin/xcrun", "swiftc", *ocr._build_flags(), "-o", "seams", "main.swift"],
+            cwd=folder,
+            env=ocr._env(),
+            check=True,
+            capture_output=True,
+            timeout=300,
+        )
+    return folder / "seams"
+
+
+def set_line(x: int, text: str) -> list[tuple[int, str]]:
+    """``(x, word)`` for each word of ``text``, set from ``x`` in glyphs 10 px wide with one between words."""
+    out = []
+    for word in text.split():
+        out.append((x, word))
+        x += GLYPH * (len(word) + 1)
+    return out
+
+
+def tiles_see(line: list[tuple[int, str]], *, cut: str = "") -> list[dict[str, Any]]:
+    """What each tile reports for one line, the way the helper's ``readTiles`` hands it to ``stitched``.  A
+    glyph a tile edge runs through is dropped, or read as ``cut``."""
+    readings = []
+    for col, left in enumerate(COLUMNS):
+        right = min(left + ocr._TILE_PX, PAGE)
+        words = []
+        for x, word in line:
+            cells = [(x + GLYPH * n, x + GLYPH * (n + 1), glyph) for n, glyph in enumerate(word)]
+            seen = [(a, b, g) for a, b, g in cells if left <= a and b <= right]
+            if not seen:
+                continue
+            (start, _, _), (_, end, _) = seen[0], seen[-1]
+            before = cut if any(a < left < b for a, b, _ in cells) else ""
+            after = cut if any(a < right < b for a, b, _ in cells) else ""
+            text = before + "".join(g for _, _, g in seen) + after
+            words.append({"text": text, "x0": left if before else start, "x1": right if after else end})
+        if words:
+            near_left = col > 0 and words[0]["x0"] - left <= NEAR
+            near_right = col + 1 < len(COLUMNS) and right - words[-1]["x1"] <= NEAR
+            readings.append(
+                {"col": col, "confidence": 1.0, "cutLeft": near_left, "cutRight": near_right, "words": words}
+            )
+    return readings
+
+
+def test_tile_pieces_are_joined_into_whole_lines_with_every_word_once(seams: Path) -> None:
+    """Two tiles share 384 px.  The words at a seam are taken from the tile that holds them whole; a word
+    wider than the seam, which each tile cuts, is put together from its two parts; a word inside the seam,
+    which both tiles hold whole, is kept once."""
+    chain = "-".join(
+        ["amber", "birch", "cedar", "delta", "ember", "frost", "grove", "haven", "ivory", "jade"]
+    )
+    sentence = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"
+    wide = f"see {chain}-koala for the details"  # the long word is 1040..1680: cut at 1536 and at 1152
+    inside = chain[:35]  # set at 1160 it ends at 1510: all of it is in both tiles, near an edge of each
+    rope = f"start {chain}-{chain}-{chain} finish"  # 1060..2820: wider than a whole tile, so two seams
+    dots = "Contents" + "." * 90 + "12"
+    cases: dict[str, tuple[list[dict[str, Any]], str, bool]] = {
+        "a sentence": (tiles_see(set_line(900, sentence)), sentence, False),
+        "a word each tile cuts": (tiles_see(set_line(1000, wide)), wide, False),
+        "with the cut glyphs misread": (tiles_see(set_line(1000, wide), cut="#"), wide, False),
+        "a word inside the seam": (tiles_see(set_line(1160, inside)), inside, False),
+        # 1147..1537: each tile cuts one glyph of it and misreads it, and the two boxes all but coincide.
+        "a word a glyph wider than the seam": (
+            tiles_see(set_line(1147, chain[:39]), cut="#"),
+            chain[:39],
+            False,
+        ),
+        "a word wider than a tile": (tiles_see(set_line(1000, rope)), rope, False),
+        "a row of dots": (tiles_see(set_line(1000, dots)), dots, False),
+    }
+    # Vision splits the start of the right tile's part off as a word of its own.
+    splinter = tiles_see(set_line(1000, wide), cut="#")
+    part = splinter[1]["words"][0]
+    splinter[1]["words"][:1] = [
+        {"text": part["text"][:2], "x0": part["x0"], "x1": part["x0"] + GLYPH},
+        {"text": part["text"][2:], "x0": part["x0"] + GLYPH, "x1": part["x1"]},
+    ]
+    cases["a splinter at the cut"] = (splinter, wide, False)
+    # One tile is less sure and misread two letters of what both tiles saw: the other tile's are kept.
+    for name, unsure in (("the left tile misreads", 0), ("the right tile misreads", 1)):
+        misread = tiles_see(set_line(1000, wide))
+        misread[unsure]["confidence"] = 0.5
+        word = misread[unsure]["words"][1 - unsure]
+        word["text"] = word["text"].replace("delta", "de1ta").replace("frost", "trost")
+        cases[name] = (misread, wide, False)
+    for name, garbled in (
+        ("one misreading", inside.replace("birch", "b1rch")),
+        ("no text in common", "x" * 35),
+    ):
+        both = tiles_see(set_line(1160, inside))
+        both[0]["confidence"], both[0]["words"][0]["text"] = 0.5, garbled
+        cases[f"a word inside the seam, one reading surer: {name}"] = (both, inside, False)
+    # The two parts share no text: both are kept and the line stays a piece, so nothing read is lost.
+    unmet = tiles_see(set_line(1000, wide))
+    unmet[1]["words"][0]["text"] = "x" * len(unmet[1]["words"][0]["text"])
+    head, tail = unmet[0]["words"][1]["text"], unmet[1]["words"][0]["text"]
+    cases["two parts that do not meet"] = (unmet, f"see {head} {tail} for the details", True)
+
+    answer = subprocess.run(
+        [str(seams)],
+        input=json.dumps([readings for readings, _, _ in cases.values()]).encode(),
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    got = dict(zip(cases, json.loads(answer.stdout), strict=True))
+    for name, (_, text, still_open) in cases.items():
+        assert got[name] == [{"open": still_open, "text": text}], name
