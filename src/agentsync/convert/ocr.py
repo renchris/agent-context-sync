@@ -170,7 +170,7 @@ def _run_helper(helper: Path, args: Sequence[str], *, timeout: float, cwd: Path 
     refusal = _untrusted(helper)
     if refusal is not None:
         raise OcrError(refusal)
-    try:
+    try:  # no new session: the helper stays in the LaunchAgent's process group, which launchd cleans up
         cp = subprocess.run(
             [str(helper), *args],
             cwd=cwd,

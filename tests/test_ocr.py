@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from agentsync import governance
 from agentsync.config import ConvertConfig
 from agentsync.convert import ocr
 from agentsync.convert.cache import ConverterCache
@@ -673,10 +674,12 @@ def test_an_os_error_is_a_reason_never_an_exception(tmp_path: Path, monkeypatch:
 
 
 def test_the_converter_cache_leaves_the_helper_folder_alone(tmp_path: Path) -> None:
-    """The helper lives under the converter cache's root: its sweep must not take it for a stale entry."""
+    """The helper lives under the converter cache's root: neither the cache's sweep nor a purge's search for
+    cache entries may take it for one."""
     helper = place_fake(tmp_path)
     cache = ConverterCache(tmp_path)
     (tmp_path / "ab" / "stale-key").mkdir(parents=True)
+    assert governance._cache_entries(tmp_path, {"some-key"}, {"some-hash"}) == []
     assert cache.gc([]) == 1
     assert helper.is_file() and ocr.probe(CFG, tmp_path)[0] == "ready"
 
@@ -867,9 +870,11 @@ def test_a_build_that_hangs_is_stopped_and_recorded(
 
 
 def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp_path: Path) -> None:
-    """A cycle that started before an upgrade may still be running the previous helper."""
+    """A cycle that started before an upgrade may still be running the previous helper.  An earlier build left
+    its helper and folder readable by everyone: what stays is made owner-only."""
     folder = tmp_path / "cache" / "ocr"
     folder.mkdir(parents=True)
+    folder.chmod(0o755)
     names = {
         "agentsync-ocr-0000000000000000": 8,  # a helper from an earlier agentsync, last built 8 days ago
         "agentsync-ocr-0000000000000000.failed": 8,
@@ -895,6 +900,7 @@ def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp
         ".build-running": 0o700,
         "notes.txt": 0o755,
     }
+    assert mode(folder) == 0o700
 
 
 # ---------------------------------------------------------------------------------------------------------
