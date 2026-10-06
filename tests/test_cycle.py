@@ -5,9 +5,11 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -18,10 +20,11 @@ import httpx
 import pytest
 
 from agentsync import arm_local as al
+from agentsync import curate, gitops, governance, loop, materialise, slug
 from agentsync import cycle as cycle_mod
-from agentsync import gitops, governance, loop, slug
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
+from agentsync.convert import ocr
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import LockHeldError
 from agentsync.graph.client import GraphClient
@@ -30,9 +33,13 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, PassKind, RowState, ScanResult, Verdict
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
+from agentsync.paths import DocsLayout
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
+from test_convert_image import picture, picture_bytes, reads
 from test_e2e import GRAPH_SOURCE, SID, FakeDrive, FakeTokens, clock, config_with, git, page, porcelain
+from test_ocr import calls, fake_engine, write_fake
+from test_review_fixes import committed_blobs_containing
 
 
 class Crash(BaseException):
@@ -1320,3 +1327,240 @@ def test_a_finished_policy_rescreen_reports_no_backlog_for_a_file_that_waits_lat
     assert "## Content policy" not in state_md.read_text(encoding="utf-8")
     with Manifest(config.state_paths.db) as m:
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+
+
+# ---------------------------------------------------------------------------------------------------------
+# on-device OCR: the cycle looks for the engine, reads images on this Mac, within a time budget
+# ---------------------------------------------------------------------------------------------------------
+
+SITE_PLAN = "projects/Contoso Site Plan.png"
+
+
+def _use_ocr(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **kw: Any) -> Any:
+    """Every cycle from now on finds this fake OCR engine, as after an install that built the helper."""
+    engine = fake_engine(tmp_path / "ocr-bin", **kw)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    return engine
+
+
+def _image_page(config: Config, rel: str, sid: str = SID) -> tuple[dict[str, Any], str]:
+    return page(config.docs_repo, slug.mirror_rel_path(sid, rel))
+
+
+def test_an_image_on_this_mac_is_read_once_in_the_staging_folder(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).exit_code == 0
+    fm, body = _image_page(sample_config, SITE_PLAN)
+    assert fm["status"] == "current" and fm["converter"].startswith("image-ocr@2.0.0+ocr-paper-vision-")
+    assert fm["source_title"] == "Contoso Site Plan.png", "the unit has no title: the shown name stands in"
+    assert fm["summary"] == "Image 800x600 px; OCR: 2 line(s)"
+    assert body.startswith("> [UNTRUSTED CONTENT]") and body.rstrip().endswith(
+        "[image · 800x600 px · text read by on-device OCR (Apple Vision)]\n\nLoading dock\nNorth gate: closed"
+    )
+    (call,) = calls(engine.helper)
+    staging = sample_config.state_paths.staging.resolve()
+    assert Path(call["cwd"]).parent == staging, "the helper works under the cycle's staging folder"
+    assert Path(call["args"][-1]).parent == Path(call["cwd"]) and list(staging.iterdir()) == []
+    assert SITE_PLAN in fetched
+    again = run(sample_config)
+    assert again.commit_sha is None and fetched.count(SITE_PLAN) == 1 and len(calls(engine.helper)) == 1
+
+
+def test_the_cycle_looks_for_the_engine_once_and_never_under_a_dry_run(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    looked: list[Path] = []
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, cache_dir: looked.append(cache_dir))
+    assert run(sample_config, mode=CycleMode.DRY_RUN).exit_code == 0 and looked == []
+    assert run(sample_config).exit_code == 0 and looked == [sample_config.cache_dir]
+
+
+def test_the_cycle_engine_is_what_ocr_engine_finds_and_none_when_ocr_is_off(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    helper = write_fake(ocr._helper_path(sample_config.cache_dir))
+    assert cycle_mod._cycle_ocr(sample_config) is None, "AGENTSYNC_OCR=0, the suite's own switch"
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    found = cycle_mod._cycle_ocr(sample_config)
+    assert found is not None and found.helper == helper and found.spent_s == 0.0
+    assert found.identity == "ocr-paper-vision-r2-h0.3.0-l1"
+    off = dataclasses.replace(sample_config, convert=dataclasses.replace(sample_config.convert, ocr=False))
+    assert cycle_mod._cycle_ocr(off) is None, "[convert] ocr = false"
+
+
+def test_the_cycle_engine_adds_up_the_helper_time_of_reads_that_fail_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plain = fake_engine(tmp_path / "bin")
+    metered = cycle_mod._CycleOcr(plain.helper, name=plain.name, revision=2, helper_version="0.3.0")
+    ticks = iter([10.0, 12.5, 20.0, 21.0])
+    monkeypatch.setattr(cycle_mod, "_ocr_clock", lambda: next(ticks))
+    (frames,) = metered.read([picture(tmp_path / "a.png", "read")], work_dir=tmp_path, budget_s=60)
+    assert ocr.text_lines(frames[0]) == ["read"] and metered.spent_s == 2.5
+    with pytest.raises(ocr.OcrError):
+        metered.read([tmp_path / "gone.png"], work_dir=tmp_path, budget_s=60)
+    assert metered.spent_s == 3.5 and metered.identity == plain.identity
+
+
+def test_the_ocr_budget_defers_the_images_past_it_and_a_cache_hit_costs_nothing(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder of thousands of screenshots is read over many cycles. Each read here 'takes' 100 s, so the
+    180 s budget is passed by the second and the rest wait, as files past ``max_files`` do: the loop says to
+    sync again."""
+    assert run(sample_config).exit_code == 0
+    engine = _use_ocr(monkeypatch, tmp_path)
+    ticks = itertools.count(0.0, 100.0)
+    monkeypatch.setattr(cycle_mod, "_ocr_clock", lambda: next(ticks))
+    shots = [picture(local_source_dir / "shots" / f"shot {n}.png", f"screenshot {n}") for n in range(5)]
+    pages = [sample_config.docs_repo / slug.mirror_rel_path(SID, f"shots/{p.name}") for p in shots]
+    seen: list[tuple[int, int, int]] = []
+    for _cycle in range(3):
+        [rep] = run(sample_config).sources
+        seen.append((rep.converted, rep.deferred, rep.deferred_online_only))
+        assert sum(p.is_file() for p in pages) == sum(done for done, _d, _o in seen)
+        assert (loop.next_step(sample_config).rule == 3) is (rep.deferred > 0)
+    assert seen == [(2, 3, 0), (2, 1, 0), (1, 0, 0)]
+    read = [Path(run[0]).name for run in reads(engine.helper)]
+    assert sorted(read) == sorted(p.name for p in shots), "every image is read once, none twice"
+    assert all(
+        page(sample_config.docs_repo, slug.mirror_rel_path(SID, f"shots/{p.name}"))[0]["status"] == "current"
+        for p in shots
+    )
+    # Three more files with bytes already converted: the cache serves them, so no helper time is spent on
+    # them and none of them waits, although one read alone would pass the budget.
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 50.0)
+    for n, shot in enumerate(shots[:3]):
+        shutil.copyfile(shot, local_source_dir / "shots" / f"copy {n}.png")
+    [rep] = run(sample_config).sources
+    assert (rep.converted, rep.deferred) == (3, 0) and len(reads(engine.helper)) == 5
+
+
+def test_an_online_only_image_is_not_downloaded_for_ocr(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No image was ever downloaded, and OCR does not start it: while reading an image means a download it
+    keeps the stub it has without an engine, whatever the byte budget and even when ``materialise`` names
+    it. An image already on this Mac is read."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    local = picture(local_source_dir / SITE_PLAN, "Loading dock")
+    photo = picture(local_source_dir / "projects" / "Contoso Offsite Photo.heic", "Welcome")
+    rel = "projects/Contoso Offsite Photo.heic"
+    online = {photo.stat().st_ino}
+    real = materialise.is_dataless
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in online or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    fetched = _fetches(monkeypatch)
+    [rep] = run(sample_config).sources
+    assert SITE_PLAN in fetched and rel not in fetched
+    assert rep.materialised_bytes == 0 and (rep.deferred, rep.deferred_online_only) == (0, 0)
+    fm, _body = _image_page(sample_config, rel)
+    assert (fm["status"], fm["reason"], fm["converter"]) == ("refused", "no converter for .heic", "none@0")
+    assert _image_page(sample_config, SITE_PLAN)[0]["status"] == "current"
+    assert [Path(run[0]).name for run in reads(engine.helper)] == [local.name]
+    assert loop.next_step(sample_config).rule != 3, "nothing waits for a download budget"
+    run(sample_config)
+    run(sample_config, materialise_paths=[photo], budget_bytes=10_000_000)
+    assert rel not in fetched and len(reads(engine.helper)) == 1
+    assert _image_page(sample_config, rel)[0]["status"] == "refused"
+    # The person downloads it (Finder's Download Now). That changes the inode: its flags, so its change
+    # time. The walk sees the row moved, and the file, now on this Mac, is read.
+    online.clear()
+    photo.chmod(0o600)
+    assert run(sample_config).exit_code == 0 and fetched.count(rel) == 1
+    fm, body = _image_page(sample_config, rel)
+    assert fm["status"] == "current" and body.rstrip().endswith("Welcome")
+
+
+def test_a_graph_image_is_not_downloaded_for_ocr(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = _use_ocr(monkeypatch, tmp_path)
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
+    drive = FakeDrive(
+        {"I1": ("notes.md", b"# Notes\n"), "I2": ("Contoso Site Plan.png", picture_bytes("Loading dock"))}
+    )
+    with GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    ) as client:
+        assert run(config, client=client, only=["drive"]).exit_code == 0
+    assert any(entry.endswith("/items/I1/content") for entry in drive.log)
+    assert not any("I2" in entry for entry in drive.log), drive.log
+    fm, _body = page(config.docs_repo, "mirror/drive/projects/contoso-site-plan.png.md")
+    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .png") and reads(engine.helper) == []
+
+
+def test_an_image_the_helper_failed_on_gets_a_stub_with_fixed_wording_and_is_settled_like_any_failure(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cycle treats a failed OCR read as it treats every failed conversion: the next cycle reads the file
+    again, finds the same bytes and an intact stub, and settles the row without converting. So an image the
+    helper fails on every time costs one read, and its error is reported once; new bytes are converted."""
+    failing = fake_engine(tmp_path / "failing", fail=True)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    plan = picture(local_source_dir / SITE_PLAN, "Loading dock")
+    [rep] = run(sample_config).sources
+    fm, body = _image_page(sample_config, SITE_PLAN)
+    assert (fm["status"], fm["reason"]) == ("unreadable", "conversion failed: on-device OCR failed")
+    assert rep.errors == (f"{SITE_PLAN}: conversion failed: on-device OCR failed",)
+    assert "the fake helper was told to fail" not in body + str(fm), "what the helper said stays in the log"
+    again = run(sample_config)
+    assert again.commit_sha is None and again.sources[0].errors == () and len(reads(failing.helper)) == 1
+    assert _file_rows(sample_config)[SITE_PLAN].state is RowState.QUARANTINED
+    assert loop.next_step(sample_config).rule != 3, "a failed image does not keep the loop syncing"
+    healthy = _use_ocr(monkeypatch, tmp_path)
+    assert run(sample_config).commit_sha is None and reads(healthy.helper) == [], "settled: not read again"
+    picture(plan, "Loading dock", "East gate: open")
+    assert run(sample_config).commit_sha is not None and len(reads(healthy.helper)) == 1
+    fm, body = _image_page(sample_config, SITE_PLAN)
+    assert fm["status"] == "current" and body.rstrip().endswith("Loading dock\nEast gate: open")
+
+
+def test_an_image_without_text_is_a_settled_stub_outside_the_curation_queue(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page per logo would be curation work for ever. The stub is cached and settled: nothing reads the
+    file again, and the curation queue, which lists every current page no topic cites, does not hold it."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    logo = "projects/Contoso logo.png"
+    picture(local_source_dir / logo)
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    assert run(sample_config).exit_code == 0
+    fm, body = _image_page(sample_config, logo)
+    assert (fm["status"], fm["reason"]) == ("unreadable", "no text found in the image by on-device OCR")
+    assert "[image" not in body
+    uncovered = curate.uncovered_mirror_pages(DocsLayout(root=sample_config.docs_repo), [])
+    assert slug.mirror_rel_path(SID, SITE_PLAN) in uncovered
+    assert slug.mirror_rel_path(SID, logo) not in uncovered
+    assert _file_rows(sample_config)[logo].last_verdict is Verdict.QUARANTINED
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).commit_sha is None and fetched == [] and len(reads(engine.helper)) == 2
+    assert loop.next_step(sample_config).rule != 3
+
+
+def test_a_credential_read_from_an_image_is_quarantined_like_any_other_text(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The secret scan reads every page a cycle writes, and what OCR read is in the page (the summary, which
+    is front matter, holds none of it): a screenshot of a key is a ``contains a credential`` stub."""
+    _use_ocr(monkeypatch, tmp_path)
+    key = "AKIA" + "ABCDEFGHIJKLMNOP"
+    console = "projects/Contoso console.png"
+    picture(local_source_dir / console, "Access keys", f"aws key {key}")
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    fm, body = _image_page(sample_config, console)
+    assert fm["reason"] == "contains a credential" and key not in body + str(fm)
+    assert not committed_blobs_containing(sample_config.docs_repo, key.encode())

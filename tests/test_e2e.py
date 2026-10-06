@@ -451,19 +451,23 @@ def test_g_never_materialised_placeholder_is_deferred_then_materialised(
     assert page(repo, mirror("projects/board-pack.docx.md"))[0]["status"] == "current"
 
 
+@pytest.mark.parametrize("name", ["clip.mp4", "diagram.png"])
 def test_g_unknown_type_is_refused_without_reading_it(
-    synced: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+    synced: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
+    """A video has no converter. Nor has an image on a Mac with no OCR engine (here: the suite's switch),
+    and there it is refused exactly as it was before OCR existed."""
     repo = synced.docs_repo
-    (local_source_dir / "projects" / "clip.mp4").write_bytes(b"\0" * 4096)
+    (local_source_dir / "projects" / name).write_bytes(b"\0" * 4096)
     fetched = _fetch_spy(monkeypatch)
     report = run(synced)
     assert fetched == []  # no converter -> REFUSED stub, zero bytes read (never hydrate a video to refuse it)
-    fm, _ = page(repo, mirror("projects/clip.mp4.md"))
-    assert fm["status"] == "refused" and "no converter" in fm["reason"]
+    fm, _ = page(repo, mirror(f"projects/{name}.md"))
+    assert fm["status"] == "refused" and fm["reason"] == f"no converter for {Path(name).suffix}"
+    assert fm["converter"] == "none@0"
     assert report.commit_sha is not None
     tsv = (repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
-    assert "projects/clip.mp4" in tsv
+    assert f"projects/{name}" in tsv
     assert run(synced).commit_sha is None
 
 

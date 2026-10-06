@@ -55,9 +55,11 @@ from agentsync.arm_local import (
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
-from agentsync.convert import convert_file
+from agentsync.convert import convert_file, ocr
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.canonical import canonical_hash
+from agentsync.convert.image import ImageConverter
+from agentsync.convert.ocr import OcrEngine, OcrImage
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
 from agentsync.errors import (
     AgentSyncError,
@@ -127,6 +129,13 @@ _NEVER_TRIPS = BreakerConfig(fraction=1.0, floor=10**12, hold_days=0)
 _WORK_BATCH = 256  # work-queue rows per manifest transaction (one commit + fsync per batch)
 _LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml")
 """Names whose content can carry a sensitivity label: re-screened when the effective [policy] changes."""
+_OCR_BUDGET_S = 180.0
+"""The seconds of on-device OCR one cycle may use before it starts no more: the images still waiting are
+deferred like files past ``max_files``, so a folder of thousands of screenshots is read over many cycles and
+never holds one cycle (or the installer's first sync) for an hour. The read that passes the budget finishes;
+a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``)."""
+_NO_CONVERTERS = Registry([])
+_ocr_clock = time.monotonic
 _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
@@ -673,6 +682,35 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
 # ---------------------------------------------------------------------------------------------------------
 
 
+class _CycleOcr(OcrEngine):
+    """The OCR engine of one cycle: the engine found on this Mac, adding up the seconds its helper ran. Every
+    converter of the cycle reads through it, so ``spent_s`` is all the OCR the cycle did; a conversion the
+    cache served never reaches it."""
+
+    spent_s = 0.0
+
+    def read(
+        self, images: Sequence[Path], *, work_dir: Path, budget_s: float, frames: int = 1
+    ) -> list[tuple[OcrImage, ...]]:
+        """As ``OcrEngine.read``; the seconds it took, whether or not it worked, are added to ``spent_s``."""
+        start = _ocr_clock()
+        try:
+            return super().read(images, work_dir=work_dir, budget_s=budget_s, frames=frames)
+        finally:
+            self.spent_s += _ocr_clock() - start
+
+
+def _cycle_ocr(config: Config) -> _CycleOcr | None:
+    """The engine one cycle converts with, or None: no helper is built, ``[convert] ocr = false`` or
+    ``AGENTSYNC_OCR=0`` (``ocr.engine``, which never compiles and never raises)."""
+    found = ocr.engine(config.convert, config.cache_dir)
+    if found is None:
+        return None
+    return _CycleOcr(
+        found.helper, name=found.name, revision=found.revision, helper_version=found.helper_version
+    )
+
+
 @dataclass(slots=True)
 class _SourceAcc:
     """Mutable per-source accumulator for one cycle (becomes a SourceReport)."""
@@ -757,7 +795,10 @@ class _Cycle:
         self.held_clouds: set[Path] = set()
         # [policy] (sources.toml + policy.toml): a broken policy raises ConfigError (exit 78), never "allow"
         self.publisher = Publisher(config, manifest, clock=clock)
-        self.registry = Registry.default(config.convert, policy=self.publisher.content_policy)
+        # The OCR engine is looked for once per cycle, here, and never under a dry run: looking runs the
+        # helper's --version. Without one every converter is what it was before OCR existed.
+        self.ocr = None if self.dry else _cycle_ocr(config)
+        self.registry = Registry.default(config.convert, policy=self.publisher.content_policy, ocr=self.ocr)
         self.cache = ConverterCache(config.cache_dir)
         self.gov = governance.load_governance(config.config_path)
         self.suppressions = governance.load_suppressions(config.state_paths.root)
@@ -1831,17 +1872,34 @@ class _Cycle:
         )  # fmt: skip
 
     # ---- one item -----------------------------------------------------------------------------------------
-    def _no_converter(self, row: ItemRow) -> ConversionResult | None:
-        if self.registry.for_name(row.name) is not None:
+    def _ocr_image(self, row: ItemRow) -> bool:
+        """True when ``row`` is an image this cycle's registry reads by OCR."""
+        conv = self.registry.for_name(row.name)
+        return conv is not None and conv.converter_id == ImageConverter.converter_id
+
+    def _no_converter(self, src: SourceConfig, row: ItemRow) -> ConversionResult | None:
+        """The refusal of a file nothing converts, decided from its name: no byte is read for it.
+
+        An image OCR would read is refused the same way while reading it means a download (an online-only
+        file, any Graph item). No image was ever downloaded, and hydrating a photo library is the operator's
+        choice, never a side effect of OCR: the image keeps the stub it has without an engine. Only an image
+        already on this Mac is read."""
+        if self.registry.for_name(row.name) is not None and not (
+            self._ocr_image(row) and (src.kind.is_graph or row.dataless)
+        ):
             return None
         return convert_file(
             self.staging / "unused",
             name=row.name,
             content_sha256="",
             canonical_sha256="",
-            registry=self.registry,
+            registry=_NO_CONVERTERS,
             cache=self.cache,
         )
+
+    def _ocr_spent(self, row: ItemRow) -> bool:
+        """True when ``row`` is an image for OCR and this cycle has used its OCR time (``_OCR_BUDGET_S``)."""
+        return self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S and self._ocr_image(row)
 
     def _process(
         self, src: SourceConfig, arm: SourceArm, row: ItemRow, budget: ByteBudget, acc: _SourceAcc
@@ -1849,7 +1907,7 @@ class _Cycle:
         sid, stable = row.source_id, row.stable_id
         if row.state_reason == HYDRATION_REFUSED:  # re-decided below: only a new refusal sets it again
             self.manifest.set_state(sid, stable, row.state, None)
-        refused = self._no_converter(row)
+        refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
             self._publish(src, row, refused, acc)
             return
@@ -1875,6 +1933,9 @@ class _Cycle:
             return
         if not budget.can_afford(_download_cost(src, row)):
             self._defer(src, row, budget, acc)
+            return
+        if self._ocr_spent(row):  # a file on this Mac that waits: the next sync reads it (loop rule 3)
+            self._defer(src, row, budget, acc, online_only=False)
             return
         try:
             fetched = arm.fetch(_item_from_row(row), self.staging, budget)

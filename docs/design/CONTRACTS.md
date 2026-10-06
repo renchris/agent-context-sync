@@ -3702,7 +3702,8 @@ class NetworkConfig:
 - **Step 5, suppression.** Items purged for any reason other than upstream deletion are dropped from every scan
   (`governance.load_suppressions(state_dir).matches(source_id, stable_id, rel_path)`), so they are never
   re-fetched or re-published while they still exist upstream.
-- **Step 6, content policy.** `Registry.default(config.convert, policy=Publisher.content_policy)` (policy =
+- **Step 6, content policy.** `Registry.default(config.convert, policy=Publisher.content_policy)`
+  (**amended 2026-10-06, §16.26:** and `ocr=`, the OCR engine the cycle found, or None) (policy =
   `[policy]` ∪ `policy.toml`; an invalid one raises ConfigError → exit 78, never "allow"). Before a fetch,
   `Publisher.policy_refusal(row)` refuses an item whose Graph label is excluded **without downloading it**.
   `convert.convert_file` screens labels **before** the cache lookup (H1 ignores `LabelInfo.xml`/`docProps`, so a
@@ -6560,3 +6561,47 @@ byte limit without opening the next picture, one failing picture among five, the
 rule) and `tests/test_convert_determinism.py` (an image converted twice, and from the cache under a second
 name). `picture`, `picture_bytes`, `rows` and `MAGIC` in `tests/test_convert_image.py` build test images
 for the fake helper of `tests/test_ocr.py`.
+
+**The cycle** (amends §9 and §16.3 step 6).
+
+- **One engine per cycle.** `_Cycle.__init__` asks `ocr.engine(config.convert, config.cache_dir)` once
+  (`cycle._cycle_ocr`) and hands the result to `Registry.default(..., ocr=)`. A dry run never asks: looking
+  for the engine runs the helper's `--version`. No engine (no helper built, `[convert] ocr = false`,
+  `AGENTSYNC_OCR=0`, not macOS) leaves the registry as it was before OCR existed.
+- **Where the helper works** (plan D13). In the staged file's own folder, `<staging>/<key>/`, which the cycle
+  removes after each file and wipes at the start of every cycle. Nothing is written to `$TMPDIR`.
+- **Online-only images are not downloaded** (plan D9). No image was ever downloaded, and hydrating a photo
+  library is the operator's choice, not a side effect of OCR. While reading an image would be a download (a
+  local or inbox file the walk saw online-only, or any Graph item), `_no_converter` refuses it from its name
+  exactly as without an engine: the `no converter for .png` stub (`converter: none@0`), no byte read, nothing
+  charged to `max_materialise_bytes`, nothing for `loop` to wait on, and `materialise PATH` naming it changes
+  nothing. An image on this Mac is read. The rule looks at the manifest row, as `_download_cost` does. Once
+  the person has downloaded the file, the next sync reads it when the walk sees the row changed; a download
+  changes the file's flags, so its inode's change time. That was not checked against a real File Provider
+  here: the test moves the change time by hand.
+- **A time budget per cycle.** The cycle's engine (`_CycleOcr`, an `OcrEngine` that times itself) adds up
+  the seconds every `read` took, failed reads included; a conversion the cache served never reaches it. Once
+  `spent_s` reaches `_OCR_BUDGET_S` (180 seconds), each image still in the queue is deferred like a file past
+  `max_files`: `Verdict.DEFERRED`, counted in `deferred` and not in `deferred_online_only`, and loop rule 3
+  says to sync again while files on this Mac wait. The read that passes the budget finishes, so one cycle
+  spends at most the budget plus one document's 300 seconds. A folder of thousands of screenshots is read
+  over many cycles; no cycle, and not the installer's first sync, is held for an hour by it.
+- **A failed read.** `OcrError` makes the result FAILED: the `conversion failed: on-device OCR failed` stub,
+  never cached, and the file's line in the source's errors. The cycle then treats the row as it treats every
+  failed conversion: the next cycle reads the file again, finds the same bytes and an intact stub, and
+  settles the row (`TOUCHED_NOT_CHANGED`) without converting. So the helper is not run on that image again
+  until its bytes change, an image the helper fails on every time costs one read, and the row is
+  quarantined, so `loop` does not wait on it. (Whether a failed conversion should be converted again while
+  its file is unchanged is a question for every converter, and is not decided here.)
+
+Tests: `tests/test_cycle.py` (an image read once, under the staging folder, its page and front matter, and
+not again by the next cycle; the engine looked for once per cycle and never under a dry run;
+`_cycle_ocr` against a helper in `<cache_dir>/ocr` with the two switches; `_CycleOcr` adding up a read that
+worked and one that failed; five images against a budget two reads pass, converted 2, 2 and 1 over three
+cycles with rule 3 between them, then three copies served by the cache in a cycle whose budget one read would
+pass; an online-only image beside a local one, under a byte budget, named to `materialise`, and after it
+is downloaded; a Graph image whose content is never requested; an image the
+helper failed on: its stub, one error line, no second read by the next cycle, and its new bytes converted;
+an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
+image's text: a `contains a credential` stub, the key in no committed object)
+and `tests/test_e2e.py` (without an engine a `.png` is refused unread, as a `.mp4` is).
