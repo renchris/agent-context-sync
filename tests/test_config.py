@@ -252,6 +252,17 @@ def test_graph_company_line_names_the_line_to_delete(text: str, line: int | None
     assert parse(text, tmp_path).graph_company_line == line
 
 
+def test_convert_ocr_is_one_boolean_key_that_defaults_to_on(tmp_path: Path) -> None:
+    """Decision D2: the one switch a LaunchAgent run sees too.  Languages and page caps are constants."""
+    assert parse("", tmp_path).convert.ocr is True
+    assert parse("[convert]\nocr = false\n", tmp_path).convert.ocr is False
+    with pytest.raises(ConfigError, match=r"\[convert\]: 'ocr' must be true or false, got 'off'"):
+        parse('[convert]\nocr = "off"\n', tmp_path)
+    for dropped in ('ocr_languages = ["en-US"]', "ocr_max_pages = 7"):
+        with pytest.raises(ConfigError, match="unknown key"):
+            parse(f"[convert]\n{dropped}\n", tmp_path)
+
+
 def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) -> None:
     src = sample_config.source("local-fixture")
     assert src.kind is SourceKind.LOCAL

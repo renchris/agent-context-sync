@@ -1288,11 +1288,12 @@ class GraphConfig:
 
 @dataclass(frozen=True, slots=True)
 class ConvertConfig:
-    """Converter options; every field participates in the converters' ``options_hash``."""
+    """Converter options; every field but ``ocr`` participates in the converters' ``options_hash``."""
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
+    ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
 
 @dataclass(frozen=True, slots=True)
 class SourceConfig:

@@ -115,7 +115,7 @@ _GRAPH_KEYS = frozenset(
 _CLOUDS = frozenset({"global", "usgov", "usgov-dod", "china"})
 _BREAKER_KEYS = frozenset({"fraction", "floor", "hold_days"})
 _CONVERT_KEYS = frozenset(
-    {"xlsx_stream_threshold_bytes", "max_rows_per_sheet", "max_page_bytes", "pandoc_path"}
+    {"xlsx_stream_threshold_bytes", "max_rows_per_sheet", "max_page_bytes", "pandoc_path", "ocr"}
 )
 _COMMON_SOURCE_KEYS = frozenset(
     {
@@ -195,12 +195,13 @@ class NetworkConfig:
 
 @dataclass(frozen=True, slots=True)
 class ConvertConfig:
-    """Converter options; every field participates in the converters' ``options_hash``."""
+    """Converter options; every field but ``ocr`` participates in the converters' ``options_hash``."""
 
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
+    ocr: bool = True  # False = never build or run the on-device OCR helper (convert/ocr.py)
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,6 +550,7 @@ def parse_config(text: str, *, config_path: Path) -> Config:
         max_rows_per_sheet=_int(c, "max_rows_per_sheet", cw, 5000, minimum=1),
         max_page_bytes=parse_size(c.get("max_page_bytes", 1_000_000), where=f"{cw}: max_page_bytes"),
         pandoc_path=expand(pandoc) if pandoc else None,
+        ocr=_bool(c, "ocr", cw, True),
     )
 
     raw_sources = doc.get("source", [])
