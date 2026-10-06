@@ -423,7 +423,7 @@ def test_pdf_is_pypdfium2_and_says_so() -> None:
     assert not any("comment" in key for key in opts)  # the emitter version alone moves the action key
 
 
-def _pdfium_cannot_load(_src: Path, _name: str) -> tuple[list[str], dict[int, list[object]]]:
+def _pdfium_cannot_load(_src: Path, _name: str) -> tuple[list[str], dict[int, list[object]], int]:
     raise pdf_mod._EngineUnavailableError("PDFium cannot load the PDF: Data format error")
 
 
@@ -732,7 +732,10 @@ def test_pdf_comment_line_labels_quote_cap_and_repeated_text() -> None:
 
 @pytest.mark.parametrize(
     ("kind", "failing", "blocks_lost", "summary"),
-    [("pdfium", 1, 1, "PDF: 3 page(s); 2 comment(s) on 1 page(s)"), ("other", 3, 2, "PDF: 3 page(s)")],
+    [
+        ("pdfium", 1, 1, "PDF: 3 page(s); 2 comment(s) on 1 page(s); comments not read on 1 page(s)"),
+        ("other", 3, 2, "PDF: 3 page(s); comments not read on 3 page(s)"),
+    ],
 )
 def test_pdf_comment_failure_keeps_the_document(
     tmp_path: Path,
@@ -744,7 +747,8 @@ def test_pdf_comment_failure_keeps_the_document(
     summary: str,
 ) -> None:
     """Comments that cannot be read cost a page its comments, not the file its PDFium text: a PdfiumError
-    here must not send the file to the pdfminer fallback.  One log line per file, however many pages."""
+    here must not send the file to the pdfminer fallback.  The summary counts the pages, so the page does
+    not read as one nobody commented on.  One log line per file, however many pages."""
     import pypdfium2  # noqa: PLC0415
 
     error: Exception = RuntimeError("boom")
@@ -768,6 +772,20 @@ def test_pdf_comment_failure_keeps_the_document(
     assert [r.getMessage() for r in caplog.records] == [
         f"c.pdf: comments not read on {failing} page(s), first on page 1: {type(error).__name__}: {error}"
     ]
+
+
+def test_pdf_with_no_text_and_no_comment_read_is_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Comments on a scan that cannot be read leave nothing to show.  The stub already says the file was
+    not read, so it needs no clause."""
+
+    def unreadable(*_args: object) -> list[pdf_mod._Comment]:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(pdf_mod, "_page_comments", unreadable)
+    with pytest.raises(UnreadableSourceError, match="no text layer"):
+        PdfConverter(CFG).convert(build_commented_pdf(tmp_path / "scan.pdf", text=False), name="scan.pdf")
 
 
 def test_pdf_fallback_reads_no_comments_and_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

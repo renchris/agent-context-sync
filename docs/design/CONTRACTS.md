@@ -5725,8 +5725,9 @@ Draft wording of the summary
 ```
 
 One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets
-no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary). The one
-exception is the summary of a PDF the pdfminer fallback converts (Fallback, below): its body is unchanged.
+no block, and a PDF without comments renders byte for byte as under 2.0.0 (body, title and summary). The two
+exceptions are summaries, never bodies: a PDF the pdfminer fallback converts (Fallback, below) and one with a
+page whose comments could not be read (Failure, below).
 
 - **What counts.** Fifteen annotation subtypes, each with the word a reader knows it by: Text `Note`, FreeText
   `Text box`, Line `Line`, Square `Box`, Circle `Circle`, Polygon `Polygon`, PolyLine `Polyline`, Highlight
@@ -5756,14 +5757,18 @@ exception is the summary of a PDF the pdfminer fallback converts (Fallback, belo
   readable. A comment whose `/IRT` names itself or an annotation that is not listed stands on its own. Comments
   in an `/IRT` cycle come after the others, in file order. Every comment read is emitted once.
 - **Summary.** `; N comment(s) on M page(s)` follows the page count and the scanned clause. N is the number of
-  comments emitted, M the number of pages with a block. The summary carries no comment text and no author.
+  comments emitted, M the number of pages with a block. `; comments not read on K page(s)` follows it when K
+  pages' comments could not be read (Failure, below). The summary carries no comment text and no author.
 - **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
   …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
 - **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
-  returns `(page texts, {page index: comments})`. An exception while one page's comments are read costs that
-  page its comments and nothing else: the page keeps its text, the file stays with PDFium (never the pdfminer
-  fallback) and the conversion does not fail. One WARNING per file says so: `<name>: comments not read on N
-  page(s), first on page K: <type>: <message>`. The summary does not.
+  returns `(page texts, {page index: comments}, pages whose comments were not read)`. An exception while one
+  page's comments are read costs that page its comments and nothing else: the page keeps its text, the file
+  stays with PDFium (never the pdfminer fallback) and the conversion does not fail. The summary ends `; comments
+  not read on K page(s)`, a count only, so such a page does not read as one nobody commented on and the comment
+  count does not read as complete. One WARNING per file gives the first cause: `<name>: comments not read on K
+  page(s), first on page P: <type>: <message>`. A PDF with no text on any page and no comment read is still
+  refused as `no text layer …`, whatever K is.
 - **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
   not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
   file has any, so every PDF it converts carries the clause.

@@ -12,7 +12,8 @@ Comments are kept (emitter 2.1.0).  A reviewer's notes, replies, text boxes and 
 sit outside the text layer, so a commented copy used to convert to the same text as the original.  They are
 read from the page PDFium already has open and follow that page's text under ``[comments on this page (PDF
 annotations):]``, one line per comment.  An annotation that carries no text and marks none is skipped, and so
-is one no viewer shows (the Hidden or NoView flag).  The pdfminer fallback reads none; the summary says so.
+is one no viewer shows (the Hidden or NoView flag).  The pdfminer fallback reads none, and a page whose
+comments PDFium cannot read keeps its text; the summary says so in both cases.
 """
 
 from __future__ import annotations
@@ -122,10 +123,11 @@ def _pdfium_version() -> str | None:
     return f"pypdfium2-{_dist_version('pypdfium2')}+pdfium-{pypdfium2.PDFIUM_INFO}"
 
 
-def _pdfium_pages(src: Path, name: str) -> tuple[list[str], dict[int, list[_Comment]]]:
-    """Raw text of every page via PDFium, plus the comments of each page that has any (by page index);
-    raises UnreadableSourceError when encrypted, else _EngineUnavailableError when PDFium cannot load the
-    file.  ``name`` only labels the log line for pages whose comments cannot be read."""
+def _pdfium_pages(src: Path, name: str) -> tuple[list[str], dict[int, list[_Comment]], int]:
+    """Raw text of every page via PDFium, the comments of each page that has any (by page index), and how
+    many pages' comments could not be read; raises UnreadableSourceError when encrypted, else
+    _EngineUnavailableError when PDFium cannot load the file.  ``name`` only labels the log line for those
+    pages."""
     try:
         import pypdfium2  # noqa: PLC0415 - heavy native import
         import pypdfium2.raw as pdfium_c  # type: ignore[import-untyped]  # noqa: PLC0415
@@ -169,7 +171,7 @@ def _pdfium_pages(src: Path, name: str) -> tuple[list[str], dict[int, list[_Comm
                 page.close()
         if unread:  # one line per file: a build that cannot read annotations would log every page
             log.warning("%s: comments not read on %d page(s), first on %s", name, unread, first_error)
-        return pages, comments
+        return pages, comments, unread
     except pypdfium2.PdfiumError as exc:
         raise _EngineUnavailableError(f"PDFium failed on a page: {exc}") from exc
     finally:
@@ -432,8 +434,9 @@ class PdfConverter:
                 raise ConversionError("not a PDF (no %PDF- header)")
         engine = "pdfium"
         found: dict[int, list[_Comment]] = {}
+        unread = 0
         try:
-            raw_pages, found = _pdfium_pages(src, name)
+            raw_pages, found, unread = _pdfium_pages(src, name)
         except _EngineUnavailableError as exc:
             log.info("%s: %s; falling back to pdfminer.six", name, exc)
             engine = "pdfminer"
@@ -465,6 +468,10 @@ class PdfConverter:
         if comments:
             # One line is one comment, so this counts the comments emitted, not lines of their text.
             summary += f"; {sum(map(len, comments.values()))} comment(s) on {len(comments)} page(s)"
+        if unread:
+            # Without this a page whose comments failed reads as a page nobody commented on, and the
+            # count above as the whole of them.
+            summary += f"; comments not read on {unread} page(s)"
         if engine == "pdfminer":
             summary += "; text by the pdfminer.six fallback (PDFium could not load it); comments not read"
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
