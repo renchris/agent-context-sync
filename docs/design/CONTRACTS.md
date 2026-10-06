@@ -6650,7 +6650,9 @@ Signed in Rotterdam
   inside its box, drawn in by 2 pt because PDFium counts a character that only touches the box. A searchable
   scan is a picture behind its own text, and reading it would say the page twice. The box of a picture
   inside a form XObject is placed by the form's matrix and by that of each form around it (a picture up to
-  three forms deep is found).
+  three forms deep is found). The rule counts characters, not what they say: a full-page scan under a
+  stamped header or footer of 20 characters or more is a page with text whose picture is covered, and is
+  not read.
 - **Its stored pixels are read**, not a rendering of the page (`PdfImage.get_bitmap()`: the image's matrix
   and mask are not applied). The same image object gives the same bytes wherever it is drawn, so
   `_read_pictures` reads a logo on every page once, and its text is printed under the first page it is on.
@@ -6660,7 +6662,7 @@ Signed in Rotterdam
 - **Picture limits.** At most 400 image objects of a file are looked at (`_MAX_PICTURES_SEEN`) and
   400,000,000 pixels decoded (`_MAX_PICTURE_PIXELS`), on top of the 100 distinct pictures and 256 MiB of
   `_read_pictures`. All four are counts, so a file gives the same pictures on every run. When one of them
-  left a picture unread, the summary ends `; pictures past the OCR picture limit not read`.
+  left a picture unread, the summary says `; pictures past the OCR picture limit not read`.
 - **Time.** One limit per file, `_DOCUMENT_BUDGET_S` (300 seconds, below the 1800 the launcher gives a whole
   background job), counted from the start of the OCR pass and shared by the page reads, the looking for
   pictures and the pictures' read, rendering included. Past it no helper run is started and the pass fails
@@ -6712,7 +6714,8 @@ oversized picture never decoded; a picture drawn with no size, four ways; a pict
 the three picture limits and a limit that is reached and not passed; every kind of line that could pose as
 structure, on a page and in a picture; the same page twice; a helper failure, its fixed wording, its log
 line and no further run; a page image the helper cannot read; a picture left unread; memory and a full
-disk; a page PDFium cannot render; one time limit for pages and pictures; the pdfminer fallback; through
+disk; a page PDFium cannot render; one time limit for pages and pictures; the pdfminer fallback; an
+encrypted PDF refused before a page is rendered; through
 `convert_file`: the page, version and key of a Mac without an engine after a failure, the cache entry, the
 later read that works, the stub of a PDF of page images, the banner; `_png` for each bitmap format and a
 padded row), `tests/test_convert_determinism.py` (a PDF read by OCR twice, from the cache under a second
