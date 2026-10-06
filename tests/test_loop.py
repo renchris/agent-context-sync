@@ -345,16 +345,15 @@ def test_rule_4_draft_the_baseline_questions(tmp_path: Path, folder: Path) -> No
     ]
 
 
-@pytest.mark.parametrize(("questions", "answers"), [("draft", "draft"), ("confirmed", "draft"), ("", "")])
-def test_rule_5_the_operator_confirms_a_draft(
-    tmp_path: Path, folder: Path, questions: str, answers: str
-) -> None:
+def test_rule_5_the_operator_confirms_a_draft(tmp_path: Path, folder: Path) -> None:
+    """One synced repo for the three states: ``_eval`` rewrites both files and ``next_step`` only reads."""
     config = _synced(tmp_path, folder)
-    _eval(config, questions, answers)
-    assert _lines(config) == [
-        "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done",
-        DRAFT_WAIT,
-    ]
+    for questions, answers in (("draft", "draft"), ("confirmed", "draft"), ("", "")):
+        _eval(config, questions, answers)
+        assert _lines(config) == [
+            "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done",
+            DRAFT_WAIT,
+        ], (questions, answers)
 
 
 def test_rule_5_holds_curation_even_with_pages(tmp_path: Path, folder: Path) -> None:
@@ -504,9 +503,9 @@ def test_waits_breaker_and_queued_purges(tmp_path: Path, folder: Path) -> None:
     ]
 
 
-def test_next_lines_never_raises(tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_next_lines_never_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A caller's exit status never depends on the hint: an unreadable state is a logged warning, no line."""
-    config = _synced(tmp_path, folder)
+    config = _setup(tmp_path)
 
     def boom(_config: Config, **_kw: object) -> loop.NextStep:
         raise OSError("disk gone")

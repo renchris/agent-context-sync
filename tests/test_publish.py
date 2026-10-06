@@ -50,6 +50,7 @@ from agentsync.publish import (
     archive_path,
     render_tombstone,
 )
+from conftest import copy_docs_repo
 from test_lints import install_reference_slug
 
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
@@ -72,9 +73,8 @@ B = policy.with_banner
 class Env:
     """A configured docs repo, manifest and publisher with a fixed clock."""
 
-    def __init__(self, tmp_path: Path) -> None:
-        self.repo = tmp_path / "agent-context" / "docs"
-        gitops.ensure_repo(self.repo)
+    def __init__(self, tmp_path: Path, repo_template: Path) -> None:
+        self.repo = copy_docs_repo(repo_template, tmp_path / "agent-context" / "docs")
         src = tmp_path / "source"
         src.mkdir()
         (tmp_path / "old").mkdir()
@@ -145,8 +145,8 @@ retired_reason = "project closed"
 
 
 @pytest.fixture
-def env(tmp_path: Path) -> Iterator[Env]:
-    e = Env(tmp_path)
+def env(tmp_path: Path, docs_repo_template: Path) -> Iterator[Env]:
+    e = Env(tmp_path, docs_repo_template)
     yield e
     e.manifest.close()
 
@@ -261,17 +261,6 @@ def test_scaffold_keeps_curated_and_operator_content(env: Env) -> None:
     assert (repo / "mirror/CLAUDE.md").read_text() == MIRROR_CLAUDE_MD
 
 
-def test_scaffold_upgrades_an_unedited_earlier_topics_seed(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = env.repo
-    old_seed = "# docs/topics — curated synthesis\n\nan earlier seed\n"
-    prior = frozenset({hashlib.sha256(old_seed.encode()).hexdigest()})
-    monkeypatch.setattr(publish, "_TOPICS_CLAUDE_MD_PRIOR_SHA256", prior)
-    (repo / "topics/CLAUDE.md").write_text(old_seed)
-    assert env.pub.ensure_scaffold() == ["topics/CLAUDE.md"]
-    assert (repo / "topics/CLAUDE.md").read_text() == TOPICS_CLAUDE_MD
-    assert env.pub.ensure_scaffold() == []
-
-
 def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:
     current = hashlib.sha256(TOPICS_CLAUDE_MD.encode()).hexdigest()
     assert current not in publish._TOPICS_CLAUDE_MD_PRIOR_SHA256
@@ -315,6 +304,7 @@ def test_the_k09b_topics_seed_upgrades_to_the_pointer_and_an_edited_one_is_kept(
     (repo / "topics/CLAUDE.md").write_text(_K09B_TOPICS_SEED)
     assert env.pub.ensure_scaffold() == ["topics/CLAUDE.md"]
     assert (repo / "topics/CLAUDE.md").read_text() == TOPICS_CLAUDE_MD
+    assert env.pub.ensure_scaffold() == []  # an upgraded seed is not upgraded twice
     edited = _K09B_TOPICS_SEED + "Our own rule: cite the contract first.\n"
     (repo / "topics/CLAUDE.md").write_text(edited)
     assert env.pub.ensure_scaffold() == []
@@ -638,7 +628,7 @@ def test_tombstone_replaces_the_body_and_records_rows(env: Env) -> None:
     assert_pages_valid(env)
 
 
-def test_tombstone_without_commit_gives_a_log_recipe(env: Env) -> None:
+def test_tombstone_without_commit_gives_a_log_recipe() -> None:
     row = TombstoneRow(
         "mirror/src/it's.md",
         "src",

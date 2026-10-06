@@ -454,10 +454,11 @@ def test_a_non_tcc_fail_exits_1_without_a_first_sync(
 def test_first_sync_failure_fails_the_run_before_the_agent(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    cp = install_sh(
-        {**env, "STUB_SYNC_RC": "78"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"
-    )
+    e = {**env, "STUB_SYNC_RC": "78", "STUB_SYNC_OUT": "  alpha: converted 0, deferred 0 online-only"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 1
+    # a failed first sync shows everything it printed, not a summary
+    assert "stub cycle" in cp.stdout and "  alpha: converted 0, deferred 0 online-only" in cp.stdout
     got = calls(env)
     assert not any(c.startswith(("agentsync install-agent", "launchctl")) for c in got)
     assert "the first sync (agentsync sync --once) exited 78 (configuration invalid)" in cp.stderr
@@ -685,8 +686,11 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     )
     assert cp.returncode == 1
     assert f"report: {report_path(env)} (shell fallback: agentsync is not installed)" in cp.stdout
+    assert last_line(cp).startswith("NEXT: fix the error above")
     assert last_line(cp).endswith(f" [setup report: {report_path(env)}]")
+    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {setup_report.ISSUE_URL}"
     text = report_path(env).read_text()
+    assert text.rstrip("\n").splitlines()[-1] == setup_report.ISSUE_URL, "the report ends on the issue form"
     assert (report_path(env).stat().st_mode & 0o777) == 0o600
     assert _headings(text) == list(setup_report.SECTION_TITLES), "the same headings as agentsync's report"
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
@@ -793,6 +797,7 @@ def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
     )
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
+    assert not install_out(env).exists(), "K17: --report-only writes no install.out"
     text = report_path(env).read_text()
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
     assert friction.strip() == "Outcome: failed at step 2"
@@ -1187,19 +1192,6 @@ def test_report_only_without_a_link_prints_no_link_line(env: dict[str, str]) -> 
     )
 
 
-def test_the_shell_report_ends_with_the_issue_form_and_prints_it(env: dict[str, str], folder: Path) -> None:
-    cp = install_sh(
-        {**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder), "--confirm-install-agent"
-    )
-    assert cp.returncode == 1
-    assert report_path(env).read_text().rstrip("\n").splitlines()[-1] == setup_report.ISSUE_URL
-    lines = cp.stdout.splitlines()
-    assert lines[-2] == f"issue link (review the report first): {setup_report.ISSUE_URL}"
-    assert lines[-1].startswith("NEXT: fix the error above") and lines[-1].endswith(
-        f" [setup report: {report_path(env)}]"
-    )
-
-
 # ---- one instruction: no agentsync "next:" hints, doctor knows the agent step (K5) -------------------------
 
 
@@ -1335,13 +1327,6 @@ def test_install_out_keeps_the_last_2000_lines(env: dict[str, str], folder: Path
     lines = out.read_text().splitlines()
     assert len(lines) == 2000 and lines[-1] == last_line(cp)
     assert "old 2499" in lines and "old 0" not in lines
-
-
-def test_dry_run_and_report_only_write_no_install_out(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    dry = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}
-    assert install_sh(dry, str(wheel), "--source-local", str(folder)).returncode == 0
-    assert install_sh(env, "--report-only").returncode == 0
-    assert not install_out(env).exists()
 
 
 def test_a_process_group_stop_still_ends_the_run(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -1705,15 +1690,6 @@ def test_first_sync_prints_its_converted_and_deferred_line(
     assert "stub cycle" not in out, "only the summary line(s) of a sync that succeeded"
     assert "warning: from stderr" in cp.stderr, "stderr passes through"
     assert ("first-sync", "done", "0", "converted-4-deferred-2") in steps(install_log(env))
-
-
-def test_a_failed_first_sync_shows_everything_it_printed(
-    env: dict[str, str], folder: Path, wheel: Path
-) -> None:
-    e = {**env, "STUB_SYNC_RC": "78", "STUB_SYNC_OUT": "  alpha: converted 0, deferred 0 online-only"}
-    cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
-    assert cp.returncode == 1
-    assert "stub cycle" in cp.stdout and "  alpha: converted 0, deferred 0 online-only" in cp.stdout
 
 
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------

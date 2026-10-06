@@ -52,6 +52,7 @@ def test_run_git_raises_git_error_with_argv_and_stderr(repo: Path) -> None:
         gitops.run_git(repo, "rev-parse", "--verify", "no-such-ref")
     assert info.value.argv == ["rev-parse", "--verify", "no-such-ref"]
     assert info.value.returncode != 0
+    assert "fatal" in info.value.stderr
     proc = gitops.run_git(repo, "rev-parse", "--verify", "no-such-ref", check=False)
     assert proc.returncode != 0
 
@@ -67,7 +68,7 @@ def test_run_git_ignores_inherited_git_dir(
     assert Path(top).resolve() == repo.resolve()
 
 
-def test_run_git_sets_fixed_environment(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_git_sets_fixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
     env = gitops._env()
     assert env["LC_ALL"] == "C"

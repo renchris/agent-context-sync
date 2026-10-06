@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from agentsync.config import Config, parse_config
+from agentsync.gitops import ensure_repo
 from fixtures.make_fixtures import make_fixtures
 
 REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
@@ -78,6 +79,34 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         mp.delenv("AGENTSYNC_CONFIG", raising=False)
         mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
         yield home
+
+
+@pytest.fixture(scope="session")
+def docs_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """An empty docs repo exactly as ``gitops.ensure_repo`` creates one, built once per session.
+
+    ``ensure_repo`` costs about a dozen git subprocesses.  A test that needs such a repo only as a starting
+    point copies this tree (``copy_docs_repo``) instead of paying them again; a test of ``ensure_repo`` itself
+    still calls it.  Built under its own HOME and git config, because a session fixture is set up before the
+    function-scoped ``_isolate_home``."""
+    home = tmp_path_factory.mktemp("template-home")
+    gitconfig = home / ".gitconfig"
+    gitconfig.write_text("[init]\n\tdefaultBranch = main\n")
+    repo = tmp_path_factory.mktemp("template") / "docs"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HOME", str(home))
+        mp.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+        mp.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        mp.setenv("LC_ALL", "C")
+        assert ensure_repo(repo) is True
+    return repo
+
+
+def copy_docs_repo(template: Path, repo: Path) -> Path:
+    """Copy ``docs_repo_template`` to ``repo`` (parents created owner-only, as ``ensure_repo`` does)."""
+    repo.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    shutil.copytree(template, repo)
+    return repo
 
 
 @pytest.fixture(scope="session")

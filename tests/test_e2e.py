@@ -193,10 +193,18 @@ def test_c_noop_resave_docprops_is_touched_not_changed(synced: Config, local_sou
 
     rewrite_zip(target, edit, date=(2031, 1, 2, 3, 4, 6))
     assert target.read_bytes() != before
+    # The same cut-off for a second file in the same cycle: the fixture workbook as Office re-saves it,
+    # copied over the original (different bytes, same canonical content).
+    projects = local_source_dir / "projects"
+    (projects / "sample.xlsx").write_bytes((projects / "sample-resaved.xlsx").read_bytes())
     report = run(synced)
-    assert counts(report).get(Verdict.TOUCHED_NOT_CHANGED) == 1
+    assert counts(report).get(Verdict.TOUCHED_NOT_CHANGED) == 2
     assert Verdict.CHANGED not in counts(report)
     assert report.commit_sha is None and git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
+    with Manifest(synced.state_paths.db) as m:
+        for rel in ("projects/sample.docx", "projects/sample.xlsx"):
+            row = m.item_by_path(SID, rel)
+            assert row is not None and row.last_verdict is Verdict.TOUCHED_NOT_CHANGED, rel
 
 
 def test_c_styles_only_resave_is_h2_early_cutoff(synced: Config, local_source_dir: Path) -> None:
@@ -227,15 +235,6 @@ def test_c_styles_only_resave_is_h2_early_cutoff(synced: Config, local_source_di
         assert row is not None and row.last_verdict is Verdict.OUTPUT_UNCHANGED
         keys = {o.action_key for o in m.outputs_for(SID, row.stable_id)}
         assert len(keys) == 1 and keys <= m.live_action_keys()  # the new cache key is a GC root
-
-
-def test_c_fixture_resaved_workbook_copied_over_is_free(synced: Config, local_source_dir: Path) -> None:
-    repo = synced.docs_repo
-    projects = local_source_dir / "projects"
-    (projects / "sample.xlsx").write_bytes((projects / "sample-resaved.xlsx").read_bytes())
-    report = run(synced)
-    assert counts(report).get(Verdict.TOUCHED_NOT_CHANGED) == 1
-    assert report.commit_sha is None and porcelain(repo) == ""
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -688,13 +687,17 @@ def test_outputs_rows_match_pages_after_the_whole_story(synced: Config, local_so
     (local_source_dir / "projects" / "sample.pdf").rename(local_source_dir / "projects" / "renamed.pdf")
     (local_source_dir / "projects" / "sample.csv").unlink()
     run(synced)
+    run(synced)  # a deletion is tombstoned by the cycle that confirms it, the second one
     repo = synced.docs_repo
+    seen = set()
     with Manifest(synced.state_paths.db) as m:
         for out in m.iter_outputs():
             data = (repo / out.output_path).read_bytes()
             assert hashlib.sha256(data).hexdigest() == out.page_sha256, out.output_path
+            seen.add(out.status)
             if out.status is OutputStatus.TOMBSTONE:
                 assert m.get_tombstone(out.output_path) is not None
+    assert OutputStatus.TOMBSTONE in seen, "the story includes a tombstone row, or the check above is dead"
     assert gitops.has_changes(repo) is False
 
 

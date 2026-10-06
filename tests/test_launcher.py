@@ -277,11 +277,11 @@ def test_spawn_failure_exits_71(exe: Path, tmp_path: Path) -> None:
 @needs_build
 def test_watchdog_stops_a_hung_child_with_tcc_pending(exe: Path) -> None:
     t0 = time.monotonic()
-    cp = run(exe, "--timeout", "1", "--grace", "5", "--", "/bin/sleep", "60")
+    cp = run(exe, "--timeout", "0.3", "--grace", "5", "--", "/bin/sleep", "60")
     elapsed = time.monotonic() - t0
     assert cp.returncode == launchd.EXIT_TCC_PENDING == 79
     assert tokens(cp.stderr) == ["TCC_PENDING", "CHILD_EXIT"]
-    assert "reason=watchdog" in cp.stderr and "timeout_s=1.0" in cp.stderr
+    assert "reason=watchdog" in cp.stderr and "timeout_s=0.3" in cp.stderr
     assert elapsed < 5, f"SIGTERM ended sleep at once (measured {elapsed:.2f}s)"
 
 
@@ -463,7 +463,8 @@ def test_install_sh_is_shellcheck_and_bash32_clean() -> None:
     sc = shutil.which("shellcheck")
     if sc is None:
         pytest.skip("shellcheck not installed")
-    cp = subprocess.run([sc, str(INSTALL_SH), str(BUILD_SH)], capture_output=True, text=True, check=False)
+    # install.sh's shellcheck run is test_deploy_pack.py::test_scripts_pass_shellcheck[install.sh]
+    cp = subprocess.run([sc, str(BUILD_SH)], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stdout
 
 
@@ -592,11 +593,14 @@ def test_install_sh_help_and_usage_errors(stubs: dict[str, str], tmp_path: Path)
     assert [c for c in calls(stubs) if not c.startswith("launchctl print ")] == []
 
 
-def test_install_sh_dry_run_changes_nothing(stubs: dict[str, str]) -> None:
-    cp = install_sh({**stubs, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--confirm-install-agent")
+def test_install_sh_dry_run_changes_nothing(stubs: dict[str, str], tmp_path: Path) -> None:
+    log = tmp_path / "dry" / "install.log"
+    env = {**stubs, "AGENTSYNC_SETUP_LOG": str(log), "AGENTSYNC_INSTALL_DRY_RUN": "1"}
+    cp = install_sh(env, "--confirm-install-agent")
     assert cp.returncode == 0, cp.stderr
     home = Path(stubs["HOME"])
     assert list(home.iterdir()) == [], "dry run wrote under HOME"
+    assert not log.parent.exists(), "a dry run writes no setup log, wherever the log is pointed"
     assert calls(stubs) == ["uv tool dir --bin", "uv tool dir"], "only read-only uv queries run"
     out = cp.stdout
     assert "[dry-run]" in out and "tool install --force --reinstall-package agentsync --python 3.11" in out
@@ -711,17 +715,6 @@ def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launc
     assert text.startswith("# existing\n[[source]]\n") and text.count('kind = "inbox"') == 1
 
 
-def test_install_sh_network_failure_exits_1_with_a_next_line(stubs: dict[str, str]) -> None:
-    """deploy-ops-install-sh-exit-status: a failed uv tool install is a failed step (1), not a usage error."""
-    env = {**stubs, "STUB_UV_INSTALL_RC": "2", "AGENTSYNC_CONFIG": str(Path(stubs["HOME"]) / "x.toml")}
-    cp = install_sh(env)
-    assert cp.returncode == 1, cp.stderr
-    assert "uv tool install failed" in cp.stderr
-    last = cp.stdout.strip().splitlines()[-1]
-    assert last.startswith("NEXT: ") and "re-run: " in last
-    assert "--config" not in last, "KISS K17: AGENTSYNC_CONFIG carries the config; no NEXT names --config"
-
-
 def test_install_sh_rejects_an_unsigned_launcher(stubs: dict[str, str], tmp_path: Path) -> None:
     fake = tmp_path / "AgentSyncLauncher.app"
     (fake / "Contents" / "MacOS").mkdir(parents=True)
@@ -807,6 +800,8 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
 
 
 def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp_path: Path) -> None:
+    """deploy-ops-install-sh-exit-status: a failed uv tool install is a failed step (1), not a usage error;
+    it ends on one NEXT line and the setup log records the step."""
     log = tmp_path / "elsewhere" / "install.log"
     report = tmp_path / "elsewhere" / "setup-report.md"
     env = {
@@ -817,7 +812,11 @@ def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp
         "AGENTSYNC_CONFIG": str(Path(stubs["HOME"]) / "x.toml"),
     }
     cp = install_sh(env)
-    assert cp.returncode == 1
+    assert cp.returncode == 1, cp.stderr
+    assert "uv tool install failed" in cp.stderr
+    last = cp.stdout.strip().splitlines()[-1]
+    assert last.startswith("NEXT: ") and "re-run: " in last
+    assert "--config" not in last, "KISS K17: AGENTSYNC_CONFIG carries the config; no NEXT names --config"
     lines = _setup_log_lines(log)
     assert not (Path(stubs["HOME"]) / "agent-context").exists(), "AGENTSYNC_SETUP_LOG moves the log"
     assert report.is_file(), "the shell report (agentsync never got installed)"
@@ -842,15 +841,6 @@ def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp
         ("report", "done", "0", "fallback"),
     ]
     assert lines[-1][1].startswith("end rc=1 ") and lines[-2][1].startswith("step=report ")
-
-
-def test_install_sh_dry_run_writes_no_setup_log(stubs: dict[str, str], tmp_path: Path) -> None:
-    log = tmp_path / "dry" / "install.log"
-    env = {**stubs, "AGENTSYNC_SETUP_LOG": str(log), "AGENTSYNC_INSTALL_DRY_RUN": "1"}
-    cp = install_sh(env, "--confirm-install-agent")
-    assert cp.returncode == 0, cp.stderr
-    assert not log.parent.exists()
-    assert list(Path(stubs["HOME"]).iterdir()) == []
 
 
 def test_setup_report_reads_the_install_sh_log(

@@ -14,6 +14,7 @@ import pytest
 from agentsync import gitops, lints, slug
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.model import LintFinding, PageStatus, RenderedUnit, UnitKind
+from conftest import copy_docs_repo
 
 # ---------------------------------------------------------------------------------------------------------
 # A reference slugifier written from the CONTRACTS.md slug section.  slug.py (a separate task) is still a
@@ -154,10 +155,10 @@ def codes(findings: list[LintFinding]) -> list[tuple[str, str, bool]]:
 
 
 @pytest.fixture
-def repo(tmp_docs_repo: Path) -> Path:
-    gitops.ensure_repo(tmp_docs_repo)
-    write(tmp_docs_repo, ".gitignore", "_sync/STATE.md\n_manifest/cache/\n.sync.lock\n")
-    return tmp_docs_repo
+def repo(tmp_path: Path, docs_repo_template: Path) -> Path:
+    r = copy_docs_repo(docs_repo_template, tmp_path / "agent-context" / "docs")
+    write(r, ".gitignore", "_sync/STATE.md\n_manifest/cache/\n.sync.lock\n")
+    return r
 
 
 # ---- symlinks ----------------------------------------------------------------------------------------------
@@ -283,7 +284,7 @@ def test_long_paths_are_blocking(repo: Path) -> None:
     rel = "mirror/src/" + "/".join(["d" * 60] * 4) + "/x.md"
     write(repo, rel, page())
     found = lints.lint_paths(repo, [rel])
-    assert any("chars >" in f.message for f in found)
+    assert any("chars >" in f.message and f.blocking for f in found)
 
 
 def _case_insensitive(path: Path) -> bool:

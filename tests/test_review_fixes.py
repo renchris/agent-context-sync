@@ -489,9 +489,11 @@ def test_sg10_a_hold_suspends_scheduled_compaction_and_says_so(tmp_path: Path) -
     (src / "b.txt").write_text("y\n", encoding="utf-8")
     _backdated(config, "2026-07-02T00:00:00Z")
     governance.set_hold(config.state_paths.root, "all", reason="litigation", owner="legal")
-    count = git(config.docs_repo, "rev-list", "--count", "HEAD").strip()
+    count = int(git(config.docs_repo, "rev-list", "--count", "HEAD"))
     run(config, mode=CycleMode.RECONCILE)
-    assert git(config.docs_repo, "rev-list", "--count", "HEAD").strip() >= count
+    assert (
+        int(git(config.docs_repo, "rev-list", "--count", "HEAD")) >= count
+    )  # as numbers: "10" < "9" as text
     state = (config.docs_repo / "_sync/STATE.md").read_text(encoding="utf-8")
     assert "SUSPENDED by hold" in state
 

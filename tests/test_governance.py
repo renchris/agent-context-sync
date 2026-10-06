@@ -88,12 +88,18 @@ def page(source_id: str, stable_id: str, source_path: str, body: str) -> str:
 
 def all_blobs(repo: Path) -> dict[str, str]:
     """blob sha -> first path, over every object reachable from any ref."""
-    out: dict[str, str] = {}
+    names: dict[str, str] = {}
     for line in git(repo, "rev-list", "--objects", "--all").splitlines():
         s, _, p = line.partition(" ")
-        if git(repo, "cat-file", "-t", s).strip() == "blob":
-            out.setdefault(s, p)
-    return out
+        names.setdefault(s, p)
+    kinds = subprocess.run(  # one git for every object's type, not one per object
+        ["git", "-C", str(repo), "cat-file", "--batch-check=%(objectname) %(objecttype)"],
+        input="".join(f"{s}\n" for s in names),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return {s: names[s] for s, kind in (line.split() for line in kinds.splitlines()) if kind == "blob"}
 
 
 def exists(repo: Path, obj: str) -> bool:

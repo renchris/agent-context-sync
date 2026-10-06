@@ -328,21 +328,21 @@ def test_curate_baseline_hold_lists_no_rows(initialised: Config, capsys: pytest.
     assert step.rule == 4 and out.splitlines()[-1] == step.lines()[0]
 
 
-@pytest.mark.parametrize("old", ["curate-queue", "lint", "refresh-queue"])
-def test_curate_old_names_are_hidden_aliases(
-    old: str, initialised: Config, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_curate_old_names_are_hidden_aliases(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    """One synced repo serves all three names: ``curate`` only reads, so each alias sees the same state."""
     cfg = _synced(initialised)
     _before(initialised)
     capsys.readouterr()
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     want = capsys.readouterr()
-    assert cli.main([old, "--config", cfg]) == cli.EXIT_OK
-    got = capsys.readouterr()
-    assert got.out == want.out and "UNCOVERED\t" in got.out
-    assert got.err == want.err + "renamed: run agentsync curate\n"
     assert cli.main(["--help"]) == cli.EXIT_OK
-    assert f"    {old} " not in capsys.readouterr().out
+    usage = capsys.readouterr().out
+    for old in ("curate-queue", "lint", "refresh-queue"):
+        assert cli.main([old, "--config", cfg]) == cli.EXIT_OK, old
+        got = capsys.readouterr()
+        assert got.out == want.out and "UNCOVERED\t" in got.out, old
+        assert got.err == want.err + "renamed: run agentsync curate\n", old
+        assert f"    {old} " not in usage, old
 
 
 def _topic(
