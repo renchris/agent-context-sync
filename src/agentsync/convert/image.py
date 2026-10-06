@@ -69,7 +69,7 @@ _FAILED = "on-device OCR failed"
 _NO_PAGE_TEXT = "[no text on this page]"
 # C0 controls are no part of what a picture shows; ``text_lines`` has already made whitespace one space.
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
-_FENCE_RE = re.compile(r"^(?:`{3,}|~{3,})")
+_BLOCK_RE = re.compile(r"^(?:`{3,}|~{3,}|<)")  # a code fence, or a tag: either can open a block
 _clock = time.monotonic
 
 
@@ -115,12 +115,12 @@ def _raster_suffix(head: bytes) -> str | None:
 def _ocr_lines(image: OcrImage) -> list[str]:
     """One frame as page text: its lines in reading order, "" between blocks; none for a frame that was not
     read.  A picture can show any characters, so each line is neutralised as plain text is (no heading, rule
-    or fake ``<!-- page: N -->`` anchor) and a leading code fence is escaped too: an open fence would take
-    in every anchor after it."""
+    or fake ``<!-- page: N -->`` anchor), and a leading code fence or ``<`` is escaped too: an open fence, or
+    the HTML block a tag such as ``<pre>`` opens, would take in every anchor after it."""
     out: list[str] = []
     for line in text_lines(image):
         text = _escape_line(_CONTROL_RE.sub("", line).strip())  # a dropped control can leave an indent
-        out.append("\\" + text if _FENCE_RE.match(text) else text)
+        out.append("\\" + text if _BLOCK_RE.match(text) else text)
     return out
 
 

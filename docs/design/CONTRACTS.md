@@ -6464,7 +6464,10 @@ Phase one | discovery | May
   says `· 12 frames, first 1 read`. Whether a file is a TIFF is decided from its bytes, not its name.
 - **Escaping.** Each line goes through `_common._escape_line` (no heading, rule, setext underline or
   `<!-- page: N -->` anchor). A leading code fence (three or more backticks or tildes) gets a backslash: an
-  open fence would take in every anchor after it. C0 control characters are dropped.
+  open fence would take in every anchor after it. So does a leading `<`: a tag at the start of a line opens
+  an HTML block, and that of `<pre>`, `<script>` or `<style>` runs on past blank lines and anchors until its
+  closing tag. A tag inside a line stays as it is, as in every other converter's text. C0 control characters
+  are dropped.
 
 **Not a page** (plan D7). An image with nothing to read is `UnreadableSourceError`: an `unreadable` stub,
 cached, outside the curation queue, and not read again until its bytes change. A page per logo would be
