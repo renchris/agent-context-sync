@@ -5720,8 +5720,8 @@ Draft wording of the summary
 - Highlight by Roe, John on “Contoso widget overview”: Use the Q3 figures here
 - Note by Doe, Jane Q: Add units → revenue split by region
   - reply by Roe, John: Agreed
-- Insert by Roe, John: final wording
-  - Strikethrough by Roe, John on “Draft wording”
+- Insert by Roe, John: Final
+  - Strikethrough by Roe, John on “Draft”
 ```
 
 One list item per comment: `<kind>[ by <author>][ on “<marked text>”][: <text>]`. A page without comments gets

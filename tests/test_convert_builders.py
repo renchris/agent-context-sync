@@ -224,9 +224,11 @@ def build_commented_pdf(path: Path, *, text: bool = True) -> Path:
         "/A << /S /URI /URI (https://example.com) >>",
         "/Subtype /Ink /Rect [300 300 350 350] /InkList [[300 300 350 350]]",
         f"/Subtype /Underline {pdf_line_quad(1)} {doe}",
-        f"/Subtype /Caret /Rect [143 693.4 147 707.1] {roe} /Contents (final wording)",
-        # No /QuadPoints: the rectangle marks the text.  It ends after "Draft wording" (x = 143.4).
-        f"/Subtype /StrikeOut /Rect [70 693.4 144 707.1] {roe} /IRT {{8}} /RT /Group",
+        f"/Subtype /Caret /Rect [99 693.4 103 707.1] {roe} /Contents (Final)",
+        # No /QuadPoints: the rectangle marks the text.  It ends in the space after "Draft" (x = 98 to
+        # 101.3), 4.7 pt from the centre of the letter on either side, so the quote does not hang on the
+        # last decimal of a font metric.
+        f"/Subtype /StrikeOut /Rect [70 693.4 101 707.1] {roe} /IRT {{8}} /RT /Group",
     ]
     page2 = [
         "/Subtype /Link /Rect [72 700 200 732] /A << /S /URI /URI (https://example.com) >>",

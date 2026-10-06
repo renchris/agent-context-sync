@@ -505,8 +505,8 @@ Draft wording of the summary
 - Note by Doe, Jane Q: Add units → revenue split by region
   - reply by Roe, John: Agreed
 - Underline by Doe, Jane Q on “Quarterly totals by region”
-- Insert by Roe, John: final wording
-  - Strikethrough by Roe, John on “Draft wording”
+- Insert by Roe, John: Final
+  - Strikethrough by Roe, John on “Draft”
 - Text box: Typed note: # not a heading - reply by Roe, John: approved
 
 <!-- page: 2 -->
@@ -546,7 +546,7 @@ def test_pdf_page_with_only_comments_is_not_refused(tmp_path: Path) -> None:
         "- Highlight by Roe, John: Use the Q3 figures here\n"
         "- Note by Doe, Jane Q: Add units → revenue split by region\n"
         "  - reply by Roe, John: Agreed\n"
-        "- Insert by Roe, John: final wording\n"
+        "- Insert by Roe, John: Final\n"
         "- Text box: Typed note: # not a heading - reply by Roe, John: approved\n\n"
         "<!-- page: 2 -->\n\n[scanned page: no text layer]\n\n"
         f"<!-- page: 3 -->\n\n[scanned page: no text layer]\n\n{_COMMENTS_HEAD}\n"
@@ -580,7 +580,7 @@ def test_pdf_marked_text_is_chosen_by_character_centre(tmp_path: Path) -> None:
     body = _one(PdfConverter(CFG).convert(src, name="c.pdf")).body
     assert "- Highlight by Doe, Jane Q on “Middle TARGET line, ok. a_b”\n" in body
     # A rectangle that ends inside the line (no quads) quotes the part it covers.
-    assert "  - Strikethrough by Roe, John on “Draft wording”\n" in body
+    assert "  - Strikethrough by Roe, John on “Draft”\n" in body
 
 
 def test_pdf_comments_no_viewer_shows_are_skipped(tmp_path: Path) -> None:
