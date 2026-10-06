@@ -16,8 +16,10 @@ from agentsync.convert._common import _cap_body, _escape_line
 from agentsync.convert.base import estimate_tokens, make_unit, options_hash, rendered_sha256
 from agentsync.convert.cache import KEY_SCHEMA_VERSION, ConverterCache, action_key
 from agentsync.convert.canonical import OOXML_SUFFIXES, canonical_hash, differing_parts
+from agentsync.convert.ocr import OcrEngine
 from agentsync.convert.registry import Registry
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, UnitKind
+from agentsync.policy import PolicyConfig
 from test_convert_builders import make_zip, ole_encrypted
 
 H = "a" * 64
@@ -425,6 +427,52 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
     assert reg.extensions() == tuple(sorted(ids))
     assert [c.converter_id for c in reg.converters()] == sorted(c.converter_id for c in reg.converters())
     assert len(reg.converters()) == 8
+
+
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
+LABEL_RULES: dict[str, PolicyConfig] = {
+    "an excluded label id": PolicyConfig(exclude_label_ids=("00000000-0000-4000-8000-00000000c0de",)),
+    "an excluded label name": PolicyConfig(exclude_label_names=("Secret",)),
+    "unlabelled files refused": PolicyConfig(refuse_unlabelled=True),
+}
+
+
+def _engine() -> OcrEngine:
+    """An engine nothing here runs: routing never looks at the helper."""
+    return OcrEngine(Path("/nowhere/fake-ocr"), name="paper-vision", revision=2, helper_version="0.3.0")
+
+
+def _identity(reg: Registry) -> dict[str, tuple[str, dict[str, object], tuple[str, ...]]]:
+    return {c.converter_id: (c.version(), dict(c.options()), c.extensions) for c in reg.converters()}
+
+
+def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() -> None:
+    """Without an engine the registry is the one from before OCR existed: an image has no converter, and no
+    converter's version or options say anything about OCR. With one, the ten raster suffixes go to
+    ``image-ocr`` and every other name goes where it went."""
+    plain = Registry.default(ConvertConfig())
+    assert _identity(Registry.default(ConvertConfig(), ocr=None)) == _identity(plain)
+    assert all(plain.for_name(f"Contoso diagram{ext}") is None for ext in IMAGE_SUFFIXES)
+    assert not any("ocr" in f"{version}{options}" for version, options, _exts in _identity(plain).values())
+    reg = Registry.default(ConvertConfig(), ocr=_engine())
+    routes = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
+    assert {ext for ext, cid in routes.items() if cid == "image-ocr"} == set(IMAGE_SUFFIXES)
+    assert reg.for_name("Contoso diagram.PNG").converter_id == "image-ocr"  # type: ignore[union-attr]
+    assert len(reg.converters()) == 9 and reg.extensions() == tuple(sorted(routes))
+    for ext in plain.extensions():
+        assert routes[ext] == plain.for_name(f"x{ext}").converter_id, ext  # type: ignore[union-attr]
+    assert reg.for_name("clip.mp4") is None and reg.for_name("drawing.svg") is None
+
+
+@pytest.mark.parametrize("rule", LABEL_RULES.values(), ids=LABEL_RULES.keys())
+def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: PolicyConfig) -> None:
+    """An image can carry a sensitivity label the screen cannot read, so any label rule fails closed."""
+    assert rule.labels_active
+    reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
+    assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
+    assert reg.extensions() == Registry.default(ConvertConfig()).extensions() and len(reg.converters()) == 8
+    open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
+    assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize(

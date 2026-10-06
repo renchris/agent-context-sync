@@ -351,6 +351,8 @@ path**, measured 3.9 here; `[convert] pandoc_path` overrides); `.xlsx .xlsm` →
 units, streaming summary above 20 MB); `.pptx` → `pptx-python-pptx`; `.pdf` → `pdf-pdfminer` (page anchors;
 PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pdf-pypdfium2`;** `.md .markdown` → `markdown-passthrough`; `.txt .csv .tsv .log .vtt .json .xml .yaml
 .yml` → `text-plain`; `.eml` → `eml-stdlib`; `.teams.json` → `teams-month`. Anything else → REFUSED stub.
+**SUPERSEDED (2026-10-06, §16.26):** with an OCR engine and no label rule, `.png .jpg .jpeg .gif .bmp .tif
+.tiff .webp .heic .heif` → `image-ocr`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -4030,7 +4032,8 @@ def suggest_source_id(scope: DiscoveredScope, taken: set[str]) -> str:
 - Stub reasons: `policy.ENCRYPTED_OFFICE_REASON`, `ENCRYPTED_PDF_REASON` (and the converter's
   `encrypted-pdf (password-protected)`), `EMPTY_OUTPUT_REASON`; refusals start with `REFUSED_PREFIX`.
 - Additive signatures: `Registry(converters, *, policy=None, banner=False)`, `Registry.default(cfg, *,
-  policy=None)`, `Registry.policy`, `Registry.screen(src, *, name)`; `Publisher(config, manifest, *, clock=None,
+  policy=None)` (**amended 2026-10-06, §16.26:** `Registry.default(cfg, *, policy=None, ocr=None)`),
+  `Registry.policy`, `Registry.screen(src, *, name)`; `Publisher(config, manifest, *, clock=None,
   content_policy=None)`, `Publisher.content_policy`, `Publisher.policy_refusal(item)`; `PlannedPage.refusal`.
 
 #### `agentsync.policy` — `src/agentsync/policy.py` — owner: **controls**
@@ -6187,7 +6190,7 @@ Additive. `agentsync.convert.ocr` (`src/agentsync/convert/ocr.py`; imports `conf
 reads text from images with Apple Vision (`VNRecognizeTextRequest`, accurate level) through a Swift helper
 whose source ships in the package (`src/agentsync/convert/vision_ocr.swift`). Nothing leaves the Mac. This
 section is the engine, its doctor line and its build in the installer: no converter uses it yet, and it adds
-no command, option or installer option.
+no command, option or installer option. (**Amended 2026-10-06:** §16.26 adds the first converter that does.)
 
 **Rules** (plan decisions D2 to D6).
 
@@ -6408,3 +6411,152 @@ the not-built wording and the fix without developer tools; a probe that crashes)
 `tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
 crashing build changes neither the exit status nor the steps; the one line without developer tools, forced
 with `DEVELOPER_DIR`; the dry run).
+
+### 16.26 OCR in the converters (2026-10-06)
+
+Plan decisions D6 to D10 and D13. §16.25 built the engine; this section is what reads with it. It adds no
+command, flag, installer option, config key or environment variable. A Mac without an engine (no helper
+built, `[convert] ocr = false`, `AGENTSYNC_OCR=0`) converts as before: the same eight converters at the same
+versions with the same options, so every page it has stays byte for byte what it was.
+
+This part is the image converter and its wiring. Scanned PDF pages and the pictures inside PDFs, decks and
+Word documents are added to this section with the converters that read them.
+
+**Rules.**
+
+- Nothing OCR writes holds a file name, a path or exception text: not a body, a title, a summary or a stub
+  reason. Reasons are fixed wording; what the helper said goes to the log.
+- Text read from a picture is third-party content like any other. It is escaped so it cannot pose as page
+  structure, and it sits under the untrusted-content banner every converter of `Registry.default` gets.
+- A summary is facts (sizes, counts), never text read from a picture.
+- Nothing here compiles anything, and nothing here runs under a dry run.
+
+#### `agentsync.convert.image` — `src/agentsync/convert/image.py` — owner: **convert**
+
+`ImageConverter` (`converter_id = "image-ocr"`) claims `.png .jpg .jpeg .gif .bmp .tif .tiff .webp .heic
+.heif`. Emitter **2.0.0**; `version()` is `2.0.0+<OcrEngine.identity>` (`2.0.0+ocr-apple-vision-r3-h2.0.0-l1`),
+with no macOS build in it. (1.0.0 was a field build whose pages named the file; it was never on main.)
+`options()` is `max_page_bytes` plus the shared OCR options (below).
+
+```text
+[image · 1440x900 px · text read by on-device OCR (Apple Vision)]
+
+Contoso launch plan
+Phase one | discovery | May
+```
+
+- **One WHOLE unit.** A header line with the upright pixel size, a blank line, then `ocr.text_lines` of the
+  frame: its lines in reading order, a blank line between blocks. A body past `max_page_bytes` is cut and the
+  whole of it rides in the `full-text.txt` sidecar, as for a PDF.
+- **No name** (plan D7). `title`, `name` and `file_stem` are `""`, and neither the body nor the summary holds
+  the file's name. The action key has no name in it (§7), so a second file with the same bytes is served this
+  page: a name in it would be the first file's. `publish` shows the item's own name when a unit has no title.
+  `convert`'s `name` argument labels a log line and nothing else.
+- **Summary.** `Image 1440x900 px; OCR: 2 line(s)`. Never the text: a summary sits in front matter, above
+  the banner.
+- **Pages.** A TIFF is read page by page, at most `ocr.MAX_PAGES`. With more than one page, each page read
+  gets a `<!-- page: N -->` anchor, the header says `· 3 pages` (`· 250 pages, first 100 read`) and the summary
+  `, 3 pages (3 read)`. A page with no text is `[no text on this page]`. A page the helper could not read is
+  `[page not read: <why>]`, where `<why>` is the engine's fixed `error` wording or `too small to hold text`,
+  and it is not counted as read. Every other type is read from its first frame; when it has more, the header
+  says `· 12 frames, first 1 read`. Whether a file is a TIFF is decided from its bytes, not its name.
+- **Escaping.** Each line goes through `_common._escape_line` (no heading, rule, setext underline or
+  `<!-- page: N -->` anchor). A leading code fence (three or more backticks or tildes) gets a backslash: an
+  open fence would take in every anchor after it. C0 control characters are dropped.
+
+**Not a page** (plan D7). An image with nothing to read is `UnreadableSourceError`: an `unreadable` stub,
+cached, outside the curation queue, and not read again until its bytes change. A page per logo would be
+curation work for ever.
+
+| Image | Stub reason |
+|---|---|
+| its first bytes are no raster type (an empty file, a web page saved as `.gif`, a PDF, vector art); the helper is not started | `not an image on-device OCR reads (PNG, JPEG, GIF, BMP, TIFF, WebP, HEIC or HEIF)` |
+| no frame gave a line of text (a logo, a photo, noise only) | `no text found in the image by on-device OCR` |
+| a side under 48 px (`OcrImage.skipped`) | `image too small to hold text` |
+| the first frame's `error` is `not an image`, `unsupported image type`, `no frames`, `too large` or `not readable` | `image not readable by on-device OCR (<error>)` |
+
+**Failure.** A helper that fails (it may not be run, exits non-zero, runs out of time, or answers something
+that is not the expected JSON) is `OcrError("on-device OCR failed")`: the result is FAILED and is never cached.
+The stub reason is `conversion failed: on-device OCR failed`; the engine's own reason goes to the log as
+`WARNING <name>: on-device OCR failed: <reason>`. The same holds when no frame gave text and Vision gave up on
+one (`recognition failed`, the one `error` that is not a fact about the bytes). One document has 300 seconds
+of helper time (`_DOCUMENT_BUDGET_S`; pandoc's limit is the same).
+
+**The raster table.** `_RASTERS` is one table of (a test of a file's first 16 bytes, the suffixes of the
+type): PNG, JPEG, GIF87a and GIF89a, BMP, TIFF in both byte orders, WebP (`RIFF....WEBP`), and HEIF by its
+major brand (`ftyp` at offset 4, then `heic`, `heix`, `heim`, `heis`, `hevc`, `hevx`, `hevm`, `hevs`, `mif1`
+or `msf1`). Its suffixes are the ones `ImageConverter` claims, and its tests decide for a staged file and for
+a picture inside a document alike (`_raster_suffix`). EMF, WMF, SVG, PDF and AVIF are not in it. These are the
+types the helper allows; the helper, which looks at the whole file, has the last word.
+
+**Pictures inside a document.** `_read_pictures(engine, pictures, *, work_dir, budget_s, limit=100,
+max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. No converter calls it
+yet.
+
+- **Streamed.** `pictures` is an iterable of binary streams. Each is read once, in 1 MiB chunks, and closed,
+  and the next is asked for only while there is room for it: a caller that passes a generator opens no
+  picture it is turned away from and holds no document in memory. A picture whose first bytes are no raster
+  type is not read past them.
+- **Where.** The rest are copied into a `.ocr-*` folder made inside `work_dir` and removed before the call
+  returns. `work_dir` is the staged file's own folder, so it is under the cycle's staging folder (0700,
+  excluded from Time Machine, wiped at the start of every cycle), never `$TMPDIR` (plan D13).
+- **Bounds.** At most `limit` distinct pictures (by sha256) and `max_bytes` read, the copies of a repeated
+  picture included (a caller offers each picture once). The picture that passes the byte limit is not read,
+  nor any after it. Both are counts, so a document gives the same pictures on every run.
+- **Time.** The helper has what is left of `budget_s`, counted from the call and shared by every run.
+- **One failure costs one picture.** The helper is run on 16 pictures at a time. A run that fails gives
+  nothing, so its pictures are read again one at a time; a picture alone in a failed run is not run twice.
+  `_read_pictures` never raises `OcrError`.
+- **Result.** `digests`: one entry per picture looked at, in the order offered, its sha256 or `None` when it
+  was not taken (shorter than the pictures offered when a limit stopped the reading). `lines`: digest →
+  escaped lines, as above, for each picture text was read in. `unread`: the pictures taken that a helper
+  failure, the time limit or `recognition failed` left unread; 0 means every picture without lines holds no
+  text. One WARNING per document says `on-device OCR left N of M picture(s) unread: <first reason>`, with no
+  name in it.
+
+**Shared options.** `_OCR_OPTIONS` (`ocr_languages`, `ocr_max_pages`, `ocr_max_pictures`,
+`ocr_max_picture_bytes`) is the one set for every converter that has an engine: the limits here that can
+change a page. What the helper is run with is in `OcrEngine.identity`, so in the version.
+
+**Registry** (amends §7 and §16.6). `Registry.default(cfg, *, policy=None, ocr=None)`. The registry never
+looks for an engine: the cycle resolves one and hands it in. `ImageConverter(cfg, ocr)` is registered when
+`ocr` is not None and `policy.labels_active` is false (plan D8). An image can carry a sensitivity label and
+`policy.read_labels` reads none from an image, so under any label rule (`exclude_label_ids`,
+`exclude_label_names`, `refuse_unlabelled`) an image keeps the `no converter for .png` stub and is never read.
+The converter is behind the guard like the other eight: the encryption screen runs first, the body starts with
+`policy.UNTRUSTED_BANNER`, and a text sidecar gets the banner and its digest line. With `ocr=None` the
+registry is the one from before OCR existed.
+
+```python
+# agentsync.convert.image
+class ImageConverter:                        # converter_id = "image-ocr"
+    extensions = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
+    def __init__(self, cfg: ConvertConfig, engine: OcrEngine) -> None: ...
+    def version(self) -> str: ...            # "2.0.0+" + engine.identity
+    def options(self) -> Mapping[str, OptionValue]: ...
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
+
+# agentsync.convert.registry
+class Registry:
+    @classmethod
+    def default(cls, cfg: ConvertConfig, *, policy: PolicyConfig | None = None,
+                ocr: OcrEngine | None = None) -> Registry: ...
+```
+
+Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
+`_PictureText`, `_read_pictures`, `_read_each`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`,
+`_MAX_PICTURE_BYTES`).
+
+Tests: `tests/test_convert_image.py` (the raster table, one case per type and per look-alike; the page byte
+for byte; the helper's working folder, time limit and frame count; every claimed suffix; the same page under
+two names; each kind of line that could pose as structure; the page cap and its sidecar; every stub reason;
+a file that never reaches the helper; a helper failure, its fixed wording and its log line; TIFF pages, the
+page limit, a page that could not be read, pages decided from the bytes; the banner on the page and on the
+sidecar through `Registry.default`; an unreadable image cached and a failure not; an encrypted Office
+container named `.png` refused by the screen, the helper not started; `_read_pictures`: order,
+one read per distinct picture, vector art not read past its head, the folder removed, the count limit and the
+byte limit without opening the next picture, one failing picture among five, the shared time limit,
+`recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
+rule) and `tests/test_convert_determinism.py` (an image converted twice, and from the cache under a second
+name). `picture`, `picture_bytes`, `rows` and `MAGIC` in `tests/test_convert_image.py` build test images
+for the fake helper of `tests/test_ocr.py`.

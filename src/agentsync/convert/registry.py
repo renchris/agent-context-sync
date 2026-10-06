@@ -7,6 +7,9 @@ missing sensitivity label -> ``refused: …``; all raised as UnreadableSourceErr
 UNREADABLE stub that is cached and settled, never retried), maps pdfminer's password/encryption errors to
 ``encrypted-pdf``, turns output that is empty after stripping whitespace and form feeds into an UNREADABLE
 stub (C15 §9 #26), and prefixes every unit body with ``policy.UNTRUSTED_BANNER`` so H2 covers the banner.
+
+The registry never looks for an OCR engine: the cycle resolves one and hands it in (``ocr=``).  Without one
+the default registry is the one from before OCR existed, converter for converter and version for version.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from agentsync import policy as policy_mod
 from agentsync.config import ConvertConfig
@@ -23,6 +27,9 @@ from agentsync.convert.base import Converter, OptionValue, estimate_tokens, rend
 from agentsync.errors import UnreadableSourceError
 from agentsync.model import RenderedUnit
 from agentsync.policy import PolicyConfig, Screening
+
+if TYPE_CHECKING:
+    from agentsync.convert.ocr import OcrEngine
 
 _PDF_ENCRYPTION_ERRORS = frozenset({"PDFPasswordIncorrect", "PDFEncryptionError"})
 
@@ -165,9 +172,15 @@ class Registry:
         self._longest_first = tuple(sorted(by_ext, key=lambda e: (-len(e), e)))
 
     @classmethod
-    def default(cls, cfg: ConvertConfig, *, policy: PolicyConfig | None = None) -> Registry:
+    def default(
+        cls, cfg: ConvertConfig, *, policy: PolicyConfig | None = None, ocr: OcrEngine | None = None
+    ) -> Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams), each
-        behind the policy guard (``policy`` defaults to encryption detection only) and the banner."""
+        behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
+
+        With ``ocr`` (the engine the cycle resolved) raster images get a converter too, ``image-ocr``, unless
+        a ``[policy]`` label rule is active: an image can carry a sensitivity label the screen cannot read,
+        so it then stays the ``no converter`` stub it is without an engine."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter  # noqa: PLC0415
@@ -177,20 +190,22 @@ class Registry:
         from agentsync.convert.text import PlainTextConverter  # noqa: PLC0415
         from agentsync.convert.xlsx import XlsxConverter  # noqa: PLC0415
 
-        return cls(
-            [
-                PandocConverter(cfg),
-                XlsxConverter(cfg),
-                PptxConverter(cfg),
-                PdfConverter(cfg),
-                MarkdownConverter(cfg),
-                PlainTextConverter(cfg),
-                EmlConverter(cfg),
-                TeamsMonthConverter(cfg),
-            ],
-            policy=policy if policy is not None else PolicyConfig(),
-            banner=True,
-        )
+        content_policy = policy if policy is not None else PolicyConfig()
+        converters: list[Converter] = [
+            PandocConverter(cfg),
+            XlsxConverter(cfg),
+            PptxConverter(cfg),
+            PdfConverter(cfg),
+            MarkdownConverter(cfg),
+            PlainTextConverter(cfg),
+            EmlConverter(cfg),
+            TeamsMonthConverter(cfg),
+        ]
+        if ocr is not None and not content_policy.labels_active:
+            from agentsync.convert.image import ImageConverter  # noqa: PLC0415
+
+            converters.append(ImageConverter(cfg, ocr))
+        return cls(converters, policy=content_policy, banner=True)
 
     @property
     def policy(self) -> PolicyConfig:

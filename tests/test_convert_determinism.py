@@ -26,6 +26,8 @@ from test_convert_builders import (
     teams_doc,
     teams_msg,
 )
+from test_convert_image import picture
+from test_ocr import calls, fake_engine
 
 CFG = ConvertConfig()
 
@@ -142,6 +144,34 @@ def test_output_depends_on_bytes_and_suffix_only(
         conv = registry.for_name(name)
         assert conv is not None
         assert conv.convert(path, name=name) == conv.convert(renamed, name=renamed.name), name
+
+
+def test_an_image_converts_the_same_twice_and_under_any_name(
+    fixture_files: dict[str, Path], extra_inputs: dict[str, Path], tmp_path: Path
+) -> None:
+    """The ninth converter, there only with an OCR engine, by the rules of the other eight: the same bytes
+    under a second name are a cache hit, so the page must hold neither name."""
+    engine = fake_engine(tmp_path / "bin")
+    registry = Registry.default(CFG, ocr=engine)
+    first = picture(tmp_path / "a" / "Contoso Roadmap.png", "Milestones", "Beta in spring")
+    second = tmp_path / "b" / "Fabrikam Org Chart.png"
+    second.parent.mkdir()
+    shutil.copyfile(first, second)
+    inputs = {*_all_inputs(fixture_files, extra_inputs), first.name}
+    assert {registry.for_name(n).converter_id for n in inputs} == {  # type: ignore[union-attr]
+        c.converter_id for c in registry.converters()
+    }
+    assert not double_conversion_differs(first, name=first.name, registry=registry)
+    a = _convert(first, first.name, registry, tmp_path / "cache")
+    b = _convert(second, second.name, registry, tmp_path / "cache")
+    assert a.status is ConversionStatus.OK and a.converter_id == "image-ocr" and not a.from_cache
+    assert b.from_cache and b.action_key == a.action_key and b.units == a.units
+    assert _convert(second, second.name, registry, tmp_path / "cold") == a, "a cold cache gives the same page"
+    (unit,) = b.units
+    for word in ("Contoso", "Roadmap", "Fabrikam", "Org Chart", ".png"):
+        assert word not in unit.body + unit.title + unit.summary, word
+    assert "Milestones\nBeta in spring\n" in unit.body
+    assert len(calls(engine.helper)) == 4, "two for the double conversion, one each for the two cold caches"
 
 
 def test_teams_messages_render_independently_of_neighbours(registry: Registry, tmp_path: Path) -> None:
