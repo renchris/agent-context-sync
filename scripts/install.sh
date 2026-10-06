@@ -886,18 +886,25 @@ write_fallback_report() { # RC WHY
 	mv -f "$tmp" "$REPORT_PATH"
 }
 # The one file the person copies back (field report 2026-10-05): the redacted setup report, then the fix request
-# and the local work step 1 of the prompt kept, which are NOT redacted, so the person reviews it first.
+# and the local work step 1 of the prompt kept, which are NOT redacted, so the person reviews it first. The
+# file's own headings name the setup folder with ~: the home path holds the login name (field report
+# 2026-10-06).
 write_bring_back() {
-	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence="~~~~~~~~~~"
+	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence="~~~~~~~~~~" shown="$SETUP_DIR"
+	case "$shown" in
+	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
+	esac
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	{
 		printf '# agentsync: the one file to bring back\n\n'
-		printf 'Review before sending: section 1 is redacted; sections 2 and 3 are not.\n\n'
+		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
+		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
+		printf 'them before sending.\n\n'
 		printf '## 1. Setup report\n\n'
 		cat "$REPORT_PATH"
-		printf '\n## 2. Fix request (%s)\n\n' "$SETUP_DIR/fix-request.md"
+		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
 		if [ -s "$SETUP_DIR/fix-request.md" ]; then cat "$SETUP_DIR/fix-request.md"; else printf 'none\n'; fi
-		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$SETUP_DIR/local-work"
+		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
 		set -- "$SETUP_DIR"/local-work/*.patch
 		if [ -e "$1" ]; then
 			printf '%sdiff\n' "$fence"

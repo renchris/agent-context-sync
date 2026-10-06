@@ -798,6 +798,15 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     assert back.stat().st_mode & 0o777 == 0o600
     assert text.index("## 1. Setup report") < text.index(report_path(env).read_text(encoding="utf-8")[:30])
     assert "- OCR scanned PDFs: they convert to empty pages" in text.split("## 2. Fix request", 1)[1]
+    # Field report 2026-10-06: the file's own headings named the setup folder by the home path, which holds
+    # the login name, and its first line promised more than "private".
+    assert "## 2. Fix request (~/agent-context/setup/fix-request.md)\n" in text
+    assert "## 3. Local work kept by setup prompt step 1 (~/agent-context/setup/local-work)\n" in text
+    assert not [ln for ln in text.splitlines() if ln.startswith("#") and env["HOME"] in ln]
+    assert text.splitlines()[2] == (
+        "Private: copy this file back as it is, and never paste it into the public issue form."
+    )
+    assert "Sections 2 and 3 are not: they name real folders and files" in text
     assert "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~" in text.split("## 3. Local work", 1)[1]
     assert f"bring back: {back} (one file: report, fix request, local work)" in cp.stdout
 

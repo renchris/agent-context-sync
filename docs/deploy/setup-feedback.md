@@ -61,9 +61,13 @@ log line or in the agent's words) is yours to remove. The CLI always redacts.
   the Setup report field and tick the review box. Opened another way, copy the four values from the Summary. The
   form shows the report as a code block. The report fences command output with `~~~`, which the form's backtick
   fence does not break. Keep the agent's additions to `~~~` too.
-- **Privately (no public post needed):** copy `~/agent-context/setup-report.md` back to the machine you administer
-  this setup from (AirDrop, a USB stick, a shared folder you already use). Whoever looks after agentsync for your
-  team triages it there with this page, exactly like an issue; that needs no contact with the agentsync maintainer.
+- **Privately (no public post needed):** copy `~/agent-context/bring-back.md` back to the machine you administer
+  this setup from (AirDrop, a USB stick, a shared folder you already use). It is the one file the prompt's last
+  step names: section 1 is the redacted setup report, section 2 the agent's fix request and section 3 the patch
+  of any local work step 1 kept. Sections 2 and 3 are not redacted and name real folders and files, so review
+  them first, and never paste this file into the public form: the public route takes `setup-report.md` alone.
+  Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
+  no contact with the agentsync maintainer.
   To hand a report to the maintainer without a public post, the optional route is the contact on the maintainer's
   GitHub profile ([github.com/renchris](https://github.com/renchris)); no email address is published in this
   repository. Keep the report redacted. A privately

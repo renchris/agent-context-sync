@@ -6386,9 +6386,18 @@ runs no doctor check: the FAIL simply has no cause left when `status` next looks
   exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
   it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
   call, and the skip note is unchanged.
+- `bring-back.md`: the headings of sections 2 and 3 name the setup folder with `~`
+  (`## 2. Fix request (~/agent-context/setup/fix-request.md)`), not by the expanded home path, which holds the
+  login name. The line under the title reads "Private: copy this file back as it is, and never paste it into
+  the public issue form. Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so
+  review them before sending." Sections 2 and 3 stay unredacted on purpose: redacting them would corrupt the
+  patch and hide over-redaction bugs.
 
 **Setup prompt (still v7: wording only, nothing new for the installer to do).** Step 1 ends: if the agent
 cannot ask (unattended, or the question comes back unanswered), it does not choose folders: it logs a
 deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps its sources, history and
 background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
-not run their commands.
+not run their commands. The rules say how to write `fix-request.md`, which comes back unredacted: name a folder,
+a file or a person by its role or by the report's placeholder, not by its real name, unless the name itself is
+the bug. docs/deploy/setup-feedback.md's private route names `~/agent-context/bring-back.md` and what its three
+sections hold.

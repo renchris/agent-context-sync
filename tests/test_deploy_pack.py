@@ -476,6 +476,15 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     block = " ".join(_one_prompt_block().split())
     assert "Do not edit any file in ~/src/agent-context-sync" in block
     assert "write what and why to ~/agent-context/setup/fix-request.md" in block
+    # The bring-back report (2026-10-06): the fix request comes back unredacted, so it names roles.
+    assert (
+        'In that file, name a folder, a file or a person by its role ("a project folder") or by the setup '
+        "report's placeholder (<folder-1>), not by its real name, unless the name itself is the bug."
+    ) in block
+    feedback = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
+    private = feedback.split("**Privately (no public post needed):**", 1)[1].split("**", 1)[0]
+    assert "copy `~/agent-context/bring-back.md` back" in private
+    assert "never paste this file into the public form" in private
     finish = _prompt_steps()[3].rsplit("Finish with three lines", 1)[1]
     assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
     step3 = _prompt_steps()[3]
