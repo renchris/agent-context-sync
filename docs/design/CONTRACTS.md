@@ -6312,3 +6312,9 @@ or empty for this case (a source sat incomplete for 900 passes):
   exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
   it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
   call, and the skip note is unchanged.
+
+**Setup prompt (still v7: wording only, nothing new for the installer to do).** Step 1 ends: if the agent
+cannot ask (unattended, or the question comes back unanswered), it does not choose folders: it logs a
+deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps its sources, history and
+background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
+not run their commands.

@@ -185,13 +185,17 @@ unclear; include better wording). Do not log the steps themselves; the installer
    older than this prompt and stop. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
-   them are downloaded by each sync, up to 1 GiB per folder per run.
+   them are downloaded by each sync, up to 1 GiB per folder per run. If you cannot ask me (your tool runs
+   unattended, or the question comes back unanswered), do not choose folders for me: log a deviation, stop and
+   wait for my answer.
 2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
    timeout your tool allows (10 minutes if you can set it):
    `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`
    It installs, runs doctor and the first sync. It starts no background job and asks for no second Allow click:
    background sync is mine to turn on later, so add no other option to this command. It is safe to re-run: if your
-   tool stopped it early, run the same command again. If your tool cannot wait that long in the foreground, run it
+   tool stopped it early, run the same command again. If this Mac already runs agentsync, its sources, history
+   and background jobs are kept, and [warn] or WAITING ON YOU: lines about them may predate this session: show
+   them to me and do not run their commands. If your tool cannot wait that long in the foreground, run it
    in the background and read its output until the NEXT: line appears; that is expected, not a deviation. If it
    exits non-zero, do what NEXT: says only if it is an install.sh or agentsync command or a click for me; otherwise
    log it and go to step 3's report. Then tell me about my inbox: it is the folder of each kind = "inbox" source in

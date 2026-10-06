@@ -869,6 +869,20 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
     assert "never empty it by hand" in inbox
     assert 'If a sync stops on "click Allow", a macOS prompt is waiting for me' in _prompt_steps()[3]
+    # The bring-back report (2026-10-06). S2: an unanswered folder question is never the agent's to answer.
+    # S4: a Mac that already runs agentsync keeps what it has, and its older warnings are not this session's.
+    step1 = _prompt_steps()[1]
+    assert step1.index("ask which to sync") < step1.index("If you cannot ask me")
+    assert (
+        "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not "
+        "choose folders for me: log a deviation, stop and wait for my answer."
+    ) in step1
+    assert (
+        "If this Mac already runs agentsync, its sources, history and background jobs are kept, and [warn] "
+        "or WAITING ON YOU: lines about them may predate this session: show them to me and do not run "
+        "their commands."
+    ) in step2
+    assert step2.index("run the same command again") < step2.index("If this Mac already runs agentsync")
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert (
         "**The inbox always exists.**" in readme
