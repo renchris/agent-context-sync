@@ -121,6 +121,9 @@ _LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml")
 _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
+_SCOPE_ROOT_META = "scope_root:"
+"""``scope_root:<source_id>`` holds ``<run>:<path>`` for a local or inbox source: the first run under the
+``path`` it has now (0: the path it had when this was first recorded)."""
 _RESCREEN_META = "policy_rescreen_pending"
 _CHECKPOINT_PENDING_META = "checkpoint_pending"  # KISS K06: the HEAD a held or failed checkpoint retries
 _SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
@@ -727,6 +730,7 @@ class _Cycle:
             fp_changed = set(self.manifest.sync_sources(self.config.sources))
             for sid in sorted(fp_changed):  # until one complete pass: absence = the operator's scope change
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
+            self._note_roots(fp_changed)
             self._check_policy_change()
             self.publisher.ensure_scaffold()
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
@@ -1484,8 +1488,10 @@ class _Cycle:
         outside: list[str] = []
         if isinstance(arm, LocalArm) and not complete_full:
             # The walk stopped short, so a file it did not list is unknown, never gone.  A path the config no
-            # longer covers is another matter: no walk lists it again, complete or not.
+            # longer covers is another matter: no walk lists it again, complete or not.  That holds for a
+            # path under the root the source has now; a row last listed under an earlier ``path`` is unknown.
             replaced = {old for _new, old in pc.safe_saves}
+            since = self._root_since(src)
             outside = sorted(
                 sid
                 for sid, row in rows.items()
@@ -1493,9 +1499,32 @@ class _Cycle:
                 and sid not in replaced
                 and not row.is_dir
                 and row.state in _PRESENT
+                and row.last_seen_run >= since
                 and not arm.in_scope(row.rel_path)
             )
         self._removals(src, pc, rows_before, acc, items, complete_full=complete_full, out_of_scope=outside)
+
+    def _note_roots(self, fp_changed: set[str]) -> None:
+        """Record the first run of each local or inbox source under the ``path`` it has now
+        (``_SCOPE_ROOT_META``).  A row keeps the ``rel_path`` of the root it was last listed under, so a row
+        last seen before that run cannot be tested against the source's globs.
+
+        A source seen here for the first time gets 0: its rows are under this root, unless sources.toml
+        changed in this very run and may have moved it."""
+        for src in self.config.sources:
+            if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+                continue
+            key, root = _SCOPE_ROOT_META + src.id, str(src.path)
+            stored = self.manifest.get_meta(key)
+            if stored is not None and stored.partition(":")[2] == root:
+                continue
+            first = self.run_id if stored is not None or src.id in fp_changed else 0
+            self.manifest.set_meta(key, f"{first}:{root}")
+
+    def _root_since(self, src: SourceConfig) -> int:
+        """The run ``_note_roots`` recorded for ``src`` (this run when there is no readable record)."""
+        since = (self.manifest.get_meta(_SCOPE_ROOT_META + src.id) or "").partition(":")[0]
+        return int(since) if since.isdigit() else self.run_id
 
     def _process_batch(
         self, src: SourceConfig, arm: SourceArm, rows: Sequence[ItemRow], budget: ByteBudget, acc: _SourceAcc

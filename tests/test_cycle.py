@@ -999,6 +999,94 @@ def test_a_published_file_excluded_later_is_retired_on_an_incomplete_walk_and_co
     assert page(repo, rel)[0]["status"] == "current"
 
 
+def _repointed(config: Config, root: Path, name: str) -> Config:
+    """``config`` with its one source pointed at ``root``, one folder above the tree it mirrors (``name``),
+    and include and the sentinel re-anchored to keep the same files: one edit of sources.toml."""
+    [src] = config.sources
+    moved = dataclasses.replace(src, path=root, include=(f"{name}/**",), sentinel=f"{name}/{src.sentinel}")
+    return dataclasses.replace(config, sources=(moved,))
+
+
+def test_a_source_pointed_at_a_new_root_retires_no_row_it_has_not_listed_there(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stored path is relative to the root it was listed under. When ``path`` moves up a folder and
+    include is re-anchored in the same edit, every stored path fails the new scope, and that says nothing
+    about the files. While the new root cannot be listed (a typo, a volume not mounted yet) no row is
+    retired; once it can, the pages move in place and nothing is read again."""
+    assert run(sample_config).exit_code == 0
+    before = {rel: r.state for rel, r in _file_rows(sample_config).items()}
+    assert len(before) > 5 and set(before.values()) == {RowState.LIVE}
+    parent, name = local_source_dir.parent, local_source_dir.name
+    fetched = _fetches(monkeypatch)
+    for _pass in range(2):  # the first pass under the new root, and one after it
+        absent = run(_repointed(sample_config, parent / "not-mounted-yet", name))
+        [rep] = absent.sources
+        assert absent.exit_code == 0 and not rep.enumeration_complete
+        assert not any("retired" in a for a in rep.alarms), rep.alarms
+        assert {rel: r.state for rel, r in _file_rows(sample_config).items()} == before
+    there = _repointed(sample_config, parent, name)
+    back = run(there)
+    assert back.exit_code == 0 and back.sources[0].enumeration_complete and fetched == []
+    rows = _file_rows(there)
+    assert {rel: r.state for rel, r in rows.items()} == {f"{name}/{rel}": RowState.LIVE for rel in before}
+    repo = there.docs_repo
+    assert page(repo, slug.mirror_rel_path(SID, f"{name}/{KICKOFF}"))[0]["status"] == "current"
+    assert not (repo / slug.mirror_rel_path(SID, KICKOFF)).exists()
+    # Under the root it has now, an exclude is judged again on an incomplete pass.
+    narrowed = _incomplete(there, "acme")
+    report = run(narrowed)
+    assert report.exit_code == 0 and fetched == [] and not report.sources[0].enumeration_complete
+    rows = _file_rows(narrowed)
+    assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [f"{name}/{KICKOFF}"]
+    assert rows[f"{name}/{KICKOFF}"].state_reason == "retired:scope-change"
+
+
+def test_a_row_listed_under_the_old_root_only_is_left_to_a_complete_pass(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``path`` moves and the same edit excludes a folder. The rows under that folder are never listed under
+    the new root, so their stored paths stay relative to the old one and an incomplete pass cannot judge
+    them. The first complete pass retires them, as it does after any scope change."""
+    assert run(sample_config).exit_code == 0
+    parent, name = local_source_dir.parent, local_source_dir.name
+    [src] = _repointed(sample_config, parent, name).sources
+    moved = dataclasses.replace(src, exclude=(*src.exclude, "acme"))
+    stopped = dataclasses.replace(sample_config, sources=(dataclasses.replace(moved, sentinel="none"),))
+    fetched = _fetches(monkeypatch)
+    for _pass in range(2):
+        report = run(stopped)
+        assert report.exit_code == 0 and not report.sources[0].enumeration_complete
+        assert not any("retired" in a for a in report.sources[0].alarms)
+        assert _file_rows(stopped)[KICKOFF].state is RowState.LIVE  # still under its old-root path
+    complete = run(dataclasses.replace(sample_config, sources=(moved,)))
+    assert complete.exit_code == 0 and complete.sources[0].enumeration_complete and fetched == []
+    row = _file_rows(sample_config)[KICKOFF]
+    assert (row.state, row.state_reason) == (RowState.TOMBSTONE, "retired:scope-change")
+    assert governance.pending_purges(sample_config.state_paths.root) == []
+
+
+@pytest.mark.parametrize("edited_in_that_run", [False, True])
+def test_a_manifest_with_no_recorded_root_trusts_its_paths_unless_that_run_changed_the_scope(
+    sample_config: Config, edited_in_that_run: bool
+) -> None:
+    """A manifest written before the root was recorded has rows under the root the source has: an exclude
+    added later retires them on an incomplete pass. If sources.toml changed in the very run that makes the
+    first record, ``path`` may have moved in that edit, and the rows it has not listed since are left to a
+    complete pass."""
+    assert run(sample_config).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._SCOPE_ROOT_META + SID,))
+    if not edited_in_that_run:
+        assert run(_incomplete(sample_config)).exit_code == 0  # the first record, with nothing changed
+    excluded = _incomplete(sample_config, "acme")
+    assert run(excluded).exit_code == 0
+    row = _file_rows(excluded)[KICKOFF]
+    assert (row.state is RowState.TOMBSTONE) is (not edited_in_that_run), row.state
+    assert run(excluded).exit_code == 0
+    assert _file_rows(excluded)[KICKOFF].state is row.state  # the next incomplete pass decides the same
+
+
 def test_an_inbox_file_excluded_later_is_retired_on_an_incomplete_walk(
     tmp_path: Path, local_source_dir: Path
 ) -> None:

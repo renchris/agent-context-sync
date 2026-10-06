@@ -5899,6 +5899,14 @@ The cycle uses it in two places (amends §9 steps 6 and 7):
   path a complete pass takes after a scope change (§16.12): `# [RETIRED]`, exempt from the breaker, no purge
   queued, the same alarm line. The row leaves `pending_work`, and `loop`, which counts live and dataless rows,
   stops counting it. Taking the exclude away lists the file again and its page comes back.
+- Only a row listed under the root the source has now is judged that way. A stored `rel_path` is relative to the
+  `path` it was listed under, so after `path` moves the old paths say nothing about the new globs. The manifest
+  meta `scope_root:<source_id>` holds `<run>:<path>`: the first run under the current `path`
+  (`cycle._note_roots`, every run, every local and inbox source). A row whose `last_seen_run` is before that run
+  is left alone by an incomplete pass, whatever its path; the pass that lists it renames its pages in place, and
+  a complete pass retires what is left. So a source pointed at a root that is missing or not mounted yet retires
+  nothing. The first record is run 0 (the rows are under this root), except when the source's scope fingerprint
+  changed in that same run, because that edit may have moved `path`: then it is that run.
 
 What does not change: a row whose path is in scope and that an incomplete pass did not list is unknown, never
 retired. A complete pass decides as before (deletion candidates, the breaker, the two-pass rule). A pass whose
@@ -5911,7 +5919,9 @@ Tests: `test_arm_local.py` (`in_scope` against the walk for ten include/exclude 
 by a file glob, a bare folder name, an anchored folder and `name/`: not fetched, retired, no purge, not counted
 by `loop.next_step`, while a queued row still in scope is read and an in-scope row the walk did not list stays
 live; a published page retired and brought back; an inbox; a drive row not downloaded; an arm with no
-`in_scope`).
+`in_scope`; a source pointed one folder up with include re-anchored and the new root missing retires nothing,
+and once the root is listed the pages move in place with no read; a row excluded in the same edit as a moved
+root waits for the complete pass; a manifest with no recorded root).
 
 **A finished re-screen stays finished.** The manifest meta `policy_rescreen_pending` holds the policy fingerprint
 while a `[policy]` re-screen has files left, and `""` once none is left. `cycle._rescreen_lines` tested only for
