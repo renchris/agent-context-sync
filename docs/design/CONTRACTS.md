@@ -3494,7 +3494,8 @@ ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:  # tcc_canary: KISS K08a
     """Run every check, in a fixed order, never raising for a single failed check.
 
-    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; sources.toml
+    python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; on-device
+    OCR ready, off, not built (INFO) or failed (WARN), never built here and never a FAIL (§16.25); sources.toml
     keys accepted but ignored (`config.graph_company` WARN naming the line to delete, nothing when absent; KISS
     K15); docs_repo outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
@@ -5946,7 +5947,19 @@ adds no `## Content policy` section).
 Additive. `agentsync.convert.ocr` (`src/agentsync/convert/ocr.py`; imports `config`, `errors` and `paths` only)
 reads text from images with Apple Vision (`VNRecognizeTextRequest`, accurate level) through a Swift helper
 whose source ships in the package (`src/agentsync/convert/vision_ocr.swift`). Nothing leaves the Mac. This
-section is the engine only: no converter uses it yet, and it adds no command, option or installer option.
+section is the engine, its doctor line and its build in the installer: no converter uses it yet, and it adds
+no command, option or installer option.
+
+**Rules** (plan decisions D2 to D6).
+
+- One config key, `[convert] ocr`. Languages and the page cap are constants.
+- One environment switch, `AGENTSYNC_OCR`, for the test suite. No variable names a helper to run.
+- Only `scripts/install.sh` compiles the helper. `status`, the `doctor` alias, the setup report, a dry run, a
+  sync and the LaunchAgent never do: they say it is not built and that `scripts/install.sh` builds it.
+- The helper is 0700 under `<cache_dir>/ocr` and is run only when it is a regular file the user owns, with no
+  group or other write bit on it or its folder.
+- A converter's version changes only when it has an engine: it then ends in `OcrEngine.identity`. Without an
+  engine it is the version from before OCR existed (no "off" suffix), and no macOS build is ever part of it.
 
 **Switches.** `[convert] ocr = true | false` (default true; `ConvertConfig.ocr`, not part of any converter's
 options) and `AGENTSYNC_OCR=0` (or `off`) for the test suite. Nothing else: no environment variable names a
@@ -5988,6 +6001,36 @@ has no number in it, so the same failure reads the same on every Mac.
 | `off` | `AGENTSYNC_OCR` is `0` or `off`; `[convert] ocr = false`; not macOS | which of the three |
 | `not-built` | no helper for this agentsync; or the one there no longer answers `--version` | `the OCR helper is not built`, or why it does not answer |
 | `failed` | `<helper>.failed` exists and there is no working helper; the helper may not be run; an `OSError` while looking | the build's reason, or the refusal |
+
+**Doctor** (`ops.doctor`, check `ocr`, after `pandoc`). It calls `probe` only, through the private probe
+`doctor._ocr_status`, so it never compiles; the one program it may start is a built helper's `--version`
+(limit 5 s). OCR is optional, so the line is never a FAIL:
+
+| `probe` state | Line |
+|---|---|
+| `ready` | ok: `on-device OCR is ready: <detail>` |
+| `off` | ok: `on-device OCR is off: <detail>` |
+| `not-built` | not-ok INFO, no fix (the shape of the `skill` check): `<detail>; scripts/install.sh builds it` |
+| `failed` | WARN: `on-device OCR is not working: <detail>` |
+| the probe raised | WARN: `on-device OCR could not be checked: <exception type>` (no exception text: it can hold a path) |
+
+A `failed` line carries a fix only when `/usr/bin/xcode-select -p` (limit 5 s) names no folder:
+`xcode-select --install, then run scripts/install.sh again`. Any other failure prints its reason and no fix,
+and no line names `agentsync doctor`. In the setup report the INFO line is shown and not counted;
+`setup_report.expected_warn` has no entry for `ocr`, so an `ocr` warn is an unexpected warn and, like every
+warn, leaves the outcome as it was.
+
+**Installer** (`scripts/install.sh`, inside the `launcher` step; no new step in `install.log`, no option).
+With or without `--confirm-install-agent`, when `xcode-select -p` names a folder and the tool's interpreter
+exists, it runs `<tool python> -m agentsync.convert.ocr` with `AGENTSYNC_CONFIG` set to the run's config and
+prints the first line of its stdout (`OCR helper: ...`; `OCR helper: not built (the build did not run)` when
+there is none). The exit status and stderr are dropped: the step's result and the run's exit status are those
+of a run without it. A dry run prints the command. Without developer tools nothing is tried and nothing is
+printed.
+
+**Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
+environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
+`tests/test_deploy_pack.py::tmp_home_env`). `tests/test_ocr.py` unsets it for its own tests.
 
 **Helper protocol** (`vision_ocr.swift`, helper version 2.0.0). One JSON document on stdout, keys sorted; exit 0
 whenever it was written, 64 on a usage error.
@@ -6090,3 +6133,8 @@ the packaged source; and one test that builds and runs the real helper where dev
 across a tile seam whole and once, small labels on a large canvas, EXIF orientation 6, a three-page TIFF, an
 icon, an over-limit image, a PDF named `.png`, an empty file). `tests/test_config.py` pins the key.
 The fake helper kit (`write_fake`, `fake_image`, `fake_engine`) is there for the converter tests.
+`tests/test_ops_doctor.py` (the `ocr` line in each state; with OCR on and nothing built, `run_checks` and
+`cli._status_checks` reach no build, no developer tool and no helper; the fix only without developer tools; a
+probe that crashes), `tests/test_setup_report.py` (the INFO line is not counted, a warn is unexpected) and
+`tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
+crashing build changes neither the exit status nor the steps; the dry run).
