@@ -1022,6 +1022,49 @@ def test_the_module_entry_point_builds_nothing_when_ocr_is_off(
     assert not (Path.home() / "Library" / "Caches" / "agentsync").exists()
 
 
+def test_what_an_earlier_build_left_is_tidied_when_nothing_is_built(
+    tools: Path, tmp_path: Path, config_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An earlier build left its helper and folder readable by everyone under ``cache_dir``, which status's
+    ``docs_repo.permissions`` walks.  Every run of the entry point tidies them: with OCR switched off (the
+    Mac that refuses the binary) and when the build fails, not only after a build that works."""
+    cache = tmp_path / "cache"
+    folder = cache / "ocr"
+    kept, gone = "agentsync-ocr-1111111111111111", "agentsync-ocr-0000000000000000"
+
+    def leave() -> None:
+        folder.mkdir(parents=True, exist_ok=True)
+        folder.chmod(0o755)
+        for name, days in ((kept, 2), (gone, 30)):
+            (folder / name).write_text("x")
+            (folder / name).chmod(0o755)
+            os.utime(folder / name, (time.time() - days * DAY, time.time() - days * DAY))
+        assert doctor._group_other_readable(cache) != []
+
+    def tidied() -> None:
+        left = {p.name: mode(p) for p in folder.iterdir() if not p.name.endswith(".failed")}
+        assert left == {kept: 0o700} and mode(folder) == 0o700
+        assert doctor._group_other_readable(cache) == []
+
+    leave()
+    config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n[convert]\nocr = false\n')
+    assert ocr._main() == 0
+    assert capsys.readouterr().out == "OCR helper: off ([convert] ocr = false)\n"
+    tidied()
+    assert not (tools / "xcode-select.calls").exists(), "switched off, it still builds nothing"
+
+    leave()
+    config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n')
+    script(tools / "swiftc", 'echo "error: the stub compiler fails" >&2\nexit 1')
+    assert ocr._main() == 1
+    assert capsys.readouterr().out == (
+        "OCR helper: not built (swiftc did not build the OCR helper (exit 1): "
+        "error: the stub compiler fails)\n"
+    )
+    tidied()
+    assert ocr.probe(CFG, cache)[0] == "failed"
+
+
 def test_python_dash_m_prints_one_line_and_exits_0(tmp_path: Path) -> None:
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "AGENTSYNC_OCR": "off"}
     cp = subprocess.run(

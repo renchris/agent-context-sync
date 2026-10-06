@@ -539,12 +539,23 @@ def _prune(helper: Path) -> None:
                     entry.unlink()
 
 
+def _tidy(helper: Path) -> None:
+    """Make ``helper``'s folder owner-only and :func:`_prune` it, when the folder is there and this user's.
+    It creates nothing, so it also runs when nothing is built: ``docs_repo.permissions`` walks ``cache_dir``
+    and FAILs on what an earlier build left readable by others."""
+    with contextlib.suppress(OSError):
+        st = helper.parent.lstat()
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == os.geteuid():
+            helper.parent.chmod(0o700)
+            _prune(helper)
+
+
 def build(cache_dir: Path) -> Path:
     """Build the helper under ``<cache_dir>/ocr`` unless a working one is already there; return its path.
 
     Only ``python -m agentsync.convert.ocr`` calls this (scripts/install.sh).  Raises OcrError with the
     reason; the same reason is left in ``<helper>.failed`` for :func:`probe`, and the next build that works
-    removes it.
+    removes it.  Whether or not the build works, what earlier builds left in the folder is tidied.
     """
     helper: Path | None = None
     try:
@@ -567,15 +578,18 @@ def build(cache_dir: Path) -> Path:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     fh.write(reason + "\n")
         raise OcrError(reason) from None
+    finally:
+        if helper is not None:
+            _tidy(helper)
     with contextlib.suppress(OSError):
         _marker(helper).unlink(missing_ok=True)
-    _prune(helper)
     return helper
 
 
 def _main() -> int:
     """``python -m agentsync.convert.ocr``: what scripts/install.sh runs to build the helper.  It is not an
-    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built."""
+    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built.
+    Switched off, it builds nothing and still tidies the folder an earlier build left."""
     os.umask(0o077)
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
     try:
@@ -587,6 +601,8 @@ def _main() -> int:
         return 1
     off = _switched_off(cfg)
     if off:
+        with contextlib.suppress(OSError):  # the packaged source, which names the helper, cannot be read
+            _tidy(_helper_path(cache_dir))
         sys.stdout.write(f"OCR helper: off ({off})\n")
         return 0
     try:
