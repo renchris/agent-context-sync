@@ -134,10 +134,11 @@ class _PictureText:
     """What :func:`_read_pictures` made of one document's pictures.
 
     ``digests`` has one entry per picture looked at, in the order offered: the sha256 of its bytes, or None
-    for one that was not taken (not a raster image, or the one that passed the byte limit).  It is shorter
-    than the pictures offered when a limit stopped the reading.  ``lines`` holds the escaped lines of each
-    picture text was read in, by that digest.  ``unread`` counts the pictures taken that a helper failure or
-    the time limit left unread: 0 means every picture without an entry in ``lines`` holds no text.
+    for one that was not taken (not a raster image, not readable to its end, or the one that passed the byte
+    limit).  It is shorter than the pictures offered when a limit stopped the reading.  ``lines`` holds the
+    escaped lines of each picture text was read in, by that digest.  ``unread`` counts the pictures taken
+    that a helper failure or the time limit left unread: 0 means every picture without an entry in ``lines``
+    holds no text.
     """
 
     digests: tuple[str | None, ...]
@@ -178,6 +179,19 @@ def _read_each(
     return out, reason
 
 
+def _next_bytes(stream: BinaryIO, size: int) -> bytes | None:
+    """Up to ``size`` bytes of a picture's stream, ``b""`` at its end; None when the stream cannot be read.
+
+    A stream that raises is a damaged entry of the document (a ZIP member that does not inflate, or whose
+    checksum is wrong): a fact about the bytes, so the picture is not taken and the rest are still read.
+    Only the exception's type is logged: its text can name the entry."""
+    try:
+        return stream.read(size)
+    except Exception as exc:
+        log.debug("a picture inside a document could not be read to its end: %s", type(exc).__name__)
+        return None
+
+
 def _read_pictures(
     engine: OcrEngine,
     pictures: Iterable[BinaryIO],
@@ -191,11 +205,12 @@ def _read_pictures(
 
     ``pictures`` is consumed one stream at a time, and each stream is read once, in chunks, and closed: pass
     a generator that opens the next picture only when asked, and nothing of a document is held in memory.  A
-    picture whose first bytes are no raster type (``_RASTERS``) is not read past them.  The rest are copied
-    into a folder made inside ``work_dir`` (the staged file's own folder, so under the cycle's staging
-    folder) and removed before this returns.  The reading stops at ``limit`` distinct pictures and at
-    ``max_bytes`` read (the copies of a repeated picture count: offer each picture once).  Both are counts,
-    so the same document gives the same pictures on every run.
+    picture whose first bytes are no raster type (``_RASTERS``) is not read past them, and one whose stream
+    cannot be read to its end is not taken (``_next_bytes``).  The rest are copied into a folder made inside
+    ``work_dir`` (the staged file's own folder, so under the cycle's staging folder) and removed before this
+    returns.  The reading stops at ``limit`` distinct pictures and at ``max_bytes`` read (the copies of a
+    repeated picture count: offer each picture once).  Both are counts, so the same document gives the same
+    pictures on every run.
 
     The helper then has what is left of ``budget_s`` seconds, counted from the call.  Never raises OcrError:
     a picture the helper could not be run on is counted in ``unread`` (and the first reason logged once).
@@ -209,20 +224,23 @@ def _read_pictures(
         # The next picture is asked for only while there is room for one: none is opened to be turned away.
         while len(kept) < limit and spent < max_bytes and (stream := next(offered, None)) is not None:
             with stream:
-                head = stream.read(_HEAD_BYTES)
-                suffix = _raster_suffix(head)
+                chunk = _next_bytes(stream, _HEAD_BYTES)
+                suffix = _raster_suffix(chunk) if chunk else None
                 if suffix is None:
                     digests.append(None)
                     continue
                 path = Path(tmp) / f"{len(digests):05d}{suffix}"
                 sha = hashlib.sha256()
                 with path.open("wb") as out:
-                    chunk = head
                     while chunk and spent <= max_bytes:
                         spent += len(chunk)
                         sha.update(chunk)
                         out.write(chunk)
-                        chunk = stream.read(_CHUNK)
+                        chunk = _next_bytes(stream, _CHUNK)
+            if chunk is None:  # damaged part-way: what was copied is no picture, and is not read
+                path.unlink()
+                digests.append(None)
+                continue
             if spent > max_bytes:  # the picture that passed the limit is not read, nor any after it
                 digests.append(None)
                 break

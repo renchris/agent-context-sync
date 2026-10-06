@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import logging
+import zlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -537,6 +538,20 @@ class Counting(io.BytesIO):
         return super().read(size)
 
 
+class Damaged(io.BytesIO):
+    """A picture stream that cannot be read past its first ``good`` bytes, as a ZIP member that does not
+    inflate cannot.  The error names the entry, as zipfile's own errors do."""
+
+    def __init__(self, data: bytes, good: int) -> None:
+        super().__init__(data)
+        self.good = good
+
+    def read(self, size: int | None = -1) -> bytes:
+        if self.tell() >= self.good:
+            raise zlib.error("Error -3 while decompressing 'word/media/contoso-roadmap.png'")
+        return super().read(size)
+
+
 @pytest.fixture
 def staged(tmp_path: Path) -> Path:
     """The folder of a staged document."""
@@ -578,6 +593,28 @@ def test_no_picture_to_read_starts_no_helper(staged: Path, engine: ocr.OcrEngine
     got = image._read_pictures(engine, vector, work_dir=staged, budget_s=60)
     assert got == image._PictureText((None, None), {}, 0)
     assert calls(engine.helper) == [] and list(staged.iterdir()) == []
+
+
+def test_a_picture_that_cannot_be_read_to_its_end_is_not_taken_and_the_rest_are_read(
+    staged: Path, engine: ocr.OcrEngine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A damaged entry of a document is a fact about its bytes: it costs only itself."""
+    monkeypatch.setattr(image, "_CHUNK", 32)
+    before, after = picture_bytes("the picture before"), picture_bytes("the picture after")
+    broken = picture_bytes("never read")
+    # Unreadable from its first byte, part-way, and only once every byte is out (a wrong checksum).
+    damaged = [Damaged(broken, 0), Damaged(broken, 40), Damaged(broken, len(broken))]
+    streams = [io.BytesIO(before), *damaged, io.BytesIO(after)]
+    with caplog.at_level(logging.DEBUG, logger="agentsync.convert.image"):
+        got = image._read_pictures(engine, iter(streams), work_dir=staged, budget_s=60)
+    assert got.digests == (sha(before), None, None, None, sha(after))
+    assert got.lines == {sha(before): ["the picture before"], sha(after): ["the picture after"]}
+    assert got.unread == 0, "nothing the helper should have read is missing"
+    (run,) = reads(engine.helper)
+    assert [Path(p).name for p in run] == ["00000.png", "00004.png"], "no copy of a damaged picture is read"
+    assert all(s.closed for s in streams) and list(staged.iterdir()) == []
+    # The log has the kind of error and not its text, which names the entry.
+    assert caplog.messages == ["a picture inside a document could not be read to its end: error"] * 3
 
 
 def test_reading_stops_at_the_picture_limit_without_opening_the_next(

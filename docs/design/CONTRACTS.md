@@ -6504,6 +6504,10 @@ it (below).
   and the next is asked for only while there is room for it: a caller that passes a generator opens no
   picture it is turned away from and holds no document in memory. A picture whose first bytes are no raster
   type is not read past them.
+- **A damaged picture costs only itself.** A stream whose `read` raises (`_next_bytes`: a ZIP member that
+  does not inflate, or whose checksum is wrong) is a fact about the document's bytes. That picture is not
+  taken, what was copied of it is removed unread, and the rest are still read. The log gets the type of the
+  error at DEBUG and never its text, which can name the entry.
 - **Where.** The rest are copied into a `.ocr-*` folder made inside `work_dir` and removed before the call
   returns. `work_dir` is the staged file's own folder, so it is under the cycle's staging folder (0700,
   excluded from Time Machine, wiped at the start of every cycle), never `$TMPDIR` (plan D13).
@@ -6515,7 +6519,8 @@ it (below).
   nothing, so its pictures are read again one at a time; a picture alone in a failed run is not run twice.
   `_read_pictures` never raises `OcrError`.
 - **Result.** `digests`: one entry per picture looked at, in the order offered, its sha256 or `None` when it
-  was not taken (shorter than the pictures offered when a limit stopped the reading). `lines`: digest →
+  was not taken: no raster image, not readable to its end, or the one that passed the byte limit (shorter
+  than the pictures offered when a limit stopped the reading). `lines`: digest →
   escaped lines, as above, for each picture text was read in. `unread`: the pictures taken that a helper
   failure, the time limit or `recognition failed` left unread; 0 means every picture without lines holds no
   text. One WARNING per document says `on-device OCR left N of M picture(s) unread: <first reason>`, with no
@@ -6725,8 +6730,8 @@ converter wrote). `PdfPicture`, `page_picture`, `build_picture_pdf` and `shade_e
 pixel.
 
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
-`_PictureText`, `_read_pictures`, `_read_each`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`,
-`_MAX_PICTURE_BYTES`).
+`_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_OCR_OPTIONS`, `_DOCUMENT_BUDGET_S`,
+`_MAX_PICTURES`, `_MAX_PICTURE_BYTES`).
 
 Tests: `tests/test_convert_image.py` (the raster table, one case per type and per look-alike; the page byte
 for byte; the helper's working folder, time limit and frame count; every claimed suffix; the same page under
@@ -6735,7 +6740,8 @@ a file that never reaches the helper; a helper failure, its fixed wording and it
 page limit, a page that could not be read, pages decided from the bytes; the banner on the page and on the
 sidecar through `Registry.default`; an unreadable image cached and a failure not; an encrypted Office
 container named `.png` refused by the screen, the helper not started; `_read_pictures`: order,
-one read per distinct picture, vector art not read past its head, the folder removed, the count limit and the
+one read per distinct picture, vector art not read past its head, the folder removed, a picture that cannot
+be read from its first byte, part-way and at its end, the count limit and the
 byte limit without opening the next picture, one failing picture among five, the shared time limit,
 `recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
 rule) and `tests/test_convert_determinism.py` (an image converted twice, and from the cache under a second
