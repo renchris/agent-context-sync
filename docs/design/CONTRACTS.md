@@ -5859,8 +5859,10 @@ every source. The rule is now:
   that is not a rename queues nothing.
 - `Publisher.rewrite_frontmatter` moves each sidecar the body lists to `sidecar_rel(new_path, name)`, so the leaf
   follows the new page length. A file the body does not list keeps its leaf, and stays behind when that leaf does
-  not fit. Every page of the item is planned before the first is written. When a listed sidecar has no name that
-  fits beside its page's new path the call raises `SidecarPathError` and no page has moved.
+  not fit. Every page of the item is planned before the first is written. When a sidecar file the body lists has
+  no name that fits beside its page's new path the call raises `SidecarPathError` and no page has moved. Only a
+  file in `.files/` can do that: a digest line with no file behind it (document text can hold one) refuses
+  nothing.
 - A rename into a path with no room ends the way a first conversion there does. `cycle._rewrite` catches the
   error and publishes the item as the stub above, at the new path, without reading the file; the old page and
   its sidecar go. `_rewrite` returns False for that, and `_after_fetch` then leaves the row QUARANTINED instead
@@ -5876,13 +5878,14 @@ every source. The rule is now:
 
 Tests: `test_publish.py` (every page length 150 to 200 with the three emitted names, under `mirror/` and
 `archive/`; the deep workbook sheet; publish, digest check and archive of a renamed sidecar, and the archive
-and the byte-free rename of one still under its 200-character name; a refused plan writes nothing; renames in both directions; a rename that leaves no room moves nothing, for one page and for a
-workbook whose last sheet is the one that does not fit; a file the page does not list never refuses a rename),
-`test_cycle.py` (a capped file with an over-long page is one quarantined item, the other files convert, the
-commit lands, the next run reads nothing; a file renamed, or a folder above it renamed, into a path with no room
-becomes the stub at the new path and nothing is left at the old one; a stubbed file renamed, or a folder above it
-renamed, to a path with room is published with its sidecar; a stubbed drive file renamed is downloaded once and
-published, and an eTag change alone downloads nothing).
+and the byte-free rename of one still under its 200-character name; a refused plan writes nothing; renames in
+both directions; a rename that leaves no room moves nothing, for one page and for a workbook whose last sheet is
+the one that does not fit; neither a file the page does not list nor a digest line with no file refuses a
+rename), `test_cycle.py` (a capped file with an over-long page is one quarantined item, the other files
+convert, the commit lands, the next run reads nothing; a file renamed, or a folder above it renamed, into a path
+with no room becomes the stub at the new path and nothing is left at the old one; a stubbed file renamed, or a
+folder above it renamed, to a path with room is published with its sidecar; a stubbed drive file renamed is
+downloaded once and published, and an eTag change alone downloads nothing).
 
 **One scope rule for the walk and the work queue.** An incomplete pass prunes no row. So a file that was queued
 for a read and then excluded in sources.toml was still fetched, converted and published by a source whose walk

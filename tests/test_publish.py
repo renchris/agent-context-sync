@@ -15,7 +15,7 @@ import pytest
 
 from agentsync import cli, cycle, gitops, lints, loop, policy, publish, skill, slug
 from agentsync.config import Config, SourceConfig, parse_config
-from agentsync.convert.registry import _with_sidecar_digests
+from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, _with_sidecar_digests
 from agentsync.curate import refresh_queue
 from agentsync.errors import PublishError, SidecarPathError
 from agentsync.frontmatter import parse_frontmatter, parse_mirror_page, validate_mirror_frontmatter
@@ -812,6 +812,17 @@ def test_rewrite_frontmatter_moves_no_page_of_a_workbook_when_one_sheet_has_no_r
     with pytest.raises(SidecarPathError, match="no sidecar name fits"):
         env.pub.rewrite_frontmatter(env.observe("vol:1", deep), env.run_id)
     assert env.manifest.outputs_for("src", "vol:1") == before and _mirror_files(env) == files
+
+
+def test_rewrite_frontmatter_is_not_refused_by_a_digest_line_with_no_file_behind_it(env: Env) -> None:
+    """Document text can hold a line that reads like a sidecar digest. Only a file in ``.files/`` can
+    refuse a rename."""
+    quoted = f"# Title\n\n{SIDECAR_DIGEST_PREFIX}`full-text.txt` sha256 {'a' * 64}\n"
+    env.publish(env.observe("vol:1", _long_rel(160)), result(unit(quoted)))
+    env.pub.rewrite_frontmatter(env.observe("vol:1", _long_rel(LONGEST_PAGE_WITH_A_SIDECAR + 1)), env.run_id)
+    [new] = env.manifest.outputs_for("src", "vol:1")
+    assert len(new.output_path) == LONGEST_PAGE_WITH_A_SIDECAR + 1
+    assert _mirror_files(env) == [new.output_path] and _path_findings(env) == []
 
 
 def test_rewrite_frontmatter_leaves_behind_a_file_the_page_does_not_list_when_it_has_no_room(

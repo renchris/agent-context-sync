@@ -1171,19 +1171,16 @@ class Publisher:
         """Where each sidecar of ``old_path`` goes when its page moves to ``new_path``: (from, to) pairs.
 
         A sidecar's leaf depends on its page's length (``sidecar_rel``), so each file the body lists is
-        mapped by its name.  ``SidecarPathError`` when a listed one has no name that fits beside the new
+        mapped by its name.  ``SidecarPathError`` when such a file has no name that fits beside the new
         page: the page cannot move, and the caller publishes the item as a stub.  A listed file still under
         its full name (written before sidecars were capped) moves to the same place.  A file the body does
-        not list keeps its leaf, and stays behind when that leaf is taken or does not fit.
+        not list keeps its leaf, and stays behind when that leaf is taken or does not fit.  A digest line
+        with no file behind it refuses nothing: document text can hold such a line.
         """
         old_dir = _sidecar_dir(old_path)
         listed: dict[str, str] = {}
         for name, _digest in sidecar_digest_lines(body):
             new_rel = sidecar_rel(new_path, name)
-            if not _sidecar_fits(new_rel):
-                raise SidecarPathError(
-                    f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
-                )
             listed[sidecar_rel(old_path, name)] = new_rel
             listed.setdefault(f"{old_dir}/{slug.safe_segment(name)}", new_rel)  # its leaf before the cap
         taken: dict[str, str] = {}  # destination -> the file that gets it
@@ -1193,6 +1190,10 @@ class Publisher:
                 dest = f"{_sidecar_dir(new_path)}/{rel.rsplit('/', 1)[-1]}"
                 if dest in taken or not _sidecar_fits(dest):
                     continue
+            elif not _sidecar_fits(dest):
+                raise SidecarPathError(
+                    f"{new_path}: no sidecar name fits the {slug.MAX_PATH_CHARS}-character cap"
+                )
             taken[dest] = rel  # a listed file wins the name over a stray one
         return sorted((rel, dest) for dest, rel in taken.items())
 
