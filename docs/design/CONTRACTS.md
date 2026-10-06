@@ -5940,3 +5940,150 @@ download budget, a retry). The guard now reads `""` as no re-screen pending.
 
 Tests: `test_cycle.py` (a policy change re-screens and clears the marker; an online-only PDF deferred afterwards
 adds no `## Content policy` section).
+
+### 16.25 On-device OCR engine (2026-10-06)
+
+Additive. `agentsync.convert.ocr` (`src/agentsync/convert/ocr.py`; imports `config`, `errors` and `paths` only)
+reads text from images with Apple Vision (`VNRecognizeTextRequest`, accurate level) through a Swift helper
+whose source ships in the package (`src/agentsync/convert/vision_ocr.swift`). Nothing leaves the Mac. This
+section is the engine only: no converter uses it yet, and it adds no command, option or installer option.
+
+**Switches.** `[convert] ocr = true | false` (default true; `ConvertConfig.ocr`, not part of any converter's
+options) and `AGENTSYNC_OCR=0` (or `off`) for the test suite. Nothing else: no environment variable names a
+helper to run, and the languages and page cap are the constants `LANGUAGES` and `MAX_PAGES`.
+
+**Who builds.** Only `scripts/install.sh`, by running the module: `python -m agentsync.convert.ocr`. It is
+not an agentsync command. It reads the config (`$AGENTSYNC_CONFIG`, else the default path; no config yet means
+the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 when it is not built:
+`OCR helper: ready (apple-vision revision 3, helper 2.0.0)`, `OCR helper: off ([convert] ocr = false)`,
+`OCR helper: not built (<reason>)`. A switched-off OCR builds nothing. `probe` and `engine` never compile, so
+`status`, a dry run and the LaunchAgent never start `xcode-select`, `xcrun` or `swiftc`.
+
+**Where.** `<cache_dir>/ocr/agentsync-ocr-<digest>`: the first 16 hex digits of sha256 over the Swift source
+and the build flags, so a new source gets a new name. The file is 0700 in a 0700 folder under any umask
+(`docs_repo.permissions` walks `cache_dir` and FAILs on any group or other bit). The converter cache's `gc`
+skips the folder.
+
+**Build.** `xcode-select -p` must name a folder before `xcrun` is called (its `/usr/bin` shim would open the
+Command Line Tools install dialog). `xcrun` must find an executable `swiftc` and an SDK folder. The compile runs
+in `<cache_dir>/ocr/.build-*` with relative file names (limit 300 s) and the result is renamed into place.
+A working helper is kept, not rebuilt. On failure the reason is written to `<helper>.failed` (0600); the next
+build that works removes it. Other helpers, their markers and abandoned `.build-*` folders are removed only
+once they are 7 days old (a cycle that started before an upgrade may still be running the previous helper);
+younger ones lose any group and other bits.
+
+**Before every run** the helper must be a regular file owned by the effective user, executable, in a folder
+that user owns, with no group or other write bit on either. This does not stop another process of the same
+user (nothing in agentsync does); it stops a helper someone else could have replaced. `xcode-select`, `xcrun`,
+`swiftc` and the helper all run in one environment: a fixed `PATH`, `LANG` and `LC_ALL`, plus `HOME` and
+`TMPDIR`. `DEVELOPER_DIR` and everything else is dropped.
+
+**Text.** No error or reason from this module holds a path: it says "the OCR helper". An `OSError` gives its
+`strerror`, a tool's message has the home folder and every absolute path replaced by `<path>`, and a timeout
+has no number in it, so the same failure reads the same on every Mac.
+
+| `probe` state | When | Detail |
+|---|---|---|
+| `ready` | the helper is there, may be run and answered `--version` (limit 5 s) | `<engine> revision <n>, helper <version>` |
+| `off` | `AGENTSYNC_OCR` is `0` or `off`; `[convert] ocr = false`; not macOS | which of the three |
+| `not-built` | no helper for this agentsync; or the one there no longer answers `--version` | `the OCR helper is not built`, or why it does not answer |
+| `failed` | `<helper>.failed` exists and there is no working helper; the helper may not be run; an `OSError` while looking | the build's reason, or the refusal |
+
+**Helper protocol** (`vision_ocr.swift`, helper version 2.0.0). One JSON document on stdout, keys sorted; exit 0
+whenever it was written, 64 on a usage error.
+
+- `--version`: `{"engine","helper","revision"}`. No macOS version: it would differ per Mac and end up in page
+  front matter through the converter version.
+- `[--languages L,..] [--tile PX] [--frames N] [--min-px PX] [--max-megapixels N] PATH...`:
+  `{"results":[{"index","frame","frames","width","height","skipped","error","lines":[{"text","confidence",
+  "x","y","w","h"}]}]}`. One result per frame read, in argument order; `index` is the path's position. No
+  path and no system message is printed on stdout (Vision's own error goes to stderr).
+- `width` and `height` are upright pixels, after any EXIF rotation; boxes are fractions of that size with the
+  origin at the top-left. The frame is drawn upright on white first, so a rotated image is tiled like any other.
+- Before a frame is decoded its stored size is read. More than `--max-megapixels`, or a side over 32768 px:
+  `"error": "too large"`. A side under `--min-px`: `"skipped": true`, not an error.
+- Raster types only (PNG, JPEG, TIFF, GIF, BMP, HEIC, HEIF, WebP by `CGImageSourceGetType`): ImageIO would
+  also open a PDF or an SVG, whatever the file is named. Anything else is `"unsupported image type"`.
+- An image whose longer side exceeds 4/3 of `--tile` is read whole and in tiles of that size, each overlapping
+  the next by a quarter. A tile reads small text at full size, so a line that a tile holds from end to end
+  replaces the whole-image reading of it. A line cut by a tile edge is only a piece: its pieces from
+  neighbouring tiles are joined word by word (the word at each cut edge is taken from the other tile, which
+  sees it whole). A piece with an end still cut never replaces and never removes another reading: it is kept
+  only where nothing else read that line. A whole-image line is dropped only when the complete tile readings
+  of that line hold at least 90% as many characters (text, not width: the whole-image box of small text is
+  off by a character or two). Two readings are the same line by the line's centre, not its box, so the
+  stacked lines of a tilted page stay apart.
+
+**Reading order** (`text_lines`). A recursive XY cut splits at the widest whitespace gap (1.5 median line
+heights for columns, 1 for paragraphs; at most 400 levels deep, then the boxes left are one block). Side-by-side
+groups of short texts whose rows line up are read row by row. Inside a block a box joins the row whose first box
+has the nearest centre, when the centres are within half the smaller height and the box sits over no box
+already in the row; so a scan tilted two degrees keeps one row per line, top to bottom, and a tall label joins
+only the row it is centred on. Boxes on a row are joined with a space, or with ` | ` when more than one median
+line height apart. A line of one or two characters with confidence under 0.35 is dropped. Blocks are separated
+by `""`.
+
+```python
+# agentsync.convert.ocr
+LANGUAGES: tuple[str, ...] = ("en-US",)
+MAX_PAGES = 100        # pages of one document, or frames of one multi-page image, that are read
+MAX_MEGAPIXELS = 50    # a larger image is refused before it is decoded
+
+class OcrError(ConversionError): ...  # the helper could not be built, may not be run, failed or ran out of time
+
+@dataclass(frozen=True, slots=True)
+class OcrLine:
+    text: str
+    confidence: float
+    x: float
+    y: float
+    w: float
+    h: float
+
+@dataclass(frozen=True, slots=True)
+class OcrImage:          # one frame of one image
+    width: int           # upright pixels
+    height: int
+    frames: int          # frames in the file
+    frame: int
+    lines: tuple[OcrLine, ...]
+    error: str | None = None   # "not an image" | "unsupported image type" | "no frames" | "too large" |
+                               # "not readable" (facts about the bytes) | "recognition failed" (Vision gave up)
+    skipped: bool = False      # too small to hold text
+
+class OcrEngine:
+    def __init__(self, helper: Path, *, name: str, revision: int, helper_version: str) -> None: ...
+    @property
+    def identity(self) -> str: ...     # "ocr-<name>-r<revision>-h<helper version>-l<layout revision>"
+    @property
+    def description(self) -> str: ...  # "<name> revision <revision>, helper <helper version>"
+    def read(self, images: Sequence[Path], *, work_dir: Path, budget_s: float,
+             frames: int = 1) -> list[tuple[OcrImage, ...]]: ...
+
+def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]: ...   # (state, detail); never compiles or raises
+def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None: ...  # None unless ready; never compiles or raises
+def build(cache_dir: Path) -> Path: ...          # install.sh only, through the module entry point; raises OcrError
+def text_lines(image: OcrImage) -> list[str]: ...  # reading order; no markdown escaping
+```
+
+- `OcrEngine.identity` is what a converter appends to its version (`+ocr-apple-vision-r3-h2.0.0-l1`). The
+  layout revision (`_LAYOUT_REVISION`) is bumped when the reading order, the noise rule or an argument the
+  helper is run with changes. Without an engine a converter's version is unchanged.
+- `OcrEngine.read` returns one tuple per image, in order, holding its first `frames` frames (at most
+  `MAX_PAGES`). The helper runs in `work_dir`, which the caller owns (the cycle's staging folder), on 16 images
+  per run, and the whole call takes at most `budget_s` seconds. `OcrError` means nothing is returned: the helper
+  may not be run, exited non-zero, ran out of time, answered something that is not the expected JSON (checked
+  field by field), or was given a path that is not there. A file it cannot read is not an exception: its
+  `OcrImage` carries `error` or `skipped`. `error` is fixed wording from the list above, never a system
+  message, so it is safe in a reason.
+- `engine` logs at INFO why there is no engine. A caller with no engine behaves as before OCR existed.
+
+Tests: `tests/test_ocr.py` (reading order: columns, a table, paragraphs, the noise and separator edges, a tilted
+page both ways, a tall label, input order, the depth limit; `read`: arguments, work dir, batches and the shared
+budget, every helper failure, each malformed answer; `probe` and `engine`: the four states, no tool started,
+each trust refusal, each bad `--version`, `OSError`s; `build` with stub `xcode-select`, `xcrun` and `swiftc`
+under umask 022: modes and `doctor._group_other_readable`, the marker's life, pruning; the module entry point;
+the packaged source; and one test that builds and runs the real helper where developer tools exist: a line
+across a tile seam whole and once, small labels on a large canvas, EXIF orientation 6, a three-page TIFF, an
+icon, an over-limit image, a PDF named `.png`, an empty file). `tests/test_config.py` pins the key.
+The fake helper kit (`write_fake`, `fake_image`, `fake_engine`) is there for the converter tests.
