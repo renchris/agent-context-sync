@@ -68,7 +68,9 @@ _NO_TEXT = "no text found in the image by on-device OCR"
 _FAILED = "on-device OCR failed"
 _NO_PAGE_TEXT = "[no text on this page]"
 # C0 controls are no part of what a picture shows; ``text_lines`` has already made whitespace one space.
-_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+# Half a surrogate pair goes with them: a page that holds one cannot be written as UTF-8, so one in a
+# helper's answer would fail the document it was read in.
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f\ud800-\udfff]")
 _BLOCK_RE = re.compile(r"^(?:`{3,}|~{3,}|<)")  # a code fence, or a tag: either can open a block
 _clock = time.monotonic
 

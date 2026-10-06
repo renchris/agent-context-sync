@@ -6469,7 +6469,8 @@ Phase one | discovery | May
   open fence would take in every anchor after it. So does a leading `<`: a tag at the start of a line opens
   an HTML block, and that of `<pre>`, `<script>` or `<style>` runs on past blank lines and anchors until its
   closing tag. A tag inside a line stays as it is, as in every other converter's text. C0 control characters
-  are dropped.
+  are dropped, and so is half a surrogate pair: a page that holds one cannot be written as UTF-8, so it
+  would fail the document it was read in.
 
 **Not a page** (plan D7). An image with nothing to read is `UnreadableSourceError`: an `unreadable` stub,
 cached, outside the curation queue, and not read again until its bytes change. A page per logo would be

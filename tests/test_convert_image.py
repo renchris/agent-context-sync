@@ -271,6 +271,7 @@ ESCAPES: dict[str, tuple[str, str]] = {
     "a tag indented by a dropped control": ("\x00 <style>", "\\<style>"),
     "a tag inside a line": ("press <b>Enter</b> twice", "press <b>Enter</b> twice"),
     "controls": ("es\x1bcape\x00d \x7ftext", "escaped text"),
+    "half a surrogate pair": ("un\ud83dpaired \udc00halves", "unpaired halves"),
     "a fence indented by a dropped control": ("\x00 ```", "\\```"),
     "a heading indented by a dropped control": ("\x1b # Not a heading", "\\# Not a heading"),
     "plain text": ("2 > 1 & [brackets] stay", "2 > 1 & [brackets] stay"),
