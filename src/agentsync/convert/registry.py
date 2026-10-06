@@ -181,13 +181,15 @@ class Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams), each
         behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
 
-        With ``ocr`` (the engine the cycle resolved) the pptx and pdf converters read with it, and raster
-        images get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image can
-        carry a sensitivity label the screen cannot read, so it then stays the ``no converter`` stub it is
-        without an engine.  Such a registry keeps the one without an engine as ``without_ocr``."""
+        With ``ocr`` (the engine the cycle resolved) the pandoc, pptx and pdf converters read with it, and
+        raster images get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image
+        can carry a sensitivity label the screen cannot read, so it then stays the ``no converter`` stub it is
+        without an engine.  The pandoc converter with an engine claims ``.docx`` and ``.odt`` only; ``.rtf``
+        and ``.html`` go to a second ``pandoc-gfm`` converter without one, so nothing about them changes.
+        Such a registry keeps the one without an engine as ``without_ocr``."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
-        from agentsync.convert.pandoc import PandocConverter  # noqa: PLC0415
+        from agentsync.convert.pandoc import PandocConverter, _PandocWithoutOcr  # noqa: PLC0415
         from agentsync.convert.pdf import PdfConverter  # noqa: PLC0415
         from agentsync.convert.pptx import PptxConverter  # noqa: PLC0415
         from agentsync.convert.teams import TeamsMonthConverter  # noqa: PLC0415
@@ -196,7 +198,8 @@ class Registry:
 
         content_policy = policy if policy is not None else PolicyConfig()
         converters: list[Converter] = [
-            PandocConverter(cfg),
+            PandocConverter(cfg, ocr=ocr),
+            *([] if ocr is None else [_PandocWithoutOcr(cfg)]),
             XlsxConverter(cfg),
             PptxConverter(cfg, ocr=ocr),
             PdfConverter(cfg, ocr=ocr),
@@ -243,7 +246,9 @@ class Registry:
         return None
 
     def converters(self) -> tuple[Converter, ...]:
-        """All registered converters, sorted by converter_id."""
+        """All registered converters, sorted by converter_id.  Two can share an id: with an OCR engine
+        ``Registry.default`` holds ``pandoc-gfm`` twice, for the suffixes it reads pictures in and for the
+        rest."""
         return self._converters
 
     def extensions(self) -> tuple[str, ...]:

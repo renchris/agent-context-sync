@@ -7,12 +7,15 @@ import ctypes
 import functools
 import hashlib
 import io
+import json
 import logging
 import re
 import struct
+import subprocess
 import unicodedata
 import zipfile
 import zlib
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from email.message import EmailMessage
 from pathlib import Path
@@ -28,13 +31,14 @@ from pptx.util import Inches
 from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
+from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import pptx as pptx_mod
 from agentsync.convert._common import _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.markdown import MarkdownConverter
-from agentsync.convert.pandoc import PandocConverter, _bundled_pandoc, _PandocRunner
+from agentsync.convert.pandoc import PandocConverter, _bundled_pandoc, _PandocRunner, _PandocWithoutOcr
 from agentsync.convert.pdf import PdfConverter
 from agentsync.convert.pptx import PptxConverter
 from agentsync.convert.registry import Registry
@@ -1945,6 +1949,661 @@ def test_the_document_time_limit_is_the_one_a_deck_gives_the_helper(tmp_path: Pa
     src = _deck_of(tmp_path, text_png("Stock on hand"))
     engine = Recording(fake_engine(tmp_path / "bin"))
     _deck_one(src, engine)
+    (asked,) = engine.asked
+    assert asked["work_dir"].parent == src.parent and 0 < asked["budget_s"] <= image._DOCUMENT_BUDGET_S
+
+
+# ---------------------------------------------------------------------------------------------------------
+# docx / odt with an OCR engine
+# ---------------------------------------------------------------------------------------------------------
+
+_NTH_HEAD = "[text in image {} above, read by on-device OCR (Apple Vision):]"
+_CHART_TEXT = "Units by region\\\nNorth \\| 12"  # as pandoc writes two lines read in one picture
+_PICTURE_DOC = """\
+# Contoso tourer launch
+
+![Sales by region](chart.png)
+
+Text ![inline](chart.png) and ![second](stamp.png) and ![bullet](icon.png) here.
+
+| step | picture |
+|------|---------|
+| one  | ![cell](chart.png) |
+
+Closing paragraph.
+"""
+
+
+def _pictures() -> dict[str, bytes]:
+    """The picture files of ``_PICTURE_DOC``: a chart and a stamp with text, and an icon too small for any."""
+    return {
+        "chart.png": text_png("Units by region", "North | 12"),
+        "stamp.png": text_png("Approved | 12 May"),
+        "icon.png": text_png(skipped=True),
+    }
+
+
+def _staged_doc(tmp_path: Path, markdown: str, pictures: Mapping[str, bytes], name: str = "doc.docx") -> Path:
+    """The docx or odt (by ``name``) pandoc writes from ``markdown`` and the picture files ``pictures``, in a
+    folder of its own, as the cycle stages a file."""
+    build = tmp_path / "build" / name
+    build.mkdir(parents=True, exist_ok=True)
+    for file, data in pictures.items():
+        (build / file).write_bytes(data)
+    folder = tmp_path / "staging" / "0123456789abcdef"
+    folder.mkdir(parents=True, exist_ok=True)
+    return pandoc_build(markdown, "markdown", folder / name, cwd=build)
+
+
+def _repacked(
+    src: Path,
+    change: Callable[[str, bytes], bytes | None] | None = None,
+    add: Mapping[str, bytes] | None = None,
+) -> Path:
+    """``src`` rewritten in place: each entry's bytes go through ``change`` (None drops the entry), then the
+    entries ``add`` are appended."""
+    with zipfile.ZipFile(src) as zf:
+        parts = {info.filename: zf.read(info) for info in zf.infolist()}
+    kept = {name: data if change is None else change(name, data) for name, data in parts.items()}
+    return make_zip(src, {**{n: d for n, d in kept.items() if d is not None}, **(add or {})})
+
+
+def _doc_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG) -> RenderedUnit:
+    return _one(PandocConverter(cfg, ocr=engine).convert(src, name=src.name))
+
+
+def _gfm_blocks(body: str) -> tuple[list[str], set[str]]:
+    """(The type of each top-level block, every element type) of ``body`` as pandoc's gfm reader parses it."""
+    run = subprocess.run(
+        [str(_bundled_pandoc()), "-f", "gfm", "-t", "json"],
+        input=body.encode(),
+        capture_output=True,
+        check=True,
+    )
+    kinds: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            kinds.update([node["t"]] if "t" in node else [])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    blocks = json.loads(run.stdout)["blocks"]
+    walk(blocks)
+    return [block["t"] for block in blocks], kinds
+
+
+def test_pandoc_version_options_and_suffixes_change_only_with_an_engine(tmp_path: Path) -> None:
+    plain, reading = PandocConverter(CFG), PandocConverter(CFG, ocr=fake_engine(tmp_path / "bin"))
+    assert plain.extensions == (".docx", ".odt", ".rtf", ".html", ".htm")
+    assert not any(key.startswith("ocr") for key in plain.options()) and "ocr" not in plain.version()
+    assert plain.options()["lua_filter"] == "agentsync-images@1", "the filter's id is what it was before OCR"
+    assert reading.extensions == (".docx", ".odt"), "the formats whose pictures are read, and no other"
+    assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
+    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pandoc_rules": 1}
+    rest = _PandocWithoutOcr(CFG)  # what Registry.default registers for the other three beside ``reading``
+    assert rest.extensions == (".rtf", ".html", ".htm") and rest.converter_id == plain.converter_id
+    assert (rest.version(), rest.options()) == (plain.version(), plain.options())
+
+
+def test_a_word_document_without_an_engine_is_the_page_from_before_ocr(
+    tmp_path: Path, fixture_files: dict[str, Path]
+) -> None:
+    """Byte for byte: the filter's new first pass does nothing without the file the converter writes for
+    it.  The same holds with an engine for a document with no picture, or none that holds text."""
+    src = build_docx_image(tmp_path)
+    off = _one(PandocConverter(CFG).convert(src, name="image.docx"))
+    (picture,) = set(re.findall(r"media/\S+?\.png", off.body))
+    assert off.body == f"# Doc\n\n[image: a chart — {picture}]\n\nText [image: inline — {picture}] here.\n"
+    assert (off.title, off.summary) == ("Doc", "Word document; headings: Doc")
+    engine = fake_engine(tmp_path / "bin")
+    assert _doc_one(src, engine) == off, "the picture is read, holds no text, and adds nothing"
+    assert [len(run) for run in reads(engine.helper)] == [1]
+    for name in ("sample.docx", "sample.html"):
+        plain = _one(PandocConverter(CFG).convert(fixture_files[name], name=name))
+        assert _one(PandocConverter(CFG, ocr=engine).convert(fixture_files[name], name=name)) == plain
+    odt = pandoc_build("# Minutes\n\n![a chart](pic.png)\n", "markdown", tmp_path / "m.odt", cwd=tmp_path)
+    assert _one(PandocConverter(CFG).convert(odt, name="m.odt")).body == (
+        "# Minutes\n\n[image: Pictures/0.png]\n\na chart\n"
+    )
+    assert len(reads(engine.helper)) == 1, "a document with no picture starts no helper"
+
+
+def test_a_word_documents_picture_text_follows_the_block_that_shows_it_once_per_picture(
+    tmp_path: Path,
+) -> None:
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    heading, figure, paragraph, *rest = off.body.split("\n\n")
+    assert figure.startswith("[image: Sales by region — media/") and paragraph.count("[image: ") == 3
+    assert on.body == "\n\n".join(
+        [
+            heading,
+            # The chart: under the block that shows it first, and not again under the paragraph or the
+            # table that show it too.
+            f"{figure}\n\n{_PICTURE_HEAD}\n\n{_CHART_TEXT}",
+            # A block that shows several pictures says which one the text was read in.
+            f"{paragraph}\n\n{_NTH_HEAD.format(2)}\n\nApproved \\| 12 May",
+            *rest,
+        ]
+    )
+    assert on.title == off.title == "Contoso tourer launch"
+    assert off.summary == "Word document; headings: Contoso tourer launch"
+    assert on.summary == (
+        "Word document; text of 2 picture(s) read by on-device OCR; headings: Contoso tourer launch"
+    )
+    # One run of the helper on the three pictures the body uses, in the order it uses them, in a folder
+    # made beside the staged file and removed.
+    (call,) = calls(engine.helper)
+    (run,) = reads(engine.helper)
+    work = Path(call["cwd"])
+    assert work.parent == src.parent.resolve() and work.name.startswith(".ocr-")
+    assert [Path(p).name for p in run] == ["00000.png", "00001.png", "00002.png"]
+    assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
+    assert _doc_one(src, engine) == on, "the same document gives the same page"
+
+
+def test_an_opendocument_picture_stored_under_several_names_is_printed_once(tmp_path: Path) -> None:
+    """pandoc's odt writer stores a picture once per use, and LibreOffice once per paste."""
+    markdown = (
+        "| step | picture |\n|------|---------|\n| one  | ![cell](chart.png) |\n\n"
+        "Again ![again](chart.png) here.\n\nThen ![stamp](stamp.png) here.\n"
+    )
+    src = _staged_doc(tmp_path, markdown, _pictures(), name="doc.odt")
+    with zipfile.ZipFile(src) as zf:
+        stored = [zf.read(name) for name in sorted(zf.namelist()) if name.startswith("Pictures/")]
+    assert len(stored) == 3 and len(set(stored)) == 2, "the chart is in the package twice"
+    engine = fake_engine(tmp_path / "bin")
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    table, again, then = off.body.rstrip("\n").split("\n\n")
+    assert "[image: Pictures/0.png]" in table and again == "Again [image: Pictures/1.png] here."
+    assert on.body == (
+        f"{table}\n\n{_PICTURE_HEAD}\n\n{_CHART_TEXT}\n\n{again}\n\n"
+        f"{then}\n\n{_PICTURE_HEAD}\n\nApproved \\| 12 May\n"
+    )
+    assert on.summary == "OpenDocument text; text of 2 picture(s) read by on-device OCR"
+    assert [len(run) for run in reads(engine.helper)] == [2], "the second copy is not read again"
+
+
+def test_word_pictures_are_read_in_order_of_first_use_and_only_the_ones_the_body_uses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not every entry under word/media, and not in the order of their names."""
+    pictures = {f"p{n}.png": text_png(f"picture text {n}") for n in range(3)}
+    markdown = "".join(f"Step {n}: ![shot](p{n}.png) done.\n\n" for n in range(3))
+    src = _staged_doc(tmp_path, markdown, pictures)
+    header_rels = (
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Target="media/letterhead.png" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"/></Relationships>'
+    )
+    _repacked(
+        src,
+        add={
+            "word/media/aaa-orphan.png": text_png("an entry nothing uses"),
+            "word/media/letterhead.png": text_png("the letterhead of every page"),
+            "word/_rels/header1.xml.rels": header_rels.encode(),
+        },
+    )
+    off = _doc_one(src, None)
+    used = re.findall(r"media/\S+?\.png", off.body)
+    assert len(used) == 3 and sorted(used) != used, "pandoc names a picture by its relationship id"
+    engine = fake_engine(tmp_path / "bin")
+    on = _doc_one(src, engine)
+    assert [
+        ln for ln in on.body.split("\n") if ln.startswith(("picture text", "an entry", "the letter"))
+    ] == [
+        "picture text 0",
+        "picture text 1",
+        "picture text 2",
+    ]
+    assert [len(run) for run in reads(engine.helper)] == [3], "the orphan and the letterhead are never read"
+    # A limit keeps the pictures the document shows first, whatever their names.
+    opened: list[str] = []
+    real_open = zipfile.ZipFile.open
+
+    def spy(self: zipfile.ZipFile, name: Any, *args: Any, **kw: Any) -> Any:
+        opened.append(name if isinstance(name, str) else name.filename)
+        return real_open(self, name, *args, **kw)
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", spy)
+    monkeypatch.setattr(pandoc_mod, "_read_pictures", functools.partial(image._read_pictures, limit=1))
+    limited = _doc_one(src, engine)
+    assert "picture text 0" in limited.body and "picture text 1" not in limited.body
+    assert limited.summary == "Word document; text of 1 picture(s) read by on-device OCR" + _PICTURES_CUT
+    media = [name for name in opened if name.startswith("word/media/")]
+    assert media == [f"word/{used[0]}", f"word/{used[1]}"], "the third picture is never opened"
+
+
+def test_word_picture_limits_are_counts_and_the_summary_says_when_one_cut_the_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pictures = {f"p{n}.png": text_png(f"picture text {n}") for n in range(3)}
+    markdown = "".join(f"Step {n}: ![shot](p{n}.png) done.\n\n" for n in range(3))
+    src = _staged_doc(tmp_path, markdown, pictures)
+    engine = fake_engine(tmp_path / "bin")
+    sizes = [len(data) for data in pictures.values()]
+
+    def read(**limits: int) -> tuple[list[str], str]:
+        with monkeypatch.context() as mp:
+            mp.setattr(pandoc_mod, "_read_pictures", functools.partial(image._read_pictures, **limits))
+            u = _doc_one(src, engine)
+        return [ln for ln in u.body.split("\n") if ln.startswith("picture text")], u.summary
+
+    everything = [f"picture text {n}" for n in range(3)]
+    read_all = "Word document; text of 3 picture(s) read by on-device OCR"
+    assert read() == (everything, read_all)
+    assert read(limit=3) == (everything, read_all), "a limit that is reached and not passed cuts nothing"
+    assert read(max_bytes=sum(sizes)) == (everything, read_all)
+    lines, summary = read(limit=2)
+    assert lines == everything[:2] and summary.endswith("2 picture(s) read by on-device OCR" + _PICTURES_CUT)
+    lines, summary = read(max_bytes=sizes[0] + sizes[1] - 1)
+    assert lines == everything[:1] and summary.endswith("1 picture(s) read by on-device OCR" + _PICTURES_CUT)
+
+
+_DOC_HOSTILE = [
+    *_HOSTILE,
+    "- a bullet",
+    "+ another",
+    "12) numbered",
+    "3. numbered",
+    "-- -",
+    "![shot](https://example.com/a.png)",
+    "| a | b |",
+    "|---|---|",
+    "> quoted",
+    "*starred* _lined_",
+    _PICTURE_HEAD,
+    "last",
+    "===",
+]
+_DOC_NEUTRAL = r"""Quarterly report\
+\`\`\`\
+\<!-- page: 9 --\>\
+\# Not a heading\
+\~\~\~~ sh\
+\<script\>alert(1)\</script\>\
+\<pre\>\
+Not a title\
+\===\
+\---\
+\<!-- Slide number: 2 --\>\
+\- a bullet\
+\+ another\
+12\) numbered\
+3\. numbered\
+\-- -\
+\![shot\](https://example.com/a.png)\
+\| a \| b \|\
+\|---\|---\|\
+\> quoted\
+\*starred\* \_lined\_\
+\[text in the image above, read by on-device OCR (Apple Vision):\]\
+last\
+\==="""
+
+
+def test_text_ocr_read_in_a_word_document_cannot_pose_as_page_structure(tmp_path: Path) -> None:
+    """The lines reach the page as text pandoc escapes, like the document's own, never as raw markdown."""
+    markdown = "# Roadmap\n\nBefore ![shot](shot.png) after.\n\n## Next steps\n\nClosing paragraph.\n"
+    for name in ("doc.docx", "doc.odt"):
+        src = _staged_doc(tmp_path, markdown, {"shot.png": text_png(*_DOC_HOSTILE)}, name=name)
+        off, on = _doc_one(src, None), _doc_one(src, fake_engine(tmp_path / "bin"))
+        heading, paragraph, *rest = off.body.split("\n\n")
+        assert on.body == "\n\n".join([heading, paragraph, _PICTURE_HEAD, _DOC_NEUTRAL, *rest]), name
+        # As a markdown reader sees it: the two paragraphs of the picture's text, and the document's own
+        # blocks around them.  No list, rule, heading, code block, table, quote, raw HTML or image.
+        blocks, kinds = _gfm_blocks(on.body)
+        assert blocks == ["Header", "Para", "Para", "Para", "Header", "Para"], name
+        assert kinds <= {"Header", "Para", "Str", "Space", "LineBreak", "SoftBreak", "Link"}, name
+        headings = [(1, "Roadmap"), (2, "Next steps")]
+        assert _headings(on.body, max_level=6) == _headings(off.body, max_level=6) == headings
+        assert _open_fence(on.body) is None and on.title == off.title == "Roadmap"
+        assert on.summary.endswith(
+            "; text of 1 picture(s) read by on-device OCR; headings: Roadmap; Next steps"
+        ), "a summary is counts and the document's own headings, never what OCR read"
+
+
+@pytest.mark.parametrize("first", ["- item", "1. item", "---", "===", "-- -", "+ item", "9) item", "#"])
+def test_a_line_that_starts_or_ends_a_pictures_text_is_still_text(tmp_path: Path, first: str) -> None:
+    """The first and the last line of a paragraph are where a marker counts most."""
+    for lines in ([first, "below"], ["above", first]):
+        build = tmp_path / str(lines.index(first))
+        src = _staged_doc(build, "![shot](shot.png)\n\nClosing paragraph.\n", {"shot.png": text_png(*lines)})
+        blocks, kinds = _gfm_blocks(_doc_one(src, fake_engine(tmp_path / "bin")).body)
+        assert blocks == ["Para", "Para", "Para", "Para"], lines
+        assert kinds <= {"Para", "Str", "Space", "LineBreak", "SoftBreak"}, lines
+
+
+def test_a_word_document_with_no_heading_is_never_titled_by_what_ocr_read(tmp_path: Path) -> None:
+    shot = {"shot.png": text_png("Not the title of this file")}
+    src = _staged_doc(tmp_path, "![shot](shot.png)\n", shot)
+    engine = fake_engine(tmp_path / "bin")
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    assert "Not the title of this file" in on.body
+    assert on.title == off.title and on.title.startswith("[image: shot — media/")
+    # A table is no title line, so here the first line after it is: the head of the picture's text, were
+    # it not left out with everything below it.
+    table = "| step | picture |\n|------|---------|\n| one  | ![shot](shot.png) |\n\nClosing paragraph.\n"
+    src = _staged_doc(tmp_path / "table", table, shot)
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    assert f"|\n\n{_PICTURE_HEAD}\n\nNot the title of this file\n\nClosing paragraph.\n" in on.body
+    assert (off.title, on.title) == ("Closing paragraph.", "Untitled Word document")
+
+
+def _damaged(src: Path, entry: str) -> None:
+    """Make the stored bytes of ``entry`` in the ZIP ``src`` unreadable, leaving its directory as it is."""
+    with zipfile.ZipFile(src) as zf:
+        info = zf.getinfo(entry)
+    data = bytearray(src.read_bytes())
+    name_len, extra_len = struct.unpack("<HH", data[info.header_offset + 26 : info.header_offset + 30])
+    start = info.header_offset + 30 + name_len + extra_len
+    data[start : start + info.compress_size] = b"\xff" * info.compress_size
+    src.write_bytes(bytes(data))
+
+
+def test_a_damaged_or_missing_picture_costs_only_itself_and_the_document_converts(tmp_path: Path) -> None:
+    """pandoc does not inflate a picture it does not extract, so it converts such a file: so does this."""
+    pictures = {f"p{n}.png": text_png(f"picture text {n}") for n in range(3)}
+    markdown = "".join(f"Step {n}: ![shot](p{n}.png) done.\n\n" for n in range(3))
+    src = _staged_doc(tmp_path, markdown, pictures)
+    used = [f"word/{name}" for name in re.findall(r"media/\S+?\.png", _doc_one(src, None).body)]
+    _repacked(src, change=lambda name, data: None if name == used[1] else data)  # its relationship stays
+    _damaged(src, used[0])
+    with zipfile.ZipFile(src) as zf, pytest.raises((zipfile.BadZipFile, zlib.error)):
+        zf.read(used[0])
+    engine = fake_engine(tmp_path / "bin")
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    assert off.body.count("[image: ") == 2, "pandoc shows the damaged picture and drops the missing one"
+    assert on.body == off.body.rstrip("\n") + f"\n\n{_PICTURE_HEAD}\n\npicture text 2\n"
+    assert [len(run) for run in reads(engine.helper)] == [1], "no copy of the damaged picture is read"
+    assert on.summary == "Word document; text of 1 picture(s) read by on-device OCR"
+
+
+_UNLISTED = {
+    "the relationships part is larger than the limit": ("_MAX_RELS_BYTES", 64),
+    "the body is longer than what is looked through": ("_MAX_SCAN_BYTES", 256),
+}
+
+
+@pytest.mark.parametrize(("constant", "value"), _UNLISTED.values(), ids=_UNLISTED.keys())
+def test_what_is_looked_at_to_find_a_documents_pictures_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, constant: str, value: int
+) -> None:
+    """Past a bound the pictures are not found, so they are not read: the document converts as without OCR."""
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+    monkeypatch.setattr(pandoc_mod, constant, value)
+    assert _doc_one(src, engine) == _doc_one(src, None)
+    assert calls(engine.helper) == []
+
+
+def test_a_picture_reference_that_spans_two_chunks_of_the_body_is_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    whole = _doc_one(src, fake_engine(tmp_path / "bin"))
+    monkeypatch.setattr(pandoc_mod, "_SCAN_CHUNK", 7)
+    monkeypatch.setattr(pandoc_mod, "_SCAN_OVERLAP", 300)
+    assert _doc_one(src, fake_engine(tmp_path / "bin")) == whole and _CHART_TEXT in whole.body
+
+
+def test_an_error_while_a_documents_pictures_are_looked_for_costs_pictures_not_the_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Whatever is raised: the pictures found before it are read, and the log gets the kind of error and
+    not its text, which can name an entry."""
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+    off = _doc_one(src, None)
+    real = pandoc_mod._docx_pictures
+
+    def breaks_after_one(zf: zipfile.ZipFile) -> Any:
+        yield next(real(zf))
+        raise RuntimeError("cannot read word/media/contoso-roadmap.png")
+
+    with monkeypatch.context() as mp, caplog.at_level(logging.DEBUG, logger="agentsync.convert.pandoc"):
+        mp.setitem(pandoc_mod._LISTERS, "docx", breaks_after_one)
+        on = _doc_one(src, engine)
+    assert _CHART_TEXT in on.body and "Approved" not in on.body
+    assert "the pictures of a document were not all found: RuntimeError" in caplog.messages
+    assert "contoso" not in caplog.text
+    # A package zipfile cannot open at all is left to pandoc, which reads it its own way.
+    caplog.clear()
+
+    def no_zip(*_args: Any, **_kw: Any) -> Any:
+        raise zipfile.BadZipFile("Bad magic number for central directory of contoso-roadmap.docx")
+
+    with monkeypatch.context() as mp, caplog.at_level(logging.DEBUG, logger="agentsync.convert.pandoc"):
+        mp.setattr(pandoc_mod.zipfile, "ZipFile", no_zip)
+        assert _doc_one(src, engine) == off
+    assert "a document was not opened to look for its pictures: BadZipFile" in caplog.messages
+    assert "contoso" not in caplog.text
+
+
+def test_a_helper_failure_on_a_word_document_is_one_fixed_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures(), name="Contoso Launch.docx")
+    engine = fake_engine(tmp_path / "bin", fail=True)
+    with caplog.at_level(logging.WARNING, logger="agentsync.convert"), pytest.raises(ocr.OcrError) as err:
+        _doc_one(src, engine)
+    assert str(err.value) == "on-device OCR failed" and err.value.__cause__ is None
+    assert caplog.messages == [
+        "on-device OCR left 3 of 3 picture(s) unread: "
+        "the OCR helper exited 3: error: the fake helper was told to fail",
+        "Contoso Launch.docx: on-device OCR failed: the OCR helper left pictures unread",
+    ]
+    assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
+
+
+def test_anything_the_word_picture_pass_raises_is_the_same_fixed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The error's own text (it can hold a path) reaches neither the exception nor the log."""
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+
+    def no_room(*_args: Any, **_kw: Any) -> Any:
+        raise OSError(28, "No space left on device", "/Users/someone/staging/00000.png")
+
+    def no_memory(*_args: Any, **_kw: Any) -> Any:
+        raise MemoryError
+
+    for fault, logged in ((no_room, "OSError"), (no_memory, "MemoryError")):
+        caplog.clear()
+        with monkeypatch.context() as mp, caplog.at_level(logging.WARNING, logger="agentsync.convert.pandoc"):
+            mp.setattr(pandoc_mod, "_read_pictures", fault)
+            with pytest.raises(ocr.OcrError) as err:
+                _doc_one(src, engine)
+        assert str(err.value) == "on-device OCR failed" and err.value.__cause__ is None
+        assert caplog.messages == [f"doc.docx: on-device OCR failed: {logged}"]
+    assert calls(engine.helper) == []
+
+
+def _pandoc_that(tmp_path: Path, name: str, first: str) -> Path:
+    """A pandoc for ``[convert] pandoc_path``: the bundled one behind a shell script that runs ``first``
+    in the job folder, with the filter's path in ``$filter``, before it starts."""
+    script = tmp_path / name
+    script.write_text(
+        "#!/bin/sh\n"
+        'for arg in "$@"; do case "$arg" in --lua-filter=*) filter="${arg#--lua-filter=}";; esac; done\n'
+        f"{first}\n"
+        f'exec "{_bundled_pandoc()}" "$@"\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o700)
+    return script
+
+
+_NO_PLACING = {
+    "its Lua has no pandoc.json": "pandoc.json = nil",
+    "the pass raises half-way": "pandoc.LineBlock = nil",
+    "its Lua cannot open a file": "io = nil",
+}
+
+
+@pytest.mark.parametrize("lua", _NO_PLACING.values(), ids=_NO_PLACING.keys())
+def test_a_pandoc_that_cannot_place_the_text_gives_the_page_without_ocr_not_a_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, lua: str
+) -> None:
+    """``[convert] pandoc_path`` can name any pandoc.  The filter's pass fails quietly there, pandoc
+    converts the file, and the page that holds none of the text is not passed off as one read by OCR."""
+    prepend = f'{{ echo \'{lua}\'; cat "$filter"; }} > with.lua; mv with.lua "$filter"'
+    first = f'[ -z "$filter" ] || {{ {prepend}; }}'  # the --version run has no filter
+    cfg = replace(CFG, pandoc_path=_pandoc_that(tmp_path, "old-pandoc", first))
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+    with (
+        caplog.at_level(logging.WARNING, logger="agentsync.convert.pandoc"),
+        pytest.raises(ocr.OcrError) as err,
+    ):
+        _doc_one(src, engine, cfg)
+    assert str(err.value) == "on-device OCR failed"
+    assert caplog.messages == [
+        "doc.docx: on-device OCR failed: the pandoc filter did not place the picture text"
+    ]
+    without = _through_the_cache(src, Registry.default(cfg), tmp_path / "other-mac")
+    got = _through_the_cache(src, Registry.default(cfg, ocr=engine), tmp_path / "cache")
+    assert got == without and got.status is ConversionStatus.OK and "ocr" not in got.converter_version
+    assert "read by on-device OCR" not in got.units[0].body + got.units[0].summary
+
+
+def test_a_pandoc_failure_with_text_to_place_is_an_ocr_failure_and_without_any_is_pandocs_own(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """pandoc may well convert the file when it is handed nothing to place, so it is asked again without."""
+    first = '[ ! -f agentsync-ocr.json ] || { echo "boom in /Users/someone/doc.docx" >&2; exit 64; }'
+    cfg = replace(CFG, pandoc_path=_pandoc_that(tmp_path, "fussy-pandoc", first))
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = fake_engine(tmp_path / "bin")
+    with (
+        caplog.at_level(logging.WARNING, logger="agentsync.convert.pandoc"),
+        pytest.raises(ocr.OcrError) as err,
+    ):
+        _doc_one(src, engine, cfg)
+    assert str(err.value) == "on-device OCR failed" and "someone" not in caplog.text
+    assert caplog.messages == ["doc.docx: on-device OCR failed: ConversionError"]
+    got = _through_the_cache(src, Registry.default(cfg, ocr=engine), tmp_path / "cache")
+    assert got.status is ConversionStatus.OK and got == _through_the_cache(
+        src, Registry.default(cfg), tmp_path / "other-mac"
+    )
+    # Nothing to place: pandoc's failure is the document's, as it is without an engine.
+    always = replace(CFG, pandoc_path=_pandoc_that(tmp_path, "broken-pandoc", "[ $# -lt 2 ] || exit 64"))
+    bare = _staged_doc(tmp_path, "# Minutes\n\nNo picture here.\n", {}, name="bare.docx")
+    for reading in (None, engine):
+        with pytest.raises(ConversionError, match=r"^pandoc exited 64") as failed:
+            _doc_one(bare, reading, always)
+        assert not isinstance(failed.value, ocr.OcrError)
+
+
+def test_a_word_document_the_helper_failed_on_is_the_page_of_a_mac_without_ocr_under_its_key(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Plan D10: the no-OCR page under the no-OCR version, so a later re-read can tell it was not read."""
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures(), name="Fabrikam.docx")
+    failing = fake_engine(tmp_path / "failing", fail=True)
+    without = _through_the_cache(src, Registry.default(CFG), tmp_path / "other-mac")
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _through_the_cache(src, Registry.default(CFG, ocr=failing), tmp_path / "cache")
+    assert got == without, "status, units, version, options hash and action key: byte for byte"
+    assert got.status is ConversionStatus.OK and not got.from_cache
+    assert got.converter_version == PandocConverter(CFG).version() and "ocr" not in got.converter_version
+    (unit,) = got.units
+    assert unit.body.startswith(policy.UNTRUSTED_BANNER)
+    page = unit.body + unit.title + unit.summary
+    for word in ("exited", "helper", "failed", "Fabrikam", "OCR", "Units by region", str(tmp_path)):
+        assert word not in page, word
+    assert [r.getMessage() for r in caplog.records if r.name == "agentsync.convert"] == [
+        "Fabrikam.docx: on-device OCR failed; converted by pandoc-gfm without it"
+    ]
+    assert _through_the_cache(src, Registry.default(CFG), tmp_path / "cache").from_cache
+    working = fake_engine(tmp_path / "working")
+    later = _through_the_cache(src, Registry.default(CFG, ocr=working), tmp_path / "cache")
+    assert later.status is ConversionStatus.OK and not later.from_cache
+    assert later.converter_version == f"{without.converter_version}+{_OCR_IDENTITY}"
+    assert later.action_key != without.action_key and later.options_hash != without.options_hash
+    assert later.units[0].body.startswith(policy.UNTRUSTED_BANNER) and _CHART_TEXT in later.units[0].body
+    assert "Units" not in later.units[0].summary + later.units[0].title
+
+
+def test_an_rtf_or_html_file_is_converted_as_on_a_mac_without_an_engine(
+    tmp_path: Path, fixture_files: dict[str, Path]
+) -> None:
+    """Nothing about them changes: not the page, not the version, not the action key.  So an engine that
+    arrives, fails or runs out of time never converts one again."""
+    (tmp_path / "pic.png").write_bytes(text_png("never read"))
+    markdown = "# Minutes\n\n![a chart](pic.png)\n"
+    files = {
+        "minutes.rtf": pandoc_build(markdown, "markdown", tmp_path / "minutes.rtf", cwd=tmp_path),
+        "minutes.html": pandoc_build(markdown, "markdown", tmp_path / "minutes.html", cwd=tmp_path),
+        "sample.htm": _write(tmp_path, "sample.htm", fixture_files["sample.html"].read_bytes()),
+    }
+    engine = fake_engine(tmp_path / "bin")
+    reading = Registry.default(CFG, ocr=engine)
+    for name, src in files.items():
+        without = _through_the_cache(src, Registry.default(CFG), tmp_path / "other-mac")
+        got = _through_the_cache(src, reading, tmp_path / "cache")
+        assert got == without and got.status is ConversionStatus.OK, name
+        assert got.converter_id == "pandoc-gfm" and "ocr" not in got.converter_version, name
+    assert calls(engine.helper) == []
+
+
+_TARGETS = {
+    "relative, as Word writes it": ("media/image1.png", "word/media/image1.png"),
+    "from the package root": ("/word/media/image1.png", "word/media/image1.png"),
+    "a media folder beside word/": ("/media/image1.png", "media/image1.png"),
+    "a name with a space": ("media/site plan.png", "word/media/site plan.png"),
+}
+
+
+@pytest.mark.parametrize(("target", "entry"), _TARGETS.values(), ids=_TARGETS.keys())
+def test_a_word_picture_is_found_however_its_relationship_names_it(
+    tmp_path: Path, target: str, entry: str
+) -> None:
+    """The text is placed by the source pandoc gives the picture, so both must come out the same."""
+    text = "Stock on hand: 12 café 中文 \U0001f600"
+    src = _staged_doc(tmp_path, "Before ![shot](shot.png) after.\n", {"shot.png": text_png(text)})
+    (was,) = re.findall(r"media/\S+?\.png", _doc_one(src, None).body)
+    with zipfile.ZipFile(src) as zf:
+        picture = zf.read(f"word/{was}")
+
+    def moved(name: str, data: bytes) -> bytes | None:
+        if name == "word/_rels/document.xml.rels":
+            assert f'Target="{was}"'.encode() in data
+            return data.replace(f'Target="{was}"'.encode(), f'Target="{target}"'.encode())
+        return None if name == f"word/{was}" else data
+
+    _repacked(src, change=moved, add={entry: picture})
+    off, on = _doc_one(src, None), _doc_one(src, fake_engine(tmp_path / "bin"))
+    assert off.body.count("[image: ") == 1, "pandoc shows the picture"
+    assert on.body == off.body.rstrip("\n") + f"\n\n{_PICTURE_HEAD}\n\n{text}\n"
+
+
+def test_a_document_the_policy_screen_refuses_never_reaches_the_helper(tmp_path: Path) -> None:
+    """The screen comes before the converter, so before OCR: for a label rule and for an encrypted file."""
+    engine = fake_engine(tmp_path / "bin")
+    doc = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    deck = _deck_of(tmp_path, text_png("never read"))
+    unlabelled = Registry.default(CFG, policy=policy.PolicyConfig(refuse_unlabelled=True), ocr=engine)
+    for src in (doc, deck):
+        got = _through_the_cache(src, unlabelled, tmp_path / "cache")
+        assert got.status is ConversionStatus.REFUSED and str(got.reason).startswith("refused: "), src.name
+        assert got.converter_version.endswith(_OCR_IDENTITY), src.name
+    for name in ("locked.docx", "locked.odt", "locked.pptx"):
+        got = _through_the_cache(ole_encrypted(tmp_path / name), Registry.default(CFG, ocr=engine), tmp_path)
+        assert got.status is ConversionStatus.UNREADABLE, name
+    assert calls(engine.helper) == []
+
+
+def test_the_document_time_limit_is_the_one_a_word_document_gives_the_helper(tmp_path: Path) -> None:
+    src = _staged_doc(tmp_path, _PICTURE_DOC, _pictures())
+    engine = Recording(fake_engine(tmp_path / "bin"))
+    _doc_one(src, engine)
     (asked,) = engine.asked
     assert asked["work_dir"].parent == src.parent and 0 < asked["budget_s"] <= image._DOCUMENT_BUDGET_S
 

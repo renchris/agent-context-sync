@@ -352,7 +352,8 @@ units, streaming summary above 20 MB); `.pptx` → `pptx-python-pptx`; `.pdf` �
 PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pdf-pypdfium2`;** `.md .markdown` → `markdown-passthrough`; `.txt .csv .tsv .log .vtt .json .xml .yaml
 .yml` → `text-plain`; `.eml` → `eml-stdlib`; `.teams.json` → `teams-month`. Anything else → REFUSED stub.
 **SUPERSEDED (2026-10-06, §16.26):** with an OCR engine and no label rule, `.png .jpg .jpeg .gif .bmp .tif
-.tiff .webp .heic .heif` → `image-ocr`.
+.tiff .webp .heic .heif` → `image-ocr`. With an OCR engine `pandoc-gfm` is two converters: one with the
+engine for `.docx .odt`, one without for `.rtf .html .htm`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -2348,6 +2349,9 @@ class PandocConverter:
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
+    # SUPERSEDED (2026-10-06, §16.26): __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None);
+    # with an engine the instance's extensions are (".docx", ".odt") and the text read in a picture
+    # follows the block that shows it
 
     def version(self) -> str:
         """Version as run (emitter version + underlying library/tool version)."""
@@ -6425,8 +6429,32 @@ command, flag, installer option, config key or environment variable. A Mac witho
 built, `[convert] ocr = false`, `AGENTSYNC_OCR=0`) converts as before: the same eight converters at the same
 versions with the same options, so every page it has stays byte for byte what it was.
 
-This part is the image converter, the PDF converter, the deck converter and their wiring. The pictures
-inside Word documents are added to this section with the converter that reads them.
+It covers the image converter, the PDF converter, the deck converter, the Word and OpenDocument converter
+and their wiring.
+
+**At a glance.** Every string below is fixed wording, and every limit is a count, so a file gives the same
+page on every run.
+
+| | image | PDF | deck | Word, OpenDocument |
+|---|---|---|---|---|
+| Converter | `ImageConverter(cfg, engine)` | `PdfConverter(cfg, ocr=None)` | `PptxConverter(cfg, ocr=None)` | `PandocConverter(cfg, ocr=None)` |
+| Reads | the file | pages under 20 characters; pictures the text layer does not cover | every picture shape | every picture the body, footnotes and endnotes use |
+| Marker | `[image · WxH px · text read by on-device OCR (Apple Vision)]` | `[page image without a text layer: text read by on-device OCR (Apple Vision)]`, `[text in an image on this page, read by on-device OCR (Apple Vision):]` | `[text in the image above, read by on-device OCR (Apple Vision):]` | the same, or `[text in image N above, read by on-device OCR (Apple Vision):]` |
+| Own option | none | `ocr_pdf_rules` and four limits | `ocr_pptx_rules` | `ocr_pandoc_rules` |
+| When OCR fails | FAILED stub (no converter without an engine) | the page without OCR | the page without OCR | the page without OCR |
+
+- **Option set.** With an engine every converter's `options()` gains `_OCR_OPTIONS` (`ocr_languages`,
+  `ocr_max_pages`, `ocr_max_pictures`, `ocr_max_picture_bytes`) and its own row above, and its `version()`
+  ends in `+<OcrEngine.identity>`. Without one neither changes.
+- **Failure rule** (plan D10). OCR never fails a document that converts without it. A PDF, deck, Word or
+  OpenDocument converter raises one `OcrError("on-device OCR failed")` before it returns anything, and
+  `convert_file` converts the file with the registry's converter that has no engine: the page, the version
+  and the action key of a Mac without one. What went wrong goes to the log.
+- **Bounds.** One document: 100 pages read (PDF), 100 distinct pictures, 256 MiB of picture bytes, 300
+  seconds of helper time (`_DOCUMENT_BUDGET_S`). A PDF also looks at no more than 400 image objects and
+  decodes no more than 400,000,000 pixels. A Word or OpenDocument file is looked through for at most 64 MiB
+  per part, and a relationships part over 4 MiB is not read. One cycle: 180 seconds (`_OCR_BUDGET_S`).
+  The helper itself skips a picture with a side under 48 px and refuses one over 50 megapixels (§16.25).
 
 **Rules.**
 
@@ -6500,8 +6528,8 @@ a picture inside a document alike (`_raster_suffix`). EMF, WMF, SVG, PDF and AVI
 types the helper allows; the helper, which looks at the whole file, has the last word.
 
 **Pictures inside a document.** `_read_pictures(engine, pictures, *, work_dir, budget_s, limit=100,
-max_bytes=256 MiB)` reads the pictures of one document and returns a `_PictureText`. The PDF and deck
-converters call it (below).
+max_bytes=256 MiB, escape=True)` reads the pictures of one document and returns a `_PictureText`. The PDF,
+deck and pandoc converters call it (below).
 
 - **Streamed.** `pictures` is an iterable of binary streams. Each is read once, in 1 MiB chunks, and closed,
   and the next is asked for only while there is room for it: a caller that passes a generator opens no
@@ -6524,7 +6552,9 @@ converters call it (below).
 - **Result.** `digests`: one entry per picture looked at, in the order offered, its sha256 or `None` when it
   was not taken: no raster image, not readable to its end, or the one that passed the byte limit (shorter
   than the pictures offered when a limit stopped the reading). `lines`: digest →
-  escaped lines, as above, for each picture text was read in. `unread`: the pictures taken that a helper
+  escaped lines, as above, for each picture text was read in; with `escape=False` the lines are as read,
+  less their control characters, for a caller that hands them to a writer which escapes what it writes
+  (pandoc), and they must never be put on a page as they are. `unread`: the pictures taken that a helper
   failure, the time limit or `recognition failed` left unread; 0 means every picture without lines holds no
   text. One WARNING per document says `on-device OCR left N of M picture(s) unread: <first reason>`, with no
   name in it. `over_bytes`: the byte limit stopped the reading, so the last picture looked at was not read.
@@ -6543,9 +6573,13 @@ past the OCR picture limit not read` (`_PICTURES_CUT`), for a PDF too.
 change a page. What the helper is run with is in `OcrEngine.identity`, so in the version.
 
 **Registry** (amends §7 and §16.6). `Registry.default(cfg, *, policy=None, ocr=None)`. The registry never
-looks for an engine: the cycle resolves one and hands it in. The PDF and deck converters are built with it
-(`PdfConverter(cfg, ocr=ocr)`, `PptxConverter(cfg, ocr=ocr)`), under a label rule too: a document's own
-label is screened before it is converted, and its pictures are part of it. `ImageConverter(cfg, ocr)` is
+looks for an engine: the cycle resolves one and hands it in. The PDF, deck and pandoc converters are built
+with it (`PdfConverter(cfg, ocr=ocr)`, `PptxConverter(cfg, ocr=ocr)`, `PandocConverter(cfg, ocr=ocr)`),
+under a label rule too: a document's own label is screened before it is converted, and its pictures are
+part of it. A `PandocConverter` with an engine claims `.docx` and `.odt` only, so with an engine the
+registry also holds `_PandocWithoutOcr(cfg)` for `.rtf`, `.html` and `.htm`: a second converter with the id
+`pandoc-gfm`, at the version and with the options of a Mac without an engine. `Registry.converters()` then
+lists the id twice; `for_name` still gives one converter per suffix. `ImageConverter(cfg, ocr)` is
 registered when
 `ocr` is not None and `policy.labels_active` is false (plan D8). An image can carry a sensitivity label and
 `policy.read_labels` reads none from an image, so under any label rule (`exclude_label_ids`,
@@ -6820,6 +6854,149 @@ failure, the cache entry, the later read that works, the banner; the document's 
 `tests/test_convert_determinism.py` (a deck read by OCR twice, from the cache under a second name, and from
 a cold cache). `text_png` in `tests/test_convert_image.py` is a real PNG the fake helper reads text in.
 
+#### Pictures in a Word or OpenDocument file: `agentsync.convert.pandoc`
+
+Plan decisions D6 and D10. `PandocConverter(cfg, ocr=None)`. Without an engine nothing in this part runs:
+the five suffixes, `version()`, `options()` (`lua_filter` stays `agentsync-images@1`) and every page are the
+ones from before OCR existed, byte for byte, and the emitter stays **1.0.0**.
+
+With an engine the converter reads the pictures of `.docx` and `.odt` files, and those two suffixes are all
+its instance claims (`extensions`). Its `version()` ends in the engine's identity
+(`1.0.0+pandoc-3.9+ocr-apple-vision-r3-h2.0.0-l1`) and its `options()` gain the shared OCR options and
+`ocr_pandoc_rules` (1; bumped when a rule below, or how the filter shows the text, changes). `.rtf`,
+`.html` and `.htm` never change: no picture in them is read, and `Registry.default` gives them
+`_PandocWithoutOcr`, the same converter without an engine. Their pages, versions and action keys are those
+of a Mac without one, so an engine that arrives, fails or runs out of its cycle's time never converts one
+again. The e-mail and Teams converters run pandoc on HTML through the same runner and are not touched.
+
+```text
+# Contoso tourer launch
+
+[image: Sales by region — media/image1.png]
+
+[text in the image above, read by on-device OCR (Apple Vision):]
+
+Units by region\
+North \| 12
+
+Text [image: inline — media/image1.png] and [image: second — media/image2.png] here.
+
+[text in image 2 above, read by on-device OCR (Apple Vision):]
+
+Approved \| 12 May
+```
+
+- **Which pictures.** The ones the document's own parts use, in order of first use, found before pandoc
+  runs. For a docx: the image relationships of the body (`word/document.xml`, or the part `_rels/.rels`
+  names), then of `word/footnotes.xml`, then of `word/endnotes.xml`, each in the order that part first uses
+  them (`r:embed`, `r:id`, `r:pict`, under any prefix). For an odt: the `xlink:href` references of
+  `content.xml` that name an entry of the package. Nothing else is read: not every entry under `word/media`
+  or `Pictures/`, so not the logo of a header or footer (`word/header1.xml`, `styles.xml`), an entry nothing
+  uses, or a picture that is linked and not stored. Which pictures a limit keeps does not depend on their
+  names.
+- **The source pandoc gives a picture** is what the text is placed by, so `_docx_pictures` works it out as
+  pandoc's reader does: a relationship target loses its leading slashes and `word/`, and is looked up under
+  `word/`; a target outside `word/` is kept as written and looked up from the package root when it starts
+  with a slash. For an odt the source is the reference as written. A source pandoc never shows costs a read
+  and prints nothing.
+- **Streamed and bounded.** Each picture is one ZIP entry, opened when `_read_pictures` asks for it and
+  inflated as it is copied: an entry that claims a small size and inflates to gigabytes stops at the byte
+  limit. A relationships part is read whole only up to 4 MiB (`_MAX_RELS_BYTES`; a larger one is not read),
+  and a document part is streamed past a regular expression, not parsed, for at most 64 MiB
+  (`_MAX_SCAN_BYTES`): pictures first used after that are not found. Then the bounds of `_read_pictures`:
+  100 distinct pictures, 256 MiB, in the `.ocr-*` folder beside the staged file, within `_DOCUMENT_BUDGET_S`
+  (300 seconds; pandoc then has its own 300). When a limit left a raster picture unread the summary says so.
+- **Finding the pictures can only find fewer.** A package `zipfile` cannot open is left to pandoc, which
+  reads it its own way. An error while the parts are looked through ends the looking, and the pictures
+  found so far are read. An entry that cannot be opened (missing, encrypted, a compression `zipfile` does
+  not read) is skipped, and one that cannot be read to its end costs only itself (`_next_bytes`). pandoc
+  does not inflate a picture it does not extract, so it converts such a file, and so does this. Each of
+  these is one DEBUG line with the type of the error and nothing the document says: an error's text can
+  name an entry. `MemoryError` is not a fact about the file and fails the pass (Failure, below).
+- **Once per distinct picture.** A picture's key is the sha256 of its bytes. One stored under several names
+  (pandoc's odt writer stores a picture once per use), or used several times, has one key, and its text is
+  printed once: after the first top-level block that shows it.
+- **Where the text goes.** After the top-level block (a paragraph, a table, a list, a figure) that shows
+  the picture, never inside it: every block of the document is written exactly as it is without OCR.
+  First a head line of its own, `[text in the image above, read by on-device OCR (Apple Vision):]`
+  (`_PICTURE_HEAD`). When the block shows more than one picture the head says which:
+  `[text in image N above, …]`, where N counts the `[image…]` references of that block in order. Then one
+  paragraph per block of lines `ocr.text_lines` read, its lines kept apart by hard line breaks (a backslash
+  at the end of a line), which is how pandoc writes a line break of the document's own.
+- **The filter** (`_LUA_FILTER`; its first pass, `ocr`). The converter writes `agentsync-ocr.json` into
+  pandoc's job folder: `{"pictures": {source: key}, "text": {key: [lines]}}`, the lines as read
+  (`escape=False`). The file is JSON, never Lua source. The pass reads and decodes it inside one `pcall`,
+  and does its work inside another, so a pandoc whose Lua has no `pandoc.json` (`[convert] pandoc_path` can
+  name any pandoc), or a fault in the pass, leaves the document as it is. Without the file the pass returns
+  nothing and the output is what it was. The job folder is the one pandoc already writes the converted text
+  into: a private folder under `$TMPDIR`, removed when pandoc returns.
+- **Escaping.** The lines are never written raw. The pass builds each one as words (`Str`) and spaces, and
+  pandoc's gfm writer escapes them as it escapes the document's own text: `` ` ``, `<`, `>`, `#`, `*`, `_`,
+  `[`, `]`, `|`, `~`, `!` before a bracket. So no code fence, HTML block or tag, comment, heading, table,
+  link, image or emphasis can come out of a picture, and a line that copies the head line comes out as
+  `\[text in the image above…\]`. The writer leaves the start of a later line of a paragraph alone, so the
+  pass puts a backslash (the one raw character it writes) before what would be structure there: a bullet
+  (`- `, `+ `), a number (`3. `, `12) `), and a line of dashes or of equals signs (a rule, or the underline
+  that makes the line above a heading). Only the head line is written raw, and it is fixed wording with a
+  number in it.
+- **That the text was placed.** The pass writes `agentsync-ocr: placed N` to stderr, where N is the number
+  of pictures whose text it put on the page. No such line after pandoc was handed text means the page holds
+  none of it, and it must not pass for a page OCR read: that is a failure (below). N is the number the
+  summary gives.
+- **Title and summary.** As before: the title is the document's first heading, else its first line, and the
+  summary lists its headings. No heading is ever text read from a picture (pandoc escapes a `#` it did not
+  write). The first line is looked for above the first head line (`_HEAD_RE`), so it is never a head
+  line or a line OCR read; a document with no heading and no line of its own above its first picture's
+  text is `Untitled Word document`. The summary gains counts only, before the headings: `Word document; text of 2
+  picture(s) read by on-device OCR; headings: …`, and `; pictures past the OCR picture limit not read`.
+- **Failure** (plan D10). One `OcrError("on-device OCR failed")`, raised before anything is returned:
+  `_read_pictures` left a picture unread (the helper may not be run, exits non-zero, runs out of time,
+  answers something else, or Vision gave up), a copy cannot be written, memory runs out, the pass raises;
+  and, once pandoc was handed text to place, pandoc failing or not reporting that it placed it: pandoc may
+  well convert the file when handed nothing. `convert_file` then converts the file without OCR (above), so
+  pandoc runs a second time, without the file. The log gets `WARNING <name>: on-device OCR failed:
+  <reason>`, where the reason is the engine's own, `the pandoc filter did not place the picture text`, or,
+  for any other exception, its type name only. A file none of whose pictures holds text is converted as
+  without an engine, in one run, and pandoc's failure on it is the document's own.
+
+```python
+# agentsync.convert.pandoc
+class PandocConverter:                       # converter_id = "pandoc-gfm"
+    extensions = (".docx", ".odt", ".rtf", ".html", ".htm")   # with an engine, on the instance: (".docx", ".odt")
+    def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None: ...
+    def version(self) -> str: ...            # with an engine: the version from before + "+" + engine.identity
+    def options(self) -> Mapping[str, OptionValue]: ...   # with an engine: + the OCR options
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...   # may raise OcrError
+```
+
+Every new name in `agentsync.convert.pandoc` is private (`_PandocWithoutOcr`, `_Pictures`, `_picture_text`,
+`_docx_pictures`, `_odt_pictures`, `_relationships`, `_attribute_values`, `_small_part`, `_LISTERS`,
+`_PICTURED`, `_OCR_RULES`, `_OCR_SIDE_FILE`, `_PLACED_RE`, `_HEAD_RE`, `_RID_RE`, `_HREF_RE`,
+`_MAX_RELS_BYTES`, `_MAX_SCAN_BYTES`, and `_PandocRunner.to_gfm_with_picture_text`).
+
+Tests: `tests/test_convert_formats.py` (suffixes, version and options with and without an engine, and of
+`_PandocWithoutOcr`; the page of `build_docx_image` and of an odt without an engine, byte for byte, and the
+same pages with an engine when no picture holds text; a picture shown by a figure, a paragraph and a table
+printed once, a paragraph of three pictures naming the second, an icon skipped, one run of the helper beside
+the staged file; an odt picture stored under three names; order of first use against the order of names, an
+entry nothing uses and a header's logo never read, a third picture never opened past a limit of one; the
+count limit and the byte limit; every kind of line that could pose as structure, in a docx and an odt, as
+written and as pandoc's own reader parses the page back; a marker as the first and as the last line of a
+picture's text; a document with no heading, and one that opens with a table; a damaged entry and a missing
+one; a relationships part and a
+body past their bounds; a reference that spans two chunks; an error while the pictures are looked for, and
+a package `zipfile` cannot open; a helper failure, its fixed wording and its log lines; a full disk and no
+memory; a pandoc whose Lua has no `pandoc.json`, whose pass raises, or that cannot open a file; a pandoc
+that fails only when handed text, and one that always fails; through `convert_file`: the page, version and
+key of a Mac without an engine after a failure, the cache entry, the later read that works, the banner; an
+`.rtf`, an `.html` and an `.htm` file converted as on a Mac without an engine and the helper never run; a
+relationship target written four ways, with accented, CJK and emoji text; a label rule and an encrypted
+container refused before the helper, for a deck too; the document's time limit),
+`tests/test_convert_core.py` (with an engine `pandoc-gfm` is two converters whose suffixes are those of
+one; every suffix the engine reads nothing in keeps its version and options) and
+`tests/test_convert_determinism.py` (a docx and an odt read by OCR twice, from the cache under a second
+name, and from a cold cache).
+
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
 `_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_raster_left`, `_OCR_OPTIONS`,
 `_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
@@ -6865,12 +7042,14 @@ for the fake helper of `tests/test_ocr.py`.
   says to sync again while files on this Mac wait. The read that passes the budget finishes, so one cycle
   spends at most the budget plus one document's 300 seconds. A folder of thousands of screenshots is read
   over many cycles; no cycle, and not the installer's first sync, is held for an hour by it.
-- **A document does not wait.** A PDF converts without OCR, so past the budget it is neither deferred nor
-  read: `_Cycle._converting` hands `convert_file` the registry without an engine (`Registry.without_ocr`),
+- **A document does not wait.** A PDF converts without OCR, and so do a deck and a Word or OpenDocument
+  file, so past the budget such a file is neither deferred nor read: `_Cycle._converting` hands
+  `convert_file` the registry without an engine (`Registry.without_ocr`),
   and the file gets the page, the version and the action key of a Mac without one. Nothing waits and `loop`
   has nothing to say about it. The version without `+ocr-` on its page is how a later re-read can tell that
   OCR has not read it; nothing in this section re-reads it. Deferring it instead would hold back every PDF
-  behind a folder of scans, the ones with nothing to read included.
+  behind a folder of scans, the ones with nothing to read included. An `.rtf` or `.html` file gets the same
+  version, options and action key from both registries, so the budget changes nothing for it.
 - **A failed read.** `OcrError` makes the result FAILED: the `conversion failed: on-device OCR failed` stub,
   never cached, and the file's line in the source's errors. The cycle then treats the row as it treats every
   failed conversion: the next cycle reads the file again, finds the same bytes and an intact stub, and

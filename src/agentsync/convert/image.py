@@ -119,15 +119,22 @@ def _raster_suffix(head: bytes) -> str | None:
     return None
 
 
-def _ocr_lines(image: OcrImage) -> list[str]:
+def _ocr_lines(image: OcrImage, *, escape: bool = True) -> list[str]:
     """One frame as page text: its lines in reading order, "" between blocks; none for a frame that was not
     read.  A picture can show any characters, so each line is neutralised as plain text is (no heading, rule
     or fake ``<!-- page: N -->`` anchor), and a leading code fence or ``<`` is escaped too: an open fence, or
-    the HTML block a tag such as ``<pre>`` opens, would take in every anchor after it."""
+    the HTML block a tag such as ``<pre>`` opens, would take in every anchor after it.
+
+    ``escape=False`` gives the lines as read, less their control characters: for a caller that hands them
+    to a writer which escapes what it writes (pandoc).  Such lines must never be put on a page as they are.
+    """
     out: list[str] = []
     for line in text_lines(image):
-        text = _escape_line(_CONTROL_RE.sub("", line).strip())  # a dropped control can leave an indent
-        out.append("\\" + text if _BLOCK_RE.match(text) else text)
+        text = _CONTROL_RE.sub("", line).strip()  # a dropped control can leave an indent
+        if escape:
+            text = _escape_line(text)
+            text = "\\" + text if _BLOCK_RE.match(text) else text
+        out.append(text)
     return out
 
 
@@ -143,10 +150,10 @@ class _PictureText:
     ``digests`` has one entry per picture looked at, in the order offered: the sha256 of its bytes, or None
     for one that was not taken (not a raster image, not readable to its end, or the one that passed the byte
     limit).  It is shorter than the pictures offered when a limit stopped the reading.  ``lines`` holds the
-    escaped lines of each picture text was read in, by that digest.  ``unread`` counts the pictures taken
-    that a helper failure or the time limit left unread: 0 means every picture without an entry in ``lines``
-    holds no text.  ``over_bytes`` says the byte limit stopped the reading: the last picture looked at passed
-    it and was not read.
+    lines of each picture text was read in (escaped, unless the caller asked for them as read), by that
+    digest.  ``unread`` counts the pictures taken that a helper failure or the time limit left unread: 0
+    means every picture without an entry in ``lines`` holds no text.  ``over_bytes`` says the byte limit
+    stopped the reading: the last picture looked at passed it and was not read.
     """
 
     digests: tuple[str | None, ...]
@@ -209,8 +216,10 @@ def _read_pictures(
     budget_s: float,
     limit: int = _MAX_PICTURES,
     max_bytes: int = _MAX_PICTURE_BYTES,
+    escape: bool = True,
 ) -> _PictureText:
-    """OCR the pictures of one document; see :class:`_PictureText` for what comes back.
+    """OCR the pictures of one document; see :class:`_PictureText` for what comes back.  With
+    ``escape=False`` its lines are as read and not escaped (see :func:`_ocr_lines`).
 
     ``pictures`` is consumed one stream at a time, and each stream is read once, in chunks, and closed: pass
     a generator that opens the next picture only when asked, and nothing of a document is held in memory.  A
@@ -267,7 +276,7 @@ def _read_pictures(
     for digest, image in zip(kept, images, strict=True):
         if image is None or image.error == _GAVE_UP:
             unread += 1
-        elif any(block := _ocr_lines(image)):
+        elif any(block := _ocr_lines(image, escape=escape)):
             lines[digest] = block
     if unread:
         log.warning(

@@ -449,7 +449,7 @@ def _identity(reg: Registry) -> dict[str, tuple[str, dict[str, object], tuple[st
 def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() -> None:
     """Without an engine the registry is the one from before OCR existed: an image has no converter, and no
     converter's version or options say anything about OCR. With one, the ten raster suffixes go to
-    ``image-ocr`` and every other name goes where it went."""
+    ``image-ocr`` and every other name goes where it went: to a converter of the same id."""
     plain = Registry.default(ConvertConfig())
     assert _identity(Registry.default(ConvertConfig(), ocr=None)) == _identity(plain)
     assert all(plain.for_name(f"Contoso diagram{ext}") is None for ext in IMAGE_SUFFIXES)
@@ -458,7 +458,9 @@ def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() ->
     routes = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
     assert {ext for ext, cid in routes.items() if cid == "image-ocr"} == set(IMAGE_SUFFIXES)
     assert reg.for_name("Contoso diagram.PNG").converter_id == "image-ocr"  # type: ignore[union-attr]
-    assert len(reg.converters()) == 9 and reg.extensions() == tuple(sorted(routes))
+    # Ten: the eight, ``pandoc-gfm`` a second time for the suffixes it reads no picture in, and the image
+    # converter.
+    assert len(reg.converters()) == 10 and reg.extensions() == tuple(sorted(routes))
     for ext in plain.extensions():
         assert routes[ext] == plain.for_name(f"x{ext}").converter_id, ext  # type: ignore[union-attr]
     assert reg.for_name("clip.mp4") is None and reg.for_name("drawing.svg") is None
@@ -473,16 +475,40 @@ def test_a_registry_with_an_engine_keeps_the_one_without() -> None:
     twin = reg.without_ocr
     assert twin is not None and twin.without_ocr is None
     assert _identity(twin) == _identity(plain) and twin.extensions() == plain.extensions()
-    reading = {"pdf-pypdfium2", "pptx-python-pptx"}  # the converters that read with the engine
-    for converter_id, (version, options, _exts) in _identity(reg).items():
-        plain_version, plain_options, _exts = _identity(plain).get(converter_id, ("", {}, ()))
-        if converter_id in reading:
-            assert version == f"{plain_version}+ocr-paper-vision-r2-h0.3.0-l1"
-            assert {k: v for k, v in options.items() if not k.startswith("ocr")} == plain_options
-            assert options["ocr_languages"] == "en-US" and options["ocr_max_pages"] == 100
-        elif converter_id != "image-ocr":
-            assert (version, options) == (plain_version, plain_options), converter_id
+    # The suffixes whose files the engine reads something in.  Every other suffix goes to a converter with
+    # the version and the options it has without an engine, so nothing about its files changes.
+    reading = {".docx", ".odt", ".pptx", ".pdf"}
+    for ext in plain.extensions():
+        was, now = plain.for_name(f"x{ext}"), reg.for_name(f"x{ext}")
+        assert was is not None and now is not None and now.converter_id == was.converter_id, ext
+        if ext in reading:
+            assert now.version() == f"{was.version()}+ocr-paper-vision-r2-h0.3.0-l1", ext
+            options = dict(now.options())
+            assert {k: v for k, v in options.items() if not k.startswith("ocr")} == was.options(), ext
+            assert options["ocr_languages"] == "en-US" and options["ocr_max_pages"] == 100, ext
+        else:
+            assert (now.version(), now.options()) == (was.version(), was.options()), ext
     assert twin.for_name("scan.png") is None, "an image has no converter there, so a failed read stays one"
+
+
+def test_with_an_engine_pandoc_is_two_converters_with_the_suffixes_of_one() -> None:
+    """The one that reads pictures claims the two formats that hold them; ``.rtf`` and ``.html`` keep a
+    converter without an engine, and so the key of a Mac without one."""
+    plain = Registry.default(ConvertConfig())
+    reg = Registry.default(ConvertConfig(), ocr=_engine())
+    (one,) = [c for c in plain.converters() if c.converter_id == "pandoc-gfm"]
+    reading, rest = (c for c in reg.converters() if c.converter_id == "pandoc-gfm")
+    assert (reading.extensions, rest.extensions) == ((".docx", ".odt"), (".rtf", ".html", ".htm"))
+    assert reading.extensions + rest.extensions == one.extensions
+    assert (rest.version(), rest.options()) == (one.version(), one.options())
+    assert reading.version() == f"{one.version()}+ocr-paper-vision-r2-h0.3.0-l1"
+    assert {name: reg.for_name(name) for name in ("a.docx", "a.ODT", "a.rtf", "a.html", "a.htm")} == {
+        "a.docx": reading,
+        "a.ODT": reading,
+        "a.rtf": rest,
+        "a.html": rest,
+        "a.htm": rest,
+    }
 
 
 @pytest.mark.parametrize("rule", LABEL_RULES.values(), ids=LABEL_RULES.keys())
@@ -500,7 +526,8 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert rule.labels_active
     reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
     assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
-    assert reg.extensions() == Registry.default(ConvertConfig()).extensions() and len(reg.converters()) == 8
+    assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
+    assert len(reg.converters()) == 9, "the eight, and pandoc-gfm a second time: no image converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 

@@ -264,3 +264,31 @@ def test_a_deck_read_by_ocr_converts_the_same_twice_and_under_any_name(tmp_path:
     for word in ("Contoso", "Review", "Fabrikam", "Copy", ".pptx"):
         assert word not in unit.body + unit.title + unit.summary, word
     assert "\nDelivery note\nPallets | 14\n" in unit.body
+
+
+@pytest.mark.parametrize("suffix", [".docx", ".odt"])
+def test_a_word_document_read_by_ocr_converts_the_same_twice_and_under_any_name(
+    tmp_path: Path, suffix: str
+) -> None:
+    """With an engine the page holds what OCR read in the file's pictures: the same bytes still give the
+    same page, whatever the file is called, and the page names neither file."""
+    engine = fake_engine(tmp_path / "bin")
+    registry = Registry.default(CFG, ocr=engine)
+    (tmp_path / "shot.png").write_bytes(text_png("Delivery note", "Pallets | 14"))
+    (tmp_path / "a").mkdir()
+    first = tmp_path / "a" / f"Contoso Review{suffix}"
+    pandoc_build("# Minutes\n\n![shot](shot.png)\n", "markdown", first, cwd=tmp_path)
+    second = tmp_path / "b" / f"Fabrikam Copy{suffix}"
+    second.parent.mkdir()
+    shutil.copyfile(first, second)
+    assert not double_conversion_differs(first, name=first.name, registry=registry)
+    a = _convert(first, first.name, registry, tmp_path / "cache")
+    b = _convert(second, second.name, registry, tmp_path / "cache")
+    assert a.status is ConversionStatus.OK and a.converter_id == "pandoc-gfm" and not a.from_cache
+    assert a.converter_version.endswith("+ocr-paper-vision-r2-h0.3.0-l1")
+    assert b.from_cache and b.action_key == a.action_key and b.units == a.units
+    assert _convert(second, second.name, registry, tmp_path / "cold") == a, "a cold cache gives the same page"
+    (unit,) = a.units
+    for word in ("Contoso", "Review", "Fabrikam", "Copy", suffix):
+        assert word not in unit.body + unit.title + unit.summary, word
+    assert "\n\nDelivery note\\\nPallets \\| 14\n" in unit.body
