@@ -1154,9 +1154,13 @@ def test_ocr_reads_the_helper_under_the_configured_cache_dir(
     r = by_name(run_checks(sample_config))["ocr"]
     assert r.ok and r.detail == f"on-device OCR is ready: {OCR_READY}"
     assert by_name(run_checks(sample_config))["docs_repo.permissions"].ok, "the helper is owner-only"
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    write_fake(helper, version_exit=3)  # built, and it stopped answering: OCR is broken, not just not built
+    r = by_name(run_checks(sample_config))["ocr"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
+    assert r.detail == "on-device OCR is not working: the OCR helper exited 3: no message"
     helper.unlink()
     ocr._marker(helper).write_text("swiftc did not build the OCR helper (exit 1): error: no such module\n")
-    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     r = by_name(run_checks(sample_config))["ocr"]
     assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
     assert r.detail == (

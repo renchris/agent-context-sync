@@ -621,12 +621,13 @@ VERSION_ANSWERS: dict[str, dict[str, Any]] = {
 
 
 @pytest.mark.parametrize("kw", VERSION_ANSWERS.values(), ids=VERSION_ANSWERS.keys())
-def test_a_helper_whose_version_fails_counts_as_not_built(
+def test_a_built_helper_whose_version_fails_is_a_failed_helper(
     tmp_path: Path, no_compiler: Path, kw: dict[str, Any]
 ) -> None:
+    """Built and not answering is OCR that stopped working (doctor's WARN), not OCR that was never built."""
     helper = place_fake(tmp_path, **kw)
     state, detail = ocr.probe(CFG, tmp_path)
-    assert state == "not-built" and detail.startswith("the OCR helper") and str(tmp_path) not in detail
+    assert state == "failed" and detail.startswith("the OCR helper") and str(tmp_path) not in detail
     assert ocr.engine(CFG, tmp_path) is None
     # With the reason of a failed rebuild beside it, that reason is the news.
     ocr._marker(helper).write_text("no Xcode or Command Line Tools (xcode-select -p names no folder)\n")
@@ -636,7 +637,7 @@ def test_a_helper_whose_version_fails_counts_as_not_built(
     )
 
 
-def test_a_helper_that_hangs_on_version_is_not_built_after_a_short_wait(
+def test_a_helper_that_hangs_on_version_is_a_failed_helper_after_a_short_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     place_fake(tmp_path)
@@ -647,7 +648,7 @@ def test_a_helper_that_hangs_on_version_is_not_built_after_a_short_wait(
         raise subprocess.TimeoutExpired(argv, kw["timeout"])
 
     monkeypatch.setattr(subprocess, "run", run)
-    assert ocr.probe(CFG, tmp_path) == ("not-built", "the OCR helper ran out of time")
+    assert ocr.probe(CFG, tmp_path) == ("failed", "the OCR helper ran out of time")
     assert waits == [5.0], "doctor runs inside setup-report's 12 s budget"
 
 
@@ -810,7 +811,7 @@ def test_build_leaves_an_owner_only_helper_and_builds_it_once(tools: Path, tmp_p
     )
 
     helper.write_text("#!/bin/sh\nexit 1\n")  # the same name, but it no longer runs
-    assert ocr.probe(CFG, cache) == ("not-built", "the OCR helper exited 1: no message")
+    assert ocr.probe(CFG, cache) == ("failed", "the OCR helper exited 1: no message")
     assert ocr.build(cache) == helper and len(lines_of(tools / "swiftc.calls")) == 2
     assert ocr.probe(CFG, cache)[0] == "ready"
 

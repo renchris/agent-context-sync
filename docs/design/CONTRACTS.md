@@ -6007,8 +6007,11 @@ line, and an unquoted one together with the rest of the line, but for what follo
 |---|---|---|
 | `ready` | the helper is there, may be run and answered `--version` (limit 5 s) | `<engine> revision <n>, helper <version>` |
 | `off` | `AGENTSYNC_OCR` is `0` or `off`; `[convert] ocr = false`; not macOS | which of the three |
-| `not-built` | no helper for this agentsync; or the one there no longer answers `--version` | `the OCR helper is not built`, or why it does not answer |
-| `failed` | `<helper>.failed` exists and there is no working helper; the helper may not be run; an `OSError` while looking | the build's reason, or the refusal |
+| `not-built` | no helper for this agentsync, and no `<helper>.failed` | `the OCR helper is not built` |
+| `failed` | `<helper>.failed` exists and there is no working helper; the helper is there and may not be run, or does not answer `--version` (it exits non-zero, cannot be started, takes over 5 s or answers something else); an `OSError` while looking | the build's reason, the refusal, or why it does not answer |
+
+A helper that is there and does not answer is `failed`, not `not-built`: OCR stopped working, and every cycle
+runs without it. The next build replaces such a helper.
 
 **Doctor** (`ops.doctor`, check `ocr`, after `pandoc`). It calls `probe` only, through the private probe
 `doctor._ocr_status`, so it never compiles; the one program it may start is a built helper's `--version`

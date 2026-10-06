@@ -398,7 +398,6 @@ def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, OcrEngine |
     off = _switched_off(cfg)
     if off:
         return "off", off, None
-    why = "the OCR helper is not built"
     try:
         helper = _helper_path(cache_dir)
         try:
@@ -415,12 +414,11 @@ def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, OcrEngine |
             return "failed", refusal, None
         try:
             found = _open(helper)
-        except OcrError as exc:  # a helper that no longer runs is as good as none: the next build replaces it
-            why = str(exc)
-        else:
-            return "ready", found.description, found
+        except OcrError as exc:  # built, and it does not answer: OCR is broken, which is more than not built
+            return "failed", _failure(helper) or str(exc), None
+        return "ready", found.description, found
     failure = _failure(helper)  # the reason of a build that failed is the news, when there is one
-    return ("failed", failure, None) if failure else ("not-built", why, None)
+    return ("failed", failure, None) if failure else ("not-built", "the OCR helper is not built", None)
 
 
 def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
@@ -428,9 +426,9 @@ def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
 
     - ``ready``: the helper is built and answered; detail describes the engine.
     - ``off``: switched off (``[convert] ocr = false`` or ``AGENTSYNC_OCR=0``), or not macOS.
-    - ``not-built``: no helper for this agentsync yet, or the one there no longer runs (detail says why).
-      ``scripts/install.sh`` builds it.
-    - ``failed``: the last build failed (detail is its reason), or the helper may not be run.
+    - ``not-built``: no helper for this agentsync yet.  ``scripts/install.sh`` builds it.
+    - ``failed``: the last build failed (detail is its reason), the helper may not be run, or the helper is
+      there and does not answer ``--version`` (detail says why; the next build replaces it).
     """
     state, detail, _ = _resolve(cfg, cache_dir)
     return state, detail

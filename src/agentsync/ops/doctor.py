@@ -401,8 +401,9 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
 def _check_ocr(config: Config) -> list[CheckResult]:
     """On-device OCR, which is optional: ok when the helper is ready or OCR is switched off; a not-ok INFO
     line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
-    the reason when the last build failed or the helper may not be run, with a fix only when the developer
-    tools are missing.  Never a FAIL: a probe that crashes is a WARN too."""
+    the reason when the last build failed, or the helper is there and may not be run or does not answer,
+    with a fix only when the developer tools are missing.  Never a FAIL: a probe that crashes is a WARN
+    too."""
     try:
         state, detail = _ocr_status(config)
     except Exception as exc:
