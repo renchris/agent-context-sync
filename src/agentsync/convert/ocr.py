@@ -54,7 +54,8 @@ MAX_PAGES = 100
 """The most pages of one document, or frames of one multi-page image, that are read."""
 MAX_MEGAPIXELS = 50
 """An image with more pixels is refused before it is decoded (``error`` "too large").  Fifty covers a 48 MP
-phone photo and a 600 dpi A4 scan; turning a frame upright takes two 8-bit RGBA copies of it (400 MB here)."""
+phone photo and a 600 dpi A4 scan.  Measured on an Apple silicon Mac: a 49 MP page full of text takes about
+26 s and 950 MB at its peak; a 300 dpi letter page (8 MP) about 6 s and 340 MB."""
 
 _TILE_PX = 1536  # the helper also reads an image longer than 4/3 of this in overlapping tiles of this size
 _MIN_PX = 48  # an image with a shorter side is an icon or a bullet: skipped, not read

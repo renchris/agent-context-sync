@@ -6001,7 +6001,10 @@ whenever it was written, 64 on a usage error.
 - `width` and `height` are upright pixels, after any EXIF rotation; boxes are fractions of that size with the
   origin at the top-left. The frame is drawn upright on white first, so a rotated image is tiled like any other.
 - Before a frame is decoded its stored size is read. More than `--max-megapixels`, or a side over 32768 px:
-  `"error": "too large"`. A side under `--min-px`: `"skipped": true`, not an error.
+  `"error": "too large"`. A side under `--min-px`: `"skipped": true`, not an error. The driver passes 50
+  megapixels and 48 px. Measured on an Apple silicon Mac, pages full of text: 49 MP takes about 26 s and
+  950 MB at its peak; a 300 dpi letter page (8 MP, read whole and in six tiles) about 6 s and 340 MB; a page
+  2048 px on its longer side (read whole only) about 2 s and 240 MB.
 - Raster types only (PNG, JPEG, TIFF, GIF, BMP, HEIC, HEIF, WebP by `CGImageSourceGetType`): ImageIO would
   also open a PDF or an SVG, whatever the file is named. Anything else is `"unsupported image type"`.
 - An image whose longer side exceeds 4/3 of `--tile` is read whole and in tiles of that size, each overlapping
