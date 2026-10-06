@@ -4938,8 +4938,8 @@ only to a v5/v4 attempt with no event line, or a v6 attempt with no `Attempt:` l
 runs)`: a v6 error (no step `end` lines) is resolved by a later install.log run that ended rc 0 (any run for a
 step-1 error, an install run for an install-step error); a v5 error still by a later `end` of its step. With only
 a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Amended (2026-10-06, §16.22):**
-only events before the attempt's closing line can stop it, and a line between a finished attempt and the next
-`Attempt:` header is an attempt of its own; a v7 install-step error is resolved by any install run of the attempt
+only events before the attempt's closing line can stop it, and a step 1 error logged more than 10 minutes after
+a closing line starts a header-less attempt of its own; a v7 install-step error is resolved by any install run of the attempt
 that ended rc 0, whenever it was logged. **Summary.** `human turns: N (q
 question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: none possible; approvals: not
 observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
@@ -6255,11 +6255,19 @@ log a line with no `Attempt:` header after an older attempt's `end | finished`. 
 - `stopping_error` (and the no-install-run fallback) judge only the events before the attempt's first
   `finished` event. A line logged after the run finished cannot have stopped it; it is still counted on the
   agent friction line.
-- `parse_friction` starts a header-less attempt at a line (an event, a legacy line or a header key) that follows
-  the current attempt's `finished` event when an `Attempt:` line comes later in the file. The friction section
-  labels it "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
-  read with the newest layout. With no later `Attempt:` line the late line stays in its attempt: a line logged
-  after `--report-only` in the same session must not become the latest attempt and take the Summary's headline.
+- `parse_friction` starts a header-less attempt at a step 1 `error` event dated more than 10 minutes
+  (`_NEW_SESSION_GAP`) after the current attempt's last `finished` event; the lines after it, up to the next
+  `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`, and the prompt's rule for it is "log
+  it and go to step 3's report", so this is the one line such a session writes. The friction section labels the
+  attempt "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
+  read with the newest layout. It needs no later `Attempt:` line: when it is the last attempt, the Summary
+  judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had
+  finished before it. `install.sh --report-only` closes only an attempt with a header, so instead of the
+  stale-report WARNING the Summary says "note: attempt N has no Attempt: line. ...".
+- Every other line after a closing line stays in its attempt: a deviation, a prompt line, an error of another
+  step, a step 1 error inside the 10 minutes, a line with no time. A line logged after `--report-only` in the
+  same session must not become the latest attempt and take the Summary's headline, and a late deviation
+  followed by a later `Attempt:` header must not read as a failed attempt with no install run.
 
 **setup-report: a v7 step 2 error logged after install.sh exited 0 is agent friction.** `stopping_error`
 resolved an install-step error only by an install run that started at or after the line's time. No step lies

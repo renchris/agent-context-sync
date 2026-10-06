@@ -2056,8 +2056,9 @@ def test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attemp
 def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     fake_mac: dict[str, Path],
 ) -> None:
-    """With no later ``Attempt:`` line, a late line is the same session's (the report says "run setup-report
-    again" for it): it must not become a header-less latest attempt, and it did not stop a finished run."""
+    """A line logged within minutes of the closing line is the same session's (the report says "run
+    setup-report again" for it), a step 1 error included: it must not become a header-less latest attempt,
+    and it did not stop a finished run."""
     v6_install_log(fake_mac)
     late = "2026-09-29T10:02:00Z | step 1 | error | noticed the listing was slow (exit 0) | -\n"
     write_friction(fake_mac, V7_HAPPY + late)
@@ -2068,6 +2069,63 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     assert "1 attempt(s):" in section(text, "Agent friction log") and "- attempt:" not in summary
     assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
     assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
+
+
+def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt(
+    fake_mac: dict[str, Path],
+) -> None:
+    """A session whose step 1 stopped before ``install.sh --log-start`` logs one error and writes its own
+    report ("log it and go to step 3's report"): it has no ``Attempt:`` header, and none follows. That
+    session failed at step 1; folded into the attempt before it, the report read "fully one command"."""
+    v6_install_log(fake_mac)
+    late = "2026-10-06T02:16:01Z | step 1 | error | install.sh --version exited 127 | -\n"
+    write_friction(fake_mac, V7_HAPPY + late)
+    text, summary = summary_of(fake_mac)
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
+    )
+    assert "- attempt: 2 of 2 (earlier: attempt 1 fully one command)" in summary
+    assert (
+        "- note: attempt 2 has no Attempt: line. It starts at a step 1 error logged after attempt 1"
+        in summary
+    )
+    assert "WARNING" not in summary, "install.sh --report-only cannot close an attempt that has no header"
+    assert "- F5 · step 1 · error · install.sh --version exited 127" in summary
+    assert (
+        "- attempt 2 (lines 5-5; no Attempt: line (logged after the previous attempt finished), prompt not "
+        'stated, agent not stated): failed at step 1; 1 event line(s): 1 error; no "end | finished" line'
+        in section(text, "Agent friction log")
+    )
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Failed at step 1 (preflight)"] and "prompt_version" not in link
+
+    def attempts(minute: int) -> int:
+        line = f"2026-09-29T10:{minute}:00Z | step 1 | error | git pull --ff-only exited 1 | -\n"
+        return len(setup_report.parse_friction(V7_HAPPY + line).attempts)
+
+    assert (attempts(11), attempts(12)) == (1, 2), "the closing line is 10:01:10: ten minutes is the line"
+
+
+def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac: dict[str, Path]) -> None:
+    """A deviation logged after ``--report-only``, or a complaint days later, is no failed session. With a
+    later ``Attempt:`` header in the log it became an attempt of its own with no install run and no error,
+    which read "failed at step 3"."""
+    v6_install_log(fake_mac)
+    write_install_log(fake_mac, start="2026-10-03T09:00:30Z", run="20261003T090030Z-7", append=True)
+    later = V7_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
+        "2026-09-29T10:01:10Z", "2026-10-03T09:03:00Z"
+    )
+    late = (
+        "2026-09-29T10:01:30Z | step 3 | deviation | wrote the questions in three parts | -\n"
+        "2026-10-01T08:00:00Z | step 2 | error | the link shows a placeholder | -\n"
+        "2026-10-01T08:00:05Z | step 3 | prompt | the last step is unclear | say what comes next\n"
+    )
+    write_friction(fake_mac, V7_HAPPY + late + later)
+    text, summary = summary_of(fake_mac)
+    fr = section(text, "Agent friction log")
+    assert "2 attempt(s):" in fr and "failed at step" not in fr
+    assert re.search(r"^- attempt 1 \(lines 1-7; .*\): fully one command; 4 event line\(s\): ", fr, re.M)
+    assert "- attempt: 2 of 2 (earlier: attempt 1 fully one command)" in summary
 
 
 @pytest.mark.usefixtures("clean_doctor")

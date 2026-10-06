@@ -75,7 +75,7 @@ import tempfile
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TypeVar, cast
 from urllib.parse import quote, unquote, urlencode, urlsplit
@@ -721,8 +721,8 @@ class FrictionEvent:
 @dataclasses.dataclass(frozen=True, slots=True)
 class Attempt:
     """One run of the setup prompt: the lines from one ``Attempt: <time>`` header (or, in a v4 log, one
-    ``Prompt:`` header block) to the next. Lines logged after an attempt's closing line and before the next
-    header are an attempt of their own, with no header (:func:`parse_friction`)."""
+    ``Prompt:`` header block) to the next. A step 1 error logged well after an attempt's closing line starts
+    an attempt of its own, with no header (:func:`parse_friction`)."""
 
     number: int
     started: datetime | None  # the Attempt: line's time
@@ -847,6 +847,9 @@ _ATTEMPT_RE = re.compile(r"^\s*(?:[-*]\s+)?\**Attempt\**\s*:\s*\**\s*(.*?)\s*$",
 _ISO_TIME = r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"
 _EVENT_RE = re.compile(rf"^\s*(?:[-*]\s+)?`?({_ISO_TIME})`?\s*\|(.*)$", re.IGNORECASE)
 _STEP_RE = re.compile(r"^(?:step\s*)?(\d+)$", re.IGNORECASE)
+_NEW_SESSION_GAP = timedelta(minutes=10)
+"""A step 1 ``error`` line dated more than this after an attempt's closing line was logged by another session
+(:func:`parse_friction`); sooner, it is a late line of the session that just finished."""
 
 
 def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
@@ -880,19 +883,21 @@ def parse_friction(text: str) -> Friction:
     text after the last ``|``), the ``<time> | end | finished`` line, and v4 ``F<n> | ...`` lines as legacy.
     Other lines are kept only in the text.
 
-    A line after an attempt's ``end | finished`` line belongs to a session that never got its header (step
-    1's command stopped before ``install.sh --log-start``): when an ``Attempt:`` line follows later in the
-    file, it starts a header-less attempt of its own, so it cannot change the finished attempt's outcome.
-    With no later ``Attempt:`` line it stays where it is (a line logged late in the same session must not
-    become the latest attempt); :func:`stopping_error` ignores it either way."""
+    A session whose step 1 command stops before ``install.sh --log-start`` logs its error with no
+    ``Attempt:`` header, after the previous attempt's ``end | finished`` line. Such a line, a step 1
+    ``error`` dated more than :data:`_NEW_SESSION_GAP` after that closing line, starts a header-less attempt
+    of its own (the lines after it, up to the next header, are its too): the session that failed is judged,
+    not the one that had finished. Any other line after a closing line stays in its attempt (a line logged
+    late in the same session must not become the latest attempt), and :func:`stopping_error` does not judge
+    it."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
-    lines = text.splitlines()
-    last_header = max((n for n, ln in enumerate(lines, start=1) if _ATTEMPT_RE.match(ln)), default=0)
 
-    def orphan(line_no: int) -> bool:
-        events = cast("list[FrictionEvent]", cur["events"]) if cur is not None else []
-        return line_no < last_header and any(e.kind == "finished" for e in events)
+    def orphan(event: FrictionEvent) -> bool:
+        if cur is None or event.kind != "error" or event.step != 1 or event.at is None:
+            return False
+        closed = [e.at for e in cast("list[FrictionEvent]", cur["events"]) if e.kind == "finished" and e.at]
+        return bool(closed) and event.at - max(closed) > _NEW_SESSION_GAP
 
     def close() -> None:
         if cur is not None:
@@ -919,7 +924,7 @@ def parse_friction(text: str) -> Friction:
             "last": line_no,
         }
 
-    for n, line in enumerate(lines, start=1):
+    for n, line in enumerate(text.splitlines(), start=1):
         attempt = _ATTEMPT_RE.match(line)
         if attempt is not None:
             cur = begin(n, parse_time(attempt.group(1)))
@@ -934,13 +939,14 @@ def parse_friction(text: str) -> Friction:
         if key is not None:
             name = key.group(1).capitalize()
             header = cast("dict[str, str]", cur["header"]) if cur is not None else None
-            if cur is None or orphan(n) or (name == "Prompt" and header is not None and "Prompt" in header):
+            if cur is None or (name == "Prompt" and header is not None and "Prompt" in header):
                 cur = begin(n, None)
             cast("dict[str, str]", cur["header"]).setdefault(name, key.group(2).strip("*").strip())
-        elif cur is None or orphan(n):
+        parsed = _parse_event(n, event.group(1), event.group(2)) if event is not None else None
+        if cur is None or (parsed is not None and orphan(parsed)):
             cur = begin(n, None)
-        if event is not None:
-            cast("list[FrictionEvent]", cur["events"]).append(_parse_event(n, event.group(1), event.group(2)))
+        if parsed is not None:
+            cast("list[FrictionEvent]", cur["events"]).append(parsed)
         elif legacy is not None:
             cast("list[str]", cur["legacy"]).append(line.strip())
         cur["last"] = n
@@ -2574,6 +2580,13 @@ def _kind_counts(attempt: Attempt) -> str:
     return ", ".join(f"{counts[k]} {k}" for k in order if counts[k]) or "none"
 
 
+def _headerless(fr: Friction, index: int) -> bool:
+    """Whether attempt ``index`` is a session that never wrote its header: no header line, and it follows a
+    finished attempt (:func:`parse_friction`)."""
+    att = fr.attempts[index]
+    return index > 0 and not att.header and att.started is None and fr.attempts[index - 1].finished
+
+
 def _friction_section(r: _Run) -> list[str]:
     if r.friction_error is not None:
         return [f"Could not read the friction log at {r.friction_path}: {r.friction_error}"]
@@ -2592,8 +2605,7 @@ def _friction_section(r: _Run) -> list[str]:
     ]
     for i, att in enumerate(fr.attempts):
         outcome = _attempt_outcome(r, i)
-        late = i > 0 and not att.header and fr.attempts[i - 1].finished
-        no_header = "logged after the previous attempt finished" if late else "v4 format"
+        no_header = "logged after the previous attempt finished" if _headerless(fr, i) else "v4 format"
         bits = [
             f"started {_iso(att.started)}" if att.started else f"no Attempt: line ({no_header})",
             f"prompt {_prompt_version(att) or 'not stated'}",
@@ -2870,7 +2882,13 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     )
     if att is not None and att.header.get("Run"):
         out.append(f"- agent said run: {att.header['Run']}")
-    if att is not None and not att.finished:
+    if fr is not None and att is not None and _headerless(fr, len(fr.attempts) - 1):
+        out.append(
+            f"- note: attempt {att.number} has no Attempt: line. It starts at a step 1 error logged after "
+            f"attempt {att.number - 1} finished: that session stopped before `install.sh --log-start`, so "
+            "`install.sh --report-only` had no attempt to close."
+        )
+    elif att is not None and not att.finished:
         step = att.layout.report_step
         closer = "install.sh --report-only" if not att.layout.logs_steps else "the agent's end line"
         out.append(
