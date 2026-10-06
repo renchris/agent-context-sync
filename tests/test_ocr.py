@@ -399,6 +399,46 @@ def test_read_turns_every_helper_failure_into_an_ocr_error_without_a_path(
         assert str(tmp_path) not in str(error.value) and "/" not in str(error.value)
 
 
+TOOL_MESSAGES: dict[str, tuple[str, str]] = {
+    "a quoted path with spaces and brackets": (
+        "error: cannot open 'HOME/Library/Application Support/agentsync/staging/run 1/"
+        "Contoso notes v3 (final).png' for reading",
+        "error: cannot open '<path>' for reading",
+    ),
+    "a path in double quotes": (
+        'error: cannot open "/Volumes/Contoso Share/page 2.png": no such file',
+        'error: cannot open "<path>": no such file',
+    ),
+    "two quoted paths": (
+        "error: cannot copy '/tmp/a b.png' to '/tmp/c d.png' at all",
+        "error: cannot copy '<path>' at all",
+    ),
+    "an unquoted path runs to the end of the line": (
+        "error: no such file or directory: HOME/Library/Application Support/agentsync/page 2.png",
+        "error: no such file or directory: <path>",
+    ),
+    "a compiler's line and column end an unquoted path": (
+        "/Applications/Xcode beta.app/Contents/Developer/a.swiftinterface:12:3: error: no module 'Vision'",
+        "<path>:12:3: error: no module 'Vision'",
+    ),
+    "the line that says error, not the first": (
+        "HOME/x y.swift:1:1: warning: unused\nmain.swift:9:5: error: expected ')' in expression / list",
+        "main.swift:9:5: error: expected ')' in expression / list",
+    ),
+    "a slash that starts no path": (
+        "error: an I/O error, and/or 3/4 of nothing",
+        "error: an I/O error, and/or 3/4 of nothing",
+    ),
+}
+
+
+@pytest.mark.parametrize(("message", "plain"), TOOL_MESSAGES.values(), ids=TOOL_MESSAGES.keys())
+def test_a_tool_message_keeps_its_words_and_loses_every_path(message: str, plain: str) -> None:
+    """The default state dir is under ``Application Support``: a path does not end at its first space."""
+    assert ocr._plain(message.replace("HOME", str(Path.home()))) == plain
+    assert ocr._plain(plain) == plain, "the reason read back from the marker is scrubbed again"
+
+
 def item(**kw: Any) -> dict[str, Any]:
     size = {"width": 10, "height": 10}
     return {"index": 0, "frame": 0, "frames": 1, **size, "lines": [], "skipped": False, **kw}
@@ -826,9 +866,7 @@ def test_a_failed_build_leaves_its_reason_until_a_build_works(tools: Path, tmp_p
         f'echo "{home}/Library/x.swift:1:1: warning: unused" >&2\n'
         f'echo "{cache}/ocr/.build-x/main.swift:9:5: error: cannot find Vision in {home}/My Sdk" >&2\nexit 1',
     )
-    reason = (
-        "swiftc did not build the OCR helper (exit 1): <path>:9:5: error: cannot find Vision in <path> Sdk"
-    )
+    reason = "swiftc did not build the OCR helper (exit 1): <path>:9:5: error: cannot find Vision in <path>"
     with loose_umask(), pytest.raises(ocr.OcrError) as error:
         ocr.build(cache)
     helper = ocr._helper_path(cache)

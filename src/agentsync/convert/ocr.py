@@ -79,7 +79,10 @@ _ERRORS = frozenset(
     {"not an image", "unsupported image type", "no frames", "too large", "not readable", "recognition failed"}
 )
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}")
-_PATH_RE = re.compile(r"(?<![\w.<])~?/[^\s'\"<>():]+")
+_PATH_RE = re.compile(
+    r"(?P<quote>['\"])~?/.*(?P=quote)"  # a quoted path: through the last such quote on the line
+    r"|(?<![\w.<])~?/\S.*?(?=:\d+:\d+: |$)"  # an unquoted one: to a compiler's line:column, else to the end
+)
 _clock = time.monotonic
 
 
@@ -129,11 +132,15 @@ def _env() -> dict[str, str]:
 
 
 def _plain(text: str | bytes) -> str:
-    """The line of a tool's output that says what went wrong, with every file path taken out."""
+    """The line of a tool's output that says what went wrong, with every file path taken out.
+
+    A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
+    but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote."""
     s = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")
-    return _PATH_RE.sub("<path>", line.replace(str(Path.home()), "~"))[:200]
+    line = line.replace(str(Path.home()), "~")
+    return _PATH_RE.sub(lambda m: f"{m['quote'] or ''}<path>{m['quote'] or ''}", line)[:200]
 
 
 def _strerror(exc: OSError) -> str:

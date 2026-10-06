@@ -5993,7 +5993,10 @@ user (nothing in agentsync does); it stops a helper someone else could have repl
 
 **Text.** No error or reason from this module holds a path: it says "the OCR helper". An `OSError` gives its
 `strerror`, a tool's message has the home folder and every absolute path replaced by `<path>`, and a timeout
-has no number in it, so the same failure reads the same on every Mac.
+has no number in it, so the same failure reads the same on every Mac. A path may hold spaces (the default
+state dir is under `Application Support`), so a quoted path is replaced through the last such quote on the
+line, and an unquoted one together with the rest of the line, but for what follows a compiler's
+`:line:column:`.
 
 | `probe` state | When | Detail |
 |---|---|---|
