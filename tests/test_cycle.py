@@ -5,6 +5,7 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 from __future__ import annotations
 
 import dataclasses
+import io
 import itertools
 import os
 import shutil
@@ -18,6 +19,8 @@ from typing import Any
 
 import httpx
 import pytest
+from pptx import Presentation
+from pptx.util import Inches
 
 from agentsync import arm_local as al
 from agentsync import curate, gitops, governance, loop, materialise, slug
@@ -36,8 +39,8 @@ from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
-from test_convert_builders import build_picture_pdf, page_picture, shade_engine
-from test_convert_image import picture, picture_bytes, reads
+from test_convert_builders import build_picture_pdf, page_picture, pandoc_build, shade_engine
+from test_convert_image import picture, picture_bytes, reads, text_png
 from test_e2e import GRAPH_SOURCE, SID, FakeDrive, FakeTokens, clock, config_with, git, page, porcelain
 from test_ocr import calls, fake_engine, write_fake
 from test_review_fixes import committed_blobs_containing
@@ -1478,6 +1481,62 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
     assert all(Path(c["cwd"]).name.startswith(".ocr-") for c in runs) and list(staging.iterdir()) == []
     again = run(sample_config)
     assert again.commit_sha is None and len(calls(engine.helper)) == 2, "a settled row is not converted again"
+    assert loop.next_step(sample_config).rule != 3, "nothing waits on this Mac"
+
+
+def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it_was(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pictures of a deck and of a Word document go through the same registry as a PDF's: read under
+    the staging folder, and past the OCR budget converted as on a Mac without an engine.  An .rtf file has
+    one converter with or without an engine, so nothing about its page changes."""
+    assert run(sample_config).exit_code == 0
+    engine = _use_ocr(monkeypatch, tmp_path)
+    folder, markdown = local_source_dir / "launch", "# Minutes\n\n![shot](shot.png)\n"
+    folder.mkdir()
+    (tmp_path / "shot.png").write_bytes(text_png("Orders by month"))
+    for name in ("minutes.docx", "minutes.rtf"):
+        pandoc_build(markdown, "markdown", folder / name, cwd=tmp_path)
+    prs = Presentation()
+    shapes = prs.slides.add_slide(prs.slide_layouts[6]).shapes
+    shapes.add_picture(io.BytesIO(text_png("Units by region")), Inches(1), Inches(1))
+    prs.save(str(folder / "review.pptx"))
+    [rep] = run(sample_config).sources
+    assert (rep.converted, rep.deferred, rep.errors) == (3, 0, ())
+
+    def published(name: str) -> tuple[dict[str, Any], str]:
+        fm, body = page(sample_config.docs_repo, slug.mirror_rel_path(SID, f"launch/{name}"))
+        assert fm["status"] == "current" and body.startswith("> [UNTRUSTED CONTENT]")
+        return fm, body.rstrip()
+
+    fm, body = published("minutes.docx")
+    assert fm["converter"].startswith("pandoc-gfm@1.0.0+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
+    assert fm["summary"] == "Word document; text of 1 picture(s) read by on-device OCR; headings: Minutes"
+    assert body.endswith("read by on-device OCR (Apple Vision):]\n\nOrders by month")
+    fm, body = published("review.pptx")
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "+ocr-paper-vision-" in fm["converter"]
+    assert body.endswith("read by on-device OCR (Apple Vision):]\nUnits by region")
+    rtf, rtf_body = published("minutes.rtf")
+    assert rtf["converter"].startswith("pandoc-gfm@1.0.0+pandoc-") and "ocr" not in rtf["converter"]
+    assert "Orders by month" not in rtf_body
+    staging = sample_config.state_paths.staging.resolve()
+    runs = calls(engine.helper)
+    assert len(runs) == 2 and all(Path(c["cwd"]).parent.parent == staging for c in runs)
+    assert all(Path(c["cwd"]).name.startswith(".ocr-") for c in runs) and list(staging.iterdir()) == []
+    assert run(sample_config).commit_sha is None and len(calls(engine.helper)) == 2
+    # The cycle's OCR time is used up: a new deck and a new document do not wait, and are not read.
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)
+    (tmp_path / "shot.png").write_bytes(text_png("Returns by month"))
+    pandoc_build(markdown, "markdown", folder / "late.docx", cwd=tmp_path)
+    pandoc_build(markdown, "markdown", folder / "late.rtf", cwd=tmp_path)
+    shapes.add_picture(io.BytesIO(text_png("Returns by region")), Inches(1), Inches(3))
+    prs.save(str(folder / "late.pptx"))
+    [rep] = run(sample_config).sources
+    assert (rep.converted, rep.deferred, rep.errors) == (3, 0, ()) and len(calls(engine.helper)) == 2
+    for name in ("late.docx", "late.pptx"):
+        fm, body = published(name)
+        assert "ocr" not in fm["converter"] and "OCR" not in fm["summary"] + body, name
+    assert published("late.rtf")[0]["converter"] == rtf["converter"]
     assert loop.next_step(sample_config).rule != 3, "nothing waits on this Mac"
 
 

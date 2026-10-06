@@ -7072,7 +7072,9 @@ worked and one that failed; five images against a budget two reads pass, convert
 cycles with rule 3 between them, then three copies served by the cache in a cycle whose budget one read would
 pass; three PDFs with a scanned page against a budget two reads pass: two read by OCR under the staging
 folder, the third converted without it under the version without OCR, none deferred, and no second
-conversion by the next cycle; an online-only image beside a local one, under a byte budget, named to
+conversion by the next cycle; a deck, a Word document and an `.rtf` file: the first two read under the
+staging folder and converted without OCR once the budget is used, the third under the version without OCR
+both times; an online-only image beside a local one, under a byte budget, named to
 `materialise`, and after it
 is downloaded; a Graph image whose content is never requested; an image the
 helper failed on: its stub, one error line, no second read by the next cycle, and its new bytes converted;
