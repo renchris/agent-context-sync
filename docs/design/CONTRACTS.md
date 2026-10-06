@@ -5982,8 +5982,10 @@ Command Line Tools install dialog). `xcrun` must find an executable `swiftc` and
 in `<cache_dir>/ocr/.build-*` with relative file names (limit 300 s) and the result is renamed into place.
 A working helper is kept, not rebuilt. On failure the reason is written to `<helper>.failed` (0600); the next
 build that works removes it. Other helpers, their markers and abandoned `.build-*` folders are removed only
-once they are 7 days old (a cycle that started before an upgrade may still be running the previous helper);
-younger ones lose any group and other bits.
+7 days after their last use (a cycle that started before an upgrade may still be running the previous
+helper); younger ones lose any group and other bits. The last use is the modification time: `engine` renews
+it on the helper it hands to a cycle, so on the day of an upgrade a helper built weeks ago is still young.
+`probe` renews nothing.
 
 **Before every run** the helper must be a regular file owned by the effective user, executable, in a folder
 that user owns, with no group or other write bit on either. This does not stop another process of the same
@@ -6129,13 +6131,15 @@ def text_lines(image: OcrImage) -> list[str]: ...  # reading order; no markdown 
   field by field), or was given a path that is not there. A file it cannot read is not an exception: its
   `OcrImage` carries `error` or `skipped`. `error` is fixed wording from the list above, never a system
   message, so it is safe in a reason.
-- `engine` logs at INFO why there is no engine. A caller with no engine behaves as before OCR existed.
+- `engine` logs at INFO why there is no engine. A caller with no engine behaves as before OCR existed. The
+  helper of the engine it returns gets a new modification time (its last use, see Build).
 
 Tests: `tests/test_ocr.py` (reading order: columns, a table, paragraphs, the noise and separator edges, a tilted
 page both ways, a tall label, input order, the depth limit; `read`: arguments, work dir, batches and the shared
 budget, every helper failure, each malformed answer; `probe` and `engine`: the four states, no tool started,
 each trust refusal, each bad `--version`, `OSError`s; `build` with stub `xcode-select`, `xcrun` and `swiftc`
-under umask 022: modes and `doctor._group_other_readable`, the marker's life, pruning; the module entry point;
+under umask 022: modes and `doctor._group_other_readable`, the marker's life, pruning by last use; the module
+entry point;
 the packaged source; and two tests that need developer tools. One builds and runs the real helper: a line
 across a tile seam whole and once, small labels on a large canvas, a word wider than the tile overlap and one
 inside it, EXIF orientation 6, a three-page TIFF, an icon, an over-limit image, a PDF named `.png`, an empty

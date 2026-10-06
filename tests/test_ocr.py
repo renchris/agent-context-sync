@@ -941,6 +941,34 @@ def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp
     assert mode(folder) == 0o700
 
 
+def test_build_keeps_a_helper_a_cycle_resolved_this_week_however_old_its_build(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The week runs from a helper's last use.  On the day of an upgrade the previous helper was built weeks
+    ago, and the cycle that is running when install.sh builds the next one still needs it."""
+    cache = tmp_path / "cache"
+    month_ago = time.time() - 30 * DAY
+    with monkeypatch.context() as earlier:  # an earlier agentsync: another source, so another helper name
+        earlier.setattr(ocr, "_source", lambda: b"// the helper of an earlier agentsync\n")
+        previous = place_fake(cache)
+        unused = write_fake(previous.with_name("agentsync-ocr-0000000000000000"))
+        for helper in (previous, unused):
+            os.utime(helper, (month_ago, month_ago))
+        assert ocr.probe(CFG, cache)[0] == "ready"
+        assert previous.stat().st_mtime == pytest.approx(month_ago), "status looks: it stamps nothing"
+        running = ocr.engine(CFG, cache)  # a cycle starts
+    assert running is not None and running.helper == previous
+
+    current = ocr.build(cache)  # scripts/install.sh, after the upgrade
+    assert current != previous and previous.exists() and not unused.exists()
+    (page,) = running.read(
+        [fake_image(tmp_path / "a.png", [[["still read", 0.1, 0.1, 0.5, 0.05]]])],
+        work_dir=tmp_path,
+        budget_s=60,
+    )
+    assert ocr.text_lines(page[0]) == ["still read"]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # python -m agentsync.convert.ocr: how scripts/install.sh builds
 # ---------------------------------------------------------------------------------------------------------

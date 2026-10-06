@@ -438,10 +438,16 @@ def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
 
 def engine(cfg: ConvertConfig, cache_dir: Path) -> OcrEngine | None:
     """The engine a cycle should use, or None when :func:`probe` is not ``ready`` (logged).  Never compiles
-    and never raises: without OCR every converter behaves as it did before OCR existed."""
+    and never raises: without OCR every converter behaves as it did before OCR existed.
+
+    The helper it hands out gets a new modification time: that is its last use, which is what a later build
+    goes by when it removes old helpers (:func:`_prune`).  :func:`probe` only looks and stamps nothing."""
     state, detail, found = _resolve(cfg, cache_dir)
     if found is None:
         log.info("on-device OCR is %s: %s", state, detail)
+    else:
+        with contextlib.suppress(OSError):
+            os.utime(found.helper)
     return found
 
 
@@ -512,9 +518,11 @@ def _compile(helper: Path) -> None:
 
 
 def _prune(helper: Path) -> None:
-    """Remove other helpers, failure markers and abandoned build folders once they are a week old, and make
-    the younger ones owner-only.  Nothing is removed at build time just for being old-versioned: a cycle that
-    started before an upgrade may still be running its helper."""
+    """Remove other helpers, failure markers and abandoned build folders a week after their last use, and
+    make the younger ones owner-only.  Nothing is removed at build time just for being old-versioned: a cycle
+    that started before an upgrade may still be running its helper.  The last use is the modification time,
+    which :func:`engine` renews each time it hands a helper to a cycle; a build's own time would be weeks
+    old on the day of an upgrade."""
     cutoff = time.time() - _PRUNE_AFTER_S
     with contextlib.suppress(OSError):
         for entry in sorted(helper.parent.iterdir()):
