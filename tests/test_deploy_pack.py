@@ -110,6 +110,7 @@ def tmp_home_env(home: Path) -> dict[str, str]:
     """A minimal environment whose HOME is ``home``: nothing reads or writes the real ~/agent-context."""
     env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TMPDIR")}
     env["HOME"] = str(home)
+    env["AGENTSYNC_OCR"] = "0"  # a real agentsync started under it looks for no OCR helper
     return env
 
 

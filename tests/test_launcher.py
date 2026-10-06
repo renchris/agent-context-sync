@@ -444,7 +444,7 @@ def test_launchd_job_argv_runs_agentsync_through_the_launcher(
     spec = launchd.poll_spec(sample_config)
     assert spec.program_arguments[0] == str(launchd.launcher_executable(launcher_app))
     argv = list(launchd.job_arguments(sample_config, "dry_run", 300, launchd.find_launcher()))
-    env = {**dict(spec.environment), "HOME": os.environ["HOME"]}
+    env = {**dict(spec.environment), "HOME": os.environ["HOME"], "AGENTSYNC_OCR": "0"}
     via = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120, env=env)
     direct = subprocess.run(
         argv[argv.index("--") + 1 :], capture_output=True, text=True, check=False, timeout=120, env=env

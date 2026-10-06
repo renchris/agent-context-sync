@@ -50,6 +50,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
         "AGENTSYNC_WAIT_POLL_SECONDS": "0.05",
         "STUB_ISSUE_LINK": ISSUE_LINK,
         "AGENTSYNC_TM_EXCLUDE": "0",
+        "AGENTSYNC_OCR": "0",  # the real sync and status below look for no OCR helper
         "GIT_CONFIG_GLOBAL": os.environ["GIT_CONFIG_GLOBAL"],  # conftest's tmp identity
         "GIT_CONFIG_NOSYSTEM": "1",
         "LC_ALL": "C",

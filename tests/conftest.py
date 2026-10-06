@@ -76,6 +76,7 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         mp.setenv("GIT_CONFIG_NOSYSTEM", "1")
         mp.setenv("LC_ALL", "C")
         mp.setenv("AGENTSYNC_TM_EXCLUDE", "0")  # never run the (slow, sticky) real tmutil from tests
+        mp.setenv("AGENTSYNC_OCR", "0")  # no test runs an OCR helper unless it asks to (tests/test_ocr.py)
         mp.delenv("AGENTSYNC_CONFIG", raising=False)
         mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
         yield home
@@ -98,6 +99,7 @@ def docs_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
         mp.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
         mp.setenv("GIT_CONFIG_NOSYSTEM", "1")
         mp.setenv("LC_ALL", "C")
+        mp.setenv("AGENTSYNC_OCR", "0")
         assert ensure_repo(repo) is True
     return repo
 
