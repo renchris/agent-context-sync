@@ -15,6 +15,7 @@ import stat
 import sys
 import threading
 import time
+import tomllib
 import unicodedata
 from collections.abc import Iterator
 from pathlib import Path
@@ -369,6 +370,71 @@ def test_excluded_empty_cloud_dir_is_not_unknown(tmp_path: Path) -> None:
     _write(root / "a.docx")
     _, stats = _walk(root, exclude=("Attachments/",))
     assert stats.unknown_dirs == ()
+
+
+def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Bring-back S19: one WARNING per empty folder per poll filled the logs. The scan's one alarm (logged
+    and printed once a pass) names them; the per-folder line is info."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    for name in ("One", "Two"):
+        (root / name).mkdir(parents=True)
+    _write(root / "a.docx")
+    with caplog.at_level(logging.INFO, logger=al.__name__):
+        res = al.LocalArm(_cfg(root)).scan(None, full=True)
+    per_dir = [r for r in caplog.records if "has zero children in a cloud tree" in r.getMessage()]
+    assert len(per_dir) == 2 and {r.levelno for r in per_dir} == {logging.INFO}
+    assert res.unknown_dirs == ("One", "Two") and not res.enumeration_complete
+    (alarm,) = res.alarms
+    assert "2 unknown dir(s)" in alarm and "'One', 'Two'" in alarm
+
+
+def test_empty_cloud_dirs_names_what_the_walk_calls_zero_children(tmp_path: Path) -> None:
+    """Bring-back S11: the folders status and doctor name are the walk's zero-child cloud folders, under the
+    same excludes; the root, an unreadable folder and a folder outside CloudStorage are not named."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    for rel in ("Bids", "Plans/Old [2019]", "Skipped", "Locked/inner"):
+        (root / rel).mkdir(parents=True)
+    _write(root / "Plans" / "a.docx")
+    (root / "link").symlink_to(root / "Bids", target_is_directory=True)
+    cfg = _cfg(root, exclude=("Skipped/",))
+    with _chmod(root / "Locked", 0):
+        found = al.empty_cloud_dirs(cfg)
+        _, stats = _walk(root, exclude=cfg.exclude)
+    assert found == ("Bids", "Plans/Old [2019]")
+    assert set(found) | {"Locked"} == set(stats.unknown_dirs), "the same folders the walk records"
+    assert al.empty_cloud_dirs(_cfg(root / "Bids")) == (), "an empty root is not something to exclude"
+    assert al.empty_cloud_dirs(_cfg(root / "missing")) == ()
+    plain = tmp_path / "plain"
+    (plain / "empty").mkdir(parents=True)
+    assert al.empty_cloud_dirs(_cfg(plain)) == ()
+
+
+def test_exclude_advice_is_a_line_that_clears_the_folders_it_names() -> None:
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    names = ["Bids", "Plans/Old [2019]", "Q*", *(f"Empty {n}" for n in range(1, 6))]
+    for rel in names:
+        (root / rel).mkdir(parents=True)
+    (root / "Keep" / "Bids").mkdir(parents=True)  # same name deeper: the anchored glob leaves it alone
+    _write(root / "Keep" / "Bids" / "a.docx")
+    cfg = _cfg(root, exclude=("Archive/", ".DS_Store"))
+    empty = al.empty_cloud_dirs(cfg)
+    assert len(empty) == 8
+    advice = al.exclude_advice(cfg, empty)
+    assert advice == (
+        'set exclude = ["Archive/", "/Bids/", "/Empty 1/", "/Empty 2/", "/Empty 3/", "/Empty 4/"] in '
+        "[[source]] id = 'local-test' in sources.toml (+3 more: status names them once these are "
+        "excluded); an excluded folder is not mirrored if it later gains files"
+    )
+    # pasted, round after round, the line empties the list and the walk has no unknown folder left
+    for _ in range(2):
+        advice = al.exclude_advice(cfg, al.empty_cloud_dirs(cfg))
+        line = advice.removeprefix("set ").split(" in [[source]]")[0]
+        cfg = _cfg(root, exclude=tuple(tomllib.loads(line)["exclude"]))
+    assert al.empty_cloud_dirs(cfg) == ()
+    items, stats = _walk(root, exclude=cfg.exclude)
+    assert stats.unknown_dirs == () and _rels(items) == ["Keep/Bids/a.docx"]
 
 
 def test_dataless_files_are_recorded_not_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

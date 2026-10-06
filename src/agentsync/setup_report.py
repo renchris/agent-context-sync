@@ -2974,10 +2974,22 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
     ]
 
 
+_EXCLUDE_LIST_RE = re.compile(r"\bexclude = \[.*?(?:\] in \[\[source\]\]|$)")
+"""The ready-to-paste exclude line of ``arm_local.exclude_advice`` (a WAITING ON YOU line, the heartbeat
+fix): it names folders below a source root, which the Redactor has never seen. Also a line cut short."""
+
+
 def _redact_lines(red: Redactor, lines: list[str]) -> str:
-    """Redact every line but the report's own headings (a folder named like a section must not break it)."""
+    """Redact every line but the report's own headings (a folder named like a section must not break it).
+    An exclude line's globs become ``<path>`` first: they are folder names from inside a source."""
     keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
+    if red.enabled:
+        lines = [ln if ln in keep else _EXCLUDE_LIST_RE.sub(_exclude_placeholder, ln) for ln in lines]
     return "\n".join(ln if ln in keep else red.redact(ln) for ln in lines)
+
+
+def _exclude_placeholder(m: re.Match[str]) -> str:
+    return "exclude = [<path>]" + (" in [[source]]" if m.group(0).endswith("]]") else "")
 
 
 def _issue_link(r: _Run, red: Redactor) -> str:

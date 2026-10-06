@@ -702,7 +702,11 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
         _beat(sample_config, enumeration_complete=False)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "incomplete for 3" in r.detail
-    assert r.fix == "agentsync sync -v (a full pass that lists all of local-fixture clears this)"
+    # Bring-back S11: a local walk is always a full pass, so "another sync clears this" was false for it.
+    assert r.fix == (
+        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
+        "access or add that folder to the source's exclude in sources.toml)"
+    )
     assert_fix_parses(r.fix)
 
     _beat(sample_config, ok=False, auth_state="REAUTH_REQUIRED")
@@ -725,6 +729,27 @@ def assert_fix_parses(fix: str | None) -> None:
     command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
     try:
         cli.build_parser().parse_args(shlex.split(command))
+def test_heartbeat_incomplete_fix_by_source_kind(sample_config: Config) -> None:
+    """Bring-back S11: a Graph pass resumes, so sync again is its fix; a cloud folder source names its empty
+    folders and the exclude line to paste, the same line the loop's WAITING ON YOU prints."""
+    local = sample_config.sources[0]
+    graph = dataclasses.replace(local, id="team-drive", kind=SourceKind.GRAPH_DRIVE, path=None)
+    fix = doctor._incomplete_fix(graph)
+    assert fix == "agentsync sync -v (a full pass that lists all of team-drive clears this)"
+    assert_fix_parses(fix)
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    (root / "Bids").mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    cloud = dataclasses.replace(local, path=root, sentinel=None)
+    for _ in range(3):
+        _beat(sample_config, enumeration_complete=False)
+    r = by_name(run_checks(dataclasses.replace(sample_config, sources=(cloud,))))["heartbeat.local-fixture"]
+    assert r.fix is not None and r.fix.startswith(
+        "if its 1 empty cloud folder(s) are meant to be empty, set exclude = ["
+    )
+    assert "\"/Bids/\"] in [[source]] id = 'local-fixture' in sources.toml" in r.fix
+
+
     except SystemExit:
         pytest.fail(f"the fix names a command the CLI rejects: {fix}")
 

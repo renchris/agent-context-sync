@@ -1776,7 +1776,8 @@ esac
 # ------------------------------------------------------------------------------------------------ next step
 # The loop's NEXT (KISS K02): status once more, with its NEXT line on (AGENTSYNC_NO_NEXT_HINT unset). Only its
 # [FAIL] and WAITING ON YOU lines are printed, above the one NEXT: its detail and policy lines would put label
-# names into install.out. WAITING lines name source ids only, which setup-report redacts.
+# names into install.out. WAITING lines name source ids, which setup-report redacts, and one names folders
+# in an exclude line (an empty cloud folder), which setup-report replaces whole.
 loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
 	local fails blocking held waits

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
+from agentsync.arm_local import empty_cloud_dirs, exclude_advice
 from agentsync.config import Config, SourceConfig
 from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
@@ -260,7 +261,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     db = config.state_paths.db
     files = _Files()
     incomplete: list[str] = []
-    unlisted: list[str] = []  # a local folder listing ran but could not finish: the operator's to fix
+    unlisted: list[SourceConfig] = []  # a local listing ran but could not finish: the operator's to fix
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
@@ -287,7 +288,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     # sync does not clear. A Graph FULL pass resumes, so sync again is right for it.
                     ran_full = last is not None and last.pass_kind is PassKind.FULL
                     if ran_full and src.kind is SourceKind.LOCAL:
-                        unlisted.append(src.id)
+                        unlisted.append(src)
                     elif ran_full and src.kind is SourceKind.INBOX:
                         inbox_partial.append(src.id)
                     else:
@@ -320,11 +321,24 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"macOS held the listing of {', '.join(sorted(held))} for a privacy prompt: click Allow on the "
             f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
-    if unlisted:
+    hidden: list[str] = []
+    for src in unlisted:
+        # An empty cloud folder is unknown, never empty, on every pass: name the folders and the line to
+        # paste. Anything else (no access, a missing folder or sentinel) is what `sync -v` names.
+        empty = empty_cloud_dirs(src)
+        if empty:
+            waits.append(
+                f"{len(empty)} empty cloud folder(s) keep the listing of {src.id} incomplete (deletions "
+                "held; another sync does not clear it): if they are meant to be empty, "
+                f"{exclude_advice(src, empty)}"
+            )
+        else:
+            hidden.append(src.id)
+    if hidden:
         waits.append(
-            f"a folder in {', '.join(sorted(unlisted))} could not be listed (no access, an empty cloud "
-            "folder, or a missing folder; the sync's alarm names it): grant Files and Folders access or "
-            "exclude it"
+            f"a folder in {', '.join(sorted(hidden))} could not be listed (no access, or a missing folder or "
+            f"sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders "
+            "access, or add it to that source's exclude in sources.toml"
         )
     if blocked:
         waits.append(

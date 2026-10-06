@@ -1716,6 +1716,26 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
     assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
 
 
+def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac: dict[str, Path]) -> None:
+    """Bring-back S11: the wait for an empty cloud folder prints a ready-to-paste exclude line naming folders
+    below a source root, which the Redactor has never seen. The report shows the line without its globs,
+    also when a line was cut inside the list."""
+    wait = (
+        "WAITING ON YOU: 2 empty cloud folder(s) keep the listing of one incomplete (deletions held; another "
+        'sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "/Fabrikam Bids/", '
+        "\"/Plans/Tailspin [[]old]/\"] in [[source]] id = 'one' in sources.toml; an excluded folder is not "
+        "mirrored if it later gains files"
+    )
+    hooks = setup_report.ReportHooks(loop_next=lambda config: ["NEXT: session done", wait])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert "set exclude = [<path>] in [[source]] id = " in loop and loop.endswith("later gains files"), loop
+    assert "Fabrikam" not in text and "Tailspin" not in text
+    red = setup_report.Redactor()
+    cut = 'fix: set exclude = ["~$*", "/Fabrikam Bi'
+    assert setup_report._redact_lines(red, [cut]) == "fix: set exclude = [<path>]"
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     """Rule 5's NEXT says the wait is below: the Loop line carries it."""

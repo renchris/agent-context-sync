@@ -263,15 +263,40 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
     (root / "Empty").mkdir(parents=True)
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     config = _setup(tmp_path, local_source_table("work", root))
+    paste = 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]'
     for _ in range(2):
         run_cycle(config, mode=None)
         assert _lines(config) == [
             f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
-            "WAITING ON YOU: a folder in work could not be listed (no access, an empty cloud folder, or a "
-            "missing folder; the sync's alarm names it): grant Files and Folders access or exclude it",
+            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
+            f"another sync does not clear it): if they are meant to be empty, set {paste} in [[source]] "
+            "id = 'work' in sources.toml; an excluded folder is not mirrored if it later gains files",
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+    # The line is ready to paste: with it in the source's table, the next pass is complete and the wait gone.
+    path = config.config_path
+    path.write_text(path.read_text(encoding="utf-8") + paste + "\n", encoding="utf-8")
+    config = load_config(path)
+    run_cycle(config, mode=None)
+    assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+
+
+def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:
+    """A missing sentinel also leaves every local walk incomplete, with no empty folder to name: the wait
+    says what names the cause and offers no exclude line."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root) + 'sentinel = "KEEP.txt"\n')
+    run_cycle(config, mode=None)
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait == (
+        "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or sentinel; "
+        f"another sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders access, or add "
+        "it to that source's exclude in sources.toml"
+    )
 
 
 def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(

@@ -5233,7 +5233,8 @@ Allow for; a listing macOS holds for an Allow click in the terminal (`source.<id
 Step 6 (first sync) runs whenever the config has a source other than the inbox and step 5 did not stop the run,
 with or without `--confirm-install-agent` (skip notes `no-sources`, `status-failed`). After it (and after the
 wait), install.sh runs `status` once more with `AGENTSYNC_NO_NEXT_HINT` unset, prints none of its output except
-its `[FAIL]` and `WAITING ON YOU:` lines (above the NEXT; source ids only), and its one `NEXT:` line is that
+its `[FAIL]` and `WAITING ON YOU:` lines (above the NEXT; source ids only, **amended 2026-10-06, §16.22:** and
+the folder names of one exclude line, which setup-report replaces), and its one `NEXT:` line is that
 status's first `NEXT:` line, else `run ~/.local/bin/agentsync sync and follow its NEXT line`. A `[FAIL]` there
 makes the NEXT `fix the [FAIL] lines above ..., then run ~/.local/bin/agentsync sync ...` (exit 1 unless it is
 only the launcher's TCC_PENDING); a `WAITING ON YOU: macOS held the listing ...` line exits 1 whatever the
@@ -5607,7 +5608,9 @@ download (row `state_reason` `cycle.HYDRATION_REFUSED`, set in the `DatalessRefu
 the row is next processed: Finder's Download Now, then `sync`); a local source whose newest `run_sources` row is a
 FULL pass with `enumeration_complete` 0 (a folder it cannot list: TCC, an empty cloud folder, a missing root or
 sentinel; grant access or exclude it); a Graph source whose newest pass was skipped with a `NETWORK_POLICY_FAILED`
-reason (`it-request`). None of these is rule 3: another sync would not clear them. An inbox whose newest FULL pass
+reason (`it-request`). None of these is rule 3: another sync would not clear them. **Amended (2026-10-06,
+§16.22):** the local-source wait names the empty cloud folders and prints the exclude line to paste; with none
+to name it points at `sync -v`. An inbox whose newest FULL pass
 was incomplete (often a file still being written) is a `note:`. Online-only files within the budget
 are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. Item
 errors are retried by every sync and are not rule 3 (they would make it loop). The text is fixed wording plus
@@ -6242,3 +6245,36 @@ printed link and the Summary's outcome are the same value.
 words as listed (a word found in two sections is listed and counted twice; it counted distinct words, so the
 number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
 before the `…`, never inside a word.
+
+**Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
+`~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
+deletions are held until the folder gains a child or is excluded. What changed is the guidance, which was false
+or empty for this case (a source sat incomplete for 900 passes):
+
+- `arm_local.empty_cloud_dirs(cfg, *, timeout_s=10.0) -> tuple[str, ...]`: the folders below a local or inbox
+  source's root that `walk` would record as zero children in a cloud tree, as sorted POSIX paths relative to the
+  root. Read-only and directories only (scandir, one lstat per directory), under the source's `exclude` plus
+  the always-excluded globs; no symlink followed, no other volume entered. A folder that cannot be listed is
+  skipped, the root is never returned, and the result is `()` for a source outside CloudStorage, a missing root
+  or a scan that does not return in `timeout_s` (a privacy prompt may hold it). It is computed when `status`
+  or doctor needs it; nothing is stored, so no folder name enters the manifest or heartbeat.json.
+- `arm_local.exclude_advice(cfg, empty) -> str`: `set exclude = [...] in [[source]] id = '<id>' in
+  sources.toml[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
+  later gains files`. The list is the globs in force (the configured or default `exclude`, without the
+  always-excluded ones, so pasting it drops nothing) plus the first five folders as `/<path>/`: anchored at the
+  root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
+- `loop.next_step`: per unlisted local source with such folders, `WAITING ON YOU: N empty cloud folder(s) keep
+  the listing of <id> incomplete (deletions held; another sync does not clear it): if they are meant to be
+  empty, <exclude_advice>`. The sources with none to name share one line: `a folder in <ids> could not be listed
+  (no access, or a missing folder or sentinel; another sync does not clear it)`, then that `agentsync sync -v`
+  names it, and to grant Files and Folders access or add it to that source's exclude in sources.toml.
+- doctor `heartbeat.<id>` (incomplete for 3 passes or more): a Graph source keeps `agentsync sync -v (a full
+  pass that lists all of <id> clears this)`. A local or inbox source reads `if its N empty cloud folder(s) are
+  meant to be empty, <exclude_advice>`, else `agentsync sync -v (names the folder it could not list: ...)`.
+  "A full pass clears this" was never true of a local walk, which is always a full pass.
+- `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
+  each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
+- setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
+  Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
+  registered nothing, and the line reaches the report through the Loop line, the Doctor section and the
+  install.out tail.

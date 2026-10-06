@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
-from agentsync.arm_local import CallTimedOutError, call_with_timeout
+from agentsync.arm_local import CallTimedOutError, call_with_timeout, empty_cloud_dirs, exclude_advice
 from agentsync.config import Config, SourceConfig
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -1279,7 +1279,7 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
                     name,
                     f"enumeration incomplete for {incomplete} consecutive passes (deletions held)",
                     Severity.WARN,
-                    fix=f"agentsync sync -v (a full pass that lists all of {src.id} clears this)",
+                    fix=_incomplete_fix(src),
                 )
             )
         else:
@@ -1303,6 +1303,22 @@ def _check_logs(config: Config) -> list[CheckResult]:
 
 
 _PERM_SAMPLE = 500  # files per tree whose mode is checked (a bounded walk, newest pages first is not needed)
+
+def _incomplete_fix(src: SourceConfig) -> str:
+    """The fix for a source whose listing stays incomplete. A Graph pass resumes, so another sync clears it;
+    a local walk is always a full pass, so the same folder stops it again: name the empty cloud folders and
+    the exclude line to paste (as the loop's WAITING ON YOU line does), or say what names the folder."""
+    if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+        return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
+    empty = empty_cloud_dirs(src)
+    if empty:
+        advice = exclude_advice(src, empty)
+        return f"if its {len(empty)} empty cloud folder(s) are meant to be empty, {advice}"
+    return (
+        "agentsync sync -v (names the folder it could not list: another sync does not clear it, so grant "
+        "access or add that folder to the source's exclude in sources.toml)"
+    )
+
 
 
 def _group_other_readable(root: Path) -> list[Path]:
