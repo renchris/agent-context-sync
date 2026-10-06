@@ -1537,6 +1537,48 @@ def test_a_project_path_under_the_home_folder_is_redacted(fake_mac: dict[str, Pa
     assert "~/agent-context/setup/friction.md" in text, "agentsync's own folder is not a project"
 
 
+def test_a_project_below_an_agent_named_or_shared_container_is_redacted(fake_mac: dict[str, Path]) -> None:
+    """A clone folder named like a coding agent (GitHub Desktop's ~/Documents/GitHub) is a container, not the
+    project: the project below it is registered and "GitHub" is not, so the agent's name stays readable. A
+    source folder that itself has such a name is registered like any other. With a hand-set docs_repo
+    straight in ~/Documents, a project beside it is not agentsync's own; the inbox kept there still is."""
+    home = fake_mac["home"]
+    clone = home / "Documents" / "GitHub" / PROJECT / "notes"
+    named = home / "Development" / "Cursor"
+    shared = home / "Documents" / "tide-tables" / "mail"
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        f'[agentsync]\ndocs_repo = "{home}/Documents/agent-docs"\n\n'
+        + cfg.read_text(encoding="utf-8").replace("agent-context/inbox", "Documents/inbox")
+        + "".join(
+            f'\n[[source]]\nid = "{sid}"\nkind = "inbox"\npath = "{path}"\n'
+            for sid, path in (("clone-notes", clone), ("cursor", named), ("tides", shared))
+        ),
+        encoding="utf-8",
+    )
+    assert setup_report._project_values(clone) == [f"{PROJECT}/notes", PROJECT]
+    assert setup_report._project_values(named) == ["Cursor"]
+
+    def doctor(config: object) -> list[str]:
+        return [
+            f"[warn] source.a.listable — cannot list {clone}",
+            f"[warn] source.b.listable — cannot list {named}",
+            f"[warn] source.c.listable — cannot list {shared}",
+            f"[warn] source.d.listable — cannot list {home}/Documents/inbox",
+        ]
+
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", "GitHub Copilot CLI x"))
+    text, summary = summary_of(fake_mac, doctor=doctor)
+    shown = section(text, "Doctor")
+    assert PROJECT not in text.lower() and "tide-tables" not in text
+    assert re.search(r"source\.a\.listable — cannot list ~/Documents/GitHub/<folder-\d+>\n", shown)
+    assert re.search(r"source\.b\.listable — cannot list ~/Development/<folder-\d+>\n", shown)
+    assert re.search(r"source\.c\.listable — cannot list ~/Documents/<folder-\d+>\n", shown)
+    assert "source.d.listable — cannot list ~/Documents/inbox\n" in shown, "the kept inbox is agentsync's"
+    assert "· agent: GitHub Copilot CLI x\n" in summary
+
+
 def test_friction_prose_gets_the_same_redaction(fake_mac: dict[str, Path]) -> None:
     """The agent's own words name what it synced: a source id, a shell-escaped folder name and a project
     path are replaced in the embedded log and in the Summary's item lines alike."""

@@ -1683,10 +1683,13 @@ def _docs_commits(r: _Run) -> list[str]:
 
 def _project_values(path: Path) -> list[str]:
     """What to register for a configured source folder outside ~/Library/CloudStorage (a project checkout,
-    say): below the home folder, the path from its first component that names something (leading
-    :data:`_GENERIC_HOME_DIRS` and dot folders skipped) and that component alone, so a sibling path does not
-    show the project's name either; anywhere else, the whole path. Single components are not registered: a
-    registered ``correspondence`` or ``team-files`` would replace ordinary words."""
+    say): below the home folder, the path from its first component that names something and that component
+    alone, so a sibling path does not show the project's name either; anywhere else, the whole path. Leading
+    containers are skipped: :data:`_GENERIC_HOME_DIRS`, dot folders, and a folder above the source named only
+    with coding-agent product words (``~/Documents/GitHub/<project>``: registered alone, "GitHub" would
+    replace the agent's name; the source folder itself is registered whatever its name). Components below
+    the first are not registered alone: a registered ``correspondence`` or ``team-files`` would replace
+    ordinary words."""
     home = Path.home()
     parts: list[str] | None = None
     for base in (home, home.resolve()):
@@ -1695,10 +1698,12 @@ def _project_values(path: Path) -> list[str]:
             break
     if parts is None:
         return [str(path)]
-    while parts and (parts[0].casefold() in _GENERIC_HOME_DIRS or parts[0].startswith(".")):
+    while parts and (
+        parts[0].casefold() in _GENERIC_HOME_DIRS
+        or parts[0].startswith(".")
+        or (len(parts) > 1 and _agent_words(parts[0]))
+    ):
         parts.pop(0)
-    if not parts or _agent_words(parts[0]):
-        return []
     return ["/".join(parts), parts[0]] if len(parts) > 1 else parts
 
 
@@ -1738,8 +1743,14 @@ def _build_redactor(r: _Run) -> Redactor:
     cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
     project_paths: list[Path] = []  # configured folders outside CloudStorage and outside agentsync's own
     if r.config is not None:
-        beside = expand(r.config.docs_repo).parent  # ~/agent-context: the docs repo, the inbox, the setup log
-        own = {beside, beside.resolve()} - {home, home.resolve()}
+        # agentsync's own, never a project: the inbox it keeps beside the docs repo, and every folder beside
+        # the docs repo (~/agent-context). Not the latter when a hand-set docs_repo sits straight in a
+        # container such as ~/Documents: the person's own projects live there too.
+        beside = expand(r.config.docs_repo).parent
+        own = {beside / "inbox", (beside / "inbox").resolve()}
+        if beside.name.casefold() not in _GENERIC_HOME_DIRS:
+            own |= {beside, beside.resolve()}
+        own -= {home, home.resolve()}
         for src in r.config.sources:
             parts = _cloud_parts(src.path) if src.path is not None else None
             if parts is not None:

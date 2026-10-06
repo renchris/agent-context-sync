@@ -6218,10 +6218,14 @@ match and the Installer section:
   folder placeholder in its middle. Kept as typed: an id that is one of agentsync's own words (`_GENERIC_IDS`:
   `inbox`, `mail`, `docs`, ...) on a source outside CloudStorage, since `graph_mail` and "the docs repo" would
   become placeholders.
-- *Project paths.* For a configured source folder outside CloudStorage and not beside the docs repo
-  (`_project_values`): below the home folder, the path from the first component that names something (leading
-  generic folders such as `Development` and dot folders skipped) is one `<folder-N>` and that component alone
-  another, any case; elsewhere the whole path is one. Deeper components are not registered alone.
+- *Project paths.* For a configured source folder outside CloudStorage (`_project_values`): below the home
+  folder, the path from the first component that names something is one `<folder-N>` and that component alone
+  another, any case; elsewhere the whole path is one. Skipped as containers: generic folders such as
+  `Development`, dot folders, and a folder above the source named only with coding-agent product words
+  (`~/Documents/GitHub/<project>`; the source folder itself is registered whatever its name). Deeper components
+  are not registered alone. agentsync's own folders are left as they are: the inbox it keeps beside the docs
+  repo, and every folder beside the docs repo unless `docs_repo`'s parent is itself a generic folder (a hand-set
+  `~/Documents/agent-docs`), where the person's own projects live too.
 
 Not covered, by design (docs/deploy/setup-feedback.md section 2): a name agentsync has never seen in the
 agent's own words, such as an abbreviation of a source id. The friction log gets the same map as every other
