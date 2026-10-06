@@ -181,6 +181,13 @@ def _one_line(text: str, limit: int = 300) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
+def _scope_change_alarm(count: int) -> str:
+    return (
+        f"scope changed in sources.toml: {count} file(s) now outside it retired "
+        "(not deleted upstream; no purge queued)"
+    )
+
+
 def _download_cost(src: SourceConfig, row: ItemRow) -> int:
     """The bytes fetching ``row`` costs the per-cycle materialise budget: a download only. A Graph item is
     always a download; a local or inbox file only when the manifest saw it dataless (online-only). An
@@ -1445,8 +1452,17 @@ class _Cycle:
             self.budget_bytes if self.budget_bytes is not None else src.max_materialise_bytes, src.max_files
         )
         queued = {r.stable_id for r in queue}
-        work = [r for r in queue if not (complete_full and r.last_seen_run < self.run_id)]
-        # (a row absent from a complete listing is a deletion candidate, not work)
+        # The local, inbox and drive arms have a path scope (include/exclude) and answer for a row they did
+        # not list this pass.  Mail and Teams have none: every queued row of theirs is work.
+        in_scope: Callable[[str], bool] | None = getattr(arm, "in_scope", None)
+        work = [
+            r
+            for r in queue
+            if not (complete_full and r.last_seen_run < self.run_id)
+            and (in_scope is None or in_scope(r.rel_path))
+        ]
+        # (a row absent from a complete listing is a deletion candidate, not work; a row the source's
+        # include/exclude no longer covers is never work, and an incomplete pass does not prune it)
         for start in range(0, len(work), _WORK_BATCH):
             self._process_batch(src, arm, work[start : start + _WORK_BATCH], budget, acc)
         acc.materialised_bytes = budget.used
@@ -1457,7 +1473,21 @@ class _Cycle:
                 continue
             self._rewrite(row)
         # ---- removals -------------------------------------------------------------------------------------
-        self._removals(src, pc, rows_before, acc, items, complete_full=complete_full)
+        outside: list[str] = []
+        if isinstance(arm, LocalArm) and not complete_full:
+            # The walk stopped short, so a file it did not list is unknown, never gone.  A path the config no
+            # longer covers is another matter: no walk lists it again, complete or not.
+            replaced = {old for _new, old in pc.safe_saves}
+            outside = sorted(
+                sid
+                for sid, row in rows.items()
+                if sid not in items
+                and sid not in replaced
+                and not row.is_dir
+                and row.state in _PRESENT
+                and not arm.in_scope(row.rel_path)
+            )
+        self._removals(src, pc, rows_before, acc, items, complete_full=complete_full, out_of_scope=outside)
 
     def _process_batch(
         self, src: SourceConfig, arm: SourceArm, rows: Sequence[ItemRow], budget: ByteBudget, acc: _SourceAcc
@@ -1518,7 +1548,10 @@ class _Cycle:
         scan_items: dict[str, SourceItem] | None = None,
         *,
         complete_full: bool = False,
+        out_of_scope: Sequence[str] = (),
     ) -> None:
+        """Apply the pass's removals.  ``out_of_scope``: present rows of a local or inbox source that an
+        incomplete pass did not list and whose path fails the arm's ``in_scope``."""
         scan_items = scan_items or {}
         today = self.today()
         if src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
@@ -1546,16 +1579,19 @@ class _Cycle:
                     for d in self.manifest.descendants(src.id, c.stable_id)
                     if d.state in _PRESENT and d.stable_id not in scan_items
                 ]
+        if out_of_scope:
+            # An incomplete pass has no deletion candidates, and absence from it proves nothing.  These rows
+            # are retired on the config alone, as the complete pass below retires them: same reason, exempt
+            # from the breaker, no purge.  Left alone they would stay pending work for ever on a source whose
+            # walk never completes.
+            removals += [(sid, _SCOPE_CHANGE_REASON) for sid in out_of_scope]
+            acc.alarms.append(_scope_change_alarm(len(out_of_scope)))
         if pc.deletion_candidates and scope_changed:
             # sources.toml narrowed this source (path/folder, include/exclude): the files still exist
             # upstream, the operator took them out of scope.  Retire their pages (exempt from the breaker, as
             # retirement is), never "deleted upstream", never a purge (review correctness-scope-change).
             removals += [(sid, _SCOPE_CHANGE_REASON) for sid in pc.deletion_candidates]
-            acc.alarms.append(
-                f"scope changed in sources.toml: {len(pc.deletion_candidates)} file(s) now outside it "
-                "retired "
-                "(not deleted upstream; no purge queued)"
-            )
+            acc.alarms.append(_scope_change_alarm(len(pc.deletion_candidates)))
         elif pc.deletion_candidates:
             if pc.breaker_tripped:
                 now = self.now()

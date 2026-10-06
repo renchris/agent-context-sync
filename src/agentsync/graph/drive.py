@@ -501,6 +501,11 @@ class DriveArm:
         """Item id of the configured ``folder`` scope (None = the drive root), for Manifest.rederive_paths."""
         return None if self._folder == "/" else self._scope_root_id()
 
+    def in_scope(self, rel_path: str) -> bool:
+        """True when ``scan`` keeps a file at ``rel_path``: the source's include/exclude globs, which this
+        arm applies to files only (no folder is pruned by a glob).  The cycle asks it about queued rows."""
+        return is_included(rel_path, self._cfg.include, self._cfg.exclude)
+
     def _hint_outside_scope(self, raw: Mapping[str, Any]) -> bool:
         """True when ``parentReference.path`` (undocumented in delta, used only as a HINT) is outside scope.
 

@@ -400,6 +400,48 @@ def _any_of(patterns: Sequence[str]) -> re.Pattern[str] | None:
     return re.compile("|".join(f"(?:{_glob_regex(p).pattern})" for p in patterns), re.IGNORECASE)
 
 
+def _effective_exclude(cfg: SourceConfig) -> tuple[str, ...]:
+    """``cfg.exclude`` plus the globs its kind always drops: the exclude list every walk of ``cfg`` uses."""
+    extra = tuple(p for p in always_excluded(cfg.kind) if p not in cfg.exclude)
+    return (*cfg.exclude, *extra)
+
+
+def _scope_matcher(cfg: SourceConfig) -> Callable[[str], bool]:
+    """:func:`in_scope` for one source with the globs compiled once and each directory tested once, however
+    many files under it are asked about."""
+    exclude = _effective_exclude(cfg)
+    included = _file_matcher(cfg.include, exclude)
+    pruned: dict[str, bool] = {"": False}  # rel dir -> it, or a directory above it, matches an exclude glob
+
+    def dir_pruned(rel_dir: str) -> bool:
+        todo: list[str] = []
+        while (known := pruned.get(rel_dir)) is None:
+            todo.append(rel_dir)
+            rel_dir = rel_dir.rpartition("/")[0]
+        for d in reversed(todo):
+            known = pruned[d] = known or _dir_excluded(d, exclude)
+        return known
+
+    def matches(rel_path: str) -> bool:
+        return not dir_pruned(rel_path.rpartition("/")[0]) and included(rel_path)
+
+    return matches
+
+
+def in_scope(cfg: SourceConfig, rel_path: str) -> bool:
+    """True when a walk of ``cfg`` lists a file at ``rel_path`` (POSIX, relative to the root, as ``walk``
+    builds it).
+
+    The walk's two rules as one predicate: no directory above the file matches an exclude glob
+    (``_dir_excluded``: the walk never descends into it, with or without a trailing ``/`` on the glob), and
+    the file passes include/exclude (``_file_matcher``).  The exclude list is the effective one:
+    ``cfg.exclude`` plus ``config.always_excluded(cfg.kind)``.  ``paths.is_included`` alone is not this rule:
+    with ``exclude = ["Archive"]`` it keeps ``a/Archive/x.pdf``, a file the walk never reaches.  This form
+    parses the globs on every call; ``LocalArm.in_scope`` keeps them for the arm's life.
+    """
+    return _scope_matcher(cfg)(rel_path)
+
+
 def walk(
     root: Path,
     *,
@@ -708,12 +750,12 @@ class LocalArm:
         self.known_h0: Mapping[str, _KnownStat] | None = None
         self.listing_timeout_s = LISTING_TIMEOUT_S  # per directory listing (see ``walk``); tests shorten it
         self._volume: str | None = None
+        self._scope: Callable[[str], bool] | None = None  # compiled by the first ``in_scope`` call
 
     # -- helpers -------------------------------------------------------------------------------------------
 
     def _exclude(self) -> tuple[str, ...]:
-        extra = tuple(p for p in always_excluded(self.kind) if p not in self.cfg.exclude)
-        return (*self.cfg.exclude, *extra)
+        return _effective_exclude(self.cfg)
 
     def _volume_uuid(self) -> str:
         if self._volume is None:
@@ -872,6 +914,14 @@ class LocalArm:
             unknown_dirs=stats.unknown_dirs,
             alarms=tuple(alarms),
         )
+
+    def in_scope(self, rel_path: str) -> bool:
+        """:func:`in_scope` for this source, compiled once per arm.  The cycle asks it about queued rows and
+        about rows an incomplete pass did not list: a file the config no longer covers is not fetched, and
+        its row is retired."""
+        if self._scope is None:
+            self._scope = _scope_matcher(self.cfg)
+        return self._scope(rel_path)
 
     def _source_path(self, item: SourceItem) -> Path:
         rel = PurePosixPath(item.rel_path)

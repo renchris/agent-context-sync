@@ -4,6 +4,7 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import subprocess
 import threading
@@ -17,14 +18,15 @@ import pytest
 
 from agentsync import arm_local as al
 from agentsync import cycle as cycle_mod
-from agentsync import gitops, governance
+from agentsync import gitops, governance, loop, slug
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import LockHeldError
 from agentsync.graph.client import GraphClient
+from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, CycleReport, RowState, ScanResult, Verdict
+from agentsync.model import CycleMode, CycleReport, PassKind, RowState, ScanResult, Verdict
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.publish import Publisher
 from conftest import config_text
@@ -727,8 +729,6 @@ def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantine
     sample_config: Config, local_source_dir: Path
 ) -> None:
     """The item gets a stub and is settled; every other file is converted and the commit lands."""
-    from agentsync import slug  # noqa: PLC0415
-
     rel = (
         "Contoso Working Sessions/Document Repository/Regional Sales Summary - FY26 Q3 Review Pack - "
         "All Regions - Final Export From The Data Warehouse v2 - Appendix With Every Row.txt"
@@ -756,3 +756,190 @@ def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantine
     second = run(sample_config)  # settled: not read again, nothing to commit
     [src] = second.sources
     assert (second.exit_code, second.commit_sha, src.converted, src.errors) == (0, None, 0, ())
+
+
+# ---------------------------------------------------------------------------------------------------------
+# scope: a row the config no longer covers is never work, and is retired on an incomplete walk too
+# ---------------------------------------------------------------------------------------------------------
+
+KICKOFF = "projects/acme/Kickoff Notes.docx"
+
+
+def _incomplete(config: Config, *exclude: str) -> Config:
+    """``config`` with ``exclude`` added to its one source and a sentinel that is not there, so every walk
+    is incomplete (as on a Mac with one folder the agent cannot list)."""
+    [src] = config.sources
+    narrowed = dataclasses.replace(src, exclude=(*src.exclude, *exclude), sentinel="no-such-sentinel")
+    return dataclasses.replace(config, sources=(narrowed,))
+
+
+def _fetches(monkeypatch: pytest.MonkeyPatch, arm: type[Any] = LocalArm) -> list[str]:
+    """The rel_path of every file the cycle reads through ``arm.fetch`` from now on."""
+    fetched: list[str] = []
+    real = arm.fetch
+
+    def spy(self: Any, item: Any, dest: Path, budget: Any) -> Any:
+        fetched.append(item.rel_path)
+        return real(self, item, dest, budget)
+
+    monkeypatch.setattr(arm, "fetch", spy)
+    return fetched
+
+
+def _file_rows(config: Config, sid: str = SID) -> dict[str, Any]:
+    with Manifest(config.state_paths.db) as m:
+        return {r.rel_path: r for r in m.iter_items(sid) if not r.is_dir}
+
+
+@pytest.mark.parametrize(
+    ("queued", "exclude"),
+    [
+        ("projects/sample.pptx", "sample.pptx"),  # a file glob
+        (KICKOFF, "acme"),  # a bare folder name: no file glob matches, only the walk's folder rule
+        (KICKOFF, "projects/acme"),  # an anchored folder, no trailing slash
+        (KICKOFF, "acme/"),
+    ],
+)
+def test_a_queued_row_excluded_later_is_retired_unread_when_the_walk_is_incomplete(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, queued: str, exclude: str
+) -> None:
+    """An online-only file deferred by one run and excluded before the next is never fetched or converted.
+    An incomplete walk prunes no row, so the queue applies the walk's own scope and the row is retired: no
+    purge, and the loop stops counting it. Rows still in scope are untouched: a queued one is worked, and
+    one the incomplete walk did not list stays unknown, never gone."""
+    kept, absent = "projects/sample.pdf", "projects/sample.md"
+    _mark_online_only(monkeypatch, local_source_dir / queued, local_source_dir / kept)
+    first = run(sample_config, budget_bytes=0)
+    assert first.sources[0].deferred_online_only == 2
+    config = _incomplete(sample_config, exclude)
+    (local_source_dir / absent).unlink()  # in scope, and not there for the next walk to list
+    fetched = _fetches(monkeypatch)
+    second = run(config)
+    [rep] = second.sources
+    assert second.exit_code == 0 and not rep.enumeration_complete and not rep.breaker_tripped
+    assert fetched == [kept] and (rep.converted, rep.deferred) == (1, 0)
+    assert rep.materialised_bytes == (local_source_dir / kept).stat().st_size
+    assert any("1 file(s) now outside it retired" in a for a in rep.alarms), rep.alarms
+    rows = _file_rows(config)
+    assert (rows[queued].state, rows[queued].state_reason) == (RowState.TOMBSTONE, "retired:scope-change")
+    assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [queued]
+    repo = config.docs_repo
+    assert page(repo, slug.mirror_rel_path(SID, absent))[0]["status"] == "current"
+    assert not (repo / slug.mirror_rel_path(SID, queued)).exists()
+    assert governance.pending_purges(config.state_paths.root) == []
+    step = loop.next_step(config)
+    assert step.rule != 3 and not any("online-only" in line for line in step.lines()), step.lines()
+    third = run(config)  # settled: nothing is read, nothing is retired twice, the absent file is still held
+    assert fetched == [kept] and not any("retired" in a for a in third.sources[0].alarms)
+    assert _file_rows(config)[absent].state is RowState.LIVE
+
+
+@pytest.mark.parametrize("requeued", [False, True], ids=["settled", "queued-again"])
+def test_a_published_file_excluded_later_is_retired_on_an_incomplete_walk_and_comes_back(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, requeued: bool
+) -> None:
+    """The page of a file the config no longer covers is retired by the next pass, complete or not: marked
+    retired (never deleted upstream), no purge queued, the breaker not involved. Queued again or not, the
+    file is not read and the loop does not wait for it. Taking the exclude away brings the page back."""
+    assert run(sample_config).exit_code == 0
+    repo, rel = sample_config.docs_repo, slug.mirror_rel_path(SID, KICKOFF)
+    assert page(repo, rel)[0]["status"] == "current"
+    if requeued:  # on this Mac and waiting for a re-read, as after a [policy] change
+        stable_id = _file_rows(sample_config)[KICKOFF].stable_id
+        with Manifest(sample_config.state_paths.db) as m:
+            m.set_verdict(SID, stable_id, Verdict.MAYBE_CHANGED)
+    excluded = _incomplete(sample_config, "acme")
+    fetched = _fetches(monkeypatch)
+    second = run(excluded)
+    [rep] = second.sources
+    assert second.exit_code == 0 and not rep.enumeration_complete and not rep.breaker_tripped
+    assert fetched == [] and [(c.op.value, c.path) for c in second.changes] == [("D", rel)]
+    assert page(repo, rel)[0]["reason"] == "retired:scope-change"
+    assert "[RETIRED]" in (repo / rel).read_text(encoding="utf-8")
+    assert governance.pending_purges(excluded.state_paths.root) == []
+    assert loop.next_step(excluded).rule != 3
+    back = run(_incomplete(sample_config))  # the exclude is gone; the walk is still incomplete
+    assert back.exit_code == 0 and fetched == [KICKOFF]
+    assert page(repo, rel)[0]["status"] == "current"
+
+
+def test_an_inbox_file_excluded_later_is_retired_on_an_incomplete_walk(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    inbox = tmp_path / "inbox"
+    (inbox / "old").mkdir(parents=True)
+    (inbox / "keep.md").write_text("# Keep\n\nstays\n", encoding="utf-8")
+    (inbox / "old" / "drop.md").write_text("# Drop\n\nleaves\n", encoding="utf-8")
+    table = INBOX_SOURCE.format(path=inbox)
+    assert run(config_with(tmp_path, local_source_dir, table), only=["inbox"]).exit_code == 0
+    narrowed = config_with(
+        tmp_path, local_source_dir, table + 'exclude = ["old"]\nsentinel = "no-such-sentinel"\n'
+    )
+    report = run(narrowed, only=["inbox"])
+    rep = next(s for s in report.sources if s.source_id == "inbox")
+    assert report.exit_code == 0 and not rep.enumeration_complete
+    repo = narrowed.docs_repo
+    assert page(repo, "mirror/inbox/old/drop.md")[0]["reason"] == "retired:scope-change"
+    assert page(repo, "mirror/inbox/keep.md")[0]["status"] == "current"
+    assert governance.pending_purges(narrowed.state_paths.root) == []
+
+
+def test_a_queued_drive_file_excluded_later_is_not_downloaded_before_the_listing_reaches_it(
+    drive_env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The drive arm tombstones a known file the new globs exclude when its listing reaches it. Until then
+    the queue does not download it, and the row is left for the arm to settle."""
+    config, _drive, client = drive_env
+    first = run(config, client=client, only=["drive"], budget_bytes=0)
+    assert next(s for s in first.sources if s.source_id == "drive").deferred == 1
+    sources = tuple(
+        dataclasses.replace(s, exclude=(*s.exclude, "notes.md")) if s.id == "drive" else s
+        for s in config.sources
+    )
+    narrowed = dataclasses.replace(config, sources=sources)
+
+    def interrupted(self: DriveArm, cursor: str | None, *, full: bool) -> ScanResult:
+        return ScanResult(
+            source_id=self.source_id,
+            pass_kind=PassKind.FULL,
+            items=(),
+            new_cursor=None,
+            enumeration_complete=False,
+        )
+
+    monkeypatch.setattr(DriveArm, "scan", interrupted)
+    fetched = _fetches(monkeypatch, DriveArm)
+    second = run(narrowed, client=client, only=["drive"])
+    assert second.exit_code == 0 and fetched == []
+    assert not (narrowed.docs_repo / "mirror" / "drive" / "projects" / "notes.md").exists()
+    [row] = _file_rows(narrowed, "drive").values()
+    assert (row.state, row.last_verdict) == (RowState.LIVE, Verdict.DEFERRED)
+
+
+def test_an_arm_without_a_path_scope_has_every_queued_row_worked(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mail and Teams arms have no ``in_scope``: include/exclude are not theirs to apply, so the queue
+    filters nothing for them and no row of theirs is retired for its path."""
+
+    class NoScope:
+        def __init__(self, inner: Any) -> None:
+            self.source_id, self.kind, self._inner = inner.source_id, inner.kind, inner
+
+        def scan(self, cursor: str | None, *, full: bool) -> ScanResult:
+            return self._inner.scan(cursor, full=full)  # type: ignore[no-any-return]
+
+        def fetch(self, item: Any, dest_dir: Path, budget: Any) -> Any:
+            return self._inner.fetch(item, dest_dir, budget)
+
+    deck = "projects/sample.pptx"
+    _mark_online_only(monkeypatch, local_source_dir / deck)
+    assert run(sample_config, budget_bytes=0).sources[0].deferred_online_only == 1
+    real = cycle_mod.build_arms
+    monkeypatch.setattr(
+        cycle_mod, "build_arms", lambda *a, **k: {sid: NoScope(arm) for sid, arm in real(*a, **k).items()}
+    )
+    fetched = _fetches(monkeypatch)
+    report = run(_incomplete(sample_config, "sample.pptx"))
+    assert report.exit_code == 0 and fetched == [deck]
+    assert _file_rows(sample_config)[deck].state is not RowState.TOMBSTONE

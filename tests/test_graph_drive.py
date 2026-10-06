@@ -459,6 +459,18 @@ def test_full_scan_applies_include_exclude_to_files_only() -> None:
     assert set(items) == {"F1", "K"}  # Office lock file excluded by the default globs; folder kept
 
 
+def test_in_scope_keeps_exactly_the_files_the_scan_keeps() -> None:
+    files = {"L": "~$Budget.xlsx", "K": "keep.md", "D": "draft.md", "P": "plan.pdf"}
+    pages = [[root(), folder("F1", "tmp", "ROOT"), *(file(i, name, "F1") for i, name in files.items())]]
+    client = FakeClient(deltas={DELTA_PATH: [Round(pages)]})
+    # "tmp" names the folder: this arm prunes no folder, so the files under it stay in scope
+    scoped = cfg(include=("*.md", "*.xlsx"), exclude=("~$*", "draft.*", "tmp"))
+    arm = DriveArm(client, scoped, lookup_from({}))  # type: ignore[arg-type]
+    listed = {i.rel_path for i in arm.scan(None, full=False).items if not i.is_dir}
+    assert listed == {"tmp/keep.md"}
+    assert {rel for rel in (f"tmp/{name}" for name in files.values()) if arm.in_scope(rel)} == listed
+
+
 def test_remote_items_are_reported_not_emitted() -> None:
     shortcut = folder(
         "SC", "Team Share", "ROOT", remoteItem={"id": "X", "parentReference": {"driveId": "OTHER"}}

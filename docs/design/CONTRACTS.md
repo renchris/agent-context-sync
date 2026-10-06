@@ -426,6 +426,9 @@ upstream deletions, step 13 appends sign-in/token-source, hold and purge-queue l
 gate is skipped in POLL when nothing can land. A LaunchAgent run wrapped by the signed launcher can also end 79
 (TCC_PENDING).
 
+**Amended (2026-10-06, §16.23):** step 6 skips a queued row whose path its arm's `in_scope` rejects; step 7
+retires such rows of a local or inbox source as `retired:scope-change` on an incomplete pass too.
+
 ## 10. Microsoft Graph
 
 **Auth (`graph/auth.py`).** MSAL `PublicClientApplication(client_id, authority=https://login.microsoftonline.com/
@@ -4628,8 +4631,9 @@ boundary); `parse_governance` rejects a prefix that is not a URL or carries a pa
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
 complete passes before it is tombstoned (`extra.absent_since_run`); safe-save pairing runs in every FULL pass,
 complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
-`retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge). A mirrored source missing from sources.toml
-raises ConfigError (exit 78). An empty local root with mirrored files is `unknown` (`.`). A graph drive whose
+`retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge; **amended 2026-10-06:** a local or inbox row
+whose path fails `arm_local.in_scope` is retired the same way by an incomplete pass, §16.23). A mirrored source
+missing from sources.toml raises ConfigError (exit 78). An empty local root with mirrored files is `unknown` (`.`). A graph drive whose
 baseline is incomplete runs FULL; a resumed FULL round never stages its deltaLink. DriveArm: a known item whose
 new place is derivably outside the scope (or hinted outside) is a `moved-out-of-scope` tombstone in FULL passes
 too; an underivable one is left untouched (alarm; a FULL pass is then incomplete). Each run's mirror changes are
@@ -5855,3 +5859,37 @@ Tests: `test_publish.py` (every page length 150 to 200 with the three emitted na
 `archive/`; the deep workbook sheet; publish, digest check and archive of a renamed sidecar; a refused plan
 writes nothing; renames in both directions and one that leaves no room), `test_cycle.py` (a capped file with an
 over-long page is one quarantined item, the other files convert, the commit lands, the next run reads nothing).
+
+**One scope rule for the walk and the work queue.** An incomplete pass prunes no row. So a file that was queued
+for a read and then excluded in sources.toml was still fetched, converted and published by a source whose walk
+never completes. `arm_local.in_scope(cfg, rel_path)` is the walk's scope as one predicate. It is true when no
+folder above the file matches an exclude glob (`_dir_excluded`, the rule the walk prunes folders by, with or
+without a trailing `/`) and the file passes include/exclude (`_file_matcher`). The exclude list is the effective
+one: `cfg.exclude` plus `config.always_excluded(kind)`. `paths.is_included` alone is not this rule: with `exclude
+= ["Archive"]` it keeps `a/Archive/x.pdf`, a file the walk never reaches. `LocalArm.in_scope(rel_path)`, which
+`InboxArm` inherits, is the same predicate compiled once per arm. `DriveArm.in_scope(rel_path)` is
+`paths.is_included` over the source's globs, which is what its `scan` applies to files. The mail and Teams arms
+have no `in_scope`: they do not read include/exclude.
+
+The cycle uses it in two places (amends §9 steps 6 and 7):
+
+- Work queue: a queued row is skipped when its arm has `in_scope` and the row's path fails it. An arm with no
+  `in_scope` has every queued row worked, as before.
+- Retirement, local and inbox sources only: on a pass that is not a complete FULL pass, each present file row
+  that the pass did not list and whose path fails `in_scope` is tombstoned `retired:scope-change`. It takes the
+  path a complete pass takes after a scope change (§16.12): `# [RETIRED]`, exempt from the breaker, no purge
+  queued, the same alarm line. The row leaves `pending_work`, and `loop`, which counts live and dataless rows,
+  stops counting it. Taking the exclude away lists the file again and its page comes back.
+
+What does not change: a row whose path is in scope and that an incomplete pass did not list is unknown, never
+retired. A complete pass decides as before (deletion candidates, the breaker, the two-pass rule). A pass whose
+listing macOS holds (`listing_held`) still does no queue work and no removals. A drive row the queue skips is
+left for `DriveArm.scan`, which tombstones a known file the new globs exclude when its listing reaches it
+(§16.12).
+
+Tests: `test_arm_local.py` (`in_scope` against the walk for ten include/exclude sets, local and inbox),
+`test_graph_drive.py` (`DriveArm.in_scope` against the scan), `test_cycle.py` (a queued online-only row excluded
+by a file glob, a bare folder name, an anchored folder and `name/`: not fetched, retired, no purge, not counted
+by `loop.next_step`, while a queued row still in scope is read and an in-scope row the walk did not list stays
+live; a published page retired and brought back; an inbox; a drive row not downloaded; an arm with no
+`in_scope`).

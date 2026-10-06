@@ -973,3 +973,56 @@ def test_compiled_matcher_equals_paths_is_included(
     ]  # fmt: skip
     match = al._file_matcher(include, exclude)
     assert [match(r) for r in rels] == [is_included(r, include, exclude) for r in rels]
+
+
+# ---------------------------------------------------------------------------------------------------------
+# in_scope: the walk's scope as one predicate
+# ---------------------------------------------------------------------------------------------------------
+
+_SCOPE_TREE = (
+    "README.txt", "b.docx", "notes.tmp", "a/z.md", "a/Archive/x.pdf", "a/Archive/old/y.docx",
+    "Archive/top.md", "a/b/Archive.md", "a/deep/y.xlsx", "x/Archive", "drafts/wip.docx", "x/drafts/n.md",
+    "x/y/Draft.md", "sub/.DS_Store", "sub/plan.docx", "drop/report.pdf", "drop/report.pdf.part",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("kind", "include", "exclude"),
+    [
+        (SourceKind.LOCAL, (), ("Archive",)),  # a bare name: the folder at any depth, and a file of that name
+        (SourceKind.LOCAL, (), ("Archive/",)),  # folders only
+        (SourceKind.LOCAL, (), ("**/Archive",)),
+        (SourceKind.LOCAL, (), ("a/Archive",)),  # anchored, no trailing slash
+        (SourceKind.LOCAL, (), ("archive",)),  # globs ignore case
+        (SourceKind.LOCAL, (), ("a/*",)),  # every folder and file directly under a/
+        (SourceKind.LOCAL, ("*.docx", "*.md"), ("drafts", "x/y/")),
+        (SourceKind.LOCAL, ("a/",), ()),  # include never prunes a folder
+        (SourceKind.INBOX, (), ()),  # the inbox's always-on ignores
+        (SourceKind.INBOX, (), ("drop",)),
+    ],
+)
+def test_in_scope_keeps_exactly_the_files_the_walk_lists(
+    tmp_path: Path, kind: SourceKind, include: tuple[str, ...], exclude: tuple[str, ...]
+) -> None:
+    root = tmp_path / "src"
+    for rel in _SCOPE_TREE:
+        _write(root / rel)
+    cfg = _cfg(root, kind=kind, include=include, exclude=exclude)
+    arm = al.InboxArm(cfg) if kind is SourceKind.INBOX else al.LocalArm(cfg)
+    if isinstance(arm, al.InboxArm):
+        arm._clock = lambda: time.time_ns() + 120 * 1_000_000_000  # past the quiescence window
+    listed = {i.rel_path for i in arm.scan(None, full=True).items}
+    assert listed and listed < set(_SCOPE_TREE)  # every case keeps a file and drops one
+    assert {rel for rel in _SCOPE_TREE if al.in_scope(cfg, rel)} == listed
+    assert {rel for rel in _SCOPE_TREE if arm.in_scope(rel)} == listed
+
+
+def test_in_scope_applies_the_folder_rule_that_plain_is_included_lacks(tmp_path: Path) -> None:
+    from agentsync.paths import is_included  # noqa: PLC0415
+
+    cfg = _cfg(tmp_path, exclude=("Archive",))
+    assert is_included("a/Archive/x.pdf", cfg.include, cfg.exclude)  # the file's own name matches no glob
+    assert not al.in_scope(cfg, "a/Archive/x.pdf")  # but the walk never enters a/Archive
+    assert al.in_scope(cfg, "a/b/Archive.md") and al.in_scope(cfg, "top.md")
+    inbox = _cfg(tmp_path, kind=SourceKind.INBOX, exclude=())
+    assert al.in_scope(inbox, "drop/report.pdf") and not al.in_scope(inbox, "drop/report.pdf.part")
