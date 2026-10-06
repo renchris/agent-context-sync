@@ -53,8 +53,8 @@ checked by a skeptic (Workflow `wf_44ecd2de-039`), confirmed defects in every un
 
 ## B1 Field fixes from the bring-back report
 
-Items B-numbered in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
-the AGENTS.md inbox path, the `_eval` permissions self-heal, the empty-cloud-folder WAITING text, prompt wording).
+Items I1–I19 in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
+the AGENTS.md inbox path, the `_eval` permissions self-heal, the empty-cloud-folder alarm, WAITING and doctor texts (folder names only in the sync alarm; `loop.py`'s rule keeps them out of wait lines), prompt wording).
 No command, flag or config key. Files: `setup_report.py`, `ops/doctor.py`, `cli.py`, `publish.py` (`root_guide`),
 `cycle.py` (permission self-heal), `arm_local.py` (log level), `loop.py`, `scripts/install.sh`, `README.md` prompt,
 their tests, CONTRACTS §16.22. Detail per item: `findings/claims.md` (outside the repo), ids as in the triage.
