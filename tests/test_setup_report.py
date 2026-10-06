@@ -955,6 +955,36 @@ def test_fingerprints_commits_and_listed_folders_are_redacted(
     assert "<proxy-N>" not in legend, "the legend lists only the kinds used"
 
 
+def test_a_folder_named_like_a_coding_agent_does_not_redact_the_agent_name(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Field report 2026-10-06: a listed cloud folder named Copilot turned "GitHub Copilot CLI" into
+    "GitHub <folder-N> CLI" in the Summary and the issue link. Product words are kept, in any case, listed
+    or configured; the agent string is still redacted like any other text."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    configured = cloud / "Documents" / "copilot" / "Team Plans"
+    for d in (cloud / "Documents" / "Copilot", cloud / "GitHub Copilot", configured):
+        d.mkdir(parents=True, exist_ok=True)
+    assert cli.main(["add-source", str(configured), "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", "GitHub Copilot CLI x"))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "· agent: GitHub Copilot CLI x\n" in section(text, "Summary")
+    assert "agent GitHub Copilot CLI x)" in section(text, "Agent friction log")
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["agent"] == ["GitHub Copilot CLI x"]
+    assert "Team Plans" not in text, "the configured folder's own name is still a placeholder"
+    assert setup_report.residue("<folder-1> Copilot GitHub <org-1> Board <name>") == ["Board"], (
+        "a kept product word next to a placeholder is no residue"
+    )
+
+    write_friction(fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", f"{FOLDERS[1]} CLI x"))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["agent"] == ["<folder-2> CLI x"], "the agent string is not exempt from redaction"
+    assert FOLDERS[1] not in text
+
+
 def test_run_ids_that_embed_host_names_are_redacted(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     log = fake_mac["setup"] / "install.log"
     log.write_text(

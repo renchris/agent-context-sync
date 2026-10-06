@@ -4814,6 +4814,8 @@ listed in a thread bounded to 3 s), hex runs of 16 or more digits with at least 
 a file) and from status's `last runs:` line (`<commit-N>`, every abbreviation sharing the first 7 digits maps to the
 same placeholder), and the ComputerName and LocalHostName (`scutil --get`) as `<host>`, which also covers run ids that
 embed a host name. The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
+**Amended (2026-10-06, §16.22):** a folder name or source id made only of coding-agent product words (`Copilot`)
+is kept too, listed or configured.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -6169,3 +6171,17 @@ the not-built wording and the fix without developer tools; a probe that crashes)
 `tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
 crashing build changes neither the exit status nor the steps; the one line without developer tools, forced
 with `DEVELOPER_DIR`; the dry run).
+
+### 16.22 Field fixes from the bring-back report (2026-10-06)
+
+No command, flag, installer option or config key. Each item changes one statement above, which carries a dated
+Amended note pointing here.
+
+**setup-report: coding-agent product words are never registered.** A folder name or a source id made only of
+the words Claude, Codex, Copilot, Cursor, Gemini and GitHub (any case; words split at spaces, hyphens and
+underscores, so `GitHub Copilot` and `github-copilot` count) is not registered with the Redactor: not as a listed
+folder, not as a configured source's path component, not as a source id, and `residue` does not list it. A listed
+folder named `Copilot` otherwise turned the `Agent:` line's "GitHub Copilot CLI" into `GitHub <folder-N> CLI` in
+the Summary, the attempt list and the issue link. The agent string is not exempt: it is free text, and any other
+registered value in it is still replaced (the link is still built with `Redactor.scrub`). Limit: a folder whose
+name mixes a product word with another word (`Copilot Pilots`) is registered whole, as before.

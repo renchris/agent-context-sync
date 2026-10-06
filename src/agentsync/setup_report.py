@@ -32,7 +32,8 @@ path (``~``), the login name (``<user>``), the full name (``<name>``), the organ
 ``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
 folder listing shows, configured or not; a few generic names such as ``Documents`` are kept) and every
-configured source folder path component (``<folder-N>``), the source ids derived from those folders
+configured source folder path component (``<folder-N>``; a name made only of coding-agent product words such
+as ``Copilot`` is kept, so the agent's own name stays readable), the source ids derived from those folders
 (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex fingerprints of 16 or more
 digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids (``<commit-N>``), the serial number
 (``<serial>``), the host and computer names (``<host>``), proxy hosts (``<proxy-N>``) and this account's
@@ -334,6 +335,11 @@ _GENERIC_FOLDERS = frozenset(
     }
 )
 """Folder names every OneDrive or Google Drive has: kept when only listed (a configured one is redacted)."""
+_AGENT_WORDS = frozenset({"claude", "codex", "copilot", "cursor", "gemini", "github"})
+"""Coding-agent product words, lower-case. A folder or source named with only these words is never registered
+(configured or listed, any case): registered, "Copilot" would turn the ``Agent:`` line's "GitHub Copilot CLI"
+into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). The agent string
+itself is still redacted like any other text."""
 _LISTING_MAX = 2000
 _LEGEND = {
     "home": "~ home folder",
@@ -435,8 +441,15 @@ def _tokens(value: str) -> list[str]:
 
 
 def _norm(text: str) -> str:
-    """``text`` lower-cased without spaces, hyphens and underscores (what all variants of a value share)."""
+    """``text`` lower-cased without spaces, hyphens, underscores and backslashes (what all variants of a
+    value share)."""
     return _SEP_RE.sub("", text).lower()
+
+
+def _agent_words(name: str) -> bool:
+    """Whether ``name`` is made of :data:`_AGENT_WORDS` only ("Copilot", "github-copilot")."""
+    words = [w for w in _SEP_RE.split(name.casefold()) if w]
+    return bool(words) and all(w in _AGENT_WORDS for w in words)
 
 
 class Redactor:
@@ -1633,7 +1646,8 @@ def _build_redactor(r: _Run) -> Redactor:
         if shared:
             red.add("library", comps[0], fuzzy=True)
         for c in comps[1:] if shared else comps:
-            red.add("folder", c, fuzzy=True)
+            if not _agent_words(c):
+                red.add("folder", c, fuzzy=True)
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
     try:
         listed = r.call(cloud_folder_names, timeout=3.0)
@@ -1641,12 +1655,13 @@ def _build_redactor(r: _Run) -> Redactor:
         listed = []
         r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
     for provider, depth, name in listed:
-        if name in _GENERIC_FOLDERS:
+        if name in _GENERIC_FOLDERS or _agent_words(name):
             continue
         shared = provider.startswith("OneDrive-SharedLibraries-")
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
     for sid, _provider, _comps in cloud_sources:
-        red.add("source", sid)
+        if not _agent_words(sid):
+            red.add("source", sid)
     for host in _proxy_hosts(r):
         red.add("proxy", host, ignore_case=True)
     with contextlib.suppress(Exception):
@@ -2778,7 +2793,9 @@ def residue(text: str) -> list[str]:
     found: list[str] = []
     for m in _RESIDUE_RE.finditer(_USER_HOME_RE.sub("~/", text)):
         word = m.group(1) or m.group(2)
-        if word and word not in _RESIDUE_IGNORED and word not in _GENERIC_FOLDERS and word not in found:
+        if not word or word in _RESIDUE_IGNORED or word in _GENERIC_FOLDERS or _agent_words(word):
+            continue
+        if word not in found:
             found.append(word)
     return found
 
