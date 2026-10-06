@@ -4820,8 +4820,8 @@ listed in a thread bounded to 3 s), hex runs of 16 or more digits with at least 
 a file) and from status's `last runs:` line (`<commit-N>`, every abbreviation sharing the first 7 digits maps to the
 same placeholder), and the ComputerName and LocalHostName (`scutil --get`) as `<host>`, which also covers run ids that
 embed a host name. The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
-**Amended (2026-10-06, §16.22):** a folder name or source id made only of coding-agent product words (`Copilot`)
-is kept too, listed or configured; every configured source id is registered, not only a cloud folder's; a source
+**Amended (2026-10-06, §16.22):** a listed folder named only with coding-agent product words (`Copilot`) is kept
+too, unless it is configured; every configured source id is registered, not only a cloud folder's; a source
 folder outside CloudStorage is registered from its project folder down; the shell-escaped form of a fuzzy value
 matches; and the install.out tail's agentsync log lines get the Recent errors scrub.
 
@@ -6192,14 +6192,17 @@ with `DEVELOPER_DIR`; the dry run).
 No command, flag, installer option or config key. Each item changes one statement above, which carries a dated
 Amended note pointing here.
 
-**setup-report: coding-agent product words are never registered.** A folder name or a source id made only of
-the words Claude, Codex, Copilot, Cursor, Gemini and GitHub (any case; words split at spaces, hyphens and
-underscores, so `GitHub Copilot` and `github-copilot` count) is not registered with the Redactor: not as a listed
-folder, not as a configured source's path component, not as a source id, and `residue` does not list it. A listed
-folder named `Copilot` otherwise turned the `Agent:` line's "GitHub Copilot CLI" into `GitHub <folder-N> CLI` in
-the Summary, the attempt list and the issue link. The agent string is not exempt: it is free text, and any other
-registered value in it is still replaced (the link is still built with `Redactor.scrub`). Limit: a folder whose
-name mixes a product word with another word (`Copilot Pilots`) is registered whole, as before.
+**setup-report: a listed folder named like a coding agent is not registered.** A folder under
+`~/Library/CloudStorage` that is only listed (depth 2-3, not configured) and whose name is made only of the words
+Claude, Codex, Copilot, Cursor, Gemini and GitHub (any case; words split at spaces, hyphens and underscores, so
+`GitHub Copilot` and `github-copilot` count) is not registered with the Redactor. Registered, a listed folder
+named `Copilot` turned the `Agent:` line's "GitHub Copilot CLI" into `GitHub <folder-N> CLI` in the Summary, the
+attempt list and the issue link. The agent string is not exempt: it is free text, and any other registered value
+in it is still replaced (the link is still built with `Redactor.scrub`). Limits: a configured source's path
+component or source id with such a name is registered like any other (Gemini, Codex, Cursor and Claude are also
+project codenames and first names), so the agent's name then shows the placeholder; `residue` lists these words
+like any other; a folder whose name mixes a product word with another word (`Copilot Pilots`) is registered
+whole, as before.
 
 **setup-report: four leaks in the redacted section closed.** All in `_build_redactor`, the `Redactor`'s fuzzy
 match and the Installer section:

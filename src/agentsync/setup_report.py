@@ -31,12 +31,12 @@ Redaction (always on) replaces, consistently (the same value always gets the sam
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
 ``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
-folder listing shows, configured or not; a few generic names such as ``Documents`` are kept) and every
-configured source folder path component (``<folder-N>``; a name made only of coding-agent product words such
-as ``Copilot`` is kept, so the agent's own name stays readable), a configured source folder elsewhere under
-the home folder from its project folder down, and that project folder's name (``<folder-N>`` too; folders
-beside the docs repo are agentsync's own), every configured source id but agentsync's own words such as
-``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex
+folder listing shows, configured or not; kept when only listed: a few generic names such as ``Documents``,
+and a name made only of coding-agent product words such as ``Copilot``, so the agent's own name stays
+readable) and every configured source folder path component (``<folder-N>``), a configured source folder
+elsewhere under the home folder from its project folder down, and that project folder's name (``<folder-N>``
+too; folders beside the docs repo are agentsync's own), every configured source id but agentsync's own words
+such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``), hex
 fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
 (``<commit-N>``), the serial number (``<serial>``), the host and computer names (``<host>``), proxy hosts
 (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
@@ -341,10 +341,11 @@ _GENERIC_FOLDERS = frozenset(
 )
 """Folder names every OneDrive or Google Drive has: kept when only listed (a configured one is redacted)."""
 _AGENT_WORDS = frozenset({"claude", "codex", "copilot", "cursor", "gemini", "github"})
-"""Coding-agent product words, lower-case. A folder or source named with only these words is never registered
-(configured or listed, any case): registered, "Copilot" would turn the ``Agent:`` line's "GitHub Copilot CLI"
-into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). The agent string
-itself is still redacted like any other text."""
+"""Coding-agent product words, lower-case. A folder that is only listed (not configured) and named with only
+these words is not registered, in any case: registered, "Copilot" would turn the ``Agent:`` line's "GitHub
+Copilot CLI" into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). A
+configured folder or source id with such a name is registered like any other (several of the words are also
+first names and project codenames), and :func:`residue` still lists the word."""
 _GENERIC_IDS = frozenset(
     {
         "agent",
@@ -1765,8 +1766,7 @@ def _build_redactor(r: _Run) -> Redactor:
         if shared:
             red.add("library", comps[0], fuzzy=True)
         for c in comps[1:] if shared else comps:
-            if not _agent_words(c):
-                red.add("folder", c, fuzzy=True)
+            red.add("folder", c, fuzzy=True)
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
     try:
         listed = r.call(cloud_folder_names, timeout=3.0)
@@ -1785,7 +1785,7 @@ def _build_redactor(r: _Run) -> Redactor:
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
     for src in r.config.sources if r.config is not None else ():
-        if not _agent_words(src.id) and (src.id in cloud_ids or src.id not in _GENERIC_IDS):
+        if src.id in cloud_ids or src.id not in _GENERIC_IDS:
             red.add("source", src.id)
     for host in _proxy_hosts(r):
         red.add("proxy", host, ignore_case=True)
@@ -2925,9 +2925,7 @@ def residue(text: str) -> list[str]:
     found: list[str] = []
     for m in _RESIDUE_RE.finditer(_USER_HOME_RE.sub("~/", text)):
         word = m.group(1) or m.group(2)
-        if not word or word in _RESIDUE_IGNORED or word in _GENERIC_FOLDERS or _agent_words(word):
-            continue
-        if word not in found:
+        if word and word not in _RESIDUE_IGNORED and word not in _GENERIC_FOLDERS and word not in found:
             found.append(word)
     return found
 
