@@ -14,13 +14,17 @@ uv sync --locked
 uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
 uv run --locked mypy src
-uv run --locked pytest -q -p no:cacheprovider
+uv run --locked pytest -q -p no:cacheprovider -n auto
 uv run --locked --only-group lint shellcheck probes/*.sh scripts/*.sh launcher/*.sh docs/design/receipts/review/scripts/*.sh
 uvx ruff@0.15.9 check --isolated scripts
 for f in scripts/*.mjs; do node --check "$f"; done
 npm run diagrams:check
 make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 ```
+
+pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on 10 cores against 11 serial. Every
+test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a new
+test that writes outside `tmp_path` breaks it. To debug one test, drop `-n auto`.
 
 Run tools through `uv run --locked`, not from PATH. shellcheck is pinned in `uv.lock` (the `lint` group)
 because the versions disagree: 0.9.0 reports SC2015 where 0.11.0 does not.

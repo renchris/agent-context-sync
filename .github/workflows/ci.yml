@@ -11,6 +11,9 @@ name: ci
 # run and a same-repo pull request would have run twice. Pushes now run on main only; a branch gets its run from
 # its pull request or from workflow_dispatch. `uv sync --locked` also installs the `lint` group, which puts the
 # locked shellcheck on PATH, so the three shellcheck tests that used to skip on this image now run.
+#
+# pytest runs with `-n auto` (pytest-xdist, locked in the dev group): one worker per runner core. The same flag
+# is in CLAUDE.md's gate list; change both together.
 on:
   workflow_dispatch:
   push:
@@ -44,4 +47,4 @@ jobs:
       - name: mypy src
         run: uv run --locked mypy src
       - name: pytest
-        run: uv run --locked pytest -q -p no:cacheprovider
+        run: uv run --locked pytest -q -p no:cacheprovider -n auto
