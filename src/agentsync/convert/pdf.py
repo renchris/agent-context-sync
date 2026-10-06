@@ -13,7 +13,8 @@ sit outside the text layer, so a commented copy used to convert to the same text
 read from the page PDFium already has open and follow that page's text under ``[comments on this page (PDF
 annotations):]``, one line per comment.  An annotation that carries no text and marks none is skipped, and so
 is one no viewer shows (the Hidden or NoView flag).  The pdfminer fallback reads none, and a page whose
-comments PDFium cannot read keeps its text; the summary says so in both cases.
+comments PDFium cannot read keeps its text; the summary says so in both cases.  What one file's comments may
+cost is bounded (``_CommentBudget``).
 """
 
 from __future__ import annotations
@@ -83,6 +84,9 @@ _TEXT_MARKUP = frozenset({9, 10, 11, 12})  # drawn over page text: that text is 
 _UNSEEN_FLAGS = (1 << 1) | (1 << 5)
 _QUOTE_MAX_CHARS = 300
 _MAX_INDENT = 4  # reply levels drawn; a deeper reply keeps this indent
+# Characters one file's comments may cost (``_CommentBudget``).  1,000 pages of 4,000 characters with every
+# line highlighted once cost about 8 million; a file made to cost more stops here after about 2 s (measured).
+_COMMENT_CHARS_MAX = 10_000_000
 # A comment is one output line, so every run of whitespace becomes one space.  NEL (U+0085) and the Unicode
 # line and paragraph separators are spelled out, although ``\s`` covers them, because PDFium returns them
 # intact from /Contents and ``str.splitlines`` breaks a line on each.
@@ -105,6 +109,10 @@ _LAPARAMS: dict[str, float | bool] = {
 
 class _EngineUnavailableError(Exception):
     """PDFium cannot read this file (or is not importable) for a reason other than encryption."""
+
+
+class _CommentLimitError(Exception):
+    """This file's comments cost more than ``_COMMENT_CHARS_MAX`` characters; the page's are not read."""
 
 
 def _clean(raw: str) -> str:
@@ -148,17 +156,18 @@ def _pdfium_pages(src: Path, name: str) -> tuple[list[str], dict[int, list[_Comm
         pages: list[str] = []
         comments: dict[int, list[_Comment]] = {}
         unread, first_error = 0, ""  # pages whose comments could not be read
+        budget = _CommentBudget()
         for index in range(len(doc)):
             page = doc[index]
             try:
                 textpage = page.get_textpage()
                 try:
                     pages.append(str(textpage.get_text_range()))
-                    # Comments are read here, on the page and text page already open.  A failure costs
-                    # this page its comments only: it must not reach the handler below, which would hand
-                    # a file PDFium reads to the fallback.
+                    # Comments are read here, on the page and text page already open.  A failure (or a
+                    # file past its allowance) costs this page its comments only: it must not reach the
+                    # handler below, which would hand a file PDFium reads to the fallback.
                     try:
-                        found = _page_comments(pdfium_c, page, textpage)
+                        found = _page_comments(pdfium_c, page, textpage, budget)
                     except Exception as exc:
                         unread += 1
                         first_error = first_error or f"page {index + 1}: {type(exc).__name__}: {exc}"
@@ -212,7 +221,8 @@ def _pdfminer_pages(src: Path) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class _Comment:
-    """One comment annotation of a page.  ``author``, ``text`` and ``quote`` are one line each; ``index``
+    """One comment annotation of a page.  ``author``, ``text`` and ``quote`` are one line each, as shown:
+    ``quote`` (the marked text) is already cut, and ``text`` is empty when it only repeated it.  ``index``
     and ``parent`` (the annotation it answers, /IRT) are positions in the page's annotation list."""
 
     index: int
@@ -232,11 +242,35 @@ def _one_line(text: str) -> str:
     return _WS_RE.sub(" ", unicodedata.normalize("NFC", flat)).strip()
 
 
-def _annot_string(pdfium_c: Any, annot: Any, key: bytes) -> str:
+class _CommentBudget:
+    """The characters one file's comments may still cost: each annotation string read, the characters of
+    each page that has a text markup, and those at the height of each of its quads.
+
+    A reviewed document stays far below ``_COMMENT_CHARS_MAX``.  A file made to be expensive does not, and
+    it is converted in the agent's own process.  One string can be the /Contents of every note in a file:
+    400 notes sharing 1 MB took 30 s and 1.9 GB.  A highlight can cover its whole page: 1,000 on a page of
+    34,000 characters took 9 s.  The allowance is a count, not a clock, so a file converts the same way on
+    every run.
+    """
+
+    def __init__(self) -> None:
+        """A whole allowance, for one file."""
+        self._left = _COMMENT_CHARS_MAX
+
+    def spend(self, chars: int) -> None:
+        """Take ``chars`` from the allowance before the work they pay for; _CommentLimitError once it is
+        used up, and on every call after that."""
+        self._left -= chars
+        if self._left < 0:
+            raise _CommentLimitError(f"comments cost more than {_COMMENT_CHARS_MAX} characters")
+
+
+def _annot_string(pdfium_c: Any, annot: Any, key: bytes, budget: _CommentBudget) -> str:
     """A text entry of an annotation dictionary (``Contents``, ``T``); "" when absent or empty."""
     size = int(pdfium_c.FPDFAnnot_GetStringValue(annot, key, None, 0))  # bytes of UTF-16LE, NUL included
     if size <= 2:
         return ""
+    budget.spend(size // 2)  # before the copy
     buf = ctypes.create_string_buffer(size)
     pdfium_c.FPDFAnnot_GetStringValue(annot, key, ctypes.cast(buf, ctypes.POINTER(pdfium_c.FPDF_WCHAR)), size)
     return buf.raw[: size - 2].decode("utf-16-le", errors="replace")
@@ -251,30 +285,37 @@ class _PageChars:
     commas, periods and underscores instead.
     """
 
-    def __init__(self, pdfium_c: Any, textpage: Any) -> None:
-        """Bind the open text page; nothing is read yet."""
+    def __init__(self, pdfium_c: Any, textpage: Any, budget: _CommentBudget) -> None:
+        """Bind the open text page and the file's allowance; nothing is read yet."""
         self._pdfium_c = pdfium_c
         self._textpage = textpage
+        self._budget = budget
         self._centres: list[tuple[float, float, int]] | None = None  # (y, x, character), sorted
         self._ys: list[float] = []
 
     def text_in(self, boxes: Sequence[_Box]) -> str:
-        """The page text whose characters are centred inside one of ``boxes``, in text order, on one line."""
+        """The page text whose characters are centred inside one of ``boxes``, in text order, on one line;
+        _CommentLimitError when the file's allowance does not cover the characters to look at."""
         if self._centres is None:
+            count = int(self._textpage.count_chars())
+            self._budget.spend(count)
             rect = self._pdfium_c.FS_RECTF()
-            self._centres = []
-            for i in range(int(self._textpage.count_chars())):
+            centres: list[tuple[float, float, int]] = []
+            for i in range(count):
                 if self._pdfium_c.FPDFText_GetLooseCharBox(self._textpage, i, ctypes.byref(rect)):
                     at = ((rect.bottom + rect.top) / 2, (rect.left + rect.right) / 2, i)
                     if math.isfinite(at[0]) and math.isfinite(at[1]):
-                        self._centres.append(at)
+                        centres.append(at)
             # Sorted by height, so a marked line costs its own characters, not the page's: a heavily
             # highlighted page would otherwise test every character against every highlight.
-            self._centres.sort()
-            self._ys = [at[0] for at in self._centres]
+            centres.sort()
+            self._centres = centres
+            self._ys = [at[0] for at in centres]
         marked: set[int] = set()
         for left, bottom, right, top in boxes:
-            band = self._centres[bisect_left(self._ys, bottom) : bisect_right(self._ys, top)]
+            low, high = bisect_left(self._ys, bottom), bisect_right(self._ys, top)
+            self._budget.spend(high - low)  # a quad as tall as the page does cost the page
+            band = self._centres[low:high]
             marked.update(i for y, x, i in band if left <= x <= right and bottom <= y <= top)
         runs: list[list[int]] = []  # [first character, count] of each unbroken run of marked characters
         for i in sorted(marked):
@@ -298,7 +339,9 @@ def _marked_text(pdfium_c: Any, annot: Any, chars: _PageChars, rect: _Box) -> st
     return chars.text_in(boxes or [rect])
 
 
-def _read_comment(pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _PageChars) -> _Comment | None:
+def _read_comment(
+    pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _PageChars, budget: _CommentBudget
+) -> _Comment | None:
     """One open annotation as a comment; None when it is not one, is not shown, or says and marks nothing."""
     subtype = int(pdfium_c.FPDFAnnot_GetSubtype(annot))
     kind = _COMMENT_KINDS.get(subtype)
@@ -309,10 +352,16 @@ def _read_comment(pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _P
     if pdfium_c.FPDFAnnot_GetRect(annot, ctypes.byref(rect)):
         xs, ys = (rect.left, rect.right), (rect.bottom, rect.top)
         box = (min(xs), min(ys), max(xs), max(ys))
-    text = _one_line(_annot_string(pdfium_c, annot, b"Contents"))
+    text = _one_line(_annot_string(pdfium_c, annot, b"Contents", budget))
     quote = _marked_text(pdfium_c, annot, chars, box) if subtype in _TEXT_MARKUP else ""
+    if text == quote:
+        text = ""  # several tools copy the marked text into /Contents: it is said once, as the quote
     if not text and not quote:
         return None  # a bare drawing, stamp or empty note: nothing a reader could use
+    # Cut here, not where the line is written: a comment is held until the whole file is read, and a
+    # markup can cover its page.
+    if len(quote) > _QUOTE_MAX_CHARS:
+        quote = quote[:_QUOTE_MAX_CHARS].rstrip() + "…"
     parent: int | None = None
     linked = pdfium_c.FPDFAnnot_GetLinkedAnnot(annot, b"IRT")
     if linked:
@@ -324,7 +373,7 @@ def _read_comment(pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _P
     return _Comment(
         index=index,
         kind=kind,
-        author=_one_line(_annot_string(pdfium_c, annot, b"T")),
+        author=_one_line(_annot_string(pdfium_c, annot, b"T", budget)),
         text=text,
         quote=quote,
         top=box[3],
@@ -333,16 +382,17 @@ def _read_comment(pdfium_c: Any, page: Any, annot: Any, *, index: int, chars: _P
     )
 
 
-def _page_comments(pdfium_c: Any, page: Any, textpage: Any) -> list[_Comment]:
-    """The comments among one open page's annotations, in file order (``textpage`` is that page's)."""
-    chars = _PageChars(pdfium_c, textpage)
+def _page_comments(pdfium_c: Any, page: Any, textpage: Any, budget: _CommentBudget) -> list[_Comment]:
+    """The comments among one open page's annotations, in file order (``textpage`` is that page's);
+    _CommentLimitError when the file's allowance runs out on this page."""
+    chars = _PageChars(pdfium_c, textpage, budget)
     out: list[_Comment] = []
     for index in range(int(pdfium_c.FPDFPage_GetAnnotCount(page.raw))):
         annot = pdfium_c.FPDFPage_GetAnnot(page.raw, index)
         if not annot:
             continue
         try:
-            comment = _read_comment(pdfium_c, page, annot, index=index, chars=chars)
+            comment = _read_comment(pdfium_c, page, annot, index=index, chars=chars, budget=budget)
         finally:
             pdfium_c.FPDFPage_CloseAnnot(annot)
         if comment is not None:
@@ -358,12 +408,8 @@ def _comment_line(c: _Comment, depth: int) -> str:
     if c.author:
         label += f" by {c.author}"
     if c.quote:
-        shown = c.quote
-        if len(shown) > _QUOTE_MAX_CHARS:
-            shown = shown[:_QUOTE_MAX_CHARS].rstrip() + "…"
-        label += f" on “{shown}”"
-    # Several tools copy the marked text into /Contents: say it once.
-    line = f"{label}: {c.text}" if c.text and c.text != c.quote else label
+        label += f" on “{c.quote}”"
+    line = f"{label}: {c.text}" if c.text else label
     return "  " * min(depth, _MAX_INDENT) + "- " + _escape_line(line)
 
 

@@ -712,22 +712,90 @@ def test_pdf_comment_threads_keep_every_comment() -> None:
     assert chain[4] == "        - reply: c4" and chain[-1] == "        - reply: c1199"
 
 
-def test_pdf_comment_line_labels_quote_cap_and_repeated_text() -> None:
-    render = pdf_mod._render_comments
+def test_pdf_nested_markup_keeps_its_word() -> None:
     # Only a note under another comment is a reply: the strikethrough of a replace-text pair keeps its word.
     pair = [
         _comment(0, kind="Insert", text="new"),
         _comment(1, 0, kind="Strikethrough", text="", quote="old"),
     ]
-    assert render(pair) == ["- Insert: new", "  - Strikethrough on “old”"]
-    # A tool that copies the marked text into the comment: said once, whatever the quote's length.
-    quote = ("word " * 80).strip()
-    assert render([_comment(0, kind="Highlight", text="same words", quote="same words")]) == [
-        "- Highlight on “same words”"
+    assert pdf_mod._render_comments(pair) == ["- Insert: new", "  - Strikethrough on “old”"]
+
+
+def test_pdf_marked_text_is_cut_and_a_repeated_text_said_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The marked text is cut at 300 characters.  A tool that copies it into the comment has it said once,
+    whatever its length: the two are compared whole, before the cut."""
+    held: list[pdf_mod._Comment] = []
+    render = pdf_mod._render_comments
+    monkeypatch.setattr(pdf_mod, "_render_comments", lambda found: held.extend(found) or render(found))
+    lines = [f"Line {i} of the passage a reviewer marked from end to end." for i in range(8)]
+    whole = " ".join(lines)
+    over = "/Rect [70 600 500 735]"  # no quads: the rectangle covers all eight lines
+    annots = [
+        f"/Subtype /Highlight {over} /Contents {pdf_text(chr(13).join(lines))}",  # copied with line breaks
+        f"/Subtype /Underline {over} /Contents (why)",
+        f"/Subtype /StrikeOut {over} /Contents ({whole[:-1]})",
+        "/Subtype /Highlight /Rect [70 717 94 731] /Contents (Line)",  # the first word of the first line
     ]
-    capped = "- Highlight on “" + ("word " * 60).strip() + "…”"
-    assert render([_comment(0, kind="Highlight", text=quote, quote=quote)]) == [capped]
-    assert render([_comment(0, kind="Highlight", text="why", quote=quote)]) == [capped + ": why"]
+    u = _one(
+        PdfConverter(CFG).convert(build_annotated_pdf(tmp_path / "q.pdf", [(lines, annots)]), name="q.pdf")
+    )
+    assert len(whole) > 300
+    cut = whole[:300].rstrip() + "…"
+    assert u.body.split(f"{_COMMENTS_HEAD}\n")[1].splitlines() == [
+        f"- Highlight on “{cut}”",
+        f"- Underline on “{cut}”: why",
+        f"- Strikethrough on “{cut}”: {whole[:-1]}",  # one character short of the marked text: not the same
+        "- Highlight on “Line”",
+    ]
+    # A comment is held until the whole file is read: it holds no more of the marked text than is shown.
+    assert [len(c.quote) for c in held] == [len(cut), len(cut), len(cut), 4]
+
+
+def test_pdf_comments_stop_at_the_file_allowance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A file's comments may cost a fixed number of characters, so a file made to be expensive cannot hold
+    the cycle: a highlight that covers its page costs the page again, and one string can be the text of
+    every note.  The page that passes the allowance loses its comments, and so does each later page with
+    any; every page keeps its text and the summary counts them."""
+    lines = [f"Line {i} of a page that is highlighted from top to bottom." for i in range(10)]
+    whole_page = "/Subtype /Highlight /Rect [0 0 612 792] /T (Doe, Jane Q)"
+    note = "/Subtype /Text /Rect [400 700 420 720] /T (Roe, John) /Contents (Agreed)"
+    src = build_annotated_pdf(
+        tmp_path / "a.pdf", [(lines[:1], [note]), (lines, [whole_page] * 5), (lines[:1], [note]), (lines, [])]
+    )
+    u = _one(PdfConverter(CFG).convert(src, name="a.pdf"))
+    assert u.summary == "PDF: 4 page(s); 7 comment(s) on 3 page(s)"
+    text = re.sub(rf"\n{re.escape(_COMMENTS_HEAD)}\n(?:.+\n)+", "", u.body)
+
+    # Page 2 costs its 500-odd characters once, then again for each highlight.
+    monkeypatch.setattr(pdf_mod, "_COMMENT_CHARS_MAX", 1500)
+    with caplog.at_level(logging.WARNING, logger="agentsync.convert.pdf"):
+        u = _one(PdfConverter(CFG).convert(src, name="a.pdf"))
+    assert u.body == text.replace(
+        "<!-- page: 2 -->", f"{_COMMENTS_HEAD}\n- Note by Roe, John: Agreed\n\n<!-- page: 2 -->"
+    )
+    assert u.summary == "PDF: 4 page(s); 1 comment(s) on 1 page(s); comments not read on 2 page(s)"
+    assert [r.getMessage() for r in caplog.records] == [
+        "a.pdf: comments not read on 2 page(s), first on page 2: "
+        "_CommentLimitError: comments cost more than 1500 characters"
+    ]
+
+    def summary(annot: str) -> str:
+        one_page = build_annotated_pdf(tmp_path / "one.pdf", [(lines, [annot])])
+        return _one(PdfConverter(CFG).convert(one_page, name="one.pdf")).summary
+
+    # A string is charged before it is copied: one note's text is past the allowance on its own.
+    assert summary(f"/Subtype /Text /Rect [400 700 420 720] /Contents ({'word ' * 400})") == (
+        "PDF: 1 page(s); comments not read on 1 page(s)"
+    )
+    # A page is charged once, at its first markup, however little that marks.
+    first_word = "/Subtype /Highlight /Rect [70 717 94 731]"
+    assert summary(first_word) == "PDF: 1 page(s); 1 comment(s) on 1 page(s)"
+    monkeypatch.setattr(pdf_mod, "_COMMENT_CHARS_MAX", 300)
+    assert summary(first_word) == "PDF: 1 page(s); comments not read on 1 page(s)"
 
 
 @pytest.mark.parametrize(
@@ -757,11 +825,13 @@ def test_pdf_comment_failure_keeps_the_document(
     real = pdf_mod._page_comments
     seen: list[object] = []
 
-    def first_pages_fail(pdfium_c: object, page: object, textpage: object) -> list[pdf_mod._Comment]:
+    def first_pages_fail(
+        pdfium_c: object, page: object, textpage: object, budget: pdf_mod._CommentBudget
+    ) -> list[pdf_mod._Comment]:
         seen.append(page)
         if len(seen) <= failing:
             raise error
-        return real(pdfium_c, page, textpage)
+        return real(pdfium_c, page, textpage, budget)
 
     monkeypatch.setattr(pdf_mod, "_page_comments", first_pages_fail)
     with caplog.at_level(logging.WARNING, logger="agentsync.convert.pdf"):

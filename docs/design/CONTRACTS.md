@@ -5745,7 +5745,8 @@ page whose comments could not be read (Failure, below).
   its centre inside a quad's bounding box, in text order, separate runs joined by a space. PDFium's own bounded
   read is not used: on single-spaced text it returns glyphs of the lines above and below. The marked text is cut
   at 300 characters with `…`. The text is left out when it equals the marked text (several tools copy one into
-  the other).
+  the other); the two are compared whole, then the marked text is cut as the comment is read, so a comment
+  never holds more of it than a line shows.
 - **One line.** Author, text and marked text are NFC with stray controls dropped and every whitespace run made
   one space: line breaks, tabs, form feed, U+0085, U+2028 and U+2029 included. A comment therefore cannot pose
   as a second comment, a reply, a heading, a rule or a code fence. `<!--` becomes `&lt;!--`, so it cannot pose
@@ -5769,18 +5770,31 @@ page whose comments could not be read (Failure, below).
   count does not read as complete. One WARNING per file gives the first cause: `<name>: comments not read on K
   page(s), first on page P: <type>: <message>`. A PDF with no text on any page and no comment read is still
   refused as `no text layer …`, whatever K is.
+- **Allowance.** One file's comments may cost 10,000,000 characters (`_COMMENT_CHARS_MAX`, counted by
+  `_CommentBudget`): every annotation string read (charged before it is copied), the characters of each page
+  that has a text markup (once, to find where they sit), and the characters at the height of each quad. The
+  conversion runs in the agent's own process, and without a limit a small file can hold it: 400 notes whose
+  `/Contents` is one shared 1 MB string took 30 s, 1.9 GB and a 400 MB sidecar; 1,000 highlights that each
+  cover a page of 34,000 characters took 9 s. With it both stop after about 2 s. 1,000 pages of 4,000 characters
+  with every line highlighted once cost about 8,000,000. The page that passes the allowance raises
+  `_CommentLimitError`, which is a Failure as above: that page and every later page with comments keep their
+  text, lose their comments and are counted in the summary. The allowance is a count, not a clock, so a file
+  converts the same way on every run. Work that grows only with the annotation data PDFium itself parses (one
+  step per annotation and per quad) is not counted.
 - **Fallback.** pdfminer reads no comments. Its summary clause now ends `(PDFium could not load it); comments
   not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
   file has any, so every PDF it converts carries the clause.
 - **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
   Nothing here re-reads PDFs that are already mirrored.
 
-Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_PageChars`, `_page_comments`,
-`_read_comment`, `_marked_text`, `_annot_string`, `_one_line`, `_comment_line`, `_render_comments`).
+Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_CommentBudget`, `_CommentLimitError`,
+`_PageChars`, `_page_comments`, `_read_comment`, `_marked_text`, `_annot_string`, `_one_line`, `_comment_line`,
+`_render_comments`).
 
 Tests: `test_convert_formats.py` (the page of `build_commented_pdf` byte for byte, with text and without; the
 centre rule against PDFium's bounded read; hidden and no-view annotations; a comment that tries to leave its
 line; every subtype's word and PDFium's subtype and flag numbers; reply links that are cyclic, self-referring,
-dangling or 1,200 deep; the quote cap and a repeated text; a page whose comments raise; the fallback),
+dangling or 1,200 deep; the quote cap and a repeated text; a page whose comments raise; a scan whose comments
+raise; the allowance, by markup, by page and by string; the fallback),
 `test_convert_determinism.py` (`commented.pdf` converted twice), `test_convert_builders.py`
 (`build_annotated_pdf`, `build_commented_pdf`).
