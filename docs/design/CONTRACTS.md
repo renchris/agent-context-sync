@@ -8177,6 +8177,15 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None: ...
   `kept=N` on its config step. It is None when no run says: an installer from before these fields, or a
   config the installed agentsync could not read. The first run decides, not the last. A new Mac whose install
   ran twice logs `kept=0` and then `kept=1`, and the person was asked before the first.
+- **A finished list decides by itself** (review, 2026-10-07). The prompt goes by what the list printed. A
+  `--list-folders` run whose step is `result=done` with no `synced=` printed no "already synced" line: no
+  config yet, or the warning that no installed agentsync loads it. The agent then asked, or stopped when it
+  could not, so `synced_before` is 0 there, whatever a later install run kept. At first such a run was
+  skipped and `kept=2` of the install run decided: the Summary of a correct stop then read `no folder
+  question`, 0 questions and "fully one command". So did an older attempt once `install.sh` was run again by
+  hand, because its list run came from an installer without the counts. A list that ended on a click
+  (`result=failed`) decides only when it logged `synced=N`, which is when it printed the line; otherwise the
+  next run decides. An install run's `kept` decides only in an attempt with no such list.
 - **Expected turns.** When `synced_before` is 1 or more, the folder question is not a turn the attempt is
   expected to have. `human turns` no longer adds 1 for it (prompts since v6 do not log that question, so the
   line added it), and the `expected turns` line starts `no folder question (2 folders already synced: step 1
@@ -8199,8 +8208,11 @@ Tests: `tests/test_setup_report.py` (a Mac with two folders synced and a run tha
 command, 0 human turns, no folder question, and the `folders:` line under the `install.sh:` line; eight
 logs: one added to two; a folder named again; a new Mac, with a folder name that holds the option's own
 text; a run with no folder at all; a new Mac whose install ran twice; a list that logged no count before a
-run that did; a log without the counts; a count that is not a number), `tests/test_install_oneshot.py` (the
-same lines in the report the real run with no folder wrote).
+run that did, which reads as asked; a log without the counts; a count that is not a number; then seven
+list steps before a run that kept two: finished with no count, from an installer before the counts, with
+`synced=0` and with `synced=2`, ended on a click with and without the count, and no list at all; and a
+denied list followed by a finished one), `tests/test_install_oneshot.py` (the same lines in the report the
+real run with no folder wrote).
 
 #### Setup prompt v9 (amends §16.14, §16.22 and §16.28; README, `scripts/install.sh`, `agentsync.setup_report`)
 
@@ -8259,7 +8271,8 @@ text above the block gains three sentences that say a re-run keeps the folders c
 **Limits.**
 
 - A config the installed agentsync cannot load is treated as a new Mac, with a warning. The agent then asks,
-  or stops when it cannot.
+  or stops when it cannot. The report reads it the same way: the list logged no `synced=`, so the folder
+  question is an expected turn of that attempt (`synced_before`, above).
 - A Mac whose only synced folders are outside `~/Library/CloudStorage`, on which OneDrive is not signed in,
   still ends step 1 at `--list-folders`' exit 3 and its `NEXT:`: nothing is listed, so nothing is marked.
   **CORRECTED (2026-10-07, review):** no longer a limit. It was the one set-up state where "the same block

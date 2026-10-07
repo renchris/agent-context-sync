@@ -261,7 +261,12 @@ The Summary shows which case a report is:
 
 Both lines are counts and fixed words. Triage: a `deviation` line that says the agent stopped at the folder
 question, in a report whose `expected turns` line says `no folder question`, is a prompt-wording defect and
-not the new Mac's expected stop. A report with no `folders:` line comes from an installer older than the
+not the new Mac's expected stop. That reading is safe because the line goes by what step 1's list printed:
+`no folder question` needs a list that logged `synced=N`, N at least 1, which is a list that printed
+`already synced on this Mac:`. A list that finished without the count printed no such line, so the report
+says `the folder question` even when step 2 then logged `kept=2`, and a stop there is the expected one (the
+list's `warning:` line says why the config was not read). Only an attempt with no finished list goes by
+the install run's `kept`. A report with no `folders:` line comes from an installer older than the
 counts, or from a config the installed agentsync could not read; `install.sh --list-folders` then printed a
 `warning:` line, which the installer output's tail shows.
 

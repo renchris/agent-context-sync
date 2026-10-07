@@ -1088,19 +1088,25 @@ def _count(fields: dict[str, str] | None, key: str) -> int | None:
 
 
 def synced_before(runs: Sequence[InstallRun]) -> int | None:
-    """How many folders this Mac already synced when these runs began (an attempt's runs): what the first
-    run that says so logged. A ``--list-folders`` run logs ``synced=N`` (setup prompt step 1 reads the
-    config), an install run ``kept=N`` on its config step. None when no run says: an installer from before
-    these fields, or a config the installed agentsync could not read.
+    """How many folders this Mac already synced when these runs began (an attempt's runs), as the first run
+    that says so logged it. A ``--list-folders`` run logs ``synced=N`` when it read the config (setup prompt
+    step 1), and an install run logs ``kept=N`` on its config step. None when no run says: an installer
+    from before these fields, or a config the installed agentsync could not read.
 
     A Mac that synced a folder already has the person's choice, so the folder question is no expected
-    turn of that attempt (field report 2026-10-07)."""
+    turn of that attempt (field report 2026-10-07). The prompt goes by what the list printed, so a list
+    that finished decides by itself: with no ``synced=`` it printed no "already synced" line, the folder
+    question was asked (or the agent stopped), and the answer is 0 whatever a later install run kept. A
+    list that ended on a click (``result=failed``) decides only when it logged the count, which is when it
+    printed that line; otherwise the next run does."""
     for run in runs:
-        found = (
-            _count(run.step("list-folders"), "synced")
-            if run.list_only
-            else _count(run.step("config"), "kept")
-        )
+        if run.list_only:
+            listed = run.step("list-folders") or {}
+            found = _count(listed, "synced")
+            if found is None and listed.get("result") == "done":
+                return 0
+        else:
+            found = _count(run.step("config"), "kept")
         if found is not None:
             return found
     return None

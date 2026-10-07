@@ -2066,13 +2066,17 @@ def set_up_log(
     fake_mac: dict[str, Path],
     *installs: tuple[str, str],
     listed: str = " synced=2",
+    list_step: str | None = "done note=listed-25",
 ) -> Path:
     """install.log of one attempt as scripts/install.sh writes it since it counts folders: step 1's
-    ``--list-folders`` run (``listed``: what follows its note), then one install run per ``(arguments, the
-    config step's result and what follows it)``."""
-    text = LIST_RUN.replace(" launchd=simulated", "").replace(
-        "result=done\n", f"result=done note=listed-25{listed}\n"
-    )
+    ``--list-folders`` run (``list_step``: its result and note, None for an attempt with no such run;
+    ``listed``: what follows its note), then one install run per ``(arguments, the config step's result and
+    what follows it)``."""
+    text = ""
+    if list_step is not None:
+        text = LIST_RUN.replace(" launchd=simulated", "").replace(
+            "result=done\n", f"result={list_step}{listed}\n"
+        )
     for n, (args, config) in enumerate(installs):
         at, run = f"2026-09-29T10:0{n}:00Z", f"20260929T100{n}00Z-4242"
         text += (
@@ -2178,9 +2182,9 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
             "kept the 1 already synced (none added) · 0 named with --source-local",
         ),
         (
-            "",
+            "",  # the list finished with no count: it printed no mark, so the question was asked
             [("", "skipped note=exists kept=3 added=0")],
-            NOT_ASKED.format("3 folders"),
+            ASKED,
             "kept the 3 already synced (none added) · 0 named with --source-local",
         ),
         # An installer from before the counts, or a config agentsync could not read: nothing to say.
@@ -2203,6 +2207,60 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
     assert [run.args for run in runs] == ["--list-folders", "--source-local x"]
     assert setup_report.synced_before(runs) == 2 and setup_report.synced_before(runs[1:]) is None
     assert setup_report.synced_before([]) is None
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """The folder question is asked, or not, by what step 1's list printed. A list that finished with no
+    ``synced=`` printed no "already synced" line (no config yet, or its warning: no installed agentsync
+    loaded the config), so the agent asked, or stopped when it could not. The report took ``kept=2`` from
+    the install run that followed and said "no folder question", 0 questions and "fully one command" over
+    a correct stop (review, 2026-10-07). The same happened to an older attempt when install.sh was run
+    again by hand: its list run came from an installer without the counts.
+
+    A list that ended on a click says so too when it printed the line (``synced=`` on a failed step).
+    Only without a finished list, and without that count, does an install run's ``kept`` decide."""
+    kept = ("", "skipped note=exists kept=2 added=0")
+    not_asked = NOT_ASKED.format("2 folders")
+    cases: list[tuple[str | None, int, str]] = [
+        ("done note=listed-25", 0, ASKED),  # no mark was printed: asked, whatever step 2 kept
+        ("done", 0, ASKED),  # a list run of an installer from before the counts
+        ("done note=listed-25 synced=0", 0, ASKED),
+        ("done note=listed-25 synced=2", 2, not_asked),
+        ("failed note=denied synced=2", 2, not_asked),  # ended on a click, with the line and the marks
+        ("failed note=tcc-pending", 2, not_asked),  # ended on a click and says nothing: the next run does
+        (None, 2, not_asked),  # install.sh alone, with no list
+    ]
+    for list_step, synced, question in cases:
+        runs = setup_report.read_install_runs(set_up_log(fake_mac, kept, listed="", list_step=list_step))
+        assert setup_report.synced_before(runs) == synced, list_step
+        write_friction(fake_mac, V9_HAPPY)
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        assert rc == 0 and _line(summary, "- expected turns: ").startswith(
+            f"- expected turns: {question} · "
+        ), list_step
+        asked = 1 if question == ASKED else 0
+        assert _line(summary, "- human turns: ").startswith(f"- human turns: {asked} ({asked} question")
+        assert _line(summary, "- folders: ").startswith("- folders: kept the 2 already synced (none added)")
+    # Two lists in one attempt: the first that finished, or that printed the line, decides.
+    log = set_up_log(fake_mac, kept, listed="", list_step="failed note=denied")
+    again = LIST_RUN.replace(" launchd=simulated", "").replace("T09:58:0", "T09:59:0")
+    log.write_text(
+        log.read_text(encoding="utf-8").replace(
+            "2026-09-29T10:00:00Z run=20260929T100000Z-4242 start",
+            again.replace("20260929T095805Z-11", "20260929T095905Z-12").replace(
+                "result=done\n", "result=done note=listed-25\n"
+            )
+            + "2026-09-29T10:00:00Z run=20260929T100000Z-4242 start",
+        ),
+        encoding="utf-8",
+    )
+    runs = setup_report.read_install_runs(log)
+    assert [run.list_only for run in runs] == [True, True, False]
+    assert setup_report.synced_before(runs) == 0, "denied, then listed with no mark after the click: asked"
 
 
 def test_loop_stage_and_next_text() -> None:
