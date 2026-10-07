@@ -111,11 +111,14 @@ def convert_file(
     (``from_cache=True``). Converter raises UnreadableSourceError -> UNREADABLE; any other exception -> FAILED
     with the reason; OK results are stored write-once. Units never empty for OK.
 
-    OCR never fails a document that converts without it. When a converter of a registry built with an OCR
-    engine raises OcrError and ``registry.without_ocr`` has the same converter, the file is converted again
-    through that registry and its result is the one returned: the page, the version and the action key of a
-    Mac without an engine, cached under that key. Nothing the engine said reaches the result. A converter
-    with no such twin (an image has no converter without an engine) fails as any other does.
+    OCR never fails a file: an OCR failure gives the file what it has without OCR. When a converter of a
+    registry built with an OCR engine raises OcrError, the file is converted again through
+    ``registry.without_ocr`` and that result is the one returned. For a document it is the page, the version
+    and the action key of a Mac without an engine, cached under that key. For a file only the engine can
+    read (an image) it is the ``no converter`` refusal such a Mac gives it. Either way nothing the engine
+    said reaches the result, and the result is one a later re-read picks up: a failed conversion would be
+    settled and never read again. A registry with no ``without_ocr``, or one that routes the name to
+    another converter, fails as any other does.
     """
     conv = registry.for_name(name)
     if conv is None:
@@ -203,8 +206,11 @@ def convert_file(
 
         plain = registry.without_ocr if isinstance(exc, OcrError) else None
         twin = plain.for_name(name) if plain is not None else None
-        if plain is not None and twin is not None and twin.converter_id == conv.converter_id:
-            log.info("%s: on-device OCR failed; converted by %s without it", name, conv.converter_id)
+        if plain is not None and (twin is None or twin.converter_id == conv.converter_id):
+            if twin is None:
+                log.info("%s: on-device OCR failed; nothing else converts it", name)
+            else:
+                log.info("%s: on-device OCR failed; converted by %s without it", name, conv.converter_id)
             return convert_file(
                 src,
                 name=name,

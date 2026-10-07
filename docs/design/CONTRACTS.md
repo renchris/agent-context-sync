@@ -6456,7 +6456,7 @@ file gives the same page on every run; past a time limit a document gets the pag
 | Reads | the file | pages under 20 characters; pictures the text layer does not cover | every picture shape | every picture the body, footnotes and endnotes use |
 | Marker | `[image · WxH px · text read by on-device OCR (Apple Vision)]` | `[page image without a text layer: text read by on-device OCR (Apple Vision)]`, `[text in an image on this page, read by on-device OCR (Apple Vision):]` | `[text in the image above, read by on-device OCR (Apple Vision):]` | the same, or `[text in image N above, read by on-device OCR (Apple Vision):]` |
 | Own option | none | `ocr_pdf_rules` and four limits | `ocr_pptx_rules` | `ocr_pandoc_rules` |
-| When OCR fails | FAILED stub (no converter without an engine) | the page without OCR | the page without OCR | the page without OCR |
+| When OCR fails | the `no converter` stub of a Mac without an engine | the page without OCR | the page without OCR | the page without OCR |
 
 - **Option set.** With an engine every converter's `options()` gains `_OCR_OPTIONS` (`ocr_languages`,
   `ocr_max_pages`, `ocr_max_pictures`, `ocr_max_picture_bytes`) and its own row above, and its `version()`
@@ -6530,9 +6530,12 @@ curation work for ever.
 | the first frame's `error` is `not an image`, `unsupported image type`, `no frames`, `too large` or `not readable` | `image not readable by on-device OCR (<error>)` |
 
 **Failure.** A helper that fails (it may not be run, exits non-zero, runs out of time, or answers something
-that is not the expected JSON) is `OcrError("on-device OCR failed")`: the result is FAILED and is never cached.
-The stub reason is `conversion failed: on-device OCR failed`; the engine's own reason goes to the log as
-`WARNING <name>: on-device OCR failed: <reason>`. The same holds when no frame gave text and Vision gave up on
+that is not the expected JSON) is `OcrError("on-device OCR failed")`, which is never cached; the engine's own
+reason goes to the log as `WARNING <name>: on-device OCR failed: <reason>`. Through `Registry.default`,
+`convert_file` then gives the image what it has on a Mac without an engine, the `no converter for .png`
+refusal (`converter: none@0`; below, "OCR never fails a file"). **Amended (2026-10-06):** it was a FAILED
+stub, `conversion failed: on-device OCR failed`, which the next cycle settled, so a helper that was broken
+for one cycle cost every image it was handed its reading until the file's bytes changed. The same holds when no frame gave text and Vision gave up on
 one (`recognition failed`, the one `error` that is not a fact about the bytes). An image has 300 seconds
 of helper time (`_DOCUMENT_BUDGET_S`; pandoc's limit is the same), and a TIFF, of which up to
 `ocr.MAX_PAGES` frames are asked, `_budget_s(MAX_PAGES)`: 900.
@@ -6662,12 +6665,19 @@ it routed to raises `OcrError`, and `registry.without_ocr` routes the same name 
   page carries a converter version without `+ocr-`, which is how a later re-read can tell that OCR has not
   read the file. Nothing in this section re-reads it. **Amended (2026-10-06, §16.27):** a later cycle reads
   it again, once.
-- A converter with no such twin fails as before. An image has no converter without an engine, so its failed
-  read stays the FAILED stub above. An exception that is not `OcrError` is never converted again.
+- **A file only the engine reads** (amended 2026-10-06). An image has no converter without an engine, so
+  the registry without one routes its name nowhere, and the result is the refusal such a Mac gives it:
+  REFUSED, `no converter for .png`, `converter: none@0`, never cached. That is the stub §16.27 reads again;
+  a FAILED result would be settled by the next cycle and selected by nothing. One INFO line: `<name>:
+  on-device OCR failed; nothing else converts it`.
+- A registry that keeps none without an engine (`Registry([...])`), or whose registry without an engine
+  routes the name to a converter with another id, fails as before. An exception that is not `OcrError` is
+  never converted again.
 
 Tests: `tests/test_convert_file.py` (an `OcrError` gives the result, the key and the cache entry of the
-registry without an engine, and the next read tries OCR again; an UNREADABLE and a FAILED twin; no twin, an
-empty twin registry and a twin of another converter; another exception) and `tests/test_convert_core.py`
+registry without an engine, and the next read tries OCR again; an UNREADABLE and a FAILED twin; a file only
+the engine reads, which gets the `no converter` refusal; no registry without an engine and a twin of
+another converter; another exception) and `tests/test_convert_core.py`
 (`without_ocr` is the registry of a Mac without an engine, under each label rule too, and holds no image
 converter; with an engine the version of each converter that reads with it ends in its identity and its
 options gain the OCR ones, and every other converter keeps its version and options).
@@ -7116,13 +7126,21 @@ for the fake helper of `tests/test_ocr.py`.
   with OCR time left does, once). Deferring it instead would hold back every PDF
   behind a folder of scans, the ones with nothing to read included. An `.rtf` or `.html` file gets the same
   version, options and action key from both registries, so the budget changes nothing for it.
-- **A failed read.** `OcrError` makes the result FAILED: the `conversion failed: on-device OCR failed` stub,
-  never cached, and the file's line in the source's errors. The cycle then treats the row as it treats every
-  failed conversion: the next cycle reads the file again, finds the same bytes and an intact stub, and
-  settles the row (`TOUCHED_NOT_CHANGED`) without converting. So the helper is not run on that image again
-  until its bytes change, an image the helper fails on every time costs one read, and the row is
-  quarantined, so `loop` does not wait on it. (Whether a failed conversion should be converted again while
-  its file is unchanged is a question for every converter, and is not decided here.)
+- **A failed read** (amended 2026-10-06). An image the engine failed on gets the `no converter` stub
+  (above), with no error line, and `_Cycle._lacks` counts that result as lacking, so the source's re-read
+  record reopens and §16.27 reads the file again. `loop` does not wait on it.
+- **A helper that fails on everything** (`_CycleOcr.down`). A failed read does not say whose failure it is,
+  and a failure that is no file's must not use up a file's reading. After a read that raised `OcrError`,
+  `_CycleOcr` hands the helper a blank 64 x 64 PNG it writes into the folder the read ran in
+  (`_OCR_CANARY`, removed at once; `_OCR_CANARY_S` = 30 seconds). When the helper fails on that too (it may
+  not be run, it was removed, it crashes on every image, the folder cannot be written), `down` is set: the
+  helper is not run again in that cycle (`read` raises at once), every file from there on is converted
+  through `Registry.without_ocr` (an image gets the `no converter` stub, a document its page without OCR,
+  each reopening the source's record), re-reads stop, the file whose read found it out is not counted as
+  tried, and the source's report gets one alarm: `on-device OCR stopped working in this sync (the helper
+  fails on a blank image); files are converted without it and read again once it works: run
+  scripts/install.sh again`. The same text is one WARNING in the log. The next cycle asks the helper
+  again. A helper that reads the blank image is working: the failure was the file's.
 
 Tests: `tests/test_cycle.py` (an image read once, under the staging folder, its page and front matter, and
 not again by the next cycle; the engine looked for once per cycle and never under a dry run;
@@ -7136,8 +7154,9 @@ first two read under the
 staging folder and converted without OCR once the budget is used, the third under the version without OCR
 both times; an online-only image beside a local one, under a byte budget, named to
 `materialise`, and after it
-is downloaded; a Graph image whose content is never requested; an image the
-helper failed on: its stub, one error line, no second read by the next cycle, and its new bytes converted;
+is downloaded; a Graph image whose content is never requested; a helper
+that fails on everything: three images get the `no converter` stub, the helper is run on one of them and
+on the blank image, one alarm, no file tried, and each read once the helper works;
 an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
 image's text: a `contains a credential` stub, the key in no committed object)
 and `tests/test_e2e.py` (without an engine a `.png` is refused unread, as a `.mp4` is).
@@ -7263,14 +7282,18 @@ from. Whatever stops the cycle, the row is as it was.
 |---|---|
 | the pages it has (every `rendered_sha256` equal) | H2 early cutoff, as for any file: the pages are untouched, the output rows take the new action key, verdict `OUTPUT_UNCHANGED`. No change, no commit |
 | other pages | published as any change is; the secret scan reads them |
-| the unreadable stub it has (one stub page, the same reason) | untouched; its output row takes the new action key |
+| the stub it has (one stub page, the same reason): the unreadable stub, or the `no converter` refusal of an image the engine failed on again | untouched; its output row takes the new action key |
 | FAILED | **the page is kept**: nothing is published, no verdict or hash moves, no error line. The source gets one alarm, `N file(s) read again for what their converter has gained could not be converted; their pages are kept as they were` |
 | a decision, not a failure: a label refusal, an encrypted or unreadable result, an inbox copy of a Graph file | published as for a changed file. A re-read fails closed like any conversion |
 
-A file whose bytes are not the ones its pages were made from (it changed without the walk seeing it, its
-page is damaged, or it is a `no converter` stub, which was made without reading a byte) takes the ordinary
-path whole. `SourceReport.converted` counts those and not the rest: a re-read of the same bytes is no new
-conversion.
+A file whose bytes are not the ones its pages were made from (it changed without the walk seeing it, or its
+page is damaged) takes the ordinary path whole. `SourceReport.converted` counts those and not the rest: a
+re-read of the same bytes is no new conversion. A `no converter` stub was made without reading a byte, so its
+re-read is the first look at the file. A conversion of it counts in `converted`, and the rows above for
+FAILED and for "the stub it has" hold for it as well (`cycle._no_converter_stub`, `_same_stub`): the stub
+stays, nothing is published, and the file is tried. **Amended (2026-10-06):** a failed first read used to be
+published as a `conversion failed` stub with an error line naming the file, and no later re-read selects a
+failed conversion.
 
 **At most once.**
 

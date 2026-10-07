@@ -513,9 +513,11 @@ def test_an_unreadable_image_is_cached_and_a_helper_failure_is_not(
     broken = Registry.default(CFG, ocr=failing)
     plan = picture(tmp_path / "Contoso Site Plan.png", "Loading dock")
     for attempt in (1, 2):
+        # What the image has on a Mac without an engine, which is what a later re-read looks for: a failed
+        # conversion would be settled and never read again.
         failed = convert(plan, plan.name, broken, cache)
-        assert failed.status is ConversionStatus.FAILED and not failed.from_cache
-        assert failed.reason == "conversion failed: on-device OCR failed"
+        assert (failed.status, failed.reason) == (ConversionStatus.REFUSED, "no converter for .png")
+        assert (failed.converter_id, failed.converter_version, failed.from_cache) == ("none", "0", False)
         assert len(calls(failing.helper)) == attempt, "a failure is never cached"
     for result in (first, failed):
         assert result.units == () and "/" not in str(result.reason) and "Contoso" not in str(result.reason)

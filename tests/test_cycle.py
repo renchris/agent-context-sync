@@ -21,6 +21,7 @@ import zlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import ANY
 
 import httpx
 import pytest
@@ -1665,30 +1666,44 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
 
 
-def test_an_image_the_helper_failed_on_gets_a_stub_with_fixed_wording_and_is_settled_like_any_failure(
+def test_a_helper_that_fails_on_everything_costs_no_image_its_reading(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The cycle treats a failed OCR read as it treats every failed conversion: the next cycle reads the file
-    again, finds the same bytes and an intact stub, and settles the row without converting. So an image the
-    helper fails on every time costs one read, and its error is reported once; new bytes are converted."""
+    """The helper answers ``--version`` and then fails every read: its folder was made writable by another
+    tool, it was removed in mid-cycle, it crashes on Vision.  That is no image's failure.  After the first
+    failed read the helper is handed a blank image, fails on it too, and is not run again in that cycle.
+    Every image gets the ``no converter`` stub it has without an engine (never a failed conversion, which
+    the next cycle would settle for good), the report says OCR stopped working, and no file's re-read is
+    used up.  Once the helper works, each image is read."""
     failing = fake_engine(tmp_path / "failing", fail=True)
     monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
-    plan = picture(local_source_dir / SITE_PLAN, "Loading dock")
+    plans = [f"projects/Contoso Site Plan {n}.png" for n in range(3)]
+    for n, rel in enumerate(plans):
+        picture(local_source_dir / rel, f"Loading dock {n}")
     [rep] = run(sample_config).sources
-    fm, body = _image_page(sample_config, SITE_PLAN)
-    assert (fm["status"], fm["reason"]) == ("unreadable", "conversion failed: on-device OCR failed")
-    assert rep.errors == (f"{SITE_PLAN}: conversion failed: on-device OCR failed",)
-    assert "the fake helper was told to fail" not in body + str(fm), "what the helper said stays in the log"
+    for rel in plans:
+        fm, body = _image_page(sample_config, rel)
+        assert (fm["status"], fm["reason"], fm["converter"]) == ("refused", "no converter for .png", "none@0")
+        assert "the fake helper was told to fail" not in body + str(fm), (
+            "what the helper said stays in the log"
+        )
+    assert (rep.errors, rep.alarms) == ((), (cycle_mod._OCR_DOWN,))
+    assert len(calls(failing.helper)) == 2, "one image, then the blank image: no run for the other two"
+    assert list(sample_config.state_paths.staging.iterdir()) == [], "the blank image is removed"
+    assert _reread_record(sample_config) == (False, []) and loop.next_step(sample_config).rule != 3
     again = run(sample_config)
-    assert again.commit_sha is None and again.sources[0].errors == () and len(reads(failing.helper)) == 1
-    assert _file_rows(sample_config)[SITE_PLAN].state is RowState.QUARANTINED
-    assert loop.next_step(sample_config).rule != 3, "a failed image does not keep the loop syncing"
+    assert again.commit_sha is None and again.sources[0].errors == ()
+    assert again.sources[0].alarms == (cycle_mod._OCR_DOWN,) and len(calls(failing.helper)) == 4
+    assert _reread_record(sample_config) == (False, []), "the failed read was not the file's to lose"
+    assert all(_file_rows(sample_config)[rel].state is RowState.REFUSED for rel in plans)
     healthy = _use_ocr(monkeypatch, tmp_path)
-    assert run(sample_config).commit_sha is None and reads(healthy.helper) == [], "settled: not read again"
-    picture(plan, "Loading dock", "East gate: open")
-    assert run(sample_config).commit_sha is not None and len(reads(healthy.helper)) == 1
-    fm, body = _image_page(sample_config, SITE_PLAN)
-    assert fm["status"] == "current" and body.rstrip().endswith("Loading dock\nEast gate: open")
+    fixed = run(sample_config)
+    assert fixed.commit_sha is not None and fixed.sources[0].alarms == () and len(reads(healthy.helper)) == 3
+    for n, rel in enumerate(plans):
+        fm, body = _image_page(sample_config, rel)
+        assert fm["status"] == "current" and body.rstrip().endswith(f"Loading dock {n}")
+    assert _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and len(reads(healthy.helper)) == 3
 
 
 def test_an_image_without_text_is_a_settled_stub_outside_the_curation_queue(
@@ -1911,6 +1926,40 @@ def test_pages_the_field_build_of_ocr_wrote_are_read_again_once(
     assert len(reads(engine.helper)) == 2, "the image is read by the helper under this build's version"
     assert _reread_record(sample_config) == (True, [])
     assert run(sample_config).commit_sha is None and len(fetched) == 2
+
+
+@pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])
+def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """An image mirrored as ``no converter`` was never read, so its re-read is the first look at its bytes.
+    When that fails, the stub stays: nothing is published or committed, the source gets no error line
+    naming the file, and the file is remembered as tried, like a document.  It used to become a failed
+    conversion, which no later re-read selects."""
+    repo = sample_config.docs_repo
+    _shade_png(local_source_dir / SITE_PLAN, 70)
+    assert run(sample_config).exit_code == 0
+    before, head = _mirror_bytes(sample_config, SITE_PLAN), git(repo, "rev-parse", "HEAD")
+    assert b"no converter for .png" in before[SITE_PLAN]
+    engine = shade_engine(tmp_path / "ocr-bin", {70: "fail" if fault.startswith("the helper") else ["Dock"]})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    if fault.startswith("the converter"):
+
+        def broken(self: Any, src: Path, *, name: str) -> Any:
+            raise RuntimeError(f"cannot decode /Users/someone/Pictures/{name}")
+
+        monkeypatch.setattr(image_mod.ImageConverter, "convert", broken)
+    report = run(sample_config)
+    [rep] = report.sources
+    assert (report.exit_code, report.commit_sha, rep.errors, rep.converted) == (0, None, (), 0)
+    kept = "1 file(s) read again for what their converter has gained could not be converted; their pages"
+    assert [a for a in rep.alarms if a.startswith(kept)] == ([] if fault.startswith("the helper") else [ANY])
+    assert _mirror_bytes(sample_config, SITE_PLAN) == before
+    assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
+    row = _file_rows(sample_config)[SITE_PLAN]
+    assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .png")
+    assert _reread_record(sample_config) == (True, [row.stable_id])
+    assert run(sample_config).commit_sha is None
 
 
 def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_is(

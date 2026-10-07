@@ -269,20 +269,38 @@ def test_what_the_converter_without_ocr_decides_is_the_result(src: Path, cache: 
     )
 
 
-def test_an_ocr_failure_with_no_converter_without_ocr_fails_as_any_other(
+def test_an_ocr_failure_on_a_file_only_the_engine_reads_is_the_refusal_of_a_mac_without_one(
+    src: Path, cache: ConverterCache, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An image has no converter without an engine.  A failed conversion would be settled by the next
+    cycle and never read again; the ``no converter`` refusal is what a re-read looks for.  Nothing the
+    engine said is in it, and it is not cached, so the next read asks the engine again."""
+    reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _run(src, _reading(reading, None), cache)
+    assert got == _run(src, Registry([]), ConverterCache(cache.root.parent / "other-mac"))
+    assert (got.status, got.reason) == (ConversionStatus.REFUSED, "no converter for .fk")
+    assert (got.converter_id, got.converter_version, got.from_cache) == ("none", "0", False)
+    assert caplog.messages == ["doc.fk: on-device OCR failed; nothing else converts it"]
+    assert _run(src, _reading(reading, None), cache).status is ConversionStatus.REFUSED
+    assert reading.calls == 2
+
+
+def test_an_ocr_failure_fails_as_any_other_where_no_registry_without_ocr_answers_for_the_file(
     src: Path, cache: ConverterCache
 ) -> None:
-    """An image has no converter without an engine: its failed read stays a failure, never cached."""
+    """A registry that keeps none without an engine, and one whose registry without an engine routes the
+    name to another converter: neither result would be this file's without OCR."""
     reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
     other = Fake(lambda s, n: (_unit("another converter's page\n"),), cid="other")
-    for registry in (Registry([reading]), _reading(reading, None), _reading(reading, other)):
+    for registry in (Registry([reading]), _reading(reading, other)):
         got = _run(src, registry, cache)
         assert (got.status, got.reason, got.converter_version) == (
             ConversionStatus.FAILED,
             "conversion failed: on-device OCR failed",
             WITH_OCR,
         )
-    assert reading.calls == 3 and other.calls == 0
+    assert reading.calls == 2 and other.calls == 0
 
 
 def test_only_an_ocr_failure_is_converted_again(src: Path, cache: ConverterCache) -> None:

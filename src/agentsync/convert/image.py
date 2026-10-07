@@ -12,8 +12,9 @@ per page read (at most ``ocr.MAX_PAGES``); every other type is read from its fir
 
 An image is not always a page.  One with no legible text is ``UnreadableSourceError``, a cached stub (a page
 per logo would be curation work for ever), and so is a file that is not a raster image or that the helper
-reports as one it cannot read.  A helper that fails is ``OcrError``: a failed conversion, which is never
-cached.  Its reason goes to the log and the stub gets fixed wording.
+reports as one it cannot read.  A helper that fails is ``OcrError``, which is never cached: its reason
+goes to the log, and ``convert_file`` gives the image the ``no converter`` refusal it has on a Mac without
+an engine, which is what a later re-read looks for.
 
 ``_RASTERS`` says what a raster image is, by its first bytes, for a file of its own and for a picture inside
 another document alike.  :func:`_read_pictures` is for the converters of those documents: it copies a

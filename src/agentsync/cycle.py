@@ -34,8 +34,10 @@ import secrets
 import shutil
 import socket
 import stat
+import struct
 import time
 import unicodedata
+import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -60,7 +62,7 @@ from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.image import ImageConverter
-from agentsync.convert.ocr import OcrEngine, OcrImage
+from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
 from agentsync.errors import (
     AgentSyncError,
@@ -140,6 +142,14 @@ a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``).
 past the budget it is converted without OCR (``_Cycle._converting``)."""
 _NO_CONVERTERS = Registry([])
 _ocr_clock = time.monotonic
+_OCR_CANARY = ".agentsync-ocr-canary.png"
+"""The name, in the folder a read ran in, of the blank image the helper is handed after a read that failed
+(``_CycleOcr``): it tells a file that sinks the helper from a helper that fails on everything."""
+_OCR_CANARY_S = 30.0
+_OCR_DOWN = (
+    "on-device OCR stopped working in this sync (the helper fails on a blank image); files are converted "
+    "without it and read again once it works: run scripts/install.sh again"
+)
 _REREAD_META = "reread:"
 """``reread:<source_id>``, for a local or inbox source: what the cycle looked for among the source's pages
 and how far it got.  A JSON list of at most two records ``{"done": bool, "for": <sha256>, "tried": [<stable
@@ -301,16 +311,34 @@ def _reread_state(stored: str | None, capabilities: str) -> tuple[bool, set[str]
     return False, set()
 
 
-def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult) -> bool:
-    """True when ``result`` is the unreadable stub ``row`` already has: one page, the same reason."""
+_STUB_STATES = {
+    ConversionStatus.UNREADABLE: (RowState.QUARANTINED, OutputStatus.QUARANTINED),
+    ConversionStatus.REFUSED: (RowState.REFUSED, OutputStatus.REFUSED),
+}
+
+
+def _no_converter_stub(row: ItemRow) -> bool:
+    """True when ``row`` has the stub of a file no converter claimed.  It was made from the name alone, so
+    the row may hold no hash of the file's bytes yet."""
+    return row.state is RowState.REFUSED and (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)
+
+
+def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult) -> OutputStatus | None:
+    """The status of the stub ``row`` already has when ``result`` says what it says (one page, the same
+    reason), else None: the unreadable stub, or the ``no converter`` refusal an image gets once more when
+    the engine failed on it again."""
+    state, status = _STUB_STATES.get(result.status, (None, None))
+    if result.status is ConversionStatus.REFUSED and not _no_converter_stub(row):
+        return None
     live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
-    return (
-        result.status is ConversionStatus.UNREADABLE
-        and row.state is RowState.QUARANTINED
+    same = (
+        status is not None
+        and row.state is state
         and row.state_reason == _one_line(result.reason or result.status.value, 200)
         and len(live) == 1
-        and live[0].status is OutputStatus.QUARANTINED
+        and live[0].status is status
     )
+    return status if same else None
 
 
 def _head_run_id(repo: Path) -> int | None:
@@ -747,22 +775,60 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
 # ---------------------------------------------------------------------------------------------------------
 
 
+def _blank_png() -> bytes:
+    """A white 64 x 64 PNG: an image any working helper answers for (it holds no text)."""
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    side = 64
+    head = chunk(b"IHDR", struct.pack(">IIBBBBB", side, side, 8, 0, 0, 0, 0))
+    pixels = chunk(b"IDAT", zlib.compress((b"\x00" + b"\xff" * side) * side))
+    return b"\x89PNG\r\n\x1a\n" + head + pixels + chunk(b"IEND", b"")
+
+
 class _CycleOcr(OcrEngine):
     """The OCR engine of one cycle: the engine found on this Mac, adding up the seconds its helper ran. Every
     converter of the cycle reads through it, so ``spent_s`` is all the OCR the cycle did; a conversion the
-    cache served never reaches it."""
+    cache served never reaches it.
+
+    A read that fails says nothing yet about whose failure it is.  So the helper is then handed a blank
+    image (``_OCR_CANARY``): when it fails on that too (it may not be run, it was removed, it crashes on
+    everything), the failure is no file's, ``down`` is set, and the helper is not run again in this cycle.
+    The cycle converts without it from there on and counts no file's re-read against the file."""
 
     spent_s = 0.0
+    down = False
 
     def read(
         self, images: Sequence[Path], *, work_dir: Path, budget_s: float, frames: int = 1
     ) -> list[tuple[OcrImage, ...]]:
-        """As ``OcrEngine.read``; the seconds it took, whether or not it worked, are added to ``spent_s``."""
+        """As ``OcrEngine.read``; the seconds it took, whether or not it worked, are added to ``spent_s``.
+        OcrError at once when the helper is ``down``."""
+        if self.down:
+            raise OcrError("the OCR helper is not run again in this cycle")
         start = _ocr_clock()
         try:
             return super().read(images, work_dir=work_dir, budget_s=budget_s, frames=frames)
+        except OcrError:
+            self.down = not self._reads_a_blank_image(work_dir)
+            if self.down:
+                log.warning("%s", _OCR_DOWN)
+            raise
         finally:
             self.spent_s += _ocr_clock() - start
+
+    def _reads_a_blank_image(self, work_dir: Path) -> bool:
+        canary = work_dir / _OCR_CANARY
+        try:
+            canary.write_bytes(_blank_png())
+            super().read([canary], work_dir=work_dir, budget_s=_OCR_CANARY_S)
+        except (OcrError, OSError):
+            return False
+        finally:
+            with contextlib.suppress(OSError):
+                canary.unlink()
+        return True
 
 
 def _cycle_ocr(config: Config) -> _CycleOcr | None:
@@ -1800,11 +1866,16 @@ class _Cycle:
 
     def _lacks(self, name: str, result: ConversionResult) -> bool:
         """True when ``result`` is one this cycle's registry would read ``name`` again for: the file was
-        converted without something its converter has (past the OCR time, or after the engine failed)."""
+        converted without something its converter has (past the OCR time, or after the engine failed).  For
+        a file only the engine reads, that result is the ``no converter`` refusal."""
+        conv = self.registry.for_name(name)
+        if conv is None:
+            return False
+        if result.status is ConversionStatus.REFUSED:
+            return (result.reason or "").startswith(NO_CONVERTER_PREFIX)
         if result.status not in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             return False
-        conv = self.registry.for_name(name)
-        if conv is None or conv.converter_id != result.converter_id:
+        if conv.converter_id != result.converter_id:
             return False
         rule = _outdated_rule(conv)
         reason = result.reason if result.status is ConversionStatus.UNREADABLE else None
@@ -1832,10 +1903,14 @@ class _Cycle:
         return sorted(targets, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
 
     def _reread_over(self) -> bool:
-        """True once this cycle starts no more re-reads: their time is used up, or the cycle's OCR time is."""
-        return self._reread_s >= _REREAD_BUDGET_S or (
-            self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S
-        )
+        """True once this cycle starts no more re-reads: their time is used up, the cycle's OCR time is, or
+        the helper stopped working."""
+        return self._reread_s >= _REREAD_BUDGET_S or self._ocr_over()
+
+    def _ocr_over(self) -> bool:
+        """True once this cycle reads nothing more with its engine: its OCR time (``_OCR_BUDGET_S``) is
+        used up, or the helper stopped working (``_CycleOcr.down``)."""
+        return self.ocr is not None and (self.ocr.spent_s >= _OCR_BUDGET_S or self.ocr.down)
 
     def _save_reread(self, source_id: str, done: bool, tried: set[str]) -> None:
         """Store the source's ``_REREAD_META`` value, when it is not the one stored: this cycle's record,
@@ -1920,7 +1995,8 @@ class _Cycle:
                 tried.add(row.stable_id)
                 started = _reread_clock()
                 try:
-                    if self._reread(src, arm, row, acc) is not False:
+                    # A read the helper stopped working in was not the file's to lose: it is not tried.
+                    if self._reread(src, arm, row, acc) is not False or (self.ocr and self.ocr.down):
                         tried.discard(row.stable_id)
                 except BaseException as exc:  # commit what finished, then re-raise outside the transaction
                     failure = exc
@@ -2205,9 +2281,7 @@ class _Cycle:
         for its own share of helper time. It gets the page, the version and the action key of a Mac without
         an engine, which is how a later re-read can tell OCR has not read it."""
         plain = self.registry.without_ocr
-        if plain is not None and self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S:
-            return plain
-        return self.registry
+        return plain if plain is not None and self._ocr_over() else self.registry
 
     def _process(
         self, src: SourceConfig, arm: SourceArm, row: ItemRow, budget: ByteBudget, acc: _SourceAcc
@@ -2329,7 +2403,9 @@ class _Cycle:
         ``reread``: the file is read again for what its converter has gained (``_reread_source``), so bytes
         that are the ones its pages were made from are converted all the same.  Such a re-read never costs
         the file its page: a conversion that fails leaves the page as it is, and one that gives the page or
-        the stub it already has leaves it untouched and only moves its action key."""
+        the stub it already has leaves it untouched and only moves its action key.  The same holds for a
+        ``no converter`` stub, which was made without reading a byte: a failed read of the file leaves the
+        stub, where it would otherwise become a failed conversion nothing reads again."""
         sid, stable = row.source_id, row.stable_id
         h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
         if self.suppressions.matches_content(h1.sha256):
@@ -2358,8 +2434,8 @@ class _Cycle:
                 self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
             return None
         again = reread and same  # the bytes its pages were made from, converted once more
-        if not again:
-            acc.converted += 1
+        # ...or bytes never read before, behind a stub made from the name: the stub is what there is to keep
+        keeps = again or (reread and intact and _no_converter_stub(fresh))
         result = convert_file(
             fetched.path,
             name=row.name,
@@ -2387,13 +2463,18 @@ class _Cycle:
         duplicate = self._inbox_duplicate(src, h1.sha256)
         if duplicate is not None:
             result = dataclasses.replace(result, status=ConversionStatus.REFUSED, units=(), reason=duplicate)
-        if again and result.status is ConversionStatus.FAILED:
+        if self.ocr is not None and self.ocr.down and _OCR_DOWN not in acc.alarms:
+            acc.alarms.append(_OCR_DOWN)
+        if keeps and result.status is ConversionStatus.FAILED:
             # A re-read that fails keeps the page: nothing is published and no verdict moves.
             self._reread_kept += 1
             return None
-        if again and _same_stub(outs, fresh, result):  # the stub it has says what this conversion says
-            self._move_key(sid, stable, outs, result.action_key, OutputStatus.QUARANTINED)
+        stub = _same_stub(outs, fresh, result) if keeps else None
+        if stub is not None:  # the stub it has says what this conversion says
+            self._move_key(sid, stable, outs, result.action_key, stub)
             return result
+        if not again:
+            acc.converted += 1
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
