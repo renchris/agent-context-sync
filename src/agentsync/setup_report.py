@@ -2589,6 +2589,8 @@ _EMPTY_DIRS_CHECKED = 50
 _FOLDERS_S = 2.0  # one source's empty folders: the lstat calls, then the exclude rule, each at most this long
 _PAIRS_SHOWN = 20
 _REREAD_META = "reread:"  # cycle._REREAD_META
+_REREAD_BUDGET_S = 120.0  # cycle._REREAD_BUDGET_S: a cycle starts no re-read past these seconds of them
+_FAILED_READ = 200  # the failed-once ids of one source whose rows are looked up
 _REREAD_FOR_DIGITS = 8  # cycle._REREAD_FOR_DIGITS: the hex digits of a record's ``for`` a run record holds
 _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
 _PRESENT_SQL = "('live', 'dataless')"
@@ -3065,8 +3067,9 @@ def _reread_lines(
     label_rule: bool,
 ) -> list[str]:
     """The re-read record of each local or inbox source (manifest meta ``reread:<source id>``, CONTRACTS
-    16.27) as counts: whether its scan is finished, the files given up, those that failed once, and the
-    report's own count of files on this Mac from before OCR.
+    16.27) as counts: whether its scan is finished, the files given up, those that failed once (and, under
+    the table, what the manifest holds of those now: :func:`_failed_once`), and the report's own count of
+    files on this Mac from before OCR.
 
     A record says what it was written ``for`` (the build, the converters, the engine), and a cycle goes
     by a record only when that is what it looks for itself. So does the report: the newest run that
@@ -3081,6 +3084,7 @@ def _reread_lines(
     runs = _run_rows(m)
     looked = next((x for x in runs if "reread_for" in x.counts), None)
     rows: list[tuple[object, ...]] = []
+    once: dict[str, list[str]] = {}  # source id -> the ids of its files that failed once
     for src in config.sources:
         if src.path is None or (src.id not in stored and not waiting[src.id]):
             continue
@@ -3097,6 +3101,8 @@ def _reread_lines(
         current = mine or {}
         tried, failed = current.get("tried"), current.get("failed")
         others = [x.get("tried") for x in records if x is not mine]
+        if isinstance(failed, dict) and failed:
+            once[src.id] = sorted(str(stable) for stable in failed)
         rows.append(
             (
                 labels.of(src.id),
@@ -3157,11 +3163,53 @@ def _reread_lines(
     if label_rule:
         third += " A label rule is on, so no image is read and none is counted."
     return [
-        f"- re-read, per source. {scan} {third} The count includes the files given up (two failed tries) "
-        "and those that failed once and are tried once more:",
+        f"- re-read, per source. {scan} {third} The count includes the files given up (two failed tries). "
+        "A file that failed once is tried once more while its source's scan is not finished; under a "
+        "finished scan it is no longer among the files left to read again (read since, changed, online-only "
+        "or gone), and the record keeps its count:",
         "",
         *_table(header, rows),
+        *_lines(lambda: _failed_once(m, labels, once)),
     ]
+
+
+_ROW_NOW = (
+    ("live", "on this Mac"),
+    ("dataless", "online-only"),
+    ("quarantined", "with a stub"),
+    ("refused", "with a stub"),
+    ("tombstone", "deleted"),
+)
+"""A manifest row's state -> the words for what became of a file whose re-read failed once."""
+
+
+def _failed_once(m: _Mirror, labels: _Labels, once: dict[str, list[str]]) -> list[str]:
+    """One line per source that has files whose re-read failed once: what the manifest holds of them now,
+    as counts by state. A count that stays under a finished scan is otherwise unexplained (field report
+    2026-10-07: "failed once: 1" beside "scan finished: yes" and 0 files left). The row says which it is:
+    a file still on this Mac was read since or is no longer one a re-read looks for, one with no row left
+    the manifest. The ids never leave the query."""
+    words = dict(_ROW_NOW)
+    order = (*dict.fromkeys(words.values()), "in another state", "with no row")
+    out: list[str] = []
+    for source_id, ids in list(once.items())[:_ROWS_SHOWN]:
+        asked = ids[:_FAILED_READ]
+        found: Counter[str] = Counter()
+        marks = ", ".join("?" for _ in asked)
+        for state, files in m.rows(
+            "SELECT state, COUNT(*) FROM items WHERE source_id = ? AND is_dir = 0 "
+            f"AND stable_id IN ({marks}) GROUP BY state",
+            (source_id, *asked),
+        ):
+            found[words.get(str(state), "in another state")] += int(files)
+        found["with no row"] = len(asked) - sum(found.values())
+        shown = " · ".join(f"{found[name]} {name}" for name in order if found[name])
+        more = f" (the first {_FAILED_READ} are looked up)" if len(ids) > len(asked) else ""
+        out.append(
+            f"- {labels.of(source_id)}, the {len(ids)} file(s) that failed once, by their row in the "
+            f"manifest now{more}: {shown}"
+        )
+    return out
 
 
 def _took(seconds: float | None) -> str:
@@ -3171,7 +3219,13 @@ def _took(seconds: float | None) -> str:
 def _ocr_time(m: _Mirror) -> list[str]:
     """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28). The last
     column is the files each run's re-read left (``reread_left``): read down the runs, it is how many syncs
-    a mirror's one-time re-read takes."""
+    a mirror's one-time re-read takes.
+
+    The sums are over every run read and the table shows :data:`_RUNS_SHOWN` of them, so the title says
+    when runs are hidden: the field's table of five was read as all there were, and its rows were added up
+    against sums over six. A file read again whose text comes out the same changes no page, so "read
+    again" is no count of new pages: the pages each run added and changed have a column of their own (the
+    run record's ``A`` and ``M``, which every build wrote)."""
     runs = _run_rows(m)
     if not runs:
         return ["- OCR time: no run is recorded"]
@@ -3203,7 +3257,8 @@ def _ocr_time(m: _Mirror) -> list[str]:
         f"{total('ocr_failed')} the engine failed on (a helper failure, or the file's own time limit) · "
         f"{total('ocr_page_cap')} that say pages past the OCR page limit were not read · "
         f"{total('ocr_picture_cap')} that say pictures past the picture limit were not read · "
-        f"{total('reread')} read(s) again ({total('reread_kept')} kept the page they had)",
+        f"{total('reread')} read(s) again ({total('reread_kept')} of them could not be converted and kept "
+        "their page)",
     ]
     shown = (engine or runs)[:_RUNS_SHOWN]
     rows = []
@@ -3223,6 +3278,7 @@ def _ocr_time(m: _Mirror) -> list[str]:
                 f"{x.n('ocr_without_budget')} + {x.n('ocr_without_down')}",
                 x.n("ocr_failed"),
                 f"{x.n('ocr_page_cap')} + {x.n('ocr_picture_cap')}",
+                f"{x.n('A')} + {x.n('M')}",
                 f"{x.n('reread')} ({x.n('reread_kept')})",
                 # A run that looked says what it left (0 is left out of its record); one that did not look
                 # (an earlier build's, a ``materialise PATH`` run) has no count to give.
@@ -3242,11 +3298,27 @@ def _ocr_time(m: _Mirror) -> list[str]:
         "without OCR (time + helper)",
         "engine failed",
         "past the page + picture limit",
-        "read again (page kept)",
+        "pages added + changed",
+        "read again (conversion failed)",
         "left to read again",
     )
-    title = "the last runs that had an engine" if engine else "the last runs (none had an engine)"
-    return [*out, "", f"{title}, newest first:", "", *_table(header, rows)]
+    pool = engine or runs
+    what = "runs that had an engine" if engine else "runs (none had an engine)"
+    title = f"the last {what}, newest first"
+    if len(pool) > len(shown):
+        title = (
+            f"the last {len(shown)} of the {len(pool)} {what}, newest first (the sums above are over all "
+            f"{len(runs)} run(s) read, so these rows do not add up to them)"
+        )
+    notes = (
+        f"A run starts no more re-reads once it has spent {_REREAD_BUDGET_S:.0f}s on them, whatever OCR time "
+        "is left: that usually ends its reading first, though one long read can still use up the OCR time. "
+        "`pages added + changed` is every page the run added or changed, whatever the cause: a file read "
+        "again whose text comes out the same changes no page, so `read again` is no count of new pages. "
+        "`mode` is the kind of pass, not who started it: a sync typed in a terminal is recorded like the "
+        "background job's"
+    )
+    return [*out, "", f"{title}. {notes}:", "", *_table(header, rows)]
 
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:

@@ -7904,8 +7904,9 @@ decides before a word inside the text does.
   Mac from before OCR: images with the no-converter stub, scanned PDFs whose stub says OCR was not run, and
   documents whose page has no OCR identity or is the field build's, with the field build's in a column of
   their own. The report builds no registry, so it cannot ask a converter's `outdated`; the count is the rule
-  of the table in §16.27 and includes the files given up. Three things keep the table to what this Mac's
-  cycles do now:
+  of the table in §16.27 and includes the files given up (**amended 2026-10-07, §16.30:** a file that
+  failed once is in it only while its source's scan is not finished, and a line under the table says what the
+  manifest holds of those files now). Three things keep the table to what this Mac's cycles do now:
   - **Scan finished** is `yes` or `no` only for a record written for what the newest run that says so
     looked for (`reread_for` above; the lead sentence names that run and whether it had an engine). A record
     for anything else is `not started`, whatever its `done` says, and what it gave up moves to the "other
@@ -7924,7 +7925,9 @@ decides before a word inside the text does.
   A Graph source has no row, and nothing of it is counted: a re-read never downloads.
 - Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
   time, or ended with the helper not working; the files the newest run that had an engine left waiting; the
-  sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine.
+  sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine
+  (**amended 2026-10-07, §16.30:** the title says when more runs had one, the rows have a column for the
+  pages each run added and changed, and `reread_kept` is worded as a failed conversion).
   The row's last column is the files that run's re-read left (`reread_left`; `-` for a run that did not
   look, which is one without `reread_for`): read down the runs, it is how many syncs a real mirror's re-read
   takes, which no one has timed.
@@ -8564,3 +8567,52 @@ Tests: `tests/test_setup_report.py` (the real loop after a sync with one purge q
 a held listing, which the loop prints second and the line shows with `(+1 more)`; then a draft baseline,
 which the loop prints last and the line shows with `(+2 more)` under rule 5's NEXT; the rule by itself on six
 sets of lines).
+
+#### The OCR part says what its numbers are (amends §16.28; `agentsync.setup_report`)
+
+OCR did on the field Mac what §16.25 to §16.28 say. Four things in the OCR part read as faults and were
+wording, and the report now says what each number is. The cycle, its limits and the run record are unchanged.
+
+- **`read(s) again (N of them could not be converted and kept their page)`** replaces `(N kept the page they
+  had)`, and the per-run column is `read again (conversion failed)`. `reread_kept` counts only a re-read
+  whose conversion failed (§16.27). "442 read again (0 kept the page they had)" read as 442 new pages. It is
+  not: a file read again whose text comes out the same is cut off at the page's own hash, so the page file
+  and its `converter:` line stay and only the output row's key moves (§16.27).
+- **`pages added + changed`**, a new column before it: the run record's `A` and `M`, the pages the run added
+  and changed from every cause. Every build wrote them, so a run of an earlier build has them too. A sync
+  that only reads again shows there how many pages the re-read really changed, which the first paste could
+  not say.
+- **The title says what is hidden.** The sums above the table are over every run read (`_RUNS_READ`, 200)
+  and the table shows `_RUNS_SHOWN` (5). With more runs than that: `the last 5 of the 6 runs that had an
+  engine, newest first (the sums above are over all 7 run(s) read, so these rows do not add up to them)`.
+  The field's five rows were added up against sums over six runs. With five or fewer the title is `the last
+  runs that had an engine, newest first`, as before.
+- **The limit that ends the reading.** After the title: a run starts no more re-reads once it has spent 120
+  s on them (`_REREAD_BUDGET_S`, a copy of the cycle's; a test holds the two equal), whatever OCR time is
+  left. That usually ends its reading first. It does not always: the read that passes the 120 s finishes,
+  and one long scan can use up the 180 s of OCR time by itself, so the `used up` column stays.
+- **`mode` is the kind of pass.** A sync typed in a terminal is recorded `poll` or `reconcile` like the
+  background job's (`cycle._interactive_mode`). Three of the field's five rows were the installer's and the
+  agent's own syncs, and the table was read as five background runs.
+- **A file that failed once.** The lead said such a file "is tried once more". That holds while its source's
+  scan is not finished. A record keeps a failed-once id until a later read of that file works, so under a
+  finished scan the count can stay: the file is then no longer among the files left to read again (read
+  since, changed, online-only or gone). The lead now says that. It does not say the file needs no re-read:
+  the scan's count is of the files it took at its start and leaves out online-only ones.
+- **What became of it** (`_failed_once`). Under the re-read table, one line for each source whose record
+  holds failed-once ids: `- <source>, the 1 file(s) that failed once, by their row in the manifest now: 1 on
+  this Mac`. The words are `on this Mac` (live), `online-only`, `with a stub` (quarantined or refused),
+  `deleted` (a tombstone), `in another state` and `with no row`. It is one indexed lookup per such source,
+  of at most 200 ids (`_FAILED_READ`), and no id is printed. The field's "failed once: 1" beside "scan
+  finished: yes" could be a file that left the manifest or a failed read that still wrote a page; the next
+  paste says which.
+
+Not done: the cycle does not drop a failed-once id when a scan finishes. A file that failed once and was
+then evicted would get two fresh tries each time it came back, so a file that kills the cycle in its read
+could never be given up.
+
+Tests: `tests/test_setup_report.py` (the reworded sum, the new column and the lead on the seeded OCR part;
+six runs that had an engine and one that had none: the title, the five rows that add up to 411 of 442, a run
+with pages added and changed, and a finished scan whose five failed-once files are one in each state and one
+with no row; five runs or fewer; seven runs with no engine; the 120 s against the cycle's; the lookup in the
+50,000-file bound and its query plan).

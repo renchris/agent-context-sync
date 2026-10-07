@@ -3484,18 +3484,112 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "twice): 2 conversion(s) without OCR because the cycle's OCR time was used up · 2 without OCR "
         "because the helper had stopped working · 1 the engine failed on (a helper failure, or the file's "
         "own time limit) · 1 that say pages past the OCR page limit were not read · 1 that say pictures past "
-        "the picture limit were not read · 4 read(s) again (1 kept the page they had)\n" in ocr_part
-    )
+        "the picture limit were not read · 4 read(s) again (1 of them could not be converted and kept "
+        "their page)\n" in ocr_part
+    ), "a re-read keeps its page only when its conversion failed: 0 there is no count of unchanged pages"
     started = "2026-10-06T10:00:00Z | 1m05s"
     assert [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)] == [
-        f"| 5 | reconcile | ok | {started} | 2.2s of 180s | no | yes | 0 | 0 + 2 | 1 | 1 + 1 | 0 (0) | - |",
-        f"| 4 | poll | ok | {started} | 181.5s of 180s | yes | no | 3 | 2 + 0 | 0 | 0 + 0 | 4 (1) | - |",
+        f"| 5 | reconcile | ok | {started} | 2.2s of 180s | no | yes | 0 | 0 + 2 | 1 | 1 + 1 | 0 + 0 | 0 (0) "
+        "| - |",
+        f"| 4 | poll | ok | {started} | 181.5s of 180s | yes | no | 3 | 2 + 0 | 0 | 0 + 0 | 0 + 0 | 4 (1) "
+        "| - |",
     ], "the run of an earlier build had no engine: it is not in the OCR table"
-    assert "| read again (page kept) | left to read again |" in ocr_part, (
+    assert "| pages added + changed | read again (conversion failed) | left to read again |" in ocr_part, (
         "what each run's re-read left; these runs do not say what they looked for, so they have no count"
     )
+    assert "\nthe last runs that had an engine, newest first. A run starts no more re-reads once" in ocr_part
+    assert (
+        "The count includes the files given up (two failed tries). A file that failed once is tried once "
+        "more while its source's scan is not finished; under a finished scan it is no longer among the files "
+        "left to read again (read since, changed, online-only or gone), and the record keeps its count:"
+        in lead
+    )
+    assert (
+        "- <folder-2>, the 1 file(s) that failed once, by their row in the manifest now: 1 with no row\n"
+        in ocr_part
+    ), "the record's id is no row of this manifest"
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
         assert raw not in text, raw
+
+
+def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_is_now(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Field report 2026-10-07, read wrongly three ways. The sums were over six runs that had an engine and
+    the table showed five, with nothing to say one was hidden. "442 read again (0 kept the page they had)"
+    read as 442 new pages, though a file read again whose text is the same changes no page. And "failed
+    once: 1" stood beside "scan finished: yes" and 0 files left, under a lead that said such a file is
+    tried once more."""
+    seed = Seed(fake_mac["config"])
+    one, _inbox, two = seed.ids()
+    here = seed.item(one, "Wingtip plan.pdf", version=OCR_VERSION)
+    cloud = seed.item(one, "Northwind notes.docx", state="dataless", dataless=True)
+    gone = seed.item(one, "Tailspin deck.pptx", state="tombstone", page="tombstone")
+    stub = seed.item(one, "payroll.pdf", state="quarantined", reason=NOT_RUN, page="quarantined")
+    now = "c0ffee11" + "0" * 56
+    failed = {here: 1, cloud: 1, gone: 1, stub: 1, "ledger-2031 id": 1}
+    seed.m.set_meta("reread:" + one, json.dumps([{"done": True, "for": now, "tried": [], "failed": failed}]))
+    seed.m.set_meta("reread:" + two, json.dumps([{"done": True, "for": now, "tried": []}]))
+    engine = {"converted": 0, "ocr_budget_s": 180, "reread_for": int(now[:8], 16)}
+    seed.run(1, {"A": 3})  # an earlier build's: no engine, and not in the table
+    for run_id, read in enumerate((31, 35, 64, 65, 239, 8), 2):
+        changed = {"A": 2, "M": 31} if run_id == 6 else {}
+        seed.run(run_id, {**engine, "ocr_ms": 100_000, "reread": read, "reread_left": 8, **changed})
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    ocr_part = parts["OCR"]
+    assert (
+        "7 run(s), 6 recorded these counts (a run of an earlier build did not) and 6 had an engine"
+        in ocr_part
+    )
+    assert (
+        "the helper ran 600s in all\n" in ocr_part and " · 442 read(s) again (0 of them could not" in ocr_part
+    )
+    title = next(ln for ln in ocr_part.splitlines() if ln.startswith("the last "))
+    assert title == (
+        "the last 5 of the 6 runs that had an engine, newest first (the sums above are over all 7 run(s) "
+        "read, so these rows do not add up to them). A run starts no more re-reads once it has spent 120s "
+        "on them, whatever OCR time is left: that usually ends its reading first, though one long read can "
+        "still use up the OCR time. `pages added + changed` is every page the run added or changed, whatever "
+        "the cause: a file read again whose text comes out the same changes no page, so `read again` is no "
+        "count of new pages. `mode` is the kind of pass, not who started it: a sync typed in a terminal is "
+        "recorded like the background job's:"
+    )
+    rows = [ln.strip("| ").split(" | ") for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)]
+    assert [(cells[0], *cells[-3:]) for cells in rows] == [
+        ("7", "0 + 0", "8 (0)", "8"),
+        ("6", "2 + 31", "239 (0)", "8"),
+        ("5", "0 + 0", "65 (0)", "8"),
+        ("4", "0 + 0", "64 (0)", "8"),
+        ("3", "0 + 0", "35 (0)", "8"),
+    ], "the run that read 31 is the one not shown: the five rows add up to 411 of the 442"
+    assert reread_rows(ocr_part)["<folder-2>"][:5] == ["yes", "1", "0", "5", "0"], "finished, 5 failed once"
+    assert (
+        "- <folder-2>, the 5 file(s) that failed once, by their row in the manifest now: 1 on this Mac · 1 "
+        "online-only · 1 with a stub · 1 deleted · 1 with no row\n" in ocr_part
+    )
+    assert ocr_part.count("that failed once, by their row") == 1, "a source with none has no line"
+    for raw in (here, cloud, gone, stub, "c0ffee"):
+        assert raw not in text, raw
+
+    # Five runs or fewer: all are shown, and the title says no more than it did.
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DELETE FROM runs WHERE run_id IN (1, 2)")
+    seed.close()
+    ocr_part = status_parts(fake_mac)[1]["OCR"]
+    assert "\nthe last runs that had an engine, newest first. A run starts no more" in ocr_part
+    assert " · 411 read(s) again (0 of them" in ocr_part
+    # More runs than are shown and none had an engine: the same count of what is hidden.
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DELETE FROM runs")
+    for run_id in range(1, 8):
+        seed.run(run_id, {"converted": 1})
+    seed.close()
+    ocr_part = status_parts(fake_mac)[1]["OCR"]
+    assert (
+        "\nthe last 5 of the 7 runs (none had an engine), newest first (the sums above are over all 7 run(s) "
+        "read, so these rows do not add up to them). A run starts" in ocr_part
+    )
 
 
 def reread_rows(part: str) -> dict[str, list[str]]:
@@ -4083,6 +4177,7 @@ def test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own(tmp_path: 
     assert set(setup_report._OCR_DOCUMENTS) == reads_pictures
     assert setup_report._OCR_MARK == image._IDENTITY_MARK and setup_report._FIELD_MARKS == image._FIELD_MARKS
     assert setup_report._REREAD_META == cycle._REREAD_META
+    assert setup_report._REREAD_BUDGET_S == cycle._REREAD_BUDGET_S, "the seconds the per-run table names"
     assert setup_report._REREAD_FOR_DIGITS == cycle._REREAD_FOR_DIGITS
     digest = "c0ffee11" + "0" * 56
     assert setup_report._reread_number(digest) == cycle._reread_number(digest) == 0xC0FFEE11
@@ -4152,7 +4247,9 @@ def seed_big(fake_mac: dict[str, Path]) -> None:
     db.execute("COMMIT")
     for run_id in range(1, 301):
         seed.run(run_id, {"converted": 6, "converted_again": 6, "ocr_ms": 1000, "ocr_budget_s": 180})
-    seed.m.set_meta("reread:" + sources[0], json.dumps([{"done": False, "for": "a" * 64, "tried": []}]))
+    once = {"big-000000": 1, "big-000003": 1}  # two of this source's files: one live, one refused
+    record = {"done": False, "for": "a" * 64, "tried": [], "failed": once}
+    seed.m.set_meta("reread:" + sources[0], json.dumps([record]))
     seed.m.set_meta("empty_cloud_dirs:" + sources[0], json.dumps([f"Northwind {n}" for n in range(60)]))
     seed.close()
 
@@ -4175,6 +4272,13 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
     )
     assert "- files whose row carries a reason: 9091 quarantined, 4546 refused" in text
     assert "; 50 of 60 checked;" in text and "of the last 200 run(s), 200 recorded" in text
+    assert (
+        "- (source 1), the 2 file(s) that failed once, by their row in the manifest now: 1 on this Mac · 1 "
+        "with a stub\n" in text
+    )
+    assert (
+        "the last 5 of the 200 runs that had an engine, newest first (the sums above are over all 200" in text
+    )
     for name in SECRET_NAMES:
         assert name not in text, name
     instructions = r.evidence_steps * setup_report._STEP_TICK
