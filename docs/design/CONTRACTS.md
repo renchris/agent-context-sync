@@ -9112,7 +9112,7 @@ MEETINGS: str                      # step 7 of procedure(): reading a recording,
 # agentsync.publish
 RUBRICS: dict[str, str]            # docs-repo path -> text: _rubrics/meeting-page.md and four sweeps
 # agentsync.curate
-CITE_CODES: frozenset[str]         # CITE-UNRESOLVED, CITE-QUOTE, CITE-MISSING, CITE-FRAME, CITE-INFERRED,
+CITE_CODES: tuple[str, ...]        # in rule order: CITE-UNRESOLVED, CITE-QUOTE, CITE-MISSING, CITE-FRAME, CITE-INFERRED,
                                    # CITE-BASIS, CITE-SHARED
 def lint_meeting_citations(layout: DocsLayout) -> list[LintFinding]: ...
 ```
@@ -9134,6 +9134,16 @@ def lint_meeting_citations(layout: DocsLayout) -> list[LintFinding]: ...
   (`cli._curate_findings`), printing each as a `warn` line. It is never part of `generate_depends`,
   `checkpoint_blockers` or the sync, so it cannot block a checkpoint or a land. The findings become ERRORs
   only after R20 measures how often the lint fails a correct citation.
+- **Choices the spec left open.** A `heard` tag falls back to a transcript page only when that page's
+  `converter` starts with `vtt-turns@` (P3's `.vtt` converter); any other page's `[t] SAID` text is third-party
+  text and resolves nothing, and a tag naming an `rN` that `sources:` lacks is CITE-UNRESOLVED with no fallback.
+  Rule 5 also accepts a quote after `chat` or `file` (the action-item rubric allows chat; neither is resolved),
+  and an Action items row whose only evidence is `inferred` plus an existing Decisions row `D<n>` (the
+  rubric's "action that follows from a decision") needs no quote. Rule 6 takes the state's last keyframe at
+  or before the cited time, following the continuation NOTE into the earlier window. A `|` inside a quoted
+  string does not split a cell (the spec's own Decisions example quotes a spreadsheet row). The lint reads
+  only regular files that are not symlinks, parses each unit once per page, and skips a unit it cannot
+  parse.
 
 Tests: `tests/test_skill.py` (`test_the_skill_names_every_tag_the_converter_emits_and_no_other`, against
 the pinned grammar in `tests/test_recording_grammar.py` until the converter lands; the procedure carries
