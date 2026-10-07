@@ -3567,6 +3567,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     header = ("source", "reason", "selector", "queued (UTC day)", "purges", *_PURGE_FATES)
     totals = Counter({fate: sum(fates[fate] for fates in grouped.values()) for fate in _PURGE_FATES})
     more = f" (the first {_PURGES_READ} are counted)" if len(queue) > _PURGES_READ else ""
+    # False only when _alias_of found no alias table. Every id counted as `no row` went through it.
+    alias_table = m.kept.get("aliases") is not False
     return [
         f"- {len(queue)} purge(s) queued{more}. For a queued stable id the last six columns say what the "
         "manifest holds now: a live file elsewhere with the same bytes (a renamed or re-exported copy), a "
@@ -3574,14 +3576,18 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "place, or no row at all.",
         "",
         *_table(header, rows),
-        *_purge_notes(totals, aliased),
+        *_purge_notes(totals, aliased, alias_table=alias_table),
     ]
 
 
-def _purge_notes(fates: Counter[str], aliased: Counter[str]) -> list[str]:
+def _purge_notes(fates: Counter[str], aliased: Counter[str], *, alias_table: bool) -> list[str]:
     """What the fates under the table mean for a run of the queue, in fixed words and counts: the queued ids
     that are now an alias, the ones that name a file listed now, and the ones the manifest holds no trace
-    of. A line is there only when its count is not 0."""
+    of. A line is there only when its count is not 0.
+
+    ``alias_table`` is False for a manifest from before ``item_aliases``. No id was looked up as an alias
+    there, and a re-key by that build left none. So the last line says only that the ids have no row, not
+    what took the rows away: an earlier id of a file listed now reads the same as a purged one."""
     out: list[str] = []
     renamed = sum(aliased.values())
     if renamed:
@@ -3596,11 +3602,17 @@ def _purge_notes(fates: Counter[str], aliased: Counter[str]) -> list[str]:
             f"- still listed: {fates['still listed']} queued purge(s) name a file the manifest lists "
             f"now{via}. A run of the queue would erase that file's page and its history"
         )
-    if fates["no row"]:
+    if fates["no row"] and alias_table:
         out.append(
             f"- no trace: {fates['no row']} queued id(s) have no row and are no alias. A re-key leaves an "
             "alias, so what took such a row away is a purge that already ran, or an erasure. A run of the "
             "queue erases only what history still names for them and takes them off the queue"
+        )
+    elif fates["no row"]:
+        out.append(
+            f"- no row: {fates['no row']} queued id(s) have no row. This manifest has no alias table, so "
+            "none was looked up as an alias: an earlier id of a file listed now cannot be told from one a "
+            "purge took away"
         )
     return out
 

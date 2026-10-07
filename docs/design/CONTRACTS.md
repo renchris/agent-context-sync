@@ -8702,12 +8702,13 @@ records the old one in `item_aliases`. So the code allows two causes, and they n
 - `_alias_of(m, source_id, stable_id)`: when no row has the queued id, one lookup on the primary key of
   `item_aliases`. The table's chain is flat (`Manifest._record_alias` moves every earlier alias to the newest
   id), so one lookup gives the current id. A manifest from before that table is read as it is: the report
-  never migrates one, asks `sqlite_master` once, and then finds no alias.
+  never migrates one, asks `sqlite_master` once, and then looks no id up.
 - On a hit the row the alias points at is judged with the fates there were: not a tombstone is `still
   listed`; a tombstone is `same bytes live`, `same path live` or `no live twin`. An alias can point at a
   tombstone (back, re-keyed, deleted again), and that is a real deletion, so no fate says "an alias" by
   itself. `_PURGE_FATES`, the table's header and the part's first line are unchanged.
-- `no row` is left to mean neither a row nor an alias.
+- `no row` is left to mean neither a row nor an alias. On a manifest with no alias table it means no row,
+  and nothing more.
 - Under the table, `_purge_notes` says what the counts mean, a line only when its count is not 0:
   - `- renamed or re-keyed: N queued id(s) are an earlier id of a file the manifest now holds under a later
     one (...). Each is counted by that file's row, since a purge follows the alias to it`
@@ -8716,7 +8717,26 @@ records the old one in `item_aliases`. So the code allows two causes, and they n
   - `- no trace: N queued id(s) have no row and are no alias. A re-key leaves an alias, so what took such a
     row away is a purge that already ran, or an erasure. A run of the queue erases only what history still
     names for them and takes them off the queue`
+  - in place of `no trace`, on a manifest with no alias table: `- no row: N queued id(s) have no row. This
+    manifest has no alias table, so none was looked up as an alias: an earlier id of a file listed now
+    cannot be told from one a purge took away`
 - The lookups stay inside `_PURGE_LOOKUPS` entries, each of them an index lookup, and no id is printed.
+
+**`no trace` is said only after a lookup** (review, 2026-10-07). Its words, "a re-key leaves an alias, so what
+took such a row away is a purge that already ran, or an erasure", are the reading that tells an operator a
+run of the queue is harmless. The first version printed them for every `no row` id, also when `_alias_of`
+had found no table and looked nothing up. A manifest from before the table holds no alias for a file that
+build re-keyed, so that file's queued id has no row either, and a purge or an erasure is not the only thing
+that took it. `_purge_part` now passes on whether the table was there (`m.kept["aliases"]`, which `_alias_of`
+sets the first time it is asked, and every `no row` id has asked it). Without the table the line gives the
+count and says what cannot be told.
+
+- Narrow: every command that opens the manifest to write adds the table, so the report meets a manifest
+  without one only before the first of those (`agentsync setup-report` by hand, or `install.sh
+  --report-only` after a run that stopped before `init` and `add-source`).
+- Limit: a manifest that got the table later holds no alias for a re-key from before it, and the report
+  cannot see when the table came. Such an id reads `no trace`. No Mac has run a build that old: the table is
+  from the manifest's first day (2026-09-29), before the first build a setup prompt installed.
 
 The lines state facts and name no command: the prompt forbids the setup agent every purge, and the report is
 the last thing it reads. `docs/deploy/setup-feedback.md` has the operator's step, which is to preview the
@@ -8735,7 +8755,9 @@ Not done here, because they are not the report's:
 Tests: `tests/test_setup_report.py` (the queue of §16.28 with two more entries: an id re-keyed after its file
 came back, which is `still listed`, and one re-keyed and deleted again, which is `no live twin`, both
 written by `Manifest.rekey`; an id that was never a row, still `no row`; the three lines; no id in the
-report; the same queue on a manifest with no alias table).
+report; the same queue on a manifest with no alias table: the two re-keyed ids are `no row` there, the lines
+under the table are exactly `still listed` and `no row`, and no line says they are no alias or that a purge
+took them).
 
 #### The fix request marks each session's part (amends §16.22 and §16.29 "Setup prompt v9"; README)
 

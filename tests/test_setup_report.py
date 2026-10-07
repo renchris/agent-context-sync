@@ -4086,16 +4086,27 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
         assert raw not in text, raw
     # A manifest from before the alias table: read as it is (the report never migrates one), so an id with
-    # no row is `no row`, and no line says what it cannot know.
+    # no row is `no row`. No alias was looked up, and a re-key by that build left none, so the two re-keyed
+    # ids read the same as the purged ones. The line says so, and no line says what it cannot know: not
+    # that they are no alias, and not that a purge or an erasure took the rows.
     seed = Seed(fake_mac["config"])
     seed.m._db.execute("DROP TABLE item_aliases")
     seed.close()
-    part = status_parts(fake_mac)[1]["Purge queue"]
+    text, parts = status_parts(fake_mac)
+    part = parts["Purge queue"]
     assert (
         rows(part)[2] == "| inbox | upstream-deleted | stable-id | 2026-10-02 | 7 | 1 | 1 | 1 | 1 | 3 | 0 |"
     )
-    assert "renamed or re-keyed" not in part and "- no trace: 4 queued id(s) have no row" in part
-    assert "- still listed: 1 queued purge(s) name a file the manifest lists now. A run of" in part
+    assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
+        "- still listed: 1 queued purge(s) name a file the manifest lists now. A run of the queue would "
+        "erase that file's page and its history",
+        "- no row: 4 queued id(s) have no row. This manifest has no alias table, so none was looked up as an "
+        "alias: an earlier id of a file listed now cannot be told from one a purge took away",
+    ]
+    for claim in ("no trace", "are no alias", "A re-key leaves an alias", "a purge that already ran"):
+        assert claim not in part, claim
+    for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
+        assert raw not in text, raw
 
 
 def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: dict[str, Path]) -> None:
