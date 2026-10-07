@@ -189,6 +189,33 @@ def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
     assert "tightened" not in capsys.readouterr().out, "nothing left to say on the next run"
 
 
+@pytest.mark.parametrize(
+    ("key", "spelled"),
+    [("log_dir", "{home}"), ("log_dir", "{home}/x/.."), ("cache_dir", "{home}"), ("state_dir", "{home}")],
+)
+def test_setup_leaves_a_folder_that_is_the_home_folder(
+    tmp_path: Path, key: str, spelled: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review, 2026-10-07: a config may name any folder for its cache, its logs and its state, and one that
+    is the home folder is not agentsync's alone. The sync left a cache or log folder there as it was, but
+    setup runs first and had no such rule: ``tightened <home> to 0700 (was 0755)``, which ends sharing from
+    that home's Public folder. Written as ``~/x/..`` the folder passed the sync's rule too, and what is in
+    the home folder was made owner-only as well."""
+    home = Path.home()
+    mine = home / "notes.txt"
+    (home / "x").mkdir()
+    mine.write_text("x\n", encoding="utf-8")
+    loose = {home: 0o755, home / "x": 0o755, mine: 0o644}
+    for path, bits in loose.items():
+        path.chmod(bits)
+    cfg = tmp_path / "ctx" / "sources.toml"
+    cfg.parent.mkdir()
+    cfg.write_text(f'[agentsync]\n{key} = "{spelled.format(home=home)}"\n', encoding="utf-8")
+    assert cli.main(["init", "--config", str(cfg)]) == cli.EXIT_OK
+    assert "tightened" not in capsys.readouterr().out
+    assert {path: path.stat().st_mode & 0o777 for path in loose} == loose
+
+
 def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = str(initialised.config_path)
     repo = initialised.docs_repo

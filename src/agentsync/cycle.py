@@ -614,6 +614,24 @@ def _in_repo(repo: Path) -> Iterator[_Own]:
         os.close(fd)
 
 
+def _holds_home(folder: Path) -> bool:
+    """True when ``folder`` is the home folder or holds it.  A config may name any folder for its cache,
+    its logs and its state, and that one is not agentsync's alone: neither a sync nor setup
+    (``cli._owner_only_dirs``) makes it owner-only.  The file system says which folder a path is (the
+    same device and inode), not its spelling: ``~/x/..``, a path through a symlink and, on a volume that
+    takes a name in any case, another case are all the home folder, and the folder that is opened is the
+    one that is changed.  A folder that is not there is neither."""
+
+    def same(above: Path) -> bool:
+        try:
+            return folder.samefile(above)
+        except OSError:
+            return False
+
+    home = Path.home()
+    return any(same(above) for above in (home, *home.parents))
+
+
 def _own_entries(config: Config) -> Iterator[_Own]:
     """:func:`_own_paths`, each with how it is opened (:data:`_Own`).  A folder the config names is opened
     by its path.  Everything inside one is opened by its name from a descriptor on the folder that holds
@@ -621,9 +639,7 @@ def _own_entries(config: Config) -> Iterator[_Own]:
     target: the walk does not enter it, and an entry it listed before is still found where it was."""
     repo, home = expand(config.docs_repo), Path.home()
     ctx = expand(config.config_path).parent
-    own = [
-        d for d in (expand(config.cache_dir), expand(config.log_dir)) if d != home and d not in home.parents
-    ]
+    own = [d for d in (expand(config.cache_dir), expand(config.log_dir)) if not _holds_home(d)]
     if ctx != home and ctx in repo.parents:
         yield ctx, ctx, None
     for folder in (repo, *own):
@@ -643,7 +659,8 @@ def _own_paths(config: Config) -> Iterator[Path]:
     check samples.  ``mirror/`` and ``.git`` are not walked: the publisher writes pages 0600 and git
     writes under ``core.sharedRepository``, which ``gitops.ensure_repo`` sets.  A tree that is a symlink
     is not walked, nor is anything in a docs repo that is one, and a cache or log folder that is the home
-    folder, or holds it, is not agentsync's alone: it is left out."""
+    folder, or holds it, is not agentsync's alone: it is left out, however it is spelled
+    (:func:`_holds_home`)."""
     return (path for path, _name, _dir_fd in _own_entries(config))
 
 

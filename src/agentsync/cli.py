@@ -65,7 +65,7 @@ from agentsync.config import (
     parse_config,
     parse_size,
 )
-from agentsync.cycle import _tighten_own_paths, run_cycle, source_statuses
+from agentsync.cycle import _holds_home, _tighten_own_paths, run_cycle, source_statuses
 from agentsync.errors import (
     AgentSyncError,
     AuthError,
@@ -465,13 +465,14 @@ def _run(config: Config, **kwargs: object) -> int:
 
 
 def _owner_only_dirs(config: Config) -> list[Path]:
-    """Directories that hold tenant data and must not be group/world readable (existing ones)."""
+    """Directories that hold tenant data and must not be group/world readable (existing ones).  A cache,
+    log or state folder that is the home folder, or holds it, is not one of them, in any spelling: the
+    sync leaves it as it is, and so does setup (:func:`agentsync.cycle._holds_home`)."""
+    named = (expand(config.cache_dir), expand(config.log_dir), expand(config.state_dir))
     candidates = [
         expand(config.docs_repo),
         expand(config.docs_repo) / ".git",
-        expand(config.cache_dir),
-        expand(config.log_dir),
-        expand(config.state_dir),
+        *(d for d in named if not _holds_home(d)),
     ]
     home_ctx = expand(config.config_path).parent
     if home_ctx != Path.home() and home_ctx in expand(config.docs_repo).parents:

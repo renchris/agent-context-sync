@@ -492,18 +492,29 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
 ) -> None:
     """A config may name any folder for its cache and its logs. One that is the home folder, or holds it,
     is not agentsync's alone, so nothing in it is changed: the check reports it, and the chmod is the
-    person's decision."""
+    person's decision. The file system says which folder a path is, not its spelling (review, 2026-10-07):
+    ``~/x/..``, a path through a symlink and, where the volume takes a name in any case, another case all
+    passed a comparison of the paths as written, and the home folder and what is in it were made
+    owner-only."""
     repo, home = tmp_path / "docs", tmp_path / "people" / "me"
     repo.mkdir()
-    home.mkdir(parents=True)
+    (home / "x").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
     mine = home / "notes.txt"
     mine.write_text("x\n", encoding="utf-8")
-    mine.chmod(0o644)
-    for log_dir in (home, home.parent):
+    loose = {home.parent: 0o755, home: 0o755, home / "x": 0o755, mine: 0o644}
+    for path, bits in loose.items():
+        path.chmod(bits)
+    (tmp_path / "link").symlink_to(home.parent, target_is_directory=True)
+    spellings = [home, home.parent, home / "x" / "..", home / "..", tmp_path / "link" / "me"]
+    spellings += [p for p in (home.with_name("ME"),) if p.is_dir()]  # a volume that takes any case
+    for log_dir in spellings:
         config = dataclasses.replace(own_config(tmp_path, repo), log_dir=log_dir)
-        assert cycle_mod._tighten_own_paths(config) == 0 and mode(mine) == 0o644
+        assert cycle_mod._holds_home(log_dir), log_dir
+        assert cycle_mod._tighten_own_paths(config) == 0, log_dir
+        assert {path: mode(path) for path in loose} == loose, log_dir
         assert cycle_mod._sync_leaves(config, [mine]) == [mine]
+    assert not cycle_mod._holds_home(home / "x") and not cycle_mod._holds_home(tmp_path / "missing")
     assert "chmod -R go-rwx" in (permissions(dataclasses.replace(config, log_dir=home)).fix or "")
 
 
