@@ -3375,6 +3375,14 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "",
         *_table(header, rows),
     ]
+    if any(x.n("converted_failed") for x in runs[:_RUNS_SHOWN]):
+        # A run with failures followed by runs with none reads like a retry that worked. It is not one.
+        out += [
+            "",
+            "- a conversion that failed is counted in the run it failed in and is not tried again until the "
+            "file's bytes change: later runs with no failure are not a retry that worked, and the files "
+            'still without a page are in Quarantine by reason, class "conversion failed"',
+        ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
     total = 0

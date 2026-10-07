@@ -1923,6 +1923,44 @@ def test_a_copy_of_a_file_the_run_before_converted_is_no_file_converted_again(
     assert record["converted"] == 1 and not [key for key in record if key.startswith("converted_")]
 
 
+def test_a_conversion_that_failed_is_counted_once_and_not_tried_again(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``converted_failed`` counts a conversion in the run it failed in.  The file then has its stub, and
+    no later run converts it until its bytes change: a run record with failures followed by one with none
+    is not a retry that worked."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    tries: list[str] = []
+
+    def failing(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso broken"):
+            tries.append(name)
+            raise RuntimeError("no such heading")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", failing)
+    broken = local_source_dir / "projects" / "Contoso broken.md"
+    broken.write_text("# Notes\n\nA page the converter fails on.\n", encoding="utf-8")
+    assert run(sample_config).exit_code == 0
+    first = _run_record(sample_config)
+    assert first["converted_failed"] == 1 and first["converted"] > 1 and len(tries) == 1
+    for _ in range(2):
+        assert run(sample_config).commit_sha is None
+        assert _run_record(sample_config) == {"converted": 0}
+    assert len(tries) == 1, "the same bytes are not converted again"
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, "projects/Contoso broken.md")
+    assert row is not None
+    assert row.state is RowState.QUARANTINED and (row.state_reason or "").startswith("conversion failed")
+    broken.write_text("# Notes\n\nNew bytes, and the converter still fails.\n", encoding="utf-8")
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["converted"], record["converted_failed"], len(tries)) == (1, 1, 2)
+    assert "converted_seen" not in record
+
+
 def test_the_limit_marks_are_the_converters_own_wording() -> None:
     assert cycle_mod._PAGE_CAP_MARK in pdf_mod._SCANNED_OUTCOMES[pdf_mod._OCR_OVER_LIMIT]
     assert cycle_mod._PAGE_CAP_MARK in pdf_mod._NO_TEXT_PAST_LIMIT

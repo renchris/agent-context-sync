@@ -2795,6 +2795,13 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "same bytes converted again, by the same file or by a copy of it); 2 of them last by the newest run "
         "(5), 1 by the run before it" in part
     )
+    # Run 5 has a failed conversion: the part says what a later run without one does not mean.
+    note = "- a conversion that failed is counted in the run it failed in and is not tried again until"
+    assert note in part and 'Quarantine by reason, class "conversion failed"\n' in part
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 5", (json.dumps({"converted": 2}),))
+    seed.close()
+    assert note not in status_parts(fake_mac)[1]["Repeat conversions"], "no run shown has a failure"
 
 
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(

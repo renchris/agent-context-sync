@@ -7497,7 +7497,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | Key | What it counts |
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
-| `converted_failed` | of those, conversions that failed; the next cycle tries them again |
+| `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
@@ -7517,6 +7517,11 @@ other key that would be 0 is left out. No reader depended on the old content.
   is left inexact: a file converted before, converted again right after a run that converted a copy of it, is
   counted in `converted_again` although the run just before converted the copy. A conversion that failed
   has no cache row and is counted by `converted_failed` instead.
+- A failed conversion is not retried. The next pass finds the same canonical hash and an intact stub page,
+  converts nothing and settles the row, so a run with `converted_failed` followed by runs with none is not a
+  retry that worked: the files are still stubs. The report's Quarantine by reason part counts them, class
+  `conversion failed`, and its Repeat conversions part says so under the table when a run it shows has a
+  failure. Whether a failed conversion should be tried again is older behavior and a separate decision.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `Manifest.cache_last_used(action_key) -> int | None` returns the run that last used a cache index row, None
   when there is none. The cycle asks before `record_cache` moves it, and only through `_converted_before`.
@@ -7530,7 +7535,8 @@ Tests: `tests/test_cycle.py` (a cycle without an engine records no OCR key; five
 the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle with an engine; a scan past the
 page limit, a PDF converted past the budget and its re-read, a helper that fails on everything; a file
 converted again from the same bytes in two runs running; a copy of a file the run before converted, and a
-second copy in the run after, neither a repeat; the limit marks are the converters' wording) and
+second copy in the run after, neither a repeat; a conversion that fails, counted once and not tried again
+until the bytes change; the limit marks are the converters' wording) and
 `tests/test_manifest.py` (`cache_last_used`).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)

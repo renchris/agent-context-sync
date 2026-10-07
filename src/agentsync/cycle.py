@@ -1445,11 +1445,12 @@ class _Cycle:
         other key that would be 0 is left out.
 
         ``converted``: files converted (the sum of ``SourceReport.converted``); ``converted_failed``: of
-        those, conversions that failed (retried by the next cycle); ``converted_seen``: of those, files
-        whose own pages were made from the same bytes by an earlier run (``_converted_before``; a copy of
-        a file is not one); ``converted_again``: of those, when the bytes were last converted in the run
-        just before.  ``reread`` and ``reread_kept``: files read again for what their converter has
-        gained, and those of them that kept their page.
+        those, conversions that failed (counted in the run they failed in: the file keeps its stub and is
+        not converted again until its bytes change); ``converted_seen``: of those, files whose own pages
+        were made from the same bytes by an earlier run (``_converted_before``; a copy of a file is not
+        one); ``converted_again``: of those, when the bytes were last converted in the run just before.
+        ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
+        of them that kept their page.
         ``ocr_ms``: milliseconds the helper ran; ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1
         when it was used up; ``ocr_down``: 1 when the helper stopped working; ``ocr_deferred``: files left
         for a later cycle's OCR (``_ocr_waits``); ``ocr_without_budget`` and ``ocr_without_down``: files
