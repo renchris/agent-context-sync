@@ -374,7 +374,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (9, "c44e99174bec1286aa7a30a2e3ea9c3faf89893a0fd3b0a2daebdd3b178e32ee")
+PROMPT = (9, "ebe93a9aac8eaaac6ad282a50e2402c4c8ef56a103aba5c6d106579f896570d2")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -542,11 +542,14 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # The second bring-back (2026-10-07): the file outlives a session and nothing may be deleted, so a session
     # that found an earlier request could only append to it, and one that ran the report twice rewrote its own
     # "## Not used". The rules give the file its boundary: one part per session, under that session's heading.
+    # The heading has the time too: a failed session and the one pasted after it are often the same day's, and
+    # a heading with the date alone would be the same for both.
     assert (
         "arrives with the next pull. That file is kept from session to session: leave an earlier session's "
         "text as it is, write yours after it under a heading of your own that names this prompt's version "
-        "and today's date, and rewrite only your own part. In that file, name a folder"
+        "and the current date and time, and rewrite only your own part. In that file, name a folder"
     ) in block
+    assert "today's date" not in block, "the date alone does not tell two sessions of one day apart"
     assert len(re.findall(r"setup prompt v\d+", block)) == 1, "the heading rule holds no version of its own"
     feedback = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
     private = feedback.split("**Privately (no public post needed):**", 1)[1].split("**", 1)[0]

@@ -8749,13 +8749,20 @@ The fix is prompt wording, on v9 before it is published. The file stays cumulati
 
 - **Rules**, after "arrives with the next pull.": "That file is kept from session to session: leave an
   earlier session's text as it is, write yours after it under a heading of your own that names this
-  prompt's version and today's date, and rewrite only your own part."
+  prompt's version and the current date and time, and rewrite only your own part."
 - **Step 3**, after the path of the `## Not used` section: "(one per session: if this session already added
   one, rewrite that one)".
 - The two sentences tests already held are word for word what they were, and the new text follows each.
 - The heading rule names no version number, so the block still states its version in the six places it did.
   Both field sessions wrote such a heading unprompted (`# agentsync fix request (setup prompt v8, source
-  commit ...)`). The date is added because v9 makes several sessions of one version on one Mac normal.
+  commit ...)`). The date and time are added because v9 makes several sessions of one version on one Mac
+  normal.
+- The time is there so that the heading marks one session (review, 2026-10-07). The first wording had
+  "today's date" alone. A session that fails at step 2 and the one pasted after it are often the same day's,
+  and both would have written the same heading. Then triage could not tell one session from two, and a
+  session that lost its context could take the other's part for its own and rewrite it, which "rewrite only
+  your own part" and step 3's "rewrite that one" allow. v9 was still unpublished, so again only the digest
+  moved.
 - `install.sh` is unchanged: `write_bring_back` still copies the whole file into section 2. Triage reads
   from the last session heading down (`docs/deploy/setup-feedback.md`, the private route, and K23).
 
