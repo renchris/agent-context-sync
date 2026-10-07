@@ -203,6 +203,52 @@ comment with its kind, its author, the text it marks and what it says, and repli
 Annotations no viewer shows are left out. A PDF converted before this is read again once, under the same rule: only
 when it is already on the Mac.
 
+### Meeting recordings: on-device screens
+
+A meeting recording (`.mp4`, `.m4v`, `.mov`) is read on the Mac for the text that was on its screen, by Apple's
+AVFoundation and the same Vision OCR as images. It becomes a folder of pages next to where the file would be:
+
+- `00-index.md`: the recording's length and picture size, the title card's text when it has one, the names read
+  on screen, how many screen states and keyframes each kind of view had, and how to read the folder;
+- one page per five minutes, `01-t000000.md`, `02-t000500.md` and so on: each screen state (a slide, a shared
+  window, the camera view) under a heading with its times, then one line per row of on-screen text, each starting
+  with its media time and a tag (`SCREEN:`, `TILE:`, `KEYFRAME:`, `NOTE:`);
+- keyframes: one or two JPEG pictures of each screen state, in the window page's `.files/` folder, so an agent can
+  look at a chart or a face the text does not cover.
+
+No speech is read yet. The page also does not say who spoke, whether a camera was on, what a video played inside a
+share showed, the chat unless it was shared, anything on screen for less than 4 seconds, or the clock time of a
+moment; the index lists these.
+
+Only runs that no tool timeout ends read recordings: a background sync, and `~/.local/bin/agentsync materialise
+<file>` for one recording, which reads it to the end. An interactive `sync` reads none: it counts them in a `note:`
+line. A background sync reads about three minutes of recording work at a time and keeps what it has read, so a
+two-hour meeting is read within about half an hour of arriving; until then `sync` and `status` say how many minutes
+are read. Waiting recordings never hold the `NEXT:` step.
+
+An online-only recording is downloaded by the background reconcile job (or `materialise`), one per sync, up to 4 GB,
+only when the disk keeps room for it. When the download is refused or takes too long, a `note:` line says so: in
+Finder choose Always Keep on This Device on the folder, or Download Now on the file, and the next background sync
+reads it.
+A recording read while it was on the Mac keeps its pages once it goes online-only.
+
+The helper is built by `scripts/install.sh` next to the OCR helper (one `media helper:` line) and needs OCR on. To
+turn recordings off, so that the helper is neither built nor run and a recording stays unconverted:
+
+```toml
+[convert]
+recordings = false
+```
+
+A sensitivity-label rule under `[policy]` does not stop recordings: they are read on this Mac, a recording's own
+label cannot be read, and each index (and the `policy` line of `status`) says so.
+
+Retention follows the mirror. With the defaults, a recording deleted or expired at the source has its pages and
+keyframes purged with it; with `[governance] archive = true` they are copied to `docs/archive/` and kept past the
+source's expiry, like every archived page. Keyframes are about 27.5 MB per recording-hour (about 212 MB at most for
+one recording); at five one-hour meetings a week that is about 2.3 GB in the docs repo at a 120-day expiry, and
+about three times that on disk counting the cache and git. The secret scan reads the pages' text, not the pictures.
+
 ## Set up on a new Mac: one prompt
 
 Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. The
