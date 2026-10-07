@@ -1481,37 +1481,51 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
     """``install.sh --list-folders`` on a Mac that already syncs folders prints one line that counts them and
-    a mark before each (field report 2026-10-07). Both reach install.out, whose tail the report embeds: the
-    count and the marks are kept, and a marked folder is a placeholder like every other listed one."""
+    a mark before each (field report 2026-10-07), and a mark of its own before a listed folder inside one
+    and before one that holds one. All reach install.out, whose tail the report embeds: the count and the
+    marks are kept, and a marked folder is a placeholder like every other listed one."""
     write_install_log(fake_mac)
     write_friction(fake_mac)
-    other = fake_mac["one"].parent / "Harbor Works"
-    other.mkdir()
+    library = fake_mac["one"].parents[1]
+    whole, other = library / "Harbor Works", fake_mac["one"].parent / "Quay Drafts"
+    for d in (whole / "Pier Nine", other):
+        d.mkdir(parents=True)
+    assert cli.main(["add-source", str(whole), "--config", str(fake_mac["config"])]) == 0
     keep = (
-        "NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run "
+        "NEXT: this Mac already syncs 3 folder(s), and a re-run keeps them: run "
         f'{fake_mac["home"]}/src/agent-context-sync/scripts/install.sh, with one --source-local "<folder>" '
-        "for each folder to add from the list above (none is needed)"
+        "for each unmarked folder to add from the list above (none is needed)"
     )
     lines = [
         "# run=20260929T095805Z-11 2026-09-29T09:58:05Z install.sh --list-folders",
-        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
-        str(fake_mac["one"].parent),
+        "already synced on this Mac: 3 folder(s) (marked [synced] below)",
+        f"[contains a synced folder] {fake_mac['one'].parent}",
         f"[synced] {fake_mac['one']}",
         str(other),
+        f"[synced] {whole}",
+        f"[inside a synced folder] {whole / 'Pier Nine'}",
+        f"[contains a synced folder] {fake_mac['two'].parent}",
         f"[synced] {fake_mac['two']}",
         keep,
     ]
     (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     shown = section(text, "Installer").split("(what the agent saw)</summary>", 1)[1]
-    assert "already synced on this Mac: 2 folder(s) (marked [synced] below)\n" in shown
-    cloud = "~/Library/CloudStorage"
-    assert f"\n[synced] {cloud}/OneDrive-<org-1>/<folder-1>/<folder-2>\n" in shown
-    assert f"\n[synced] {cloud}/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>\n" in shown
-    unmarked = re.findall(rf"(?m)^{cloud}/OneDrive-<org-1>/<folder-\d>(?:/<folder-\d>)?$", shown)
-    assert len(unmarked) == 2, "the two folders this Mac does not sync, as placeholders too"
-    assert "NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run ~/src/" in shown
-    for raw in (*RAW, "Harbor", "Works"):
+    assert "already synced on this Mac: 3 folder(s) (marked [synced] below)\n" in shown
+    cloud, name = "~/Library/CloudStorage", r"<folder-\d>"
+    mine, shared = f"{cloud}/OneDrive-<org-1>", f"{cloud}/OneDrive-SharedLibraries-<org-1>/<library-1>"
+    for line in (
+        rf"\[synced\] {mine}/{name}/{name}",
+        rf"\[synced\] {mine}/{name}",
+        rf"\[synced\] {shared}/{name}",
+        rf"\[inside a synced folder\] {mine}/{name}/{name}",
+        rf"\[contains a synced folder\] {mine}/{name}",
+        rf"\[contains a synced folder\] {shared}",
+        rf"{mine}/{name}/{name}",  # the folder this Mac does not sync, a placeholder too
+    ):
+        assert len(re.findall(rf"(?m)^{line}$", shown)) == 1, line
+    assert "NEXT: this Mac already syncs 3 folder(s), and a re-run keeps them: run ~/src/" in shown
+    for raw in (*RAW, "Harbor", "Works", "Pier", "Nine", "Quay", "Drafts"):
         assert raw not in text, raw
 
 

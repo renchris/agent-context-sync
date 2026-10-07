@@ -374,7 +374,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (9, "8d396288002e92afd2fc2ba1d47f79595ee65588401611539dd164d600dc81f8")
+PROMPT = (9, "afd01c8212d6f82c9e58656e1ed85065555c17e9ee66e7c8315fe08d3f254d7c")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1102,13 +1102,17 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     round lost on a question the person had answered before. Stopping stays right on a new Mac. When
     ``--list-folders`` says folders are already synced, the agent says which and asks only whether to add
     one, and with nobody to ask it adds none and goes on, which is no deviation. Step 2 names the command
-    for that. The line and the mark the prompt names are the installer's own."""
+    for that. The line and the mark the prompt names are the installer's own.
+
+    The folder to add is an unmarked one, in the prompt and in the list's own NEXT: a listed folder inside
+    a synced one is synced already, and one that holds one would be read twice, and each has a mark that
+    says so."""
     step1, step2 = _prompt_steps()[1], _prompt_steps()[2]
     stop = "do not choose folders for me: log a deviation, stop and wait for my answer."
     kept = (
         f'One exception: if --list-folders printed a line that starts "{ALREADY_SYNCED}", I chose those '
         "folders before and they are kept (each has [synced] before its path in the list). Then tell me "
-        "which they are and ask only whether to add any other folder. If you cannot ask me then, add none "
+        "which they are and ask only whether to add any unmarked folder. If you cannot ask me then, add none "
         "and go on to step 2. That is not a deviation: do not log it or stop, and say in your final message "
         "that I was not asked and no folder was added."
     )
@@ -1117,6 +1121,9 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert script.count(f'say "{ALREADY_SYNCED} $synced folder(s) (') == 2, "both forms of the line start so"
     assert 'SYNCED_MARK="[synced]"' in script
+    assert 'INSIDE_MARK="[inside a synced folder]"' in script
+    assert 'CONTAINS_MARK="[contains a synced folder]"' in script
+    assert "for each unmarked folder to add from the list above" in script
     none_to_add = (
         "On a Mac that already syncs folders, name only the folders I chose to add. With none to add, run it "
         f"with no --source-local, which keeps the folders already synced: `{INSTALL_SH}`"

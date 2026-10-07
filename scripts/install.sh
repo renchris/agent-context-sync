@@ -30,7 +30,9 @@
 #                           is still asking; its NEXT: line says which and names the click. On a Mac whose
 #                           config already syncs folders (see "Folders already synced" below) the list starts
 #                           with "already synced on this Mac: N folder(s) ..." and each of them it lists has
-#                           "[synced] " before its path; its NEXT: names the command that keeps them
+#                           "[synced] " before its path; a listed folder inside one of them has "[inside a
+#                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
+#                           NEXT: names the command that keeps them
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -42,7 +44,10 @@
 # Folders already synced: a re-run on a Mac that is set up asks for no folder. The person chose them once, and
 # they are in the config: the folder of each live local source (the inbox is agentsync's own folder and is
 # not one of them). The installed agentsync reads them, with its own rule for a folder reached through a
-# link (config.canonical_source_root), so --list-folders marks exactly the folders a sync reads. Without a
+# link (config.canonical_source_root), so --list-folders marks exactly the folders a sync reads: each of
+# them, and every listed folder inside one (a sync reads the whole tree under a source; an exclude list is
+# not read here). A listed folder that holds one has a mark of its own: adding it would read that tree twice.
+# So an unmarked folder is one no sync reads, in whole or in part. Without a
 # config, or with one that holds no such source, --list-folders prints what it always did. A config the
 # installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked. A run
 # with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
@@ -1155,9 +1160,14 @@ tool_python() {
 	[ ! -x "$dir/agentsync/bin/python" ] || printf '%s' "$dir/agentsync/bin/python"
 }
 SYNCED_MARK="[synced]" # what --list-folders writes before a folder the config already syncs
+# A sync reads the whole tree under a synced folder, so a listed folder inside one is synced too, and one
+# that holds one would be read twice if it were added. Each gets its own mark.
+INSIDE_MARK="[inside a synced folder]"
+CONTAINS_MARK="[contains a synced folder]"
 # The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
 # $1: prints their number, then each line of the file $2 (one folder path per line), with "$SYNCED_MARK "
-# before a folder that is one of them. Both sides go through agentsync's own rule, so a folder the config
+# before a folder that is one of them, "$INSIDE_MARK " before one inside one of them and "$CONTAINS_MARK "
+# before one that holds one. Both sides go through agentsync's own rule, so a folder the config
 # names through a link is still that folder. Fails when that agentsync cannot load the config, and stops
 # after 10 s. It uses only names every agentsync since 2026-09-29 has: step 1 of the setup prompt runs this
 # before step 2 updates the tool. -I: nothing from the folder this runs in is imported.
@@ -1169,12 +1179,22 @@ from agentsync.config import canonical_source_root, load_config
 
 sources = load_config(Path(sys.argv[1])).sources
 synced = {s.path for s in sources if s.kind.value == "local" and s.state.value == "live" and s.path is not None}
-with open(sys.argv[3], "rb") as fh:
+with open(sys.argv[2], "rb") as fh:
     listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
-mark = sys.argv[2] + " "
-out = [str(len(synced))] + [(mark if canonical_source_root(Path(p)) in synced else "") + p for p in listed]
+same, inside, contains = (mark + " " for mark in sys.argv[3:6])
+out = [str(len(synced))]
+for p in listed:
+    folder = canonical_source_root(Path(p))
+    if folder in synced:
+        out.append(same + p)
+    elif any(s in folder.parents for s in synced):
+        out.append(inside + p)
+    elif any(folder in s.parents for s in synced):
+        out.append(contains + p)
+    else:
+        out.append(p)
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
-' "$CONFIG" "$SYNCED_MARK" "$2"
+' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK"
 }
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
@@ -1262,7 +1282,7 @@ list_folders() {
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
 		step_end failed "$rc" no-folders
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
-		NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each folder to add from the list above (none is needed)"
+		NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
 		step_end "done" 0 "listed-$total synced=$synced"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"

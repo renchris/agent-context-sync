@@ -235,7 +235,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `already synced on this Mac: N folder(s) (marked [synced] below)` and each of them has `[synced]` before its
   path. A synced folder the list does not show (deeper than it goes, outside `~/Library/CloudStorage`) is
   counted and said to be outside it.
-- Step 1 then tells the person which folders those are and asks only whether to add one. An agent that
+- A sync reads the whole tree under a synced folder. So a listed folder inside one has
+  `[inside a synced folder]` before its path, and one that holds one has `[contains a synced folder]`. Only
+  an unmarked folder is one to add: a marked one, added, would be read twice.
+- Step 1 then tells the person which folders those are and asks only whether to add an unmarked one. An agent that
   cannot ask adds none and goes on to step 2. That is not a deviation and is not logged; the agent says it in
   its final message. On a Mac with no synced folder nothing changed: an agent that cannot ask logs a deviation,
   stops and waits.

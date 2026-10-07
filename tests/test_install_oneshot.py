@@ -1194,12 +1194,16 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     line first, and a mark before each. A folder counts by the path agentsync syncs it under (a source
     written through OneDrive's own link in the home folder is the folder under CloudStorage). A paused
     source and the inbox are not folders it syncs, and a source deeper than the list goes is counted and
-    said to be outside it."""
+    said to be outside it.
+
+    A sync reads the whole tree under a synced folder. So a listed folder inside one is synced too, and
+    one that holds one would be read twice if it were added: each has a mark of its own, and only a folder
+    no sync reads is left unmarked (the list's NEXT names those as the ones to add)."""
     cs = _cloud(env)
     for d in (
         "OneDrive-Contoso/FY26 Projects/Alpha/Deep",
         "OneDrive-Contoso/FY26 Projects/Beta",
-        "OneDrive-Contoso/Documents",
+        "OneDrive-Contoso/Documents/Plans",
         "SharedLibraries-Contoso/Team Site - Docs",
     ):
         (cs / d).mkdir(parents=True)
@@ -1221,20 +1225,21 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     keep = (
         f"NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run {INSTALL_SH}, with one "
-        '--source-local "<folder>" for each folder to add from the list above (none is needed)'
+        '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
     )
     assert cp.stdout.splitlines() == [
         "already synced on this Mac: 2 folder(s) (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Documents",
-        f"{cs}/OneDrive-Contoso/FY26 Projects",
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Documents/Plans",
+        f"[contains a synced folder] {cs}/OneDrive-Contoso/FY26 Projects",
         f"[synced] {cs}/OneDrive-Contoso/FY26 Projects/Alpha",
         f"{cs}/OneDrive-Contoso/FY26 Projects/Beta",
         f"{cs}/SharedLibraries-Contoso/Team Site - Docs",
         keep,
     ]
     assert calls(env) == ["uv tool dir"], "uv says where the installed agentsync is; nothing is installed"
-    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-5")]
-    assert install_log(env)[-2].endswith(" result=done note=listed-5 synced=2")
+    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-6")]
+    assert install_log(env)[-2].endswith(" result=done note=listed-6 synced=2")
     assert not report_path(env).exists()
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     cfg.write_text(
@@ -1367,7 +1372,7 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     listing = install_sh(env, "--list-folders")
     assert listing.stdout.splitlines()[:-1] == [
         "already synced on this Mac: 1 folder(s) (marked [synced] below)",
-        str(alpha.parent),
+        f"[contains a synced folder] {alpha.parent}",
         f"[synced] {alpha}",
         str(beta),
     ]

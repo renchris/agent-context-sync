@@ -269,8 +269,8 @@ unclear; include better wording). Do not log the steps themselves; the installer
    unattended, or the question comes back unanswered), do not choose folders for me: log a deviation, stop and
    wait for my answer. One exception: if --list-folders printed a line that starts "already synced on this Mac:",
    I chose those folders before and they are kept (each has [synced] before its path in the list). Then tell me
-   which they are and ask only whether to add any other folder. If you cannot ask me then, add none and go on to
-   step 2. That is not a deviation: do not log it or stop, and say in your final message that I was not asked
+   which they are and ask only whether to add any unmarked folder. If you cannot ask me then, add none and go on
+   to step 2. That is not a deviation: do not log it or stop, and say in your final message that I was not asked
    and no folder was added.
 2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
    timeout your tool allows (10 minutes if you can set it):
@@ -706,7 +706,8 @@ The installer is safe to re-run and never prompts. `--list-folders` prints
 one full path per line; it exits 3 when OneDrive is not signed in or syncs no folder yet and 4 when macOS denied
 this terminal access, and its `NEXT:` line says which. Repeat `--source-local` for each folder. On a Mac that
 already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
-one folder), `--list-folders` writes `[synced]` before each folder already synced, and `install.sh` with no
+one folder), `--list-folders` writes `[synced]` before each folder already synced (and a mark of its own before a
+folder inside one or around one: add only an unmarked folder), and `install.sh` with no
 `--source-local` keeps them all. It ends with the loop's `NEXT:` line: do what it says. Every work session then starts with
 `~/.local/bin/agentsync sync` and does what its `NEXT:` line says. Background sync is optional and yours to turn on, never part of setup:
 `install.sh --confirm-install-agent` builds the signed launcher, syncs once and installs two LaunchAgents (a poll

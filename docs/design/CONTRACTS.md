@@ -8027,17 +8027,28 @@ one of them has `[synced] ` before its path (`SYNCED_MARK`). A made-up example:
 ```text
 already synced on this Mac: 2 folder(s) (marked [synced] below)
 [synced] ~/Library/CloudStorage/OneDrive-Contoso/Documents
-~/Library/CloudStorage/OneDrive-Contoso/Projects
+[inside a synced folder] ~/Library/CloudStorage/OneDrive-Contoso/Documents/Plans
+[contains a synced folder] ~/Library/CloudStorage/OneDrive-Contoso/Projects
 [synced] ~/Library/CloudStorage/OneDrive-Contoso/Projects/Alpha
 ~/Library/CloudStorage/OneDrive-Contoso/Projects/Beta
 NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.sh, with one --source-local
-"<folder>" for each folder to add from the list above (none is needed)
+"<folder>" for each unmarked folder to add from the list above (none is needed)
 ```
 
 (Real output has full paths and one `NEXT:` line.)
 
 - The list is what it was: sorted, at most 200, then `(N more)`. A mark goes before the path, so the path
   still ends the line and an unmarked line still starts with `/`.
+- **A folder inside or around a synced one has a mark of its own** (review, 2026-10-07). A sync reads the
+  whole tree under a source. So a listed folder inside a synced folder is synced already, and it has
+  `[inside a synced folder] ` before its path (`INSIDE_MARK`). A listed folder that holds a synced one has
+  `[contains a synced folder] ` (`CONTAINS_MARK`): added, it would read that tree a second time, under a
+  second source with its own download budget. `[synced]` wins over both, and inside wins over contains. Only
+  a folder no sync reads, in whole or in part, is unmarked, and the `NEXT:` names those as the ones to add
+  ("each unmarked folder"). Before this, with `Projects` synced, `Projects/Alpha` was unmarked and read as
+  not synced, and `agentsync add-source` accepts a folder inside a source. The marks say where a folder is:
+  a source's `exclude` list is not read, and the count on the first line is still the folders the config
+  names.
 - A synced folder the list does not show is counted and said to be outside it: `already synced on this Mac: 3
   folder(s) (2 marked [synced] below; 1 not in this list)`. That is a source deeper than the list goes (it
   shows 1 or 2 levels inside each provider), one outside `~/Library/CloudStorage`, or one past the cap of 200.
@@ -8065,10 +8076,11 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
 
 Tests: `tests/test_install_oneshot.py` (the output with no config, with an installed agentsync and no
 config, and with the inbox alone, each byte for byte the list of before; two synced folders marked, one of
-them configured through the home folder's link, a paused source and the inbox not marked, and a third deeper
-than the list; a synced folder past the cap; no installed agentsync and a config that does not load, each
-with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and two
-marked folders in install.out: the count and the marks kept, every folder a placeholder).
+them configured through the home folder's link, a paused source and the inbox not marked, a listed folder
+inside a synced one and one that holds one, each with its mark, and a third source deeper than the list; a
+synced folder past the cap; no installed agentsync and a config that does not load, each
+with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and the
+three marks in install.out: the count and the marks kept, every folder a placeholder).
 
 #### A run with no folder keeps them (amends §16.13 and §16.14; `scripts/install.sh`)
 
@@ -8158,13 +8170,17 @@ a deviation, stop and wait for my answer." After it:
 ```text
 One exception: if --list-folders printed a line that starts "already synced on this Mac:", I chose those
 folders before and they are kept (each has [synced] before its path in the list). Then tell me which they
-are and ask only whether to add any other folder. If you cannot ask me then, add none and go on to step 2.
-That is not a deviation: do not log it or stop, and say in your final message that I was not asked and no
+are and ask only whether to add any unmarked folder. If you cannot ask me then, add none and go on to step
+2. That is not a deviation: do not log it or stop, and say in your final message that I was not asked and no
 folder was added.
 ```
 
 - The exception follows the rule and names it as one, so which of the two applies is never a matter of
   reading order: the rule is for a Mac with no folder synced, the exception for a Mac that has some.
+- "Any unmarked folder" (review, 2026-10-07; it read "any other folder"): a listed folder inside a synced one
+  is synced already, and one that holds one would be read twice. Each has a mark that says so, and the
+  list's `NEXT:` uses the same word. v9 was not published with the earlier wording, so the version did not
+  move, only the block's digest.
 - The line and the mark it names are the installer's own words (`--list-folders`, above). A test holds the
   prompt's quoted start against the script's two `say` lines.
 - "Not a deviation" is said outright, with "do not log it or stop". The v8 run that lost a round followed
@@ -8204,7 +8220,8 @@ text above the block gains three sentences that say a re-run keeps the folders c
   turns` and `folders:` lines carry the same facts from the log.
 
 Tests: `tests/test_deploy_pack.py` (the version in every place and the block's digest; step 1's exception
-after its rule, word for word, with the installer's line and mark; step 2's two forms and their order; the
+after its rule, word for word, with the installer's line, its three marks and the word its `NEXT:` shares
+with the prompt; step 2's two forms and their order; the
 text above the block; the exact step 1 command under bash and zsh on a Mac that already syncs a folder: the
 line, the mark, and the `NEXT:`; both tools' pre-allow rules against every command of the block, the bare
 install command included), `tests/test_setup_report.py` (v8 and v9 read with v7's layout; the form's failed
