@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 ---
 
 # Plan — the corporate Mac's bring-back file: field fixes, riders, PDF comments, on-device OCR
@@ -50,6 +50,44 @@ checked by a skeptic (Workflow `wf_44ecd2de-039`), confirmed defects in every un
 | D11 | A re-read that fails keeps the existing page. Re-reads select only rows the current pass saw unchanged and that are on disk, per source, in small batches under a time bound, and never during `materialise PATH`. | The patch re-marked the same 200 rows every cycle, forced re-downloads, and could replace a good page with a stub. |
 | D12 | PDF comment authors are kept. | Same as xlsx comments and mail senders on main. |
 | D13 | PDF pages are rasterised in-process by PDFium (accepted); page renders go under the cycle's staging folder, not `$TMPDIR`. | Staging is 0700, Time-Machine-excluded and wiped every cycle. |
+
+## Result (2026-10-06)
+
+All six waves are on `main`: 101 commits, `5aae95d..d7921ad`. Gate on the final tip: ruff, format, mypy, shellcheck,
+diagrams and probes clean; pytest 2570 passed, 2 skipped. Runs: review `wf_44ecd2de-039` (112 agents), build
+`wf_e0ff11e4-75a` (B1–B4, 28 agents) and `wf_df2cbc13-5b1` (B5–B6, 11 agents). Every wave had a full gate, fresh
+reviewers and a fix pass before it was stacked; no slot returned empty. Surface added: the key `[convert] ocr`,
+the doctor line `ocr`, the converter id `image-ocr`. The CLI freeze pins did not change.
+
+| Wave | Landed | What is now true |
+|---|---|---|
+| B1 field fixes | 22 commits, in `46a102f` | Triage items I1–I19: the report keeps an agent's product name and no longer leaks escaped folder names, nested names in log lines, source ids or project paths; a late friction line or a late step-2 error no longer sets the outcome; the guides name the kept inbox; sync makes agent-written docs-repo paths owner-only; installer and status wording. |
+| B2 riders | 11 commits | One-pass chart values; sidecar names shortened under the path cap (archive path included); one scope predicate shared by the walk and the work queue, out-of-scope rows retired on incomplete passes; the re-screen guard. |
+| B3 PDF comments | 7 commits | `pdf-pypdfium2` 2.1.0 keeps reviewer comments, one line each, replies nested, hidden ones skipped. CONTRACTS §16.24. |
+| B4 OCR engine | 15 commits | Helper and driver per D2–D6; only `install.sh` builds; `status` never compiles. CONTRACTS §16.25. |
+| B5 OCR in converters | in `d7921ad` | Images, scanned PDF pages, pictures on PDF pages, in decks and in Word/ODT files. CONTRACTS §16.26. |
+| B6 re-read once | in `d7921ad` | Files converted before a capability existed are re-read once, on disk only; README and design text. CONTRACTS §16.27. |
+
+Changed from the decisions above while building (each reviewed):
+- **D10/D11:** a document the engine fails on gets the no-OCR page, is retried once, then kept until its bytes or
+  the capabilities change. A Graph file is never downloaded a second time for a re-read, so it gains OCR only when
+  its bytes change. Each re-read is its own transaction (up to two commits a file).
+- **Page cap:** `MAX_PAGES` is 40, not 100, and the per-document time limit grows with the page count (longest
+  reading 900 s), to stay under the launcher's 1800 s watchdog. Budgets: 180 s of OCR per cycle, 120 s of re-reads.
+  None of these was timed on the corporate Mac.
+- **Pillow** is not declared: nothing in `src` imports it.
+- **Pages the field patch wrote** (version ending `+ocr-off`) count as outdated and are re-read once.
+- **Empty-folder text (I10):** the WAITING line carries the ready-to-paste `exclude` line with the folder names,
+  and the setup report shows that list as `<path>` (tested), which keeps `loop.py`'s rule for everything else.
+- **CI:** the real-Vision test first failed on GitHub's virtual Mac, which reads about half of the 16 px labels.
+  It now checks whole-and-once everywhere and seam stitching where Vision reads every label (`582c9e8`).
+
+Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
+is not read; a picture drawn rotated is read as stored; image types outside the raster table are stubs; a long
+scan past the time limit converts without OCR.
+
+Open operator decisions (filed, each with a default that keeps what is built): empty cloud folders
+(`71d3e66ef726`) and online-only images (`085fac870dd6`).
 
 ## B1 Field fixes from the bring-back report
 
