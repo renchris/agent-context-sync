@@ -215,6 +215,30 @@ def test_empty_html_gets_a_placeholder(tmp_path: Path) -> None:
     assert u.body == "[empty document]\n"
 
 
+def test_what_pandoc_says_on_stderr_is_counted_in_the_log_and_never_quoted(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A pandoc warning quotes the document: a repeated id comes back in it.  The runner converts mail and
+    Teams HTML too, so its DEBUG line says how much pandoc wrote and none of it."""
+    html = '<html><body><h1 id="contoso-q3-forecast">A</h1><h2 id="contoso-q3-forecast">B</h2></body></html>'
+    caplog.set_level(logging.DEBUG, logger="agentsync.convert.pandoc")
+    said: list[str] = []
+    real = subprocess.run
+
+    def run(*args: Any, **kw: Any) -> Any:
+        proc = real(*args, **kw)
+        said.append(proc.stderr.decode("utf-8", errors="replace"))
+        return proc
+
+    with pytest.MonkeyPatch.context() as spy:
+        spy.setattr(pandoc_mod.subprocess, "run", run)
+        _one(PandocConverter(CFG).convert(_write(tmp_path, "p.html", html), name="p.html"))
+    (warning,) = said
+    assert "contoso-q3-forecast" in warning, "pandoc did quote the document"
+    logged = [r.getMessage() for r in caplog.records if r.name == "agentsync.convert.pandoc"]
+    assert logged == [f"pandoc wrote {len(warning)} character(s) to stderr"]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # xlsx
 # ---------------------------------------------------------------------------------------------------------

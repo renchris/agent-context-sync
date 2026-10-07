@@ -346,7 +346,9 @@ class _PandocRunner:
             raise ConversionError(f"pandoc exited {proc.returncode}: {err[0] if err else 'no message'}")
         said = proc.stderr.decode("utf-8", errors="replace")
         if said:
-            log.debug("pandoc stderr: %s", said.strip()[:500])
+            # How much, never what: a pandoc warning quotes the document (an id, a file name in it), and
+            # this runner also converts mail and Teams HTML.
+            log.debug("pandoc wrote %d character(s) to stderr", len(said))
         return proc.stdout.decode("utf-8", errors="replace"), said
 
     def to_gfm(self, src: Path, fmt: str) -> str:
