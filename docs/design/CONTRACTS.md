@@ -7644,9 +7644,13 @@ v8 adds no command, flag, installer option, config key or environment variable.
 - Step 1 hands the version to the installer: `install.sh --log-start 'prompt v8, <agent>'`. The value was
   the agent's tool and model id alone, and `--log-start` wrote its own `SETUP_PROMPT_COMPAT` as the attempt's
   `Prompt:` line, so a v7 copy run by a v8 installer would have been logged as v8. `--log-start` now takes a
-  leading `prompt v<N>,` (1 to 3 digits) off the value. The `Prompt:` line is that N, and `Agent:` the rest.
-- When N is the installer's number, nothing else changes. When it is not, or the value names none, the
-  pasted copy is not the README's of this checkout. `--log-start` still writes the header, with
+  leading `prompt v<N>` (1 to 3 digits) off the value. The `Prompt:` line is that N, and `Agent:` the rest.
+  The version has to lead, and its number is read in the shape an agent gave it: the letters in either
+  case, and a space, colon, semicolon or dash where the comma is, or nothing after the number (`Prompt v8:
+  TOOL`, `prompt v8 - TOOL`). Only `prompt v8, ` passed at first, so a current copy whose agent wrote a
+  capital or a colon was logged as `v7 or older` and told to have the person copy the same text again.
+- When N is the installer's number, nothing else changes. When it is not, or the value does not start with
+  one, the pasted copy is not the README's of this checkout. `--log-start` still writes the header, with
   `Prompt: v<N>` or, for a value that names none, `Prompt: v7 or older` (v7 is the last prompt that named
   none: `PROMPT_UNSTATED`); it appends `<UTC> | step 1 | error | install.sh --log-start: the pasted setup
   prompt is <that> and this installer is for setup prompt v8: <why>; setup stopped | copy the prompt again
@@ -7657,6 +7661,12 @@ v8 adds no command, flag, installer option, config key or environment variable.
   `--list-folders`: no folder is listed and nothing is installed.
 - The stop closes the attempt because the agent is told to run no other step: an agent that obeys never
   runs `--report-only`, the attempt stayed open, and the next session's first line joined it.
+- The `error:` line shows no value that passes. It ended with the exact prefix the check wants, and an old
+  copy's agent, whose text allows working around a problem, could run step 1 again with it: logged as v8,
+  the whole old wording ran. It now ends: `If the first line of your prompt says "setup prompt v8", the
+  --log-start value was changed: run step 1's command again exactly as the prompt writes it.` An old
+  copy's first line says another version, so it gets no way through; a current copy whose agent changed
+  the value past what is read above gets the real cause.
 - The prompt checks from its side too: `install.sh --version` must end with exactly `setup-prompt-compat 8`
   ("or higher" is gone), or the agent stops and tells the person to copy the prompt again from `README.md`
   on the main branch. That is the half that catches a v8 copy on a Mac whose checkout is still v7: that
@@ -7727,7 +7737,8 @@ number; a saved v7 copy's exact step 1 command under bash and zsh: exit 2, no fo
 line, the attempt logged as "v7 or older", and its report's `NEXT:`; step 3's sentence, the note's prefix
 and the cap against the two budgets), `tests/test_install_oneshot.py` (`--log-start` with no version, an
 older one, a newer one, one in another place, one with a letter after the number and one of four digits,
-each closed by the stop; the value without its space; the report of a current attempt after stopped ones, of
+each closed by the stop and none shown a value that passes; the value without its space, with a capital,
+a colon, a dash and with nothing after the number; the report of a current attempt after stopped ones, of
 an attempt an earlier installer logged, of a stopped session's own late lines and of a later session with
 no header, with and without a report in between; eleven logs that the installer and `parse_friction` end
 at the same line; a saved v6 copy's `--log-end && --report-only`),

@@ -211,6 +211,9 @@ version, and the installer wrote its own number into the log.
   error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
   from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v8: <agent>` and `prompt v8 -
+  <agent>` are v8). The stop message shows no value that passes; its last sentence tells a current copy whose
+  agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
   `prompt: v7 or older (older than this installer's v8: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that

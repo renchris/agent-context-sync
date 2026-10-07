@@ -42,12 +42,16 @@
 # and no agentsync, write no install.log line, no install.out and no report, and print one confirmation line.
 #   --log-start AGENT  AGENT is 'prompt vN, TOOL': N is the version in the first line of the prompt the
 #                      agent was given, TOOL its tool and model id. Appends "Attempt: <UTC>", "Prompt: vN"
-#                      and "Agent: TOOL" lines. When N is not this installer's SETUP_PROMPT_COMPAT the
-#                      pasted copy is not the README's: it also appends a "step 1 | error" line and the
-#                      attempt's "end | finished" line, prints what to do (stop; the person copies the
-#                      prompt again from README.md on the main branch) and exits 2, so step 1's command
-#                      stops before --list-folders. An AGENT that names no version is a copy from before
-#                      v8 and is logged as "Prompt: v7 or older"
+#                      and "Agent: TOOL" lines. The version leads the value; its letters may be capitals,
+#                      and a space, colon, semicolon or dash may stand where the comma does ("Prompt v8:
+#                      TOOL" is read as the prompt writes it). When N is not this installer's
+#                      SETUP_PROMPT_COMPAT the pasted copy is not the README's: it also appends a "step 1
+#                      | error" line and the attempt's "end | finished" line, prints what to do (stop; the
+#                      person copies the prompt again from README.md on the main branch) and exits 2, so
+#                      step 1's command stops before --list-folders. An AGENT that does not start with a
+#                      version is a copy from before v8 and is logged as "Prompt: v7 or older". The
+#                      message names no value that passes; its last sentence is for a current copy whose
+#                      agent changed the value (run step 1's command again as the prompt writes it)
 #   --log STEP KIND WHAT FIX
 #                      appends "<UTC> | step STEP | KIND | WHAT | FIX" ("step 2" as STEP is read as 2; a STEP
 #                      that is not a number, or "-", leaves the step column out and moves a non-number into
@@ -215,7 +219,7 @@ friction_append() {
 	if [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ]; then chmod 600 "$f" 2>/dev/null || true; fi
 }
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
-	local op="$1" now line step kind what fix note="" v a p said rc=0
+	local op="$1" now line step kind what fix note="" v a p rest said rc=0
 	shift
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	case "$op" in
@@ -228,16 +232,26 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 		v="${v//$'\n'/ }"
 		p=""
 		case "$v" in
-		prompt\ v[0-9]*,*) # 'prompt vN, TOOL': the version of the copy of the prompt the agent was given
-			p="${v#prompt v}"
-			p="${p%%,*}"
-			case "$p" in
-			*[!0-9]* | ????*) p="" ;;
-			*)
-				v="${v#*,}"
-				v="${v# }"
-				;;
+		[Pp][Rr][Oo][Mm][Pp][Tt]\ [Vv][0-9]*)
+			# 'prompt vN, TOOL': the version of the copy of the prompt the agent was given. The version
+			# leads. An agent that wrote "Prompt v8: TOOL" or "prompt v8 - TOOL" gave it all the same.
+			rest="${v:8}"
+			p="${rest%%[!0-9]*}"
+			rest="${rest#"$p"}"
+			case "$rest" in
+			'' | [\ ,:\;-]*) ;; # the number ends the value, or a separator follows it
+			*) p="" ;;           # "prompt v8x": no version
 			esac
+			[ "${#p}" -le 3 ] || p="" # four digits: no version
+			if [ -n "$p" ]; then
+				while :; do
+					case "$rest" in
+					[\ ,:\;-]*) rest="${rest#?}" ;;
+					*) break ;;
+					esac
+				done
+				v="$rest"
+			fi
 			;;
 		esac
 		if [ "$p" = "$SETUP_PROMPT_COMPAT" ]; then
@@ -254,7 +268,9 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			# The attempt is closed here: the agent is told to run no other step, so no --report-only may
 			# follow, and a later session's line must not join an attempt left open.
 			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped | $fix"$'\n'"$now | end | finished"$'\n' || true
-			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. (The current prompt starts the --log-start value with "prompt v%s, ".)\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
+			# The last sentence is for a current copy whose agent changed the value. It names no value that
+			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
+			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again exactly as the prompt writes it.\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
 			rc=2
 		fi
 		;;

@@ -678,7 +678,9 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
     installer's number is "7 or higher"), so the installer is what stops it. ``--log-start``, which a copy
     from before v8 hands no version, logs the attempt as "v7 or older", says to stop and to copy the prompt
     again from the README on the main branch, and exits 2: the command never lists the folders. That copy's
-    own text then goes to its report, whose NEXT line says the same, and not to bring the file back."""
+    own text then goes to its report, whose NEXT line says the same, and not to bring the file back. The
+    message tells an old copy no way past the stop: its one way on is for a prompt whose first line is the
+    installer's version."""
     from agentsync import setup_report  # noqa: PLC0415
 
     home = tmp_path / "home"
@@ -701,8 +703,10 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
         f"error: the pasted setup prompt is v7 or older and this installer is for setup prompt v{PROMPT[0]}: "
         "the pasted copy is not the current one. Stop here and run no other step of that prompt. Tell the "
         f'person to copy the prompt again from {source} ("Set up on a new Mac: one prompt") and paste it '
-        f'into a new session. (The current prompt starts the --log-start value with "prompt v{PROMPT[0]}, ".)'
+        f'into a new session. If the first line of your prompt says "setup prompt v{PROMPT[0]}", the '
+        "--log-start value was changed: run step 1's command again exactly as the prompt writes it."
     )
+    assert f"prompt v{PROMPT[0]}," not in proc.stderr, "the message shows no value that passes"
     [attempt] = setup_report.parse_friction((home / FRICTION_LOG).read_text(encoding="utf-8")).attempts
     assert attempt.header == {"Prompt": "v7 or older", "Agent": "Test Agent (model-1)"}
     assert attempt.version == 7 and attempt.finished, "the stop closes the attempt: no other step may follow"

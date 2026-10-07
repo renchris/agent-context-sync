@@ -1481,9 +1481,11 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
     is not the README's of this checkout: older (a saved copy; one from before v8 names no version) or newer
     (the checkout did not update). Either is logged with the version it gave and a step 1 error line, told
     to stop and to copy the prompt again from the README on the main branch, and exits 2, which stops step
-    1's command. The same value in another shape is a copy that names no version.
+    1's command. A value that does not start with a version is a copy that names none.
 
-    The agent is told to run no other step, so the stop closes the attempt itself."""
+    The agent is told to run no other step, so the stop closes the attempt itself. And the message names no
+    value that passes: an old copy's agent that read "prompt v8, " there used it, was logged as v8, and ran
+    its old wording after all. Its last sentence is for a current copy whose agent changed the value."""
     older, newer = COMPAT - 1, COMPAT + 1
     cases = [
         (
@@ -1504,6 +1506,12 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
             "Copilot CLI",
             "this checkout is older than the prompt",
         ),
+        (
+            f"PROMPT V{newer}; Copilot CLI",
+            f"v{newer}",
+            "Copilot CLI",
+            "this checkout is older than the prompt",
+        ),
         (f"Copilot CLI (prompt v{COMPAT})", "v7 or older", f"Copilot CLI (prompt v{COMPAT})", "is not"),
         (f"prompt v{COMPAT}x, y", "v7 or older", f"prompt v{COMPAT}x, y", "is not"),
         ("prompt v1234, x", "v7 or older", "prompt v1234, x", "the pasted copy is not the current one"),
@@ -1517,8 +1525,11 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         assert why in cp.stderr and cp.stderr.count("\n") == 1, "one line"
         assert (
             f"Stop here and run no other step of that prompt. Tell the person to copy the prompt again from "
-            f'{PROMPT_SOURCE} ("Set up on a new Mac: one prompt") and paste it into a new session.'
+            f'{PROMPT_SOURCE} ("Set up on a new Mac: one prompt") and paste it into a new session. If the '
+            f'first line of your prompt says "setup prompt v{COMPAT}", the --log-start value was changed: '
+            "run step 1's command again exactly as the prompt writes it.\n"
         ) in cp.stderr
+        assert f"prompt v{COMPAT}," not in cp.stderr.replace(value, ""), "no value that passes is shown"
         attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
         assert attempt.header == {"Prompt": said, "Agent": agent}
         event, closed = attempt.events
@@ -1535,6 +1546,30 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
     assert reported.returncode == 0 and last_line(reported).startswith("NEXT: review "), (
         "the newest attempt is the current prompt's: its report is the one to bring back"
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "agent"),
+    [
+        ("Prompt v{n}, Claude Code", "Claude Code"),
+        ("prompt v{n} - Claude Code", "Claude Code"),
+        ("prompt v{n}: Claude Code", "Claude Code"),
+        ("prompt v{n} , Claude Code", "Claude Code"),
+        ("PROMPT V{n};Claude Code: a-model", "Claude Code: a-model"),
+        ("prompt v{n}", "unknown"),
+    ],
+)
+def test_log_start_reads_the_current_version_in_the_shape_an_agent_gave_it(
+    env: dict[str, str], value: str, agent: str
+) -> None:
+    """A current copy whose agent wrote the value with a capital, a colon or a dash was logged as "v7 or
+    older", stopped, and told to have the person copy the prompt again; the fresh copy was the same text,
+    and the same agent failed the same way. The version still has to lead the value, and its number is
+    read whatever stands between it and the tool."""
+    cp = install_sh(env, "--log-start", value.format(n=COMPAT))
+    assert cp.returncode == 0 and cp.stderr == "", (value, cp.stderr)
+    [attempt] = setup_report.parse_friction(friction_path(env).read_text()).attempts
+    assert attempt.header == {"Prompt": f"v{COMPAT}", "Agent": agent} and not attempt.events
 
 
 STOPPED_NEXT = "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started"
