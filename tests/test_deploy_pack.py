@@ -369,8 +369,12 @@ STEP_TITLES = [
 them onto the form's Failed-at options, which keep v6's four names)."""
 
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+"""The installer as the prompt names it. Alone it is step 2's command on a Mac with no folder to add."""
 
-PROMPT = (8, "af92b0d91adb89778ba73d05793be48e19b589bf6332cd416b4ecee7def0a81a")
+INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
+"""Step 2's command with a folder to sync (a new Mac) or to add."""
+
+PROMPT = (9, "8d396288002e92afd2fc2ba1d47f79595ee65588401611539dd164d600dc81f8")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -767,7 +771,8 @@ def test_readme_intro_says_what_the_prompt_does() -> None:
     steps = _prompt_steps()
     assert "macOS may ask whether this terminal app can access files managed by OneDrive" in steps[1]
     assert "agentsync-launcher" not in steps[2] and "asks for no second Allow click" in steps[2]
-    assert len([c for c in _commands(steps[2]) if "scripts/install.sh" in c]) == 1
+    installs = [c for c in _commands(steps[2]) if "scripts/install.sh" in c]
+    assert installs == [INSTALL_WITH_FOLDER, INSTALL_SH], "one install command, with a folder or with none"
 
 
 # ---- step 1's folder list: install.sh --list-folders (judge finding J9) ------------------------------------
@@ -875,9 +880,10 @@ def test_every_launcher_example_passes_confirm_install_agent() -> None:
 
 
 def test_readme_step2_is_the_one_install_command() -> None:
+    """One command, in its two forms: with a folder to sync or add, and with none (setup prompt v9: a Mac
+    that already syncs folders keeps them, so a re-run names no folder)."""
     step2 = _prompt_steps()[2]
-    [cmd] = _commands(step2)
-    assert cmd == f'{INSTALL_SH} --source-local "<folder>"'
+    assert _commands(step2) == [INSTALL_WITH_FOLDER, INSTALL_SH]
     assert "--confirm-install-agent" not in _one_prompt_block(), "KISS K11b: background sync is optional"
     assert "10 minutes" in step2 and "run the same command again" in step2, "J11: a timeout and a safe re-run"
     assert "NEXT:" in step2
@@ -1083,6 +1089,78 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert teams in day1 and contract % "../" in day1
     contracts = (ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
     assert "\n## 11. Local arm and hydration\n" in contracts and "**Inbox writer contract" in contracts
+
+
+ALREADY_SYNCED = "already synced on this Mac:"
+"""How ``install.sh --list-folders`` starts its first line on a Mac whose config already syncs folders: the
+words setup prompt v9's step 1 keys on."""
+
+
+def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
+    """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
+    tool ran unattended, the folder question came back unanswered, and step 1 said to stop and wait: a
+    round lost on a question the person had answered before. Stopping stays right on a new Mac. When
+    ``--list-folders`` says folders are already synced, the agent says which and asks only whether to add
+    one, and with nobody to ask it adds none and goes on, which is no deviation. Step 2 names the command
+    for that. The line and the mark the prompt names are the installer's own."""
+    step1, step2 = _prompt_steps()[1], _prompt_steps()[2]
+    stop = "do not choose folders for me: log a deviation, stop and wait for my answer."
+    kept = (
+        f'One exception: if --list-folders printed a line that starts "{ALREADY_SYNCED}", I chose those '
+        "folders before and they are kept (each has [synced] before its path in the list). Then tell me "
+        "which they are and ask only whether to add any other folder. If you cannot ask me then, add none "
+        "and go on to step 2. That is not a deviation: do not log it or stop, and say in your final message "
+        "that I was not asked and no folder was added."
+    )
+    assert step1.endswith(kept), "the rule for a new Mac, then its one exception, which ends the step"
+    assert step1.index(stop) < step1.index(kept) and step1.count("log a deviation") == 1
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert script.count(f'say "{ALREADY_SYNCED} $synced folder(s) (') == 2, "both forms of the line start so"
+    assert 'SYNCED_MARK="[synced]"' in script
+    none_to_add = (
+        "On a Mac that already syncs folders, name only the folders I chose to add. With none to add, run it "
+        f"with no --source-local, which keeps the folders already synced: `{INSTALL_SH}`"
+    )
+    assert none_to_add in step2
+    assert step2.index(INSTALL_WITH_FOLDER) < step2.index(none_to_add) < step2.index("It installs, runs")
+    assert "run $SELF, with one --source-local" in script, "the list's own NEXT names the same command"
+    intro = _intro()
+    assert "On a Mac that already runs agentsync the same block is a re-run." in intro
+    assert "when it cannot ask you it adds none and goes on" in intro
+    assert "It stops and waits for your answer only on a Mac that syncs no folder yet." in intro
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs(tmp_path: Path, shell: str) -> None:
+    """The exact step 1 line on a Mac that already syncs a folder, under the user's likely shells: the list
+    starts with the line the prompt keys on, the synced folder has its mark, and the NEXT names the command
+    with no folder. The installed agentsync that reads the config is the Python running these tests."""
+    from agentsync.config import default_config_text, local_source_table  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    cloud = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    projects, archive = cloud / "Projects", cloud / "Archive"
+    for d in (projects, archive):
+        d.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir()
+    cfg.write_text(default_config_text() + local_source_table("projects", projects), encoding="utf-8")
+    tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True)
+    tool_py.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    tool_py.chmod(0o755)
+    _fake_step1_tools(tmp_path / "bin", tmp_path / "calls.log")
+    env = tmp_home_env(home) | {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin"}
+    command = STEP1_COMMAND.replace("<agent>", "Test Agent (model-1)")
+    proc = subprocess.run(
+        [shell, "-c", command], cwd=home, env=env, capture_output=True, text=True, check=False, timeout=60
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = proc.stdout.splitlines()
+    listed = out[out.index(f"{ALREADY_SYNCED} 1 folder(s) (marked [synced] below)") + 1 :]
+    assert listed[:2] == [str(archive), f"[synced] {projects}"], proc.stdout
+    assert listed[2].startswith("NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run ")
+    assert len(listed) == 3 and "warning:" not in proc.stderr
 
 
 def _checkout_home(tmp_path: Path) -> Path:
@@ -1396,7 +1474,8 @@ def _agent_commands() -> list[str]:
     assert commands == [
         FRICTION_LOG_TEMPLATE,
         STEP1_COMMAND,
-        f'{INSTALL_SH} --source-local "<folder>"',
+        INSTALL_WITH_FOLDER,
+        INSTALL_SH,
         *LOOP_COMMANDS,
         SYNC_NO_DOWNLOAD,
         REPORT_COMMAND,

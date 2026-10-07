@@ -1866,22 +1866,27 @@ V7_HAPPY = V6_HAPPY.replace("Prompt: v6", "Prompt: v7")
 """Setup prompt v7 run through with nothing to log (KISS K04/K16b): the same header and closing line as v6."""
 
 V8_HAPPY = V7_HAPPY.replace("Prompt: v7", "Prompt: v8")
-"""Setup prompt v8, this build's: v7's three steps and rules. Its ``Prompt:`` line is the version the pasted
-copy gave ``install.sh --log-start``, so a saved v7 copy still reads ``v7`` (or ``v7 or older``)."""
+"""Setup prompt v8: v7's three steps and rules. Its ``Prompt:`` line is the version the pasted copy gave
+``install.sh --log-start``, so a saved v7 copy still reads ``v7`` (or ``v7 or older``)."""
+
+V9_HAPPY = V8_HAPPY.replace("Prompt: v8", "Prompt: v9")
+"""Setup prompt v9, this build's: the same steps and rules. On a Mac that already syncs folders its step 1
+asks at most whether to add one, and with nobody to ask it goes on."""
 
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 and every later version are read with the
+    prompt's text and a layout only when a step moves, so v8, v9 and every later version are read with the
     newest layout at or below them, as an attempt that states no version is."""
     read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, None, 99)]
     assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7]
-    assert setup_report.PROMPT_VERSION == 8 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
-    assert setup_report.prompt_layout(8) is setup_report.PROMPT_LAYOUTS[7], "v8 moved no step"
+    assert setup_report.PROMPT_VERSION == 9 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+    for version in (8, 9):  # v8 and v9 moved no step: each gets every rule written for v7
+        assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    for version in (7, 8):
+    for version in (7, 8, 9):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
@@ -2046,7 +2051,7 @@ def set_up_log(
     for n, (args, config) in enumerate(installs):
         at, run = f"2026-09-29T10:0{n}:00Z", f"20260929T100{n}00Z-4242"
         text += (
-            f"{at} run={run} start install.sh compat=8 commit=0123456789ab kind=checkout source=- "
+            f"{at} run={run} start install.sh compat=9 commit=0123456789ab kind=checkout source=- "
             f"args={args}\n"
             f"{at} run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
             f"{at} run={run} step=agentsync seconds=41 rc=0 result=done\n"
@@ -2078,7 +2083,7 @@ def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
     install run kept and added. With folders already synced the folder question is not a turn the report
     expects or counts, and the Summary says what became of them, in counts."""
     set_up_log(fake_mac, ("", "skipped note=exists kept=2 added=0"))
-    write_friction(fake_mac, V8_HAPPY)
+    write_friction(fake_mac, V9_HAPPY)
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
     rc, text, _ = report(tmp_path, fake_mac["config"])
     assert rc == 0
@@ -2159,7 +2164,7 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
     ]
     for listed, installs, question, folders in cases:
         set_up_log(fake_mac, *installs, listed=listed)
-        write_friction(fake_mac, V8_HAPPY)
+        write_friction(fake_mac, V9_HAPPY)
         rc, text, _ = report(tmp_path, fake_mac["config"])
         summary = section(text, "Summary")
         assert rc == 0 and _line(summary, "- expected turns: ").startswith(f"- expected turns: {question} · ")

@@ -5026,7 +5026,8 @@ K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v
 v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still reads as v6. A v7 attempt's
 Summary, or one with no friction log (read as `PROMPT_VERSION`'s layout), has no IT draft line unless the draft
 exists (v7 has no IT request step). **Amended (2026-10-07, §16.28 "Setup prompt v8"):** `PROMPT_VERSION` is 8,
-and the layout is the newest entry at or below the version, so v8 and later read as v7. **Redaction.** `build_report`
+and the layout is the newest entry at or below the version, so v8 and later read as v7. **Amended (2026-10-07,
+§16.29 "Setup prompt v9"):** `PROMPT_VERSION` is 9; v9 moved no step either. **Redaction.** `build_report`
 has no `redact` argument: the report is always redacted.
 
 ```python
@@ -5039,7 +5040,7 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 8  # §16.28 (7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
+PROMPT_VERSION = 9  # §16.29 (8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
@@ -8142,3 +8143,70 @@ logs: one added to two; a folder named again; a new Mac, with a folder name that
 text; a run with no folder at all; a new Mac whose install ran twice; a list that logged no count before a
 run that did; a log without the counts; a count that is not a number), `tests/test_install_oneshot.py` (the
 same lines in the report the real run with no folder wrote).
+
+#### Setup prompt v9 (amends §16.14, §16.22 and §16.28; README, `scripts/install.sh`, `agentsync.setup_report`)
+
+v9 changes two places of the prompt's text and nothing else. `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 9,
+and the issue form's placeholder is `v9`. v9 moves no step, so it has no entry in `PROMPT_LAYOUTS` and
+`prompt_layout(9)` is v7's layout, as v8's is. A saved v8 copy is stopped at step 1 like every older copy
+(§16.28).
+
+**Step 1 ends with one exception to its stop.** The rule §16.22 added stays word for word: "If you cannot
+ask me (your tool runs unattended, or the question comes back unanswered), do not choose folders for me: log
+a deviation, stop and wait for my answer." After it:
+
+```text
+One exception: if --list-folders printed a line that starts "already synced on this Mac:", I chose those
+folders before and they are kept (each has [synced] before its path in the list). Then tell me which they
+are and ask only whether to add any other folder. If you cannot ask me then, add none and go on to step 2.
+That is not a deviation: do not log it or stop, and say in your final message that I was not asked and no
+folder was added.
+```
+
+- The exception follows the rule and names it as one, so which of the two applies is never a matter of
+  reading order: the rule is for a Mac with no folder synced, the exception for a Mac that has some.
+- The line and the mark it names are the installer's own words (`--list-folders`, above). A test holds the
+  prompt's quoted start against the script's two `say` lines.
+- "Not a deviation" is said outright, with "do not log it or stop". The v8 run that lost a round followed
+  the stop to the letter, and a deviation line would count as agent friction for doing what the prompt asks.
+- A person who can be asked is still asked, but only whether to add a folder. The answer "none" is a normal
+  one.
+- The `question` kind is unchanged ("something other than which folders to sync"): whether to add a folder
+  is the folder question, so it is not logged.
+
+**Step 2 names the command with no folder.** After the command with `--source-local "<folder>"`:
+
+```text
+On a Mac that already syncs folders, name only the folders I chose to add. With none to add, run it with no
+--source-local, which keeps the folders already synced:
+`~/src/agent-context-sync/scripts/install.sh`
+```
+
+- It is the same command in a second form, so step 2 is still one install command, run once. What it does
+  over an existing config is in "A run with no folder keeps them", above.
+- No pre-allow rule is added. Claude Code's `Bash(~/src/agent-context-sync/scripts/install.sh *)` also
+  matches the bare command (a trailing ` *` that is the rule's only wildcard does), and so does Copilot CLI's
+  `shell(~/src/agent-context-sync/scripts/install.sh:*)`.
+- `--list-folders` ends on a `NEXT:` that names this same command, so the installer and the prompt do not
+  disagree about what comes next.
+
+**What did not change.** A new Mac: the list is byte for byte what it was, the question is asked, and an
+agent that cannot ask logs a deviation, stops and waits. Every other sentence of the prompt. The README's
+text above the block gains three sentences that say a re-run keeps the folders chosen before.
+
+**Limits.**
+
+- A config the installed agentsync cannot load is treated as a new Mac, with a warning. The agent then asks,
+  or stops when it cannot.
+- A Mac whose only synced folders are outside `~/Library/CloudStorage`, on which OneDrive is not signed in,
+  still ends step 1 at `--list-folders`' exit 3 and its `NEXT:`: nothing is listed, so nothing is marked.
+- The final message is the agent's. Nothing checks that it says nobody was asked; the report's `expected
+  turns` and `folders:` lines carry the same facts from the log.
+
+Tests: `tests/test_deploy_pack.py` (the version in every place and the block's digest; step 1's exception
+after its rule, word for word, with the installer's line and mark; step 2's two forms and their order; the
+text above the block; the exact step 1 command under bash and zsh on a Mac that already syncs a folder: the
+line, the mark, and the `NEXT:`; both tools' pre-allow rules against every command of the block, the bare
+install command included), `tests/test_setup_report.py` (v8 and v9 read with v7's layout; the form's failed
+step labels for v7, v8 and v9), `tests/test_install_oneshot.py` and `tests/test_launcher.py` (the number the
+installer prints and logs).

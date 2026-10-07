@@ -222,8 +222,12 @@ read again, up to 12 times in all, so the report shows the finished state or say
 take no more disk and the files already on the Mac get the whole OCR time. `sync --help` does not list the
 option; it is for this step and the installer.
 
+On a Mac that already runs agentsync the same block is a re-run. The folders you chose before are kept: the
+list marks them, the agent asks only whether to add one, and when it cannot ask you it adds none and goes on.
+It stops and waits for your answer only on a Mac that syncs no folder yet.
+
 ```text
-Set up agentsync on this Mac (setup prompt v8). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v9). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -246,7 +250,7 @@ say, or worked around a problem); error (a command failed; include its exit code
 unclear; include better wording). Do not log the steps themselves; the installer times them.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
-   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v8, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v9, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -256,17 +260,24 @@ unclear; include better wording). Do not log the steps themselves; the installer
    then tell me the branch name (my changes are safe on it, and copied as a patch to
    ~/agent-context/setup/local-work) and run step 1's command again. If git failed any
    other way, show me its error (a corporate proxy may need HTTPS_PROXY set) and stop. If --version does not end
-   with "setup-prompt-compat 8", or the command says the pasted prompt is not the installer's, stop: this prompt
-   is v8, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
+   with "setup-prompt-compat 9", or the command says the pasted prompt is not the installer's, stop: this prompt
+   is v9, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
    of the Source above. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
    them are downloaded by each sync, up to 1 GiB per folder per run. If you cannot ask me (your tool runs
    unattended, or the question comes back unanswered), do not choose folders for me: log a deviation, stop and
-   wait for my answer.
+   wait for my answer. One exception: if --list-folders printed a line that starts "already synced on this Mac:",
+   I chose those folders before and they are kept (each has [synced] before its path in the list). Then tell me
+   which they are and ask only whether to add any other folder. If you cannot ask me then, add none and go on to
+   step 2. That is not a deviation: do not log it or stop, and say in your final message that I was not asked
+   and no folder was added.
 2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
    timeout your tool allows (10 minutes if you can set it):
    `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`
+   On a Mac that already syncs folders, name only the folders I chose to add. With none to add, run it with no
+   --source-local, which keeps the folders already synced:
+   `~/src/agent-context-sync/scripts/install.sh`
    It installs, runs doctor and the first sync. It starts no background job and asks for no second Allow click:
    background sync is mine to turn on later, so add no other option to this command. It is safe to re-run: if your
    tool stopped it early, run the same command again. If this Mac already runs agentsync, its sources, history

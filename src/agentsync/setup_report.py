@@ -141,7 +141,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 8
+PROMPT_VERSION = 9
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -238,14 +238,15 @@ PROMPT_LAYOUTS = {
 is gone and step 3 runs the sync loop, then the report), v6 and v5. A log is read with the step numbers of its
 own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v7 share this module's step
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
-report while a note says so), so it has no entry: :func:`prompt_layout` reads it as v7."""
+report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
+again), so they have no entry: :func:`prompt_layout` reads them as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8, v9, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]

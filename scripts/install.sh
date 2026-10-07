@@ -198,7 +198,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=8 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=9 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log

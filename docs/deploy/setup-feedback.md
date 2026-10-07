@@ -11,9 +11,9 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 
 | Source | Written by | What it knows |
 |---|---|---|
-| `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total |
+| `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config; `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log lines |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v8, <agent>'` (`Attempt: <UTC time>`, `Prompt: v8`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command) |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v9, <agent>'` (`Attempt: <UTC time>`, `Prompt: v9`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command) |
 
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
@@ -91,7 +91,7 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v8` (an attempt an older copy started reports that copy's: `v7`, `v6`, `v5`) |
+| `prompt_version` | input | the prompt version, `v9` (an attempt an older copy started reports that copy's: `v8`, `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
@@ -173,8 +173,9 @@ question in its step 2, its Allow clicks the first click in its steps 2 and 3, a
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
 1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
 three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
-A `Prompt: v8` attempt is judged by the same rules: v8 moved no step. So is every later version until one moves
-a step, since the version changes with every edit of the prompt's text (below) and the rules only with its steps.
+A `Prompt: v8` or `Prompt: v9` attempt is judged by the same rules: neither moved a step. So is every later
+version until one moves a step, since the version changes with every edit of the prompt's text (below) and the
+rules only with its steps.
 
 The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
 `Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
@@ -204,25 +205,55 @@ sentence included. A saved copy is therefore always known by its number. Twice a
 pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
 version, and the installer wrote its own number into the log.
 
-- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v8, <agent>'`. The
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v9, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
   with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
   error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
   from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
-- The version leads the value, and is read in the shape the agent gave it (`Prompt v8: <agent>` and `prompt v8 -
-  <agent>` are v8). The stop message shows no value that passes; its last sentence tells a current copy whose
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v9: <agent>` and `prompt v9 -
+  <agent>` are v9). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
-  `prompt: v7 or older (older than the installer's v8: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v9: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. Triage such a report as `known K18`, not as a failed setup.
-- A copy newer than the installer (`newer than the installer's v8`) means the checkout on that Mac did not
+- A copy newer than the installer (`newer than the installer's v9`) means the checkout on that Mac did not
   update: look at step 1's `git pull` in the friction log.
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
   the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
   wrote its own number there, so an old v7 attempt is not a stale copy, and it is not K18.
+
+### A Mac that is already set up
+
+The folder question is asked once per Mac. A v8 run on a Mac that already synced two folders asked it again,
+got no answer from an unattended tool, and stopped as the prompt said: a round lost (K20). Since v9 a re-run
+needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
+
+- `install.sh --list-folders` reads the config. When it already syncs folders, the list starts with
+  `already synced on this Mac: N folder(s) (marked [synced] below)` and each of them has `[synced]` before its
+  path. A synced folder the list does not show (deeper than it goes, outside `~/Library/CloudStorage`) is
+  counted and said to be outside it.
+- Step 1 then tells the person which folders those are and asks only whether to add one. An agent that
+  cannot ask adds none and goes on to step 2. That is not a deviation and is not logged; the agent says it in
+  its final message. On a Mac with no synced folder nothing changed: an agent that cannot ask logs a deviation,
+  stops and waits.
+- Step 2 with nothing to add is `install.sh` with no `--source-local`. It keeps every source, updates
+  agentsync, and runs status and a sync.
+
+The Summary shows which case a report is:
+
+| Summary line | What it says |
+|---|---|
+| `expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; not logged) · ...` | The Mac already synced folders when the attempt began, so the folder question is not a turn the report expects, and `human turns` does not count it. On a new Mac the line starts `the folder question (step 1; not logged)`, as before. |
+| `folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)` | What the install run did with the folders, from the counts it logged: kept, or `1 added to the 2 already synced`, or `2 added (none was synced before)`. The second part is how many `--source-local` options the command had. A run that named a folder the config already had reads `kept the 1 already synced (none added) · 1 named with --source-local`: it was left as it was. |
+
+Both lines are counts and fixed words. Triage: a `deviation` line that says the agent stopped at the folder
+question, in a report whose `expected turns` line says `no folder question`, is a prompt-wording defect and
+not the new Mac's expected stop. A report with no `folders:` line comes from an installer older than the
+counts, or from a config the installed agentsync could not read; `install.sh --list-folders` then printed a
+`warning:` line, which the installer output's tail shows.
 
 ### The evidence parts
 
@@ -348,6 +379,7 @@ named as "v5b review, its L<n>").
 | K17 | no prompt said where the inbox was, what to drop in it or that emptying it erases pages, and on the field Mac the agent's own exporters read other apps' private stores and drove the browser, which raised clicks (field report N3, N9, N14, N16) | prompt wording | v7 step 2 names the inbox by its `sources.toml` entries, the formats and the label caveat, and says it is never emptied; the rules say agentsync never needs `~/Library/Containers`, Group Containers or the browser; `test_readme_prompt_carries_the_field_lines` |
 | K18 | a copy of the prompt saved before an edit was pasted again, twice, and nobody knew it was old: the edit had kept the version (still v7), the copy's check read "7 or higher", and the installer wrote its own number as the attempt's `Prompt:` line (field, 2026-10-06) | prompt wording and installer automation | since v8 the version moves with every change of the text, step 1 hands it to `install.sh --log-start`, which stops a copy that is not its own, and the report names the copy's version; `test_the_prompt_text_changes_only_with_its_version`, `test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1`, and `tests/test_install_oneshot.py` for each shape of the value |
 | K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs a sync that downloads nothing (`sync --materialise-budget 0`) once the loop is done and again while the note says so, up to 12 times in all, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
+| K20 | a Mac that already synced two folders was asked which folders to sync again; the tool ran unattended, the question came back unanswered, and the agent stopped and waited as v8's step 1 says, with nothing done (field, 2026-10-07) | prompt wording and installer automation | `install.sh --list-folders` marks the folders the config already syncs; v9's step 1 then asks only whether to add one and goes on when it cannot ask, and step 2 names `install.sh` with no `--source-local`; the report expects no folder question there and says what was kept; `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`, and `tests/test_install_oneshot.py` for the list and the run with no folder |
 
 ## 5. Unavoidable steps so far
 
@@ -356,6 +388,8 @@ Each one has its evidence. A report showing that one of them can be avoided move
 Current unavoidable human steps (these do not break "fully one command"):
 
 - **Choosing the folders.** The one question the prompt asks on purpose: what to sync is the user's decision.
+  It is asked once per Mac. On a Mac that already syncs folders the choice is in `sources.toml`: the prompt
+  asks at most whether to add one, and an agent that cannot ask adds none and goes on (K20).
 - **The TCC Allow click** ("wants to access files managed by OneDrive"), for the terminal (step 1). Setup no
   longer asks a second one: the click for `agentsync-launcher` comes only with the operator's optional background
   sync (`install.sh --confirm-install-agent`, KISS K11b), never in a setup run. The launcher's click goes away when MDM grants Full Disk Access to the

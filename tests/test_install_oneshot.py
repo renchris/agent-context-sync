@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v8) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v9) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -294,11 +294,11 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
-    """README step 1: "If --version does not end with "setup-prompt-compat 8", ... stop"."""
+    """README step 1: "If --version does not end with "setup-prompt-compat 9", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 8" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 9" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -1758,7 +1758,7 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     lines = friction_path(env).read_text().splitlines()
     t = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
     assert re.fullmatch(rf"Attempt: {t}", lines[0])
-    assert lines[1:3] == ["Prompt: v8", "Agent: Claude Code, claude-opus-5-5"], (
+    assert lines[1:3] == [f"Prompt: v{COMPAT}", "Agent: Claude Code, claude-opus-5-5"], (
         "the version is not the agent's"
     )
     assert re.fullmatch(rf"{t} \| step 1 \| question \| asked which terminal app \| -", lines[3])
@@ -1766,7 +1766,7 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     assert re.fullmatch(rf"{t} \| end \| finished", lines[5]) and len(lines) == 6
     parsed = setup_report.parse_friction(friction_path(env).read_text())
     (attempt,) = parsed.attempts
-    assert attempt.header["Prompt"] == "v8" and attempt.version == 8 and attempt.finished
+    assert attempt.header["Prompt"] == f"v{COMPAT}" and attempt.version == COMPAT and attempt.finished
     assert [(e.step, e.kind, e.what, e.fix) for e in attempt.events] == [
         (1, "question", "asked which terminal app", ""),
         (2, "error", "install.sh exited 3", "a longer wait"),
