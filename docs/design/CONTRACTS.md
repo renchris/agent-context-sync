@@ -8103,3 +8103,42 @@ folder, the marked list, then the run with no folder: the tool installed again, 
 for byte, the two lines, a sync, the report, the loop's `NEXT:`, exit 0 and every step's log line; then one
 folder added and one named again; with no interpreter to ask, the step's line as it was and no `folders:`
 line).
+
+#### The report: no folder question, and what was kept (amends §16.14; `agentsync.setup_report`)
+
+```python
+# agentsync.setup_report
+class InstallRun:
+    args: str = ""  # new field, last: the start line's arguments as install.sh logged them (shell-quoted)
+def synced_before(runs: Sequence[InstallRun]) -> int | None: ...
+```
+
+- `synced_before(runs)` is how many folders the Mac already synced when an attempt's runs began: what the
+  first of them that says so logged. A `--list-folders` run says it with `synced=N`, an install run with
+  `kept=N` on its config step. It is None when no run says: an installer from before these fields, or a
+  config the installed agentsync could not read. The first run decides, not the last. A new Mac whose install
+  ran twice logs `kept=0` and then `kept=1`, and the person was asked before the first.
+- **Expected turns.** When `synced_before` is 1 or more, the folder question is not a turn the attempt is
+  expected to have. `human turns` no longer adds 1 for it (prompts since v6 do not log that question, so the
+  line added it), and the `expected turns` line starts `no folder question (2 folders already synced: step 1
+  asks at most whether to add one; not logged)` where it said `the folder question (step 1; not logged)`. The
+  outcome is computed as before: a logged `question` line is still one beyond the expected turns.
+- The rule goes by what install.sh logged, not by the prompt's version: the fields exist only where the
+  installer wrote them, and a log without them reads as before. A v5 attempt logs its folder question and is
+  unchanged.
+- **The `folders:` line** follows the Summary's `install.sh:` line when the attempt's last install run
+  logged the counts: `- folders: kept the 2 already synced (none added) · 0 named with --source-local
+  (install.log)`. The first part is the config step's `kept` and `added`: `kept the N already synced (none
+  added)`, `M added to the N already synced`, `M added (none was synced before)` or `none synced and none
+  added`. The second counts the `--source-local` options in the run's arguments (`_NAMED_FOLDER_RE`), so a
+  run that named a folder the config already had reads `kept the 1 already synced (none added) · 1 named
+  with --source-local`. The folders after the options are never read: the line holds counts and fixed words.
+- Without the counts there is no `folders:` line. A count is a whole number of at most 6 digits (`_count`);
+  anything else is no count.
+
+Tests: `tests/test_setup_report.py` (a Mac with two folders synced and a run that adds none: fully one
+command, 0 human turns, no folder question, and the `folders:` line under the `install.sh:` line; eight
+logs: one added to two; a folder named again; a new Mac, with a folder name that holds the option's own
+text; a run with no folder at all; a new Mac whose install ran twice; a list that logged no count before a
+run that did; a log without the counts; a count that is not a number), `tests/test_install_oneshot.py` (the
+same lines in the report the real run with no folder wrote).

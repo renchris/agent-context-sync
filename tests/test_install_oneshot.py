@@ -1362,6 +1362,8 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     before = cfg.read_bytes()
 
+    # The setup prompt again, on this Mac: step 1 starts an attempt and lists, step 2 has no folder to add.
+    assert install_sh(env, "--log-start", started("Test Agent (model-1)")).returncode == 0
     listing = install_sh(env, "--list-folders")
     assert listing.stdout.splitlines()[:-1] == [
         "already synced on this Mac: 1 folder(s) (marked [synced] below)",
@@ -1394,6 +1396,18 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
         ("report", "done", "0", "agentsync"),
     ]
     assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
+    # Its report reads those counts: nobody had to be asked for a folder, and none was added.
+    summary = report_path(env).read_text(encoding="utf-8").split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
+    assert (
+        "- folders: kept the 1 already synced (none added) · 0 named with --source-local (install.log)"
+        in summary.splitlines()
+    )
+    assert (
+        "- expected turns: no folder question (1 folder already synced: step 1 asks at most whether to add "
+        "one; not logged) · " in summary
+    )
+    assert "- human turns: 0 (0 questions; " in summary
+    assert "- install.sh: 1 install run (+1 --list-folders) during this attempt; the last exit 0" in summary
 
     more = install_sh(env, str(wheel), "--source-local", str(beta), "--source-local", str(alpha))
     assert more.returncode == 0, more.stdout + more.stderr

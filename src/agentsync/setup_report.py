@@ -24,6 +24,8 @@ did: install.log's last install run exit, questions beyond the folder question, 
 clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
 prompt and error lines are counted apart as "agent friction"), human turns (by kind), step and session times
 (from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
+what became of the folder choice (the ``folders:`` line, from the counts install.sh logs; on a Mac that
+already synced folders the folder question is not an expected turn, :func:`synced_before`),
 the first sync, which doctor warns are expected, the IT draft's unfilled fields, and the ``Loop:`` line (KISS
 K16b: how far the loop got past the install, :func:`loop_stage`, and its current NEXT line without paths, kept
 apart from the outcome, which judges only the install). The agent's own
@@ -1021,6 +1023,7 @@ class InstallRun:
     steps: tuple[tuple[str, dict[str, str]], ...]  # (step name, fields) in log order, the report step too
     simulated: bool  # a line says launchd=simulated
     lines: tuple[str, ...]
+    args: str = ""  # the start line's arguments, as install.sh logged them (shell-quoted)
 
     def step(self, name: str) -> dict[str, str] | None:
         """The fields of step ``name``, if the run logged it."""
@@ -1071,9 +1074,35 @@ def read_install_runs(log: Path) -> list[InstallRun]:
                 steps=steps,
                 simulated=any(_SIMULATED_RE.search(ln) for ln in lines),
                 lines=tuple(lines),
+                args=fields.get("start", {}).get("args", ""),
             )
         )
     return out
+
+
+def _count(fields: dict[str, str] | None, key: str) -> int | None:
+    """The whole number install.sh logged as ``key=N`` on a step's line; None when it logged none."""
+    value = (fields or {}).get(key, "")
+    return int(value) if value.isdigit() and len(value) <= 6 else None
+
+
+def synced_before(runs: Sequence[InstallRun]) -> int | None:
+    """How many folders this Mac already synced when these runs began (an attempt's runs): what the first
+    run that says so logged. A ``--list-folders`` run logs ``synced=N`` (setup prompt step 1 reads the
+    config), an install run ``kept=N`` on its config step. None when no run says: an installer from before
+    these fields, or a config the installed agentsync could not read.
+
+    A Mac that synced a folder already has the person's choice, so the folder question is no expected
+    turn of that attempt (field report 2026-10-07)."""
+    for run in runs:
+        found = (
+            _count(run.step("list-folders"), "synced")
+            if run.list_only
+            else _count(run.step("config"), "kept")
+        )
+        if found is not None:
+            return found
+    return None
 
 
 def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]:
@@ -4150,14 +4179,17 @@ def _allow_clicks(layout: PromptLayout) -> str:
     return "Allow click" if len(layout.allow_click_steps) == 1 else "Allow clicks"
 
 
-def _turns_line(att: Attempt, run_type: str) -> str:
+def _turns_line(att: Attempt, run_type: str, synced: int | None = None) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
     observable" when none is logged and the agent's tool does not tell it (:data:`APPROVAL_HIDDEN_TOOLS`); the
-    total then counts only what is known. Why no click is possible is on the expected-turns line."""
+    total then counts only what is known. Why no click is possible is on the expected-turns line. On a Mac
+    that already synced ``synced`` folders (:func:`synced_before`) nobody had to be asked for them, so the
+    unlogged folder question is not counted."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
-    q = logged_q + (0 if att.layout.logs_expected_turns else 1)  # v6: the folder question is not logged
+    asked = 0 if att.layout.logs_expected_turns or synced else 1  # v6: the folder question is not logged
+    q = logged_q + asked
     agent = att.header.get("Agent", "").lower()
     hidden = a == 0 and any(t in agent for t in APPROVAL_HIDDEN_TOOLS)
     approvals = "approvals: not observable" if hidden else _plural(a, "approval")
@@ -4173,14 +4205,22 @@ def _turns_line(att: Attempt, run_type: str) -> str:
     return f"- human turns: {q + c + a} ({_plural(q, 'question')}; {clicks}; {approvals})"
 
 
-def _expected_turns_line(att: Attempt, run_type: str) -> str:
-    """The turns fully one command allows, on their own line: the folder question and the Allow clicks."""
+def _expected_turns_line(att: Attempt, run_type: str, synced: int | None = None) -> str:
+    """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
+    Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
+    them: the person chose before, and the prompt asks at most whether to add a folder."""
     layout = att.layout
     no_clicks = _no_clicks_why(run_type)
     if not layout.logs_expected_turns:  # prompt v6 logs neither
         steps = " and ".join(str(s) for s in layout.allow_click_steps)
         steps = f"step{'s' if len(layout.allow_click_steps) > 1 else ''} {steps}"
-        parts = [f"the folder question (step {layout.folder_question_step}; not logged)"]
+        step = layout.folder_question_step
+        parts = [f"the folder question (step {step}; not logged)"]
+        if synced:
+            parts = [
+                f"no folder question ({_plural(synced, 'folder')} already synced: step {step} asks at most "
+                "whether to add one; not logged)"
+            ]
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
@@ -4336,6 +4376,36 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     return f"- install.sh: {where}; the last {status}" + (f" ({steps})" if steps else "")
 
 
+_NAMED_FOLDER_RE = re.compile(r"(?<!\\ )(?<!\S)--source-local(?!\S)")
+"""One ``--source-local`` option in a start line's ``args=`` (the folder after it is never read here)."""
+
+
+def _folders_line(runs: Sequence[InstallRun]) -> str | None:
+    """``- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)``:
+    what the last install run did with the folder choice, in counts and no names. The counts are its config
+    step's ``kept`` and ``added`` fields (the folders synced before the step and the ones it added, counted
+    by the installed agentsync), and the named ones are the ``--source-local`` options of its arguments: a
+    folder named again adds nothing. None when no install run logged the counts (an installer from before
+    them, or a config agentsync could not read)."""
+    installs = install_runs_only(runs)
+    if not installs:
+        return None
+    last = installs[-1]
+    kept, added = _count(last.step("config"), "kept"), _count(last.step("config"), "added")
+    if kept is None or added is None:
+        return None
+    if kept and not added:
+        did = f"kept the {kept} already synced (none added)"
+    elif kept:
+        did = f"{added} added to the {kept} already synced"
+    elif added:
+        did = f"{added} added (none was synced before)"
+    else:
+        did = "none synced and none added"
+    named = len(_NAMED_FOLDER_RE.findall(last.args))
+    return f"- folders: {did} · {named} named with --source-local (install.log)"
+
+
 def _installer_step_times(runs: Sequence[InstallRun], layout: PromptLayout) -> list[str]:
     """Prompt v6's step times from install.log (it logs no step lines): the ``--list-folders`` runs (step 1)
     and the install runs (the install step), in seconds per run."""
@@ -4409,8 +4479,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         )
     stop = stopping_error(att, runs) if att is not None else None
     if att is not None:
-        out.append(_turns_line(att, run_type))
-        out.append(_expected_turns_line(att, run_type))
+        synced = synced_before(runs)
+        out.append(_turns_line(att, run_type, synced))
+        out.append(_expected_turns_line(att, run_type, synced))
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
         out.append(
@@ -4430,6 +4501,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 timing.append("install.sh (install.log): " + " · ".join(timed))
         out.append("- time: " + "; ".join(timing))
     out.append(_install_line(r, runs, scoped=att is not None and att.begin is not None))
+    folders = _folders_line(runs)
+    if folders is not None:
+        out.append(folders)
     if r.facts.instructions is not None:
         out.append(f"- installer output: {_instruction_text(*r.facts.instructions)}")
     out.append(_first_sync_line(r, runs))

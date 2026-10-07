@@ -2026,6 +2026,155 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     assert line.startswith("- prompt: v7 · run: ")
 
 
+# ---- a Mac that is already set up is not asked for its folders again (field report 2026-10-07) -----------
+
+ASKED = "the folder question (step 1; not logged)"
+NOT_ASKED = "no folder question ({} already synced: step 1 asks at most whether to add one; not logged)"
+
+
+def set_up_log(
+    fake_mac: dict[str, Path],
+    *installs: tuple[str, str],
+    listed: str = " synced=2",
+) -> Path:
+    """install.log of one attempt as scripts/install.sh writes it since it counts folders: step 1's
+    ``--list-folders`` run (``listed``: what follows its note), then one install run per ``(arguments, the
+    config step's result and what follows it)``."""
+    text = LIST_RUN.replace(" launchd=simulated", "").replace(
+        "result=done\n", f"result=done note=listed-25{listed}\n"
+    )
+    for n, (args, config) in enumerate(installs):
+        at, run = f"2026-09-29T10:0{n}:00Z", f"20260929T100{n}00Z-4242"
+        text += (
+            f"{at} run={run} start install.sh compat=8 commit=0123456789ab kind=checkout source=- "
+            f"args={args}\n"
+            f"{at} run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
+            f"{at} run={run} step=agentsync seconds=41 rc=0 result=done\n"
+            f"{at} run={run} step=launcher seconds=0 rc=0 result=skipped note=not-requested\n"
+            f"{at} run={run} step=config seconds=1 rc=0 result={config}\n"
+            f"{at} run={run} step=status seconds=3 rc=0 result=done\n"
+            f"{at} run={run} step=first-sync seconds=9 rc=0 result=done note=converted-0-deferred-0\n"
+            f"{at} run={run} step=agent seconds=0 rc=0 result=skipped note=not-requested\n"
+            f"{at} run={run} step=wait seconds=0 rc=0 result=skipped note=not-requested\n"
+            f"{at} run={run} end rc=0 seconds=57\n"
+            f"{at} run={run} step=report seconds=2 rc=0 result=done note=agentsync\n"
+        )
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(text, encoding="utf-8")
+    return log
+
+
+def _line(summary: str, start: str) -> str:
+    [line] = [ln for ln in summary.splitlines() if ln.startswith(start)]
+    return line
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setup prompt v8 asked a Mac that already synced two folders for them again, and an unattended agent
+    stopped. install.sh now logs how many folders the config already syncs (step 1's list) and what the
+    install run kept and added. With folders already synced the folder question is not a turn the report
+    expects or counts, and the Summary says what became of them, in counts."""
+    set_up_log(fake_mac, ("", "skipped note=exists kept=2 added=0"))
+    write_friction(fake_mac, V8_HAPPY)
+    monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
+    )
+    assert _line(summary, "- human turns: ") == (
+        "- human turns: 0 (0 questions; 0 clicks beyond the announced Allow click (not logged); approvals: "
+        "not observable)"
+    ), "nobody had to be asked: the unlogged folder question is not counted"
+    assert _line(summary, "- expected turns: ") == (
+        f"- expected turns: {NOT_ASKED.format('2 folders')} · the announced Allow click (step 1; not logged)"
+    )
+    assert _line(summary, "- folders: ") == (
+        "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
+    )
+    lines = summary.splitlines()
+    assert lines.index(_line(summary, "- folders: ")) == lines.index(_line(summary, "- install.sh: ")) + 1
+    for raw in RAW:
+        assert raw not in text, raw
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_folders_line_counts_what_was_kept_added_and_named(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Each case is one attempt's install.log: what step 1's list logged, then its install runs. The
+    counts are install.sh's own (the config step's ``kept`` and ``added``); the named ones are the
+    ``--source-local`` options of the run's arguments, whose folders are never read, so a name with the
+    option's own text in it is one folder. The folder question is expected, or not, by what the Mac synced
+    when the attempt began: its first run that says so."""
+    one, two = (str(fake_mac[k]).replace(" ", "\\ ") for k in ("one", "two"))
+    odd = "/x/Plans\\ --source-local\\ old"
+    cases: list[tuple[str, list[tuple[str, str]], str, str | None]] = [
+        (
+            " synced=2",
+            [(f"--source-local {one} --source-local {two}", "done note=add-source kept=2 added=1")],
+            NOT_ASKED.format("2 folders"),
+            "1 added to the 2 already synced · 2 named with --source-local",
+        ),
+        (
+            " synced=1",
+            [(f"--source-local {one}", "done note=add-source kept=1 added=0")],
+            NOT_ASKED.format("1 folder"),
+            "kept the 1 already synced (none added) · 1 named with --source-local",
+        ),
+        (
+            "",  # a new Mac has no config for step 1 to read
+            [(f"--source-local {one} --source-local {odd}", "done note=created kept=0 added=2")],
+            ASKED,
+            "2 added (none was synced before) · 2 named with --source-local",
+        ),
+        (
+            " synced=0",
+            [("", "done note=created kept=0 added=0")],
+            ASKED,
+            "none synced and none added · 0 named with --source-local",
+        ),
+        (
+            " synced=0",  # a new Mac whose install ran twice: the person was asked before the first
+            [
+                (f"--source-local {one}", "done note=created kept=0 added=1"),
+                ("", "skipped note=exists kept=1 added=0"),
+            ],
+            ASKED,
+            "kept the 1 already synced (none added) · 0 named with --source-local",
+        ),
+        (
+            "",
+            [("", "skipped note=exists kept=3 added=0")],
+            NOT_ASKED.format("3 folders"),
+            "kept the 3 already synced (none added) · 0 named with --source-local",
+        ),
+        # An installer from before the counts, or a config agentsync could not read: nothing to say.
+        ("", [(f"--source-local {one}", "done note=add-source")], ASKED, None),
+        ("", [("", "skipped note=exists kept=many added=0")], ASKED, None),
+    ]
+    for listed, installs, question, folders in cases:
+        set_up_log(fake_mac, *installs, listed=listed)
+        write_friction(fake_mac, V8_HAPPY)
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        assert rc == 0 and _line(summary, "- expected turns: ").startswith(f"- expected turns: {question} · ")
+        asked = 1 if question == ASKED else 0
+        assert _line(summary, "- human turns: ").startswith(f"- human turns: {asked} ({asked} question")
+        found = [ln for ln in summary.splitlines() if ln.startswith("- folders: ")]
+        assert found == ([f"- folders: {folders} (install.log)"] if folders else []), (listed, installs)
+        for raw in (*RAW, "Plans"):
+            assert raw not in text, raw
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, ("--source-local x", "done note=created")))
+    assert [run.args for run in runs] == ["--list-folders", "--source-local x"]
+    assert setup_report.synced_before(runs) == 2 and setup_report.synced_before(runs[1:]) is None
+    assert setup_report.synced_before([]) is None
+
+
 def test_loop_stage_and_next_text() -> None:
     stage = setup_report.loop_stage
     assert stage(None, None, False) == "installed"
