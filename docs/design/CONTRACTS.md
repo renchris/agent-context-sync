@@ -102,7 +102,9 @@ Opened with `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`. `meta` ke
 is secret: it is never exported, and the DB lives outside `docs/` on the state volume. **Amended (2026-10-06,
 §16.22):** one more key per local or inbox source, `empty_cloud_dirs:<source id>`: the zero-child cloud folders
 its last walk found, a JSON list of root-relative paths (`""` for none), written by the cycle and read by
-`loop.next_step`.
+`loop.next_step`. **Amended (2026-10-06, §16.27):** and `reread:<source id>`: what the cycle last looked for
+among the source's pages to read again, whether it is done, and the files it tried. Written and read by the
+cycle only.
 
 **Amended (2026-10-04, KISS K12):** opening the manifest, from any caller (a cycle, `status`, `purge`), migrates an
 OLDER `manifest_schema_version` or `key_schema_version` forward in one `BEGIN IMMEDIATE` transaction, after copying
@@ -3734,6 +3736,9 @@ class NetworkConfig:
   `auth REAUTH_REQUIRED (blocked: consent, AADSTS65001): …`.
 - **§9 step 10 (perf-pdf):** in POLL/materialise cycles the land gate is skipped when `git status` shows nothing to
   land; RECONCILE always runs it. **Step 6 durability:** work-queue manifest writes commit in batches of 256 rows.
+- **Step 6, re-read once (amended 2026-10-06, §16.27).** After a local or inbox source's work queue, the files
+  whose pages were made before something their converter has now are read again, once, 20 to a transaction,
+  within 120 seconds a cycle and the cycle's OCR time.
 
 ```python
 NETWORK_POLICY_FAILED = "failed: "  # prefix of a client problem that FAILS (not skips) the Graph sources
@@ -6184,7 +6189,8 @@ page whose comments could not be read (Failure, below).
   not read`, so a reader can tell "no comments" from "comments not read". The fallback cannot tell whether the
   file has any, so every PDF it converts carries the clause.
 - **Not in this section.** A page converted by 2.0.0 stays as it is until its file changes (as with eml 1.1.0).
-  Nothing here re-reads PDFs that are already mirrored.
+  Nothing here re-reads PDFs that are already mirrored. **Amended (2026-10-06, §16.27):** a PDF on this Mac
+  whose page an emitter below 2.1.0 wrote is read again once.
 
 Every new name in `agentsync.convert.pdf` is private (`_Comment`, `_CommentBudget`, `_CommentLimitError`,
 `_PageChars`, `_page_comments`, `_read_comment`, `_review_state`, `_marked_text`, `_annot_string`, `_one_line`,
@@ -6629,7 +6635,8 @@ it routed to raises `OcrError`, and `registry.without_ocr` routes the same name 
   converted by <converter_id> without it`.
 - The key with OCR holds nothing, so a later conversion of the same bytes tries OCR again. The published
   page carries a converter version without `+ocr-`, which is how a later re-read can tell that OCR has not
-  read the file. Nothing in this section re-reads it: until its bytes change it stays as it is.
+  read the file. Nothing in this section re-reads it. **Amended (2026-10-06, §16.27):** a later cycle reads
+  it again, once.
 - A converter with no such twin fails as before. An image has no converter without an engine, so its failed
   read stays the FAILED stub above. An exception that is not `OcrError` is never converted again.
 
@@ -7058,7 +7065,8 @@ for the fake helper of `tests/test_ocr.py`.
   `convert_file` the registry without an engine (`Registry.without_ocr`),
   and the file gets the page, the version and the action key of a Mac without one. Nothing waits and `loop`
   has nothing to say about it. The version without `+ocr-` on its page is how a later re-read can tell that
-  OCR has not read it; nothing in this section re-reads it. Deferring it instead would hold back every PDF
+  OCR has not read it; nothing in this section re-reads it (**amended 2026-10-06, §16.27:** the next cycle
+  with OCR time left does, once). Deferring it instead would hold back every PDF
   behind a folder of scans, the ones with nothing to read included. An `.rtf` or `.html` file gets the same
   version, options and action key from both registries, so the budget changes nothing for it.
 - **A failed read.** `OcrError` makes the result FAILED: the `conversion failed: on-device OCR failed` stub,
@@ -7075,8 +7083,9 @@ not again by the next cycle; the engine looked for once per cycle and never unde
 worked and one that failed; five images against a budget two reads pass, converted 2, 2 and 1 over three
 cycles with rule 3 between them, then three copies served by the cache in a cycle whose budget one read would
 pass; three PDFs with a scanned page against a budget two reads pass: two read by OCR under the staging
-folder, the third converted without it under the version without OCR, none deferred, and no second
-conversion by the next cycle; a deck, a Word document and an `.rtf` file: the first two read under the
+folder, the third converted without it under the version without OCR, none deferred (**amended 2026-10-06,
+§16.27:** and read by the next cycle, not by the one after); a deck, a Word document and an `.rtf` file: the
+first two read under the
 staging folder and converted without OCR once the budget is used, the third under the version without OCR
 both times; an online-only image beside a local one, under a byte budget, named to
 `materialise`, and after it
@@ -7093,7 +7102,8 @@ it is therefore queued, finds no converter, and becomes the `no converter` stub 
 read. No purge is queued, because no label was read: the page's earlier text stays in history, as for any
 file that lost its converter. An image row that already is a `no converter` stub is not marked, so on a Mac
 without OCR a policy change does exactly the work it did. Taking the rule away marks no stub either: such an
-image is read when its file next changes.
+image is read when its file next changes. **Amended (2026-10-06, §16.27):** without the rule the registry
+has a converter for the image again, so an image on this Mac is read again once.
 
 Tests: `tests/test_cycle.py` (an image page published with no label rule becomes a stub in the cycle after
 one is added; a new image under the rule is never fetched; the helper is not run; no purge is queued and the
@@ -7113,3 +7123,184 @@ Tests: `tests/test_setup_report.py` (one case per suffix, the list taken from
 `Registry.default(...).extensions()` and `ImageConverter.extensions`, so a suffix registered later fails
 there until the scrub knows it; three kinds of line, the name in lower and upper case; a line from each
 logger named like a document keeps its time and level).
+
+### 16.27 Re-read once (2026-10-06)
+
+Plan decision D11. A file is converted when its bytes change, so a file mirrored before a converter could do
+something keeps the page it got then: an image refused as `no converter for .png`, a scan quarantined as `no
+text layer`, a PDF, deck or Word document whose pictures nobody read, a PDF whose comments were not kept. This
+section reads such a file again, once, without its bytes changing. It adds no command, flag, installer option,
+config key or environment variable, and no manifest table or column: one `meta` key per source. A Mac without
+an engine and without a page from before emitter 2.1.0 reads nothing again, and every page it has stays byte
+for byte what it was.
+
+**At a glance.**
+
+| File | What it has | Read again when |
+|---|---|---|
+| any | the `no converter for <suffix>` stub (`converter: none@0`) | the registry routes its name to a converter now: an image, once there is an engine and no label rule |
+| `.pdf` `.pptx` `.docx` `.odt` | a page made under a version with no engine identity (`+ocr-`) | there is an engine |
+| `.pdf` | the `no text layer (scanned or image-only PDF; OCR not run)` stub under such a version | there is an engine |
+| `.pdf` | a page, or that stub, from an emitter below 2.1.0 | always: comments (§16.24) |
+
+A page that comes out the same is left untouched, front matter included, and nothing is committed for it. A
+re-read that fails keeps the page. No file is read again twice for the same thing, and nothing is downloaded.
+
+**The converter decides what is outdated** (`agentsync.convert`). The cycle holds no list of converters,
+suffixes or versions. Three converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
+is what this converter made of a file under version `produced` worth reading the file again for? `reason` is
+None for a page, else the reason of the stub the file got. The method is not part of the `Converter`
+protocol: the cycle looks for it behind the guard (`_GuardedConverter.inner`), and a converter without one
+never asks for a re-read.
+
+- `PptxConverter.outdated` and `PandocConverter.outdated`: true for a page (never a stub) when the converter
+  has an engine and `produced` has none (`image._read_without_ocr`: an emitter the build can read and no
+  `image._IDENTITY_MARK`, `+ocr-`). `_PandocWithoutOcr`, the converter of `.rtf`, `.html` and `.htm`, has no
+  engine and calls nothing outdated.
+- `PdfConverter.outdated`: the same rule, and an emitter below the comments floor. `pdf._REREAD_BELOW =
+  "2.1.0"` sits beside `pdf._EMITTER_VERSION`. Of the stubs only the `no text layer …` one (`pdf._NO_TEXT`) is
+  asked about: OCR exists for that file, and a scan can carry comments. An encrypted PDF stays a stub and is
+  not read.
+- **The answer has an end.** `_common._emitter(version)` reads the emitter as three plain numbers (`(2, 1, 0)`
+  of `2.1.0+pypdfium2-…`) and gives None for anything else (`unavailable`, `2.2.0rc1`). A version without a
+  readable emitter is never outdated, nor is one whose emitter is newer than the running one. A re-read
+  writes under the running emitter, so for the floor the answer about what it wrote is always no, also when
+  the floor is set above the running emitter. A re-read can still write a version without an engine (the
+  engine failed on the file, §16.26); the cycle's `tried` list (below) is what ends that case.
+- `PdfConverter.outdated_key` is `<emitter><<floor>` (`2.1.0<2.1.0`): what its rule goes by besides the
+  engine. The cycle keeps it in what it remembers having looked for.
+- `NO_CONVERTER_PREFIX = "no converter for "` (`agentsync.convert`) is how the reason of a file no converter
+  claims starts. `convert_file` and `publish`'s stub both use it, and the cycle finds such stubs by it. The
+  reasons read as before.
+
+**Which files** (`cycle._reread_source`, at the end of the source's work queue in `_sync_source`, so new and
+changed files had the cycle's OCR time first). A local or inbox source only.
+
+- **Listed unchanged by this pass.** `last_verdict = unchanged` and `last_seen_run` is this run. So never a
+  pending row, a row the pass's own work held (it waits one pass), a row just classified deleted, a file
+  absent from a complete listing (a deletion candidate, held or not by the breaker) or a file an incomplete
+  pass did not list (unknown, never gone). An inbox file withheld while it settles is not listed, so it is
+  not read. The deletion breaker and the hold of an incomplete pass see nothing of this step: it changes no
+  state, no `last_seen_run` and no absence mark.
+- **On this Mac.** The row's `dataless` flag is 0, whatever its state (a stub keeps its state while its file
+  is online-only). The fetch gets a budget of no bytes, so a file the provider evicted between the walk and
+  the read is left alone rather than downloaded; it is asked about again later. An online-only file is not
+  waited for: when the person downloads it, the walk sees the row on this Mac and the source is looked at
+  again.
+- **In scope.** The arm's `in_scope`, as for the work queue (§16.23).
+- **Never** for a Graph source (every read there is a download), in a `materialise PATH` run, in a dry run,
+  or in a pass whose listing a privacy prompt held.
+
+**How a file is read.** Its row is not marked. The patch this replaces set the hashes to NULL and the verdict
+to MAYBE_CHANGED, which made every such row pending work: a crash, a budget or a failed conversion then
+turned a settled page into a download, a deferred row or a stub. Here the file is fetched with its hashes in
+place and `_after_fetch(..., reread=True)` converts it although its bytes are the ones its pages were made
+from. Whatever stops the cycle, the row is as it was.
+
+| The conversion gives | What happens |
+|---|---|
+| the pages it has (every `rendered_sha256` equal) | H2 early cutoff, as for any file: the pages are untouched, the output rows take the new action key, verdict `OUTPUT_UNCHANGED`. No change, no commit |
+| other pages | published as any change is; the secret scan reads them |
+| the unreadable stub it has (one stub page, the same reason) | untouched; its output row takes the new action key |
+| FAILED | **the page is kept**: nothing is published, no verdict or hash moves, no error line. The source gets one alarm, `N file(s) read again for what their converter has gained could not be converted; their pages are kept as they were` |
+| a decision, not a failure: a label refusal, an encrypted or unreadable result, an inbox copy of a Graph file | published as for a changed file. A re-read fails closed like any conversion |
+
+A file whose bytes are not the ones its pages were made from (it changed without the walk seeing it, its
+page is damaged, or it is a `no converter` stub, which was made without reading a byte) takes the ordinary
+path whole. `SourceReport.converted` counts those and not the rest: a re-read of the same bytes is no new
+conversion.
+
+**At most once.**
+
+- A read that gives the file what it was read for leaves a cache row with the new version under the page's
+  action key, so no converter calls it outdated again.
+- Every other read ends in `tried`: the file's stable id, stored for the source. A file in `tried` is not
+  read again for the same capabilities. That is the case for a file whose conversion failed (page kept), one
+  the engine failed on again (plan D10: it has the page without OCR under the version without OCR, which
+  `outdated` still says yes to), one that cannot be read, and one the work queue would refuse unread (an
+  excluded item label, an inbox copy of a Graph file by name and size). The id is added before the file is
+  read and stored in the batch's transaction, so a read that stops the source is not repeated either; that
+  row is also set to MAYBE_CHANGED, so the next pass checks its pages against the manifest.
+- **Not now** is neither. A converter whose `version()` raises cannot run at all (pandoc is missing): its
+  files are not read and not tried, one WARNING names the converter, and a later cycle asks again. The same
+  holds for a file that has gone or been evicted since the walk listed it.
+- A file in `tried` gets what it lacks when its bytes change (the ordinary conversion) or when the
+  capabilities change. Nothing else retries it: a helper that fails on every file for a while uses up the
+  one re-read of each file it was handed.
+
+**The record.** Manifest meta `reread:<source_id>` (`cycle._REREAD_META`; amends §5), a JSON list of at most
+two records `{"done": bool, "for": <sha256>, "tried": [<stable id>, …]}`: the one the last cycle wrote, then
+the last one written for another `for`.
+
+- `for` is `_Cycle._capabilities()`: the sha256 of the suffixes that have a converter, the engine's identity
+  (`""` without one) and each converter's `outdated_key`. A new suffix, engine, emitter or floor is something
+  new to look for.
+- `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false). While the first
+  record says so for the current capabilities, a cycle reads one meta value for the source and runs none of
+  the queries below.
+- A cycle looks again when the capabilities are not those of the first record, and when `_reread_reopen`
+  cleared `done`: a file was just converted without something its converter has (past `_OCR_BUDGET_S`, or
+  after the engine failed: `_lacks`), or a file the last pass saw online-only is on this Mac. It is stored
+  at once, so a `materialise PATH` run or a source that fails further on does not lose it.
+- The second record keeps `tried` true across an engine that goes and comes back (`[convert] ocr`, a helper
+  that did not answer `--version` once): its `done` does not count, so the files converted meanwhile are
+  found, and the files already tried are not read again.
+
+**Bounds.** `_REREAD_BATCH = 20` files per manifest transaction and lock beat. `_REREAD_BUDGET_S = 120`
+seconds of re-reads per cycle, over all sources (`_reread_clock`); the read that passes it finishes. Re-reads
+also stop once the cycle's OCR time is used (`_OCR_BUDGET_S`, §16.26): past it a file would be converted
+without OCR, which is what it was read again for. The rest wait for later cycles, in stable-id order, and a
+file that fails holds nobody up. Neither number was measured against a real mirror; both are constants.
+
+**Manifest** (amends §5; no schema change). `Manifest.produced_by(source_id)` returns each distinct
+`(converter id, converter version, stub reason or None)` behind the pages of the source's files on this Mac:
+one statement, no row decoded. `Manifest.reread_candidates(source_id, targets, *, seen_run, skip=(), after="",
+limit)` returns the files that `targets` name, a page at a time by stable id; a target is `(converter id,
+version, stub reason or None, lower-case suffix)`. `Manifest.reread_left(source_id, targets, *, skip=())` says
+whether such a file is on this Mac at all, whatever its verdict. The id and version are those of the `cache`
+row of the page's action key (the H2 cutoff moves the key and nothing else); the join is LEFT with COALESCE
+onto the `outputs` columns, so a page whose cache row is gone costs at most one more read, which writes the
+row. A stub counts only when it is its item's own state (`outputs.status` equals `items.state`): a
+`duplicate-of` stub, a failed conversion and a credential stub name no converter to ask.
+
+**Log.** One INFO line a cycle, a count and no name: `N file(s) converted before a capability this install
+has were read again; K of them could not be converted and keep the page they had`.
+
+**Deviations and limits.**
+
+- The design calls a converter upgrade "one deliberate, dated bulk re-render" and says a re-render is "never
+  inline in a sync cycle" (`agent-context-sync.md`, design principle 5 and §4.7). This is a bounded trickle
+  inside ordinary cycles instead: no operator step exists to run a re-render, and the freeze on commands
+  rules one out. It is limited to the cases in the table; a converter upgrade as such (a new pandoc, a new
+  PDFium, another engine identity on a page that has one) still re-reads nothing.
+- A Graph item and an online-only file gain OCR or comments when their bytes next change, or once the file
+  is on this Mac.
+- Sources run in turn, so the re-reads of one source can use OCR time before a later source's new files.
+  Such a file is converted without OCR in that cycle and read again in a later one; an image waits one cycle.
+
+**Amended by this section.** §16.24 "Not in this section" and §16.26 (the failure rule, "A document does not
+wait", "A label rule and the pages from before it") said such a file stays as it is until its bytes change.
+It is now read again once. `tests/test_cycle.py` pinned that the PDF converted without OCR past the budget
+was not converted by the next cycle; it now pins that the next cycle reads it and the one after does not.
+
+Every new name in `agentsync.cycle` is private (`_REREAD_META`, `_REREAD_BATCH`, `_REREAD_BUDGET_S`,
+`_reread_clock`, `_outdated_rule`, `_reread_records`, `_reread_state`, `_same_stub`, and on `_Cycle`:
+`_capabilities`, `_lacks`, `_reread_targets`, `_reread_over`, `_save_reread`, `_reread_reopen`,
+`_reread_source`, `_reread_batch`, `_reread`, `_move_key`), as are `manifest._REREAD_SQL`,
+`manifest._REREAD_TARGETS` and `Manifest._reread_rows`.
+
+Tests: `tests/test_cycle.py` (a PDF from before comments gains them, one without comments keeps its page byte
+for byte, a floor above the running emitter and a dry run read nothing, and once done none of the three
+queries runs; an image, a scan and a scanned page from before the engine are read by it once, a blank scan
+keeps its stub and four documents their pages; a label rule keeps a refused image unread, and without the
+rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one alarm, no second read
+until the capabilities change; an online-only file, an excluded file and a `materialise PATH` run, then the
+file downloaded; a file evicted after the walk; a tripped breaker and its held files; a file an incomplete
+pass did not list; a file the engine fails on, an engine that goes and comes back, a new file it fails on;
+six files against the time bound, two to a transaction, one failing, and the one INFO line a cycle; a
+`materialise PATH` run that leaves a file to read again; pandoc missing for one cycle; a drive file never
+read again; and, amended, the PDF converted without OCR past the budget read by the next cycle),
+`tests/test_manifest.py` (`produced_by`, `reread_candidates` and `reread_left` over every state, verdict and
+kind of stub; a missing cache row; page, order and skip; targets past one statement),
+`tests/test_convert_core.py` (`outdated` per converter with and without an engine, for pages and stubs; the
+floor and its end; `_emitter`) and `tests/test_convert_file.py` (the prefix).
