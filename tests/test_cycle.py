@@ -2078,6 +2078,48 @@ def test_a_file_that_cannot_be_read_again_is_tried_once_and_no_log_line_names_it
     assert run(sample_config).commit_sha is None and len(asked) == 2
 
 
+def test_an_error_while_a_file_is_read_again_does_not_fail_the_source(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Something other than the conversion goes wrong while a file is read again (here: its page cannot be
+    written).  The source has synced and stays synced: its removals still run, the report carries one
+    line with no name in it, and the cycle exits 0.  The file is tried, and as pending work the next pass
+    checks its page against the manifest; the files behind it are read by that pass."""
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    doomed = "projects/sample.md"
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0 and run(sample_config).commit_sha is None
+    (local_source_dir / doomed).unlink()  # absent from the next two passes: the second removes it
+    real = cycle_mod._Cycle._after_fetch
+    read: list[str] = []
+
+    def after_fetch(self: Any, src: Any, row: Any, fetched: Any, acc: Any, *, reread: bool = False) -> Any:
+        if reread:
+            read.append(row.rel_path)
+            if len(read) == 1:
+                raise OSError(28, "No space left on device", f"/Users/someone/docs/{row.rel_path}")
+        return real(self, src, row, fetched, acc, reread=reread)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_after_fetch", after_fetch)
+    first = run(sample_config)
+    [rep] = first.sources
+    assert first.exit_code == 0 and rep.errors == ("reading files again stopped: OSError",)
+    assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+    (stopped,) = read
+    row = _file_rows(sample_config)[stopped]
+    assert row.last_verdict is Verdict.MAYBE_CHANGED and _reread_record(sample_config) == (
+        False,
+        [row.stable_id],
+    )
+    second = run(sample_config)
+    [rep] = second.sources
+    assert second.exit_code == 0 and rep.errors == () and sorted(read) == [REVIEW, PLAIN_PDF]
+    assert _file_rows(sample_config)[stopped].last_verdict is Verdict.TOUCHED_NOT_CHANGED
+    assert _file_rows(sample_config)[doomed].state is RowState.TOMBSTONE
+    assert _reread_record(sample_config) == (True, [row.stable_id])
+    assert run(sample_config).exit_code == 0 and len(read) == 2
+
+
 def test_a_re_read_leaves_the_deletion_breaker_and_its_held_files_as_they_were(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

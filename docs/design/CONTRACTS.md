@@ -7219,8 +7219,12 @@ conversion.
   the engine failed on again (plan D10: it has the page without OCR under the version without OCR, which
   `outdated` still says yes to), one that cannot be read, and one the work queue would refuse unread (an
   excluded item label, an inbox copy of a Graph file by name and size). The id is added before the file is
-  read and stored in the batch's transaction, so a read that stops the source is not repeated either; that
-  row is also set to MAYBE_CHANGED, so the next pass checks its pages against the manifest.
+  read and stored in the batch's transaction, so a read that raises is not repeated either.
+- **An error is never the source's failure.** When something other than the conversion goes wrong while a
+  file is read again (its page cannot be written), the step stops for that source in that cycle. The row is
+  set to MAYBE_CHANGED, so the next pass's work reads it and checks its pages against the manifest. The
+  source's report gets `reading files again stopped: <error type>`, with no name in it, and the source goes
+  on to its renames and removals: it is not failed, and the cycle's exit code does not move.
 - **Not now** is neither. A converter whose `version()` raises cannot run at all (pandoc is missing): its
   files are not read and not tried, one WARNING names the converter, and a later cycle asks again. The same
   holds for a file that has gone or been evicted since the walk listed it.
@@ -7298,7 +7302,8 @@ keeps its stub and four documents their pages; a label rule keeps a refused imag
 rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one alarm, no second read
 until the capabilities change; an online-only file, an excluded file and a `materialise PATH` run, then the
 file downloaded; a file evicted after the walk; a file that cannot be read: tried once, its page and
-verdict kept, no name in a log line; a tripped breaker and its held files; a file an incomplete
+verdict kept, no name in a log line; an error while a file is read again: one report line, the source
+not failed, its removal still made; a tripped breaker and its held files; a file an incomplete
 pass did not list; a file the engine fails on, an engine that goes and comes back, a new file it fails on;
 six files against the time bound, two to a transaction, one failing, and the one INFO line a cycle; a
 `materialise PATH` run that leaves a file to read again; pandoc missing for one cycle; a drive file never

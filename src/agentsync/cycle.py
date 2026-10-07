@@ -1694,7 +1694,13 @@ class _Cycle:
             # After the source's own work: new and changed files had the cycle's OCR time first.  Never for
             # a Graph source (every read there is a download) and never while ``materialise PATH`` names
             # the files to read.
-            self._reread_source(src, arm, acc, queued)
+            try:
+                self._reread_source(src, arm, acc, queued)
+            except Exception as exc:
+                # Reading files again is extra work on a source that has synced: what stops it is reported
+                # and never fails the source, whose renames and removals are still to come.
+                log.exception("%s: reading files again stopped", src.id)
+                acc.errors.append(f"reading files again stopped: {type(exc).__name__}")
         acc.materialised_bytes = budget.used
         # ---- renames / metadata-only rows that needed no bytes --------------------------------------------
         for stable_id in sorted(moved - queued):
