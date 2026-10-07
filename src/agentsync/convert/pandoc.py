@@ -46,6 +46,7 @@ from agentsync.convert.image import (
     _OCR_OPTIONS,
     _PICTURES_CUT,
     _PICTURES_READ,
+    _field_build,
     _raster_left,
     _read_pictures,
     _read_without_ocr,
@@ -652,9 +653,12 @@ class PandocConverter:
 
     def outdated(self, produced: str, reason: str | None = None) -> bool:
         """True when the page this converter wrote under version ``produced`` is worth reading the file
-        again for: it was written without OCR and there is an engine now.  Never for a stub (``reason`` is
-        the stub's), and never without an engine: the converter of ``.rtf`` and ``.html`` has none."""
-        return reason is None and self._ocr is not None and _read_without_ocr(produced)
+        again for: it was written without OCR and there is an engine now, or it was written by the field
+        build of OCR (``image._field_build``; engine or not, and for ``.rtf`` and ``.html`` too, whose
+        version that build changed).  Never for a stub (``reason`` is the stub's)."""
+        if reason is not None:
+            return False
+        return _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced))
 
     def _with_picture_text(self, engine: OcrEngine, src: Path, fmt: str, name: str) -> tuple[str, int, bool]:
         """(GFM text of ``src`` with the text of its pictures, how many pictures' text is in it, whether a

@@ -7061,7 +7061,8 @@ one; every suffix the engine reads nothing in keeps its version and options) and
 `tests/test_convert_determinism.py` (a docx and an odt read by OCR twice, from the cache under a second
 name, and from a cold cache).
 
-Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
+Every other name in `agentsync.convert.image` is private (`_REREAD_BELOW`, `_FIELD_MARKS`, `_field_build`,
+`_read_without_ocr`, `_IDENTITY_MARK`, `_RASTERS`, `_raster_suffix`, `_ocr_lines`,
 `_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_raster_left`, `_OCR_OPTIONS`,
 `_DOCUMENT_BUDGET_S`, `_PAGE_S`, `_budget_s`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
 `_PICTURES_CUT`).
@@ -7188,12 +7189,14 @@ for byte what it was.
 | `.pdf` `.pptx` `.docx` `.odt` | a page made under a version with no engine identity (`+ocr-`) | there is an engine |
 | `.pdf` | the `no text layer (scanned or image-only PDF; OCR not run)` stub under such a version | there is an engine |
 | `.pdf` | a page, or that stub, from an emitter below 2.1.0 | always: comments (§16.24) |
+| an image | a page or a stub from an emitter below 2.0.0 | there is an image converter: the field build's pages named the file |
+| `.pdf` `.pptx` `.docx` `.odt` `.rtf` `.html` `.htm` | a page under a version of the field build of OCR (`+ocr-off`, `+helper-`, `+macos-`) | always |
 
 A page that comes out the same is left untouched, front matter included, and nothing is committed for it. A
 re-read that fails keeps the page. No file is read again twice for the same thing, and nothing is downloaded.
 
 **The converter decides what is outdated** (`agentsync.convert`). The cycle holds no list of converters,
-suffixes or versions. Three converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
+suffixes or versions. Four converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
 is what this converter made of a file under version `produced` worth reading the file again for? `reason` is
 None for a page, else the reason of the stub the file got. The method is not part of the `Converter`
 protocol: the cycle looks for it behind the guard (`_GuardedConverter.inner`), and a converter without one
@@ -7207,6 +7210,19 @@ never asks for a re-read.
   "2.1.0"` sits beside `pdf._EMITTER_VERSION`. Of the stubs only the `no text layer …` one (`pdf._NO_TEXT`) is
   asked about: OCR exists for that file, and a scan can carry comments. An encrypted PDF stays a stub and is
   not read.
+- `ImageConverter.outdated`: true for a page or a stub, whatever its reason, from an emitter below
+  `image._REREAD_BELOW = "2.0.0"`. Emitter 1.0.0 was the field build's: it wrote the file's name into the
+  page (another file's name where two share their bytes) and made a `current` page of every image with no
+  text in it. `ImageConverter.outdated_key` is `2.0.0<2.0.0`.
+- **The field build's versions** (`image._field_build`, `image._FIELD_MARKS`). One Mac mirrored with a
+  build of OCR that was never on main. Its document versions end in `+ocr-off` when it had no engine and
+  otherwise in an identity that holds `+helper-` and `+macos-`; its pages can hold a helper's failure text
+  and picture text that was not escaped. `+ocr-off` contains `+ocr-`, so `_read_without_ocr` took such a
+  page for one OCR had read. `PdfConverter`, `PptxConverter` and `PandocConverter` (so `_PandocWithoutOcr`
+  too: that build changed the version of `.rtf` and `.html` pages as well) call a page under any such
+  version outdated, with an engine or without one. No version of this build holds one of the marks (an
+  engine's name and helper version are tokens without a `+`), so what the re-read writes is never
+  outdated. A Mac that never ran that build has no such page and reads nothing for this.
 - **The answer has an end.** `_common._emitter(version)` reads the emitter as three plain numbers (`(2, 1, 0)`
   of `2.1.0+pypdfium2-…`) and gives None for anything else (`unavailable`, `2.2.0rc1`). A version without a
   readable emitter is never outdated, nor is one whose emitter is newer than the running one. A re-read
@@ -7350,11 +7366,12 @@ until the capabilities change; an online-only file, an excluded file and a `mate
 file downloaded; a file evicted after the walk; a file that cannot be read: tried once, its page and
 verdict kept, no name in a log line; an error while a file is read again: one report line, the source
 not failed, its removal still made; a tripped breaker and its held files; a file an incomplete
-pass did not list; a file the engine fails on, an engine that goes and comes back, a new file it fails on;
+pass did not list; an image page of the field emitter and a PDF under `+ocr-off` read again once; a file
+the engine fails on, an engine that goes and comes back, a new file it fails on;
 six files against the time bound, two to a transaction, one failing, and the one INFO line a cycle; a
 `materialise PATH` run that leaves a file to read again; pandoc missing for one cycle; a drive file never
 read again; and, amended, the PDF converted without OCR past the budget read by the next cycle),
 `tests/test_manifest.py` (`produced_by`, `reread_candidates` and `reread_left` over every state, verdict and
 kind of stub; a missing cache row; page, order and skip; targets past one statement),
 `tests/test_convert_core.py` (`outdated` per converter with and without an engine, for pages and stubs; the
-floor and its end; `_emitter`) and `tests/test_convert_file.py` (the prefix).
+floor and its end; each shape of a field-build version, per suffix; the image floor; `_emitter`) and `tests/test_convert_file.py` (the prefix).

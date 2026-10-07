@@ -44,6 +44,11 @@ from agentsync.model import RenderedUnit, UnitKind
 log = logging.getLogger(__name__)
 
 _EMITTER_VERSION = "2.0.0"  # 1.0.0 was a field build that wrote the file name into the page
+_REREAD_BELOW = "2.0.0"
+"""An image page or stub an emitter below this wrote is read again once (``ImageConverter.outdated``).  The
+field build's 1.0.0 put the file's name into the page, which is another file's name where two share their
+bytes, and made a ``current`` page of every image with no text in it.  Raise it only for a change worth
+reading every mirrored image again for, and never above ``_EMITTER_VERSION``."""
 _ENGINE_LABEL = "Apple Vision"
 _DOCUMENT_BUDGET_S = 300.0
 """The seconds the helper may take over one document's pictures, whatever it holds (pandoc's limit is the
@@ -123,6 +128,20 @@ _OCR_OPTIONS: Mapping[str, OptionValue] = MappingProxyType(
 helper is run with is in ``OcrEngine.identity``, so in the version.)"""
 
 _IDENTITY_MARK = "+ocr-"  # in the version of a converter that has an engine: ``+`` and ``OcrEngine.identity``
+
+
+_FIELD_MARKS = ("+ocr-off", "+helper-", "+macos-")
+"""What only a version written by the field build of OCR holds: its mark for "no engine", and the helper
+and macOS build its engine identity ended in.  No version of this build can: an engine's name and helper
+version are tokens without a ``+`` (``ocr._TOKEN_RE``)."""
+
+
+def _field_build(produced: str) -> bool:
+    """True when ``produced`` is a version the field build of OCR converted under.  Such a page is read
+    again once, engine or not: it can hold a helper's failure text or picture text that was not escaped,
+    and its ``+ocr-off`` would otherwise pass for a version with an engine.  What the re-read writes is
+    under a version of this build, so the answer about it is no."""
+    return _emitter(produced) is not None and any(mark in produced for mark in _FIELD_MARKS)
 
 
 def _read_without_ocr(produced: str) -> bool:
@@ -374,6 +393,22 @@ class ImageConverter:
     def options(self) -> Mapping[str, OptionValue]:
         """Normalised options hashed into options_hash."""
         return {"max_page_bytes": self._cfg.max_page_bytes, **_OCR_OPTIONS}
+
+    @property
+    def outdated_key(self) -> str:
+        """What ``outdated`` goes by: the running emitter and the floor.  The cycle keeps it in what it
+        remembers having looked for, so a new floor makes it look again."""
+        return f"{_EMITTER_VERSION}<{_REREAD_BELOW}"
+
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True when what this converter made of an image under version ``produced`` is worth reading the
+        file again for: a page, or a stub (``reason`` is the stub's), from an emitter below
+        ``_REREAD_BELOW``.  Never for a version that cannot be read or an emitter at or above the running
+        one, so what a re-read wrote is never outdated."""
+        emitter, running, floor = _emitter(produced), _emitter(_EMITTER_VERSION), _emitter(_REREAD_BELOW)
+        if emitter is None or running is None or floor is None:
+            return False
+        return emitter < min(floor, running)
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors.

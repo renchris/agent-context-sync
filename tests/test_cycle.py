@@ -32,6 +32,7 @@ from agentsync import curate, gitops, governance, loop, materialise, slug
 from agentsync import cycle as cycle_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
+from agentsync.convert import image as image_mod
 from agentsync.convert import ocr
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
@@ -1886,6 +1887,30 @@ def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
     runs = len(calls(engine.helper))
     third = run(sample_config)
     assert third.commit_sha is None and len(fetched) == 8 and len(calls(engine.helper)) == runs
+
+
+def test_pages_the_field_build_of_ocr_wrote_are_read_again_once(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One Mac mirrored with a build of OCR that was never on main: image pages from emitter 1.0.0, which
+    named the file in the page, and documents under versions ending ``+ocr-off``.  Both read as current.
+    This build reads each such file again, once, and what it writes is not read again."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    real = pdf_mod.PdfConverter.version
+    with monkeypatch.context() as field:
+        field.setattr(image_mod, "_EMITTER_VERSION", "1.0.0")
+        field.setattr(pdf_mod.PdfConverter, "version", lambda self: real(self).split("+ocr-")[0] + "+ocr-off")
+        assert run(sample_config).exit_code == 0
+        assert _image_page(sample_config, SITE_PLAN)[0]["converter"].startswith("image-ocr@1.0.0+ocr-")
+        assert _mirror_page(sample_config, PLAIN_PDF)[0]["converter"].endswith("+ocr-off")
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.exit_code == 0 and sorted(fetched) == sorted([SITE_PLAN, PLAIN_PDF])
+    assert again.sources[0].converted == 0, "the same bytes are no new conversion"
+    assert len(reads(engine.helper)) == 2, "the image is read by the helper under this build's version"
+    assert _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and len(fetched) == 2
 
 
 def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_is(

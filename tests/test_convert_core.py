@@ -561,6 +561,40 @@ def test_a_converter_calls_a_page_from_before_ocr_outdated_only_when_it_has_an_e
         assert not _outdated(reg, name, produced), name
 
 
+_FIELD_IDENTITY = "+ocr-apple-vision-r3+helper-1.4.0+macos-15.6.1"  # how the field build's versions ended
+
+
+@pytest.mark.parametrize("ending", ["+ocr-off", _FIELD_IDENTITY])
+def test_a_page_the_field_build_of_ocr_wrote_is_outdated_once_with_an_engine_or_without(ending: str) -> None:
+    """One Mac ran a build of OCR that was never on main.  Its versions end in ``+ocr-off`` (no engine) or
+    in an identity with the helper and the macOS build in it, and its pages can hold a helper's failure
+    text or picture text that was not escaped.  ``+ocr-off`` holds ``+ocr-``, so it passed for a page OCR
+    had read.  Each such page is read again, once: no version this build writes is one of them."""
+    plain, reg = Registry.default(ConvertConfig()), Registry.default(ConvertConfig(), ocr=_engine())
+    for name in ("a.pdf", "a.pptx", "a.docx", "a.odt", "a.rtf", "a.html", "a.htm"):
+        base = plain.for_name(name).version()  # type: ignore[union-attr]
+        for registry in (reg, plain):
+            assert _outdated(registry, name, base + ending), name
+            assert not _outdated(registry, name, registry.for_name(name).version()), name  # type: ignore[union-attr]
+            assert not _outdated(registry, name, "unavailable" + ending), "no emitter to read"
+    assert _outdated(reg, "scan.pdf", plain.for_name("a.pdf").version() + ending, pdf._NO_TEXT)  # type: ignore[union-attr]
+    assert not _outdated(reg, "a.docx", plain.for_name("a.docx").version() + ending, "encrypted")  # type: ignore[union-attr]
+    assert not _outdated(reg, "a.xlsx", plain.for_name("a.xlsx").version() + ending), "no rule: it never read"
+    assert not any(mark in reg.for_name("a.pdf").version() for mark in image._FIELD_MARKS)  # type: ignore[union-attr]
+
+
+def test_an_image_page_or_stub_from_the_field_emitter_is_outdated_and_one_from_this_emitter_is_not() -> None:
+    """Emitter 1.0.0 of the image converter put the file's name into the page and made a page of every
+    image with no text in it.  Pages and stubs alike are read again once; what this emitter wrote is not."""
+    reg = Registry.default(ConvertConfig(), ocr=_engine())
+    conv = reg.for_name("a.png").inner  # type: ignore[union-attr]
+    assert (image._REREAD_BELOW, conv.outdated_key) == ("2.0.0", "2.0.0<2.0.0")
+    for produced in ("1.0.0" + _FIELD_IDENTITY, "1.0.0+ocr-apple-vision-r3-h2.0.0-l1", "1.9.9"):
+        assert _outdated(reg, "a.png", produced) and _outdated(reg, "a.heic", produced, "any stub"), produced
+    for produced in (conv.version(), "2.0.0", "2.0.1+x", "3.0.0", "1.0.0rc1", "unavailable", ""):
+        assert not _outdated(reg, "a.png", produced) and not _outdated(reg, "a.png", produced, "a stub")
+
+
 def test_a_stub_is_outdated_only_when_it_is_the_no_text_stub_of_a_pdf() -> None:
     """A scanned PDF is the file OCR exists for, and its stub is what a Mac without an engine gave it.  No
     other stub is worth a re-read: an encrypted file stays encrypted, a refusal stays a refusal."""

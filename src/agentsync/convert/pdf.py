@@ -63,6 +63,7 @@ from agentsync.convert.image import (
     _PICTURES_CUT,
     _PICTURES_READ,
     _budget_s,
+    _field_build,
     _ocr_lines,
     _read_pictures,
     _read_without_ocr,
@@ -903,8 +904,9 @@ class PdfConverter:
         """True when what this converter made of a PDF under version ``produced`` is worth reading the file
         again for.  ``reason`` is None for a page, else the reason of the stub the file got.
 
-        Two things are: an emitter below ``_REREAD_BELOW`` (comments were not kept), and, with an engine, a
-        version without one (OCR has not read the file).  Of the stubs only the ``no text layer (… OCR not
+        Three things are: an emitter below ``_REREAD_BELOW`` (comments were not kept), with an engine a
+        version without one (OCR has not read the file), and a version of the field build of OCR
+        (``image._field_build``; engine or not).  Of the stubs only the ``no text layer (… OCR not
         run)`` one is asked about: OCR exists for that file, and a scan can carry comments.  The stub of a
         file OCR read and found nothing in has another reason, and is settled.
 
@@ -917,7 +919,7 @@ class PdfConverter:
         emitter, running = _emitter(produced), _emitter(_EMITTER_VERSION)
         if emitter is None or running is None or emitter > running:
             return False
-        if self._ocr is not None and _read_without_ocr(produced):
+        if _field_build(produced) or (self._ocr is not None and _read_without_ocr(produced)):
             return True
         floor = _emitter(_REREAD_BELOW)
         return floor is not None and emitter < min(floor, running)
