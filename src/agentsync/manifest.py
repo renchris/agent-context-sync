@@ -2052,11 +2052,16 @@ class Manifest:
         targets: Sequence[tuple[str, str, str | None, str]],
         *,
         skip: Iterable[str] = (),
+        only: str | None = None,
     ) -> bool:
         """True while a file of ``source_id`` that ``targets`` name is on this Mac and not in ``skip``,
         whatever its verdict and whether or not the last pass listed it (``reread_candidates`` may not
-        return it yet: it is pending, or the pass stopped before it)."""
-        return bool(self._reread_rows("1", source_id, targets, skip, tail=" LIMIT 1"))
+        return it yet: it is pending, or the pass stopped before it).  With ``only`` the question is about
+        that one stable id: the work queue asks it of a file it has in hand."""
+        if only is None:
+            return bool(self._reread_rows("1", source_id, targets, skip, tail=" LIMIT 1"))
+        tail = " AND i.stable_id = ? LIMIT 1"
+        return bool(self._reread_rows("1", source_id, targets, skip, tail=tail, params=(only,)))
 
     def set_redacted(self, source_id: str, stable_id: str) -> None:
         """Record that the item's name/path carries a credential: pages, shards and QUARANTINE.tsv show a

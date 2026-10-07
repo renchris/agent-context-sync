@@ -191,9 +191,10 @@ helper is then neither built nor run:
 ocr = false
 ```
 
-Files in a synced folder or the inbox that were converted before OCR was there are read again once, a few per sync,
-and only the ones already on the Mac: nothing is downloaded for it. A page that comes out the same is left
-untouched, and a file that cannot be converted again keeps the page it had.
+Files in a synced folder or the inbox that were converted before OCR was there are read again, a few per sync, and
+only the ones already on the Mac: nothing is downloaded for it. A page that comes out the same is left untouched. A
+file that cannot be converted again keeps the page it had; it is tried once more by a later sync and then left alone
+until it changes or agentsync is upgraded.
 
 **Comments in PDFs.** A reviewer's comments on a PDF (notes, highlights, strikethroughs, text boxes and the like) are
 listed after the text of the page they are on, under `[comments on this page (PDF annotations):]`: one line per

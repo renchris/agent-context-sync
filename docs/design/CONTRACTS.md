@@ -7231,7 +7231,9 @@ for byte what it was.
 | `.pdf` `.pptx` `.docx` `.odt` `.rtf` `.html` `.htm` | a page under a version of the field build of OCR (`+ocr-off`, `+helper-`, `+macos-`) | always |
 
 A page that comes out the same is left untouched, front matter included, and nothing is committed for it. A
-re-read that fails keeps the page. No file is read again twice for the same thing, and nothing is downloaded.
+re-read that fails keeps the page; the file is read once more in a later cycle and then given up. Nothing is
+downloaded. ("Once" is the section's name from its first build, in which one failure of any kind was final;
+see "A bounded number of times".)
 
 **The converter decides what is outdated** (`agentsync.convert`). The cycle holds no list of converters,
 suffixes or versions. Four converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
@@ -7314,58 +7316,98 @@ stays, nothing is published, and the file is tried. **Amended (2026-10-06):** a 
 published as a `conversion failed` stub with an error line naming the file, and no later re-read selects a
 failed conversion.
 
-**At most once.**
+**A bounded number of times** (amended 2026-10-06; it was "at most once").
 
 - A read that gives the file what it was read for leaves a cache row with the new version under the page's
-  action key, so no converter calls it outdated again.
-- Every other read ends in `tried`: the file's stable id, stored for the source. A file in `tried` is not
-  read again for the same capabilities. That is the case for a file whose conversion failed (page kept), one
-  the engine failed on again (plan D10: it has the page without OCR under the version without OCR, which
-  `outdated` still says yes to), one that cannot be read, and one the work queue would refuse unread (an
-  excluded item label, an inbox copy of a Graph file by name and size). The id is added before the file is
-  read and stored in the batch's transaction, so a read that raises is not repeated either.
+  action key, so no converter calls it outdated again. That is the usual end, after one read.
+- A read that leaves the file lacking what it was read for counts against the file (`_reread_note`): its
+  conversion failed and the page was kept, the engine failed on it again (plan D10: it has the page
+  without OCR under the version without OCR, which `outdated` still says yes to), the work queue would
+  refuse it unread (an excluded item label, an inbox copy of a Graph file by name and size), or the read
+  raised. The count is per cycle. After `_REREAD_ATTEMPTS = 2` cycles in which it failed, the file is in
+  `tried` and is not read again for the same capabilities. One attempt made every passing fault final: a
+  full disk under staging, pandoc timing out under load, a converter that broke for one cycle each used
+  up the one re-read of every file it was handed, up to 120 seconds' worth a cycle. None at all would read
+  a file that cannot be converted in every cycle for ever.
+- **Three in a row end the cycle's re-reads** (`_REREAD_STREAK = 3`). What fails three files running is
+  more likely the Mac than the files, so the cycle starts no more: a bad hour costs three files one attempt
+  each, and the rest of the mirror nothing.
+- **Not now** counts for nothing, and a later cycle asks again. A converter whose `version()` raises cannot
+  run at all (pandoc is missing; `_runs`): its files are not read, and one WARNING names the converter. A
+  file that has gone or been evicted since the walk listed it. A file that cannot be read (a permission, a
+  provider that timed out): it never reached a converter, and the work queue retries such a file every
+  cycle too. And a read the helper stopped working in (`_CycleOcr.down`, §16.26): that failure is no
+  file's.
+- **A cycle that died in a read.** The count is stored in the row's manifest transaction, which a process
+  death rolls back: a file whose read hangs until the launcher's watchdog, or crashes a native library,
+  would be the first file of every later cycle, and no source after it would sync. So before a file is
+  read the record says `"reading": <stable id>` in a write of its own, committed on its own; the row's
+  transaction clears it. A cycle that finds the mark (`_reread_load`) counts one failed read of that file,
+  whatever killed the process: an unrelated kill costs the file one of its two attempts, not its re-read.
+  One read is therefore two commits, where the first build wrote twenty files in one.
 - **An error is never the source's failure.** When something other than the conversion goes wrong while a
-  file is read again (its page cannot be written), the step stops for that source in that cycle. The row is
-  set to MAYBE_CHANGED, so the next pass's work reads it and checks its pages against the manifest. The
-  source's report gets `reading files again stopped: <error type>`, with no name in it, and the source goes
-  on to its renames and removals: it is not failed, and the cycle's exit code does not move.
-- **Not now** is neither. A converter whose `version()` raises cannot run at all (pandoc is missing): its
-  files are not read and not tried, one WARNING names the converter, and a later cycle asks again. The same
-  holds for a file that has gone or been evicted since the walk listed it.
-- A file in `tried` gets what it lacks when its bytes change (the ordinary conversion) or when the
-  capabilities change. Nothing else retries it: a helper that fails on every file for a while uses up the
-  one re-read of each file it was handed.
+  file is read again (its page cannot be written), the step stops for that source in that cycle and the
+  read counts against the file. The row is set to MAYBE_CHANGED, so the next pass's work reads it and
+  checks its pages against the manifest. The source's report gets `reading files again stopped: <error
+  type>`, with no name in it, and the source goes on to its renames and removals: it is not failed, and
+  the cycle's exit code does not move.
+- **New bytes start over** (`_reread_forget`). When the work queue converts a file anew, its id is taken
+  out of `failed` and `tried`, in both records: what a re-read of the old bytes did says nothing about
+  these. `tried` holds stable ids, and it used to keep one through every later change, so a file given up
+  once and later converted without OCR (past the budget, or after the engine failed on the new bytes) was
+  left out by `reread_candidates` and `reread_left` alike, and the same cycle stored `done` again.
+- A file in `tried` gets what it lacks when its bytes change (the ordinary conversion), when the
+  capabilities change, or when agentsync is upgraded (its version is part of them).
+
+**A file the pass calls maybe-changed** (`_outdated_in_queue`; amended 2026-10-06). `_reread_source` reads
+only a file listed `unchanged`. A file the walk calls maybe-changed in every pass (a volume that reports no
+generation count) is in the work queue every cycle, ends each as `touched_not_changed`, and is never one;
+its source's record stayed open for ever. The queue has such a file in hand. When its bytes are the ones
+its pages were made from, the pages are intact, and `Manifest.reread_left(..., only=<stable id>)` says they
+are ones to read the file again for, `_after_fetch` converts it there, as a re-read: the same rows of the
+table above, the same count against the file, the same time (`_reread_s`). A page that was kept is then
+settled as `touched_not_changed`, as it would have been. Not for a Graph source or a `materialise PATH`
+run, not once the cycle starts no more re-reads, not for a file in `tried`, and not while the source's
+record says `done`. The same rule reads a file the person just downloaded in the cycle that sees it.
 
 **The record.** Manifest meta `reread:<source_id>` (`cycle._REREAD_META`; amends §5), a JSON list of at most
 two records `{"done": bool, "for": <sha256>, "tried": [<stable id>, …]}`: the one the last cycle wrote, then
-the last one written for another `for`.
+the last one written for another `for`. A record also holds `"failed": {<stable id>: <count>}` while a file
+has failed fewer cycles than it may, and `"reading": <stable id>` while a file is being read; a source
+nothing failed in stores what it always did. `cycle._reread_records` reads a value (`tried` ids count as
+`_REREAD_ATTEMPTS` failures), `_reread_value` writes one, and `_Rereads` is a source's record in memory, read
+once a cycle (`_Cycle._reread_load`).
 
-- `for` is `_Cycle._capabilities()`: the sha256 of the suffixes that have a converter, the engine's identity
-  (`""` without one) and each converter's `outdated_key`. A new suffix, engine, emitter or floor is something
-  new to look for.
-- `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false). While the first
-  record says so for the current capabilities, a cycle reads one meta value for the source and runs none of
-  the queries below.
+- `for` is `_Cycle._capabilities()`: the sha256 of this agentsync's version, the suffixes that have a
+  converter, the engine's identity (`""` without one) and each converter's `outdated_key`. A new version,
+  suffix, engine, emitter or floor is something new to look for, and a file given up under one build is
+  tried by the next.
+- `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false; a file that failed
+  once is still left, one in `tried` is not). While the first record says so for the current capabilities,
+  a cycle reads one meta value for the source and runs none of the queries below.
 - A cycle looks again when the capabilities are not those of the first record, and when `_reread_reopen`
   cleared `done`: a file was just converted without something its converter has (past `_OCR_BUDGET_S`, or
   after the engine failed: `_lacks`), or a file the last pass saw online-only is on this Mac. It is stored
   at once, so a `materialise PATH` run or a source that fails further on does not lose it.
 - The second record keeps `tried` true across an engine that goes and comes back (`[convert] ocr`, a helper
   that did not answer `--version` once): its `done` does not count, so the files converted meanwhile are
-  found, and the files already tried are not read again.
+  found, and the files already given up are not read again.
 
-**Bounds.** `_REREAD_BATCH = 20` files per manifest transaction and lock beat. `_REREAD_BUDGET_S = 120`
-seconds of re-reads per cycle, over all sources (`_reread_clock`); the read that passes it finishes. Re-reads
-also stop once the cycle's OCR time is used (`_OCR_BUDGET_S`, §16.26): past it a file would be converted
-without OCR, which is what it was read again for. The rest wait for later cycles, in stable-id order, and a
-file that fails holds nobody up. Neither number was measured against a real mirror; both are constants.
+**Bounds.** `_REREAD_BATCH = 20` files asked for at a time and read between two lock beats; each file is a
+manifest transaction of its own. `_REREAD_BUDGET_S = 120` seconds of re-reads per cycle, over all sources
+(`_reread_clock`); the read that passes it finishes. Re-reads also stop once the cycle reads nothing more
+with its engine (`_ocr_over`, §16.26: `_OCR_BUDGET_S` is used, or the helper stopped working), since past
+that a file would be converted without OCR, which is what it was read again for; and after three failures
+in a row. The rest wait for later cycles, in stable-id order, and a file that fails holds nobody up for
+more than its two cycles. None of the numbers was measured against a real mirror; all are constants.
 
 **Manifest** (amends §5; no schema change). `Manifest.produced_by(source_id)` returns each distinct
 `(converter id, converter version, stub reason or None)` behind the pages of the source's files on this Mac:
 one statement, no row decoded. `Manifest.reread_candidates(source_id, targets, *, seen_run, skip=(), after="",
 limit)` returns the files that `targets` name, a page at a time by stable id; a target is `(converter id,
-version, stub reason or None, lower-case suffix)`. `Manifest.reread_left(source_id, targets, *, skip=())` says
-whether such a file is on this Mac at all, whatever its verdict. The id and version are those of the `cache`
+version, stub reason or None, lower-case suffix)`. `Manifest.reread_left(source_id, targets, *, skip=(), only=None)` says
+whether such a file is on this Mac at all, whatever its verdict; with `only` it says so of one stable id,
+which is what the work queue asks about a file it has in hand. The id and version are those of the `cache`
 row of the page's action key (the H2 cutoff moves the key and nothing else); the join is LEFT with COALESCE
 onto the `outputs` columns, so a page whose cache row is gone costs at most one more read, which writes the
 row. A stub counts only when it is its item's own state (`outputs.status` equals `items.state`): a
@@ -7395,26 +7437,35 @@ It is now read again once. `tests/test_cycle.py` pinned that the PDF converted w
 was not converted by the next cycle; it now pins that the next cycle reads it and the one after does not.
 
 Every new name in `agentsync.cycle` is private (`_REREAD_META`, `_REREAD_BATCH`, `_REREAD_BUDGET_S`,
-`_reread_clock`, `_outdated_rule`, `_reread_records`, `_reread_state`, `_same_stub`, and on `_Cycle`:
-`_capabilities`, `_lacks`, `_reread_targets`, `_reread_over`, `_save_reread`, `_reread_reopen`,
-`_reread_source`, `_reread_batch`, `_reread`, `_move_key`), as are `manifest._REREAD_SQL`,
+`_REREAD_ATTEMPTS`, `_REREAD_STREAK`, `_reread_clock`, `_outdated_rule`, `_Rereads`, `_RereadRecord`,
+`_reread_records`, `_reread_value`, `_same_stub`, `_no_converter_stub`, `_STUB_STATES`, `_CycleOcr`,
+`_blank_png`, `_OCR_CANARY`, `_OCR_CANARY_S`, `_OCR_DOWN`, and on `_Cycle`: `_capabilities`, `_lacks`,
+`_reread_targets`, `_reread_over`, `_ocr_over`, `_ocr_waits`, `_reads_with_ocr`, `_keeps_page`,
+`_reread_load`, `_save_reread`, `_reread_reopen`, `_reread_forget`, `_reread_note`, `_reread_source`,
+`_reread_batch`, `_runs`, `_reread`, `_outdated_in_queue`, `_move_key`), as are `manifest._REREAD_SQL`,
 `manifest._REREAD_TARGETS` and `Manifest._reread_rows`.
 
 Tests: `tests/test_cycle.py` (a PDF from before comments gains them, one without comments keeps its page byte
 for byte, a floor above the running emitter and a dry run read nothing, and once done none of the three
 queries runs; an image, a scan and a scanned page from before the engine are read by it once, a blank scan's
-stub says OCR found no text and four documents keep their pages; a label rule keeps a refused image unread, and without the
-rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one alarm, no second read
-until the capabilities change; an online-only file, an excluded file and a `materialise PATH` run, then the
-file downloaded; a file evicted after the walk; a file that cannot be read: tried once, its page and
-verdict kept, no name in a log line; an error while a file is read again: one report line, the source
-not failed, its removal still made; a tripped breaker and its held files; a file an incomplete
-pass did not list; an image page of the field emitter and a PDF under `+ocr-off` read again once; a file
-the engine fails on, an engine that goes and comes back, a new file it fails on;
-six files against the time bound, two to a transaction, one failing, and the one INFO line a cycle; a
-`materialise PATH` run that leaves a file to read again; pandoc missing for one cycle; a drive file never
-read again; and, amended, the PDF converted without OCR past the budget read by the next cycle),
+stub says OCR found no text and four documents keep their pages; a label rule keeps a refused image unread,
+and without the rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one
+alarm, a second read by the next cycle, and none after a second failure until the capabilities change;
+three failures in a row ending a cycle's re-reads; an online-only file, an excluded file and a `materialise
+PATH` run, then the file downloaded and read by the cycle that sees it; a file evicted after the walk; a
+file that cannot be read: its page and verdict kept, nothing counted against it, asked about again, no name
+in a log line; an error while a file is read again: one report line, the source not failed, its removal
+still made, and the file read by the next pass's work; a tripped breaker and its held files; a file an
+incomplete pass did not list; an image page of the field emitter and a PDF under `+ocr-off` read again
+once; an image whose first read fails at its re-read, by the helper and by the converter; a file the engine
+fails on in two cycles, an engine that goes and comes back, a new file it fails on; a file given up, then
+rewritten in place and converted past the OCR budget, read by the next cycle; a volume with no generation
+count, whose files the work queue reads again itself; the mark a cycle leaves before a read, and a record
+left by two cycles that died in the read of one file; six files against the time bound, one failing in two
+cycles, and the one INFO line a cycle; a `materialise PATH` run that leaves a file to read again; pandoc
+missing for one cycle; a drive file never read again; and, amended, the PDF converted without OCR past the
+budget read by the next cycle),
 `tests/test_manifest.py` (`produced_by`, `reread_candidates` and `reread_left` over every state, verdict and
-kind of stub; a missing cache row; page, order and skip; targets past one statement),
+kind of stub, and `reread_left` asked about one file; a missing cache row; page, order and skip; targets past one statement),
 `tests/test_convert_core.py` (`outdated` per converter with and without an engine, for pages and stubs; the
 floor and its end; each shape of a field-build version, per suffix; the image floor; `_emitter`) and `tests/test_convert_file.py` (the prefix).

@@ -1526,6 +1526,18 @@ def test_reread_left_counts_what_a_pass_could_not_reach_and_nothing_that_is_not_
     assert m.reread_left("src", [PDF_PAGE], skip=["pending"])
     assert not m.reread_left("src", [PDF_PAGE], skip=["pending", "unlisted"])
     assert not m.reread_left("src", [PDF_STUB, PNG_STUB]) and not m.reread_left("other", [PDF_PAGE])
+    # The work queue asks about the one file it has in hand, whatever its verdict.
+    assert m.reread_left("src", [PDF_PAGE], only="pending") and m.reread_left(
+        "src", [PDF_PAGE], only="unlisted"
+    )
+    assert not m.reread_left("src", [PDF_PAGE], only="current"), "its cache row says the new version"
+    assert not m.reread_left("src", [PDF_PAGE], only="online") and not m.reread_left(
+        "src", [PDF_PAGE], only="x"
+    )
+    assert not m.reread_left("src", [PDF_PAGE], only="pending", skip=["pending"])
+    assert not m.reread_left("src", [PDF_STUB], only="pending") and not m.reread_left(
+        "src", [], only="pending"
+    )
 
 
 def test_reread_targets_past_one_statement_give_each_file_once(

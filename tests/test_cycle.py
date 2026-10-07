@@ -11,6 +11,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -1863,6 +1864,14 @@ def _reread_record(config: Config, sid: str = SID) -> tuple[bool, list[str]]:
     return newest["done"], newest["tried"]
 
 
+def _reread_failed(config: Config, sid: str = SID) -> dict[str, int]:
+    """Stable id -> the cycles its re-read failed in, for the files not yet given up."""
+    with Manifest(config.state_paths.db) as m:
+        raw = m.get_meta(cycle_mod._REREAD_META + sid)
+    assert raw is not None
+    return dict(json.loads(raw)[0].get("failed", {}))
+
+
 def _mirror_page(config: Config, rel: str) -> tuple[dict[str, Any], str]:
     return page(config.docs_repo, slug.mirror_rel_path(SID, rel))
 
@@ -2006,8 +2015,8 @@ def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
 ) -> None:
     """An image mirrored as ``no converter`` was never read, so its re-read is the first look at its bytes.
     When that fails, the stub stays: nothing is published or committed, the source gets no error line
-    naming the file, and the file is remembered as tried, like a document.  It used to become a failed
-    conversion, which no later re-read selects."""
+    naming the file, and the read counts against the file, as a document's does: after two cycles of it
+    the file is given up.  It used to become a failed conversion, which no later re-read selects."""
     repo = sample_config.docs_repo
     _shade_png(local_source_dir / SITE_PLAN, 70)
     assert run(sample_config).exit_code == 0
@@ -2030,8 +2039,13 @@ def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
     assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
     row = _file_rows(sample_config)[SITE_PLAN]
     assert (row.state, row.state_reason) == (RowState.REFUSED, "no converter for .png")
-    assert _reread_record(sample_config) == (True, [row.stable_id])
-    assert run(sample_config).commit_sha is None
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {
+        row.stable_id: 1
+    }
+    assert run(sample_config).commit_sha is None and _reread_record(sample_config) == (True, [row.stable_id])
+    assert _mirror_bytes(sample_config, SITE_PLAN) == before
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).commit_sha is None and fetched == []
 
 
 def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_is(
@@ -2057,31 +2071,37 @@ def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_
     assert run(opened).commit_sha is None and fetched.count(SITE_PLAN) == 1
 
 
-def test_a_re_read_that_fails_keeps_the_page_and_the_file_is_not_read_a_third_time(
+def test_a_re_read_that_fails_keeps_the_page_and_a_file_is_given_up_after_two_cycles_of_it(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A converter that breaks while files are read again costs no page: nothing is published, nothing is
-    committed, and the rows keep their hashes and their verdict.  Each file is tried once for what this
-    install has, so a file that cannot be converted is not read every cycle.  Something new to look for
-    starts over."""
+    committed, and the rows keep their hashes and their verdict.  A fault that passes costs nothing else
+    either: the next cycle reads the files again.  A file whose re-read fails in two cycles is given up for
+    what this install has, so one that cannot be converted is not read every cycle.  Something new to look
+    for starts over."""
     repo = sample_config.docs_repo
+    other = "projects/Contoso gadget review.pdf"
     _commented(local_source_dir / REVIEW, "Contoso widget review")
+    _commented(local_source_dir / other, "Contoso gadget review")
     with _before_comments(monkeypatch):
         assert run(sample_config).exit_code == 0
-    pages = _mirror_bytes(sample_config, REVIEW, PLAIN_PDF)
+    pages = _mirror_bytes(sample_config, REVIEW, other, PLAIN_PDF)
     rows, head = _file_rows(sample_config), git(repo, "rev-parse", "HEAD")
     fetched = _fetches(monkeypatch)
+    real = pdf_mod.PdfConverter.convert
+    broken_for = {Path(rel).name for rel in pages}
 
-    def broken(self: Any, src: Path, *, name: str) -> Any:
-        raise RuntimeError(f"cannot open /Users/someone/Library/{name}")
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name in broken_for:
+            raise RuntimeError(f"cannot open /Users/someone/Library/{name}")
+        return real(self, src, name=name)
 
-    with monkeypatch.context() as fault:
-        fault.setattr(pdf_mod.PdfConverter, "convert", broken)
-        report = run(sample_config)
+    monkeypatch.setattr(pdf_mod.PdfConverter, "convert", convert)
+    report = run(sample_config)
     [rep] = report.sources
     assert (report.exit_code, report.commit_sha, rep.errors) == (0, None, ())
     assert rep.alarms == (
-        "2 file(s) read again for what their converter has gained could not be converted; their pages are "
+        "3 file(s) read again for what their converter has gained could not be converted; their pages are "
         "kept as they were",
     )
     assert _mirror_bytes(sample_config, *pages) == pages
@@ -2091,18 +2111,53 @@ def test_a_re_read_that_fails_keeps_the_page_and_the_file_is_not_read_a_third_ti
         was, now = rows[rel], after[rel]
         assert (now.state, now.state_reason, now.last_verdict) == (RowState.LIVE, None, Verdict.UNCHANGED)
         assert (now.content_sha256, now.canonical_sha256) == (was.content_sha256, was.canonical_sha256)
-    done, tried = _reread_record(sample_config)
-    assert done and sorted(tried) == sorted(after[rel].stable_id for rel in pages)
-    assert sorted(fetched) == sorted(pages)
-    # The converter works again.  The two files were tried for what this install has: they are left alone.
-    assert run(sample_config).commit_sha is None and len(fetched) == 2
+    assert _reread_record(sample_config) == (False, []) and sorted(fetched) == sorted(pages)
+    assert _reread_failed(sample_config) == {after[rel].stable_id: 1 for rel in pages}
+    # The fault passes for one of them.  The next cycle reads all three again: that one gains its comments,
+    # and the two that failed in a second cycle are given up.
+    broken_for.discard(Path(REVIEW).name)
+    second = run(sample_config)
+    assert second.commit_sha is not None and COMMENTS in _mirror_page(sample_config, REVIEW)[1]
+    assert len(fetched) == 6 and _mirror_bytes(sample_config, other, PLAIN_PDF) == {
+        rel: pages[rel] for rel in (other, PLAIN_PDF)
+    }
+    given_up = sorted(after[rel].stable_id for rel in (other, PLAIN_PDF))
+    assert _reread_record(sample_config) == (True, given_up) and _reread_failed(sample_config) == {}
+    # The converter works again.  The two were given up for what this install has: they are left alone.
+    broken_for.clear()
+    assert run(sample_config).commit_sha is None and len(fetched) == 6
     assert loop.next_step(sample_config).rule != 3
     # A new floor is something new to look for, so the files are read once more.
     monkeypatch.setattr(pdf_mod.PdfConverter, "outdated_key", "2.1.0<2.1.0, and one thing more")
     again = run(sample_config)
-    assert again.commit_sha is not None and len(fetched) == 4
-    assert COMMENTS in _mirror_page(sample_config, REVIEW)[1] and _reread_record(sample_config) == (True, [])
-    assert run(sample_config).commit_sha is None and len(fetched) == 4
+    assert again.commit_sha is not None and len(fetched) == 8
+    assert COMMENTS in _mirror_page(sample_config, other)[1] and _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and len(fetched) == 8
+
+
+def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What fails three files running is more likely the Mac than the files (a full disk, a converter that
+    cannot start).  The cycle stops there, so a bad hour costs three files one of their attempts and the
+    rest of the mirror nothing."""
+    for n in range(5):
+        _commented(local_source_dir / f"reviews/Contoso review {n}.pdf", f"Contoso review {n}")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+
+    def broken(self: Any, src: Path, *, name: str) -> Any:
+        raise RuntimeError("no space left on device")
+
+    fetched = _fetches(monkeypatch)
+    with monkeypatch.context() as fault:
+        fault.setattr(pdf_mod.PdfConverter, "convert", broken)
+        [rep] = run(sample_config).sources
+    kept = "3 file(s) read again for what their converter has gained could not be converted; their pages"
+    assert len(fetched) == 3 and rep.errors == () and rep.alarms == (f"{kept} are kept as they were",)
+    assert _reread_record(sample_config) == (False, []) and len(_reread_failed(sample_config)) == 3
+    assert run(sample_config).commit_sha is not None and len(fetched) == 9, "the fault passed: all six"
+    assert _reread_record(sample_config) == (True, [])
 
 
 def test_a_re_read_downloads_nothing_reads_nothing_out_of_scope_and_waits_for_materialise(
@@ -2149,15 +2204,13 @@ def test_a_re_read_downloads_nothing_reads_nothing_out_of_scope_and_waits_for_ma
     assert _reread_record(config) == (True, []), "a file that is not on this Mac is not waited for"
     assert run(config).commit_sha is None and len(fetched) == 3
     # The person downloads it (Finder's Download Now changes the inode's flags, so its change time).  The
-    # walk sees the row move and reads the file as it reads any touched file; the pass after that finds
-    # it unchanged and on this Mac, and reads it again.
+    # walk sees the row move and the work queue reads the file as it reads any touched file.  It finds the
+    # bytes its page was made from and a page from before comments, and converts it there and then.
     inos.clear()
     online.chmod(0o600)
-    assert run(config).exit_code == 0 and fetched[3:] == [online_rel]
-    assert COMMENTS not in _mirror_page(config, online_rel)[1] and not _reread_record(config)[0]
-    assert run(config).commit_sha is not None and fetched[3:] == [online_rel, online_rel]
+    assert run(config).commit_sha is not None and fetched[3:] == [online_rel]
     assert COMMENTS in _mirror_page(config, online_rel)[1] and _reread_record(config) == (True, [])
-    assert run(config).commit_sha is None and len(fetched) == 5
+    assert run(config).commit_sha is None and len(fetched) == 4
 
 
 def test_a_file_evicted_after_the_walk_listed_it_is_not_downloaded_for_a_re_read(
@@ -2183,25 +2236,27 @@ def test_a_file_evicted_after_the_walk_listed_it_is_not_downloaded_for_a_re_read
     assert run(sample_config).commit_sha is not None and COMMENTS in _mirror_page(sample_config, REVIEW)[1]
 
 
-def test_a_file_that_cannot_be_read_again_is_tried_once_and_no_log_line_names_it(
+def test_a_file_that_cannot_be_read_again_is_asked_about_later_and_no_log_line_names_it(
     sample_config: Config,
     local_source_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The file was readable when it was converted and is not now.  Its page stays, the row keeps its
-    verdict (it is no pending work for every later sync to retry), and it is tried once.  What the cycle
-    says about re-reads at INFO is its one line, and no line at any level holds a name or a path."""
+    verdict (it is no pending work), and nothing is counted against the file: it never reached a converter,
+    and the fault may pass (a permission, a provider that timed out).  A later cycle asks again.  What the
+    cycle says about re-reads at INFO is its one line, and no line at any level holds a name or a path."""
     _commented(local_source_dir / REVIEW, "Contoso widget review")
     with _before_comments(monkeypatch):
         assert run(sample_config).exit_code == 0
     before = _mirror_bytes(sample_config, REVIEW)
     real = LocalArm.fetch
     asked: list[str] = []
+    unreadable = {REVIEW}
 
     def fetch(self: Any, item: Any, dest: Path, budget: Any) -> Any:
         asked.append(item.rel_path)
-        if item.rel_path == REVIEW:
+        if item.rel_path in unreadable:
             raise PermissionError(13, "Permission denied", f"/Users/someone/source/{item.rel_path}")
         return real(self, item, dest, budget)
 
@@ -2213,9 +2268,8 @@ def test_a_file_that_cannot_be_read_again_is_tried_once_and_no_log_line_names_it
     assert _mirror_bytes(sample_config, REVIEW) == before
     row = _file_rows(sample_config)[REVIEW]
     assert (row.state, row.last_verdict) == (RowState.LIVE, Verdict.UNCHANGED)
-    assert (
-        _reread_record(sample_config) == (True, [row.stable_id]) and loop.next_step(sample_config).rule != 3
-    )
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {}
+    assert loop.next_step(sample_config).rule != 3
     said = [r for r in caplog.records if r.name == "agentsync.cycle" and "read again" in r.getMessage()]
     assert [r.getMessage() for r in said if r.levelno >= logging.INFO] == [
         "1 file(s) converted before a capability this install has were read again; 0 of them could not be "
@@ -2224,7 +2278,11 @@ def test_a_file_that_cannot_be_read_again_is_tried_once_and_no_log_line_names_it
     assert [r.getMessage() for r in said if r.levelno < logging.INFO] == [
         "a file could not be read again (PermissionError); its page is as it was"
     ]
-    assert run(sample_config).commit_sha is None and len(asked) == 2
+    assert run(sample_config).commit_sha is None and asked.count(REVIEW) == 2, "asked about again"
+    unreadable.clear()
+    assert run(sample_config).commit_sha is not None and COMMENTS in _mirror_page(sample_config, REVIEW)[1]
+    assert _reread_record(sample_config) == (True, []) and asked.count(REVIEW) == 3
+    assert run(sample_config).commit_sha is None and asked.count(REVIEW) == 3
 
 
 def test_an_error_while_a_file_is_read_again_does_not_fail_the_source(
@@ -2232,8 +2290,8 @@ def test_an_error_while_a_file_is_read_again_does_not_fail_the_source(
 ) -> None:
     """Something other than the conversion goes wrong while a file is read again (here: its page cannot be
     written).  The source has synced and stays synced: its removals still run, the report carries one
-    line with no name in it, and the cycle exits 0.  The file is tried, and as pending work the next pass
-    checks its page against the manifest; the files behind it are read by that pass."""
+    line with no name in it, and the cycle exits 0.  The read counts against the file, and as pending work
+    the next pass checks its page against the manifest; the files behind it are read by that pass."""
     _commented(local_source_dir / REVIEW, "Contoso widget review")
     doomed = "projects/sample.md"
     with _before_comments(monkeypatch):
@@ -2256,17 +2314,19 @@ def test_an_error_while_a_file_is_read_again_does_not_fail_the_source(
     assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
     (stopped,) = read
     row = _file_rows(sample_config)[stopped]
-    assert row.last_verdict is Verdict.MAYBE_CHANGED and _reread_record(sample_config) == (
-        False,
-        [row.stable_id],
-    )
+    assert row.last_verdict is Verdict.MAYBE_CHANGED and _reread_record(sample_config) == (False, [])
+    assert _reread_failed(sample_config) == {row.stable_id: 1}, "one of its two attempts"
+    # The next pass's work reads it, finds its page whole, and reads it again there for what it lacks; the
+    # file behind it is read once that pass has listed it.
     second = run(sample_config)
     [rep] = second.sources
-    assert second.exit_code == 0 and rep.errors == () and sorted(read) == [REVIEW, PLAIN_PDF]
-    assert _file_rows(sample_config)[stopped].last_verdict is Verdict.TOUCHED_NOT_CHANGED
+    (other,) = {REVIEW, PLAIN_PDF} - {stopped}
+    assert second.exit_code == 0 and rep.errors == () and sorted(read) == sorted([stopped, stopped, other])
+    assert _file_rows(sample_config)[stopped].last_verdict in (Verdict.UNCHANGED, Verdict.OUTPUT_UNCHANGED)
+    assert COMMENTS in _mirror_page(sample_config, REVIEW)[1]
     assert _file_rows(sample_config)[doomed].state is RowState.TOMBSTONE
-    assert _reread_record(sample_config) == (True, [row.stable_id])
-    assert run(sample_config).exit_code == 0 and len(read) == 2
+    assert _reread_record(sample_config) == (True, []) and _reread_failed(sample_config) == {}
+    assert run(sample_config).exit_code == 0 and len(read) == 3
 
 
 def test_a_re_read_leaves_the_deletion_breaker_and_its_held_files_as_they_were(
@@ -2332,13 +2392,14 @@ def test_a_file_an_incomplete_pass_did_not_list_is_not_read_again(
     assert run(config).commit_sha is None and fetched == [PLAIN_PDF]
 
 
-def test_a_file_the_engine_fails_on_is_read_again_once_and_an_engine_that_comes_back_reads_what_is_new(
+def test_a_file_the_engine_fails_on_twice_is_given_up_and_an_engine_that_comes_back_reads_what_is_new(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """OCR never fails a document: a PDF the engine fails on keeps the page it has without OCR, under the
-    version without OCR.  That version is what a re-read looks for, so the file is remembered as tried and
-    not read every cycle.  An engine that goes away and comes back reads the file converted meanwhile, and
-    neither the one it read before nor the one it failed on."""
+    version without OCR.  That version is what a re-read looks for, so the file is given up after the
+    second cycle in which the engine fails on it, and is not read every cycle.  An engine that goes away
+    and comes back reads the file converted meanwhile, and neither the one it read before nor the one it
+    failed on."""
     scans = local_source_dir / "scans"
     scans.mkdir()
 
@@ -2356,14 +2417,16 @@ def test_a_file_the_engine_fails_on_is_read_again_once_and_an_engine_that_comes_
     fetched = _fetches(monkeypatch)
     unread = _mirror_bytes(sample_config, bad)
     second = run(sample_config)
-    assert second.exit_code == 0 and second.sources[0].errors == ()
+    assert second.exit_code == 0 and second.sources[0].errors == () and second.sources[0].alarms == ()
     assert _mirror_page(sample_config, good)[1].rstrip().endswith("Signed in Rotterdam")
     assert _mirror_bytes(sample_config, bad) == unread and b"ocr" not in unread[bad]
     bad_id = _file_rows(sample_config)[bad].stable_id
-    assert _reread_record(sample_config) == (True, [bad_id])
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {bad_id: 1}
+    # The helper reads the blank image, so the failure is the file's.  A second cycle of it gives it up.
+    assert run(sample_config).commit_sha is None and _reread_record(sample_config) == (True, [bad_id])
     runs = len(calls(engine.helper))
     assert run(sample_config).commit_sha is None and len(calls(engine.helper)) == runs
-    assert (fetched.count(good), fetched.count(bad)) == (1, 1)
+    assert (fetched.count(good), fetched.count(bad)) == (1, 2)
     # The engine goes away.  A scan mirrored meanwhile is converted as on a Mac without one.
     found[0] = None
     late = scan("late scan", 93)
@@ -2375,19 +2438,21 @@ def test_a_file_the_engine_fails_on_is_read_again_once_and_an_engine_that_comes_
     found[0] = engine
     assert run(sample_config).commit_sha is not None
     assert _mirror_page(sample_config, late)[1].rstrip().endswith("Counted in Antwerp")
-    assert (fetched.count(good), fetched.count(bad), fetched.count(late)) == (1, 1, 2)
+    assert (fetched.count(good), fetched.count(bad), fetched.count(late)) == (1, 2, 2)
     assert _mirror_bytes(sample_config, bad) == unread and _reread_record(sample_config) == (True, [bad_id])
     assert run(sample_config).commit_sha is None and fetched.count(late) == 2
     # A new scan the engine fails on is converted without OCR.  That leaves a file to read again, so the
-    # cycle after looks, reads it once more, and remembers it too.
+    # two cycles after read it once more each, and then it is given up too.
     worse = scan("worse scan", 95)
     assert run(sample_config).exit_code == 0 and fetched.count(worse) == 1
     assert "ocr" not in _mirror_page(sample_config, worse)[0]["converter"]
     assert _reread_record(sample_config) == (False, [bad_id])
     assert run(sample_config).commit_sha is None and fetched.count(worse) == 2
+    assert _reread_record(sample_config) == (False, [bad_id])
+    assert run(sample_config).commit_sha is None and fetched.count(worse) == 3
     worse_id = _file_rows(sample_config)[worse].stable_id
     assert _reread_record(sample_config) == (True, sorted([bad_id, worse_id]))
-    assert run(sample_config).commit_sha is None and fetched.count(worse) == 2
+    assert run(sample_config).commit_sha is None and fetched.count(worse) == 3
 
 
 def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_that_fails(
@@ -2396,10 +2461,10 @@ def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_tha
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Six PDFs to read again, two to a transaction, each read 'taking' 25 s of a cycle's 60: three a
-    cycle.  One of them fails every time it is converted.  It costs its one read and holds nobody up: the
-    other five are read over two cycles, and the third cycle reads nothing.  A cycle says what it did in one
-    line, a count, with no name in it."""
+    """Six PDFs to read again, each read 'taking' 25 s of a cycle's 60: three a cycle.  One of them fails
+    every time it is converted.  It costs its two reads and holds nobody up: the other five are read once
+    each, and after three cycles nothing is left.  A cycle says what it did in one line, a count, with no
+    name in it."""
     reviews = [f"reviews/Contoso review {n}.pdf" for n in range(5)]
     for n, rel in enumerate(reviews):
         _commented(local_source_dir / rel, f"Contoso review {n}")
@@ -2422,25 +2487,131 @@ def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_tha
     caplog.set_level(logging.INFO, logger="agentsync.cycle")
     first = run(sample_config)
     assert first.exit_code == 0 and len(fetched) == 3 and not _reread_record(sample_config)[0]
-    second = run(sample_config)
-    assert second.exit_code == 0 and sorted(fetched) == sorted([*reviews, PLAIN_PDF]), "each file once"
+    assert run(sample_config).exit_code == 0 and len(fetched) == 6
+    assert run(sample_config).exit_code == 0 and len(fetched) == 7
+    assert sorted(fetched) == sorted([*reviews, reviews[0], PLAIN_PDF]), "each once, the one that fails twice"
     stuck_id = _file_rows(sample_config)[reviews[0]].stable_id
     assert _reread_record(sample_config) == (True, [stuck_id])
     assert _mirror_bytes(sample_config, reviews[0]) == stuck
     assert all(COMMENTS in _mirror_page(sample_config, rel)[1] for rel in reviews[1:])
-    third = run(sample_config)
-    assert third.commit_sha is None and len(fetched) == 6
+    assert run(sample_config).commit_sha is None and len(fetched) == 7
     said = [
         r.getMessage()
         for r in caplog.records
         if r.name == "agentsync.cycle" and "read again" in r.getMessage()
     ]
-    assert said == [
-        "3 file(s) converted before a capability this install has were read again; "
-        f"{kept} of them could not be converted and keep the page they had"
-        for kept in ([1, 0] if reviews[0] in fetched[:3] else [0, 1])
-    ]
+    line = re.compile(
+        r"(\d) file\(s\) converted before a capability this install has were read again; "
+        r"(\d) of them could not be converted and keep the page they had"
+    )
+    counts = [tuple(map(int, found.groups())) for found in map(line.fullmatch, said) if found]
+    assert len(counts) == len(said) == 3 and [read for read, _kept in counts] == [3, 3, 1]
+    assert sum(kept for _read, kept in counts) == 2
     assert "Contoso" not in "".join(said) and "sample" not in "".join(said)
+
+
+def test_a_file_given_up_is_read_again_once_its_bytes_have_changed(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What a file's re-reads did says nothing about other bytes.  A scan the engine failed on twice is
+    given up; then the file is rewritten in place (the same stable id) with a page the engine can read, in
+    a cycle whose OCR time is used, so it is converted without OCR.  The id used to stay among the tried,
+    and the same cycle stored ``done`` again: the page never got its text.  The work queue's conversion
+    takes the id out, and the next cycle reads the file."""
+    rel = "scans/Contoso supply agreement.pdf"
+    cover = ["The cover page has a text layer of its own"]
+    (local_source_dir / "scans").mkdir()
+    build_picture_pdf(local_source_dir / rel, [(cover, []), ([], [page_picture(95)])])
+    assert run(sample_config).exit_code == 0
+    engine = shade_engine(tmp_path / "ocr-bin", {91: ["Signed in Rotterdam"], 95: "fail"})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    assert run(sample_config).exit_code == 0 and run(sample_config).exit_code == 0
+    stable = _file_rows(sample_config)[rel].stable_id
+    assert _reread_record(sample_config) == (True, [stable])
+    build_picture_pdf(local_source_dir / rel, [(cover, []), ([], [page_picture(91)])])
+    with monkeypatch.context() as spent:
+        spent.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)
+        assert run(sample_config).exit_code == 0
+    assert _file_rows(sample_config)[rel].stable_id == stable, "rewritten in place"
+    assert "ocr" not in _mirror_page(sample_config, rel)[0]["converter"]
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {}
+    assert run(sample_config).commit_sha is not None and _reread_record(sample_config) == (True, [])
+    assert _mirror_page(sample_config, rel)[1].rstrip().endswith("Signed in Rotterdam")
+
+
+def test_a_file_the_walk_calls_maybe_changed_in_every_pass_is_read_again_by_the_work_queue(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A volume that reports no generation count: every pass calls every file maybe-changed, so the work
+    queue reads each one every cycle and no pass ever lists one unchanged.  Such a file was never read
+    again, and its source's record stayed open for ever.  The queue has the file in hand, with the bytes
+    its page was made from: it converts it there."""
+    real = al._file_attrs
+    monkeypatch.setattr(al, "_file_attrs", lambda path: dataclasses.replace(real(path), gen_count=None))
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+        assert run(sample_config).commit_sha is None
+    assert COMMENTS not in _mirror_page(sample_config, REVIEW)[1]
+    plain = _mirror_bytes(sample_config, PLAIN_PDF)
+    fetched = _fetches(monkeypatch)
+    second = run(sample_config)
+    [rep] = second.sources
+    assert second.commit_sha is not None and fetched.count(REVIEW) == 1, "read once, by the queue itself"
+    assert rep.converted == 0 and rep.errors == (), "the same bytes are no new conversion"
+    assert COMMENTS in _mirror_page(sample_config, REVIEW)[1]
+    assert _mirror_bytes(sample_config, PLAIN_PDF) == plain, "no comment in it: its page is as it was"
+    assert _file_rows(sample_config)[PLAIN_PDF].last_verdict is Verdict.OUTPUT_UNCHANGED
+    assert _reread_record(sample_config) == (True, [])
+    for query in ("produced_by", "reread_candidates", "reread_left"):
+        monkeypatch.setattr(Manifest, query, crash)
+    assert run(sample_config).commit_sha is None, "nothing is left, and no cycle looks"
+
+
+def test_a_cycle_that_died_while_a_file_was_read_again_counts_against_that_file(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-read that hangs or crashes the process (a page PDFium cannot render, the launcher's watchdog)
+    takes the manifest transaction with it, so nothing in it can remember the file, and every later cycle
+    would start with the same one.  Before a file is read the record says so, in a write committed on its
+    own; a cycle that finds such a mark counts one failed read.  Two of them give the file up, and the
+    files behind it are read."""
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    key, review_id = cycle_mod._REREAD_META + SID, _file_rows(sample_config)[REVIEW].stable_id
+    real = cycle_mod._Cycle._reread
+    marks: list[tuple[str, object]] = []
+
+    def reread(self: Any, src: Any, arm: Any, row: Any, acc: Any) -> Any:
+        with Manifest(sample_config.state_paths.db) as other:  # what a new process would find on disk
+            marks.append((row.stable_id, json.loads(other.get_meta(key) or "[{}]")[0].get("reading")))
+        return real(self, src, arm, row, acc)
+
+    monkeypatch.setattr(cycle_mod._Cycle, "_reread", reread)
+    assert run(sample_config).commit_sha is not None and len(marks) == 2
+    assert all(reading == stable for stable, reading in marks), "committed before the read starts"
+    with Manifest(sample_config.state_paths.db) as m:
+        done = json.loads(m.get_meta(key) or "")
+        assert "reading" not in done[0] and done[0]["done"] is True
+        # What two cycles that died in the read of one file leave: the mark of the second, the count of
+        # the first.  (The files are outdated again: the capabilities are what the record is for.)
+        left = [
+            {
+                "done": False,
+                "for": done[0]["for"],
+                "tried": [],
+                "failed": {review_id: 1},
+                "reading": review_id,
+            }
+        ]
+        m.set_meta(key, json.dumps(left, sort_keys=True))
+    monkeypatch.setattr(pdf_mod.PdfConverter, "outdated", lambda self, produced, reason=None: True)
+    del marks[:]
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).exit_code == 0
+    assert REVIEW not in fetched and fetched == [PLAIN_PDF], "given up; the file behind it is read"
+    assert [stable for stable, _reading in marks] != [review_id]
 
 
 def test_a_file_a_materialise_run_converted_without_ocr_is_read_again_by_the_next_sync(
