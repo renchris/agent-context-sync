@@ -614,6 +614,39 @@ def test_a_path_of_another_users_keeps_its_fail_and_the_chmod(
     assert (found.fix or "").startswith("chmod -R go-rwx ") and "agentsync sync" not in (found.fix or "")
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file whatever its mode")
+def test_a_path_its_owner_may_not_read_keeps_its_fail_and_the_chmod(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review, 2026-10-07: a mode is changed through a descriptor, and opening one takes the owner's read
+    bit. A file at 0044 and a folder at 0333 are this user's and still not paths a sync changes, so a fix
+    that named the sync sent a setup run round in a circle: sync, status, the same FAIL. Their fix is the
+    chmod, which needs no read bit."""
+    repo = tmp_path / "docs"
+    unread, sealed = repo / "_eval" / "unread.md", repo / "_eval" / "sealed"
+    sealed.mkdir(parents=True)
+    unread.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+    config = own_config(tmp_path, repo)
+    unread.chmod(0o644)
+    assert permissions(config).fix == SYNC_FIX, "readable by its owner: a sync clears it"
+    was = {unread: 0o044, sealed: 0o333}
+    for path, bits in was.items():
+        path.chmod(bits)
+    try:
+        with caplog.at_level(logging.WARNING, logger="agentsync.cycle"):
+            assert cycle_mod._tighten_own_paths(config) == 0
+        assert "2 path(s) could not be made owner-only" in caplog.text
+        found = permissions(config)
+        assert {path: mode(path) for path in was} == was and not found.ok
+        assert all(str(path) in found.detail for path in was)
+        assert (found.fix or "").startswith("chmod -R go-rwx ") and "agentsync sync" not in (found.fix or "")
+        for path, bits in was.items():  # what that chmod does to them
+            path.chmod(bits & ~0o077)
+        assert permissions(config).ok
+    finally:
+        sealed.chmod(0o700)  # the tmp folder can be removed again
+
+
 def test_tightening_never_follows_an_entry_swapped_for_a_symlink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

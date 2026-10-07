@@ -694,9 +694,10 @@ def _tighten_own_paths(config: Config) -> int:
 
 def _sync_leaves(config: Config, paths: Iterable[Path]) -> list[Path]:
     """Those of ``paths`` the next sync does not make owner-only: one outside :func:`_own_paths`, one that
-    is neither a regular file nor a folder, or one of another user's (only its owner may change a mode).
-    ``docs_repo.permissions`` words its fix by it: a sync when it clears them all, else the chmod.
-    Nothing is changed here."""
+    is neither a regular file nor a folder, one of another user's (only its owner may change a mode), or
+    one its owner may not read (:func:`_clear_group_other` changes a mode through a descriptor, and
+    opening one takes the owner's read bit; a chmod does not).  ``docs_repo.permissions`` words its fix by
+    it: a sync when it clears them all, else the chmod.  Nothing is changed here."""
     own = set(_own_paths(config))
 
     def ours(path: Path) -> bool:
@@ -704,7 +705,9 @@ def _sync_leaves(config: Config, paths: Iterable[Path]) -> list[Path]:
             st = path.lstat()
         except OSError:
             return False
-        return (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)) and st.st_uid == os.geteuid()
+        if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+            return False
+        return st.st_uid == os.geteuid() and bool(st.st_mode & stat.S_IRUSR)
 
     return [p for p in paths if p not in own or not ours(p)]
 
