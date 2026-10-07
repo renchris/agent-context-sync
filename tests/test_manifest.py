@@ -1334,3 +1334,212 @@ def test_touch_observed_writes_the_verdict_only_where_it_changes(m: Manifest) ->
     assert (rows["b"].last_seen_run, rows["b"].last_verdict) == (5, Verdict.UNCHANGED)
     assert m.touch_observed("src", ["a"], run_id=6, verdict_changed=[]) == 1
     assert m.get_item("src", "a").last_verdict is Verdict.OUTPUT_UNCHANGED  # type: ignore[union-attr]
+
+
+# ---- files to read again (CONTRACTS.md 16.27) --------------------------------------------------------------
+
+OLD, NEW = "2.0.0+pdfium-1", "2.1.0+pdfium-1"
+NO_TEXT = "no text layer"
+NO_PNG = "no converter for .png"
+PDF_PAGE = ("pdf", OLD, None, ".pdf")
+PDF_STUB = ("pdf", OLD, NO_TEXT, ".pdf")
+PNG_STUB = ("none", "0", NO_PNG, ".png")
+
+
+def _mirrored(
+    m: Manifest,
+    sid: str,
+    name: str,
+    *,
+    made: tuple[str | None, str | None] = ("pdf", OLD),
+    cached: tuple[str, str] | None = ("pdf", OLD),
+    status: OutputStatus = OutputStatus.OK,
+    state: RowState = RowState.LIVE,
+    reason: str | None = None,
+    verdict: Verdict = Verdict.UNCHANGED,
+    run: int = 5,
+    **observed: object,
+) -> None:
+    """One file with one page: ``made`` is what its output row names, ``cached`` what the cache row of its
+    action key names (None: no such row)."""
+    m.upsert_observed(item(sid, f"p/{name}", **observed), run_id=run, verdict=verdict, state=state)
+    if reason is not None:
+        m.set_state("src", sid, state, reason)
+    key = None if made[0] is None else f"key-{sid}"
+    page = output(
+        f"mirror/src/{sid}.md",
+        stable_id=sid,
+        action_key=key,
+        status=status,
+        converter_id=made[0],
+        converter_version=made[1],
+    )
+    m.replace_outputs("src", sid, [page])
+    if cached is not None and key is not None:
+        m.record_cache(
+            key,
+            converter_id=cached[0],
+            converter_version=cached[1],
+            options_hash="o",
+            canonical_sha256=H,
+            status="ok" if status is OutputStatus.OK else "unreadable",
+            unit_count=1,
+            size=1,
+            run_id=run,
+        )
+
+
+def _candidates(m: Manifest, targets: list[tuple[str, str, str | None, str]], **kw: object) -> list[str]:
+    kw.setdefault("seen_run", 5)
+    kw.setdefault("limit", 50)
+    return [r.stable_id for r in m.reread_candidates("src", targets, **kw)]  # type: ignore[arg-type]
+
+
+def test_produced_by_names_each_converter_version_and_stub_reason_once(m: Manifest) -> None:
+    """One query, no row decoded: what made the pages of the files on this Mac.  The cache row of a page's
+    action key has the last word (the H2 cutoff moves the key and nothing else), the output row stands in
+    where it is gone, and a stub counts only when it is its item's own state."""
+    stub = {"status": OutputStatus.QUARANTINED, "state": RowState.QUARANTINED}
+    refusal = {"status": OutputStatus.REFUSED, "state": RowState.REFUSED}
+    _mirrored(m, "a", "one.pdf")
+    _mirrored(m, "b", "two.pdf")
+    _mirrored(m, "c", "cut off.pdf", cached=("pdf", NEW))
+    _mirrored(m, "d", "no cache row.pdf", made=("pdf", "1.9.0"), cached=None)
+    _mirrored(m, "e", "scan.pdf", reason=NO_TEXT, **stub)
+    _mirrored(m, "f", "plan.png", made=("none", "0"), cached=None, reason=NO_PNG, **refusal)
+    _mirrored(m, "g", "labelled.pdf", reason="refused: excluded label", **refusal)
+    _mirrored(
+        m, "h", "online.pdf", made=("pdf", "0.1.0"), cached=None, dataless=True, state=RowState.DATALESS
+    )
+    _mirrored(m, "i", "gone.pdf", made=("pdf", "0.2.0"), cached=None, state=RowState.TOMBSTONE)
+    _mirrored(
+        m,
+        "j",
+        "failed.pdf",
+        made=("pdf", "0.3.0"),
+        cached=None,
+        status=OutputStatus.FAILED,
+        state=RowState.QUARANTINED,
+        reason="conversion failed",
+    )
+    _mirrored(
+        m,
+        "k",
+        "copy.pdf",
+        made=("pdf", "0.4.0"),
+        cached=None,
+        status=OutputStatus.REFUSED,
+        state=RowState.QUARANTINED,
+        reason="duplicate-of drive",
+    )
+    _mirrored(m, "l", "key.pdf", made=(None, None), cached=None, reason="contains a credential", **stub)
+    _mirrored(
+        m, "n", "online scan.pdf", made=("pdf", "0.5.0"), cached=None, reason=NO_TEXT, dataless=True, **stub
+    )
+    m.upsert_observed(item("m", "p", is_dir=True), run_id=5, verdict=Verdict.UNCHANGED, state=RowState.LIVE)
+    assert m.produced_by("src") == [
+        ("none", "0", NO_PNG),
+        ("pdf", "1.9.0", None),
+        ("pdf", OLD, None),
+        ("pdf", OLD, NO_TEXT),
+        ("pdf", OLD, "refused: excluded label"),
+        ("pdf", NEW, None),
+    ]
+    assert m.produced_by("another") == []
+
+
+def test_reread_candidates_are_files_this_pass_listed_unchanged_on_this_mac(m: Manifest) -> None:
+    stub = {"status": OutputStatus.QUARANTINED, "state": RowState.QUARANTINED}
+    refusal = {"status": OutputStatus.REFUSED, "state": RowState.REFUSED}
+    _mirrored(m, "a", "one.pdf")
+    _mirrored(m, "b", "UPPER.PDF")
+    _mirrored(m, "c", "no cache row.pdf", cached=None)
+    _mirrored(m, "d", "scan.pdf", reason=NO_TEXT, **stub)
+    _mirrored(m, "e", "plan.png", made=("none", "0"), cached=None, reason=NO_PNG, **refusal)
+    # Not one of them: each is what the pass, the Mac or the page says no to.
+    _mirrored(m, "n-pending", "pending.pdf", verdict=Verdict.MAYBE_CHANGED)
+    _mirrored(m, "n-deferred", "deferred.pdf", verdict=Verdict.DEFERRED)
+    _mirrored(m, "n-deleted", "deleted.pdf", verdict=Verdict.DELETED)
+    _mirrored(m, "n-touched", "touched.pdf", verdict=Verdict.TOUCHED_NOT_CHANGED)
+    _mirrored(m, "n-unlisted", "unlisted.pdf", run=4)
+    _mirrored(m, "n-online", "online.pdf", dataless=True, state=RowState.DATALESS)
+    # A stub keeps its state while its file is online-only: only the row's own flag says where the file is.
+    _mirrored(m, "n-online-scan", "online scan.pdf", reason=NO_TEXT, dataless=True, **stub)
+    _mirrored(
+        m,
+        "n-online-image",
+        "online.png",
+        made=("none", "0"),
+        cached=None,
+        reason=NO_PNG,
+        dataless=True,
+        **refusal,
+    )
+    _mirrored(m, "n-current", "current.pdf", cached=("pdf", NEW))
+    _mirrored(m, "n-gone", "gone.pdf", state=RowState.TOMBSTONE)
+    _mirrored(m, "n-encrypted", "locked.pdf", reason="encrypted-pdf", **stub)
+    _mirrored(m, "n-labelled", "labelled.pdf", reason="refused: excluded label", **refusal)
+    _mirrored(
+        m, "n-failed", "failed.pdf", status=OutputStatus.FAILED, state=RowState.QUARANTINED, reason=NO_TEXT
+    )
+    _mirrored(m, "n-other-type", "notes.pdf.txt")
+    _mirrored(m, "n-bare", ".pdf")
+    _mirrored(
+        m, "n-mp4", "clip.mp4", made=("none", "0"), cached=None, reason="no converter for .mp4", **refusal
+    )
+    m.upsert_observed(
+        item("n-dir", "p/folder.pdf", is_dir=True), run_id=5, verdict=Verdict.UNCHANGED, state=RowState.LIVE
+    )
+    targets = [PDF_PAGE, PDF_STUB, PNG_STUB]
+    assert _candidates(m, targets) == ["a", "b", "c", "d", "e"]
+    assert _candidates(m, [PDF_PAGE]) == ["a", "b", "c"] and _candidates(m, [PDF_STUB]) == ["d"]
+    assert _candidates(m, [PNG_STUB]) == ["e"] and _candidates(m, []) == []
+    assert _candidates(m, [("pdf", NEW, None, ".pdf")]) == ["n-current"]
+    assert _candidates(m, targets, seen_run=4) == ["n-unlisted"]
+    # In stable-id order, a page at a time, never the ids the caller has had.
+    assert _candidates(m, targets, limit=2) == ["a", "b"]
+    assert _candidates(m, targets, limit=2, after="b") == ["c", "d"]
+    assert _candidates(m, targets, after="e") == []
+    assert _candidates(m, targets, skip=["a", "d", "zz"]) == ["b", "c", "e"]
+    [row] = m.reread_candidates("src", [PDF_STUB], seen_run=5, limit=1)
+    assert (row.rel_path, row.state, row.state_reason) == ("p/scan.pdf", RowState.QUARANTINED, NO_TEXT)
+    assert (
+        _candidates(m, targets, seen_run=6) == []
+        and m.reread_candidates("other", targets, seen_run=5, limit=9) == []
+    )
+
+
+def test_reread_left_counts_what_a_pass_could_not_reach_and_nothing_that_is_not_on_this_mac(
+    m: Manifest,
+) -> None:
+    """The cycle asks this before it stops looking.  A pending row and a row the pass did not list are still
+    to come; an online-only file, a tombstone and a current page are not."""
+    stub = {"status": OutputStatus.QUARANTINED, "state": RowState.QUARANTINED}
+    _mirrored(m, "online", "online.pdf", dataless=True, state=RowState.DATALESS)
+    _mirrored(m, "online-scan", "online scan.pdf", reason=NO_TEXT, dataless=True, **stub)
+    _mirrored(m, "gone", "gone.pdf", state=RowState.TOMBSTONE)
+    _mirrored(m, "current", "current.pdf", cached=("pdf", NEW))
+    assert not m.reread_left("src", [PDF_PAGE, PDF_STUB]) and not m.reread_left("src", [])
+    _mirrored(m, "pending", "pending.pdf", verdict=Verdict.ERROR)
+    _mirrored(m, "unlisted", "unlisted.pdf", run=2)
+    assert m.reread_left("src", [PDF_PAGE]) and _candidates(m, [PDF_PAGE]) == []
+    assert m.reread_left("src", [PDF_PAGE], skip=["pending"])
+    assert not m.reread_left("src", [PDF_PAGE], skip=["pending", "unlisted"])
+    assert not m.reread_left("src", [PDF_STUB, PNG_STUB]) and not m.reread_left("other", [PDF_PAGE])
+
+
+def test_reread_targets_past_one_statement_give_each_file_once(
+    m: Manifest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Targets are bound values, a few hundred a statement.  A file two statements name comes back once."""
+    monkeypatch.setattr(manifest_mod, "_REREAD_TARGETS", 2)
+    for n in range(5):
+        _mirrored(m, f"f{n}", f"file {n}.pdf", made=("pdf", f"1.{n}.0"), cached=None)
+    targets: list[tuple[str, str, str | None, str]] = [("pdf", f"1.{n}.0", None, ".pdf") for n in range(5)]
+    targets += [("pdf", "1.0.0", None, "0.pdf"), ("pdf", "1.4.0", None, "e 4.pdf")]  # f0 and f4 a second time
+    assert _candidates(m, targets) == [f"f{n}" for n in range(5)]
+    assert _candidates(m, targets, limit=3) == ["f0", "f1", "f2"]
+    assert _candidates(m, targets, limit=3, after="f2") == ["f3", "f4"]
+    assert m.reread_left("src", targets) and not m.reread_left(
+        "src", targets, skip=[f"f{n}" for n in range(5)]
+    )

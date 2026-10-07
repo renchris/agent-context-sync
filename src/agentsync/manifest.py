@@ -441,6 +441,22 @@ _UPDATE_ITEM_SQL = (
     "state = ?, state_reason = {reason}, last_verdict = ?, last_seen_run = ?, extra_json = ? "
     "WHERE source_id = ? AND stable_id = ?"
 )
+_REREAD_TARGETS = 200  # targets per statement: four bound values each, under SQLite's oldest limit of 999
+_REREAD_SQL = (
+    "WITH t(cid, ver, why, ext) AS (VALUES {values}) SELECT {columns} FROM items i "
+    "WHERE i.source_id = ? AND i.is_dir = 0 AND i.dataless = 0 "
+    "AND i.stable_id NOT IN (SELECT value FROM json_each(?)) AND EXISTS ("
+    "SELECT 1 FROM outputs o LEFT JOIN cache c ON c.action_key = o.action_key "
+    "JOIN t ON t.cid = COALESCE(c.converter_id, o.converter_id) "
+    "AND t.ver = COALESCE(c.converter_version, o.converter_version) "
+    "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
+    "AND length(i.name) > length(t.ext) AND substr(lower(i.name), -length(t.ext)) = t.ext "
+    "AND ((t.why IS NULL AND o.status = 'ok' AND i.state = 'live') "
+    "OR (t.why = i.state_reason AND o.status = i.state AND i.state IN ('quarantined', 'refused'))))"
+)
+"""The files ``Manifest.reread_candidates`` and ``reread_left`` look for; the caller adds the rest of the
+WHERE clause.  The cache row is joined LEFT: a page whose row is gone is judged by its ``outputs`` columns,
+which costs at most one more read of the file (that read writes the row)."""
 _INSERT_ITEM_SQL = (
     "INSERT INTO items (source_id, stable_id, parent_id, name, rel_path, prev_path, is_dir, "
     "size, mtime_ns, ctime_ns, created_ns, ino, mode, gen_count, dataless, quickxor, "
@@ -1952,6 +1968,95 @@ class Manifest:
             (*(f"%{s.lower()}" for s in suffixes), *pending),
         ).fetchone()
         return int(r[0])
+
+    def produced_by(self, source_id: str) -> list[tuple[str, str, str | None]]:
+        """What made the pages of ``source_id``'s files that are on this Mac: each distinct (converter id,
+        converter version, stub reason), the reason None for a file with pages.
+
+        The cycle asks this before it reads anything again, so that a source with nothing outdated costs
+        one query and decodes no row.  The id and version are those of the cache row of the page's action
+        key: the H2 early cutoff moves that key and leaves the ``outputs`` columns as they were, so the cache
+        row is the one that says which version last converted the file.  Where it is gone the ``outputs``
+        columns stand in.  Online-only files, directories and tombstones are left out, and so is a stub that
+        is not its item's own state (a ``duplicate-of`` stub, a failed conversion)."""
+        rows = self._db.execute(
+            "SELECT DISTINCT COALESCE(c.converter_id, o.converter_id), "
+            "COALESCE(c.converter_version, o.converter_version), "
+            "CASE WHEN o.status = 'ok' THEN NULL ELSE i.state_reason END "
+            "FROM items i JOIN outputs o ON o.source_id = i.source_id AND o.stable_id = i.stable_id "
+            "LEFT JOIN cache c ON c.action_key = o.action_key "
+            "WHERE i.source_id = ? AND i.is_dir = 0 AND i.dataless = 0 "
+            "AND COALESCE(c.converter_id, o.converter_id) IS NOT NULL "
+            "AND COALESCE(c.converter_version, o.converter_version) IS NOT NULL "
+            "AND ((o.status = 'ok' AND i.state = 'live') OR (o.status = i.state "
+            "AND i.state IN ('quarantined', 'refused') AND i.state_reason IS NOT NULL)) ORDER BY 1, 2, 3",
+            (source_id,),
+        ).fetchall()
+        return [(str(r[0]), str(r[1]), None if r[2] is None else str(r[2])) for r in rows]
+
+    def _reread_rows(
+        self,
+        columns: str,
+        source_id: str,
+        targets: Sequence[tuple[str, str, str | None, str]],
+        skip: Iterable[str],
+        *,
+        tail: str,
+        params: Sequence[object] = (),
+    ) -> list[sqlite3.Row]:
+        """``columns`` of the rows of ``source_id`` that ``targets`` name (see ``reread_candidates``).
+        ``tail`` is the rest of the statement, more of the WHERE clause included, with ``params``.  The
+        targets go in as bound values, a few hundred a statement, so a row can come back more than once."""
+        skipped = _json_dumps(sorted(set(skip)))
+        rows: list[sqlite3.Row] = []
+        for start in range(0, len(targets), _REREAD_TARGETS):
+            chunk = targets[start : start + _REREAD_TARGETS]
+            sql = _REREAD_SQL.format(values=", ".join("(?, ?, ?, ?)" for _ in chunk), columns=columns)
+            flat = [value for target in chunk for value in target]
+            rows += self._db.execute(sql + tail, (*flat, source_id, skipped, *params)).fetchall()
+        return rows
+
+    def reread_candidates(
+        self,
+        source_id: str,
+        targets: Sequence[tuple[str, str, str | None, str]],
+        *,
+        seen_run: int,
+        skip: Iterable[str] = (),
+        after: str = "",
+        limit: int,
+    ) -> list[ItemRow]:
+        """Up to ``limit`` files of ``source_id`` to read again, in stable-id order from past ``after``.
+
+        A target is (converter id, converter version, stub reason or None, suffix): what ``produced_by``
+        returns, for a name that ends in the lower-case suffix.  A file is a candidate when a target names
+        what made its pages (reason None: a live file with OK pages) or its stub (the reason is the row's
+        ``state_reason``; a quarantined or refused file).
+
+        Only a file the pass of run ``seen_run`` listed and left ``unchanged`` is one, and only while it is
+        on this Mac: a file that is pending, was just classified deleted, is absent from the listing or is
+        online-only is never read again.  ``skip`` names stable ids to leave out."""
+        found: dict[str, ItemRow] = {}
+        tail = (
+            " AND i.stable_id > ? AND i.last_verdict = ? AND i.last_seen_run = ? ORDER BY i.stable_id LIMIT ?"
+        )
+        params = (after, Verdict.UNCHANGED.value, seen_run, limit)
+        for r in self._reread_rows(_ITEM_COLUMNS, source_id, targets, skip, tail=tail, params=params):
+            row = _item_from_row(r)
+            found[row.stable_id] = row
+        return [found[stable_id] for stable_id in sorted(found)][:limit]
+
+    def reread_left(
+        self,
+        source_id: str,
+        targets: Sequence[tuple[str, str, str | None, str]],
+        *,
+        skip: Iterable[str] = (),
+    ) -> bool:
+        """True while a file of ``source_id`` that ``targets`` name is on this Mac and not in ``skip``,
+        whatever its verdict and whether or not the last pass listed it (``reread_candidates`` may not
+        return it yet: it is pending, or the pass stopped before it)."""
+        return bool(self._reread_rows("1", source_id, targets, skip, tail=" LIMIT 1"))
 
     def set_redacted(self, source_id: str, stable_id: str) -> None:
         """Record that the item's name/path carries a credential: pages, shards and QUARANTINE.tsv show a
