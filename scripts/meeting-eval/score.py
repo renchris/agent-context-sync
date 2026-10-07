@@ -5,8 +5,9 @@
 
 FIXTURE is a folder outside the repository holding ``questions-gold.json``, the three readers' answers
 (``answers-A*.json``, ``answers-B*.json``, ``answers-C*.json``), reader A's source (``transcript-only.md``, else
-``transcript.md``) and the evidence package's text (``evidence/``, every ``*.md`` under it).  ``--answers-dir``
-reads the answers from another folder.
+``transcript.md``, else the package's ``SAID`` lines) and the evidence package's text (``evidence/``, every
+``*.md`` under it).  ``--answers-dir`` reads the answers from another folder; when that folder is a ``run.py
+prepare`` run, the sources are what each reader was given there, so a new package is checked against itself.
 
 Correctness is a judge's call (1, 0.5 or 0; "cannot tell" is 0 unless gold is "not said" or "not shown"), so it
 comes in as MARKS: either a ``marks.json`` (``{"Q01": {"A": {"score": 1, "cannot_tell": false, "wrong":
@@ -15,10 +16,13 @@ is read in either of the two layouts the v2 verdicts used.  Everything else is c
 
 - citation: the cited time within 30 s of the gold time (strict), or of any valid gold time (lenient): the gold
   ``times`` list when there is one, else ``time`` plus every time, time range and frame named in
-  ``verification`` (frame ``NNNNN.jpg`` is second NNNNN at ``--frame-fps``, 1 for the v2 fixtures);
+  ``verification`` (frame ``NNNNN.jpg`` is second NNNNN at ``--frame-fps``, 1 for the v2 fixtures).  That
+  fallback also accepts times the verification names as distractors, so it is reported; new fixtures carry
+  ``times``;
 - quoted pieces: every fragment of the ``evidence``, ``supporting_line`` and ``quote`` fields, split on `` / ``
   and `` ... ``, with its time and tag prefix taken off, must be a substring of that reader's sources
-  (whitespace folded);
+  (whitespace folded); a piece of under 4 characters is not counted, and an answer credited with a score must
+  quote something;
 - wrong and confident: a mark that is wrong (0 and not "cannot tell") on an answer whose confidence is high.
 
 Exit 0 when every 9.2 mark holds, 1 when one fails, 2 when the input cannot be read.
@@ -35,6 +39,9 @@ from pathlib import Path
 READERS = ("A", "B", "C")
 CATEGORIES = ("SPEECH", "SCREEN", "CROSS")
 CITE_S = 30
+MIN_QUOTE = (
+    4  # a shorter piece (a bare "10") is found almost anywhere, so it proves nothing and is not counted
+)
 MAX_IMAGES = 25
 HMS = r"\d{1,2}:\d{2}:\d{2}(?:\.\d+)?"
 QUOTE_FIELD = re.compile(r"(evidence|supporting_line|quote)(_?\d+)?")
@@ -99,15 +106,32 @@ def load_answers(folder: Path, reader: str) -> tuple[dict[str, dict], int | None
     return answers, images
 
 
-def sources(fixture: Path) -> dict[str, str]:
+def _read_all(folder: Path) -> str:
+    return "\n".join(p.read_text(encoding="utf-8") for p in sorted(folder.rglob("*.md")))
+
+
+def sources(fixture: Path, run: Path | None = None) -> dict[str, str]:
+    """What each reader was given.  A run folder of ``run.py prepare`` (``A/transcript.md``, ``B/evidence``,
+    ``C/evidence``) wins; else the fixture's ``transcript-only.md`` (or the package's ``SAID`` lines) and
+    ``evidence/``."""
+    if run is not None and (run / "A" / "transcript.md").is_file():
+        given = {"A": (run / "A" / "transcript.md").read_text(encoding="utf-8")}
+        given |= {r: _read_all(run / r / "evidence") for r in ("B", "C")}
+        if not given["B"] or not given["C"]:
+            raise InputError(f"{run.name}: B/evidence and C/evidence hold no *.md")
+        return {r: fold(text) for r, text in given.items()}
+    package = _read_all(fixture / "evidence")
+    if not package:
+        raise InputError("the fixture needs evidence/*.md")
     transcript = next(
         (fixture / n for n in ("transcript-only.md", "transcript.md") if (fixture / n).is_file()), None
     )
-    evidence = sorted((fixture / "evidence").rglob("*.md"))
-    if transcript is None or not evidence:
-        raise InputError("the fixture needs transcript-only.md (or transcript.md) and evidence/*.md")
-    text = "\n".join(p.read_text(encoding="utf-8") for p in evidence)
-    return {"A": fold(transcript.read_text(encoding="utf-8")), "B": fold(text), "C": fold(text)}
+    speech = (
+        transcript.read_text(encoding="utf-8")
+        if transcript is not None
+        else "\n".join(re.findall(r"^\[\d{2}:\d{2}:\d{2}\] SAID\b.*$", package, re.MULTILINE))
+    )
+    return {"A": fold(speech), "B": fold(package), "C": fold(package)}
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -149,7 +173,7 @@ def fragments(answer: dict) -> list[str]:
         for piece in re.split(r"\s+/\s+|\s+\.\.\.\s+|\s*…\s*", value):
             piece = PREFIX.sub("", piece.strip())
             piece = re.sub(r"^(>\s*)+", "", piece).strip().strip("'\"“”‘’").strip()
-            if piece:
+            if len(re.sub(r"\s", "", piece)) >= MIN_QUOTE:
                 out.append(piece)
     return out
 
@@ -222,7 +246,7 @@ def load_marks(path: Path) -> dict[str, dict[str, dict]]:
 
 def score(fixture: Path, marks: dict, *, answers_dir: Path | None = None, frame_fps: float = 1.0) -> dict:
     gold = load_gold(fixture)
-    texts = sources(fixture)
+    texts = sources(fixture, answers_dir)
     readers = {}
     for r in READERS:
         answers, images = load_answers(answers_dir or fixture, r)
@@ -234,6 +258,7 @@ def score(fixture: Path, marks: dict, *, answers_dir: Path | None = None, frame_
             "quotes": 0,
             "quotes_found": 0,
             "missing_quotes": [],
+            "unquoted": [],
             "wrong": 0,
             "wrong_and_confident": [],
             "images_opened": images,
@@ -256,6 +281,8 @@ def score(fixture: Path, marks: dict, *, answers_dir: Path | None = None, frame_
                 row["cite_lenient"] += any(abs(at - p) <= CITE_S for p in points) or any(
                     a <= at <= b for a, b in spans
                 )
+            if mark["score"] > 0 and not fragments(answer):
+                row["unquoted"].append(qid)
             for piece in fragments(answer):
                 row["quotes"] += 1
                 if fold(piece) in texts[r]:
@@ -264,7 +291,14 @@ def score(fixture: Path, marks: dict, *, answers_dir: Path | None = None, frame_
                     row["missing_quotes"].append(f"{qid}: {piece[:80]}")
         readers[r] = row
     counts = {c: sum(category(q) == c for q in gold) for c in CATEGORIES}
-    return {"questions": len(gold), "counts": counts, "readers": readers, "checks": checks(readers, counts)}
+    guessed = [q["id"] for q in gold if not isinstance(q.get("times"), list)]
+    return {
+        "questions": len(gold),
+        "counts": counts,
+        "times_from_verification": guessed,
+        "readers": readers,
+        "checks": checks(readers, counts),
+    }
 
 
 def checks(readers: dict, counts: dict) -> list[dict]:
@@ -284,7 +318,12 @@ def checks(readers: dict, counts: dict) -> list[dict]:
         ("B minus A", b["correct"] - a["correct"], b["correct"] - a["correct"] >= 6, "+6 or more"),
         ("C minus B", c["correct"] - b["correct"], c["correct"] - b["correct"] >= 0, "0 or more"),
         ("Wrong and confident, any reader", wac, wac == 0, "0"),
-        ("Quoted pieces found in the sources, B", b["quotes_found"], b["quotes_found"] == b["quotes"], "all"),
+        (
+            "Quoted pieces found in the sources, B",
+            b["quotes_found"],
+            b["quotes"] > 0 and b["quotes_found"] == b["quotes"] and not b["unquoted"],
+            "all, and every credited answer quotes",
+        ),
         ("B citation within 30 s of a gold time", b["cite_lenient"], b["cite_lenient"] >= 17, "17 or more"),
         (
             "C images opened",
@@ -304,6 +343,11 @@ def number(value: object) -> str:
 
 def render(result: dict) -> str:
     out = [f"questions: {result['questions']} ({', '.join(f'{k} {v}' for k, v in result['counts'].items())})"]
+    if result["times_from_verification"]:
+        out.append(
+            f"warning: {len(result['times_from_verification'])} question(s) have no gold `times` list; lenient "
+            "citation reads every time named in `verification`, distractors included"
+        )
     if result["questions"] != 18 or set(result["counts"].values()) != {6}:
         out.append("warning: the 9.2 marks are set for 18 questions, 6 per category")
     out += [
@@ -333,6 +377,7 @@ def render(result: dict) -> str:
     out.append("Not computed: the three known B misses of 9.2 are a judge's reading of the B answers.")
     for r, row in result["readers"].items():
         out += [f"{r} quote not found: {m}" for m in row["missing_quotes"]]
+        out += [f"{r} credited answer without a quote: {m}" for m in row["unquoted"]]
     return "\n".join(out)
 
 

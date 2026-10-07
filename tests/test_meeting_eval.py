@@ -228,7 +228,9 @@ LABELS = '''"""Hand labels, one code per 10 s."""
 GT = {
     "teams-share": "S" * 3 + "G" * 2,
     "zoom-gallery": "G" * 2 + "S" + "F",
+    "contoso-room": "SSSSS",
 }
+PLATFORM = {"contoso-room": "teams"}
 '''
 
 
@@ -239,30 +241,48 @@ def kinds(codes: str, *, wrong: int = 0) -> list[str]:
     return out
 
 
-def test_the_layout_scorer_scores_stable_ticks_per_profile(tmp_path: Path) -> None:
-    labels = tmp_path / "gt.py"
+def layout_run(tmp_path: Path, predictions: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    labels, pred = tmp_path / "gt.py", tmp_path / "pred.json"
     labels.write_text(LABELS)
-    predictions = tmp_path / "pred.json"
-    predictions.write_text(
-        json.dumps(
-            {
-                "teams-share": {"profile": "teams", "kinds": kinds("SSSGG", wrong=1)},
-                "zoom-gallery": {"profile": "generic", "kinds": kinds("GGSF")},
-            }
-        )
-    )
-    result = layout.score(layout.load_labels(labels), layout.load_predictions(predictions))
-    teams = result["profiles"]["teams"]
-    assert (teams["ticks"], teams["agree"], teams["pass"]) == (23, 22, True), (
-        "2 ticks before the change unscored"
+    pred.write_text(json.dumps(predictions))
+    gt, platforms = layout.load_labels(labels)
+    return layout.score(gt, layout.load_predictions(pred), platforms), layout.main([str(labels), str(pred)])
+
+
+ALL_RIGHT = {
+    "teams-share": {"profile": "teams", "kinds": kinds("SSSGG", wrong=1)},
+    "zoom-gallery": {"profile": "generic", "kinds": kinds("GGSF")},
+    "contoso-room": {"profile": "teams", "kinds": kinds("SSSSS")},
+}
+
+
+def test_the_layout_scorer_scores_stable_ticks_per_platform(tmp_path: Path) -> None:
+    result, exit_code = layout_run(tmp_path, ALL_RIGHT)
+    teams = result["platforms"]["teams"]
+    assert (teams["excerpts"], teams["ticks"], teams["agree"], teams["pass"]) == (2, 48, 47, True), (
+        "2 ticks before the change are unscored"
     )
     zoom = result["excerpts"]["zoom-gallery"]
-    assert (zoom["ticks"], zoom["apart"], zoom["unscored"]) == (11, 5, 4)
-    assert layout.main([str(labels), str(predictions)]) == 0
-    predictions.write_text(
-        json.dumps({"teams-share": {"profile": "teams", "kinds": kinds("SSSGG", wrong=2)}})
+    assert (zoom["platform"], zoom["ticks"], zoom["apart"], zoom["unscored"]) == ("zoom", 11, 5, 4)
+    assert result["platforms"]["zoom"]["detected_otherwise"] == 1
+    assert exit_code == 0
+    worse = {**ALL_RIGHT, "teams-share": {"profile": "teams", "kinds": kinds("SSSGG", wrong=4)}}
+    assert layout_run(tmp_path, worse)[1] == 1
+
+
+def test_a_teams_recording_detected_as_generic_is_still_held_to_the_teams_mark(tmp_path: Path) -> None:
+    missed = {**ALL_RIGHT, "teams-share": {"profile": "generic", "kinds": kinds("SSSGG", wrong=3)}}
+    result, exit_code = layout_run(tmp_path, missed)
+    teams = result["platforms"]["teams"]
+    assert (teams["agree"], teams["detected_otherwise"], teams["pass"]) == (45, 1, False), (
+        "45 of 48 is 93.8 %"
     )
-    assert layout.main([str(labels), str(predictions)]) == 1
+    assert "generic" not in result["platforms"] and exit_code == 1
+
+
+def test_a_labelled_excerpt_without_a_prediction_fails_the_run(tmp_path: Path) -> None:
+    result, exit_code = layout_run(tmp_path, {k: v for k, v in ALL_RIGHT.items() if k != "contoso-room"})
+    assert result["unpredicted"] == ["contoso-room"] and exit_code == 1
 
 
 def test_the_layout_labels_are_read_never_run(tmp_path: Path) -> None:
@@ -331,3 +351,41 @@ def test_ask_runs_the_command_per_reader_and_collects_its_answers(tmp_path: Path
         "answers-C.json",
         "gold.json",
     ]
+
+
+def test_an_answer_credited_without_a_quote_or_with_a_trivial_one_fails_the_quote_check(
+    tmp_path: Path,
+) -> None:
+    bare = answers("B")
+    del bare[5]["evidence"]
+    bare[6]["evidence"] = "10 / 11"
+    root = fixture(tmp_path, B=bare)
+    result = score.score(root, score.load_marks(root / "marks.json"))
+    assert result["readers"]["B"]["unquoted"] == ["Q05", "Q06"]
+    assert result["readers"]["B"]["quotes"] == 32, "pieces under 4 characters are not counted"
+    assert checks(result)["Quoted pieces found in the sources, B"] == (32, False)
+
+
+def test_a_run_folder_is_scored_against_the_package_its_readers_were_given(tmp_path: Path) -> None:
+    root = fixture(tmp_path)
+    (root / "transcript-only.md").unlink()
+    package = tmp_path / "contoso-review.mp4.d"
+    package.mkdir()
+    lines = "".join(
+        f"[00:{i:02d}:10] SAID v1: Dana said the west budget is {i} thousand\n" for i in range(18)
+    )
+    lines += "".join(f"[00:{i:02d}:10] SCREEN: {SCREEN_LINE.format(n=i)[2:]}\n" for i in range(18))
+    (package / "01-t000000.md").write_text(lines)
+    out = tmp_path / "run"
+    runner.prepare(root, out, package)
+    for reader in "ABC":
+        (out / f"answers-{reader}.json").write_text(
+            (root / next(root.glob(f"answers-{reader}*.json")).name).read_text()
+        )
+    result = score.score(root, score.load_marks(root / "marks.json"), answers_dir=out)
+    assert result["readers"]["A"]["quotes_found"] == 18, "A's transcript is the package's SAID lines"
+    assert (
+        result["readers"]["B"]["quotes_found"] == 36
+        and checks(result)["Quoted pieces found in the sources, B"][1]
+    )
+    assert result["times_from_verification"] == [q["id"] for q in gold()]

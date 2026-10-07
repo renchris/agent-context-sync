@@ -13,7 +13,9 @@ What a window unit is held to:
   line inside it.  ``TERM`` and ``VOICE`` are index-only.
 - 3.3 rule 2: times are ``HH:MM:SS``; the times of screen lines (``SCREEN``, ``SCREEN+``, ``SCREEN-``,
   ``TILE``, ``SPEAKING``, ``KEYFRAME``, ``TERM``) and of a state's start are even seconds.
-- 3.3 rule 3: a heading label is quoted, 1 to 60 characters, and holds no ``"``.
+- 3.3 rule 3: a heading label is quoted, 1 to 60 characters with six or more letters, and holds no ``"``.
+- Text holds no C0 control, DEL, NEL or Unicode line break (``str.splitlines`` would end a line there), and no
+  ``<!--`` (S9 rule 5 neutralises it).
 - 3.3 rule 5: a ``NOTE`` holds one of the fixed wordings, and the two index-only ones never stand in a window.
 - The tag table: ``SAID vN:`` with one or two digits; a ``KEYFRAME`` names the file of its own tick, or for a
   revisit the earlier state's file; a ``VOICE`` line is one of its four forms.
@@ -21,9 +23,10 @@ What a window unit is held to:
   every line lies in its window and in its state; lines run in time order, and at equal times in the order
   KEYFRAME, TILE, SCREEN, SCREEN- and SCREEN+, SPEAKING, SAID, NOTE.  Only a window's first state may have
   begun earlier, and it then carries the continuation ``NOTE``.
-- S6 rule 8: a revisit prints no ``SCREEN`` rows and its keyframe line names the state it revisits.
+- S6 rule 8: a revisit prints no ``SCREEN`` rows and its keyframe line names the state it revisits and the
+  window that holds that keyframe's tick.
 - S10: the footer lists each sidecar once, sorted, with a lowercase sha256; every keyframe of the page has a
-  footer line; a cut page names ``full-text.txt``.
+  footer line; a cut page names ``full-text.txt`` and may name keyframes whose lines were cut away.
 
 The index unit is held to the same rule with its own blocks (3.5), in order, each opened by ``## <block>``.
 Its three count tables (``What ran``, ``Windows``, ``Voices``) have fixed columns, and every cell must be a
@@ -42,8 +45,9 @@ import pytest
 from agentsync.policy import UNTRUSTED_BANNER
 
 HMS = r"\d{2}:[0-5]\d:[0-5]\d"
-TEXT = r"[^\x00-\x1f\x7f]+"
-LABEL = r'[^"\x00-\x1f\x7f]{1,60}'
+# C0, DEL, NEL and the two Unicode line breaks: str.splitlines() ends a line at each, so none stands in text.
+TEXT = r"[^\x00-\x1f\x7f\x85\u2028\u2029]+"
+LABEL = r'[^"\x00-\x1f\x7f\x85\u2028\u2029]{1,60}'
 
 TITLE_RE = re.compile(rf"# Recording ({HMS})-({HMS}) · window (\d+) of (\d+)")
 HEADING_RE = re.compile(
@@ -133,8 +137,10 @@ def _line_errors(where: str, at: str, tag: str, text: str, *, index: bool) -> li
             errors.append(f"{where}: NOTE wording is {fixed} wording: {body!r}")
     if tag == "VOICE" and not any(p.fullmatch(body) for p in VOICE_FORMS):
         errors.append(f"{where}: VOICE line is none of its four forms: {body!r}")
-    if tag == "TERM" and not re.fullmatch(r"\S{4,}", body):
-        errors.append(f"{where}: TERM is one word of 4 or more characters: {body!r}")
+    if tag == "TERM" and not (re.fullmatch(r"\S+", body) and sum(c.isalpha() for c in body) >= 4):
+        errors.append(f"{where}: TERM is one word of 4 or more letters: {body!r}")
+    if "<!--" in text:
+        errors.append(f"{where}: picture and speech text is cleaned, so <!-- never stands in it (S9 rule 5)")
     return errors
 
 
@@ -207,6 +213,8 @@ def window_errors(page: str) -> list[str]:
                 errors.append(f"{where}: a state ends after it starts")
             if states and sid <= int(states[-1]["id"] or 0):
                 errors.append(f"{where}: state numbers rise through the window")
+            if heading[6] is not None and sum(c.isalpha() for c in heading[6]) < 6:
+                errors.append(f"{where}: a heading label is a row with six or more letters (3.3 rule 3)")
             if heading[5] is not None and int(heading[5]) >= sid:
                 errors.append(f"{where}: a revisit names an earlier state")
             if start < win_from and states:
@@ -259,7 +267,8 @@ def window_errors(page: str) -> list[str]:
     errors += footer_errors
     for name in sorted(keyframes - set(names)):
         errors.append(f"keyframe {name} has no footer line")
-    for name in sorted(n_ for n_ in names if n_.endswith(".jpg") and n_ not in keyframes):
+    # A cut page keeps every sidecar, so its footer may name keyframes of the part that was cut away.
+    for name in sorted(n_ for n_ in names if n_.endswith(".jpg") and n_ not in keyframes and not truncated):
         errors.append(f"footer names {name}, which no KEYFRAME line of this window shows")
     if truncated and "full-text.txt" not in names:
         errors.append("a cut window names its full-text.txt sidecar in the footer")
@@ -283,6 +292,9 @@ def _keyframe_errors(
         return [f"{where}: a revisit's KEYFRAME names the state it revisits, s{state['revisit']}"]
     if seconds(match[4]) != WINDOW_S * (int(match[3]) - 1):
         return [f"{where}: window {match[3]} starts at {clock(WINDOW_S * (int(match[3]) - 1))}"]
+    tick = seconds(f"{match[1][:2]}:{match[1][2:4]}:{match[1][4:]}")
+    if int(match[3]) != tick // WINDOW_S + 1:
+        return [f"{where}: a revisit's keyframe is in the window that holds its tick"]
     return []
 
 
@@ -382,7 +394,9 @@ def _block_line_errors(block: str, where: str, line: str, table: list[str]) -> l
         "Windows": lambda: tag == "SCREEN",
         "Names read on screen": lambda: tag == "TILE" or SHOWING_RE.fullmatch(line) is not None,
         "Voices": lambda: tag in {"VOICE", "NOTE"},
-        "Gaps and bounds": lambda: line.startswith("- ") or tag == "NOTE",
+        "Gaps and bounds": lambda: (
+            line.startswith("- ") or tag == "NOTE" or SHOWING_RE.fullmatch(line) is not None
+        ),
         "Not detected": lambda: line == NOT_DETECTED,
         "On-screen terms never spoken": lambda: tag == "TERM" or SHOWING_RE.fullmatch(line) is not None,
     }
@@ -668,7 +682,7 @@ showing 3 of 3
 
 ## On-screen terms never spoken
 [00:05:38] TERM: Quarter
-[00:08:46] TERM: 4,425,000
+[00:08:46] TERM: Capacity
 showing 2 of 2
 """
 
@@ -740,6 +754,14 @@ WINDOW_BREAKS = [
     ("a quote in a label", '"Demand forecast by region"', '"Demand "forecast" by region"', "quote mark"),
     ("a label past 60 characters", '"Demand forecast by region"', '"' + "x" * 61 + '"', "not a heading"),
     ("an empty label", '"Demand forecast by region"', '""', "not a heading"),
+    ("a label under six letters", '"Demand forecast by region"', '"Q3 12"', "six or more letters"),
+    ("an unescaped comment", "SCREEN: Q4 | B", "SCREEN: <!-- Q4 | B", "S9 rule 5"),
+    (
+        "a Unicode line break in text",
+        "SCREEN: Q4 | B",
+        "SCREEN: Q4\u2028## 00:00:00-00:00:04 · s001 · share | B",
+        "not the banner",
+    ),
     ("an unknown kind", "· s006 · camera", "· s006 · gallery", "not a heading"),
     ("a control character", "SAID v1: okay,", "SAID v1: okay\x07,", "not the banner"),
     ("no banner", UNTRUSTED_BANNER, "> mirrored page", "banner"),
@@ -837,6 +859,12 @@ LAST_BREAKS = [
         "the state it revisits",
     ),
     ("a revisit of a later state", "revisit of s004", "revisit of s204", "earlier state"),
+    (
+        "a revisit pointing at the wrong window",
+        "in window 1, 00:00:00",
+        "in window 9, 00:40:00",
+        "holds its tick",
+    ),
     ("a short window that is not the last", "window 36 of 36", "window 36 of 37", "only the last window"),
 ]
 
@@ -943,6 +971,7 @@ INDEX_BREAKS = [
     ),
     ("an odd TERM time", "[00:08:46] TERM", "[00:08:47] TERM", "even second"),
     ("a TERM that is two words", "TERM: Quarter", "TERM: Quarter plan", "one word"),
+    ("a TERM that is a number", "TERM: Capacity", "TERM: 4,425,000", "4 or more letters"),
 ]
 
 
@@ -970,3 +999,22 @@ def test_an_index_list_is_held_to_its_limit() -> None:
     assert any("at most 40 TILE lines" in e for e in index_errors(page))
     trimmed = replace(page, "[00:01:20] TILE: Contoso guest 40\n", "").replace("41 of 52", "40 of 52")
     assert index_errors(trimmed) == []
+
+
+def test_a_cut_window_keeps_the_footer_lines_of_keyframes_cut_away() -> None:
+    """S9 rule 6: ``_cap_body`` cuts the body, every sidecar stays, so the footer names keyframes whose lines
+    were cut."""
+    body = EXAMPLE.partition("\n\nSidecar file ")[0]
+    cut = body.split("[00:08:02]")[0].rstrip("\n") + "\n\n[truncated: 1,200 of 3,050 bytes shown]\n\n"
+    names = sorted(SHA)
+    page = cut + "".join(f"Sidecar file `{n}` sha256 {SHA[n]}\n" for n in names)
+    assert window_errors(page) == []
+
+
+def test_gaps_and_bounds_may_print_its_showing_line() -> None:
+    assert (
+        index_errors(
+            replace(INDEX, "- rows marked [?]: 12 of 214\n", "- rows marked [?]: 12 of 214\nshowing 3 of 9\n")
+        )
+        == []
+    )
