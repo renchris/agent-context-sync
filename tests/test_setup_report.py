@@ -5,9 +5,11 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 
 from __future__ import annotations
 
+import functools
 import itertools
 import json
 import os
+import plistlib
 import re
 import subprocess
 import sys
@@ -26,7 +28,7 @@ from agentsync.convert import image, ocr, pdf
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
 from agentsync.manifest import Manifest
-from agentsync.ops import doctor
+from agentsync.ops import doctor, launchd
 from agentsync.paths import expand
 from test_ocr import fake_engine, write_fake
 
@@ -3070,6 +3072,115 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
                     above = parent[above]
     finally:
         mirror.close()
+
+
+def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_mac: dict[str, Path]) -> None:
+    """Doctor says an installed plist differs in ProgramArguments and no more. The report says which
+    positions, and of what class each is: never an argument, a path or a variable's name."""
+    home = fake_mac["home"]
+    launcher = home / "Applications" / "AgentSyncLauncher.app" / "Contents" / "MacOS" / "agentsync-launcher"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    config = load_config(fake_mac["config"])
+    spec = launchd.poll_spec(config)
+    agents = home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / "com.agentsync.reconcile.plist").write_bytes(
+        launchd.render_plist(launchd.reconcile_spec(config))
+    )
+    args = list(spec.program_arguments)
+    assert args.count("--canary") == 2, "one per cloud source"
+    # An older install: another launcher and interpreter, one canary (a folder no longer configured), a
+    # longer interval, another PATH and a key nobody writes any more.
+    old = plistlib.loads(launchd.render_plist(spec))
+    stale = [str(home / "Wingtip" / "agentsync-launcher"), *args[1 : args.index("--canary")]]
+    stale += ["--canary", str(home / "Northwind merger"), "--", str(home / "Tailspin" / "bin" / "python3")]
+    old["ProgramArguments"] = [*stale, *args[args.index("--") + 2 :]]
+    old["StartInterval"] = 900
+    old["EnvironmentVariables"] = {"PATH": "/Wingtip/bin", "FOURTH": "Coffee"}
+    old["Payroll"] = "ledger-2031"
+    (agents / "com.agentsync.poll.plist").write_bytes(plistlib.dumps(old))
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    bg = section(text, "Background runs")
+    assert "Installed plist against what this build would write (classes and counts, never a value):" in bg
+    assert (
+        "- com.agentsync.poll: differs in ProgramArguments, EnvironmentVariables, StartInterval (installed "
+        "900, this build 300); 1 key(s) this build does not write\n" in bg
+    )
+    assert (
+        "  - ProgramArguments: 21 installed, 23 in this build; positions that differ (from 0): 0 (launcher), "
+        "8 (canary path), 9 (separator installed, launcher option in this build), 10 (interpreter installed, "
+        "canary path in this build), 11 (fixed argument installed, separator in this build), 12 (fixed "
+        "argument installed, interpreter in this build), 13 (fixed argument), " in bg
+    )
+    assert "18 (mode installed, fixed argument in this build) (+4 more)\n" in bg
+    assert (
+        "  - by class: launcher differs (the same file: no; the installed one exists: no) · interpreter "
+        "differs (the same file: no; the installed one exists: no) · config path same · mode same · watchdog "
+        "seconds same · grace seconds same · canary timeout same · canary paths: 1 installed, 2 in this "
+        "build, 0 in both · fixed arguments same · other arguments: 0 installed, 0 in this build\n" in bg
+    )
+    assert (
+        "  - EnvironmentVariables: 2 installed, 2 in this build, 1 in both, 1 of those with another value\n"
+        in bg
+    )
+    assert "- com.agentsync.reconcile: the installed plist is what this build would write\n" in bg
+    for raw in (*SECRET_NAMES, "FOURTH", "Coffee", "Payroll", "python3", "/bin"):
+        assert raw not in bg, raw
+    # An interpreter that is a link to this build's is the same file under another name.
+    link = home / "Tailspin" / "bin" / "python3"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(sys.executable)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert "interpreter differs (the same file: yes; the installed one exists: yes)" in text
+    (agents / "com.agentsync.poll.plist").write_text("not a plist", encoding="utf-8")
+    launcher.unlink()
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    bg = section(text, "Background runs")
+    assert "- com.agentsync.poll: not compared (InvalidFileException)\n" in bg
+    assert "- com.agentsync.reconcile: not compared (ConfigError)\n" in bg, (
+        "no launcher: this build writes none"
+    )
+
+
+def test_argument_roles_follow_the_shape_launchd_writes() -> None:
+    roles = functools.partial(
+        setup_report.argument_roles, launcher=launchd.LAUNCHER_EXECUTABLE, fixed=launchd.CHILD_PREFIX
+    )
+    child = [
+        "/venv/bin/python",
+        "-I",
+        "-X",
+        "utf8",
+        "-m",
+        "agentsync",
+        "sync",
+        "--mode",
+        "poll",
+        "--config",
+        "/c",
+    ]
+    child_roles = ["interpreter", *["fixed argument"] * 7, "mode", "fixed argument", "config path"]
+    assert roles(child) == child_roles
+    job = ["/apps/agentsync-launcher", "--timeout", "1800", "--canary", "/a", "--canary", "/b", "--", *child]
+    assert roles(job) == [
+        "launcher",
+        "launcher option",
+        "watchdog seconds",
+        "launcher option",
+        "canary path",
+        "launcher option",
+        "canary path",
+        "separator",
+        *child_roles,
+    ]
+    assert roles(["/apps/agentsync-launcher", "stray", "--canary"]) == [
+        "launcher",
+        "other",
+        "launcher option",
+    ]
+    assert roles([]) == [] and roles([7, "--mode"]) == ["interpreter", "other"]
 
 
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:

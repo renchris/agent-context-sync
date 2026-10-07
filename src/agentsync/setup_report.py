@@ -33,7 +33,8 @@ enough. They are read from the manifest (opened read-only), the purge queue and 
 inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only:
 OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`), the purge
 queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
-flag, and conversions repeated run after run.
+flag, and conversions repeated run after run. Background runs says how an installed plist's arguments
+differ from what this build would write, by class (:func:`argument_roles`).
 
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
@@ -3357,6 +3358,201 @@ def _foreign_paths(values: Iterable[str]) -> list[str]:
     return [v for v in values if v.startswith(_HOME_LIKE) and not _under_home(v)]
 
 
+_PLIST_KEYS = (
+    "Label",
+    "ProgramArguments",
+    "EnvironmentVariables",
+    "StandardOutPath",
+    "StandardErrorPath",
+    "StartInterval",
+    "StartCalendarInterval",
+    "RunAtLoad",
+    "ProcessType",
+    "LowPriorityIO",
+    "ThrottleInterval",
+    "LimitLoadToSessionType",
+    "MaterializeDatalessFiles",
+    "Umask",
+)
+"""The keys of a job's plist as ``ops.launchd`` writes it: a key outside them is counted, never named."""
+_LAUNCHER_VALUES = {
+    "--timeout": "watchdog seconds",
+    "--grace": "grace seconds",
+    "--canary-timeout": "canary timeout",
+    "--canary": "canary path",
+}
+_ARGUMENT_CLASSES = ("launcher", "interpreter", "config path", "mode", *_LAUNCHER_VALUES.values())
+_POSITIONS_SHOWN = 12
+
+
+def argument_roles(argv: Sequence[object], *, launcher: str, fixed: Sequence[str]) -> list[str]:
+    """The class of each position of a job's ``ProgramArguments``, by the shape ``ops.launchd`` writes:
+    ``launcher``, ``launcher option`` and its value (``watchdog seconds``, ``grace seconds``, ``canary
+    timeout``, ``canary path``), ``separator``, then ``interpreter``, ``fixed argument``, ``mode`` and
+    ``config path``; ``other`` for anything else. ``launcher``: the launcher's file name; ``fixed``: the
+    child's fixed arguments. The report prints these classes, never an argument."""
+    args = [a if isinstance(a, str) else "" for a in argv]
+    roles: list[str] = []
+    i = 0
+    if args and Path(args[0]).name == launcher:
+        roles.append("launcher")
+        i = 1
+        while i < len(args) and args[i] != "--":
+            value = _LAUNCHER_VALUES.get(args[i])
+            if value is not None and i + 1 < len(args) and args[i + 1] != "--":
+                roles += ["launcher option", value]
+                i += 2
+            else:
+                roles.append("launcher option" if args[i].startswith("--") else "other")
+                i += 1
+        if i < len(args):
+            roles.append("separator")
+            i += 1
+    if i < len(args):
+        roles.append("interpreter")
+        i += 1
+    while i < len(args):
+        value = {"--mode": "mode", "--config": "config path"}.get(args[i])
+        if value is not None and i + 1 < len(args):
+            roles += ["fixed argument", value]
+            i += 2
+        else:
+            roles.append("fixed argument" if args[i] in fixed else "other")
+            i += 1
+    return roles
+
+
+def _same_file(a: str, b: str) -> str:
+    try:
+        return "yes" if Path(a).samefile(b) else "no"
+    except OSError:
+        return "no"
+
+
+def _class_text(name: str, installed: list[str], expected: list[str]) -> str:
+    """One class of argument compared: ``same``, or how it differs. A number is shown; a path never is."""
+    if installed == expected:
+        return f"{name} same" if installed else f"{name} in neither"
+    if not installed or not expected:
+        return f"{name} only {'installed' if installed else 'in this build'}"
+    if all(v.isdigit() for v in (*installed, *expected)):
+        return f"{name} differs (installed {', '.join(installed)}; this build {', '.join(expected)})"
+    if name == "mode":
+        return f"{name} differs"
+    return (
+        f"{name} differs (the same file: {_same_file(installed[0], expected[0])}; the installed one exists: "
+        f"{'yes' if Path(installed[0]).exists() else 'no'})"
+    )
+
+
+def _argument_lines(installed: Sequence[object], expected: Sequence[str]) -> list[str]:
+    """How an installed job's ``ProgramArguments`` differ from what this build would write: the positions
+    that differ with the class of each, then each class compared. Classes and counts, never a value."""
+    from agentsync.ops import launchd  # noqa: PLC0415
+
+    have = [a if isinstance(a, str) else "" for a in installed]
+    want = list(expected)
+    roles_have = argument_roles(have, launcher=launchd.LAUNCHER_EXECUTABLE, fixed=launchd.CHILD_PREFIX)
+    roles_want = argument_roles(want, launcher=launchd.LAUNCHER_EXECUTABLE, fixed=launchd.CHILD_PREFIX)
+    positions = []
+    for i in range(max(len(have), len(want))):
+        a = roles_have[i] if i < len(have) else "nothing"
+        b = roles_want[i] if i < len(want) else "nothing"
+        if i >= len(have) or i >= len(want) or have[i] != want[i]:
+            positions.append(f"{i} ({a})" if a == b else f"{i} ({a} installed, {b} in this build)")
+    shown = ", ".join(positions[:_POSITIONS_SHOWN]) or "none"
+    if len(positions) > _POSITIONS_SHOWN:
+        shown += f" (+{len(positions) - _POSITIONS_SHOWN} more)"
+
+    def of(name: str, args: list[str], roles: list[str]) -> list[str]:
+        return [arg for arg, role in zip(args, roles, strict=True) if role == name]
+
+    classes = [
+        _class_text(name, of(name, have, roles_have), of(name, want, roles_want))
+        for name in _ARGUMENT_CLASSES
+        if name != "canary path"
+    ]
+    canaries_have, canaries_want = (
+        set(of("canary path", have, roles_have)),
+        set(of("canary path", want, roles_want)),
+    )
+    classes.append(
+        f"canary paths: {len(canaries_have)} installed, {len(canaries_want)} in this build, "
+        f"{len(canaries_have & canaries_want)} in both"
+    )
+    fixed = (
+        "same"
+        if of("fixed argument", have, roles_have) == of("fixed argument", want, roles_want)
+        else "differ"
+    )
+    classes.append(f"fixed arguments {fixed}")
+    classes.append(
+        f"other arguments: {roles_have.count('other')} installed, {roles_want.count('other')} in this build"
+    )
+    return [
+        f"  - ProgramArguments: {len(have)} installed, {len(want)} in this build; positions that differ "
+        f"(from 0): {shown}",
+        "  - by class: " + " · ".join(classes),
+    ]
+
+
+def _plist_lines(r: _Run) -> list[str]:
+    """For each job with a plist in this home folder: whether it is what this build would write
+    (``ops.launchd``), and when not, which keys differ and how the arguments do (:func:`_argument_lines`).
+    Doctor's line says only that ``ProgramArguments`` differ."""
+    from agentsync.ops import launchd  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    if r.config is None:
+        return []
+    out = ["", "Installed plist against what this build would write (classes and counts, never a value):", ""]
+    builders = (("poll", launchd.poll_spec), ("reconcile", launchd.reconcile_spec))
+    for suffix, build in builders:
+        label = f"{r.label_prefix()}.{suffix}"
+        try:
+            path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+            if not path.exists():
+                out.append(f"- {label}: no plist")
+                continue
+            installed = plistlib.loads(path.read_bytes())
+            if not isinstance(installed, dict):
+                raise ValueError("not a dictionary")
+            expected = plistlib.loads(launchd.render_plist(build(r.config)))
+        except Exception as exc:  # an unreadable plist, or a spec this config cannot give (no launcher)
+            out.append(f"- {label}: not compared ({type(exc).__name__})")
+            continue
+        differing = [k for k in _PLIST_KEYS if installed.get(k) != expected.get(k)]
+        unknown = sum(1 for k in set(installed) | set(expected) if k not in _PLIST_KEYS)
+        if not differing and installed == expected:
+            out.append(f"- {label}: the installed plist is what this build would write")
+            continue
+        named = []
+        for key in differing:
+            a, b = installed.get(key), expected.get(key)
+            plain = all(isinstance(v, int) or v is None for v in (a, b))  # a bool is an int
+            named.append(f"{key} (installed {a}, this build {b})" if plain else key)
+        out.append(
+            f"- {label}: differs in {', '.join(named) or 'no key this build writes'}"
+            + (f"; {unknown} key(s) this build does not write" if unknown else "")
+        )
+        if "ProgramArguments" in differing:
+            args = installed.get("ProgramArguments")
+            out += _argument_lines(args if isinstance(args, list) else [], expected["ProgramArguments"])
+        if "EnvironmentVariables" in differing:
+            env_a, env_b = installed.get("EnvironmentVariables"), expected.get("EnvironmentVariables")
+            keys_a = set(env_a) if isinstance(env_a, dict) else set()
+            keys_b = set(env_b) if isinstance(env_b, dict) else set()
+            changed = sum(
+                1
+                for k in keys_a & keys_b
+                if cast(dict[str, object], env_a)[k] != expected["EnvironmentVariables"][k]
+            )
+            out.append(
+                f"  - EnvironmentVariables: {len(keys_a)} installed, {len(keys_b)} in this build, "
+                f"{len(keys_a & keys_b)} in both, {changed} of those with another value"
+            )
+    return out
+
+
 def _background(r: _Run) -> list[str]:
     out: list[str] = []
     prefix = r.label_prefix()
@@ -3419,6 +3615,13 @@ def _background(r: _Run) -> list[str]:
         r.facts.background.append(
             f"{suffix} last exit {decode_exit(exit_code)}" if exit_code else f"{suffix} loaded, no run yet"
         )
+    try:
+        out += _plist_lines(r)
+    except Exception as exc:  # the comparison is extra: it never costs the section its other lines
+        out += [
+            "",
+            f"Installed plist against what this build would write: not compared ({type(exc).__name__})",
+        ]
     out += ["", "Last launcher TCC lines (per job, newest last):", ""]
     tcc: list[str] = []
     log_dir = r.log_dir()

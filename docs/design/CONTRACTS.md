@@ -7530,8 +7530,8 @@ converted again from the same bytes in two runs running; the limit marks are the
 
 The Status section ends with six parts, each under a `### ` heading (`EVIDENCE_TITLES`, in this order). They
 are sub-headings, as `RUN_METADATA_HEADING` is, so the `## ` headings stay `SECTION_TITLES` and the report
-`scripts/install.sh` writes without agentsync keeps the same headings. The README prompt is unchanged: the
-tool writes all of it.
+`scripts/install.sh` writes without agentsync keeps the same headings. Background runs gains
+lines (below). The README prompt is unchanged: the tool writes all of it.
 
 ```python
 # agentsync.setup_report
@@ -7541,6 +7541,7 @@ EVIDENCE_TITLES = ("OCR", "Quarantine by reason", "Purge queue", "Overlapping so
                    "Empty cloud folders", "Repeat conversions")
 QUARANTINE_CLASSES: tuple[str, ...]   # every value of quarantine_class
 def quarantine_class(reason: str | None) -> str: ...
+def argument_roles(argv: Sequence[object], *, launcher: str, fixed: Sequence[str]) -> list[str]: ...
 ```
 
 **Read-only.** The manifest is opened by its own connection with `mode=ro` (`_Mirror`): nothing is created,
@@ -7640,9 +7641,21 @@ the run record). Then the converter cache: how many rows a later run used again 
 them, and how many of those the newest run and the one before it used last. That count needs no run record,
 so it also speaks for the runs of an earlier build.
 
+**Background runs.** After the two job lines, for each job with a plist in this home folder: whether it is
+what this build would write (`launchd.render_plist` of `poll_spec` or `reconcile_spec`; doctor's line says
+only that it differs). When it is not: the keys that differ, with both values only where both are numbers
+or missing; a count of keys this build does not write; for `ProgramArguments` the positions that differ,
+each with its class from `argument_roles` (`launcher`, `launcher option`, `watchdog seconds`, `grace
+seconds`, `canary timeout`, `canary path`, `separator`, `interpreter`, `fixed argument`, `mode`, `config
+path`, `other`), then each class compared (`same`, `differs`, `only installed`, `only in this build`), for
+the launcher, interpreter and config path also whether the two are the same file and whether the installed
+one exists, and the canary paths as three counts; for `EnvironmentVariables` four counts. No argument, path
+or variable name is printed. A plist that cannot be read, or a config for which this build would write no
+job, is `not compared (<exception type>)`.
+
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
-and their helpers, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
+and their helpers, `_plist_lines`, `_argument_lines`, `_class_text`, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
 `_EMPTY_DIRS_META` repeat values the converters and the cycle own; a test holds each pair equal.
 
 Tests: `tests/test_setup_report.py` (the six headings under Status with the `## ` headings as they were, an
@@ -7654,5 +7667,6 @@ purge queue with a renamed copy, a new id at an old path, a file listed again, a
 that was never a row; a source inside another, with and without the exclude line; empty cloud folders that
 are dataless, materialised with and without entries, gone and not a folder, with no folder listed and the
 cap of 50; the run records and the cache for repeat conversions; no time left; a statement that runs past the
-time; 50,000 files bounded by VM instructions and by each statement's query plan; a source the Redactor
-does not know). Each test seeds made-up folder and file names and asserts none reaches the report.
+time; 50,000 files bounded by VM instructions and by each statement's query plan; an installed plist that
+differs, the same file under another name, an unreadable plist and no launcher; `argument_roles`; a source
+the Redactor does not know). Each test seeds made-up folder and file names and asserts none reaches the report.
