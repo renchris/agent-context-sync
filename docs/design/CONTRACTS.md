@@ -2443,6 +2443,9 @@ class PdfConverter:
     """
     converter_id = "pdf-pdfminer"
     # SUPERSEDED (2026-09-29, §16.9): converter_id = "pdf-pypdfium2"
+    # Amended (2026-10-06): "OCR is a later budgeted tier" is built (§16.25, §16.26): with an engine such a
+    # page is read on this Mac, without one it keeps the marker. Each page's reviewer comments follow its
+    # text (§16.24).
     extensions: tuple[str, ...] = (".pdf",)
 
     def __init__(self, cfg: ConvertConfig) -> None:
@@ -4534,6 +4537,8 @@ class AgentSpec:
 - `.pdf` → `pdf-pypdfium2` (PDFium via pypdfium2; pdfminer.six only when PDFium cannot load a file for a
   non-encryption reason). A PDF with no text on any page is `UnreadableSourceError`, never an empty page.
   **SUPERSEDED (2026-10-06, §16.24):** a PDF with no text and no comment on any page; one with comments is a page.
+  **Amended (2026-10-06, §16.26):** with an OCR engine its pages are read first, and it is refused only when OCR
+  finds no text either.
 - H0 refinement (§11): when a file's lstat tuple `(size, mtime_ns, ctime_ns, ino, mode)` equals its row, the walk
   reuses the stored `gen_count` and creation time instead of `getattrlist`. `ClassifyContext.h0_unchanged` rows are
   stamped by `Manifest.touch_observed` without decoding.
