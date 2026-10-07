@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agentsync import cli, cycle, governance, materialise, net, policy, setup_report
+from agentsync import arm_local, cli, cycle, governance, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, ocr, pdf
 from agentsync.convert.image import ImageConverter
@@ -2922,7 +2922,8 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     assert line.split(": ", 1)[1] == (
         "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them with a link count of 2: no entry by the "
         "folder's own metadata); 1 gone, 0 not readable, 1 not a folder, 1 not checked; 6 of 6 checked; 0 "
-        "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s)"
+        "of the checked folder(s) excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of "
+        "the checked folder(s)"
     )
     assert part.count("\n- ") == 1, "a source whose walk held none has no line"
     assert not [p for p in listed if str(root) in p], "no folder of the source was listed"
@@ -2933,13 +2934,63 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
         ),
         encoding="utf-8",
     )
-    assert "; 2 excluded in sources.toml now;" in status_parts(fake_mac)[1]["Empty cloud folders"]
+    part = status_parts(fake_mac)[1]["Empty cloud folders"]
+    assert "; 2 of the checked folder(s) excluded in sources.toml now;" in part
     seed = Seed(cfg)
     seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps([f"Wingtip {n}" for n in range(60)]))
     seed.close()
     capped = status_parts(fake_mac)[1]["Empty cloud folders"]
     assert "60 unknown: 0 dataless, 0 materialised-and-empty" in capped and "50 gone" in capped
     assert "; 50 of 60 checked;" in capped
+
+
+def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_time(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The exclude rule costs names x folder levels x globs, and the advice a sync gives for an empty cloud
+    folder is one more glob: asked of every stored name on the report's own thread, it ran for as long as
+    it liked (44 s for 5,000 names against 506 globs). It is asked of the 50 checked folders, in a call that
+    is stopped; the folders' own facts are printed either way."""
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'id = "client-alpha"', 'id = "client-alpha"\nexclude = ["Wingtip 5*"]', 1
+        ),
+        encoding="utf-8",
+    )
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps([f"Wingtip {n}" for n in range(60)]))
+    seed.close()
+    asked: list[int] = []
+    real = arm_local._unexcluded
+
+    def counting(source: Any, dirs: Any) -> list[str]:
+        asked.append(len(dirs))
+        return real(source, dirs)
+
+    monkeypatch.setattr(arm_local, "_unexcluded", counting)
+    part = status_parts(fake_mac)[1]["Empty cloud folders"]
+    # "Wingtip 5" is one of the first 50; "Wingtip 50" to "Wingtip 59" are stored and not checked
+    assert "; 50 of 60 checked; 1 of the checked folder(s) excluded in sources.toml now;" in part
+    assert asked == [setup_report._EMPTY_DIRS_CHECKED]
+    release = threading.Event()
+
+    def hung(_source: Any, _dirs: Any) -> list[str]:
+        release.wait(60)
+        return []
+
+    monkeypatch.setattr(arm_local, "_unexcluded", hung)
+    monkeypatch.setattr(setup_report, "_FOLDERS_S", 0.3)
+    try:
+        text, parts = status_parts(fake_mac)
+    finally:
+        release.set()
+    part = parts["Empty cloud folders"]
+    assert "60 unknown: 0 dataless, 0 materialised-and-empty" in part and "; 50 of 60 checked;" in part
+    assert f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror still holds" in part
+    assert '- evidence: 1 line(s) at the end of Status say "not measured"' in section(text, "Summary")
+    assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
 def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(

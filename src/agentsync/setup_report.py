@@ -2490,6 +2490,7 @@ _ROWS_SHOWN = 40
 _PURGES_READ = 5000
 _PURGE_LOOKUPS = 300
 _EMPTY_DIRS_CHECKED = 50
+_FOLDERS_S = 2.0  # one source's empty folders: the lstat calls, then the exclude rule, each at most this long
 _PAIRS_SHOWN = 20
 _REREAD_META = "reread:"  # cycle._REREAD_META
 _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
@@ -3283,7 +3284,9 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             None if Path(rel).is_absolute() or ".." in Path(rel).parts else root / rel for rel in checked
         ]
         try:
-            facts = r.call(functools.partial(_folder_facts, paths), timeout=min(2.0, max(0.3, m.left())))
+            facts = r.call(
+                functools.partial(_folder_facts, paths), timeout=min(_FOLDERS_S, max(0.3, m.left()))
+            )
         except TimeoutError:
             out.append(f"- {labels.of(src.id)}: {len(names)} unknown: {NOT_MEASURED}")
             continue
@@ -3298,7 +3301,16 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             )[0][0]
             held += int(below)
             folders += 1 if below else 0
-        excluded = len(names) - len(arm_local._unexcluded(src, names))
+        # The exclude rule costs names x folder levels x globs, and the sync's own advice for these folders
+        # is one more glob each: asked of the checked folders only, and stopped like the lstat calls.
+        try:
+            reached = r.call(
+                functools.partial(arm_local._unexcluded, src, checked),
+                timeout=min(_FOLDERS_S, max(0.3, m.left())),
+            )
+            excluded = f"{len(checked) - len(reached)} of the checked folder(s) excluded in sources.toml now"
+        except TimeoutError:
+            excluded = f"excluded in sources.toml now: {NOT_MEASURED}"
         rest = ", ".join(
             f"{kinds[kind]} {kind}" for kind in ("gone", "not readable", "not a folder", "not checked")
         )
@@ -3306,8 +3318,7 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
             f"{kinds['materialised']} materialised-and-empty ({no_entry} of them with a link count of 2: no "
             f"entry by the folder's own metadata); {rest}; {len(checked)} of {len(names)} checked; "
-            f"{excluded} excluded in sources.toml now; the mirror still holds {held} file(s) below "
-            f"{folders} of the checked folder(s)"
+            f"{excluded}; the mirror still holds {held} file(s) below {folders} of the checked folder(s)"
         )
     if not out:
         return ["- none: no source's last walk held a zero-child cloud folder as unknown"]

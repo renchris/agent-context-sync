@@ -7562,8 +7562,9 @@ same probe with more time. SQLite's progress handler looks at the clock every 2,
 `NOT_MEASURED`, and the parts after it print the same. Each statement reads a table from end to end at most
 once, and a subquery that runs once per row is an index lookup. Per-item lookups are capped: 300 queued
 purges (`_PURGE_LOOKUPS`), 50 empty folders per source (`_EMPTY_DIRS_CHECKED`), the last 200 runs
-(`_RUNS_READ`), 40 table rows shown (`_ROWS_SHOWN`). The probe and the `lstat` calls run through
-`_Run.call`, the timed-call seam (`arm_local.call_with_timeout`). `_Run.evidence_steps` holds the looks at the
+(`_RUNS_READ`), 40 table rows shown (`_ROWS_SHOWN`). The probe, the `lstat` calls and the exclude rule of the
+empty folders run through `_Run.call`, the timed-call seam (`arm_local.call_with_timeout`); the last two have
+at most 2 s each per source (`_FOLDERS_S`) and no more than the parts have left. `_Run.evidence_steps` holds the looks at the
 clock, so a test can bound the work without a wall clock. A part that raises prints `not measured (<exception
 type>)`, never the message. The Summary has one line for all of it, above its redaction line: `- evidence:
 the 6 parts at the end of Status were measured`, or how many lines say "not measured" and to write the report
@@ -7652,9 +7653,14 @@ tombstone counts and whether its last listing was complete.
 id>`: `N unknown: D dataless, M materialised-and-empty`, from one `lstat` of each of the first 50 folders
 (`materialise.is_dataless` on the folder itself). Of the materialised ones, how many have a link count of 2:
 APFS counts 2 plus one per entry, so that is a folder with no entry by its own metadata. Then the folders
-that are gone, not readable or no folder, how many were checked, how many sources.toml excludes now, and how
-many files the mirror still holds below them (a range lookup on `items_by_path`). "Empty" is what the last
-walk found: the report lists nothing.
+that are gone, not readable or no folder, how many were checked, how many of the checked folders sources.toml
+excludes now, and how many files the mirror still holds below them (a range lookup on `items_by_path`).
+"Empty" is what the last walk found: the report lists nothing. The exclude rule (`arm_local._unexcluded`)
+costs names times folder levels times globs, and a sync's advice for such a folder is one more glob, so it is
+asked of the checked folders only and in a timed call: asked of every stored name on the report's own thread
+it took 44 s for 5,000 names against 506 globs, past the report's limit and the installer's. When it is
+stopped the line keeps the folders' own facts and says `excluded in sources.toml now: not measured (time
+limit)`.
 
 **Repeat conversions.** One row for each of the last five runs: files converted, of them failed, from bytes
 an earlier run converted, from bytes the run just before converted (`not recorded` for a run from before
