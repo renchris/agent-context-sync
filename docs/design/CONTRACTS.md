@@ -6806,7 +6806,7 @@ Every new name in `agentsync.convert.pdf` is private (`_OcrText`, `_ocr_text`, `
 Tests: `tests/test_convert_formats.py` (version and options with and without an engine; the page limit against the time limit and the
 launcher's, and a scan of as many pages as the limit read to its end at the worst page time; a page read beside a page of text, the helper's folder and what it leaves;
 a PDF of page images read, and refused when nothing is found; the page limit and its reason; pages rendered
-a few at a time; a page's own short text; the title in page order; comments after a page OCR read; a picture
+a few at a time; a page image without the annotation its comments list; a page's own short text; the title in page order; comments after a page OCR read; a picture
 behind the text, beside it, and inside a form either way; a scan under one stamped line read and a
 searchable scan not; each distinct picture once, an icon and an oversized picture never decoded; icons and
 a picture drawn on every page using up neither limit; a picture drawn with no size, four ways; a picture that cannot be decoded;
@@ -6960,9 +6960,10 @@ Approved \| 12 May
   bytes, and 20,000 of them took 0.16 s here (measured).
 - **Finding the pictures can only find fewer.** A package `zipfile` cannot open is left to pandoc, which
   reads it its own way. An error while the parts are looked through ends the looking, and the pictures
-  found so far are read. An entry that cannot be opened (missing, encrypted, a compression `zipfile` does
-  not read) is skipped, and one that cannot be read to its end costs only itself (`_next_bytes`). pandoc
-  does not inflate a picture it does not extract, so it converts such a file, and so does this. Each of
+  found so far are read. An entry that cannot be opened (missing, or marked encrypted) is skipped, and one
+  that cannot be read to its end costs only itself (`_next_bytes`). pandoc does not inflate a picture it
+  does not extract, so it converts such a file, and so does this. (An entry stored with a compression
+  pandoc does not read is another matter: pandoc refuses the whole container, with or without OCR.) Each of
   these is one DEBUG line with the type of the error and nothing the document says: an error's text can
   name an entry. `MemoryError` is not a fact about the file and fails the pass (Failure, below).
 - **Once per distinct picture.** A picture's key is the sha256 of its bytes. One stored under several names
@@ -7044,8 +7045,9 @@ entry nothing uses and a header's logo never read, a third picture never opened 
 count limit and the byte limit; every kind of line that could pose as structure, in a docx and an odt, as
 written and as pandoc's own reader parses the page back; a marker as the first and as the last line of a
 picture's text; a document with no heading, one that opens with a table and keeps its title, and one that is only a
-table; a picture with two areas of text as one block, in a deck too; a damaged entry and a missing
-one; a relationships part and a
+table; a picture with two areas of text as one block, in a deck too; a damaged entry, a missing one and
+one marked encrypted; a picture only a footnote or an endnote shows, in a docx rewritten the way Word
+keeps a note's pictures; a relationships part and a
 body past their bounds; a reference that spans two chunks; an error while the pictures are looked for, and
 a package `zipfile` cannot open; a helper failure, its fixed wording and its log lines; a full disk and no
 memory; a pandoc whose Lua has no `pandoc.json`, whose pass raises, or that cannot open a file; a pandoc

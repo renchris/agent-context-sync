@@ -1185,6 +1185,31 @@ def test_pdf_ocr_stops_at_the_page_limit_and_says_which_pages_it_did_not_read(
     )
 
 
+def test_a_page_image_is_rendered_without_the_annotations_its_comments_list(tmp_path: Path) -> None:
+    """A reviewer's box drawn over a scanned page is listed in that page's comments.  Rendered into the page
+    image it would be read as part of the scan, and hide what is under it.  The box here covers the page's
+    first pixel: with it drawn the fake helper sees another page, and reads nothing."""
+    box = (
+        "/Subtype /Square /Rect [0 692 100 792] /C [0 0 0] /IC [0.5 0.5 0.5] "
+        "/T (Roe, John) /Contents (Check the seal)"
+    )
+    folder = tmp_path / "staging" / "0123456789abcdef"
+    folder.mkdir(parents=True)
+    import pypdfium2  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    src = build_annotated_pdf(folder / "scan.pdf", [([], [box])])
+    page = pypdfium2.PdfDocument(str(src))[0]
+    assert page.render(scale=1, draw_annots=True).buffer[0] != 255, "a viewer does draw the box there"
+    assert page.render(scale=1, draw_annots=False).buffer[0] == 255
+    engine = shade_engine(tmp_path / "bin", {255: ["Signed in Rotterdam"]})
+    u = _ocr_one(src, engine)
+    assert u.body == (
+        f"<!-- page: 1 -->\n\n{_OCR_READ}\n\nSigned in Rotterdam\n\n"
+        "[comments on this page (PDF annotations):]\n- Box by Roe, John: Check the seal\n"
+    )
+    assert u.summary == "PDF: 1 page(s), 1 read by on-device OCR; 1 comment(s) on 1 page(s)"
+
+
 def test_pdf_ocr_renders_a_few_pages_at_a_time_and_removes_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2500,6 +2525,77 @@ def _damaged(src: Path, entry: str) -> None:
     start = info.header_offset + 30 + name_len + extra_len
     data[start : start + info.compress_size] = b"\xff" * info.compress_size
     src.write_bytes(bytes(data))
+
+
+def _flag_encrypted(src: Path, entry: str) -> None:
+    """Mark ``entry`` of the ZIP ``src`` as encrypted, in its own header and in the directory: ``zipfile``
+    then refuses to open it (RuntimeError), and pandoc, which does not inflate a picture, converts the file
+    all the same."""
+    with zipfile.ZipFile(src) as zf:
+        info = zf.getinfo(entry)
+    data = bytearray(src.read_bytes())
+    name = entry.encode()
+    listed = data.index(b"PK\x01\x02", info.header_offset)
+    while data[listed + 46 : listed + 46 + len(name)] != name:
+        listed = data.index(b"PK\x01\x02", listed + 4)
+    data[info.header_offset + 6] |= 1
+    data[listed + 8] |= 1
+    src.write_bytes(bytes(data))
+
+
+def test_a_picture_that_cannot_be_opened_costs_only_itself_and_the_rest_are_read(tmp_path: Path) -> None:
+    """An entry ``zipfile`` will not open for a reason other than its absence: here one marked encrypted.
+    It is skipped, and the text of the document's other pictures is still on the page."""
+    pictures = {f"p{n}.png": text_png(f"picture text {n}") for n in range(2)}
+    src = _staged_doc(tmp_path, "Step 0: ![a](p0.png) done.\n\nStep 1: ![b](p1.png) done.\n", pictures)
+    first, _second = (f"word/{name}" for name in re.findall(r"media/\S+?\.png", _doc_one(src, None).body))
+    _flag_encrypted(src, first)
+    with zipfile.ZipFile(src) as zf, pytest.raises(RuntimeError, match="encrypted"):
+        zf.open(first)
+    engine = fake_engine(tmp_path / "bin")
+    on = _doc_one(src, engine)
+    assert on.body == _doc_one(src, None).body.rstrip("\n") + f"\n\n{_PICTURE_HEAD}\n\npicture text 1\n"
+    assert on.summary == "Word document; text of 1 picture(s) read by on-device OCR"
+    assert [len(run) for run in reads(engine.helper)] == [1]
+
+
+@pytest.mark.parametrize("notes", ["footnotes", "endnotes"])
+def test_a_picture_of_a_note_is_found_by_the_relationships_of_the_notes_part(
+    tmp_path: Path, notes: str
+) -> None:
+    """Word keeps the pictures of its footnotes and endnotes in the relationships of those parts, and pandoc
+    reads them from there.  pandoc's own writer does not write them there, so a docx it built shows no
+    picture in a note: this one is rewritten the way Word writes it."""
+    pictures = {"body.png": text_png("Orders by month"), "seal.png": text_png("Seal of the notary")}
+    markdown = "Body ![chart](body.png) text.[^1]\n\n[^1]: See ![seal](seal.png) here.\n"
+    src = _staged_doc(tmp_path, markdown, pictures)
+    with zipfile.ZipFile(src) as zf:
+        parts = {info.filename: zf.read(info) for info in zf.infolist()}
+    used = re.search(rb'r:embed="([^"]+)"', parts["word/footnotes.xml"])
+    assert used is not None
+    listed = re.search(rb'<Relationship [^>]*Id="%s"[^>]*/>' % used[1], parts["word/_rels/document.xml.rels"])
+    assert listed is not None, "pandoc lists a note's picture with the body's"
+    parts["word/_rels/document.xml.rels"] = parts["word/_rels/document.xml.rels"].replace(listed[0], b"")
+    own = parts["word/_rels/footnotes.xml.rels"]
+    assert own.rstrip().endswith(b" />"), "and leaves the notes part's own relationships empty"
+    parts["word/_rels/footnotes.xml.rels"] = own.replace(b" />", b">" + listed[0] + b"</Relationships>")
+    if notes == "endnotes":  # the same document with its one note an endnote, part for part
+        parts = {
+            name.replace("footnotes", "endnotes"): data.replace(b"footnote", b"endnote").replace(
+                b"Footnote", b"Endnote"
+            )
+            if name.endswith((".xml", ".rels"))
+            else data
+            for name, data in parts.items()
+        }
+    make_zip(src, parts)
+    engine = fake_engine(tmp_path / "bin")
+    off, on = _doc_one(src, None), _doc_one(src, engine)
+    assert "[^1]: See [image: seal — media/" in off.body, "pandoc shows the picture where the note is"
+    assert on.body == off.body.replace(
+        "text.[^1]\n", f"text.[^1]\n\n{_PICTURE_HEAD}\n\nOrders by month\n", 1
+    ).rstrip("\n") + (f"\n\n    {_PICTURE_HEAD}\n\n    Seal of the notary\n")
+    assert on.summary == "Word document; text of 2 picture(s) read by on-device OCR"
 
 
 def test_a_damaged_or_missing_picture_costs_only_itself_and_the_document_converts(tmp_path: Path) -> None:
