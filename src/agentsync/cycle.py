@@ -1969,7 +1969,7 @@ class _Cycle:
         except (BudgetExhaustedError, DatalessRefusedError, FileNotFoundError):
             return None  # evicted or gone since the walk: the next pass says what the file is now
         except Exception as exc:  # unreadable: the row and its page are as they were
-            log.info("a file could not be read again (%s); its page is as it was", type(exc).__name__)
+            log.debug("a file could not be read again (%s); its page is as it was", type(exc).__name__)
             return False
         self._reread_n += 1
         try:

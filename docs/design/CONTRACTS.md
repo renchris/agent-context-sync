@@ -7264,7 +7264,9 @@ row. A stub counts only when it is its item's own state (`outputs.status` equals
 `duplicate-of` stub, a failed conversion and a credential stub name no converter to ask.
 
 **Log.** One INFO line a cycle, a count and no name: `N file(s) converted before a capability this install
-has were read again; K of them could not be converted and keep the page they had`.
+has were read again; K of them could not be converted and keep the page they had`. A file that cannot be
+read is a DEBUG line with the type of the error, and a converter that cannot run is the one WARNING above.
+None of the three holds a file name or a path.
 
 **Deviations and limits.**
 
@@ -7295,7 +7297,8 @@ queries runs; an image, a scan and a scanned page from before the engine are rea
 keeps its stub and four documents their pages; a label rule keeps a refused image unread, and without the
 rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one alarm, no second read
 until the capabilities change; an online-only file, an excluded file and a `materialise PATH` run, then the
-file downloaded; a file evicted after the walk; a tripped breaker and its held files; a file an incomplete
+file downloaded; a file evicted after the walk; a file that cannot be read: tried once, its page and
+verdict kept, no name in a log line; a tripped breaker and its held files; a file an incomplete
 pass did not list; a file the engine fails on, an engine that goes and comes back, a new file it fails on;
 six files against the time bound, two to a transaction, one failing, and the one INFO line a cycle; a
 `materialise PATH` run that leaves a file to read again; pandoc missing for one cycle; a drive file never

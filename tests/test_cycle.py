@@ -2034,6 +2034,50 @@ def test_a_file_evicted_after_the_walk_listed_it_is_not_downloaded_for_a_re_read
     assert run(sample_config).commit_sha is not None and COMMENTS in _mirror_page(sample_config, REVIEW)[1]
 
 
+def test_a_file_that_cannot_be_read_again_is_tried_once_and_no_log_line_names_it(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The file was readable when it was converted and is not now.  Its page stays, the row keeps its
+    verdict (it is no pending work for every later sync to retry), and it is tried once.  What the cycle
+    says about re-reads at INFO is its one line, and no line at any level holds a name or a path."""
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    before = _mirror_bytes(sample_config, REVIEW)
+    real = LocalArm.fetch
+    asked: list[str] = []
+
+    def fetch(self: Any, item: Any, dest: Path, budget: Any) -> Any:
+        asked.append(item.rel_path)
+        if item.rel_path == REVIEW:
+            raise PermissionError(13, "Permission denied", f"/Users/someone/source/{item.rel_path}")
+        return real(self, item, dest, budget)
+
+    monkeypatch.setattr(LocalArm, "fetch", fetch)
+    caplog.set_level(logging.DEBUG, logger="agentsync.cycle")
+    report = run(sample_config)
+    [rep] = report.sources
+    assert (report.exit_code, rep.errors, rep.alarms) == (0, (), ()) and sorted(asked) == [REVIEW, PLAIN_PDF]
+    assert _mirror_bytes(sample_config, REVIEW) == before
+    row = _file_rows(sample_config)[REVIEW]
+    assert (row.state, row.last_verdict) == (RowState.LIVE, Verdict.UNCHANGED)
+    assert (
+        _reread_record(sample_config) == (True, [row.stable_id]) and loop.next_step(sample_config).rule != 3
+    )
+    said = [r for r in caplog.records if r.name == "agentsync.cycle" and "read again" in r.getMessage()]
+    assert [r.getMessage() for r in said if r.levelno >= logging.INFO] == [
+        "1 file(s) converted before a capability this install has were read again; 0 of them could not be "
+        "converted and keep the page they had"
+    ]
+    assert [r.getMessage() for r in said if r.levelno < logging.INFO] == [
+        "a file could not be read again (PermissionError); its page is as it was"
+    ]
+    assert run(sample_config).commit_sha is None and len(asked) == 2
+
+
 def test_a_re_read_leaves_the_deletion_breaker_and_its_held_files_as_they_were(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
