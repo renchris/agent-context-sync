@@ -18,7 +18,19 @@ from typing import Any, ClassVar
 import pytest
 import yaml
 
-from agentsync import __version__, cli, gitops, governance, it_request, lints, loop, net, policy, skill
+from agentsync import (
+    __version__,
+    cli,
+    curate,
+    gitops,
+    governance,
+    it_request,
+    lints,
+    loop,
+    net,
+    policy,
+    skill,
+)
 from agentsync.config import Config, inbox_source_table, load_config
 from agentsync.cycle import run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -374,6 +386,48 @@ def test_curate_runs_every_whole_repo_lint_and_exits_1_only_on_a_blocking_findin
     out = capsys.readouterr().out
     assert "ERROR UNLISTED topics/orders.md" in out and out.splitlines()[-1] == fix
     assert "queued" not in out and "session done" not in out
+
+
+def _meeting_with_a_cite_finding(initialised: Config) -> str:
+    """A synced repo past the baseline hold and one uncommitted ``kind: meeting`` page, pinned to a real
+    mirror page, whose one tag resolves to no recording: a CITE-UNRESOLVED and nothing that blocks."""
+    cfg = _synced(initialised)
+    _before(initialised)
+    sample = "mirror/source/projects/sample.txt.md"
+    pin = _mirror_sha(initialised, sample)
+    (initialised.docs_repo / "topics" / "meetings").mkdir(parents=True)
+    (initialised.docs_repo / "topics" / "meetings" / "m.md").write_text(
+        f"---\nkind: meeting\nentity: contoso-review\npurpose: what the review decided\nsources:\n"
+        f"  - {{path: {sample}, at_rendered_sha256: {pin}, role: primary}}\n---\n"
+        '# Review\n\n- Opening: `heard 00:01:10` "let us start".\n',
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_a_cite_finding_is_a_warn_line_and_never_holds_the_checkpoint(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = _meeting_with_a_cite_finding(initialised)
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "warn  CITE-UNRESOLVED topics/meetings/m.md: `heard 00:01:10`" in out
+    assert "1 finding(s), 0 blocking" in out and "ERROR" not in out
+    assert curate.checkpoint_blockers(initialised.docs_repo) == []
+
+
+def test_next_is_not_rule_7_for_a_cite_finding(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The page is uncommitted, so rule 7 counts checkpoint blockers: a CITE finding is not one."""
+    cfg = _meeting_with_a_cite_finding(initialised)
+    assert not [f for f in loop.checkpoint_findings(initialised) if f.code.startswith("CITE-")]
+    step = loop.next_step(initialised)
+    assert step.rule != 7 and "CITE" not in step.step
+    capsys.readouterr()
+    assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
+    assert step.lines()[0] in capsys.readouterr().out.splitlines()
 
 
 def test_curate_baseline_hold_lists_no_rows(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
