@@ -207,10 +207,10 @@ version, and the installer wrote its own number into the log.
 - Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v8, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
-  with the version the copy gave (`v7 or older` for a copy from before v8, which gives none) and a `step 1 |
-  error` line, tells the agent to stop and to have the person copy the prompt again from `README.md` on the main
-  branch, and exits 2, so step 1's command stops before it lists the folders. A v8 or later copy checks the same
-  from its side: `install.sh --version` must end with exactly its own number.
+  with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
+  error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
+  from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
+  or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
 - An older copy's own text still goes on to its report. That report's Summary says
   `prompt: v7 or older (older than this installer's v8: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that

@@ -25,6 +25,7 @@ import shutil
 import signal
 import subprocess
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1480,7 +1481,9 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
     is not the README's of this checkout: older (a saved copy; one from before v8 names no version) or newer
     (the checkout did not update). Either is logged with the version it gave and a step 1 error line, told
     to stop and to copy the prompt again from the README on the main branch, and exits 2, which stops step
-    1's command. The same value in another shape is a copy that names no version."""
+    1's command. The same value in another shape is a copy that names no version.
+
+    The agent is told to run no other step, so the stop closes the attempt itself."""
     older, newer = COMPAT - 1, COMPAT + 1
     cases = [
         (
@@ -1502,6 +1505,7 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
             "this checkout is older than the prompt",
         ),
         (f"Copilot CLI (prompt v{COMPAT})", "v7 or older", f"Copilot CLI (prompt v{COMPAT})", "is not"),
+        (f"prompt v{COMPAT}x, y", "v7 or older", f"prompt v{COMPAT}x, y", "is not"),
         ("prompt v1234, x", "v7 or older", "prompt v1234, x", "the pasted copy is not the current one"),
     ]
     for value, said, agent, why in cases:
@@ -1517,9 +1521,10 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         ) in cp.stderr
         attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
         assert attempt.header == {"Prompt": said, "Agent": agent}
-        [event] = attempt.events
+        event, closed = attempt.events
         assert (event.step, event.kind) == (1, "error") and why in event.what
         assert event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
+        assert closed.kind == "finished" and attempt.finished, "the stop closes its own attempt"
     assert len(setup_report.parse_friction(friction_path(env).read_text()).attempts) == len(cases)
     ok = install_sh(env, "--log-start", f"prompt v{COMPAT},Copilot CLI")
     assert ok.returncode == 0 and ok.stderr == "", "the space after the comma is not required"
@@ -1532,11 +1537,37 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
     )
 
 
+STOPPED_NEXT = "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started"
+
+
+def _backdate(env: dict[str, str], minutes: int) -> None:
+    """Move every time in the friction log ``minutes`` back, as if its lines had been logged then."""
+
+    def earlier(found: re.Match[str]) -> str:
+        at = datetime.strptime(found.group(0), "%Y-%m-%dT%H:%M:%SZ") - timedelta(minutes=minutes)
+        return at.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    log = friction_path(env)
+    log.write_text(re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", earlier, log.read_text()))
+
+
+def _stopped_in_the_report(env: dict[str, str]) -> bool:
+    """Whether the attempt ``agentsync setup-report`` judges (the log's last one) is one ``--log-start``
+    stopped: what the Summary of that report is about."""
+    latest = setup_report.parse_friction(friction_path(env).read_text()).latest
+    assert latest is not None
+    return any("install.sh --log-start: the pasted setup prompt is" in e.what for e in latest.events)
+
+
 def test_report_only_says_copy_again_only_for_an_attempt_log_start_stopped(env: dict[str, str]) -> None:
     """The NEXT of ``--report-only`` says "copy the prompt again" for the attempt ``--log-start`` stopped, by
     that attempt's own error line. An attempt an earlier installer logged (its ``Prompt:`` line is older, and
-    nothing stopped it) keeps the usual NEXT, and so does a later session whose step 1 failed before
-    ``--log-start``: its error line follows the stopped attempt's end line and is not that attempt's."""
+    nothing stopped it) keeps the usual NEXT.
+
+    The attempt ends where the report ends it, so the NEXT and the Summary are of the same attempt. A line
+    the stopped session logs after the stop is still its own: an old copy's text says "log it and go to
+    step 3's report", and that report must not read "bring it back". A step 1 error more than ten minutes
+    later is another session's, whose step 1 failed before ``--log-start``: its report is brought back."""
     log = friction_path(env)
     log.parent.mkdir(parents=True)
     log.write_text(
@@ -1544,11 +1575,91 @@ def test_report_only_says_copy_again_only_for_an_attempt_log_start_stopped(env: 
     )
     assert last_line(install_sh(env, "--report-only")).startswith("NEXT: review "), "nothing stopped it"
     assert install_sh(env, "--log-start", "x").returncode == 2
-    stopped = "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started"
-    assert last_line(install_sh(env, "--report-only")).startswith(stopped)
-    assert last_line(install_sh(env, "--report-only")).startswith(stopped), "the same on a second run"
+    assert last_line(install_sh(env, "--report-only")).startswith(STOPPED_NEXT)
+    assert last_line(install_sh(env, "--report-only")).startswith(STOPPED_NEXT), "the same on a second run"
+    assert sum(ln.endswith(" | end | finished") for ln in log.read_text().splitlines()) == 2, "one each"
+    assert install_sh(env, "--log", "1", "error", "install.sh --log-start exited 2", "-").returncode == 0
+    assert install_sh(env, "--log", "3", "deviation", "wrote the report after the stop", "-").returncode == 0
+    assert last_line(install_sh(env, "--report-only")).startswith(STOPPED_NEXT), "its own late lines"
+    assert _stopped_in_the_report(env)
+    _backdate(env, 11)
     assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     assert last_line(install_sh(env, "--report-only")).startswith("NEXT: review "), "another session's line"
+    assert not _stopped_in_the_report(env)
+
+
+def test_a_session_after_a_stopped_copy_that_wrote_no_report_is_not_called_out_of_date(
+    env: dict[str, str],
+) -> None:
+    """An old copy is stopped and, as told, runs no other step: no ``--report-only`` closes its attempt.
+    The person pastes the current prompt in a new session, whose step 1 fails before ``--log-start`` (git
+    pull through a proxy). Its error line joined the attempt left open, and its report said "an out-of-date
+    copy started this, do not bring it back": the real failure never came back. The stop closes its own
+    attempt, so the line follows an end line and is judged as the report judges it."""
+    assert install_sh(env, "--log-start", "Claude Code, some-model").returncode == 2
+    _backdate(env, 11)
+    assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
+    out = install_sh(env, "--report-only")
+    assert out.returncode == 0 and last_line(out).startswith("NEXT: review "), last_line(out)
+    assert not _stopped_in_the_report(env)
+    first, second = setup_report.parse_friction(friction_path(env).read_text()).attempts
+    assert first.finished and [e.kind for e in second.events] == ["error"] and not second.header
+
+
+def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env: dict[str, str]) -> None:
+    """``install.sh --report-only`` words its NEXT from the friction log in awk, and ``agentsync
+    setup-report`` words the Summary from ``parse_friction``. Both go by one rule, with one number: a step
+    1 error more than ``_NEW_SESSION_GAP`` after an attempt's end line starts another session's attempt, and
+    any other late line stays. Each log below gets the same answer from both."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [gap] = re.findall(r"^NEW_SESSION_GAP=(\d+) ", script, re.MULTILINE)
+    assert int(gap) == setup_report._NEW_SESSION_GAP.total_seconds()
+    stop = (
+        "Attempt: 2026-10-06T16:42:00Z\nPrompt: v7 or older\nAgent: x\n"
+        "2026-10-06T16:42:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is v7 or "
+        "older and this installer is for setup prompt v8: the pasted copy is not the current one; setup "
+        "stopped | copy the prompt again\n"
+    )
+    end = "2026-10-06T16:42:00Z | end | finished\n"
+    logs = {
+        "the stop alone": stop + end,
+        "a stop an older installer left open": stop,
+        "a late step 1 error, ten minutes on": stop + end + "2026-10-06T16:52:00Z | step 1 | error | x | -\n",
+        "a step 1 error a second past the gap": stop
+        + end
+        + "2026-10-06T16:52:01Z | step 1 | error | x | -\n",
+        "a step 1 error the next day": stop + end + "2026-10-07T00:00:00Z | step 1 | error | x | -\n",
+        "a step 1 error over a month end": stop.replace("10-06T16:42", "10-31T23:55")
+        + end.replace("10-06T16:42", "10-31T23:55")
+        + "2026-11-01T00:06:00Z | step 1 | error | x | -\n",
+        "a late line that is no step 1 error": stop
+        + end
+        + "2026-10-07T09:00:00Z | step 3 | deviation | x | -\n",
+        "a late click in step 1": stop + end + "2026-10-07T09:00:00Z | step 1 | click | x | -\n",
+        "another session, then its own lines": stop
+        + end
+        + "2026-10-07T09:00:00Z | step 1 | error | x | -\n"
+        + "2026-10-07T09:00:05Z | step 3 | deviation | y | -\n",
+        "a current attempt after it": stop
+        + end
+        + f"Attempt: 2026-10-07T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n",
+        "a stopped attempt after a finished one": "Attempt: 2026-10-05T10:00:00Z\nPrompt: v7\nAgent: x\n"
+        "2026-10-05T10:30:00Z | end | finished\n" + stop + end,
+    }
+    answers = {}
+    for name, text in logs.items():
+        friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+        friction_path(env).write_text(text)
+        said = last_line(install_sh(env, "--report-only")).startswith(STOPPED_NEXT)
+        assert said == _stopped_in_the_report(env), name
+        answers[name] = said
+    assert [name for name, said in answers.items() if not said] == [
+        "a step 1 error a second past the gap",
+        "a step 1 error the next day",
+        "a step 1 error over a month end",
+        "another session, then its own lines",
+        "a current attempt after it",
+    ]
 
 
 def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
@@ -1698,12 +1809,12 @@ def test_a_dry_run_report_only_leaves_the_attempt_open(env: dict[str, str]) -> N
 
 def test_a_saved_v6_prompt_still_closes_and_reports(env: dict[str, str]) -> None:
     """K17 review: a saved v6 prompt passes its own "6 or higher" gate. Since v8 the installer stops it at
-    step 1 (its ``--log-start`` names no version), and its text then goes to its step 3, ``--log-end &&
-    --report-only``, which still works: the hidden --log-end closes the attempt once and exits 0, and the
-    report's NEXT says to copy the prompt again instead of bringing that report back."""
+    step 1 (its ``--log-start`` names no version) and closes the attempt, and its text then goes to its step
+    3, ``--log-end && --report-only``, which still works: the hidden --log-end exits 0 and adds no second
+    end line, and the report's NEXT says to copy the prompt again instead of bringing that report back."""
     assert install_sh(env, "--log-start", "a").returncode == 2
     end = install_sh(env, "--log-end")
-    assert end.returncode == 0 and end.stdout == f"friction log: attempt finished in {friction_path(env)}\n"
+    assert end.returncode == 0 and end.stdout == "", "the stop closed the attempt: nothing is left to close"
     reported = install_sh(env, "--report-only")
     assert reported.returncode == 0
     assert last_line(reported).startswith(

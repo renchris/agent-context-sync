@@ -43,17 +43,19 @@
 #   --log-start AGENT  AGENT is 'prompt vN, TOOL': N is the version in the first line of the prompt the
 #                      agent was given, TOOL its tool and model id. Appends "Attempt: <UTC>", "Prompt: vN"
 #                      and "Agent: TOOL" lines. When N is not this installer's SETUP_PROMPT_COMPAT the
-#                      pasted copy is not the README's: it also appends a "step 1 | error" line, prints
-#                      what to do (stop; the person copies the prompt again from README.md on the main
-#                      branch) and exits 2, so step 1's command stops before --list-folders. An AGENT that
-#                      names no version is a copy from before v8 and is logged as "Prompt: v7 or older"
+#                      pasted copy is not the README's: it also appends a "step 1 | error" line and the
+#                      attempt's "end | finished" line, prints what to do (stop; the person copies the
+#                      prompt again from README.md on the main branch) and exits 2, so step 1's command
+#                      stops before --list-folders. An AGENT that names no version is a copy from before
+#                      v8 and is logged as "Prompt: v7 or older"
 #   --log STEP KIND WHAT FIX
 #                      appends "<UTC> | step STEP | KIND | WHAT | FIX" ("step 2" as STEP is read as 2; a STEP
 #                      that is not a number, or "-", leaves the step column out and moves a non-number into
 #                      WHAT). A KIND outside the six, or a count other than four, exits 2 and still appends
 #                      an "error" line that names it and keeps what was given
 # --report-only closes the attempt: it appends "<UTC> | end | finished" before writing the report, only when the
-# last "Attempt:" has no such line (so running it twice adds one), and prints one confirmation line.
+# last "Attempt:" has no such line (so running it twice adds one, and none after an attempt --log-start
+# stopped and closed), and prints one confirmation line.
 # Arguments are written as given (printf '%s'): nothing in them is expanded or run, so a backtick, $( ) or a
 # typographic ’ is logged as text; a line break inside one becomes a space (one event per line).
 #
@@ -249,7 +251,9 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			[ -z "$p" ] || [ "$p" -lt "$SETUP_PROMPT_COMPAT" ] || what="this checkout is older than the prompt"
 			what="$said and this installer is for setup prompt v$SETUP_PROMPT_COMPAT: $what"
 			fix="copy the prompt again from $PROMPT_SOURCE"
-			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped | $fix"$'\n' || true
+			# The attempt is closed here: the agent is told to run no other step, so no --report-only may
+			# follow, and a later session's line must not join an attempt left open.
+			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped | $fix"$'\n'"$now | end | finished"$'\n' || true
 			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. (The current prompt starts the --log-start value with "prompt v%s, ".)\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
 			rc=2
 		fi
@@ -310,17 +314,28 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 	[ "$rc" -ne 1 ] || printf 'error: could not write the friction log %s\n' "$(friction_file)" >&2
 	return "$rc"
 }
-# Whether the friction log's last attempt is one --log-start stopped (a copy of the prompt that is not this
-# installer's): it holds that error line, and nothing was logged after its end line. A line after the end
-# line is another session's, whose step 1 stopped before --log-start: that one is not judged here.
+# Whether the attempt the setup report judges is one --log-start stopped (a copy of the prompt that is not
+# this installer's): the friction log's last attempt holds that error line. The attempt ends where
+# `agentsync setup-report` ends it (parse_friction), so this NEXT and the report's Summary are of the same
+# attempt: a step 1 error dated more than NEW_SESSION_GAP seconds after its end line is another session's,
+# whose step 1 stopped before --log-start, and that one is not a stopped copy. Any other line after the end
+# line is a late line of the stopped session (an old copy logs the failed command, then writes its report).
+NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 friction_attempt_stopped() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 1
-	awk -v mark="| step 1 | error | $PROMPT_STOPPED " '
-		/^Attempt:/ { stopped = 0; ended = 0; next }
-		/\| end \| finished[[:space:]]*$/ { ended = 1; next }
-		ended && /\|/ { stopped = 0; next }
+	awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" '
+		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
+			y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0
+			if (m <= 2) { y--; m += 12 }
+			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
+				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
+		}
+		/^Attempt:/ { stopped = 0; ended = ""; next }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
+		ended != "" && /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z \| step 1 \| error \|/ &&
+			secs($0) - secs(ended) > gap { stopped = 0; ended = ""; next }
 		index($0, mark) { stopped = 1 }
 		END { exit !stopped }' "$f" 2>/dev/null
 }

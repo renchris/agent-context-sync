@@ -7646,15 +7646,17 @@ v8 adds no command, flag, installer option, config key or environment variable.
   `Prompt:` line, so a v7 copy run by a v8 installer would have been logged as v8. `--log-start` now takes a
   leading `prompt v<N>,` (1 to 3 digits) off the value. The `Prompt:` line is that N, and `Agent:` the rest.
 - When N is the installer's number, nothing else changes. When it is not, or the value names none, the
-  pasted copy is not the README's of this checkout. `--log-start` still writes the header, with `Prompt:
-  v<N>` or, for a value that names none, `Prompt: v7 or older` (v7 is the last prompt that named none:
-  `PROMPT_UNSTATED`); it appends `<UTC> | step 1 | error | install.sh --log-start: the pasted setup prompt is
-  <that> and this installer is for setup prompt v8: <why>; setup stopped | copy the prompt again from
-  README.md on the main branch of <repository URL>`; it prints one `error:` line with the same words, "Stop
-  here and run no other step of that prompt", and whom to tell what; and it exits 2. `<why>` is "the pasted
-  copy is not the current one" (older, or none named) or "this checkout is older than the prompt" (newer).
-  Step 1 is one `&&` chain, so it stops before `--list-folders`: no folder is listed and nothing is
-  installed.
+  pasted copy is not the README's of this checkout. `--log-start` still writes the header, with
+  `Prompt: v<N>` or, for a value that names none, `Prompt: v7 or older` (v7 is the last prompt that named
+  none: `PROMPT_UNSTATED`); it appends `<UTC> | step 1 | error | install.sh --log-start: the pasted setup
+  prompt is <that> and this installer is for setup prompt v8: <why>; setup stopped | copy the prompt again
+  from README.md on the main branch of <repository URL>` and then the attempt's own `<UTC> | end | finished`
+  line; it prints one `error:` line with the same words, "Stop here and run no other step of that prompt",
+  and whom to tell what; and it exits 2. `<why>` is "the pasted copy is not the current one" (older, or none
+  named) or "this checkout is older than the prompt" (newer). Step 1 is one `&&` chain, so it stops before
+  `--list-folders`: no folder is listed and nothing is installed.
+- The stop closes the attempt because the agent is told to run no other step: an agent that obeys never
+  runs `--report-only`, the attempt stayed open, and the next session's first line joined it.
 - The prompt checks from its side too: `install.sh --version` must end with exactly `setup-prompt-compat 8`
   ("or higher" is gone), or the agent stops and tells the person to copy the prompt again from `README.md`
   on the main branch. That is the half that catches a v8 copy on a Mac whose checkout is still v7: that
@@ -7663,12 +7665,19 @@ v8 adds no command, flag, installer option, config key or environment variable.
   check passed ("7 or higher"), `--log-start` exited 0 and logged `Prompt: v8`, and the whole old wording
   ran. What it does now: exit 2 at `--log-start`, as above. Its text then says "log it and go to step 3's
   report", so `install.sh --report-only` still runs (and a v6 copy's `--log-end && --report-only`, which is
-  why the hidden arms of §16.14 stay). When the log's last attempt holds `--log-start`'s error line and
-  nothing was logged after its end line (`friction_attempt_stopped`), that run's `NEXT:` says the report is
-  of an attempt an out-of-date copy started, not to bring it back, and to copy the prompt again. It goes by
-  the installer's own line, not by the `Prompt:` number: an attempt an earlier installer logged keeps the
-  usual `NEXT:`, and so does a later session whose step 1 failed before `--log-start` (its line follows the
-  stopped attempt's end line).
+  why the hidden arms of §16.14 stay). When the log's last attempt holds `--log-start`'s error line
+  (`friction_attempt_stopped`), that run's `NEXT:` says the report is of an attempt an out-of-date copy
+  started, not to bring it back, and to copy the prompt again. It goes by the installer's own line, not by
+  the `Prompt:` number: an attempt an earlier installer logged keeps the usual `NEXT:`.
+- The last attempt is the one the report judges. `friction_attempt_stopped` ends an attempt where
+  `parse_friction` does (§16.22): a step 1 error dated more than `NEW_SESSION_GAP` (600 s, the module's
+  `_NEW_SESSION_GAP`) after the attempt's end line is another session's, whose step 1 failed before
+  `--log-start`, and its report is brought back. Any other line after the end line is a late line of the
+  stopped session: an old copy logs the failed command and then writes its report, and that report still
+  says not to bring it back. The first rule here cleared the stop at any line after the end line, so the
+  `NEXT:` said "bring it back" while the Summary still judged the stopped attempt. One case stays as the
+  report has it: a new session whose step 1 fails before `--log-start` within ten minutes of the stop reads
+  as a late line of the stopped session.
 
 ```python
 # agentsync.setup_report
@@ -7717,9 +7726,11 @@ to `--log-start`, with "or higher" gone; the text against its version; the modul
 number; a saved v7 copy's exact step 1 command under bash and zsh: exit 2, no folder listed, the one error
 line, the attempt logged as "v7 or older", and its report's `NEXT:`; step 3's sentence, the note's prefix
 and the cap against the two budgets), `tests/test_install_oneshot.py` (`--log-start` with no version, an
-older one, a newer one, one in another place and one of four digits; the value without its space; the report
-of a current attempt after stopped ones, of an attempt an earlier installer logged and of a later session
-with no header; a saved v6 copy's `--log-end && --report-only`),
+older one, a newer one, one in another place, one with a letter after the number and one of four digits,
+each closed by the stop; the value without its space; the report of a current attempt after stopped ones, of
+an attempt an earlier installer logged, of a stopped session's own late lines and of a later session with
+no header, with and without a report in between; eleven logs that the installer and `parse_friction` end
+at the same line; a saved v6 copy's `--log-end && --report-only`),
 `tests/test_setup_report.py` (the layout of every version from 0 to 99; one log under `Prompt: v8` and
 `Prompt: v7`, the Summary equal line for line but for the prompt line, and the same computed outcome; a
 stopped copy's attempt as "v7 or older", "v7" and "v9", and free text after the installer's words not shown).
