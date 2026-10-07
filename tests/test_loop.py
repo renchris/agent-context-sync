@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
 from errno import EDEADLK
@@ -17,10 +18,11 @@ import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, skill
 from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
-from agentsync.cycle import LISTING_HELD, NETWORK_POLICY_FAILED, run_cycle
+from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, PassKind, Verdict
+from agentsync.model import CycleMode, PassKind, RowState, Verdict
+from test_cli import _assert_fix_parses
 
 BIN = "~/.local/bin/agentsync"
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
@@ -807,3 +809,158 @@ def test_next_lines_never_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(loop, "next_step", boom)
     assert loop.next_lines(config) == []
+
+
+# ---- recordings: a wait or a note, never rule 3 (spec S0 rules 3 and 6) -----------------------------------
+
+DRAFT_STEP = f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`"
+FINDER_NOTE_TAIL = (
+    "could not be downloaded by agentsync: in Finder choose Always Keep on This Device on their folder, or "
+    "Download Now on a file; the next background sync reads them; they do not block the next step"
+)
+
+
+def _recordings(tmp_path: Path, folder: Path, *names: str) -> tuple[Config, dict[str, str]]:
+    """A synced folder holding ``names`` (made-up bytes) beside the note; their stable ids by name."""
+    for name in names:
+        (folder / name).write_bytes(b"\x00\x00\x00\x18ftypmp42 not a real recording")
+    config = _synced(tmp_path, folder)
+    with Manifest(config.state_paths.db) as manifest:
+        ids = {r.rel_path: r.stable_id for r in manifest.iter_items("work") if r.rel_path in names}
+    assert sorted(ids) == sorted(names)
+    return config, ids
+
+
+def _waiting(config: Config, sid: str, progress: str | None) -> None:
+    """Mark ``sid`` as the recording pass leaves a local recording it has not finished reading."""
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_verdict("work", sid, Verdict.DEFERRED)
+        manifest.set_state("work", sid, RowState.LIVE, RECORDING_WAITS)
+        if progress is not None:
+            manifest.set_meta(f"{loop.RECORDING_PROGRESS_META}work:{sid}", progress)
+
+
+def _refused(config: Config, sid: str, size: int) -> None:
+    """Mark ``sid`` as an online-only file whose download failed (errno 89, a refusal or the deadline)."""
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_verdict("work", sid, Verdict.DEFERRED)
+        manifest.set_state("work", sid, RowState.DATALESS, HYDRATION_REFUSED)
+    conn = sqlite3.connect(config.state_paths.db)
+    try:
+        conn.execute("UPDATE items SET size = ? WHERE source_id = 'work' AND stable_id = ?", (size, sid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _install_background_job(config: Config) -> None:
+    """What ``loop`` reads to know a background job is installed: the poll job's plist (never launchctl)."""
+    agents = Path.home() / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    (agents / f"{config.launchd_label_prefix}.poll.plist").write_bytes(b"<plist/>")
+
+
+def _commands(line: str) -> list[str]:
+    """The ``agentsync`` commands a line names in backticks, from ``agentsync`` on."""
+    return [
+        "agentsync " + span.split("agentsync ", 1)[1]
+        for span in re.findall(r"`([^`]+)`", line)
+        if "agentsync " in span
+    ]
+
+
+def test_the_waiting_note_says_n_of_m_minutes(tmp_path: Path, folder: Path) -> None:
+    """The minutes are the waiting rows' progress, summed, then floored: 35 of 127. A row with no length yet
+    makes it "of at least"; with no length at all the note has no minutes."""
+    config, ids = _recordings(tmp_path, folder, "standup.mp4", "review.mov", "demo.m4v")
+    _install_background_job(config)
+    _waiting(config, ids["standup.mp4"], "2100000 3600000")  # 35 of 60 minutes
+    _waiting(config, ids["review.mov"], "59999 4020000")  # 0 of 67 minutes
+    note = (
+        "note: 2 recording(s) in work are still being read ({}); each background sync reads more; they do "
+        "not block the next step"
+    )
+    assert _lines(config) == [DRAFT_STEP, note.format("35 of 127 minutes")]
+    _waiting(config, ids["demo.m4v"], None)
+    assert _lines(config) == [DRAFT_STEP, note.format("35 of at least 127 minutes").replace("2 rec", "3 rec")]
+    for sid in ids.values():
+        _waiting(config, sid, "")
+    assert _lines(config) == [DRAFT_STEP, note.replace(" ({})", "").replace("2 rec", "3 rec")]
+
+
+def test_a_recording_that_waits_is_a_wait_or_a_note_never_rule_three(tmp_path: Path, folder: Path) -> None:
+    """With no background job a waiting recording is a WAITING line naming the two runs that read one; once a
+    job is installed it is a note. Either way the loop goes on to rule 4, never rule 3."""
+    config, ids = _recordings(tmp_path, folder, "standup.mp4")
+    _waiting(config, ids["standup.mp4"], "600000 3600000")
+    step = loop.next_step(config)
+    assert step.rule == 4
+    (wait,) = step.waits
+    assert wait == (
+        "1 recording(s) in work wait to be read (10 of 60 minutes), and no background sync is installed to "
+        "read them (an interactive sync reads no recording): run "
+        f"`{loop.INSTALL_SH} --confirm-install-agent`, or `{BIN} materialise <file>` for one recording; they "
+        "do not block the next step"
+    )
+    assert step.notes == ()
+    for command in _commands(wait):
+        _assert_fix_parses(command)
+    assert _commands(wait) == ["agentsync materialise <file>"]
+    _install_background_job(config)
+    step = loop.next_step(config)
+    assert (step.rule, step.waits) == (4, ())
+    assert step.notes == (
+        "1 recording(s) in work are still being read (10 of 60 minutes); each background sync reads more; "
+        "they do not block the next step",
+    )
+
+
+def test_the_finder_note_counts_the_refused_recordings_and_their_size(tmp_path: Path, folder: Path) -> None:
+    """Online-only recordings agentsync could not download are one counted note with their size in GB, one
+    decimal: never a WAITING line and never rule 3."""
+    config, ids = _recordings(tmp_path, folder, "standup.mp4", "review.mov")
+    _refused(config, ids["standup.mp4"], 1_234_000_000)
+    _refused(config, ids["review.mov"], 400_000_000)
+    step = loop.next_step(config)
+    assert (step.rule, step.waits) == (4, ())
+    assert step.lines() == [
+        DRAFT_STEP,
+        f"note: 2 online-only recording(s) in work (1.6 GB) {FINDER_NOTE_TAIL}",
+    ]
+
+
+def test_a_document_refused_beside_a_recording_keeps_its_own_wait(tmp_path: Path, folder: Path) -> None:
+    """A refused document stays the operator's wait (another sync does not fetch it); the refused recording
+    beside it is the Finder note, counted apart."""
+    config, ids = _recordings(tmp_path, folder, "standup.mp4")
+    with Manifest(config.state_paths.db) as manifest:
+        (doc,) = [r.stable_id for r in manifest.iter_items("work") if r.rel_path == NOTE_NAME]
+    _refused(config, ids["standup.mp4"], 466_600_000)
+    _refused(config, doc, 120)
+    assert _lines(config) == [
+        DRAFT_STEP,
+        "WAITING ON YOU: 1 online-only file(s) in work could not be downloaded (macOS refused): in Finder, "
+        f"choose Download Now (or Always Keep on This Device) on their folder, then run `{BIN} sync`",
+        f"note: 1 online-only recording(s) in work (0.5 GB) {FINDER_NOTE_TAIL}",
+    ]
+
+
+def test_an_online_only_recording_is_never_over_the_document_budget(tmp_path: Path, folder: Path) -> None:
+    """A recording downloads under an allowance of its own (spec S0 rule 3), so one larger than the source's
+    max_materialise_bytes is no `materialise --budget` wait: it waits for a later sync, as any online file
+    does."""
+    config, ids = _recordings(tmp_path, folder, "standup.mp4")
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_verdict("work", ids["standup.mp4"], Verdict.DEFERRED)
+        manifest.set_state("work", ids["standup.mp4"], RowState.DATALESS, None)
+    conn = sqlite3.connect(config.state_paths.db)
+    try:
+        conn.execute("UPDATE items SET size = ? WHERE stable_id = ?", (3_000_000_000, ids["standup.mp4"]))
+        conn.commit()
+    finally:
+        conn.close()
+    assert _lines(config) == [
+        DRAFT_STEP,
+        "note: 1 online-only file(s) in work wait for a later sync's download budget; they do not block the "
+        "next step",
+    ]

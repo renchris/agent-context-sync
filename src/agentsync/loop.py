@@ -10,7 +10,8 @@ rule wins:
 3. a source was never listed, a Graph listing is INCOMPLETE, or files already on this Mac are not converted
    yet: sync again (online-only files waiting for a download budget are a note, and a folder listing a sync
    ran but could not finish is an operator wait, never this rule: another sync would not clear either,
-   unless sources.toml by now excludes every empty cloud folder that stopped it);
+   unless sources.toml by now excludes every empty cloud folder that stopped it; a recording still being
+   read is a note, or a wait while no background sync is installed to read it, never this rule);
 4. no curated page and no ``_eval/questions.md``: draft the baseline questions;
 5. ``_eval`` is still a draft: stop, the operator confirms;
 6. no curated page and no ``_eval/results-*-before.md``: run the 'before' baseline in a fresh session;
@@ -45,6 +46,7 @@ from pathlib import Path
 from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.arm_local import _unexcluded, exclude_advice
 from agentsync.config import Config, SourceConfig
+from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
     _EMPTY_DIRS_META,
@@ -55,11 +57,13 @@ from agentsync.cycle import (
     HYDRATION_REFUSED,
     LISTING_HELD,
     NETWORK_POLICY_FAILED,
+    RECORDING_WAITS,
     _reread_records,
 )
 from agentsync.errors import AgentSyncError
 from agentsync.manifest import Manifest
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
+from agentsync.ops import launchd
 from agentsync.paths import expand
 
 _log = logging.getLogger(__name__)
@@ -88,6 +92,11 @@ _BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
 _STATUS_LINE = re.compile(r"^\s*status:\s*(\S+)\s*$")
 _STATUS_LINES_READ = 10  # the skill puts ``status:`` on the first line; a frontmatter fence may precede it
 _UNCONVERTED = frozenset({Verdict.CREATED, Verdict.MAYBE_CHANGED, Verdict.CHANGED, Verdict.DEFERRED})
+RECORDING_PROGRESS_META = "recording_progress:"
+"""Manifest meta ``recording_progress:<source id>:<stable id>``: ``"<done_ms> <total_ms>"`` of a recording the
+recording pass has started, "" (or no key) once its page is published or before any piece is read."""
+_MS_PER_MINUTE = 60_000
+_RECORDING_SUFFIXES = frozenset(RecordingConverter.extensions)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +125,12 @@ class _Files:
     online: dict[str, int] = field(default_factory=dict)  # online-only, within the download budget
     over: dict[str, int] = field(default_factory=dict)  # online-only and larger than the source's budget
     refused: dict[str, int] = field(default_factory=dict)  # the OS refused the download (no budget clears it)
+    recording: dict[str, int] = field(default_factory=dict)  # recordings the recording pass is still reading
+    read_ms: int = 0  # ... the milliseconds of them read so far (manifest meta recording_progress:)
+    total_ms: int = 0  # ... and the length of those whose length is known
+    unknown: int = 0  # ... how many have no length yet (no piece read)
+    recording_refused: dict[str, int] = field(default_factory=dict)  # online-only recordings not downloaded
+    recording_refused_bytes: int = 0
 
 
 def _ids(counts: dict[str, int]) -> str:
@@ -181,14 +196,40 @@ def baseline_state(docs_repo: Path) -> str:
     return "confirmed" if confirmed else "draft"
 
 
+def _progress(value: str | None) -> tuple[int, int] | None:
+    """``(done_ms, total_ms)`` of a ``recording_progress:`` meta value; None when it is missing, empty,
+    malformed or has no length."""
+    parts = (value or "").split()
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return None
+    done, total = int(parts[0]), int(parts[1])
+    return (min(done, total), total) if total > 0 else None
+
+
 def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     """Count each source's files that are not converted yet, split into local, online-only, over-budget
     online-only and OS-refused (``state_reason`` :data:`HYDRATION_REFUSED`). An item that failed (``error``)
-    is retried by every sync and is not counted: it would make rule 3 loop."""
+    is retried by every sync and is not counted: it would make rule 3 loop.
+
+    Recordings have buckets of their own and never make rule 3 (spec S0 rules 3 and 6): one the recording
+    pass is still reading (:data:`RECORDING_WAITS`, with the minutes read from its ``recording_progress:``
+    meta), and an online-only one whose download failed, which the person fixes in Finder, not with a sync.
+    An online-only recording not tried yet waits for the recording download allowance, never for the
+    source's document budget, so it is never over that budget."""
     out = _Files()
     for src in sources:
         for row in manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS)):
             if row.is_dir:
+                continue
+            recording = Path(row.rel_path).suffix.lower() in _RECORDING_SUFFIXES
+            if row.state_reason == RECORDING_WAITS:
+                out.recording[src.id] = out.recording.get(src.id, 0) + 1
+                read = _progress(manifest.get_meta(f"{RECORDING_PROGRESS_META}{src.id}:{row.stable_id}"))
+                if read is None:
+                    out.unknown += 1
+                else:
+                    out.read_ms += read[0]
+                    out.total_ms += read[1]
                 continue
             pending = row.last_verdict in _UNCONVERTED or (
                 row.last_verdict is Verdict.DATALESS and row.content_sha256 is None
@@ -196,16 +237,60 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
             if not pending:
                 continue
             online = src.kind.is_graph or row.dataless or row.state is RowState.DATALESS
-            if row.state_reason == HYDRATION_REFUSED:
+            if row.state_reason == HYDRATION_REFUSED and recording:
+                bucket = out.recording_refused
+                out.recording_refused_bytes += max(row.size or 0, 0)
+            elif row.state_reason == HYDRATION_REFUSED:
                 bucket = out.refused
             elif not online:
                 bucket = out.local
-            elif max(row.size or 0, 0) > src.max_materialise_bytes:
+            elif not recording and max(row.size or 0, 0) > src.max_materialise_bytes:
                 bucket = out.over
             else:
                 bucket = out.online
             bucket[src.id] = bucket.get(src.id, 0) + 1
     return out
+
+
+def _minutes(files: _Files) -> str:
+    """`` (35 of 127 minutes)`` for the recordings still being read, floored to whole minutes; ``of at least``
+    while some have no length yet, and "" while none has one."""
+    if not files.total_ms:
+        return ""
+    of = "of at least" if files.unknown else "of"
+    return f" ({files.read_ms // _MS_PER_MINUTE} {of} {files.total_ms // _MS_PER_MINUTE} minutes)"
+
+
+def _recording_lines(files: _Files, *, background: bool) -> tuple[list[str], list[str]]:
+    """The waits and notes of the recordings (spec S0 rules 3 and 6); none of them blocks the next step.
+
+    A recording still being read is a note once a background job is installed (each background sync reads
+    more), else a wait naming the two runs that read recordings: the job ``install.sh`` installs, and
+    ``materialise`` of the file. An online-only recording agentsync could not download is a note sending the
+    person to Finder: it is never a wait, since the next background sync reads it once it is on the Mac."""
+    waits: list[str] = []
+    notes: list[str] = []
+    if files.recording:
+        counted = f"{sum(files.recording.values())} recording(s) in {_ids(files.recording)}"
+        if background:
+            notes.append(
+                f"{counted} are still being read{_minutes(files)}; each background sync reads more; they do "
+                "not block the next step"
+            )
+        else:
+            waits.append(
+                f"{counted} wait to be read{_minutes(files)}, and no background sync is installed to read "
+                f"them (an interactive sync reads no recording): run `{INSTALL_SH} --confirm-install-agent`, "
+                f"or `{BIN} materialise <file>` for one recording; they do not block the next step"
+            )
+    if files.recording_refused:
+        notes.append(
+            f"{sum(files.recording_refused.values())} online-only recording(s) in "
+            f"{_ids(files.recording_refused)} ({files.recording_refused_bytes / 1e9:.1f} GB) could not be "
+            "downloaded by agentsync: in Finder choose Always Keep on This Device on their folder, or "
+            "Download Now on a file; the next background sync reads them; they do not block the next step"
+        )
+    return waits, notes
 
 
 _REREAD_AGAIN = (
@@ -499,6 +584,11 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"{sum(files.online.values())} online-only file(s) in {_ids(files.online)} wait for a later "
             "sync's download budget; they do not block the next step"
         )
+    recording_waits, recording_notes = _recording_lines(
+        files, background=bool(files.recording) and launchd.agents_installed(config)
+    )
+    waits += recording_waits
+    notes += recording_notes
     notes += _reread_notes(rereading, unread, reread_runs, downloads=bool(files.online))
     eval_dir = docs / _EVAL_DIR
     questions = _eval_status(eval_dir / "questions.md")
