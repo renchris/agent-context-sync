@@ -891,6 +891,88 @@ def test_rewrite_frontmatter_leaves_behind_a_file_the_page_does_not_list_when_it
     assert cycle._pages_intact(env.repo, [new]) and _path_findings(env) == []
 
 
+# ---- meeting recordings (spec S10, 3.1) -------------------------------------------------------------------
+
+
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00frame"
+
+
+def recording(*windows: tuple[str, tuple[str, ...]]) -> ConversionResult:
+    """A recording's units as spec 3.1 lays them out: an index with an empty title, then one window per
+    ``(stem, keyframe names)``, each keyframe a ``.jpg`` sidecar."""
+    n = len(windows) + 1
+    units = [unit("# Meeting\n", unit_id="index", kind=UnitKind.INDEX, of=n, file_stem="00-index", title="")]
+    for i, (stem, frames) in enumerate(windows, start=1):
+        title = f"Recording window {i}"
+        units.append(
+            unit(
+                f"# {title}\n\n- 00:01:48 Contoso quarterly review\n",
+                unit_id=f"window:{i}",
+                kind=UnitKind.WINDOW,
+                index=i,
+                of=n,
+                file_stem=stem,
+                title=title,
+                sidecars=tuple((name, JPEG + name.encode()) for name in frames),
+            )
+        )
+    return result(*units)
+
+
+def test_gitattributes_gains_jpg_binary_on_a_new_and_an_existing_repo(env: Env) -> None:
+    attributes = env.repo / ".gitattributes"
+    assert "*.jpg binary" in attributes.read_text().splitlines()  # a new repo
+    before = "* text=auto eol=lf\n*.png binary\n*.jsonl -merge\nCHANGELOG/*.md merge=union\n*.pdf -diff\n"
+    attributes.write_text(before)  # an existing repo, scaffolded by a release before keyframes
+    assert env.pub.ensure_scaffold() == [".gitattributes"]
+    assert attributes.read_text() == before + "*.jpg binary\n"
+    assert env.pub.ensure_scaffold() == []
+
+
+def test_a_recordings_keyframes_are_sidecars_that_follow_a_rename_and_go_with_a_stub(env: Env) -> None:
+    item = env.observe("vol:1", "Recordings/Weekly sync.mp4")
+    env.publish(
+        item, recording(("01-t000000", ("t000148.jpg",)), ("02-t000500", ("t000538.jpg", "t000846.jpg")))
+    )
+    d = "mirror/src/recordings/weekly-sync.mp4.d"
+    assert (env.repo / f"{d}/01-t000000.files/t000148.jpg").read_bytes() == JPEG + b"t000148.jpg"
+    assert sorted(p.name for p in (env.repo / f"{d}/02-t000500.files").iterdir()) == [
+        "t000538.jpg",
+        "t000846.jpg",
+    ]
+    fm, _ = parse_mirror_page(env.text(f"{d}/01-t000000.md"))
+    assert fm.part_kind == "window"
+    assert_pages_valid(env)
+
+    renamed = env.observe("vol:1", "Archive/Weekly sync.mp4")
+    env.pub.rewrite_frontmatter(renamed, env.run_id)
+    moved = "mirror/src/archive/weekly-sync.mp4.d"
+    assert (env.repo / f"{moved}/02-t000500.files/t000846.jpg").read_bytes() == JPEG + b"t000846.jpg"
+    assert not (env.repo / "mirror/src/recordings").exists()
+
+    env.publish(renamed, result(status=ConversionStatus.UNREADABLE, reason="cannot be read"))
+    assert (
+        parse_mirror_page(env.text("mirror/src/archive/weekly-sync.mp4.md"))[0].status
+        is PageStatus.UNREADABLE
+    )
+    assert list((env.repo / "mirror").rglob("*.jpg")) == []
+    assert_pages_valid(env)
+
+
+def test_the_index_title_is_empty_and_its_source_title_is_the_items_name(env: Env) -> None:
+    item = env.observe("vol:1", "Recordings/Weekly sync.mp4")
+    index, window = env.pub.plan_pages(
+        env.config.source("src"), item, recording(("01-t000000", ("t000148.jpg",)))
+    )
+    index_fm, _ = parse_mirror_page(index.text)
+    window_fm, _ = parse_mirror_page(window.text)
+    assert index_fm.source_title == "Weekly sync.mp4"
+    assert window_fm.source_title == "Recording window 1"
+    assert window.sidecars == (
+        ("mirror/src/recordings/weekly-sync.mp4.d/01-t000000.files/t000148.jpg", JPEG + b"t000148.jpg"),
+    )
+
+
 # ---- tombstones --------------------------------------------------------------------------------------------
 
 
