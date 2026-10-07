@@ -142,6 +142,21 @@ install.log (a `--list-folders` run is not an install run):
   and v7 neither that question nor the one Allow click it announces in step 1, so every logged one is beyond
   them), no `approval` line, no error that stopped the run, and doctor shows no
   `[FAIL]`. An attempt with no event line at all is the expected case.
+
+  Since prompt v7 the install command must also have worked the first time. An install run that failed before
+  the attempt's first install run that exited 0 is a retry, so the outcome is "worked with help" and the
+  Summary says `1 earlier install run of this attempt exited 1`. That run is then the first line under "Items
+  that were not one command", with the step it failed at. Three kinds of run do not count:
+  - a run after the first one that exited 0 (the operator's own `--confirm-install-agent` run, which exits 3
+    while macOS waits for a click, comes after the setup worked);
+  - a run the agent's tool stopped, which has no end line or a signal's exit (129, 130, 143): the prompt calls
+    running the command again safe;
+  - a `--list-folders` run, which is step 1.
+
+  install.log does not say why a run failed. So a run that failed only because macOS held a listing for a
+  click counts as well: the click came after the install command had failed, and it cost a second run. A v5
+  or v6 attempt is judged as before, since those prompts announce the launcher's Allow click in the install
+  step.
 - **Worked with help**: the last install run exited 0, but one of those conditions fails; the Summary says which.
   Without a friction log, or without the attempt's `Attempt:` line (from `install.sh --log-start`), the human
   turns are unknown, so the outcome is at best this one.
@@ -416,6 +431,7 @@ named as "v5b review, its L<n>").
 | K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs a sync that downloads nothing (`sync --materialise-budget 0`) once the loop is done and again while the note says so, up to 12 times in all, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
 | K20 | a Mac that already synced two folders was asked which folders to sync again; the tool ran unattended, the question came back unanswered, and the agent stopped and waited as v8's step 1 says, with nothing done (field, 2026-10-07) | prompt wording and installer automation | `install.sh --list-folders` marks the folders the config already syncs; v9's step 1 then asks only whether to add one and goes on when it cannot ask, and step 2 names `install.sh` with no `--source-local`; the report expects no folder question there and says what was kept; `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`, and `tests/test_install_oneshot.py` for the list and the run with no folder |
 | K21 | on a Mac that already ran agentsync, step 2's `install.sh` stopped at status on `[FAIL] docs_repo.permissions` (an `_eval` folder an earlier session's agent had written under its own umask), skipped the sync and named a `chmod` the agent may not run, so the round ended before the loop (field, 2026-10-07) | agentsync code | `add-source` and `init`, which `install.sh` runs before status, make agentsync's own paths owner-only as every sync does (the docs repo's top level, `_eval/`, `topics/`, the cache, the logs); the check's fix names `agentsync sync` when a sync clears what it found and keeps the `chmod` for the rest; `tests/test_install_oneshot.py` for the field layout under the real installer run, `tests/test_cli.py` for the two commands, and `tests/test_cycle.py` for the paths, the bound and a path of another user's |
+| K22 | the report read "fully one command" for an attempt whose first install run had exited 1 on a doctor `[FAIL]` and whose second run came after a fix made by hand: only the last install run was judged, and the issue link said the same (field, 2026-10-07) | agentsync code | since prompt v7 an install run that failed before the attempt's first run that exited 0 makes the outcome "worked with help"; the Summary names it and lists it first under the items that were not one command; a run the agent's tool stopped and a run after the first success do not count; `tests/test_setup_report.py` for the field's log, each order of exits, the earlier attempts and the link |
 
 ## 5. Unavoidable steps so far
 
@@ -432,7 +448,10 @@ Current unavoidable human steps (these do not break "fully one command"):
   Developer-ID-signed launcher ([the one-time Allow click](README.md#the-one-time-allow-click),
   [mdm/README.md](mdm/README.md)). After a denied prompt the person turns `agentsync-launcher` (or the terminal)
   on in System Settings > Privacy & Security > Files and Folders (a click the prompt forbids the agent), and the
-  agent re-runs the command the `NEXT:` line names.
+  agent re-runs the command the `NEXT:` line names. That re-run is free in step 1, where the command is
+  `install.sh --list-folders`. A click that comes only after step 2's install command failed (a listing
+  macOS held, or a terminal denied at the first sync) cost a second install run, so that report reads "worked
+  with help" (section 4, "The computed outcome").
 - **IT consent** for Outlook, Teams and unsynced SharePoint: an Entra admin must register the app and consent
   ([it-request.md](it-request.md)). `agentsync it-request` only drafts the request; the person sends it.
 

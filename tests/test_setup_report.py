@@ -2707,6 +2707,208 @@ def test_v7_a_step_2_error_logged_after_the_install_ended_0_is_agent_friction(
     )
 
 
+# ---- an install run that failed before the one that ended 0 (second bring-back, 2026-10-07) -------------
+
+
+def install_run(start: str, rc: int | None, *, status_failed: bool = False) -> str:
+    """One install run of step 2 as install.log has it. ``status_failed``: status printed a [FAIL] line, so
+    the sync was skipped (the field's failed run, and a listing macOS holds for a click: the log lines are
+    the same). ``rc`` None: no end line, the agent's tool stopped the run."""
+    run = f"run={re.sub('[-:]', '', start)}-77"
+    status = "seconds=6 rc=1 result=done note=fail-lines" if status_failed else "seconds=6 rc=0 result=done"
+    sync = "seconds=34 rc=0 result=done note=converted-3-deferred-0"
+    if status_failed:
+        sync = "seconds=0 rc=0 result=skipped note=status-failed"
+    lines = [
+        f"{start} {run} start install.sh compat=8 commit=0123456789ab kind=checkout source=- "
+        "args=--source-local x",
+        f"{start} {run} step=config seconds=1 rc=0 result=done note=add-source",
+        f"{start} {run} step=status {status}",
+        f"{start} {run} step=first-sync {sync}",
+        f"{start} {run} step=report seconds=2 rc=0 result=done note=agentsync",
+    ]
+    if rc is not None:
+        lines.append(f"{start} {run} end rc={rc} seconds=19")
+    return "\n".join(lines) + "\n"
+
+
+RETRY_ERROR = (
+    "2026-09-29T10:00:30Z | step 2 | error | install.sh exited 1: [FAIL] docs_repo.permissions | -\n"
+)
+RETRY_LATE = (
+    "2026-09-29T10:21:00Z | step 2 | deviation | ran the chmod the FAIL line named, then step 2 again | -\n"
+    "2026-09-29T10:22:00Z | step 3 | deviation | rewrote the fix request after the second run | -\n"
+)
+RETRY_WHY = "1 earlier install run of this attempt exited 1"
+
+
+def retry_friction(happy: str | None = None) -> str:
+    """The field's attempt: step 2's error, the closing line of the first report, then two lines logged
+    after the same session ran step 2 again."""
+    return _insert_before("2026-09-29T10:01:10Z | end", RETRY_ERROR, happy or V8_HAPPY) + RETRY_LATE
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Field report 2026-10-07: step 2's install.sh exited 1 on a doctor FAIL, the person approved a fix by
+    hand, and the second run ended 0. Only the last run was judged, so the Summary, the attempt's line and
+    the issue link all read "fully one command". A retry and a manual step are not one command.
+
+    The lines after ``end | finished`` are read as before: they stay in the attempt, they are agent
+    friction, and none of them changes the outcome. The run that ended 0 started after that closing line
+    (``install.sh --report-only`` ran twice and closes an attempt once), and it is still this attempt's."""
+    log = fake_mac["setup"] / "install.log"
+    failed = install_run("2026-09-29T10:00:00Z", 1, status_failed=True)
+    log.write_text(LIST_RUN + failed + install_run("2026-09-29T10:20:00Z", 0), encoding="utf-8")
+    write_friction(fake_mac, retry_friction())
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    assert (
+        summary.strip().splitlines()[0]
+        == f"- **outcome: worked with help** (computed: install.sh exit 0; {RETRY_WHY})"
+    )
+    assert (
+        "- agent friction: 2 deviation, 0 prompt, 1 error (F4, F6, F7); none of these changes the outcome "
+        "by itself" in summary
+    )
+    assert "- install.sh: 2 install runs (+1 --list-folders) during this attempt; the last exit 0" in summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+    assert items == (
+        "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step; the same command was run "
+        "again and ended 0"
+    ), "the run is the item: the list said none beside worked with help"
+    fr = section(text, "Agent friction log")
+    assert "1 attempt(s):" in fr and "- attempt:" not in summary, "the late lines start no attempt"
+    assert re.search(
+        r"^- attempt 1 \(lines 1-7; .*, prompt v8, .*\): worked with help; 4 event line", fr, re.M
+    )
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Worked with help"]
+    assert link["title"][0].startswith("Setup report: Worked with help · ") and link["title"][0].endswith(
+        "v8"
+    )
+
+    # A later attempt is judged on its own runs: the failed run of the one before does not count against it,
+    # and the earlier attempt keeps its outcome on the "earlier:" line.
+    later = V9_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
+        "2026-09-29T10:01:10Z", "2026-10-03T09:03:00Z"
+    )
+    log.write_text(log.read_text(encoding="utf-8") + install_run("2026-10-03T09:00:30Z", 0), encoding="utf-8")
+    write_friction(fake_mac, retry_friction() + later)
+    text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: fully one command**")
+    assert "- attempt: 2 of 2 (earlier: attempt 1 worked with help)" in summary
+    assert "Items that were not one command (attempt 2):\n\n- none" in summary
+
+    # The link is built from the same runs when the Summary could not be written. It was given every run
+    # in install.log, so the earlier attempt's failed run would have counted against this one.
+    def broken(*args: object, **kwargs: object) -> list[str]:
+        raise RuntimeError("no summary")
+
+    monkeypatch.setattr(setup_report, "_summary", broken)
+    text, _red = setup_report.build_report(fake_mac["config"])
+    assert "_This section failed: RuntimeError" in section(text, "Summary")
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v9"]
+
+
+def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outcome, list[int | None]]:
+    """The latest attempt's outcome on its own runs, as the Summary computes it, and the exits of the runs
+    that count as a retry."""
+    log = tmp_path / "install.log"
+    log.write_text("".join(runs), encoding="utf-8")
+    fr = setup_report.parse_friction(friction)
+    mine = setup_report.runs_for_attempt(fr, len(fr.attempts) - 1, setup_report.read_install_runs(log))
+    return setup_report.compute_outcome(fr.latest, mine), [
+        run.rc for run in setup_report.retried_runs(fr.latest, mine)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("exits", "kind", "why"),
+    [
+        ((0, 0), "fully one command", None),
+        ((1, 0), "worked with help", RETRY_WHY),
+        ((0, 3, 0), "fully one command", None),
+        ((1, 0, 3, 0), "worked with help", RETRY_WHY),
+        ((143, 0), "fully one command", None),
+        ((130, 0), "fully one command", None),
+        ((129, 0), "fully one command", None),
+        ((None, 0), "fully one command", None),
+        ((143, 1, None, 0), "worked with help", RETRY_WHY),
+        ((1, 2, 0), "worked with help", "2 earlier install runs of this attempt exited 1, 2"),
+        ((1, 1, 0), "worked with help", "2 earlier install runs of this attempt exited 1"),
+        ((1,), "failed", None),
+        ((1, 0, 1), "failed", None),
+    ],
+)
+def test_only_a_run_the_installer_failed_before_the_first_success_counts_as_a_retry(
+    tmp_path: Path, exits: tuple[int | None, ...], kind: str, why: str | None
+) -> None:
+    """The narrowed rule, by the exits of an attempt's install runs in order.
+
+    - A run after the first one that ended 0 does not count: the latest attempt has no end time, so the
+      operator's later ``--confirm-install-agent`` run (exit 3 while macOS waits for the launcher's click)
+      and its re-run would count in every later report.
+    - A run the agent's tool stopped does not count: it ends with a signal's exit (143, 130, 129) or has no
+      end line, and the prompt calls running the command again safe.
+    - When the last run failed the outcome is "failed at step 2", as before."""
+    runs = [install_run(f"2026-09-29T10:{minute:02d}:00Z", rc) for minute, rc in enumerate(exits)]
+    outcome, retried = judged(tmp_path, V8_HAPPY, *runs)
+    assert outcome.kind == kind, outcome
+    if kind == "fully one command":
+        assert retried == [] and outcome.why == ("install.sh exit 0", "no turn beyond the unavoidable ones")
+    elif kind == "worked with help":
+        assert outcome.why == ("install.sh exit 0", why) and retried
+        assert all(rc not in (None, 0, *setup_report.STOPPED_EXITS) for rc in retried)
+    else:
+        assert outcome.text == "failed at step 2" and not any("earlier" in reason for reason in outcome.why)
+
+
+def test_a_retry_counts_since_v7_in_an_attempt_with_a_time_and_never_a_list_run(tmp_path: Path) -> None:
+    """Who the rule is for. v7, v8 and v9 share their steps, so the same log reads the same under each. v5
+    and v6 announce the launcher's Allow click in the install step: a run that timed out waiting for it was
+    theirs to run again, and their logs are judged as before. A ``--list-folders`` run is no install run,
+    so step 1's own click and the list's re-run cost nothing. An attempt with no time gets every run in
+    install.log, an earlier attempt's too, so none is counted for it."""
+    pair = (
+        install_run("2026-09-29T10:00:00Z", 1, status_failed=True),
+        install_run("2026-09-29T10:02:00Z", 0),
+    )
+    for happy in (V7_HAPPY, V8_HAPPY, V9_HAPPY):
+        outcome, retried = judged(tmp_path, happy, *pair)
+        assert (outcome.kind, outcome.why[1:], retried) == ("worked with help", (RETRY_WHY,), [1]), happy
+    outcome, retried = judged(tmp_path, V6_HAPPY, install_run("2026-09-29T10:00:00Z", 3), pair[1])
+    assert (outcome.kind, retried) == ("fully one command", []), "v6 announces a click in its install step"
+    outcome, retried = judged(tmp_path, V5_HAPPY, *pair)
+    assert (outcome.kind, retried) == ("fully one command", []), "a v5 log is judged by its step lines"
+    denied_list = (
+        "2026-09-29T09:58:05Z run=20260929T095805Z-11 start install.sh compat=8 args=--list-folders\n"
+        "2026-09-29T09:58:05Z run=20260929T095805Z-11 step=list-folders seconds=1 rc=4 result=failed "
+        "note=denied\n"
+        "2026-09-29T09:58:06Z run=20260929T095805Z-11 end rc=4 seconds=1\n"
+    )
+    outcome, retried = judged(tmp_path, V8_HAPPY, denied_list, LIST_RUN, pair[1])
+    assert (outcome.kind, retried) == ("fully one command", []), "the announced click is step 1's"
+    before = install_run("2026-09-29T09:00:00Z", 1)  # an hour before the Attempt: line
+    outcome, retried = judged(tmp_path, V8_HAPPY, before, pair[1])
+    assert (outcome.kind, retried) == ("fully one command", []), "another attempt's run"
+    outcome, retried = judged(tmp_path, "Prompt: v8\nAgent: Cursor agent\n", *pair)
+    assert retried == [] and outcome.why == (
+        "install.sh exit 0",
+        "human turns unknown: the attempt has no Attempt: line (install.sh --log-start)",
+    )
+
+
+def test_the_exits_of_a_stopped_run_are_the_installers_signal_traps() -> None:
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    traps = tuple(int(code) for code in re.findall(r"^trap 'on_signal (\d+)' [A-Z]+$", script, re.M))
+    assert traps == setup_report.STOPPED_EXITS and len(traps) == 3
+
+
 def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, Path]) -> None:
     """L8, V3: an expected warn's fix is nothing for this setup to do: the Doctor section says why it is
     expected instead; an unexpected warn keeps its fix."""

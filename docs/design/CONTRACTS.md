@@ -4984,7 +4984,8 @@ step-1 error, an install run for an install-step error); a v5 error still by a l
 a `--list-folders` run and nothing logged, a v6 attempt is "failed at step 1". **Amended (2026-10-06, §16.22):**
 only events before the attempt's closing line can stop it, and a step 1 error logged more than 10 minutes after
 a closing line starts a header-less attempt of its own; a v7 install-step error is resolved by any install run of the attempt
-that ended rc 0, whenever it was logged. **Summary.** `human turns: N (q
+that ended rc 0, whenever it was logged. **Amended (2026-10-07, §16.30):** since v7 "fully one command" also
+needs no install run that failed before the attempt's first one that ended rc 0 (`retried_runs`). **Summary.** `human turns: N (q
 question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: none possible; approvals: not
 observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
 logged, though none is possible" when some were logged there, and on a real Mac "c click(s)" (v6: "beyond the
@@ -8426,3 +8427,79 @@ written `~/x/..`: no `tightened` line and no mode changed), `tests/test_install_
 agentsync behind a stub uv: the field layout, then the field's command: no `[FAIL]` line, a sync, exit 0, the
 modes, `core.sharedRepository` and every step's log line; then a page inside `mirror/`: exit 1 at status with
 the chmod, no sync, and the `_eval` folder still cleared).
+
+### 16.30 Fixes from the second bring-back (2026-10-07)
+
+Setup prompt v8 was run a second time on the corporate Mac that already runs agentsync, and its one file came
+back (§16.28). This section holds what that file showed to be wrong or missing, one sub-section per fix. None
+adds a command, flag, installer option, config key or environment variable.
+
+#### The outcome counts a failed first install run (amends §16.14; `agentsync.setup_report`)
+
+Step 2's `install.sh` exited 1 on a doctor FAIL. The person approved a fix by hand, the agent ran the same
+command again, and it ended 0. The Summary, the attempt's line in the friction section and the issue link all
+read "fully one command". `compute_outcome` judged only the attempt's last install run, the step 2 `error`
+line was resolved by that run (§16.22), and the line that recorded the hand fix was a `deviation`, which never
+changes the outcome. The page's goal counts every retry and manual step, so the rule had a gap.
+
+```python
+# agentsync.setup_report
+STOPPED_EXITS = (129, 130, 143)   # install.sh's on_signal traps: HUP, INT, TERM
+def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[InstallRun]: ...
+```
+
+`retried_runs` is the attempt's install runs that failed before its first install run that ended rc 0. When
+there is one, `compute_outcome`'s exit-0 branch adds a reason, so the outcome is "worked with help":
+`- **outcome: worked with help** (computed: install.sh exit 0; 1 earlier install run of this attempt exited
+1)`. Two or more read `2 earlier install runs of this attempt exited 1, 3`, each exit named once. The reason
+comes before the ones about human turns. The rule is narrow on purpose:
+
+- **Only before the first success.** The latest attempt has no end time (`runs_for_attempt`), so every later
+  run is its own. Counting all but the last run would have counted the operator's own
+  `install.sh --confirm-install-agent` run: it exits 3 while macOS waits for the launcher's click, and its
+  re-run ends 0, long after the setup worked. Exits `0, 3, 0` are still "fully one command", and `1, 0, 3, 0`
+  count one run.
+- **Only a run the installer ended itself.** The run has an end line and its exit is not one of
+  `STOPPED_EXITS`. A run the agent's tool stopped has no end line, or the exit of `on_signal`. The prompt
+  calls running the command again safe, and §16.14 already reads that case as "fully one command". A test
+  holds the three numbers against the script's traps.
+- **Only since v7** (`layout.version >= 7`, so v8, v9 and later too). Its install step is the one
+  `install.sh` command and announces no click. v5 and v6 announce the launcher's Allow click in that step,
+  and a run that timed out waiting for it was theirs to run again: those logs are judged as before.
+- **Only for an attempt with a time.** An attempt with no `Attempt:` line and no dated event is given every
+  run in install.log, an earlier attempt's too.
+- **Never a `--list-folders` run.** It is step 1, and step 1's announced click and the list's re-run stay
+  free.
+
+**The late Allow click counts.** install.log cannot tell why a run failed. A listing macOS holds for a click
+is a `source.<id>.listable` FAIL, and its run logs what the field's did: `step=status ... rc=1
+note=fail-lines`, then `step=first-sync ... result=skipped note=status-failed`. So a click that comes only
+after the install command failed reads "worked with help". That is the page's own count: it cost a second
+run. `docs/deploy/setup-feedback.md` section 5 said the re-run after a click never breaks "fully one
+command". It now says that holds in step 1, where the command is `--list-folders`.
+
+**Lines after `end | finished`** are read as before (§16.22): they stay in the attempt, they are agent
+friction, and none can stop the run. In the field log the second run started 20 minutes after the closing
+line, because `install.sh --report-only` ran twice and closes an attempt once. That run is still the
+attempt's, so the rule sees both runs.
+
+**What follows the outcome.** The Summary's first line, the attempt's line in the friction section, the
+`earlier:` list of a later report, and the issue link's `outcome` and title all come from `compute_outcome`.
+Under "Items that were not one command" each counted run is a line of its own, before the friction items:
+`- install.sh · step 2 · run <id> exited 1 at its status step; the same command was run again and ended 0`
+(`_retry_line`: the step is the first one that did not end rc 0, printed only when it is one of install.sh's
+own words; at most `INSTALL_RUNS_SHOWN` runs, then a count). Before, the list said `none` beside "worked with
+help".
+
+**The link's own runs.** When the Summary section fails, `_issue_link` computes the outcome itself. It was
+given every run in install.log. It now gets the latest attempt's (`_latest_runs`, which the Summary uses
+too): under the new rule a failed run of an older attempt would otherwise have changed the link.
+
+Not done, by choice: a new outcome name for this case would add an option to the issue form, and telling the
+agent to log the go-ahead as a `question` would change the prompt's text.
+
+Tests: `tests/test_setup_report.py` (the field's log: a failed run, the step 2 error, the closing line, two
+late lines and the run that ended 0, with the Summary, the item, the attempt's line and the link; a later
+attempt beside it, which keeps its own outcome while the earlier one reads "worked with help", and the link
+when the Summary fails; thirteen orders of exits; v7, v8 and v9 alike, v6 and v5 as before, a denied list
+run, a run before the attempt and an attempt with no time; the three exits against the script's traps).

@@ -20,7 +20,8 @@ line is the version the pasted copy of the prompt gave, and the Summary says tha
 installer's when the installer's own stop line in the attempt says so (:func:`_prompt_copy_note`).
 Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
-did: install.log's last install run exit, questions beyond the folder question, clicks beyond the Allow
+did: install.log's last install run exit, an install run that failed before the first one that ended 0
+(:func:`retried_runs`), questions beyond the folder question, clicks beyond the Allow
 clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
 prompt and error lines are counted apart as "agent friction"), human turns (by kind), step and session times
 (from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
@@ -1207,15 +1208,47 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
     return None
 
 
+STOPPED_EXITS = (129, 130, 143)
+"""What install.sh exits with when a signal ended the run (its ``on_signal`` traps: HUP, INT, TERM). The
+agent's tool stopped that run, not the installer, and the prompt calls running the command again safe."""
+
+
+def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[InstallRun]:
+    """The install runs of ``attempt`` that failed before its first install run that ended rc 0: the one
+    install command was run again after a failure, so the setup was not one command (field report
+    2026-10-07: the first run exited 1 on a doctor FAIL, a fix was made by hand, and the second run's exit 0
+    read "fully one command").
+
+    - Only a run before the first one that ended rc 0 counts. The latest attempt has no end time, so a run
+      that fails after the setup worked (the operator's own ``--confirm-install-agent`` run, which exits 3
+      while macOS waits for a click) would otherwise count in every later report.
+    - Only a run the installer ended itself counts: one with an end line whose exit is not one of
+      :data:`STOPPED_EXITS`. A run the agent's tool stopped (no end line, or a signal's exit) is the re-run
+      the prompt calls safe.
+    - Only since prompt v7, whose install step is the one install.sh command and announces no click. v5 and
+      v6 announce the launcher's Allow click in that step, and a run that timed out waiting for it was
+      theirs to run again.
+    - Only for an attempt with a time: without one its runs cannot be told from an earlier attempt's.
+
+    install.log cannot tell why a run failed. So an Allow click that comes only after the install command
+    failed (a listing macOS held, a terminal denied at the first sync) counts too: it cost a second run."""
+    if attempt is None or attempt.begin is None or attempt.layout.version < 7:
+        return []
+    installs = install_runs_only(runs)
+    first_ok = next((i for i, run in enumerate(installs) if run.rc == 0), 0)  # none ended 0: no retry worked
+    return [run for run in installs[:first_ok] if run.rc is not None and run.rc not in STOPPED_EXITS]
+
+
 def compute_outcome(
     attempt: Attempt | None, runs: Sequence[InstallRun], *, doctor_fails: Sequence[str] = ()
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
 
-    - fully one command: the last install run ended rc 0, and the attempt has no question beyond the folder
-      question, no click beyond the Allow clicks, no approval, no error that stopped the run
-      (:func:`stopping_error`) and ``doctor_fails`` (unexpected doctor FAIL names) is empty;
+    - fully one command: the last install run ended rc 0, no install run failed before the first one that
+      ended rc 0 (:func:`retried_runs`), and the attempt has no question beyond the folder question, no
+      click beyond the Allow clicks, no approval, no error that stopped the run (:func:`stopping_error`) and
+      ``doctor_fails`` (unexpected doctor FAIL names) is empty;
     - worked with help: the last install run ended rc 0 otherwise (also with no friction log, or an attempt
       with no v5 event line, whose human turns are unknown);
     - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
@@ -1250,6 +1283,10 @@ def compute_outcome(
                     ),
                     version,
                 )
+            retried = retried_runs(attempt, runs)
+            if retried:
+                exits = ", ".join(dict.fromkeys(str(run.rc) for run in retried))
+                why.append(f"{_plural(len(retried), 'earlier install run')} of this attempt exited {exits}")
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):
@@ -4434,12 +4471,38 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     return f"- F{e.line} · {step} · {e.kind} · {_shorten(r.red.redact(e.what))}{fix}"
 
 
+def _retry_line(run: InstallRun, layout: PromptLayout) -> str:
+    """One of :func:`retried_runs` as an item that was not one command: the run, its exit and the first step
+    that did not end rc 0 (a step name is printed only when it is one of install.sh's own words)."""
+    failing = next(
+        (
+            f" at its {_step_word(name)} step"
+            for name, fields in run.steps
+            if name != "report"
+            and (fields.get("result") == "failed" or fields.get("rc", "0") not in ("0", ""))
+        ),
+        "",
+    )
+    return (
+        f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{failing}; the "
+        "same command was run again and ended 0"
+    )
+
+
+def _latest_runs(r: _Run) -> list[InstallRun]:
+    """The install.sh runs the latest attempt is judged on (:func:`runs_for_attempt`; every run when the
+    friction log has no attempt): the Summary's, and the issue link's when the Summary could not be
+    written."""
+    fr = r.friction
+    if fr is None or not fr.attempts:
+        return r.install_runs
+    return runs_for_attempt(fr, len(fr.attempts) - 1, r.install_runs)
+
+
 def _summary(r: _Run, *, header: list[str]) -> list[str]:
     fr = r.friction
     att = fr.latest if fr is not None else None
-    runs = (
-        runs_for_attempt(fr, len(fr.attempts) - 1, r.install_runs) if fr and fr.attempts else r.install_runs
-    )
+    runs = _latest_runs(r)
     outcome = compute_outcome(att, runs, doctor_fails=_doctor_fails(r))
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
@@ -4543,7 +4606,11 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             (e for e in att.of_kind(*TURN_KINDS) if not att.expected(e)),
             key=lambda e: (TURN_KINDS.index(e.kind), e.line),
         )
-    if att is not None and items:
+    retried = retried_runs(att, runs) if outcome.kind == "worked with help" else []  # one of its reasons
+    if att is not None and (items or retried):
+        out += [_retry_line(run, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
+        if len(retried) > INSTALL_RUNS_SHOWN:
+            out.append(f"- install.sh · {len(retried) - INSTALL_RUNS_SHOWN} more such run(s) (see Installer)")
         out += [_item_line(r, att, e) for e in items]
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
@@ -4731,7 +4798,7 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     att = fr.latest if fr is not None else None
     agent = att.header.get("Agent", "") if att is not None else ""
     agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub(" ".join(agent.split())))[:100].strip()
-    outcome = r.outcome or compute_outcome(att, r.install_runs)
+    outcome = r.outcome or compute_outcome(att, _latest_runs(r))  # the Summary's, else by the same runs
     return build_issue_url(
         outcome=outcome.form_label,
         run_type=ISSUE_RUN_TYPES.get(r.run_type or ""),
