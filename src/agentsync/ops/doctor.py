@@ -1125,6 +1125,21 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
                     "agentsync install-agent (from the environment agentsync now runs in)",
                 )
             )
+        # The launcher takes its child's path as text and starts only the one it was built for, so a job
+        # that names that interpreter by another path is refused on every run, with nothing else to show
+        # for it (a build before `launchd.pinned_interpreter` wrote `python3` under a launcher pinned to
+        # `python`).  A warn, not a FAIL: only background sync is down, and a FAIL stops install.sh.
+        pin = launchd.launcher_pin(Path(program)) if program is not None else None
+        if pin is not None and interp != pin:
+            wanted = _job_child(list(spec.program_arguments))
+            problems.append(
+                (
+                    Severity.WARN,
+                    f"job interpreter {interp} is not the one its launcher starts ({pin}): every run exits "
+                    "64 (PROGRAM_REFUSED)",
+                    "agentsync install-agent" if wanted is not None and wanted[0] == pin else _LAUNCHER_FIX,
+                )
+            )
     expected_program = spec.program_arguments[0]
     if (
         program is not None

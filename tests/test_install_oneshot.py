@@ -424,6 +424,19 @@ def test_a_failed_background_run_is_decoded_and_exits_1(
     assert last_line(cp).startswith("NEXT: the first background run exited 77 (sign-in required)")
 
 
+def test_a_background_run_the_launcher_refused_says_so(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """Exit 64 is the launcher's: it refused the job, most often because the job names an interpreter the
+    launcher was not built for. It had no meaning here and read "exited 64 (exit 64)"."""
+    cp = install_sh(
+        {**env, "STUB_LC_EXITS": "64"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"
+    )
+    assert cp.returncode == 1
+    said = "the first background run exited 64 (the launcher refused the job: its program is not the one it"
+    assert said in cp.stderr and last_line(cp).startswith(f"NEXT: {said} starts, or an option is wrong); ")
+
+
 def test_doctor_tcc_pending_alone_does_not_stop_the_run(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

@@ -280,6 +280,11 @@ Operator actions on the field Mac (not decisions):
 - Delete line 22 of `~/agent-context/sources.toml` (row 10).
 - Run `agentsync install-agent` once to refresh the two jobs (row 12). Expect them to be reloaded with one
   immediate run.
+  CORRECTED (2026-10-07): only from a build with CONTRACTS §16.30 "A job names its interpreter as the launcher
+  pins it". Before it, on a Mac whose updated tool runs as `bin/python3` (the field Mac's did), this refresh
+  writes `bin/python3` as the job's interpreter. The launcher is built for `bin/python` and refuses any
+  other path, so every background run would have exited 64. The second bring-back showed it before anyone
+  ran the refresh.
 - Preview the 14 queued purges with `agentsync purge --queue --dry-run` before deciding (row 15). It writes
   nothing since `cace1d9`. `archive = true` stops future queueing only; the 14 stay queued.
 - Write the five exclude lines for `<source-1>` once I10 prints them, or decide O1.

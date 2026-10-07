@@ -47,6 +47,7 @@ LAUNCHER_ENV = "AGENTSYNC_LAUNCHER"  # path of the launcher .app or executable; 
 LAUNCHER_BUNDLE = "AgentSyncLauncher.app"
 LAUNCHER_EXECUTABLE = "agentsync-launcher"
 LAUNCHER_IDENTIFIER = "com.agentsync.launcher"
+LAUNCHER_PIN_KEY = "AgentSyncAllowedProgram"  # the launcher's Info.plist: the one interpreter it starts
 EXIT_TCC_PENDING = 79  # launcher: a canary or the watchdog timed out (log token TCC_PENDING)
 EXIT_TCC_DENIED = 80  # launcher --canary-only: EPERM/EACCES (log token TCC_DENIED)
 EXIT_CANARY_MISSING = 66  # launcher --canary-only: ENOENT/ENOTDIR
@@ -177,21 +178,60 @@ def rotate_logs(
     return rotated
 
 
+def _launcher_info(launcher: Path) -> dict[str, object] | None:
+    """The Info.plist of the bundle ``launcher`` is (the .app) or is inside (its executable); None when
+    there is no bundle or its Info.plist cannot be read."""
+    app = launcher_app(launcher)
+    if app is None and launcher.suffix == ".app":
+        app = launcher
+    if app is None:
+        return None
+    try:
+        info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None
+    return info if isinstance(info, dict) else None
+
+
 def launcher_identifier(launcher: Path | None = None) -> str:
     """The launcher bundle's own ``CFBundleIdentifier`` (a corporate build sets ``BUNDLE_ID``); the default
     identifier when there is no bundle or its Info.plist is unreadable.  PPPC and ``tccutil`` name this."""
     exe = launcher if launcher is not None else _safe_find_launcher()
-    app = launcher_app(exe) if exe is not None else None
-    if app is None and exe is not None and exe.suffix == ".app":
-        app = exe
-    if app is None:
-        return LAUNCHER_IDENTIFIER
-    try:
-        info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
-    except (OSError, ValueError, plistlib.InvalidFileException):
-        return LAUNCHER_IDENTIFIER
-    ident = info.get("CFBundleIdentifier") if isinstance(info, dict) else None
+    info = _launcher_info(exe) if exe is not None else None
+    ident = info.get("CFBundleIdentifier") if info is not None else None
     return ident if isinstance(ident, str) and ident else LAUNCHER_IDENTIFIER
+
+
+def launcher_pin(launcher: Path) -> str | None:
+    """The one interpreter ``launcher`` starts: ``AgentSyncAllowedProgram`` in its bundle's Info.plist, which
+    the code signature seals (``enforcePin`` in launcher/Sources/main.swift; scripts/install.sh builds the
+    launcher for ``<uv tool dir>/agentsync/bin/python``).  None when there is no bundle, its Info.plist
+    cannot be read, or the value is empty: a development build made with ``ALLOW_ANY_PROGRAM`` carries an
+    empty string and starts any program."""
+    info = _launcher_info(launcher)
+    pin = info.get(LAUNCHER_PIN_KEY) if info is not None else None
+    return pin if isinstance(pin, str) and pin else None
+
+
+def pinned_interpreter(interpreter: str, launcher: Path) -> str:
+    """The interpreter a job of ``launcher`` names as its child: the launcher's pin when that is
+    ``interpreter`` under another name in the same folder, else ``interpreter`` as it is.
+
+    The launcher compares the child's path with its pin as text, and a child that is spelled any other way
+    exits 64 (PROGRAM_REFUSED) on every run.  A uv tool environment has ``bin/python`` and ``bin/python3``,
+    one a link to the other.  install.sh pins ``bin/python``, and the field Mac's tool ran as
+    ``bin/python3`` after an update (uv reinstalling in place, by its source; not reproduced), so
+    ``install-agent`` from it would have written a child its own launcher refuses (second bring-back,
+    2026-10-07).  The pin is taken only from the interpreter's own folder: two environments can
+    link to one base interpreter, and the other one's ``python`` would run the other one's agentsync."""
+    pin = launcher_pin(launcher)
+    if pin is None or pin == interpreter or Path(pin).parent != Path(interpreter).parent:
+        return interpreter
+    try:
+        same = Path(pin).samefile(interpreter)
+    except OSError:
+        same = False
+    return pin if same else interpreter
 
 
 def _safe_find_launcher() -> Path | None:
@@ -289,12 +329,16 @@ def watchdog_s(interval_s: int) -> int:
 
 def job_arguments(config: Config, mode: str, interval_s: int, launcher: Path | None) -> tuple[str, ...]:
     """``ProgramArguments`` for one job: the launcher with its watchdog and canaries, then ``--`` and
-    :func:`program_arguments`; just :func:`program_arguments` when ``launcher`` is None."""
+    :func:`program_arguments`, whose interpreter is spelled as the launcher's pin when the two are one file
+    in one folder (:func:`pinned_interpreter`); just :func:`program_arguments` when ``launcher`` is None.
+    Doctor and the setup report compare an installed plist with what this returns, so a job that names the
+    pin is not reported as differing from a build that runs as ``python3``."""
     child = program_arguments(config, mode)
     if launcher is None:
         return child
     if not launcher.is_absolute():
         raise ConfigError(f"launcher path {launcher} is not absolute")
+    child = (pinned_interpreter(child[0], launcher), *child[1:])
     argv = [
         str(launcher),
         "--timeout",

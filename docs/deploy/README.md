@@ -77,7 +77,10 @@ installs two LaunchAgents (a poll every 5 minutes and an hourly reconcile) and w
 background run and your Allow click, so give the command a 10-minute timeout. `agentsync uninstall-agent` removes
 the LaunchAgents again without offboarding. A plain `install.sh` run never touches the launcher, so after pulling a
 new version re-run `install.sh --confirm-install-agent`: it rebuilds the launcher only if its sources changed, and
-an ad-hoc rebuild means one new Allow click.
+an ad-hoc rebuild means one new Allow click. The launcher starts only the interpreter it was built for
+(`bin/python` in the uv tool environment), and the jobs name it by that path, also when the updated tool itself
+runs as `python3` in the same folder. A build before 2026-10-07 wrote its own path there, and such a job is
+refused at every run (exit 64): `agentsync status` names it, and `agentsync install-agent` rewrites it.
 
 Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,

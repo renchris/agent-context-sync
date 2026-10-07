@@ -951,6 +951,10 @@ def test_background_runs_decode_exit_codes_and_ownership(
     assert setup_report.decode_exit("0") == "0 (ok)" and setup_report.decode_exit("78").startswith(
         "78 (config"
     )
+    # The launcher's own exit for a job it refuses, which had no meaning and read as a bare number.
+    assert setup_report.decode_exit("64") == (
+        "64 (the launcher refused the job: its program is not the one it starts, or an option is wrong)"
+    )
 
 
 def test_a_shadowing_agentsync_on_path_is_flagged(
@@ -4557,6 +4561,63 @@ def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_m
     assert "- com.agentsync.reconcile: not compared (ConfigError)\n" in bg, (
         "no launcher: this build writes none"
     )
+
+
+def test_an_installed_job_that_names_the_launchers_pin_has_the_same_interpreter(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second bring-back (2026-10-07): both installed jobs read "interpreter differs (the same file: yes)"
+    beside two canary paths the config had gained. The jobs ran: they named ``<tool>/bin/python``, the path
+    the launcher is built for, and the updated tool ran as ``<tool>/bin/python3``. This build writes the
+    launcher's pin, so the report compares against it: the interpreter is the same, and what is left is
+    the real difference, the canary paths. With no pin to read the interpreter differs, as before."""
+    home = fake_mac["home"]
+    app = home / "Applications" / "AgentSyncLauncher.app"
+    launcher = app / "Contents" / "MacOS" / "agentsync-launcher"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    tool = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin"
+    tool.mkdir(parents=True)
+    (tool / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+    (tool / "python").chmod(0o755)
+    (tool / "python3").symlink_to("python")
+    info = app / "Contents" / "Info.plist"
+    info.write_bytes(plistlib.dumps({"AgentSyncAllowedProgram": str(tool / "python")}))
+    config = load_config(fake_mac["config"])
+    agents = home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+
+    # The jobs as install.sh's agent step wrote them, when the tool ran as bin/python and the config had
+    # one cloud folder: one canary path.
+    monkeypatch.setattr(sys, "executable", str(tool / "python"))
+    for build in (launchd.poll_spec, launchd.reconcile_spec):
+        spec = build(config)
+        args = list(spec.program_arguments)
+        assert args.count("--canary") == 2, "one per cloud source"
+        last = len(args) - 1 - args[::-1].index("--canary")
+        installed = plistlib.loads(launchd.render_plist(spec))
+        installed["ProgramArguments"] = [*args[:last], *args[last + 2 :]]
+        (agents / f"{spec.label}.plist").write_bytes(plistlib.dumps(installed))
+
+    monkeypatch.setattr(sys, "executable", str(tool / "python3"))  # the updated tool, as on the field Mac
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    bg = section(text, "Background runs")
+    for label in ("com.agentsync.poll", "com.agentsync.reconcile"):
+        assert f"- {label}: differs in ProgramArguments\n" in bg
+    assert bg.count("  - ProgramArguments: 21 installed, 23 in this build; positions that differ") == 2
+    by_class = (
+        "  - by class: launcher same · interpreter same · config path same · mode same · watchdog seconds "
+        "same · grace seconds same · canary timeout same · canary paths: 1 installed, 2 in this build, 1 in "
+        "both · fixed arguments same · other arguments: 0 installed, 0 in this build\n"
+    )
+    assert bg.count(by_class) == 2
+    assert "interpreter differs" not in bg
+
+    info.unlink()  # a launcher whose pin cannot be read: this build writes its own interpreter's path
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    bg = section(text, "Background runs")
+    assert bg.count("interpreter differs (the same file: yes; the installed one exists: yes)") == 2
 
 
 def test_comparing_a_plist_adds_no_log_line(

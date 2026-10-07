@@ -560,6 +560,106 @@ def test_protected_source_without_launcher_refuses(sample_config: Config) -> Non
     assert poll_spec(sample_config).program_arguments[0] == sys.executable
 
 
+def _pin(app: Path, program: str | None) -> None:
+    """Give a stand-in launcher bundle the Info.plist launcher/build.sh writes, pinned to ``program``; None
+    removes the Info.plist."""
+    info = app / "Contents" / "Info.plist"
+    if program is None:
+        info.unlink(missing_ok=True)
+        return
+    info.write_bytes(
+        plistlib.dumps(
+            {
+                "CFBundleIdentifier": launchd.LAUNCHER_IDENTIFIER,
+                "AgentSyncAllowAnyProgram": program == "",
+                "AgentSyncAllowedProgram": program,
+            }
+        )
+    )
+
+
+def _tool_bin(root: Path) -> tuple[Path, Path]:
+    """A uv tool environment's ``bin`` under ``root``: ``python`` and ``python3`` are one file under two
+    names, as uv makes them. Returns the two paths."""
+    folder = root / "bin"
+    folder.mkdir(parents=True)
+    python = folder / "python"
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o755)
+    (folder / "python3").symlink_to("python")
+    return python, folder / "python3"
+
+
+def _child(args: Sequence[str]) -> tuple[str, ...]:
+    return tuple(args[args.index("--") + 1 :])
+
+
+def test_a_job_names_its_interpreter_as_the_launcher_pins_it(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second bring-back (2026-10-07): the launcher starts only the interpreter it was built for, and it
+    compares the path as text. install.sh pins ``<tool>/bin/python``. On the field Mac the updated
+    tool ran as ``<tool>/bin/python3``, the same file, so ``install-agent`` from it would have written a
+    child the launcher refuses: every background run would have exited 64. The job now names the pin
+    when the pin is the running interpreter under another name in the same folder."""
+    app = _fake_launcher_app(Path.home() / "Applications")
+    exe = launchd.launcher_executable(app)
+    python, python3 = _tool_bin(tmp_path / "tool")
+    _pin(app, str(python))
+    assert launchd.launcher_pin(exe) == launchd.launcher_pin(app) == str(python)
+    monkeypatch.setattr(sys, "executable", str(python3))
+    for spec, mode in ((poll_spec(sample_config), "poll"), (reconcile_spec(sample_config), "reconcile")):
+        assert spec.program_arguments[0] == str(exe)
+        wanted = program_arguments(sample_config, mode)
+        assert wanted[0] == str(python3), "the interpreter itself is still reported as it runs"
+        assert _child(spec.program_arguments) == (str(python), *wanted[1:]), "only the spelling changes"
+    assert launchd.pinned_interpreter(str(python), exe) == str(python), "already the pin"
+    written = plistlib.loads(render_plist(poll_spec(sample_config)))["ProgramArguments"]
+    assert _child(written)[0] == str(python), "what install-agent writes"
+
+
+def test_a_pin_that_is_not_this_interpreter_in_its_own_folder_is_never_taken(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pin is taken only as another name of the running interpreter, in the same folder. Two
+    environments can link to one base interpreter: the other one's ``python`` is the same file and would
+    run the other one's agentsync. And with no usable pin the job is what it always was."""
+    app = _fake_launcher_app(Path.home() / "Applications")
+    exe = launchd.launcher_executable(app)
+    python, python3 = _tool_bin(tmp_path / "tool")
+    monkeypatch.setattr(sys, "executable", str(python3))
+
+    def child_interpreter() -> str:
+        return _child(poll_spec(sample_config).program_arguments)[0]
+
+    other = tmp_path / "other" / "bin"
+    other.mkdir(parents=True)
+    (other / "python").symlink_to(python)
+    assert (other / "python").samefile(python3)
+    _pin(app, str(other / "python"))
+    assert child_interpreter() == str(python3), "the same file in another folder is another environment"
+
+    (python3.parent / "python3.11").write_text("#!/bin/sh\nexit 0\n")
+    _pin(app, str(python3.parent / "python3.11"))
+    assert child_interpreter() == str(python3), "the same folder, another file"
+
+    _pin(app, str(python3.parent / "gone"))
+    assert child_interpreter() == str(python3), "a pin that does not exist"
+
+    _pin(app, "")  # a development build (ALLOW_ANY_PROGRAM): an empty string, which is no pin
+    assert launchd.launcher_pin(exe) is None and child_interpreter() == str(python3)
+
+    _pin(app, None)
+    assert launchd.launcher_pin(exe) is None and child_interpreter() == str(python3)
+
+    (app / "Contents" / "Info.plist").write_bytes(b"not a plist")
+    assert launchd.launcher_pin(exe) is None and child_interpreter() == str(python3)
+    assert launchd.launcher_identifier(exe) == launchd.LAUNCHER_IDENTIFIER, "an unreadable plist, as before"
+
+    assert launchd.launcher_pin(Path("/usr/bin/true")) is None, "not in a bundle"
+    assert launchd.job_arguments(sample_config, "poll", 300, None) == program_arguments(sample_config, "poll")
+
+
 def test_tcc_protected_locations(tmp_path: Path) -> None:
     home = Path.home()
     for p in (

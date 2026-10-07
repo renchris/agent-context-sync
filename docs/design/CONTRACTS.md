@@ -4512,6 +4512,8 @@ def watchdog_s(interval_s: int) -> int:
 
 def job_arguments(config: Config, mode: str, interval_s: int, launcher: Path | None) -> tuple[str, ...]:
     """``ProgramArguments`` for one job: the launcher with its watchdog and canaries, then ``--`` and"""
+    # 2026-10-07, §16.30: the child's interpreter is spelled as the launcher's pin when the two are one
+    # file in one folder (launcher_pin, pinned_interpreter)
 
 def tcc_prompt_text(config: Config) -> str | None:
     """The exact TCC prompt the user approves on the first launchd run (None when no source needs one)."""
@@ -4686,6 +4688,9 @@ inside, `~/Library/CloudStorage` (config load, `init --source-local`, `materiali
 child: build.sh `ALLOWED_PROGRAM` (sealed Info.plist `AgentSyncAllowedProgram`) + `launchd.CHILD_PREFIX`
 (`-I -X utf8 -m agentsync sync`, now part of `program_arguments`); `ALLOW_ANY_PROGRAM=1` builds are for
 development only; DYLD_*/PYTHON* never reach the child; refusals exit 64 `PROGRAM_REFUSED`.
+**Amended (2026-10-07, §16.30 "A job names its interpreter as the launcher pins it"):** the pin is compared
+as text, so `job_arguments` writes the pin's own spelling when it is the running interpreter under another
+name in the same folder.
 `launchd.launcher_identifier(launcher=None)` reads the bundle's CFBundleIdentifier (doctor, tccutil advice).
 `launchd.rotate_logs(log_dir, max_bytes=LOG_ROTATE_BYTES, keep=LOG_ROTATE_KEEP)` runs at the start of every
 non-dry cycle. `paths.CONFIG_ENV` (`AGENTSYNC_CONFIG`) is honoured by `default_config_path`. `cli.main` runs under
@@ -8921,3 +8926,83 @@ after `--list-folders`, `--log-start`, `--log` and a usage error; a link in the 
 folder outside it, and the setup folder itself as a link: nothing changed where they point; a setup log
 somewhere else: a file and a folder beside it keep their modes; a dry run of `--report-only` and of `--log`:
 no mode changed).
+
+#### A job names its interpreter as the launcher pins it (amends §16.12 and §16.28; `agentsync.ops.launchd`, `agentsync.ops.doctor`, `agentsync.setup_report`)
+
+Background sync worked on the field Mac. Doctor still warned that both installed plists differ from this
+build, and the report said how: 21 arguments installed against 25, and "interpreter differs (the same file:
+yes)". The fix both named, `agentsync install-agent`, would have broken the jobs.
+
+- The launcher starts one interpreter, the path in its sealed Info.plist (`AgentSyncAllowedProgram`), and it
+  compares that path as text. Any other child is refused, exit 64 `PROGRAM_REFUSED`, at every run.
+- `install.sh` builds the launcher for `<uv tool dir>/agentsync/bin/python`.
+- `job_arguments` wrote `sys.executable`. On the field Mac the updated tool ran as `bin/python3` (measured:
+  the report's own interpreter), while the installed jobs ran, so they named the pin. `python` and `python3`
+  are one file there, one a link to the other. Why the name changed is read from uv's source and not
+  reproduced: a tool environment it reinstalls in place is entered through `bin/python3`.
+- So a refresh from the updated tool would have written `bin/python3` as the child, which that launcher
+  refuses. The same holds for `install.sh --confirm-install-agent` after such an update: the launcher is
+  kept when its sources did not change, and its agent step runs the same `install-agent`.
+- Nothing named the cause. `install-agent` checks no pin, doctor compared the plist with the same
+  `sys.executable`, and exit 64 had no meaning in the report or the installer.
+
+The other half of the difference was the config's: `job_arguments` writes one `--canary PATH` pair per
+protected path, and the config had gained two. That part is expected, and it stays the operator's refresh.
+
+```python
+# agentsync.ops.launchd
+LAUNCHER_PIN_KEY = "AgentSyncAllowedProgram"
+def launcher_pin(launcher: Path) -> str | None: ...                # the bundle's pin; None when there is none
+def pinned_interpreter(interpreter: str, launcher: Path) -> str: ...  # the pin, or the interpreter as it is
+```
+
+- `launcher_pin` reads the Info.plist of the bundle `launcher` is, or is inside. No bundle, an unreadable
+  plist, a value that is not a string, or an empty one is no pin. A development build made with
+  `ALLOW_ANY_PROGRAM` carries an empty string.
+- `pinned_interpreter` returns the pin only when it is another name of `interpreter` in the same folder:
+  the two paths have the same parent, and `samefile` says they are one file. Everything else returns
+  `interpreter` unchanged.
+- **Same folder, not only same file.** Two environments can link to one base interpreter. `samefile` is
+  true for them, and the other environment's `python` would run the other environment's agentsync.
+- `job_arguments` passes the child's interpreter through it when a launcher is given. With no launcher the
+  child is `program_arguments`, as before, and `program_arguments` itself still returns `sys.executable`.
+- Doctor (`_check_launchd_job`) and the report (`_plist_compared`) build the plist they compare against
+  through the same function. On the field Mac the installed jobs name the pin, so the interpreter no longer
+  differs and what is left is the two canary pairs.
+
+**The installer refreshes nothing.** A plain `install.sh` run still makes no `launchctl` write and leaves an
+installed job as it is (§16.22). `agentsync install-agent` is the operator's, and it now writes a job the
+launcher starts.
+
+**A job that is refused is named.** For a Mac where an earlier build already wrote `python3`:
+
+- Doctor, in `launchd.poll` and `launchd.reconcile`: `job interpreter <path> is not the one its launcher
+  starts (<pin>): every run exits 64 (PROGRAM_REFUSED)`. It is a warn. Only background sync is down, and a
+  FAIL would stop `install.sh` before its sync. The fix is `agentsync install-agent` when this build would
+  write the pin, else the installer's own agent step (`scripts/install.sh --confirm-install-agent`, which
+  rebuilds a launcher whose pin is not the tool's). Under `AGENTSYNC_NO_NEXT_HINT=1` the first is worded as
+  every launchd warn is: the operator's to refresh, no `fix:`.
+- `setup_report.EXIT_MEANINGS[64]` and `install.sh`'s `rc_meaning 64`: "the launcher refused the job: its
+  program is not the one it starts, or an option is wrong". 64 is the launcher's usage exit, so the text
+  covers both. A background job's `last exit code = 64` read as a bare number before.
+
+Not done:
+
+- `_class_text` does not say whether two interpreter paths share a folder. `the same file: yes` therefore
+  still covers two environments on one base interpreter; `docs/deploy/setup-feedback.md` says so.
+- `install-agent` does not refuse to write a child that is not the pin. With a launcher pinned to another
+  environment it still writes its own interpreter, and doctor then names the refusal.
+- The launcher is unchanged. Comparing by file identity there would widen what a privacy grant covers.
+
+Tests: `tests/test_ops_launchd.py` (a bundle pinned to `bin/python` while running as `bin/python3`: both
+jobs' child is the pin and every other argument is unchanged, and so is the written plist; the same file in
+another folder, another file in the same folder, a pin that does not exist, an empty pin, no Info.plist, an
+unreadable one and no bundle: the interpreter as it runs), `tests/test_launcher.py` (the real launcher,
+pinned to `python`: the argv `job_arguments` builds while running as `python3` starts its child and exits
+0, and the `python3` spelling of the same argv is refused, exit 64), `tests/test_ops_doctor.py` (jobs
+installed as `bin/python`, checked while running as `bin/python3`: both ok; a job that names `python3`:
+the warn, its text and its fix, the operator's note under install.sh, and the installer's agent step as the
+fix when run from another environment), `tests/test_setup_report.py` (the field shape through
+`build_report`: 21 arguments installed against 23, `interpreter same`, one canary path of two; with no pin
+to read, `interpreter differs (the same file: yes ...)`; exit 64 decoded), `tests/test_install_oneshot.py`
+(a first background run that exits 64 says what 64 is).

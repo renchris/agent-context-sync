@@ -204,7 +204,8 @@
 # after argument parsing ends with one "NEXT:" line; for a background exit 80 (an earlier "Don't Allow") or
 # a 79 at the timeout it names the click: turn on agentsync-launcher in System Settings > Privacy & Security
 # > Files and Folders. agentsync exit codes named in messages: 0 ok, 75 lock busy, 77 sign-in required, 78
-# configuration invalid, 79 TCC pending (macOS waits for Allow), 80 TCC denied. --log-start and --log:
+# configuration invalid, 79 TCC pending (macOS waits for Allow), 80 TCC denied, and for a background run
+# 64: the launcher refused the job (its program is not the one the launcher starts). --log-start and --log:
 # 0 logged, 2 a usage error (a bad KIND or argument count, or a --log-start from a copy of the prompt
 # that is not this installer's: see "Friction log"), 1 the friction log could not be written; neither
 # prints a NEXT: line.
@@ -594,6 +595,7 @@ rc_meaning() {
 	1) printf 'failed' ;;
 	2) printf 'usage error' ;;
 	3) printf 'the wait for the first background run ran out' ;;
+	64) printf 'the launcher refused the job: its program is not the one it starts, or an option is wrong' ;;
 	75) printf 'lock busy: another agentsync cycle is running' ;;
 	77) printf 'sign-in required' ;;
 	78) printf 'configuration invalid' ;;

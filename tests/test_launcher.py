@@ -241,6 +241,38 @@ def test_pinned_launcher_refuses_any_other_program(launcher_app: Path, tmp_path:
 
 
 @needs_build
+def test_the_job_a_python3_build_writes_starts_under_a_launcher_pinned_to_python(
+    launcher_app: Path, tmp_path: Path, sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second bring-back (2026-10-07), with the real launcher. install.sh builds it for ``<tool>/bin/python``.
+    On the field Mac the updated tool ran as ``<tool>/bin/python3``, the same file. The launcher compares
+    the path as text: the job ``install-agent`` writes from that environment named ``python3``, which is
+    refused, exit 64, on every run. ``job_arguments`` now names the pin, and that job starts."""
+    tool = tmp_path / "tool" / "bin"
+    tool.mkdir(parents=True)
+    shim = tool / "python"
+    shim.write_text('#!/bin/sh\necho ran "$@"\n')
+    shim.chmod(0o700)
+    (tool / "python3").symlink_to("python")
+    exe = _pinned_copy(launcher_app, tmp_path, str(shim))
+    monkeypatch.setattr(sys, "executable", str(tool / "python3"))
+    argv = list(launchd.job_arguments(sample_config, "poll", 300, exe))
+    sep = argv.index("--")
+    assert argv[0] == str(exe) and argv[sep + 1] == str(shim)
+    started = run(exe, *argv[1:])
+    assert started.returncode == 0, started.stderr
+    assert (
+        started.stdout
+        == f"ran -I -X utf8 -m agentsync sync --mode poll --config {sample_config.config_path}\n"
+    )
+    # The spelling the build wrote before: the same file, and the launcher refuses it.
+    before = [*argv[1 : sep + 1], str(tool / "python3"), *argv[sep + 2 :]]
+    refused = run(exe, *before)
+    assert refused.returncode == 64 and "PROGRAM_REFUSED" in tokens(refused.stderr)
+    assert refused.stdout == ""
+
+
+@needs_build
 def test_unpinned_release_build_runs_nothing(launcher_app: Path, tmp_path: Path) -> None:
     exe = _pinned_copy(launcher_app, tmp_path, "")
     cp = run(exe, "--", "/bin/echo", "x")

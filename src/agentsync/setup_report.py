@@ -323,13 +323,16 @@ EXIT_MEANINGS = {
     0: "ok",
     1: "failed: a source failed or a blocking lint fired (see Recent errors)",
     2: "usage error",
+    64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
     75: "skipped: another cycle held the lock; launchd retries",
     77: "sign-in required (agentsync graph login)",
     78: "configuration invalid (sources.toml or policy.toml)",
     79: "TCC_PENDING: the launcher waited for the Allow prompt and timed out",
     80: "TCC_DENIED: access to the synced folder was denied",
 }
-"""agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists the same)."""
+"""agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists its own; 64 and 80 are
+the launcher's: 64 is its usage exit, which a job whose interpreter is not the launcher's pinned one ends on
+at every run, with a PROGRAM_REFUSED line in the job's error log)."""
 
 _RESERVE_S = 1.0
 _LOOP_NEXT_S = 4.0  # the Summary's Loop line: the ``loop_next`` hook's own limit

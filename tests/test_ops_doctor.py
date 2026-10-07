@@ -644,6 +644,83 @@ def test_launchd_interpreter_gone(sample_config: Config, fakes: dict[str, object
     assert r.fix == "agentsync install-agent"
 
 
+def _pinned_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
+    """A launcher under the tmp HOME built for ``<tool>/bin/python``, as install.sh builds it, and that
+    tool's ``bin``, where ``python3`` is the same file under another name. Returns the two paths."""
+    exe = _launcher(monkeypatch)
+    tool = tmp_path / "tool" / "bin"
+    tool.mkdir(parents=True)
+    python = tool / "python"
+    python.write_text("#!/bin/sh\nexit 0\n")  # `python -I -c 'import agentsync'` succeeds
+    python.chmod(0o755)
+    (tool / "python3").symlink_to("python")
+    info = {"CFBundleIdentifier": launchd.LAUNCHER_IDENTIFIER, "AgentSyncAllowedProgram": str(python)}
+    (exe.parents[1] / "Info.plist").write_bytes(plistlib.dumps(info))
+    return python, tool / "python3"
+
+
+def test_launchd_job_that_names_the_launchers_pin_is_current_for_a_python3_build(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Second bring-back (2026-10-07): both jobs read "installed plist differs (ProgramArguments)" on a
+    Mac whose jobs ran fine. They named ``<tool>/bin/python``, which the launcher is built for, and the
+    updated tool ran as ``<tool>/bin/python3``, the same file. The warn's fix, ``install-agent``, would
+    have written ``python3``, which that launcher refuses. The expected plist now names the pin, so a job
+    that names it is current, and the refresh is safe."""
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    python, python3 = _pinned_tool(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "executable", str(python))  # install.sh's install-agent ran as bin/python
+    install_agents(sample_config, loaded)
+    installed = plistlib.loads(launchd.plist_path("com.agentsync.poll").read_bytes())["ProgramArguments"]
+    assert installed[installed.index("--") + 1] == str(python)
+    monkeypatch.setattr(sys, "executable", str(python3))  # the updated tool, as on the field Mac
+    results = by_name(run_checks(sample_config))
+    for name in ("launchd.poll", "launchd.reconcile"):
+        assert results[name].ok and "loaded (StartInterval" in results[name].detail, results[name]
+
+
+def test_launchd_job_whose_interpreter_the_launcher_refuses_is_a_warn_that_names_exit_64(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A job an earlier build wrote while it ran as ``python3``: its launcher starts only ``python`` and
+    refuses the job at every run, exit 64, and nothing said why. Doctor names it. It is a warn, because
+    only background sync is down and a FAIL would stop install.sh, and its fix is the refresh, which now
+    writes the pin."""
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    python, python3 = _pinned_tool(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "executable", str(python3))
+    install_agents(sample_config, loaded)
+    path = launchd.plist_path("com.agentsync.poll")
+    d = plistlib.loads(path.read_bytes())
+    child = d["ProgramArguments"].index("--") + 1
+    assert d["ProgramArguments"][child] == str(python), "this build writes the pin"
+    d["ProgramArguments"][child] = str(python3)
+    path.write_bytes(plistlib.dumps(d))
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert not r.ok and r.severity is Severity.WARN, r
+    assert (
+        f"job interpreter {python3} is not the one its launcher starts ({python}): every run exits 64 "
+        "(PROGRAM_REFUSED)" in r.detail
+    )
+    assert r.fix == "agentsync install-agent"
+    assert by_name(run_checks(sample_config))["launchd.reconcile"].ok, "the other job names the pin"
+    # Under install.sh with no agent step it is the operator's, like every launchd warn: no fix line.
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert r.severity is Severity.WARN and r.fix is None and r.note == doctor._AGENT_YOURS_NOTE
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
+    # Run from another environment (a checkout's own venv), the refresh would not write the pin either:
+    # the fix is then the installer's own agent step, run from the tool it installs.
+    elsewhere = tmp_path / "venv" / "bin"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "python").symlink_to(python)
+    monkeypatch.setattr(sys, "executable", str(elsewhere / "python"))
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert r.severity is Severity.WARN and (r.fix or "").startswith(
+        "scripts/install.sh --confirm-install-agent"
+    )
+
+
 def test_launchd_unreadable_plist(sample_config: Config) -> None:
     path = launchd.plist_path("com.agentsync.poll")
     path.parent.mkdir(parents=True)
