@@ -282,8 +282,9 @@ other. Step 2's `install.sh` ran status before its sync, stopped on `[FAIL] docs
   `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`, a count and no path.
 - The check's fix names a command the agent may run when one clears it:
   `(fix: agentsync sync (it makes these owner-only))`.
-- The `chmod` is still the fix for a path agentsync does not change: one inside `mirror/` or `.git`, or one
-  of another user's. A run still stops there, and that stop is the person's to clear.
+- The `chmod` is still the fix for a path agentsync does not change: one inside `mirror/` or `.git`, one of
+  another user's, or one its owner may not read (a file at mode 0044). A run still stops there, and that
+  stop is the person's to clear.
 
 Triage: a `[FAIL] docs_repo.permissions` whose fix names the sync was written between an agent's write and
 the next sync, and is gone after it. One whose fix is the `chmod` is a path agentsync does not change, named

@@ -5973,7 +5973,8 @@ runs no doctor check: the FAIL simply has no cause left when `status` next looks
 **Amended (2026-10-07, §16.29):** the function is now `cycle._tighten_own_paths(config)`. It also covers the
 docs repo folder itself, the agent-context folder and the cache and log folders, looks at no more than 2000
 entries below each tree, and is called by `init` and `add-source` too. The check's fix names the sync when
-a sync clears what it found.
+a sync clears what it found. "Never followed" now holds for a folder above an entry as well: each entry is
+opened by its name from a descriptor on the folder that holds it, not by its full path.
 
 **install.sh.**
 
@@ -8327,14 +8328,33 @@ at (`cycle._own_paths`):
   0600, 0755 becomes 0700, 0444 becomes 0400, and 0600 stays 0600.
 - No symlink is followed or changed. An entry that is a symlink is left alone, a tree that is a symlink is not
   walked, and each mode is changed through a descriptor opened with `O_NOFOLLOW` (§16.22).
-- The walk is bounded: at most 2000 entries below each tree (`_OWN_WALK`), in the order the check walks them.
+- That holds for the folders above an entry too (review, 2026-10-07). `O_NOFOLLOW` covers only the entry, and
+  the first version opened each entry by its full path: with `_eval/sub` renamed away and replaced by a
+  symlink while its files were being changed, files outside the docs repo went from 0644 to 0600. Each entry
+  is now opened by its name from a descriptor on the folder that holds it (`cycle._own_entries`). The entries
+  at the top of the docs repo and the walks of `_eval/` and `topics/` start from one descriptor on the repo,
+  each walked tree is opened once, and a folder is entered from the folder above it with `O_NOFOLLOW` and
+  `O_DIRECTORY`. So a folder swapped for a symlink is not entered, and an entry the walk listed before the
+  swap is changed where it is, not where the link points. Nothing in a docs repo that is itself a symlink is
+  changed (`docs_repo.symlinks` already fails on one). The guarantee starts at the folders the config names:
+  the path to the docs repo, the cache folder and the log folder is resolved as written.
+- The walk is the module's own, not `os.fwalk`: before Python 3.12 `os.fwalk` opens a folder without
+  `O_NONBLOCK`, so a FIFO put where a folder was would hang the sync, and it keeps one descriptor open per
+  level. This one keeps one on the tree and one on the folder it is listing, whatever the depth.
+- The walk is bounded: at most 2000 entries below each tree (`_OWN_WALK`), in the order the check walks them
+  (`os.walk`'s: a folder's folders, then the rest of it, then each of its folders in turn).
   The check samples 500 a tree, so every entry it can name in these trees is one the walk reaches. A cache
   holds a few entries per converted file, and no sync reads all of it for this.
 - `mirror/` and `.git` are still not walked: the publisher writes pages 0600, and git writes under
   `core.sharedRepository`, which `gitops.ensure_repo` sets to `0600` in every non-dry cycle and in `init` and
   `add-source`. A docs repo from before that setting gets it there, with no command of its own.
 - A cache or log folder that is the home folder, or holds it, is left out: a config may name any folder
-  there, and that one is not agentsync's alone. The check still reports it, with the chmod.
+  there, and that one is not agentsync's alone. The check still reports it, with the chmod. The file system
+  says which folder a path is, not its spelling (`cycle._holds_home`, private: the same device and inode as
+  the home folder or a folder above it, above its path as written and above where it resolves to). Written
+  as `~/x/..`, through a symlink, or in another case on a volume that takes any, the home folder passed a
+  comparison of the paths as written, and it and up to 2000 entries in it were made owner-only (review,
+  2026-10-07).
 - A path that does not exist yet is skipped. A path that cannot be changed is skipped with one warning, a
   count and no path: `N path(s) could not be made owner-only (agentsync status names them)`.
 - A dry run changes nothing, and `status` changes nothing.
@@ -8344,6 +8364,10 @@ at (`cycle._own_paths`):
 0700 (was 0755): it holds tenant data` line each (the agent-context folder, the docs repo, `.git`, the cache,
 the logs, the state dir). When it changes a path they print one more line, a count and no path:
 `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`.
+That list of folders follows the same rule (`cli._owner_only_dirs`, review, 2026-10-07): a cache, log or state
+folder that is the home folder, or holds it, is not in it. Before, `log_dir = "~"` made setup print `tightened
+<home> to 0700 (was 0755)` ahead of a sync that would have left the folder alone, which ends sharing from that
+home's Public folder.
 
 `install.sh` runs one of the two in its config step (step 4), which comes before status (step 5). So on the
 field state step 5 has no permissions FAIL to stop on, step 6 syncs, and the run ends on the loop's `NEXT:`
@@ -8359,14 +8383,17 @@ whether they start.
 **The check's fix** (`ops.doctor._check_permissions`, read-only as before). The detail is what it was. The fix
 now depends on the paths the check found (`cycle._sync_leaves`, private):
 
-- Every one is a path a sync makes owner-only, a regular file or a folder, and this user's:
-  `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's `NEXT:`
-  already sends it to the fix on the `[FAIL]` line (§16.20).
+- Every one is a path a sync makes owner-only, a regular file or a folder, this user's, and one its owner may
+  read: `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's
+  `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20).
 - Any other: the fix it had, `chmod -R go-rwx <the checked folders>; git -C '<docs repo>' config
   core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
-  that is neither a file nor a folder, or one of another user's (only its owner may change a mode). No sync
-  clears it, so the FAIL stays, the fix is the person's, and a setup run still stops there (step 5, exit 1,
-  no sync).
+  that is neither a file nor a folder, one of another user's (only its owner may change a mode), or one its
+  owner may not read. No sync clears it, so the FAIL stays, the fix is the person's, and a setup run still
+  stops there (step 5, exit 1, no sync).
+- The read bit is in the rule because the sync changes a mode through a descriptor, and opening one takes it
+  (review, 2026-10-07). A file at 0044 or a folder at 0333 got the sync as its fix, the sync left it with
+  its warning, and the next status printed the same line. The chmod needs no read bit and clears both.
 
 **Limits.**
 
@@ -8375,17 +8402,27 @@ now depends on the paths the check found (`cycle._sync_leaves`, private):
   could not be changed.
 - Below a folder at the top of the docs repo other than `_eval/` and `topics/` nothing is changed, only the
   folder itself. What is loose inside is the check's to report, with the chmod.
+- The home-folder rule covers the sync's heal and setup's list. The converter cache still makes its own root
+  0700 when it first stores a result (`convert.cache.ConverterCache._ensure_root`), so a `cache_dir` that is
+  the home folder is changed by the first conversion.
 
 Tests: `tests/test_cycle.py` (one cycle over an `_eval` folder, a topic folder, a cache folder, a log, the
 docs repo and the agent-context folder, each readable by group and other, and a docs repo without
 `core.sharedRepository`: the fix names the sync, a dry run changes nothing, then every mode is owner-only, the
 check is ok and the tree is not dirty; no symlink followed, a cache folder that is a symlink left alone,
 `mirror/` not walked, and the chmod as the fix for what is left; a log folder that is the home folder, or
-holds it, left as it is; no mode widened; the bound, with what the walk does not reach left to the chmod; a
-path of another user's left as it is, with the warning, the FAIL and the chmod; an entry swapped for a
-symlink), `tests/test_review_fixes.py` (a page inside `mirror/`: the chmod; the `mirror` folder itself: the
+holds it, left as it is in every spelling: as written, `~/x/..`, `~/..`, through a symlink, and in another
+case where the volume takes one, and the folder above where a home folder reached through a symlink really
+is; no mode widened; the bound, with what the walk does not reach left to the chmod; the walk's order
+against `os.walk`'s, a folder that is a symlink listed and not entered, and no descriptor left open by a
+walk that is stopped; a path of another user's left as it is, with the warning,
+the FAIL and the chmod; a file at 0044 and a folder at 0333 the same, and the check ok after that chmod; an
+entry swapped for a symlink; a folder in `_eval/`, and the docs repo itself, swapped for a symlink while its
+entries are changed: nothing changed where the link points, every listed file changed where it is),
+`tests/test_review_fixes.py` (a page inside `mirror/`: the chmod; the `mirror` folder itself: the
 sync), `tests/test_cli.py` (`init` and `add-source` each: the two lines, the modes, the check ok, and nothing
-printed the second time), `tests/test_install_oneshot.py` (with the real agentsync behind a stub uv: the
-field layout, then the field's command: no `[FAIL]` line, a sync, exit 0, the modes, `core.sharedRepository`
-and every step's log line; then a page inside `mirror/`: exit 1 at status with the chmod, no sync, and the
-`_eval` folder still cleared).
+printed the second time; `init` with a log, cache or state folder that is the home folder, and with `log_dir`
+written `~/x/..`: no `tightened` line and no mode changed), `tests/test_install_oneshot.py` (with the real
+agentsync behind a stub uv: the field layout, then the field's command: no `[FAIL]` line, a sync, exit 0, the
+modes, `core.sharedRepository` and every step's log line; then a page inside `mirror/`: exit 1 at status with
+the chmod, no sync, and the `_eval` folder still cleared).
