@@ -397,6 +397,10 @@ def test_a_cycle_stores_the_empty_cloud_folders_its_walk_found(
     assert stored() == "", "a walk that could not run knows no empty folder"
 
 
+SYNC_FIX = "agentsync sync (it makes these owner-only)"
+"""``docs_repo.permissions``'s fix when a sync clears every path it found: a command a setup agent may run."""
+
+
 def permissions(config: Config) -> doctor.CheckResult:
     [result] = doctor._check_permissions(config)
     return result
@@ -416,7 +420,8 @@ def own_config(tmp_path: Path, repo: Path) -> Config:
 def test_a_cycle_makes_its_own_paths_owner_only_and_a_dry_run_does_not(sample_config: Config) -> None:
     """Field reports 2026-10-06 and 2026-10-07: the baseline draft, written by an agent under umask 022,
     left ``_eval/`` readable by group and other, and the next status ended on a ``docs_repo.permissions``
-    FAIL. A cache folder and a log that something else made do the same. One cycle clears them all."""
+    FAIL. A cache folder and a log that something else made do the same. The fix on the FAIL names the
+    sync, and one cycle clears them all."""
     repo = sample_config.docs_repo
     run(sample_config)
     eval_dir, topic_dir = repo / "_eval", repo / "topics" / "contoso" / "notes"
@@ -441,7 +446,8 @@ def test_a_cycle_makes_its_own_paths_owner_only_and_a_dry_run_does_not(sample_co
     def modes(paths: list[Path]) -> set[int]:
         return {mode(p) for p in paths}
 
-    assert not permissions(sample_config).ok and "_eval" in permissions(sample_config).detail
+    found = permissions(sample_config)
+    assert not found.ok and "_eval" in found.detail and found.fix == SYNC_FIX
     assert run(sample_config, mode=CycleMode.DRY_RUN).exit_code == 0
     assert modes(files) == {0o644} and modes(dirs) == {0o755} and not permissions(sample_config).ok
 
@@ -473,6 +479,10 @@ def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publish
     assert mode(repo / "mirror") == mode(repo / "other") == 0o700
     assert {mode(f) for f in loose} == {0o644}
     assert mode(outside) == 0o755 and mode(repo / "mirror" / "src") == 0o755
+    # What a sync leaves is the chmod's: the fix names no sync that would not clear it.
+    left = cycle_mod._sync_leaves(config, [*loose[1:], repo / "mirror" / "src", repo / "_eval" / "file-link"])
+    assert left == [*loose[1:], repo / "mirror" / "src", repo / "_eval" / "file-link"]
+    assert "chmod -R go-rwx" in (permissions(config).fix or "")
     assert cycle_mod._tighten_own_paths(config) == 0
     assert cycle_mod._tighten_own_paths(own_config(tmp_path, tmp_path / "missing")) == 0
 
@@ -481,7 +491,8 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A config may name any folder for its cache and its logs. One that is the home folder, or holds it,
-    is not agentsync's alone, so nothing in it is changed: the check reports it."""
+    is not agentsync's alone, so nothing in it is changed: the check reports it, and the chmod is the
+    person's decision."""
     repo, home = tmp_path / "docs", tmp_path / "people" / "me"
     repo.mkdir()
     home.mkdir(parents=True)
@@ -492,7 +503,8 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
     for log_dir in (home, home.parent):
         config = dataclasses.replace(own_config(tmp_path, repo), log_dir=log_dir)
         assert cycle_mod._tighten_own_paths(config) == 0 and mode(mine) == 0o644
-    assert str(mine) in permissions(dataclasses.replace(config, log_dir=home)).detail
+        assert cycle_mod._sync_leaves(config, [mine]) == [mine]
+    assert "chmod -R go-rwx" in (permissions(dataclasses.replace(config, log_dir=home)).fix or "")
 
 
 def test_tightening_never_widens_a_mode(tmp_path: Path) -> None:
@@ -512,7 +524,8 @@ def test_tightening_looks_at_a_bounded_number_of_entries_below_each_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A cache holds a few entries per converted file, so a sync does not walk all of it: it looks at a
-    fixed number of entries below each tree. What the walk does not reach stays the check's to report."""
+    fixed number of entries below each tree. What the walk does not reach stays the check's to report,
+    and its fix is then the chmod, not a sync that would not clear it."""
     repo = tmp_path / "docs"
     repo.mkdir()
     config = own_config(tmp_path, repo)
@@ -527,32 +540,37 @@ def test_tightening_looks_at_a_bounded_number_of_entries_below_each_tree(
     assert len(still) == 2 and cycle_mod._tighten_own_paths(config) == 0
     found = permissions(config)
     assert not found.ok and all(str(f) in found.detail for f in still)
+    assert "chmod -R go-rwx" in (found.fix or "")
     monkeypatch.undo()
+    assert permissions(config).fix == SYNC_FIX
     assert cycle_mod._tighten_own_paths(config) == 2 and permissions(config).ok
     assert cycle_mod._OWN_WALK >= doctor._PERM_SAMPLE, "a sync reaches every entry the check samples"
 
 
-def test_a_path_of_another_users_keeps_its_fail(
+def test_a_path_of_another_users_keeps_its_fail_and_the_chmod(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """No false green: only its owner may change a mode, so a path of another user's is left as it is, the
-    cycle says so once, and the check still fails."""
+    cycle says so once, and the check still fails with the chmod as its fix (a sync would not clear it)."""
     repo = sample_config.docs_repo
     run(sample_config)
     theirs = repo / "_eval" / "questions.md"
     theirs.parent.mkdir()
     theirs.write_text("1. What did Contoso decide?\n", encoding="utf-8")
     theirs.chmod(0o644)
+    assert permissions(sample_config).fix == SYNC_FIX, "this user's: a sync clears it"
 
     def not_the_owner(_fd: int, _mode: int) -> None:
         raise PermissionError(errno.EPERM, "Operation not permitted")
 
     monkeypatch.setattr(os, "fchmod", not_the_owner)  # what the kernel answers for a file of another user
+    monkeypatch.setattr(os, "geteuid", lambda: theirs.stat().st_uid + 1)
     with caplog.at_level(logging.WARNING, logger="agentsync.cycle"):
         assert cycle_mod._tighten_own_paths(sample_config) == 0
     assert "1 path(s) could not be made owner-only" in caplog.text
     found = permissions(sample_config)
     assert mode(theirs) == 0o644 and not found.ok and str(theirs) in found.detail
+    assert (found.fix or "").startswith("chmod -R go-rwx ") and "agentsync sync" not in (found.fix or "")
 
 
 def test_tightening_never_follows_an_entry_swapped_for_a_symlink(

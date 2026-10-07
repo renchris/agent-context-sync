@@ -25,6 +25,7 @@ from pathlib import Path
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig
+from agentsync.cycle import _sync_leaves
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.model import SourceKind
@@ -1363,7 +1364,8 @@ def _group_other_readable(root: Path) -> list[Path]:
 
 def _check_permissions(config: Config) -> list[CheckResult]:
     """The docs repo (worktree + .git), ~/agent-context, the cache and the logs are owner-only: they hold a
-    plaintext copy of tenant data (audit critic-mirror-world-readable-tcc-downgrade)."""
+    plaintext copy of tenant data (audit critic-mirror-world-readable-tcc-downgrade).  Read-only: the fix
+    names the sync that clears the paths found, or a chmod when a sync would leave one of them."""
     repo = expand(config.docs_repo)
     roots = [
         repo,
@@ -1385,13 +1387,12 @@ def _check_permissions(config: Config) -> list[CheckResult]:
     if bad:
         shown = ", ".join(str(p) for p in bad[:4]) + (f" (+{len(bad) - 4} more)" if len(bad) > 4 else "")
         targets = " ".join(f"'{r}'" for r in roots if r.exists())
-        return [
-            _bad(
-                "docs_repo.permissions",
-                f"group/other can read tenant data: {shown}",
-                fix=f"chmod -R go-rwx {targets}; git -C '{repo}' config core.sharedRepository 0600",
-            )
-        ]
+        # A sync makes agentsync's own paths owner-only, and a setup agent may run it; the chmod is the
+        # person's, for a path a sync leaves (in mirror/ or .git, or another user's).
+        fix = "agentsync sync (it makes these owner-only)"
+        if _sync_leaves(config, bad):
+            fix = f"chmod -R go-rwx {targets}; git -C '{repo}' config core.sharedRepository 0600"
+        return [_bad("docs_repo.permissions", f"group/other can read tenant data: {shown}", fix=fix)]
     return [_ok("docs_repo.permissions", "docs repo, cache and logs are owner-only")]
 
 

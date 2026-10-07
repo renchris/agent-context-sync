@@ -564,7 +564,7 @@ def _tighten_own_paths(config: Config) -> int:
     made does the same.  Every non-dry cycle calls this.  Only group and other bits are cleared, so no
     mode is widened, and no symlink is followed or changed.  Modes are not content: git tracks only the
     executable bit, so this never dirties the tree.  A path that cannot be changed is skipped with one
-    warning (the status check still reports it)."""
+    warning (the status check still reports it, with a chmod as its fix)."""
     changed, failed = 0, 0
     for path in _own_paths(config):
         try:
@@ -578,6 +578,23 @@ def _tighten_own_paths(config: Config) -> int:
     if failed:
         log.warning("%d path(s) could not be made owner-only (agentsync status names them)", failed)
     return changed
+
+
+def _sync_leaves(config: Config, paths: Iterable[Path]) -> list[Path]:
+    """Those of ``paths`` the next sync does not make owner-only: one outside :func:`_own_paths`, one that
+    is neither a regular file nor a folder, or one of another user's (only its owner may change a mode).
+    ``docs_repo.permissions`` words its fix by it: a sync when it clears them all, else the chmod.
+    Nothing is changed here."""
+    own = set(_own_paths(config))
+
+    def ours(path: Path) -> bool:
+        try:
+            st = path.lstat()
+        except OSError:
+            return False
+        return (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)) and st.st_uid == os.geteuid()
+
+    return [p for p in paths if p not in own or not ours(p)]
 
 
 def _discard_staged(fetched: FetchResult, staging: Path) -> None:
