@@ -634,7 +634,11 @@ class Redactor:
                 prefixes = "|".join(sorted(self._commits))
                 alts.append(f"(?P<commit>(?<![0-9A-Za-z])(?i:{prefixes})[0-9a-fA-F]{{0,33}}(?![0-9A-Za-z]))")
             literals = []
-            for value, mode in sorted(self._literals, key=lambda item: -len(item[0])):
+            # The alternative tried first wins, so the value with the longest match comes first. A fuzzy value
+            # also matches without its separators: ordered by written length, a folder "A - B - C" came
+            # before the id "a-b-c-x" and replaced only its front. The length without separators is the
+            # shortest text a value matches, and two values that match at one place differ in it.
+            for value, mode in sorted(self._literals, key=lambda item: (-len(_norm(item[0])), -len(item[0]))):
                 if mode == "fuzzy":
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(value))
                 elif mode == "fold":
@@ -2609,11 +2613,12 @@ class _Mirror:
 
 
 class _Labels:
-    """How an evidence part names a source: never by an id in clear. A configured id is shown as the
-    report's Redactor shows it (its ``<source-N>`` or ``<folder-N>`` placeholder); one the Redactor leaves
-    alone is kept only when it is one of agentsync's own words (``inbox``, ``mail``), and is ``(source N)``
-    by its place in sources.toml otherwise. An id the config does not have (a retired source's rows, a
-    hand-edited queue) is registered with no one: it is ``(not in the config, N)``."""
+    """How an evidence part names a source: never by an id in clear, and never by a part of one. A
+    configured id is shown as the report's Redactor shows it only when that is one whole placeholder
+    (``<source-N>``, ``<folder-N>``); one the Redactor leaves alone is kept only when it is one of
+    agentsync's own words (``inbox``, ``mail``). Anything else, an id the Redactor replaced only a part of
+    included, is ``(source N)`` by its place in sources.toml. An id the config does not have (a retired
+    source's rows, a hand-edited queue) is registered with no one: it is ``(not in the config, N)``."""
 
     def __init__(self, config: Config, red: Redactor) -> None:
         self.red = red
@@ -2630,8 +2635,9 @@ class _Labels:
                 self._shown[text] = f"(not in the config, {others + 1})"
             else:
                 shown = self.red.redact(text)
-                clear = shown == text and text not in _GENERIC_IDS
-                self._shown[text] = f"(source {self.place[text]})" if clear else shown
+                whole = _PLACEHOLDER_RE.fullmatch(shown) is not None
+                own_word = shown == text and text in _GENERIC_IDS
+                self._shown[text] = shown if whole or own_word else f"(source {self.place[text]})"
         return self._shown[text]
 
 

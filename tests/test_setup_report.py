@@ -857,6 +857,22 @@ def test_redactor_normalization_variants() -> None:
     assert off.redact("contoso") == "contoso" and off.scrub("contoso") == "<org-1>" and off.total == 0
 
 
+def test_the_longest_match_wins_whatever_separators_a_value_is_written_with() -> None:
+    """A fuzzy value also matches without its separators, so what it matches can be shorter than the value.
+    Tried by its written length, a folder written "A - B - C" came before the id "a-b-c-x" and took only
+    the id's front: ``<folder-N>-x``, which is a part of an id in clear."""
+    red = setup_report.Redactor()
+    red.add("folder", "Wingtip - Merger - Docs", fuzzy=True)  # 23 characters, and matches 19 of the id's 22
+    red.add("source", "wingtip-merger-docs-hr")
+    assert red.redact("wingtip-merger-docs-hr wingtip-merger-docs Wingtip - Merger - Docs") == (
+        "<source-1> <folder-1> <folder-1>"
+    )
+    other = setup_report.Redactor()  # the other way round: an id that is the front of a folder's name
+    other.add("source", "a-b-c-d")
+    other.add("folder", "A B C D Ef", fuzzy=True)
+    assert other.redact("a-b-c-d-ef a-b-c-d A_B_C_D_EF") == "<folder-1> <source-1> <folder-1>"
+
+
 def test_simulated_launchd_from_the_install_log(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     log = fake_mac["setup"] / "install.log"
     log.write_text(
@@ -3285,3 +3301,31 @@ def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: d
     known = setup_report.Redactor()
     known.add("source", config.sources[0].id)
     assert setup_report._Labels(config, known).of(config.sources[0].id) == "<source-1>"
+    # A Redactor that knows one word of the id replaces that word only: the rest of the id is still an id.
+    half = setup_report.Redactor()
+    half.add("folder", "Client", ignore_case=True)
+    assert half.redact(config.sources[0].id) == "<folder-1>-alpha"
+    assert setup_report._Labels(config, half).of(config.sources[0].id) == "(source 1)"
+
+
+def test_an_id_that_starts_as_a_folder_name_does_is_one_placeholder(fake_mac: dict[str, Path]) -> None:
+    """A folder written with wide separators and a hand-set id that runs them together and adds a word: the
+    Redactor's folder value matched the id's front, and every part named the source ``<folder-N>-hr``."""
+    cfg = fake_mac["config"]
+    folder = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Wingtip - Merger - Docs"
+    folder.mkdir()
+    assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
+    made = load_config(cfg).sources[-1].id  # add-source's own id keeps every separator: it comes out whole
+    hand_set = "wingtip-merger-docs-hr"
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace(f'id = "{made}"', f'id = "{hand_set}"'), "utf-8")
+    seed = Seed(cfg)
+    assert seed.ids()[-1] == hand_set
+    seed.item(hand_set, "payroll.png", state="refused", reason=NO_CONVERTER, page="refused")
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    rows = [ln for ln in parts["Quarantine by reason"].splitlines() if ln.startswith("| <")]
+    assert len(rows) == 1 and re.fullmatch(
+        r"\| <source-\d+> \| refused \| no converter \| 1 \| 0 \| - \|", rows[0]
+    )
+    assert re.search(r"^\| <source-\d+> \| no record \| 1 \|", parts["OCR"], flags=re.MULTILINE)
+    assert not re.search(r">-?hr\b", text), "no part of the id is left beside a placeholder"

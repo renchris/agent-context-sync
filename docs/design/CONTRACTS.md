@@ -7564,11 +7564,23 @@ the 6 parts at the end of Status were measured`, or how many lines say "not meas
 again when the Mac is idle (`install.sh --report-only`) before sending it; `not read` when the config does
 not load, since the parts then do not run.
 
-**Sources are never named in clear** (`_Labels`). A configured id is printed as the Redactor shows it. One
-the Redactor leaves alone is kept only when it is one of agentsync's own words (`_GENERIC_IDS`); otherwise
-it is `(source N)`, its place in sources.toml. An id the config does not have (a retired source's rows, a
-hand-edited queue) is `(not in the config, N)`. A run's mode and status and a row's state are printed only
-when they are a lower-case word; a day only when it is a date.
+**Sources are never named in clear** (`_Labels`). A configured id is printed as the Redactor shows it only
+when that is one whole placeholder (`<source-N>`, `<folder-N>`). One the Redactor leaves alone is kept only
+when it is one of agentsync's own words (`_GENERIC_IDS`). Anything else is `(source N)`, its place in
+sources.toml: that includes an id the Redactor replaced only a part of, since the rest is still a part of an
+id. An id the config does not have (a retired source's rows, a hand-edited queue) is `(not in the config,
+N)`. A run's mode and status and a row's state are printed only when they are a lower-case word; a day only
+when it is a date.
+
+**The Redactor tries the longest match first** (amends §16.14, for the whole report). Its registered values
+are one alternation, and the alternative tried first wins. They were ordered by their written length. A
+fuzzy value also matches without its separators, so a folder written `A - B - C` (9 characters) came before
+the hand-set id `a-b-c-x` (7) and replaced only its front: `<folder-N>-x` in Status, Doctor, the Summary and
+the evidence parts. The order is now by the length without spaces, hyphens, underscores and backslashes
+(`_norm`), which is the shortest text a value matches, then by the written length. Two values that match at
+the same place always differ in that length unless they differ only in separators, so the longer match is
+tried first whichever of the two is fuzzy. Ids that `add-source` writes keep every separator of the folder
+name and were never affected.
 
 **`quarantine_class`.** A row's `state_reason` is free text in places: a duplicate names a mirror path, a
 failed conversion carries an exception's words. The report prints the class and never the reason. A prefix
