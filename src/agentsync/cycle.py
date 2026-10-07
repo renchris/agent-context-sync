@@ -141,6 +141,11 @@ never holds one cycle (or the installer's first sync) for an hour. The read that
 a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``). A document does not wait:
 past the budget it is converted without OCR (``_Cycle._converting``)."""
 _NO_CONVERTERS = Registry([])
+_PAGE_CAP_MARK = "over the OCR page limit"
+_PICTURE_CAP_MARK = "past the OCR picture limit"
+"""What a converter's summary or stub reason says, in fixed wording, when a count limit of OCR left pages
+or pictures of a document unread (``convert/pdf.py``, ``convert/image.py``).  The run record counts the
+conversions that say so (``_Cycle._tally_ocr``)."""
 _ocr_clock = time.monotonic
 _OCR_CANARY = ".agentsync-ocr-canary.png"
 """The name, in the folder a read ran in, of the blank image the helper is handed after a read that failed
@@ -1005,6 +1010,8 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._reread_n = 0  # files read again
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
+        # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
+        self._tally: Counter[str] = Counter()
 
     # ---- time ---------------------------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -1422,12 +1429,75 @@ class _Cycle:
             except (OSError, ValueError) as exc:
                 log.warning("heartbeat for %s not written: %s", acc.src.id, exc)
         counts = Counter(c.op.value for c in self.changes)
+        counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
             self.publisher.write_state(report, self._statuses(self.config.sources))
             self._append_state(self._state_extras())
         except (OSError, AgentSyncError) as exc:
             log.warning("STATE.md not written: %s", exc)
+
+    def _run_tally(self) -> Counter[str]:
+        """What this run adds to its ``runs.counts_json`` beside the change counts (CONTRACTS.md 16.28):
+        integers only, so the setup report can say later what OCR did and whether the same files are
+        converted run after run.  ``converted`` is always there, so a record without it is one from before
+        these counts; ``ocr_ms`` and ``ocr_budget_s`` are there whenever the cycle had an engine.  Any
+        other key that would be 0 is left out.
+
+        ``converted``: files converted (the sum of ``SourceReport.converted``); ``converted_failed``: of
+        those, conversions that failed (retried by the next cycle); ``converted_seen``: of those, bytes an
+        earlier run had converted already (``Manifest.cache_last_used``); ``converted_again``: of those,
+        in the run just before.  ``reread`` and ``reread_kept``: files read again for what their converter
+        has gained, and those of them that kept their page.  ``ocr_ms``: milliseconds the helper ran;
+        ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1 when it was used up; ``ocr_down``: 1 when
+        the helper stopped working; ``ocr_deferred``: files left for a later cycle's OCR (``_ocr_waits``);
+        ``ocr_without_budget`` and ``ocr_without_down``: files converted without the engine for either
+        reason; ``ocr_failed``: files the engine failed on (a helper failure, or the file's own time
+        limit); ``ocr_page_cap`` and ``ocr_picture_cap``: conversions that say a count limit left pages
+        or pictures unread."""
+        tally = Counter({key: count for key, count in self._tally.items() if count})
+        tally["converted"] = self._tally["converted"]
+        if self._reread_n:
+            tally["reread"] = self._reread_n
+        if self._reread_kept:
+            tally["reread_kept"] = self._reread_kept
+        if self.ocr is not None:
+            tally["ocr_ms"] = round(self.ocr.spent_s * 1000)
+            tally["ocr_budget_s"] = round(_OCR_BUDGET_S)
+            if self.ocr.spent_s >= _OCR_BUDGET_S:
+                tally["ocr_over"] = 1
+            if self.ocr.down:
+                tally["ocr_down"] = 1
+        return tally
+
+    def _tally_ocr(self, result: ConversionResult, *, lacks: bool, plain: bool) -> None:
+        """Count what OCR left unread of one conversion (``_run_tally``).  ``lacks``: the result is one
+        this cycle's registry would read the file again for (``_lacks``); ``plain``: it was converted with
+        the registry that has no engine (``_converting``)."""
+        if self.ocr is None:
+            return
+        said = " ".join([result.reason or "", *(unit.summary for unit in result.units)])
+        if _PAGE_CAP_MARK in said:
+            self._tally["ocr_page_cap"] += 1
+        if _PICTURE_CAP_MARK in said:
+            self._tally["ocr_picture_cap"] += 1
+        if not lacks:
+            return
+        if not plain:
+            self._tally["ocr_failed"] += 1
+        else:
+            self._tally["ocr_without_down" if self.ocr.down else "ocr_without_budget"] += 1
+
+    def _tally_converted(self, result: ConversionResult, prior: int | None) -> None:
+        """Count one conversion (``_run_tally``).  ``prior``: the run that last used the cache row of its
+        action key before this one did, None when it had no row."""
+        self._tally["converted"] += 1
+        if result.status is ConversionStatus.FAILED:
+            self._tally["converted_failed"] += 1
+        if prior is not None and prior < self.run_id:
+            self._tally["converted_seen"] += 1
+            if prior == self.run_id - 1:
+                self._tally["converted_again"] += 1
 
     def _state_extras(self) -> list[str]:
         """STATE.md sections the publisher does not render: Graph sign-in and token source (C15 section 9
@@ -2479,6 +2549,7 @@ class _Cycle:
             self._defer(src, row, budget, acc)
             return
         if self._ocr_waits(src, row):  # it waits for OCR, not for a download: the next sync reads it
+            self._tally["ocr_deferred"] += 1
             self._defer(src, row, budget, acc, online_only=False)
             return
         try:
@@ -2613,14 +2684,17 @@ class _Cycle:
         again = reread and same  # the bytes its pages were made from, converted once more
         # ...or bytes never read before, behind a stub made from the name: the stub is what there is to keep
         keeps = again or (reread and intact and _no_converter_stub(fresh))
+        registry = self._converting()
         result = convert_file(
             fetched.path,
             name=row.name,
             content_sha256=fetched.content_sha256,
             canonical_sha256=h1.sha256,
-            registry=self._converting(),
+            registry=registry,
             cache=self.cache,
         )
+        # the run that last converted these bytes, read before this one is recorded (the run record)
+        prior = self.manifest.cache_last_used(result.action_key) if result.action_key else None
         if result.action_key and result.status in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             self.manifest.record_cache(
                 result.action_key,
@@ -2633,7 +2707,9 @@ class _Cycle:
                 size=sum(len(u.body.encode("utf-8")) for u in result.units),
                 run_id=self.run_id,
             )
-        if not reread and self._lacks(row.name, result):
+        lacks = self._lacks(row.name, result)
+        self._tally_ocr(result, lacks=lacks, plain=registry is not self.registry)
+        if not reread and lacks:
             # Converted without something its converter has (past the OCR time, or the engine failed on
             # it): the source has a file to read again, so a later cycle looks.
             self._reread_reopen(src)
@@ -2652,6 +2728,7 @@ class _Cycle:
             return result
         if not again:
             acc.converted += 1
+            self._tally_converted(result, prior)
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)

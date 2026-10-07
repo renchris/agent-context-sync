@@ -974,11 +974,14 @@ def test_record_cache_is_write_once_and_touches_last_used(m: Manifest) -> None:
         "unit_count": 1,
         "size": 10,
     }
+    assert m.cache_last_used("k") is None, "no row yet"
     m.record_cache("k", run_id=1, **kw)  # type: ignore[arg-type]
+    assert m.cache_last_used("k") == 1
     m.record_cache("k", run_id=5, **{**kw, "size": 999})  # type: ignore[arg-type]
     m.record_cache("k", run_id=3, **kw)  # type: ignore[arg-type]
     r = m._db.execute("SELECT created_run, last_used_run, bytes FROM cache WHERE action_key='k'").fetchone()
     assert tuple(r) == (1, 5, 10)
+    assert m.cache_last_used("k") == 5 and m.cache_last_used("other") is None
 
 
 # ---- tombstones --------------------------------------------------------------------------------------------

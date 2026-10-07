@@ -2426,6 +2426,15 @@ class Manifest:
             ),
         )
 
+    def cache_last_used(self, action_key: str) -> int | None:
+        """The run that last used the cache index row of ``action_key`` (``record_cache``); None when it has
+        no row.  The cycle asks before it records a conversion: a row last used by the run just before is
+        a file converted in two runs running from the same bytes (CONTRACTS.md 16.28)."""
+        row = self._db.execute(
+            "SELECT last_used_run FROM cache WHERE action_key = ?", (action_key,)
+        ).fetchone()
+        return None if row is None else int(row[0])
+
     # ---- tombstones -------------------------------------------------------------------------------------
     def add_tombstone(self, row: TombstoneRow) -> None:
         """Insert or replace a tombstone row."""

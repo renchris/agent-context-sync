@@ -7474,3 +7474,54 @@ budget read by the next cycle),
 kind of stub, and `reread_left` asked about one file; a missing cache row; page, order and skip; targets past one statement),
 `tests/test_convert_core.py` (`outdated` per converter with and without an engine, for pages and stubs; the
 floor and its end; each shape of a field-build version, per suffix; the image floor; `_emitter`) and `tests/test_convert_file.py` (the prefix).
+
+### 16.28 The setup report carries the next round's evidence (2026-10-07)
+
+The corporate Mac sends one more bring-back file after it re-runs setup on a build with OCR (§16.25 to
+§16.27). That file has to settle what the first one left open (`docs/research/corporate-bring-back-2026-10-06.md`,
+"Still wanted from the operator" and "Open operator decisions") and show what the OCR build did, without a
+further round. This section is what the tool records and reports for that. It adds no command, flag,
+installer option, config key or environment variable, and no manifest table or column.
+
+**Rule.** Everything here is a count, a state, a number of seconds, a version string or a fixed word. No file
+name, folder name, path, document text, or source id that is not already a placeholder.
+
+#### The run record (amends §5 and §9)
+
+`runs.counts_json` held the run's change counts (`A`, `M`, `R`, `D`). The cycle now adds what it did as
+integers under lower-case keys (`cycle._Cycle._run_tally`, written by `_after` through `Manifest.finish_run`
+on every cycle, a failed one included). `converted` is always there, 0 included, so a record without it is
+one from before these counts. `ocr_ms` and `ocr_budget_s` are there whenever the cycle had an engine. Any
+other key that would be 0 is left out. No reader depended on the old content.
+
+| Key | What it counts |
+|---|---|
+| `converted` | files converted in this run (the sum of `SourceReport.converted`) |
+| `converted_failed` | of those, conversions that failed; the next cycle tries them again |
+| `converted_seen` | of those, bytes an earlier run had converted already: the cache row of the action key existed |
+| `converted_again` | of those, bytes the run just before had converted: that row's `last_used_run` is this run's id less 1 |
+| `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
+| `ocr_ms`, `ocr_budget_s` | milliseconds the OCR helper ran (`_CycleOcr.spent_s`) and the cycle's OCR time (`_OCR_BUDGET_S`) |
+| `ocr_over`, `ocr_down` | 1 when that time was used up; 1 when the helper stopped working in the cycle |
+| `ocr_deferred` | files left for a later cycle's OCR before a byte was read (`_ocr_waits`): images on this Mac past the budget, Graph documents |
+| `ocr_without_budget`, `ocr_without_down` | files converted with the registry that has no engine (`_converting`) because the time was used up, or because the helper had stopped working |
+| `ocr_failed` | files the engine was tried on and failed: a helper failure, or the file's own time limit (§16.26). An image then has the `no converter` refusal, a document its page without OCR |
+| `ocr_page_cap`, `ocr_picture_cap` | conversions whose summary or stub reason says a count limit of OCR left pages or pictures unread (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`: the converters' fixed wording) |
+
+- `converted_again` is the sign of a loop: the same bytes converted in two runs running. It goes by the
+  action key, so a second file with the bytes of one the last run converted counts once too. A conversion
+  that failed has no cache row and is counted by `converted_failed` instead.
+- A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
+- `Manifest.cache_last_used(action_key) -> int | None` returns the run that last used a cache index row, None
+  when there is none. The cycle asks before `record_cache` moves it.
+- The record of a run from before this build holds change counts only and no `converted` key. The report
+  says "not recorded" for it.
+
+Every new name in `agentsync.cycle` is private (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`, and on `_Cycle`:
+`_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`).
+
+Tests: `tests/test_cycle.py` (a cycle without an engine records no OCR key; five images at 100 s each against
+the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle with an engine; a scan past the
+page limit, a PDF converted past the budget and its re-read, a helper that fails on everything; a file
+converted again from the same bytes in two runs running; the limit marks are the converters' wording) and
+`tests/test_manifest.py` (`cache_last_used`).

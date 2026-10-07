@@ -1779,6 +1779,128 @@ def test_a_helper_that_fails_on_everything_costs_no_image_its_reading(
     assert run(sample_config).commit_sha is None and len(reads(healthy.helper)) == 3
 
 
+def _run_record(config: Config) -> dict[str, int]:
+    """The newest run's ``runs.counts_json``: its change counts and what ``_Cycle._run_tally`` adds."""
+    with Manifest(config.state_paths.db) as m:
+        (raw,) = m._db.execute("SELECT counts_json FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()
+    record: dict[str, int] = json.loads(raw)
+    return record
+
+
+def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The setup report reads OCR's time from the run record (CONTRACTS.md 16.28): milliseconds used, the
+    budget, whether it was used up and how many images it left for a later cycle.  Integers only: a
+    record never holds a name."""
+    assert run(sample_config).exit_code == 0
+    before = _run_record(sample_config)
+    assert before["converted"] > 0 and not [key for key in before if key.startswith("ocr_")], (
+        "a cycle without an engine records no OCR time"
+    )
+    _use_ocr(monkeypatch, tmp_path)
+    ticks = itertools.count(0.0, 100.0)
+    monkeypatch.setattr(cycle_mod, "_ocr_clock", lambda: next(ticks))
+    for n in range(5):
+        picture(local_source_dir / "shots" / f"Contoso shot {n}.png", f"screenshot {n}")
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert {key: record[key] for key in record if key.startswith(("ocr_", "converted"))} == {
+        "converted": 2,
+        "ocr_budget_s": 180,
+        "ocr_deferred": 3,
+        "ocr_ms": 200_000,
+        "ocr_over": 1,
+    }
+    assert all(isinstance(value, int) for value in record.values()) and "shot" not in json.dumps(record)
+    assert run(sample_config).exit_code == 0 and run(sample_config).exit_code == 0
+    last = _run_record(sample_config)
+    assert (last["converted"], last["ocr_ms"], last.get("ocr_deferred"), last.get("ocr_over")) == (
+        1,
+        100_000,
+        None,
+        None,
+    )
+    assert run(sample_config).commit_sha is None
+    assert _run_record(sample_config) == {"converted": 0, "ocr_budget_s": 180, "ocr_ms": 0}, (
+        "an idle cycle with an engine"
+    )
+
+
+def test_the_run_record_counts_what_was_converted_without_ocr_and_why(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A document converted past the cycle's OCR time, the re-read that gives it its text, a scan longer
+    than the page limit, and a helper that stops working: each is a count in the run record."""
+    assert run(sample_config).exit_code == 0
+    engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(4)})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    monkeypatch.setattr(pdf_mod, "MAX_PAGES", 1)
+    (local_source_dir / "scans").mkdir()
+    cover = (["The cover page has a text layer of its own"], [])
+    build_picture_pdf(
+        local_source_dir / "scans" / "Contoso long scan.pdf",
+        [cover, ([], [page_picture(90)]), ([], [page_picture(91)])],
+    )
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["converted"], record["ocr_page_cap"]) == (1, 1), "the second scanned page: past the limit"
+    assert "ocr_failed" not in record and "ocr_without_budget" not in record
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)
+    build_picture_pdf(local_source_dir / "scans" / "Contoso late scan.pdf", [cover, ([], [page_picture(92)])])
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["converted"], record["ocr_without_budget"], record["ocr_over"]) == (1, 1, 1)
+    assert "ocr_page_cap" not in record, "converted without OCR: no limit of OCR was reached"
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 180.0)
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["reread"], record["converted"]) == (1, 0) and "reread_kept" not in record
+    failing = fake_engine(tmp_path / "failing", fail=True)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    for n in range(3):
+        picture(local_source_dir / "projects" / f"Contoso Site Plan {n}.png", f"Loading dock {n}")
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["ocr_failed"], record["ocr_without_down"], record["ocr_down"]) == (1, 2, 1)
+    assert "Contoso" not in json.dumps(record) and "scan" not in json.dumps(record)
+
+
+def test_the_run_record_counts_a_file_converted_again_from_the_same_bytes(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whether the same files are converted run after run is a question the setup report answers from the
+    run record: ``converted_again`` is a conversion whose bytes the run just before had converted too.
+    The loop here is a file the walk calls maybe-changed whose pages are never found intact."""
+    assert run(sample_config).exit_code == 0
+    first = _run_record(sample_config)
+    assert first["converted"] > 1 and "converted_again" not in first
+    assert first.get("converted_seen", 0) < first["converted"], "new bytes are no repeat"
+    assert run(sample_config).commit_sha is None and _run_record(sample_config) == {"converted": 0}
+    monkeypatch.setattr(cycle_mod, "_pages_intact", lambda _repo, _outs: False)
+    source = local_source_dir / "projects" / "sample.md"
+
+    def touch() -> None:
+        stamp = source.stat().st_mtime_ns + 5_000_000_000
+        os.utime(source, ns=(stamp, stamp))
+
+    touch()
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["converted"], record["converted_seen"]) == (1, 1)
+    assert "converted_again" not in record, "the run just before converted nothing"
+    touch()
+    assert run(sample_config).exit_code == 0
+    record = _run_record(sample_config)
+    assert (record["converted"], record["converted_seen"], record["converted_again"]) == (1, 1, 1)
+
+
+def test_the_limit_marks_are_the_converters_own_wording() -> None:
+    assert cycle_mod._PAGE_CAP_MARK in pdf_mod._SCANNED_OUTCOMES[pdf_mod._OCR_OVER_LIMIT]
+    assert cycle_mod._PAGE_CAP_MARK in pdf_mod._NO_TEXT_PAST_LIMIT
+    assert cycle_mod._PICTURE_CAP_MARK in image_mod._PICTURES_CUT
+
+
 def test_an_image_without_text_is_a_settled_stub_outside_the_curation_queue(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
