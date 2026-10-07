@@ -80,6 +80,13 @@ editing `sources.toml`.
 - **Known limits:** Graph-side label reads (`extractSensitivityLabels`) are not implemented, so a Graph file is
   downloaded to staging before it is screened. A save that changes only the label, not the content, is re-screened
   only when the content changes or the policy changes (CONTRACTS §16.11).
+- **Images and on-device OCR:** text in an image file, on a scanned PDF page and in the pictures of a PDF, deck or
+  Word document is read on the Mac by Apple's Vision framework, through a helper `scripts/install.sh` compiles
+  locally; agentsync uploads nothing for it. No label is read from an image file, so while any `[policy]` label rule
+  is set no image file is converted, and a policy change turns an image page published before it into a stub (no purge is queued for it: its earlier
+  text stays in git history until that is squashed or the item is purged). The
+  pictures of a document are read only after that document's own label and encryption screen. `[convert] ocr =
+  false` in `sources.toml` means the helper is neither built nor run (CONTRACTS §16.25 to §16.27).
 
 ## Untrusted-content boundary
 
