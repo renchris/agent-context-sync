@@ -214,8 +214,13 @@ drafted baseline questions for you to confirm. You click Allow at most once: if 
 It ends with a redacted setup report (outcome, timings, how far the loop got and every point that was not one command)
 for you to review and bring back ([how reports are used](docs/deploy/setup-feedback.md)). Doing it by hand instead: [Install](#install).
 
+Copy the block from this page each time, never from a saved note: its first line carries a version that changes
+with every edit of its text, and the installer stops a copy that is not the current one at step 1 and says to
+copy it again. Before the report the agent keeps syncing while `sync` says files are still being read again, so
+one report is enough.
+
 ```text
-Set up agentsync on this Mac (setup prompt v7). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v8). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -238,7 +243,7 @@ say, or worked around a problem); error (a command failed; include its exit code
 unclear; include better wording). Do not log the steps themselves; the installer times them.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
-   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start '<agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v8, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -247,8 +252,10 @@ unclear; include better wording). Do not log the steps themselves; the installer
    `git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update' && git -C ~/src/agent-context-sync format-patch -q -1 -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync switch main && git -C ~/src/agent-context-sync pull --ff-only`
    then tell me the branch name (my changes are safe on it, and copied as a patch to
    ~/agent-context/setup/local-work) and run step 1's command again. If git failed any
-   other way, show me its error (a corporate proxy may need HTTPS_PROXY set) and stop. If --version does not end with "setup-prompt-compat 7" or higher, tell me the published installer is
-   older than this prompt and stop. If --list-folders printed no folder paths (only a NEXT: line), do what that line
+   other way, show me its error (a corporate proxy may need HTTPS_PROXY set) and stop. If --version does not end
+   with "setup-prompt-compat 8", or the command says the pasted prompt is not the installer's, stop: this prompt
+   is v8, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
+   of the Source above. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
    them are downloaded by each sync, up to 1 GiB per folder per run. If you cannot ask me (your tool runs
@@ -282,7 +289,11 @@ unclear; include better wording). Do not log the steps themselves; the installer
    follow it, and go to the report only when no NEXT: line was printed. Repeat until the NEXT: line itself says
    "session done". WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says. If a sync
    stops on "click Allow", a macOS prompt is waiting for me (it can sit behind other windows): tell me to click
-   Allow, then run the sync again. Before the report, add a "## Not used" section to the end of
+   Allow, then run the sync again. Then make one report enough: while a note: line of the last sync starts
+   with "sync again:" (files are still being read again; the note counts them), or its NEXT: line asks only
+   for another sync, run the sync again, up to 12 more times (about an hour at most). Run nothing else for
+   this: never purge, accept-deletions or offboard, and no command a WAITING ON YOU: line names. Before the
+   report, add a "## Not used" section to the end of
    ~/agent-context/setup/fix-request.md: one line for each part of agentsync this session never used or barely
    used (each visible command: sync, curate, status, add-source, accept-deletions, adopt, purge, hold, offboard;
    the inbox; the baseline questions; background sync), saying why. Then the report, always,

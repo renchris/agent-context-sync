@@ -15,7 +15,9 @@
 #                           instead of building one
 #   --report-only           only write the setup report (step 9), then exit; installs and logs nothing, except
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
-#                           that attempt has no end line yet
+#                           that attempt has no end line yet. When --log-start stopped that attempt (a copy of
+#                           the prompt that is not this installer's), its NEXT: says to copy the prompt again
+#                           and not to bring this report back
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
 #                           (the line step 1 of the setup prompt checks)
@@ -26,7 +28,9 @@
 #                           setup log. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet);
 #                           4 this terminal app was denied access (macOS "Operation not permitted"), or macOS
 #                           is still asking; its NEXT: line says which and names the click
-#   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt
+#   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
+#                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
+#                           not this installer's is told to stop
 #   --log STEP KIND WHAT FIX
 #                           append one event to it; KIND is question, click, approval, deviation, error or prompt
 #
@@ -36,7 +40,13 @@
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077), which
 # `agentsync setup-report` reads. Each must be the first argument and takes no other option; they need no uv
 # and no agentsync, write no install.log line, no install.out and no report, and print one confirmation line.
-#   --log-start AGENT  appends "Attempt: <UTC>", "Prompt: v<SETUP_PROMPT_COMPAT>" and "Agent: AGENT" lines
+#   --log-start AGENT  AGENT is 'prompt vN, TOOL': N is the version in the first line of the prompt the
+#                      agent was given, TOOL its tool and model id. Appends "Attempt: <UTC>", "Prompt: vN"
+#                      and "Agent: TOOL" lines. When N is not this installer's SETUP_PROMPT_COMPAT the
+#                      pasted copy is not the README's: it also appends a "step 1 | error" line, prints
+#                      what to do (stop; the person copies the prompt again from README.md on the main
+#                      branch) and exits 2, so step 1's command stops before --list-folders. An AGENT that
+#                      names no version is a copy from before v8 and is logged as "Prompt: v7 or older"
 #   --log STEP KIND WHAT FIX
 #                      appends "<UTC> | step STEP | KIND | WHAT | FIX" ("step 2" as STEP is read as 2; a STEP
 #                      that is not a number, or "-", leaves the step column out and moves a non-number into
@@ -113,10 +123,14 @@
 # then say the agent step below installs the LaunchAgents instead of naming a command).
 #
 # Setup prompt: SETUP_PROMPT_COMPAT (below) is the N of "setup prompt vN" in README.md ("Set up on a new Mac:
-# one prompt"), whose step 1 requires `install.sh --version` to print at least that number. Bump both
-# whenever the prompt starts to depend on new behaviour of this installer or of agentsync, so an older
-# published checkout stops at step 1 instead of failing later (tests/test_install_oneshot.py checks they
-# match).
+# one prompt"), whose step 1 requires `install.sh --version` to print exactly that number and hands it to
+# --log-start. Bump both on ANY change to the prompt's text, a reworded sentence included, so that a copy
+# is always known by its version: a saved copy that is no longer the README's stops at step 1 (--log-start
+# above) instead of running old wording against a new installer, and the setup report says which version
+# an attempt used. A prompt that starts to depend on new behaviour of this installer or of agentsync is
+# such a change too. tests/test_install_oneshot.py checks that the two numbers match, and
+# tests/test_deploy_pack.py holds the prompt's text to its version (a changed text with the old number
+# fails there).
 #
 # Setup log: every real run (never a dry run or --report-only) appends to $AGENTSYNC_SETUP_LOG (default
 # ~/agent-context/setup/install.log, directory 0700) one "start" line (compat, install.sh commit when the source
@@ -146,8 +160,9 @@
 # a 79 at the timeout it names the click: turn on agentsync-launcher in System Settings > Privacy & Security
 # > Files and Folders. agentsync exit codes named in messages: 0 ok, 75 lock busy, 77 sign-in required, 78
 # configuration invalid, 79 TCC pending (macOS waits for Allow), 80 TCC denied. --log-start and --log:
-# 0 logged, 2 a usage error (a bad KIND or argument count: see "Friction log"), 1 the friction log
-# could not be written; neither prints a NEXT: line.
+# 0 logged, 2 a usage error (a bad KIND or argument count, or a --log-start from a copy of the prompt
+# that is not this installer's: see "Friction log"), 1 the friction log could not be written; neither
+# prints a NEXT: line.
 #
 # Dry run: AGENTSYNC_INSTALL_DRY_RUN=1 prints every step that would change something and changes nothing (no
 # log, no install.out, no report, no friction-log line); its NEXT: line says to re-run without it. With
@@ -160,7 +175,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=7 # the README prompt's "setup prompt vN": bump both together (see the header)
+SETUP_PROMPT_COMPAT=8 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log
@@ -175,6 +190,9 @@ friction_file() {
 	printf '%s' "$f"
 }
 FRICTION_KINDS="question, click, approval, deviation, error or prompt"
+PROMPT_UNSTATED=7 # the last setup prompt whose --log-start named no version: a copy that names none is that or older
+PROMPT_SOURCE="README.md on the main branch of https://github.com/renchris/agent-context-sync"
+PROMPT_STOPPED="install.sh --log-start: the pasted setup prompt is" # how the error line of a stopped attempt starts
 # Append TEXT (whole lines) to the friction log: its directory 0700 when this creates it (or it is the default
 # ~/agent-context/setup), the file 0600; a file that does not end in a newline gets one first.
 friction_append() {
@@ -195,19 +213,46 @@ friction_append() {
 	if [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ]; then chmod 600 "$f" 2>/dev/null || true; fi
 }
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
-	local op="$1" now line step kind what fix note="" v a rc=0
+	local op="$1" now line step kind what fix note="" v a p said rc=0
 	shift
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	case "$op" in
 	--log-start)
 		if [ $# -ne 1 ]; then
-			printf 'usage error: --log-start takes one argument, your tool and model id, and no other option (see --help)\n' >&2
+			printf "usage error: --log-start takes one argument, 'prompt vN, <your tool and model id>', and no other option (see --help)\n" >&2
 			return 2
 		fi
 		v="${1//$'\r'/ }"
 		v="${v//$'\n'/ }"
-		friction_append "Attempt: $now"$'\n'"Prompt: v$SETUP_PROMPT_COMPAT"$'\n'"Agent: ${v:-unknown}"$'\n' || rc=1
-		[ "$rc" -ne 0 ] || printf 'friction log: attempt started in %s\n' "$(friction_file)"
+		p=""
+		case "$v" in
+		prompt\ v[0-9]*,*) # 'prompt vN, TOOL': the version of the copy of the prompt the agent was given
+			p="${v#prompt v}"
+			p="${p%%,*}"
+			case "$p" in
+			*[!0-9]* | ????*) p="" ;;
+			*)
+				v="${v#*,}"
+				v="${v# }"
+				;;
+			esac
+			;;
+		esac
+		if [ "$p" = "$SETUP_PROMPT_COMPAT" ]; then
+			friction_append "Attempt: $now"$'\n'"Prompt: v$SETUP_PROMPT_COMPAT"$'\n'"Agent: ${v:-unknown}"$'\n' || rc=1
+			[ "$rc" -ne 0 ] || printf 'friction log: attempt started in %s\n' "$(friction_file)"
+		else
+			# Not this installer's prompt. The attempt is logged with the version the copy gave, so the
+			# setup report says so, and the exit status stops step 1's command before it lists the folders.
+			said="v${p:-$PROMPT_UNSTATED or older}"
+			what="the pasted copy is not the current one"
+			[ -z "$p" ] || [ "$p" -lt "$SETUP_PROMPT_COMPAT" ] || what="this checkout is older than the prompt"
+			what="$said and this installer is for setup prompt v$SETUP_PROMPT_COMPAT: $what"
+			fix="copy the prompt again from $PROMPT_SOURCE"
+			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped | $fix"$'\n' || true
+			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. (The current prompt starts the --log-start value with "prompt v%s, ".)\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
+			rc=2
+		fi
 		;;
 	--log)
 		if [ $# -ne 4 ]; then
@@ -264,6 +309,20 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 	esac
 	[ "$rc" -ne 1 ] || printf 'error: could not write the friction log %s\n' "$(friction_file)" >&2
 	return "$rc"
+}
+# Whether the friction log's last attempt is one --log-start stopped (a copy of the prompt that is not this
+# installer's): it holds that error line, and nothing was logged after its end line. A line after the end
+# line is another session's, whose step 1 stopped before --log-start: that one is not judged here.
+friction_attempt_stopped() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 1
+	awk -v mark="| step 1 | error | $PROMPT_STOPPED " '
+		/^Attempt:/ { stopped = 0; ended = 0; next }
+		/\| end \| finished[[:space:]]*$/ { ended = 1; next }
+		ended && /\|/ { stopped = 0; next }
+		index($0, mark) { stopped = 1 }
+		END { exit !stopped }' "$f" 2>/dev/null
 }
 # --report-only: close the friction log's current attempt with "<UTC> | end | finished", only when its last
 # "Attempt:" has no end line yet (so a second --report-only adds none). No log or no attempt: nothing to close.
@@ -975,6 +1034,11 @@ on_exit() {
 				[ "$REPORT_ONLY" -eq 0 ] ||
 					NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
 				say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
+			fi
+			# A copy of the prompt that is not this installer's started the attempt (--log-start said so and
+			# stopped it). Its own text still ends at this report: the NEXT says what to do instead.
+			if [ "$REPORT_ONLY" -eq 1 ] && friction_attempt_stopped; then
+				NEXT_MSG="this report is of an attempt that an out-of-date copy of the setup prompt started, so do not bring it back: copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session"
 			fi
 			;;
 		2) ;; # a dry run: printed, not written

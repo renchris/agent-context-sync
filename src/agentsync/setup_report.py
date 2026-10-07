@@ -13,9 +13,11 @@ embedded and redacted, one line per attempt), then the machine sections and the 
 line is a prefilled "Setup report" issue link. The friction log is a sequence of attempts (``Attempt:
 <time>``, ``Prompt:``, ``Agent:``, then ``<time> | step <n> | <kind> | <what> | <fix>`` lines and ``<time> |
 end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--report-only`` (``--log-end`` until
-KISS K17) for setup prompts v6 and v7 (by the agent itself in v5); :class:`PromptLayout` keeps each version's
-step numbers, picked by the ``Prompt:`` line's explicit version; v4 ``F<n> | ...`` lines are shown as legacy,
-never counted. Everything the
+KISS K17) since setup prompt v6 (by the agent itself in v5); :class:`PromptLayout` keeps the step numbers of
+each version that moved a step, picked by the ``Prompt:`` line's explicit version (:func:`prompt_layout`: v8
+and later read as v7); v4 ``F<n> | ...`` lines are shown as legacy, never counted. Since v8 the ``Prompt:``
+line is the version the pasted copy of the prompt gave, and the Summary says when that is not this build's
+(:data:`PROMPT_VERSION`). Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
 did: install.log's last install run exit, questions beyond the folder question, clicks beyond the Allow
 clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
@@ -136,9 +138,11 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 7
-"""The newest setup prompt this module knows (README "Set up on a new Mac: one prompt"): an attempt whose
-``Prompt:`` line states no version is read with its step numbers."""
+PROMPT_VERSION = 8
+"""The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
+SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
+whose ``Prompt:`` line states no version is read with its step numbers; one that states another was started
+by a copy of the prompt that is not this build's, which the Summary's prompt line says."""
 PROMPT_STEPS = {
     1: "preflight",
     2: "install and start",
@@ -169,9 +173,10 @@ KISS K17)."""
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class PromptLayout:
-    """The step numbers of one setup prompt version: what an attempt's events and its outcome refer to."""
+    """The step numbers of one setup prompt version, and of the later versions that moved no step: what an
+    attempt's events and its outcome refer to."""
 
-    version: int
+    version: int  # the first prompt version with these steps (rules written "for v7" compare against it)
     steps: dict[int, str]  # step -> title
     folder_question_step: int
     allow_click_steps: tuple[int, ...]
@@ -224,17 +229,21 @@ PROMPT_LAYOUTS = {
         form_step={1: 1, 2: 1, 3: 2, 4: 3, 5: 3, 6: 4},
     ),
 }
-"""Setup prompt v7 (three steps: the IT request is gone and step 3 runs the sync loop, then the report), v6
-and v5, each log read with its own step numbers (a v4 log is read as v5: its F<n> lines are legacy anyway). v6
-and v7 share this module's step constants."""
+"""Each prompt version that moved a step, by the first version that has it: v7 (three steps: the IT request
+is gone and step 3 runs the sync loop, then the report), v6 and v5. A log is read with the step numbers of its
+own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v7 share this module's step
+constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
+report while a note says so), so it has no entry: :func:`prompt_layout` reads it as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
-    """The layout of setup prompt ``version``, picked by its explicit number: v5 for 5 and earlier, v6 for 6,
-    v7 for 7; :data:`PROMPT_VERSION`'s when not stated or newer than this module knows."""
-    if version is None or version > PROMPT_VERSION:
-        return PROMPT_LAYOUTS[PROMPT_VERSION]
-    return PROMPT_LAYOUTS[5] if version <= 5 else PROMPT_LAYOUTS[version]
+    """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
+    :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
+    is not stated. The prompt's version moves with every change of its text and a layout only when a step
+    moves, so v8, and every later version until one adds an entry, is read with v7's rules."""
+    if version is None:
+        return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
+    return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
 
 
 SANDBOX_HOMES = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
@@ -1085,7 +1094,7 @@ class Outcome:
     kind: str  # "fully one command" | "worked with help" | "failed" | "unknown"
     step: int | None  # the failing prompt step, in the attempt's own prompt's numbering
     why: tuple[str, ...]
-    version: int = PROMPT_VERSION  # the prompt whose step numbers ``step`` uses
+    version: int = PROMPT_VERSION  # the prompt whose step numbers ``step`` uses (its layout's, or its own)
 
     @property
     def text(self) -> str:
@@ -1133,8 +1142,9 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
     and go to step 3") and not resolved. v5 resolves it with a later ``end`` of its step; v6 (no step lines)
     with a later install.sh run in ``runs`` that ended rc 0: any such run for a step-1 error (a
     ``--list-folders`` re-run, or the install run that step 2 starts), an install run for an error of the
-    install step. v7's install step is the one install.sh command, so any install run of the attempt that
-    ended rc 0 resolves its error, whenever the line was logged: an agent logs after the command returns."""
+    install step. Since v7 the install step is the one install.sh command, so any install run of the attempt
+    that ended rc 0 resolves its error, whenever the line was logged: an agent logs after the command
+    returns."""
     layout = attempt.layout
     events = _run_events(attempt)
     last_step = layout.report_step
@@ -4009,6 +4019,21 @@ def _prompt_version(attempt: Attempt | None) -> str | None:
     return f"v{int(m.group(1))}" if m else None
 
 
+def _prompt_copy_note(attempt: Attempt | None) -> str:
+    """What the Summary's prompt line adds when the attempt's version is not this build's
+    (:data:`PROMPT_VERSION`): the prompt that was pasted was not the README's of the installer that ran it.
+    ``install.sh --log-start`` writes the version the pasted copy gave, and ``v7 or older`` for a copy from
+    before v8, which gave none; those fixed words are kept, anything else of the line is not."""
+    version = attempt.version if attempt is not None else None
+    if attempt is None or version is None or version == PROMPT_VERSION:
+        return ""
+    stated = " or older" if re.fullmatch(r"v\d{1,3} or older", attempt.header.get("Prompt", "")) else ""
+    mine = f"this installer's v{PROMPT_VERSION}"
+    if version < PROMPT_VERSION:
+        return f"{stated} (older than {mine}: the pasted copy was not the current README)"
+    return f" (newer than {mine}: this Mac's checkout is older than the pasted copy)"
+
+
 def _doctor_fails(r: _Run) -> list[str]:
     """The doctor FAIL check names (every FAIL is unexpected: only warns are ever expected)."""
     return [name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"]
@@ -4096,7 +4121,7 @@ def _plural(n: int, word: str) -> str:
 
 
 def _allow_clicks(layout: PromptLayout) -> str:
-    """The words for the announced Allow clicks: one in v7, two in v6."""
+    """The words for the announced Allow clicks: one since v7, two in v6."""
     return "Allow click" if len(layout.allow_click_steps) == 1 else "Allow clicks"
 
 
@@ -4333,8 +4358,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         why_run += "; HOME is also under a temporary folder"
     agent = (att.header.get("Agent") if att is not None else None) or "not stated"
     out.append(
-        f"- prompt: {_prompt_version(att) or 'not stated'} · run: {ISSUE_RUN_TYPES[run_type]} (computed: "
-        f"{why_run}) · agent: {agent}"
+        f"- prompt: {_prompt_version(att) or 'not stated'}{_prompt_copy_note(att)} · run: "
+        f"{ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: {agent}"
     )
     if att is not None and att.header.get("Run"):
         out.append(f"- agent said run: {att.header['Run']}")
@@ -4384,7 +4409,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     elif r.facts.background:
         out.append("- background sync: " + " · ".join(r.facts.background))
     layout = att.layout if att is not None else prompt_layout(None)  # no friction log: the newest prompt
-    if layout.version < 7 or expand(IT_DRAFT).exists():  # v7 has no IT request step
+    if layout.version < 7 or expand(IT_DRAFT).exists():  # since v7 there is no IT request step
         out.append(_it_draft_line(4 if layout.version == 5 else REPORT_STEP))
     if r.facts.shadow:
         expected = " (expected in a sandbox)" if run_type != "real" else ""

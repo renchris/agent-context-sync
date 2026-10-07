@@ -5024,7 +5024,8 @@ K11b step 2 starts no launcher, so it asks for no Allow) are not logged, as in v
 `form_step` maps 1-3 onto the form's 1-3. `prompt_layout(version)` picks by explicit version (<= 5 -> v5, 6 ->
 v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still reads as v6. A v7 attempt's
 Summary, or one with no friction log (read as `PROMPT_VERSION`'s layout), has no IT draft line unless the draft
-exists (v7 has no IT request step). **Redaction.** `build_report`
+exists (v7 has no IT request step). **Amended (2026-10-07, §16.28 "Setup prompt v8"):** `PROMPT_VERSION` is 8,
+and the layout is the newest entry at or below the version, so v8 and later read as v7. **Redaction.** `build_report`
 has no `redact` argument: the report is always redacted.
 
 ```python
@@ -5037,7 +5038,7 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 7  # KISS K16b (was 6)
+PROMPT_VERSION = 8  # §16.28 (7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
@@ -5092,7 +5093,7 @@ class PromptLayout:
     install_step: int; report_step: int; logs_expected_turns: bool; logs_steps: bool
     form_step: dict[int, int]  # this version's step -> the PROMPT_STEPS step of the issue form
 PROMPT_LAYOUTS: dict[int, PromptLayout]  # 5, 6 and 7 (KISS K16b)
-def prompt_layout(version: int | None) -> PromptLayout: ...  # v5 for <= 5, v6, v7; not stated or newer: PROMPT_VERSION
+def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry at or below it (v5 for <= 5; v8+ as v7); not stated: the newest
 
 @dataclass(frozen=True, slots=True)
 class Friction:
@@ -5245,7 +5246,9 @@ last `Attempt:` has no such line, so a second `--report-only` adds none. The pre
 as a test seam and is left out of `--help`. The deleted options exit 2 as unknown options; the case arms are
 pinned by `tests/test_contracts.py::INSTALL_OPTIONS`.
 **CORRECTED (2026-10-05, K17 review):** the compat bump to 7 does not protect older prompts, because step 1's
-gate reads "setup-prompt-compat N or higher", so a saved v6 prompt runs against this installer. `--log-end` and
+gate reads "setup-prompt-compat N or higher", so a saved v6 prompt runs against this installer.
+(**Amended 2026-10-07, §16.28 "Setup prompt v8":** the installer now stops such a copy at step 1; its own text
+still ends at `--log-end && --report-only`, so the hidden arms stay.) `--log-end` and
 `--no-report` therefore stay as hidden arms, left out of `--help` and the guides (`INSTALL_HIDDEN`):
 `--log-end` (first argument, no other option) is the same idempotent close as `--report-only` and exits 0, so v6's
 `--log-end && --report-only` adds one end line and still writes the report; `--no-report` is ignored, so the old
@@ -5972,7 +5975,8 @@ runs no doctor check: the FAIL simply has no cause left when `status` next looks
   review them before sending." Sections 2 and 3 stay unredacted on purpose: redacting them would corrupt the
   patch and hide over-redaction bugs.
 
-**Setup prompt (still v7: wording only, nothing new for the installer to do).** Step 1 ends: if the agent
+**Setup prompt (still v7: wording only, nothing new for the installer to do; §16.28 "Setup prompt v8" ends
+that practice: the version now moves with every change of the text).** Step 1 ends: if the agent
 cannot ask (unattended, or the question comes back unanswered), it does not choose folders: it logs a
 deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps its sources, history and
 background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
@@ -7594,6 +7598,98 @@ SYNC_AGAIN = "sync again: "  # how the note starts while another sync reads more
 Tests: `tests/test_loop.py` (each row of the table from a stored record and run, the rule unchanged, two
 sources named), `tests/test_cycle.py` (six files against the re-read time; a PDF converted past the OCR time;
 pandoc missing for two cycles, then back; three images left for OCR are rule 3).
+
+#### Setup prompt v8 (amends §16.14 and §16.22; README, `scripts/install.sh`, `agentsync.setup_report`)
+
+Two things made a round of the bring-back worthless. A copy of the prompt saved before an edit was pasted
+again, twice, and nobody knew it was old. And the report was written while the re-read had only begun.
+v8 adds no command, flag, installer option, config key or environment variable.
+
+**A copy is known by its version.**
+
+- The version moves with every change of the prompt's text, a reworded sentence included (the rule in
+  `scripts/install.sh`'s header, "Setup prompt"). Until now it moved only when the prompt needed something
+  new from the installer, so §16.22 changed step 1 and step 2 and kept "v7", and an old v7 could not be told
+  from a new one. `tests/test_deploy_pack.py::PROMPT` holds the version and the SHA-256 of the block
+  together: a changed text with the old number fails.
+- Step 1 hands the version to the installer: `install.sh --log-start 'prompt v8, <agent>'`. The value was
+  the agent's tool and model id alone, and `--log-start` wrote its own `SETUP_PROMPT_COMPAT` as the attempt's
+  `Prompt:` line, so a v7 copy run by a v8 installer would have been logged as v8. `--log-start` now takes a
+  leading `prompt v<N>,` (1 to 3 digits) off the value. The `Prompt:` line is that N, and `Agent:` the rest.
+- When N is the installer's number, nothing else changes. When it is not, or the value names none, the
+  pasted copy is not the README's of this checkout. `--log-start` still writes the header, with `Prompt:
+  v<N>` or, for a value that names none, `Prompt: v7 or older` (v7 is the last prompt that named none:
+  `PROMPT_UNSTATED`); it appends `<UTC> | step 1 | error | install.sh --log-start: the pasted setup prompt is
+  <that> and this installer is for setup prompt v8: <why>; setup stopped | copy the prompt again from
+  README.md on the main branch of <repository URL>`; it prints one `error:` line with the same words, "Stop
+  here and run no other step of that prompt", and whom to tell what; and it exits 2. `<why>` is "the pasted
+  copy is not the current one" (older, or none named) or "this checkout is older than the prompt" (newer).
+  Step 1 is one `&&` chain, so it stops before `--list-folders`: no folder is listed and nothing is
+  installed.
+- The prompt checks from its side too: `install.sh --version` must end with exactly `setup-prompt-compat 8`
+  ("or higher" is gone), or the agent stops and tells the person to copy the prompt again from `README.md`
+  on the main branch. That is the half that catches a v8 copy on a Mac whose checkout is still v7: that
+  installer knows nothing of the version in the value and writes it into `Agent:`.
+- What a saved v7 copy did before this, against an installer whose number was only raised to 8: its own
+  check passed ("7 or higher"), `--log-start` exited 0 and logged `Prompt: v8`, and the whole old wording
+  ran. What it does now: exit 2 at `--log-start`, as above. Its text then says "log it and go to step 3's
+  report", so `install.sh --report-only` still runs (and a v6 copy's `--log-end && --report-only`, which is
+  why the hidden arms of §16.14 stay). When the log's last attempt holds `--log-start`'s error line and
+  nothing was logged after its end line (`friction_attempt_stopped`), that run's `NEXT:` says the report is
+  of an attempt an out-of-date copy started, not to bring it back, and to copy the prompt again. It goes by
+  the installer's own line, not by the `Prompt:` number: an attempt an earlier installer logged keeps the
+  usual `NEXT:`, and so does a later session whose step 1 failed before `--log-start` (its line follows the
+  stopped attempt's end line).
+
+```python
+# agentsync.setup_report
+PROMPT_VERSION = 8  # this build's prompt; scripts/install.sh's SETUP_PROMPT_COMPAT is the same number
+PROMPT_LAYOUTS: dict[int, PromptLayout]  # keys 5, 6, 7: each version that moved a step, by its first version
+def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry at or below version
+```
+
+- `prompt_layout` picks the newest entry of `PROMPT_LAYOUTS` at or below the version (v5's for 5 and
+  earlier; the newest when none is stated). A version now moves far more often than a step does, so v8 has
+  no entry and is read as v7, and so is every later version until one moves a step and adds its own. Every
+  rule written for v7 compares against the layout's version (`stopping_error`: any install run that ended 0
+  resolves an install-step error; `_summary`: no IT draft line; `allow_click_steps`: one announced Allow
+  click; `form_step`: steps 1 to 3 onto the form's 1 to 3), so a v8 attempt gets each of them. `PromptLayout.
+  version` is the first version with those steps, and `Outcome.version` is that number for a computed
+  outcome.
+- The Summary's prompt line names a copy that is not this build's: `- prompt: v7 (older than this
+  installer's v8: the pasted copy was not the current README) · run: ...`, `v7 or older (older than ...)`
+  when the header is those fixed words of the installer, and `v9 (newer than this installer's v8: this Mac's
+  checkout is older than the pasted copy)` the other way (`_prompt_copy_note`). A v5, v6 or v7 attempt is
+  judged as before, with its own steps, and the line now says its copy was older. The issue link's
+  `prompt_version` stays the attempt's own (`v7`); the form's placeholder is `v8`.
+
+**One round.** Step 3, after the loop and before the report: while a `note:` line of the last sync starts
+with "sync again:" (the note above), or its `NEXT:` line asks only for another sync, the agent runs the sync
+again, up to 12 more times, and runs nothing else for it (never `purge`, `accept-deletions` or `offboard`,
+and no command a `WAITING ON YOU:` line names). It names no new command: the sync is the loop's own, with
+its pre-allow rule.
+
+- The stop is the tool's: the note says "sync again" only while a sync reads more, so the agent counts
+  nothing but the cap.
+- The cap is the cycle's two budgets. One sync spends at most `_REREAD_BUDGET_S` (120 s) on re-reads and
+  `_OCR_BUDGET_S` (180 s) on OCR, plus the read that passes each, so 12 syncs are an hour of that work at
+  most, which the prompt says. 12 syncs re-read about 24 minutes' worth: a mirror of 1,300 files that all
+  need a re-read is finished inside the cap when a file takes 1.1 s or less on average, which holds for
+  documents with few pictures and not for a mirror of decks and scans (a picture or a scanned page is 2 to
+  6 s of OCR, §16.25). None of this was timed on a real mirror. A report written at the cap says `scan
+  finished: no`, and its per-run table shows how many files each sync read.
+
+Tests: `tests/test_deploy_pack.py` (the version in the first line, in step 1's check and in the value handed
+to `--log-start`, with "or higher" gone; the text against its version; the module's and the installer's
+number; a saved v7 copy's exact step 1 command under bash and zsh: exit 2, no folder listed, the one error
+line, the attempt logged as "v7 or older", and its report's `NEXT:`; step 3's sentence, the note's prefix
+and the cap against the two budgets), `tests/test_install_oneshot.py` (`--log-start` with no version, an
+older one, a newer one, one in another place and one of four digits; the value without its space; the report
+of a current attempt after stopped ones, of an attempt an earlier installer logged and of a later session
+with no header; a saved v6 copy's `--log-end && --report-only`),
+`tests/test_setup_report.py` (the layout of every version from 0 to 99; one log under `Prompt: v8` and
+`Prompt: v7`, the Summary equal line for line but for the prompt line, and the same computed outcome; a
+stopped copy's attempt as "v7 or older", "v7" and "v9", and free text after the installer's words not shown).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
 

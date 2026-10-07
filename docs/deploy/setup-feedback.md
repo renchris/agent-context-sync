@@ -13,7 +13,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log lines |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start '<agent>'` (`Attempt: <UTC time>`, `Prompt: v7`, `Agent: <tool and model id>`), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command) |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v8, <agent>'` (`Attempt: <UTC time>`, `Prompt: v8`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command) |
 
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
@@ -91,7 +91,7 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v7` (v6 and v5 attempts still report theirs) |
+| `prompt_version` | input | the prompt version, `v8` (an attempt an older copy started reports that copy's: `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
@@ -148,7 +148,7 @@ install.log (a `--list-folders` run is not an install run):
 - **Failed at step N**: the last install run did not exit 0 or has no end line (stopped early); then N is 2, the
   step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an error logged
   in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a `--list-folders` re-run
-  included; for step 2 an install run), with no later step logged before the report. In prompt v7, step 2 is the
+  included; for step 2 an install run), with no later step logged before the report. Since prompt v7, step 2 is the
   one install.sh command, so any install run of the attempt that ended 0 resolves a step 2 error, whenever the
   line was logged: a step 2 `error` line written after install.sh exited 0 is agent friction. If no install run
   happened, N is the step of the last `error` line, failing that the last step logged, and failing that 1 when
@@ -173,6 +173,8 @@ question in its step 2, its Allow clicks the first click in its steps 2 and 3, a
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
 1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
 three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
+A `Prompt: v8` attempt is judged by the same rules: v8 moved no step. So is every later version until one moves
+a step, since the version changes with every edit of the prompt's text (below) and the rules only with its steps.
 
 The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
 `Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
@@ -192,6 +194,27 @@ The run type is computed too:
 - **Real Mac**: neither of the above.
 
 The agent's own opinion is not asked for.
+
+### The prompt version
+
+The prompt's first line carries its version, and the version changes with every change of its text, a reworded
+sentence included. A saved copy is therefore always known by its number. Twice a copy saved before an edit was
+pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
+version, and the installer wrote its own number into the log.
+
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v8, <agent>'`. The
+  `Prompt:` line of the attempt is that version.
+- When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
+  with the version the copy gave (`v7 or older` for a copy from before v8, which gives none) and a `step 1 |
+  error` line, tells the agent to stop and to have the person copy the prompt again from `README.md` on the main
+  branch, and exits 2, so step 1's command stops before it lists the folders. A v8 or later copy checks the same
+  from its side: `install.sh --version` must end with exactly its own number.
+- An older copy's own text still goes on to its report. That report's Summary says
+  `prompt: v7 or older (older than this installer's v8: the pasted copy was not the current README)`, its outcome
+  is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
+  report back and to copy the prompt again. Triage such a report as `known K18`, not as a failed setup.
+- A copy newer than the installer (`newer than this installer's v8`) means the checkout on that Mac did not
+  update: look at step 1's `git pull` in the friction log.
 
 ### The evidence parts
 
@@ -223,6 +246,16 @@ report written right after the first sync says `scan finished: no` for a source 
 not a fault: the re-read table says how many files are left, and the per-run table how many each sync read.
 A report written once the table says `yes` for every source shows the finished state.
 
+Since prompt v8 the report is not written that early. While files are left, `sync` prints
+`note: sync again: N file(s) in <sources> are still to be read again, ...`, and step 3 runs the sync again while
+a note starts with `sync again:`, up to 12 more times, before it writes the report (12 syncs at both limits are
+an hour). The note says "sync again" only while a sync reads more. When the last sync read none of the files left
+(pandoc cannot run, the OCR helper stopped working, a folder is not listed), the note says another sync does not
+clear it, and the agent goes on to the report. So `scan finished: no` in a v8 report means one of two things:
+the 12 syncs were not enough (the per-run table shows a full re-read count in each), or something stops the
+re-read (the last runs read none). An image left for a later sync's OCR needs no note: it is a file not converted
+yet, and the loop's `NEXT:` line itself says to sync again until none is left.
+
 `scan finished` is `yes` or `no` only for a record the newest sync could have written: the sentence above the
 table names that run and says whether it had an engine. `not started` is a source whose record an earlier
 build or another engine left, which is how a source reads that no sync of this build has reached yet (paused,
@@ -235,7 +268,7 @@ Map **every friction line** whose kind counts (and every `approval` line), by it
 
 | Fix class | Signal in the report | Where the fix lands | Proof it stays fixed |
 |---|---|---|---|
-| **prompt wording** | the agent asked, guessed or did something unasked; "unclear, wrong or missing" lines | the README one-prompt block | `tests/test_deploy_pack.py` (the block's version and compat line, step 1's one command and its folder listing on fixtures, step 3's one command, the `--log` template under bash and zsh, every command and flag it names, the pre-allow rules) |
+| **prompt wording** | the agent asked, guessed or did something unasked; "unclear, wrong or missing" lines | the README one-prompt block, with its version bumped in the same commit (a test holds the text to its version) | `tests/test_deploy_pack.py` (the block's version and compat line, its text against its version, step 1's one command and its folder listing on fixtures, step 3's one command, the `--log` template under bash and zsh, every command and flag it names, the pre-allow rules) |
 | **installer automation** | a step the agent or person did by hand that a script could do; slow or failed install.log steps | `scripts/install.sh` | `tests/test_launcher.py` (stubbed runs, the setup log) |
 | **agentsync code** | a doctor `[FAIL]` without a working fix, a wrong status, an error in Recent errors | `src/agentsync/` | a unit or integration test that reproduces the report's lines |
 | **IT pack** | MDM, Conditional Access, proxy/TLS inspection, Command Line Tools blocked by policy | [it-request.md](it-request.md), [mdm/README.md](mdm/README.md), this folder | the page names the exact setting and who sets it |
@@ -291,6 +324,8 @@ named as "v5b review, its L<n>").
 | K15 | the `start` and `end` kinds could not be followed literally (step 5's `start` never had an `end`), and the Summary's event count did not add up (v5b review, its L9 and V2) | prompt wording | v6 has no step lines: install.log times the steps and the kinds are the six in section 4; `test_readme_friction_line_format_and_kinds` |
 | K16 | the setup ended at the install, and the loop (baseline questions, curation) lived in a second prompt that was never pasted on the field Mac (KISS K04) | prompt wording | v7 replaces both prompts: step 3 runs `agentsync sync` and follows its `NEXT:` line until the session is done or waits on the person, then the report; `test_readme_step3_runs_the_loop_then_the_report` |
 | K17 | no prompt said where the inbox was, what to drop in it or that emptying it erases pages, and on the field Mac the agent's own exporters read other apps' private stores and drove the browser, which raised clicks (field report N3, N9, N14, N16) | prompt wording | v7 step 2 names the inbox by its `sources.toml` entries, the formats and the label caveat, and says it is never emptied; the rules say agentsync never needs `~/Library/Containers`, Group Containers or the browser; `test_readme_prompt_carries_the_field_lines` |
+| K18 | a copy of the prompt saved before an edit was pasted again, twice, and nobody knew it was old: the edit had kept the version (still v7), the copy's check read "7 or higher", and the installer wrote its own number as the attempt's `Prompt:` line (field, 2026-10-06) | prompt wording and installer automation | since v8 the version moves with every change of the text, step 1 hands it to `install.sh --log-start`, which stops a copy that is not its own, and the report names the copy's version; `test_the_prompt_text_changes_only_with_its_version`, `test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1`, and `tests/test_install_oneshot.py` for each shape of the value |
+| K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs the sync again while it does, up to 12 more times, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
 
 ## 5. Unavoidable steps so far
 

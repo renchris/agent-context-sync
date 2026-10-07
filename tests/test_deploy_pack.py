@@ -4,6 +4,7 @@ item 7 asks for the manifest check; the rest keeps the pack an IT admin receives
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
@@ -364,19 +365,35 @@ STEP_TITLES = [
     "install and start",
     "sync loop and report",
 ]
-"""Setup prompt v7's three steps, by their opening words (setup_report.PROMPT_LAYOUTS[7] maps them onto the
-form's Failed-at options, which keep v6's four names)."""
+"""The three steps of setup prompt v7 and later, by their opening words (setup_report.PROMPT_LAYOUTS[7] maps
+them onto the form's Failed-at options, which keep v6's four names)."""
 
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+
+PROMPT = (8, "1313e7913982917a0a723a24ff3dd36cae926e1705564e40bd37d0f025792963")
+"""The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
+every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
+(scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
+"setup-prompt-compat N" numbers of step 1, SETUP_PROMPT_COMPAT in scripts/install.sh, PROMPT_VERSION in
+setup_report.py and the form's placeholder, and set both values here
+(``test_the_prompt_text_changes_only_with_its_version`` prints the new digest)."""
+
+START_AGENT = f"prompt v{PROMPT[0]}, <agent>"
+"""What step 1 hands to ``install.sh --log-start``: the prompt's own version, then the agent's tool and
+model id. The installer stops a copy whose version is not its own."""
 
 STEP1_COMMAND = (
     "sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then"
     " git -C ~/src/agent-context-sync pull --ff-only; else"
     " git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; }"
-    f" && {INSTALL_SH} --version && {INSTALL_SH} --log-start '<agent>' && {INSTALL_SH} --list-folders"
+    f" && {INSTALL_SH} --version && {INSTALL_SH} --log-start '{START_AGENT}' && {INSTALL_SH} --list-folders"
 )
-"""Setup prompt v6 and v7 step 1: preflight, clone or pull, the installer's compat line, the friction log's
-attempt header and the folder list, in one command (one tool call, v5b review L5)."""
+"""Step 1 since setup prompt v6: preflight, clone or pull, the installer's compat line, the friction log's
+attempt header and the folder list, in one command (one tool call, v5b review L5). Since v8 the header's
+value starts with the prompt's version."""
+
+V7_STEP1_COMMAND = STEP1_COMMAND.replace(START_AGENT, "<agent>")
+"""Step 1 as setup prompts v6 and v7 had it: ``--log-start`` names no version. A saved copy still runs it."""
 
 _CHECKOUT = "~/src/agent-context-sync"
 KEEP_LOCAL_WORK = (
@@ -423,34 +440,66 @@ def _report_step() -> int:
 
 
 def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None:
+    """The prompt says which version it is in its first line and again in step 1, where it requires the
+    installer's number to be exactly its own: a copy that is older than the installer must not be used, and
+    one that is newer than the checkout cannot work. Either way the person copies the prompt again from the
+    README on the main branch, where the two always match."""
     block = _one_prompt_block()
     assert block.startswith("Set up agentsync on this Mac (setup prompt v"), (
         "the version tag is in the first line"
     )
     version = _prompt_version()
-    assert version == 7, "update this pin together with the prompt's wording tests when the prompt changes"
+    assert version == PROMPT[0], (
+        "the prompt's version and PROMPT move together, with every change of its text"
+    )
     steps = _prompt_steps()
     assert len(steps) == len(STEP_TITLES) == 3
     for text, title in zip(steps.values(), STEP_TITLES, strict=True):
         assert text.lower().startswith(title), (title, text)
     step1 = steps[1]
-    [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', step1)
-    assert int(required) == version, "v7 needs the v7 installer (its loop NEXT)"
+    [required] = re.findall(r'does not end with "setup-prompt-compat (\d+)"', step1)
+    assert int(required) == version, "the installer's number is the prompt's own"
+    assert "or higher" not in block, "a newer installer means this copy is old: it is not a pass any more"
     assert 'If --version does not end with "setup-prompt-compat ' in step1, "the compat check reads --version"
+    assert (
+        f'If --version does not end with "setup-prompt-compat {version}", or the command says the pasted '
+        f"prompt is not the installer's, stop: this prompt is v{version}, and an older copy must not be "
+        "used. Tell me to copy the prompt again from README.md on the main branch of the Source above."
+    ) in step1
+    assert f"--log-start 'prompt v{version}, <agent>'" in step1, "the copy tells the installer its version"
     assert f"go to step {_report_step()}" in step1.split("--version does not end", 1)[1], (
         "a failed folder listing ends at the report"
     )
 
 
+def test_the_prompt_text_changes_only_with_its_version() -> None:
+    """Twice a saved copy of the prompt was pasted again without anyone knowing it was old: its wording had
+    changed on main while its version had not. The version now moves with every change of the text, and
+    this holds the two together: the block's digest is pinned beside its version."""
+    version, digest = PROMPT
+    block = _one_prompt_block()
+    found = hashlib.sha256(block.encode("utf-8")).hexdigest()
+    assert (_prompt_version(), found) == (version, digest), (
+        f"the setup prompt's text changed (its SHA-256 is now {found}): bump its version (see PROMPT) "
+        "and set both values of PROMPT"
+    )
+
+
 def test_readme_prompt_compat_matches_the_installer() -> None:
-    """The number the prompt requires is the one the installer in the same commit prints: a prompt that starts
-    using a newer installer feature without a bump fails here, not on a new Mac (judge finding I2)."""
-    [required] = re.findall(r'"setup-prompt-compat (\d+)" or higher', _prompt_steps()[1])
+    """The number the prompt requires is the one the installer in the same commit prints: a prompt whose
+    text changes without a bump fails above, and one bumped without the installer fails here, not on a new
+    Mac (judge finding I2). The report module and the issue form carry the same number."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    [required] = re.findall(r'does not end with "setup-prompt-compat (\d+)"', _prompt_steps()[1])
     compat = _installer_compat()
     assert compat is not None, "scripts/install.sh has no setup-prompt-compat constant"
     assert compat == int(required), (
         f"README requires setup-prompt-compat {required}, install.sh prints {compat}"
     )
+    assert compat == setup_report.PROMPT_VERSION, "setup_report.PROMPT_VERSION is the installer's number"
+    rule = _installer_help().split("# Setup prompt: SETUP_PROMPT_COMPAT", 1)[1].split("#\n", 1)[0]
+    assert "Bump both on ANY change to the prompt's text" in " ".join(rule.replace("#", " ").split())
 
 
 def test_readme_step1_is_one_command() -> None:
@@ -593,7 +642,7 @@ def test_readme_step1_command_clones_then_pulls(tmp_path: Path, shell: str) -> N
     calls = tmp_path / "calls.log"
     _fake_step1_tools(tmp_path / "bin", calls)
     env = tmp_home_env(home) | {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin"}
-    command = STEP1_COMMAND.replace("'<agent>'", "'Test Agent (model-1)'")
+    command = STEP1_COMMAND.replace("<agent>", "Test Agent (model-1)")
     for _ in range(2):
         proc = subprocess.run(
             [shell, "-c", command], cwd=home, env=env, capture_output=True, text=True, check=False, timeout=60
@@ -621,6 +670,63 @@ def test_readme_step1_command_clones_then_pulls(tmp_path: Path, shell: str) -> N
     for attempt in friction.attempts:
         assert attempt.header.get("Prompt") == f"v{_prompt_version()}"
         assert attempt.header.get("Agent") == "Test Agent (model-1)"
+
+
+@pytest.mark.parametrize("shell", _SHELLS)
+def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, shell: str) -> None:
+    """Twice a saved v7 copy was pasted again without anyone knowing it was old. Its own check passes (the
+    installer's number is "7 or higher"), so the installer is what stops it. ``--log-start``, which a copy
+    from before v8 hands no version, logs the attempt as "v7 or older", says to stop and to copy the prompt
+    again from the README on the main branch, and exits 2: the command never lists the folders. That copy's
+    own text then goes to its report, whose NEXT line says the same, and not to bring the file back."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    projects = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    projects.mkdir(parents=True)
+    _fake_step1_tools(tmp_path / "bin", tmp_path / "calls.log")
+    env = tmp_home_env(home) | {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin"}
+    command = V7_STEP1_COMMAND.replace("<agent>", "Test Agent (model-1)")
+    assert "prompt v" not in command
+    proc = subprocess.run(
+        [shell, "-c", command], cwd=home, env=env, capture_output=True, text=True, check=False, timeout=60
+    )
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert f"setup-prompt-compat {PROMPT[0]}" in proc.stdout.splitlines(), (
+        "7 or higher: the copy's check passes"
+    )
+    assert str(projects) not in proc.stdout, "the command stopped before --list-folders"
+    source = "README.md on the main branch of https://github.com/renchris/agent-context-sync"
+    assert " ".join(proc.stderr.split()) == (
+        f"error: the pasted setup prompt is v7 or older and this installer is for setup prompt v{PROMPT[0]}: "
+        "the pasted copy is not the current one. Stop here and run no other step of that prompt. Tell the "
+        f'person to copy the prompt again from {source} ("Set up on a new Mac: one prompt") and paste it '
+        f'into a new session. (The current prompt starts the --log-start value with "prompt v{PROMPT[0]}, ".)'
+    )
+    [attempt] = setup_report.parse_friction((home / FRICTION_LOG).read_text(encoding="utf-8")).attempts
+    assert attempt.header == {"Prompt": "v7 or older", "Agent": "Test Agent (model-1)"}
+    assert attempt.version == 7
+    [event] = attempt.events
+    assert (event.step, event.kind, event.fix) == (1, "error", f"copy the prompt again from {source}")
+    assert event.what == (
+        f"install.sh --log-start: the pasted setup prompt is v7 or older and this installer is for setup "
+        f"prompt v{PROMPT[0]}: the pasted copy is not the current one; setup stopped"
+    )
+    report = subprocess.run(
+        [shell, "-c", REPORT_COMMAND],
+        cwd=home,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert report.returncode == 0, report.stdout + report.stderr
+    last = report.stdout.rstrip().splitlines()[-1]
+    assert last.startswith(
+        "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started, so do "
+        f"not bring it back: copy the prompt again from {source} "
+    ), report.stdout
 
 
 def _intro() -> str:
@@ -824,6 +930,35 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert section.count("```text\n") == 1 and "Next, on the same Mac" not in readme, "no second prompt"
 
 
+def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> None:
+    """A bring-back file written right after the first sync on an upgraded Mac showed a re-read that had
+    only begun, and the next question took another round. Step 3 now keeps syncing before the report, and
+    leans on sync's own line for when to stop: the note that starts ``loop.SYNC_AGAIN``, which the tool
+    prints only while another sync reads more (tests/test_loop.py). The cap is the cycle's two budgets: 12
+    syncs at 2 minutes of re-reads and 3 of OCR are the hour the prompt names. It runs nothing else: no
+    purge, no command a WAITING line names."""
+    from agentsync import cycle, loop  # noqa: PLC0415
+
+    step3 = _prompt_steps()[3]
+    said = (
+        'Then make one report enough: while a note: line of the last sync starts with "sync again:" (files '
+        "are still being read again; the note counts them), or its NEXT: line asks only for another sync, "
+        "run the sync again, up to 12 more times (about an hour at most). Run nothing else for this: never "
+        "purge, accept-deletions or offboard, and no command a WAITING ON YOU: line names."
+    )
+    assert said in step3
+    assert f'"{loop.SYNC_AGAIN.strip()}"' in said and loop.NOTE_PREFIX.strip() in said
+    assert 12 * (cycle._REREAD_BUDGET_S + cycle._OCR_BUDGET_S) == 3600, "12 syncs at both budgets: an hour"
+    order = [
+        'Repeat until the NEXT: line itself says "session done".',
+        "Then make one report enough",
+        'add a "## Not used" section',
+        "Then the report, always",
+    ]
+    assert [step3.index(part) for part in order] == sorted(step3.index(part) for part in order)
+    assert _commands(said) == [], "it names no new command: the sync it repeats is the loop's own"
+
+
 def test_readme_report_step_after_any_failure() -> None:
     """Every failure path goes to step 3's report, which runs even after a failure, before the code exists (it
     says what to tell the person then), and ends the prompt."""
@@ -922,7 +1057,7 @@ def _checkout_home(tmp_path: Path) -> Path:
     return home
 
 
-STEP1_START_ONLY = f"{INSTALL_SH} --log-start 'Test Agent (model-1)'"
+STEP1_START_ONLY = f"{INSTALL_SH} --log-start '{START_AGENT}'".replace("<agent>", "Test Agent (model-1)")
 """Step 1's --log-start part alone, filled in (the rest of step 1 is tested above)."""
 
 
@@ -1239,7 +1374,7 @@ def test_split_top_follows_the_documented_separators() -> None:
         "git -C ~/src/agent-context-sync pull --ff-only",
         "git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync",
         f"{INSTALL_SH} --version",
-        f"{INSTALL_SH} --log-start '<agent>'",
+        f"{INSTALL_SH} --log-start '{START_AGENT}'",
         f"{INSTALL_SH} --list-folders",
     ]
     assert _subcommands(REPORT_COMMAND) == [f"{INSTALL_SH} --report-only"]
@@ -1282,7 +1417,7 @@ def test_readme_pre_allow_rules_cover_every_command() -> None:
     assert not any(r.startswith(("git:*", "git *")) or r in ("*", "git") for r in copilot), copilot
     filled = _fill_line(2, "deviation", "ran `ls` and $(pwd); then | a pipe", "don\u2019t && stop")
     subs = [s for c in [*_agent_commands(), filled] for s in _subcommands(c)]
-    assert f"{INSTALL_SH} --log-start '<agent>'" in subs and filled in subs
+    assert f"{INSTALL_SH} --log-start '{START_AGENT}'" in subs and filled in subs
     uncovered: list[str] = []
     for sub in subs:
         if not any(_claude_code_rule_matches(r, sub) for r in claude):
@@ -1427,7 +1562,11 @@ def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
     assert titles == setup_report.PROMPT_STEPS, "the form's options are the v6 steps the module names"
     steps = _prompt_steps()
     layout = setup_report.prompt_layout(_prompt_version())
-    assert layout.version == _prompt_version() and list(layout.steps) == list(steps)
+    assert _prompt_version() == setup_report.PROMPT_VERSION, "the module's prompt is the README's"
+    assert layout is setup_report.PROMPT_LAYOUTS[max(setup_report.PROMPT_LAYOUTS)], (
+        "the README's prompt is read with the newest layout: a version that moves a step adds an entry"
+    )
+    assert list(layout.steps) == list(steps)
     for n, text in steps.items():
         assert text.lower().startswith(layout.steps[n].lower()), (n, layout.steps[n], text)
         assert layout.form_step[n] in titles, f"README step {n} maps to no form option"

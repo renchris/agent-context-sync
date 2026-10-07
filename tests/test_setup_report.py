@@ -378,6 +378,12 @@ V5_HAPPY = (
 """Setup prompt v5 run through as its README block asks: one Attempt header, start/end per step, the folder
 question, the two Allow clicks, the closing line. With install.log's rc 0 this is fully one command."""
 
+OLDER_COPY = (
+    f"(older than this installer's v{setup_report.PROMPT_VERSION}: "
+    "the pasted copy was not the current README)"
+)
+"""What the Summary's prompt line adds for an attempt whose prompt is older than this build's."""
+
 
 def write_friction(fake_mac: dict[str, Path], text: str = V5_HAPPY, path: Path | None = None) -> Path:
     target = path or fake_mac["setup"] / "friction.md"
@@ -440,7 +446,8 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert "agent said" not in summary, "no Outcome: line, so nothing the agent said"
     assert "- attempt:" not in summary, "one attempt: no attempt line"
     assert (
-        "- prompt: v5 · run: Sandbox with simulated launchd (computed: install.log says launchd=simulated; "
+        f"- prompt: v5 {OLDER_COPY} · run: Sandbox with simulated launchd (computed: install.log says "
+        "launchd=simulated; "
         "HOME is also under a temporary folder) · agent: Claude Code, claude-opus-5-5" in summary
     ), "the issue form's run-type label (K10)"
     assert "WARNING" not in summary, "the attempt has its end | finished line"
@@ -1791,7 +1798,7 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert summary.strip().splitlines()[0] == (
         "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
     )
-    assert "- prompt: v6 · run: Sandbox with simulated launchd" in summary
+    assert f"- prompt: v6 {OLDER_COPY} · run: Sandbox with simulated launchd" in summary
     assert "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)" in summary, (
         "the folder question is a turn although v6 does not log it (L9)"
     )
@@ -1824,15 +1831,135 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
 V7_HAPPY = V6_HAPPY.replace("Prompt: v6", "Prompt: v7")
 """Setup prompt v7 run through with nothing to log (KISS K04/K16b): the same header and closing line as v6."""
 
+V8_HAPPY = V7_HAPPY.replace("Prompt: v7", "Prompt: v8")
+"""Setup prompt v8, this build's: v7's three steps and rules. Its ``Prompt:`` line is the version the pasted
+copy gave ``install.sh --log-start``, so a saved v7 copy still reads ``v7`` (or ``v7 or older``)."""
+
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
-    """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7; no version (or a newer one) as the newest."""
-    assert [setup_report.prompt_layout(v).version for v in (4, 5, 6, 7, None, 99)] == [5, 5, 6, 7, 7, 7]
+    """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
+    prompt's text and a layout only when a step moves, so v8 and every later version are read with the
+    newest layout at or below them, as an attempt that states no version is."""
+    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, None, 99)]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7]
+    assert setup_report.PROMPT_VERSION == 8 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+    assert setup_report.prompt_layout(8) is setup_report.PROMPT_LAYOUTS[7], "v8 moved no step"
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    label = setup_report.Outcome("failed", 3, (), 7).form_label
-    assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
+    for version in (7, 8):
+        label = setup_report.Outcome("failed", 3, (), version).form_label
+        assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
+    assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
+
+
+V8_BUSY_LINES = (
+    "2026-09-29T09:58:30Z | step 1 | question | asked which terminal app this is | say it\n"
+    "2026-09-29T10:00:20Z | step 2 | click | clicked Allow on a Keychain prompt | -\n"
+    "2026-09-29T10:01:00Z | step 2 | prompt | the prompt does not say what a second run prints | say it\n"
+    "2026-09-29T10:01:00Z | step 2 | error | Exit 0, no failure: the link shows a placeholder | -\n"
+    "2026-09-29T10:01:00Z | step 3 | deviation | wrote the questions in three parts | -\n"
+)
+"""Lines that meet each rule keyed on the prompt version: a question and a click beyond the expected turns,
+and a step 2 error logged after install.sh exited 0, which is agent friction since v7 and stopped a v6 run."""
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_v8_attempt_is_judged_like_v7_and_a_v7_one_says_its_copy_was_older(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """The same log under ``Prompt: v8`` and ``Prompt: v7``: the outcome, the turns, the expected turns, the
+    agent friction, the times and the missing IT line are the same, line for line. Only the Summary's
+    prompt line differs: a v7 attempt reported by this build was started by a copy of the prompt that is
+    not the README's, and the line says so. The issue link carries each attempt's own version."""
+    v6_install_log(fake_mac, simulated=False, agent="seconds=2 rc=0 result=done")
+    busy = _insert_before("2026-09-29T10:01:10Z | end", V8_BUSY_LINES, V7_HAPPY)
+    summaries: dict[int, list[str]] = {}
+    links: dict[int, dict[str, list[str]]] = {}
+    for version in (7, 8):
+        friction = busy.replace("Prompt: v7", f"Prompt: v{version}")
+        write_friction(fake_mac, friction)
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        assert rc == 0
+        body = section(text, "Summary").split(setup_report.RUN_METADATA_HEADING, 1)[0]
+        summaries[version] = body.strip().splitlines()
+        links[version] = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+        [attempt] = setup_report.parse_friction(friction).attempts
+        assert attempt.version == version and attempt.layout is setup_report.PROMPT_LAYOUTS[7]
+        runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+        assert setup_report.stopping_error(attempt, runs) is None, "an install run that ended 0 resolves it"
+        assert setup_report.compute_outcome(attempt, runs) == setup_report.Outcome(
+            "worked with help",
+            None,
+            (
+                "install.sh exit 0",
+                "1 question(s) beyond the folder question",
+                "1 click(s) beyond the Allow clicks",
+            ),
+            7,
+        )
+
+    def prompt_line(version: int) -> str:
+        [line] = [ln for ln in summaries[version] if ln.startswith("- prompt: ")]
+        return line
+
+    assert prompt_line(8).startswith("- prompt: v8 · run: "), "this build's prompt: nothing to add"
+    assert prompt_line(7) == prompt_line(8).replace("- prompt: v8 · ", f"- prompt: v7 {OLDER_COPY} · ")
+    assert "older than" not in prompt_line(8) and "installer" not in prompt_line(8)
+    same = [[ln for ln in summaries[v] if not ln.startswith("- prompt: ")] for v in (7, 8)]
+    assert same[0] == same[1] and len(same[0]) > 10
+    said = "\n".join(same[1])
+    assert "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond" in said
+    assert "- expected turns: the folder question (step 1; not logged) · " in said
+    assert "- agent friction: 1 deviation, 1 prompt, 1 error (F6, F7, F8); none of these changes" in said
+    assert "IT draft" not in said, "since v7 there is no IT request step"
+    assert links[8]["prompt_version"] == ["v8"] and links[7]["prompt_version"] == ["v7"]
+    assert {k: v for k, v in links[7].items() if k not in ("prompt_version", "title")} == {
+        k: v for k, v in links[8].items() if k not in ("prompt_version", "title")
+    }
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """``install.sh --log-start`` stops a copy of the prompt that is not its own, and logs the attempt with
+    the version that copy gave: "v7 or older" for a copy from before v8, which names none. The report of
+    that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
+    prompt line says the copy was older than the installer's. A copy newer than the installer reads the
+    other way round. Only the installer's fixed words of the Prompt: line are shown."""
+    what = (
+        "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt v8"
+    )
+    (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
+    for header, shown, why in (
+        ("v7 or older", f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
+        ("v7", f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
+        ("v7 or older, said Fabrikam", f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
+        (
+            "v9",
+            "v9 (newer than this installer's v8: this Mac's checkout is older than the pasted copy)",
+            "this checkout is older than the prompt",
+        ),
+    ):
+        write_friction(
+            fake_mac,
+            f"Attempt: 2026-09-29T09:58:00Z\nPrompt: {header}\nAgent: Claude Code, claude-opus-5-5\n"
+            f"2026-09-29T09:58:00Z | step 1 | error | {what.format(said=header)}: {why}; setup stopped | "
+            "copy the prompt again from README.md on the main branch\n"
+            "2026-09-29T09:58:40Z | end | finished\n",
+        )
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        [line] = [ln for ln in summary.splitlines() if ln.startswith("- prompt: ")]
+        assert rc == 0 and line.startswith(f"- prompt: {shown} · run: "), line
+        assert "Fabrikam" not in line, "the line's own words are free text: only the version is shown"
+        assert summary.strip().splitlines()[0] == (
+            "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
+        )
+        link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+        assert link["outcome"] == ["Failed at step 1 (preflight)"]
+        assert link["prompt_version"] == [shown.split(" ", 1)[0]]
 
 
 def test_loop_stage_and_next_text() -> None:
@@ -1878,7 +2005,7 @@ def test_v7_sync_only_reads_synced_and_draft_the_baseline_questions(
     [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
     assert loop.startswith("- Loop: synced; NEXT: draft the baseline questions"), loop
     assert "~/" not in loop and "/Users/" not in loop and "`agentsync sync`" in loop
-    assert "- prompt: v7 · " in summary
+    assert f"- prompt: v7 {OLDER_COPY} · " in summary, "a v7 attempt is still judged; its copy was older"
     assert "IT draft" not in summary, "v7 has no IT request step"
     assert "NEXT:" not in section(text, "Status")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
@@ -2138,7 +2265,7 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     assert setup_report.stopping_error(attempt, ()) is None
     text, summary = summary_of(fake_mac)
     assert "1 attempt(s):" in section(text, "Agent friction log") and "- attempt:" not in summary
-    assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
+    assert "**outcome: failed" not in summary and f"- prompt: v7 {OLDER_COPY} · " in summary
     assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
 
 

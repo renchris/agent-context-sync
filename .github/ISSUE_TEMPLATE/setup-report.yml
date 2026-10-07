@@ -25,8 +25,8 @@ body:
       description: >-
         The Summary's computed outcome (setup-report works it out from the installer, doctor, first sync, background
         run and friction log; setup-feedback.md defines each value). Steps are numbered as in the README's
-        one-prompt block (setup prompt v6: four steps; v7: three, numbered as v6's first three, so the option
-        names stay v6's). "Fully one command" means no human turn beyond the
+        one-prompt block (setup prompt v6: four steps; v7 and later: three, numbered as v6's first three, so the
+        option names stay v6's). "Fully one command" means no human turn beyond the
         unavoidable steps listed there; the agent's own friction (deviation and prompt lines) is counted on the
         Summary's "agent friction" line and does not change the outcome.
       options:
@@ -58,7 +58,7 @@ body:
     attributes:
       label: Prompt version
       description: The Summary's prompt version, the vN in the prompt's first line ("setup prompt vN").
-      placeholder: "v7"
+      placeholder: "v8"
     validations:
       required: true
   - type: input

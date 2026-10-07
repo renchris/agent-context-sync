@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v7) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v8) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -39,6 +39,19 @@ ACTION = (
     "ACTION: macOS is asking whether agentsync-launcher may access files managed by OneDrive. Click Allow."
 )
 LOOP_NEXT = "draft the baseline questions (stub)"  # the stub status's NEXT, which install.sh lifts (KISS K02)
+COMPAT = int(
+    re.findall(r"^SETUP_PROMPT_COMPAT=(\d+) ", INSTALL_SH.read_text(encoding="utf-8"), re.MULTILINE)[0]
+)
+"""The installer's setup prompt version, which the README prompt and ``setup_report.PROMPT_VERSION`` equal
+(``test_readme_prompt_version_matches_the_installer_constant``, tests/test_deploy_pack.py)."""
+PROMPT_SOURCE = "README.md on the main branch of https://github.com/renchris/agent-context-sync"
+
+
+def started(agent: str) -> str:
+    """``--log-start``'s value as the README prompt writes it: its own version, then the tool and model."""
+    return f"prompt v{COMPAT}, {agent}"
+
+
 TCC_CLICK = "turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders"
 
 STUB_UV = """#!/bin/bash
@@ -278,11 +291,11 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
-    """README step 1: "If --version does not end with "setup-prompt-compat 7" or higher ..."."""
+    """README step 1: "If --version does not end with "setup-prompt-compat 8", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 7"
+    assert lines[-1] == "setup-prompt-compat 8" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -301,7 +314,8 @@ def test_readme_prompt_version_matches_the_installer_constant() -> None:
     block = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
     assert re.findall(r"setup prompt v(\d+)", block) == [n]
     assert f'"setup-prompt-compat {n}"' in block and "install.sh --version" in block
-    assert "install.sh --log-start '<agent>'" in block and "install.sh --report-only" in block
+    assert f"install.sh --log-start 'prompt v{n}, <agent>'" in block, "the copy names its version"
+    assert "install.sh --report-only" in block
     assert "--log-end" not in block, "KISS K17: --report-only closes the attempt"
     assert "install.sh --log '<step>' '<kind>'" in block, "the prompt logs through the installer (L4)"
     assert '"Prompt: v$SETUP_PROMPT_COMPAT"' in script, "--log-start writes the same version"
@@ -336,7 +350,8 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
     assert sum(line.startswith("NEXT:") for line in cp.stdout.splitlines()) == 1
     assert report_path(env).read_text().startswith("# agentsync setup report")
     log = install_log(env)
-    assert "start install.sh compat=7 commit=- kind=wheel" in log[0] and "launchd=simulated" not in log[0]
+    assert f"start install.sh compat={COMPAT} commit=- kind=wheel" in log[0]
+    assert "launchd=simulated" not in log[0]
     assert steps(log) == [
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
@@ -837,7 +852,7 @@ def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> 
     setup.mkdir(parents=True)
     said = 'set exclude = ["~$*", "/Fabrikam Bids/", "/Plans/Tailspin [[]old]/"] in [[source]] id = \'one\''
     (setup / "friction.md").write_text(
-        "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7\nAgent: x\n"
+        f"Attempt: 2026-09-29T09:58:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
         f"2026-09-29T10:00:00Z | step 2 | deviation | status said: {said} in sources.toml | -\n"
         '2026-09-29T10:00:01Z | step 2 | deviation | and then: set exclude = ["~$*", "/Fabrikam Bi\n',
         encoding="utf-8",
@@ -1036,7 +1051,7 @@ def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -
     assert calls(env) == [], "no uv, agentsync or launchctl: names only"
     assert not report_path(env).exists(), "no report for --list-folders"
     log = install_log(env)
-    assert " start install.sh compat=7 " in log[0] and log[0].endswith(" args=--list-folders")
+    assert f" start install.sh compat={COMPAT} " in log[0] and log[0].endswith(" args=--list-folders")
     assert steps(log) == [("list-folders", "done", "0", "listed-4")]
     assert re.search(r" end rc=0 seconds=\d+$", log[-1])
 
@@ -1430,7 +1445,7 @@ def friction_path(env: dict[str, str]) -> Path:
 
 def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str]) -> None:
     """KISS K17: --report-only, not a separate --log-end, appends the attempt's end line."""
-    start = install_sh(env, "--log-start", "Claude Code, claude-opus-5-5")
+    start = install_sh(env, "--log-start", started("Claude Code, claude-opus-5-5"))
     assert start.returncode == 0, start.stderr
     assert start.stdout == f"friction log: attempt started in {friction_path(env)}\n"
     one = install_sh(env, "--log", "1", "question", "asked which terminal app", "-")
@@ -1444,13 +1459,15 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     lines = friction_path(env).read_text().splitlines()
     t = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
     assert re.fullmatch(rf"Attempt: {t}", lines[0])
-    assert lines[1:3] == ["Prompt: v7", "Agent: Claude Code, claude-opus-5-5"]
+    assert lines[1:3] == ["Prompt: v8", "Agent: Claude Code, claude-opus-5-5"], (
+        "the version is not the agent's"
+    )
     assert re.fullmatch(rf"{t} \| step 1 \| question \| asked which terminal app \| -", lines[3])
     assert re.fullmatch(rf"{t} \| step 2 \| error \| install.sh exited 3 \| a longer wait", lines[4])
     assert re.fullmatch(rf"{t} \| end \| finished", lines[5]) and len(lines) == 6
     parsed = setup_report.parse_friction(friction_path(env).read_text())
     (attempt,) = parsed.attempts
-    assert attempt.header["Prompt"] == "v7" and attempt.version == 7 and attempt.finished
+    assert attempt.header["Prompt"] == "v8" and attempt.version == 8 and attempt.finished
     assert [(e.step, e.kind, e.what, e.fix) for e in attempt.events] == [
         (1, "question", "asked which terminal app", ""),
         (2, "error", "install.sh exited 3", "a longer wait"),
@@ -1458,8 +1475,84 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     ]
 
 
+def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: dict[str, str]) -> None:
+    """The README prompt hands ``--log-start`` its own version. A copy whose version is not the installer's
+    is not the README's of this checkout: older (a saved copy; one from before v8 names no version) or newer
+    (the checkout did not update). Either is logged with the version it gave and a step 1 error line, told
+    to stop and to copy the prompt again from the README on the main branch, and exits 2, which stops step
+    1's command. The same value in another shape is a copy that names no version."""
+    older, newer = COMPAT - 1, COMPAT + 1
+    cases = [
+        (
+            "Claude Code, claude-opus-5-5",
+            "v7 or older",
+            "Claude Code, claude-opus-5-5",
+            "the pasted copy is not",
+        ),
+        (
+            f"prompt v{older}, Copilot CLI",
+            f"v{older}",
+            "Copilot CLI",
+            "the pasted copy is not the current one",
+        ),
+        (
+            f"prompt v{newer}, Copilot CLI",
+            f"v{newer}",
+            "Copilot CLI",
+            "this checkout is older than the prompt",
+        ),
+        (f"Copilot CLI (prompt v{COMPAT})", "v7 or older", f"Copilot CLI (prompt v{COMPAT})", "is not"),
+        ("prompt v1234, x", "v7 or older", "prompt v1234, x", "the pasted copy is not the current one"),
+    ]
+    for value, said, agent, why in cases:
+        cp = install_sh(env, "--log-start", value)
+        assert cp.returncode == 2 and cp.stdout == "", (value, cp.stdout, cp.stderr)
+        assert cp.stderr.startswith(
+            f"error: the pasted setup prompt is {said} and this installer is for setup prompt v{COMPAT}: "
+        ), cp.stderr
+        assert why in cp.stderr and cp.stderr.count("\n") == 1, "one line"
+        assert (
+            f"Stop here and run no other step of that prompt. Tell the person to copy the prompt again from "
+            f'{PROMPT_SOURCE} ("Set up on a new Mac: one prompt") and paste it into a new session.'
+        ) in cp.stderr
+        attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
+        assert attempt.header == {"Prompt": said, "Agent": agent}
+        [event] = attempt.events
+        assert (event.step, event.kind) == (1, "error") and why in event.what
+        assert event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
+    assert len(setup_report.parse_friction(friction_path(env).read_text()).attempts) == len(cases)
+    ok = install_sh(env, "--log-start", f"prompt v{COMPAT},Copilot CLI")
+    assert ok.returncode == 0 and ok.stderr == "", "the space after the comma is not required"
+    newest = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
+    assert newest.header == {"Prompt": f"v{COMPAT}", "Agent": "Copilot CLI"} and not newest.events
+    assert sorted(p.name for p in friction_path(env).parent.iterdir()) == ["friction.md"]
+    reported = install_sh(env, "--report-only")
+    assert reported.returncode == 0 and last_line(reported).startswith("NEXT: review "), (
+        "the newest attempt is the current prompt's: its report is the one to bring back"
+    )
+
+
+def test_report_only_says_copy_again_only_for_an_attempt_log_start_stopped(env: dict[str, str]) -> None:
+    """The NEXT of ``--report-only`` says "copy the prompt again" for the attempt ``--log-start`` stopped, by
+    that attempt's own error line. An attempt an earlier installer logged (its ``Prompt:`` line is older, and
+    nothing stopped it) keeps the usual NEXT, and so does a later session whose step 1 failed before
+    ``--log-start``: its error line follows the stopped attempt's end line and is not that attempt's."""
+    log = friction_path(env)
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        "Attempt: 2026-10-06T16:42:00Z\nPrompt: v7\nAgent: x\n2026-10-06T17:10:00Z | end | finished\n"
+    )
+    assert last_line(install_sh(env, "--report-only")).startswith("NEXT: review "), "nothing stopped it"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stopped = "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started"
+    assert last_line(install_sh(env, "--report-only")).startswith(stopped)
+    assert last_line(install_sh(env, "--report-only")).startswith(stopped), "the same on a second run"
+    assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
+    assert last_line(install_sh(env, "--report-only")).startswith("NEXT: review "), "another session's line"
+
+
 def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
-    for argv in (["--log-start", "Copilot CLI"], ["--log", "1", "click", "x", "-"]):
+    for argv in (["--log-start", started("Copilot CLI")], ["--log", "1", "click", "x", "-"]):
         assert install_sh(env, *argv).returncode == 0
     setup = friction_path(env).parent
     assert sorted(p.name for p in setup.iterdir()) == ["friction.md"], "no install.log, no install.out"
@@ -1469,7 +1562,7 @@ def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
 
 
 def test_friction_options_are_fast(env: dict[str, str]) -> None:
-    for argv in (["--log-start", "a"], ["--log", "2", "approval", "x", "-"]):
+    for argv in (["--log-start", started("a")], ["--log", "2", "approval", "x", "-"]):
         best = min(_timed(env, argv) for _ in range(3))
         assert best < 0.2, f"{argv[0]} took {best:.3f}s"
 
@@ -1551,7 +1644,7 @@ def test_friction_log_path_follows_the_env_and_appends(env: dict[str, str], tmp_
     f.parent.chmod(0o755)
     f.write_text("earlier line without a newline")
     e = {**env, "AGENTSYNC_FRICTION_LOG": str(f), "AGENTSYNC_SETUP_REPORT": str(tmp_path / "report.md")}
-    assert install_sh(e, "--log-start", "a").returncode == 0
+    assert install_sh(e, "--log-start", started("a")).returncode == 0
     assert install_sh(e, "--report-only").returncode == 0
     lines = f.read_text().splitlines()
     assert lines[0] == "earlier line without a newline" and lines[1].startswith("Attempt: ")
@@ -1567,12 +1660,12 @@ def test_report_only_closes_the_current_attempt_once(env: dict[str, str]) -> Non
     f = friction_path(env)
     assert install_sh(env, "--report-only").returncode == 0
     assert not f.exists(), "no friction log, no attempt to close"
-    assert install_sh(env, "--log-start", "a").returncode == 0
+    assert install_sh(env, "--log-start", started("a")).returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     again = install_sh(env, "--report-only")
     assert again.returncode == 0 and "friction log:" not in again.stdout
     assert [ln.split(" | ", 1)[-1] for ln in f.read_text().splitlines()][3:] == ["end | finished"]
-    assert install_sh(env, "--log-start", "b").returncode == 0
+    assert install_sh(env, "--log-start", started("b")).returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     attempts = setup_report.parse_friction(f.read_text()).attempts
     assert [a.finished for a in attempts] == [True, True]
@@ -1593,7 +1686,7 @@ def test_a_dry_run_writes_no_friction_line(env: dict[str, str]) -> None:
 
 def test_a_dry_run_report_only_leaves_the_attempt_open(env: dict[str, str]) -> None:
     """K17 review: the dry run of --report-only neither closes the attempt nor writes the report."""
-    assert install_sh(env, "--log-start", "a").returncode == 0
+    assert install_sh(env, "--log-start", started("a")).returncode == 0
     before = friction_path(env).read_bytes()
     cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--report-only")
     assert cp.returncode == 0, cp.stderr
@@ -1604,12 +1697,20 @@ def test_a_dry_run_report_only_leaves_the_attempt_open(env: dict[str, str]) -> N
 
 
 def test_a_saved_v6_prompt_still_closes_and_reports(env: dict[str, str]) -> None:
-    """K17 review: a saved v6 prompt passes the "6 or higher" gate against compat 7, so its step 3
-    (``--log-end && --report-only``) still works: the hidden --log-end closes the attempt once and exits 0."""
-    assert install_sh(env, "--log-start", "a").returncode == 0
+    """K17 review: a saved v6 prompt passes its own "6 or higher" gate. Since v8 the installer stops it at
+    step 1 (its ``--log-start`` names no version), and its text then goes to its step 3, ``--log-end &&
+    --report-only``, which still works: the hidden --log-end closes the attempt once and exits 0, and the
+    report's NEXT says to copy the prompt again instead of bringing that report back."""
+    assert install_sh(env, "--log-start", "a").returncode == 2
     end = install_sh(env, "--log-end")
     assert end.returncode == 0 and end.stdout == f"friction log: attempt finished in {friction_path(env)}\n"
-    assert install_sh(env, "--report-only").returncode == 0
+    reported = install_sh(env, "--report-only")
+    assert reported.returncode == 0
+    assert last_line(reported).startswith(
+        "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started, so do not "
+        f'bring it back: copy the prompt again from {PROMPT_SOURCE} ("Set up on a new Mac: one prompt"; this '
+        f"installer is for setup prompt v{COMPAT}) and paste it into a new session [setup report: "
+    )
     assert sum(ln.endswith(" | end | finished") for ln in friction_path(env).read_text().splitlines()) == 1
     assert report_path(env).is_file()
 
