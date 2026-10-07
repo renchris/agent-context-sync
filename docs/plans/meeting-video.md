@@ -120,22 +120,48 @@ Unchanged since then: `convert/`, `curate.py`, `cli.py`, `publish.py`, `lints.py
 line 1000, +105 to +116 past line 1800), `loop.py` (+12, then +75 to +85), `manifest.py` (+20), `CONTRACTS.md` (+8,
 then +9), `setup_report.py` (+1,466), `scripts/install.sh` (+21). Re-check each target with `grep -n` before editing.
 
-### H — Acceptance harness (upcoming)
+### H — Acceptance harness (done, 2026-10-07)
 
-Ships the checks before the code they check (spec section 10, row H).
+Shipped the checks before the code they check (spec section 10, row H). Commits: `7cbb5a8` (harness), `9f12dfd`
+(fixes from the fresh-context adversarial review: 9 findings, every one fixed or written down below).
 
-- `tests/media_kit.py`: `fake_media(folder, script)` answering `--version`, `info`, `scan`, `frames`, `diff`, `pills`,
-  `audio`; frames written as `\xff\xd8\xff\xe0` + `FAKE-OCR:` + rows, so the fake OCR helper reads what the fake media
-  helper showed. Model: `FAKE_HELPER`, `write_fake`, `fake_image`, `fake_engine` at `tests/test_ocr.py:39, :88, :114,
-  :130`; `AGENTSYNC_OCR=0` default at `tests/conftest.py:79`.
-- `tests/test_recording_grammar.py`: spec 3.3 rule 1 over hand-written window and index pages, every tag including
-  `VOICE`, picture text never in a table cell, a quote mark cannot close a heading label.
-- `scripts/meeting-eval/`: the blind-reader runner and scorer of spec 9.1 and 9.2 (readers A, B, C; correctness,
-  citation, wrong-and-confident), and the layout scorer of C19 (T3 and R4 against `gt.py` hand labels). Fixture
-  folders are arguments, never paths in the repo.
-- Done when (goal): `uv run --locked pytest -q tests/test_recording_grammar.py tests/test_media_kit.py` prints
-  0 failed, and the scorer reproduces the v2 figures on the two Zoom fixtures (16.5 and 16.5 for reader B) from
-  the saved answers; do not add product code.
+- **What landed.** `tests/media_kit.py` (`fake_media(folder, script)`, `fake_recording`, `recording`, `screen`,
+  `row`, `grids`, `calls`); `tests/test_recording_grammar.py` (`window_errors`, `index_errors`, which P1 imports for
+  `test_every_line_is_the_banner_the_title_a_heading_a_tagged_line_or_a_footer`); `scripts/meeting-eval/score.py`,
+  `layout.py`, `run.py`; their tests in `tests/test_media_kit.py` and `tests/test_meeting_eval.py`.
+- **Proof.** The two H test files: 0 failed. `score.py <fixture> --marks <VERDICT.md>` on both v2 Zoom fixtures:
+  B 16.5 and 16.5, B SPEECH 6 of 6, B SCREEN plus CROSS 10.5, B minus A +7.5 and +9.5, C minus B +1.5 and +1.5,
+  wrong and confident 0, B quotes all found (51 of 51, 55 of 55 pieces of 4 characters or more), B lenient
+  citation 18 of 18 on both;
+  strict citation A 9, B 15, C 16 on the slide call, as its verdict counted. Exit 0: every 9.2 mark holds.
+- **Media helper protocol, pinned for P1's `media_frames.swift`.** `info FILE`; `scan FILE --out DIR [--step-ms]
+  [--max-ticks]` writing `grids.bin` (57,600 B a tick); `frames FILE --out DIR --ticks a,b [--crop X0,Y0,X1,Y1 |
+  --crop-right F]` writing `tHHMMSS.jpg`; `diff GRIDS --pairs a:b --include R --exclude R [--threshold]`; `pills
+  FILE --request REQ.json`; `audio FILE --out DIR` (16 kHz mono s16le). One JSON document out, exit 3 on failure. A
+  grid cell is inside a mask rectangle when any part of it is (`teams` content mask: 280 of 320 columns).
+- **Grammar choices the spec left open, now pinned.** Window units are also held to S9 rules 1, 2 and 4 (time
+  order with the equal-time tag order, every line inside its window and its state, the continuation `NOTE` on a
+  state begun earlier), S6 rule 8 (a revisit prints no `SCREEN` row and its `KEYFRAME` names the revisited state)
+  and S10 (sorted footer, one per keyframe, `full-text.txt` on a cut page). The index has one `## <block>` per 3.5
+  block in 3.5's order; Facts are `- <key>: <value>` lines with fixed keys; How to read and Gaps and bounds are
+  `- ` lines; the three count tables have fixed columns and per-column cell patterns, so picture text cannot sit
+  in a cell. `VOICE` forms follow the 3.3 tag table (`v3 · shared audio of <label>, k voices`), not the wording
+  of S8b rule 4; P3 changes both together if it changes one.
+- **Scorer rules.** Correctness is the judge's (marks JSON, or the verdict's per-question table in either v2
+  layout); citation, quotes and wrong-and-confident are computed. Lenient citation reads every time, range and
+  `NNNNN.jpg` frame (1 fps) named in `verification` when gold has no `times` list; new fixtures should carry
+  `times`. The "three known B misses" row stays a judge's reading.
+- **Layout scorer.** Ticks are grouped by the platform the excerpt was recorded on (`PLATFORM` in `gt.py`, else
+  the name's first word), never by the detected profile, so a Teams recording taken for `generic` still meets
+  95 %; a labelled excerpt without a prediction fails the run (9.2 requires `oct`). The labels file is parsed
+  (`ast`, literals, `+` and `*` only), never executed.
+- **Learnings, open for the spec.** (1) 9.2's "Quoted pieces found, B" mixes units (the slide call's verdict
+  counted answers, 18 of 18; the demo call's counted pieces, 56 of 56); the scorer counts pieces of 4 characters
+  or more and requires every credited answer to quote. (2) The v2 gold carries one `time`; B's strict citation
+  on the slide call is 15, below the 17 mark, so the lenient rule decides that row, and it accepts times the
+  verification names as distractors. The scorer warns; P1 should add a `times` list to both gold files before
+  9.2 is used as a gate. (3) Spec S8b rule 4 (`voice N, on shared audio of <label>`) disagrees with the 3.3 tag
+  table (`vN · shared audio of <label>, k voices`); the grammar follows the table, and P3 settles both.
 
 ### P1 — Screens (upcoming)
 
