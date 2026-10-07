@@ -210,9 +210,16 @@ says otherwise.
 | Installer: every run | Was a run cut short? | One line per run, and each run with no end line with its start time and the step it reached. |
 | Configuration: agent-named folders | Is a folder named like the coding agent only listed, or also a source? | Two counts. A listed one keeps its name in the report; a configured one is a placeholder. |
 
-A part that prints "not measured (time limit)" ran out of its share of the report's time. Run
-`agentsync setup-report` again on an idle Mac before asking for anything else. A run of a build older than
-these parts did not record what it converted or OCR's time: its row says "not recorded" or "-".
+A part that prints "not measured (time limit)" ran out of its share of the report's time. The Summary's
+`evidence:` line says so first, so the person who ran the setup can write the report again on an idle Mac
+(`install.sh --report-only`) before sending it. A run of a build older than these parts did not record what it
+converted or OCR's time: its row says "not recorded" or "-".
+
+The report shows the Mac at the moment it is written. After an upgrade to a build with OCR, the files from
+before it are read again over several syncs (two minutes of re-reads and three minutes of OCR per sync), so a
+report written right after the first sync says `scan finished: no` for a source with many such files. That is
+not a fault: the re-read table says how many files are left, and the per-run table how many each sync read.
+A report written once the table says `yes` for every source shows the finished state.
 
 ### Fix classes
 

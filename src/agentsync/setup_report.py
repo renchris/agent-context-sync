@@ -1541,6 +1541,7 @@ class _Facts:
     instructions: tuple[Counter[str], int, int] | None = None  # (per kind, lines read, runs among them)
     first_sync: tuple[int, int] | None = None  # the last "converted N, deferred M online-only" in install.out
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
+    evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
 
 
 class _Run:
@@ -3370,7 +3371,22 @@ def _evidence(r: _Run) -> list[str]:
         r.evidence_steps = mirror.steps
         r.evidence_statements = tuple(mirror.statements)
         mirror.close()
+    r.facts.evidence = sum(1 for line in out if "not measured" in line)
     return out
+
+
+def _evidence_line(r: _Run) -> str:
+    """The Summary's line about the evidence parts: whether every one was measured. The person sends one
+    report, so a part that ran out of time is said where it is seen first."""
+    count = r.facts.evidence
+    if count is None:
+        return "- evidence: not read (the Status section's parts need a config that loads)"
+    if count == 0:
+        return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
+    return (
+        f'- evidence: {count} line(s) at the end of Status say "not measured": write the report again when '
+        "this Mac is idle (`install.sh --report-only`) before sending it"
+    )
 
 
 def _status_section(r: _Run) -> list[str]:
@@ -4208,6 +4224,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- PATH: SHADOW: the first agentsync on PATH is {r.facts.shadow}, not ~/.local/bin/agentsync"
             f"{expected}"
         )
+    out.append(_evidence_line(r))
     out.append(f"- redaction: {_REDACTION_MARK}")
     title = (
         f"Items that were not one command (attempt {att.number}):"

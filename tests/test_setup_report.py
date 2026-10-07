@@ -2524,6 +2524,7 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
         "- none: no source's last walk held a zero-child cloud folder as unknown"
     )
     assert parts["Repeat conversions"].strip() == "- no run is recorded"
+    assert "- evidence: the 6 parts at the end of Status were measured\n" in section(text, "Summary")
     # No sync has run on this Mac: there is no manifest, and reading makes none.
     db = load_config(fake_mac["config"]).state_paths.db
     before = sorted(p.name for p in db.parent.iterdir())
@@ -2935,6 +2936,10 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
     assert parts["OCR"].count(f"- {setup_report.NOT_MEASURED}") == 2, "the files, then the time"
     for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
         assert parts[title].strip() == f"- {setup_report.NOT_MEASURED}", title
+    assert (
+        '- evidence: 5 line(s) at the end of Status say "not measured": write the report again when this Mac '
+        "is idle (`install.sh --report-only`) before sending it\n" in section(text, "Summary")
+    )
 
 
 def test_a_statement_that_runs_past_the_time_is_stopped(fake_mac: dict[str, Path]) -> None:

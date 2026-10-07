@@ -7559,7 +7559,10 @@ purges (`_PURGE_LOOKUPS`), 50 empty folders per source (`_EMPTY_DIRS_CHECKED`), 
 (`_RUNS_READ`), 40 table rows shown (`_ROWS_SHOWN`). The probe and the `lstat` calls run through
 `_Run.call`, the timed-call seam (`arm_local.call_with_timeout`). `_Run.evidence_steps` holds the looks at the
 clock, so a test can bound the work without a wall clock. A part that raises prints `not measured (<exception
-type>)`, never the message.
+type>)`, never the message. The Summary has one line for all of it, above its redaction line: `- evidence:
+the 6 parts at the end of Status were measured`, or how many lines say "not measured" and to write the report
+again when the Mac is idle (`install.sh --report-only`) before sending it; `not read` when the config does
+not load, since the parts then do not run.
 
 **Sources are never named in clear** (`_Labels`). A configured id is printed as the Redactor shows it. One
 the Redactor leaves alone is kept only when it is one of agentsync's own words (`_GENERIC_IDS`); otherwise
