@@ -65,7 +65,7 @@ from agentsync.config import (
     parse_config,
     parse_size,
 )
-from agentsync.cycle import run_cycle, source_statuses
+from agentsync.cycle import _tighten_own_paths, run_cycle, source_statuses
 from agentsync.errors import (
     AgentSyncError,
     AuthError,
@@ -512,6 +512,11 @@ def _ensure_setup(config: Config) -> int:
         if mode & 0o077:
             d.chmod(0o700)
             _out(f"tightened {d} to 0700 (was {mode:04o}): it holds tenant data")
+    # What is inside them too, as every sync does: install.sh runs status right after this command and
+    # stops on a docs_repo.permissions FAIL, so the paths a sync would clear are cleared here first.
+    inside = _tighten_own_paths(config)
+    if inside:
+        _out(f"tightened {inside} path(s) inside the docs repo, the cache or the logs: they hold tenant data")
     with Manifest(config.state_paths.db) as manifest:
         written = Publisher(config, manifest).ensure_scaffold()
     # The count carries its verb: install.sh calls add-source once per folder, and a bare "0 scaffold

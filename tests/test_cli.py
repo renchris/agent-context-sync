@@ -157,6 +157,38 @@ def test_init_is_hidden_idempotent_and_takes_no_options(
     assert not re.search(r"(?m)^    init\b", capsys.readouterr().out), "init is hidden from help"
 
 
+@pytest.mark.parametrize("command", ["init", "add-source"])
+def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
+    initialised: Config, command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Field report 2026-10-07: install.sh runs this command, then status, and stops on a
+    ``docs_repo.permissions`` FAIL before the sync that clears it. The command made its folders owner-only
+    already; it now does what a sync does for what is inside them (an ``_eval`` folder an agent's file tool
+    wrote under umask 022, a cache folder, a log), so status has no such FAIL to stop on."""
+    docs, log_dir = initialised.docs_repo, initialised.log_dir
+    eval_dir, old_build = docs / "_eval", initialised.cache_dir / "old-build"
+    for d in (eval_dir, old_build, log_dir):
+        d.mkdir(parents=True, exist_ok=True)
+        d.chmod(0o755)
+    files = [eval_dir / "questions.md", log_dir / "poll.out.log"]
+    for f in files:
+        f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+        f.chmod(0o644)
+    [found] = doctor._check_permissions(initialised)
+    assert not found.ok and found.fix == "agentsync sync (it makes these owner-only)"
+
+    argv = ["init"] if command == "init" else ["add-source", str(initialised.sources[0].path)]
+    assert cli.main([*argv, "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert f"tightened {log_dir} to 0700 (was 0755): it holds tenant data" in out
+    assert "tightened 4 path(s) inside the docs repo, the cache or the logs: they hold tenant data" in out
+    assert {f.stat().st_mode & 0o777 for f in files} == {0o600}
+    assert {d.stat().st_mode & 0o777 for d in (eval_dir, old_build, log_dir)} == {0o700}
+    assert doctor._check_permissions(initialised)[0].ok
+    assert cli.main([*argv, "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    assert "tightened" not in capsys.readouterr().out, "nothing left to say on the next run"
+
+
 def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     cfg = str(initialised.config_path)
     repo = initialised.docs_repo

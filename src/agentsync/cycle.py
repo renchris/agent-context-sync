@@ -561,10 +561,12 @@ def _tighten_own_paths(config: Config) -> int:
     agentsync writes under umask 077, but an agent's file tool runs under the agent's umask (usually 022),
     so the baseline draft left ``_eval/`` readable by group and other and the next ``status`` ended on a
     ``docs_repo.permissions`` FAIL the loop itself had caused; a cache folder or a log that something else
-    made does the same.  Every non-dry cycle calls this.  Only group and other bits are cleared, so no
-    mode is widened, and no symlink is followed or changed.  Modes are not content: git tracks only the
-    executable bit, so this never dirties the tree.  A path that cannot be changed is skipped with one
-    warning (the status check still reports it, with a chmod as its fix)."""
+    made does the same.  Every non-dry cycle calls this, and so do ``init`` and ``add-source``
+    (``cli._ensure_setup``), which ``install.sh`` runs before its status step: a setup run stopped on that
+    FAIL before the sync that would have cleared it.  Only group and other bits are cleared, so no mode is
+    widened, and no symlink is followed or changed.  Modes are not content: git tracks only the executable
+    bit, so this never dirties the tree.  A path that cannot be changed is skipped with one warning (the
+    status check still reports it, with a chmod as its fix)."""
     changed, failed = 0, 0
     for path in _own_paths(config):
         try:

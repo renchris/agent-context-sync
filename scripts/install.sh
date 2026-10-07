@@ -103,7 +103,10 @@
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
-#      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema)
+#      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes
+#      agentsync's own paths owner-only, as every sync does (what a coding agent wrote into the docs repo
+#      under its own umask, the cache, the logs), so step 5 does not stop on a docs_repo.permissions [FAIL]
+#      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run)
 #   5. status: agentsync status (its TCC probe may raise the one-time "wants to access files managed by"
 #      prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's own TCC_PENDING (a
 #      "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8) asks the Allow for. A

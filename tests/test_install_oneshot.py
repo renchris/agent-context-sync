@@ -1638,6 +1638,106 @@ def test_a_set_up_mac_with_nothing_to_list_is_kept_by_the_run_its_list_names(
     assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
 
 
+def _mode(path: Path) -> int:
+    return path.lstat().st_mode & 0o777
+
+
+def test_a_rerun_clears_the_permissions_agentsync_owns_before_status_can_stop_on_them(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """Field report 2026-10-07, with the real agentsync. On a Mac that already ran it, an earlier session's
+    agent had written the docs repo's _eval folder under its own umask. Step 2's install.sh printed
+    ``[FAIL] docs_repo.permissions``, skipped the sync and exited 1 on a chmod the agent may not run: a
+    round lost, though a sync clears that folder. The config step now clears what a sync would (and a
+    cache folder and a log left the same way) before status looks, so the run prints no [FAIL], syncs and
+    exits 0. A page inside mirror/ is not a path agentsync changes: there the run still stops at status,
+    on the [FAIL] and its chmod."""
+    env = real_env
+    home = Path(env["HOME"])
+    alpha, beta = (_cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / name for name in ("Alpha", "Beta"))
+    for d in (alpha, beta):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text(f"a made-up plan for {d.name}\n", encoding="utf-8")
+    command = (str(wheel), "--source-local", str(alpha), "--source-local", str(beta))
+    first = install_sh(env, *command)
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    def permissions() -> str:
+        """The check's line in ``agentsync status``, as a person or an agent running it sees it."""
+        agentsync = str(home / ".local" / "bin" / "agentsync")
+        cp = subprocess.run([agentsync, "status"], capture_output=True, text=True, check=False, env=env)
+        [line] = [ln for ln in cp.stdout.splitlines() if re.match(r"\[.{4}\] docs_repo\.permissions ", ln)]
+        return line
+
+    def git_config(*args: str) -> str:
+        cp = subprocess.run(
+            ["git", "-C", str(docs), "config", "--local", *args],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
+        )
+        return cp.stdout.strip()
+
+    # The field layout: what an agent's file tool, a shell and an earlier build left under umask 022.
+    docs = home / "agent-context" / "docs"
+    eval_dir, topic_dir = docs / "_eval", docs / "topics" / "contoso"
+    old_build = home / "Library" / "Caches" / "agentsync" / "old-build"
+    log_dir = home / "Library" / "Logs" / "agentsync"
+    dirs = [eval_dir, topic_dir, old_build, log_dir]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+    files = [eval_dir / "questions.md", eval_dir / "answers.md", topic_dir / "scratch.txt"]
+    files.append(log_dir / "poll.out.log")
+    for f in files:
+        f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+        f.chmod(0o644)
+    for d in dirs:
+        d.chmod(0o755)
+    git_config("--unset", "core.sharedRepository")  # a docs repo from before the setting
+    found = permissions()
+    assert found.startswith("[FAIL] docs_repo.permissions ") and str(eval_dir) in found
+    assert found.endswith(" (fix: agentsync sync (it makes these owner-only))"), "a command an agent may run"
+
+    again = install_sh(env, *command)
+    assert again.returncode == 0, again.stdout + again.stderr
+    out = again.stdout.splitlines()
+    assert not [ln for ln in out if ln.startswith("[FAIL]")], again.stdout
+    assert any(ln.startswith("[ok  ] docs_repo.permissions ") for ln in out), "the status step saw it clean"
+    assert "sync: converted 0, deferred 0 online-only" in out
+    assert f"tightened {log_dir} to 0700 (was 0755): it holds tenant data" in out
+    assert "tightened 7 path(s) inside the docs repo, the cache or the logs: they hold tenant data" in out
+    assert last_line(again).startswith("NEXT: ") and one_next(again)
+    assert {_mode(f) for f in files} == {0o600} and {_mode(d) for d in dirs} == {0o700}
+    assert git_config("core.sharedRepository") == "0600"
+    assert permissions().startswith("[ok  ] docs_repo.permissions ")
+    assert steps(install_log(env))[-6:] == [
+        ("config", "done", "0", "add-source"),
+        ("status", "done", "0", ""),
+        ("first-sync", "done", "0", "converted-0-deferred-0"),
+        ("agent", "skipped", "0", "not-requested"),
+        ("wait", "skipped", "0", "not-requested"),
+        ("report", "done", "0", "agentsync"),
+    ]
+
+    # No false green: a page inside mirror/ is the publisher's, and neither setup nor a sync walks that tree.
+    page = next(p for p in sorted((docs / "mirror").rglob("*.md")) if p.is_file())
+    page.chmod(0o644)
+    eval_dir.chmod(0o755)
+    Path(env["STUB_LOG"]).unlink()
+    stopped = install_sh(env, *command)
+    assert stopped.returncode == 1, stopped.stdout + stopped.stderr
+    [fail] = [ln for ln in stopped.stdout.splitlines() if ln.startswith("[FAIL]")]
+    assert fail.startswith("[FAIL] docs_repo.permissions ") and str(page) in fail
+    assert str(eval_dir) not in fail and _mode(eval_dir) == 0o700, "what agentsync owns was still cleared"
+    assert " (fix: chmod -R go-rwx " in fail and "agentsync sync" not in fail
+    assert _mode(page) == 0o644
+    assert last_line(stopped).startswith(
+        f"NEXT: fix the [FAIL] lines above (each names its fix), then re-run: {INSTALL_SH}"
+    )
+    assert ("first-sync", "skipped", "0", "status-failed") in steps(install_log(env))[-5:]
+
+
 def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:
     """The counts are the installed agentsync's. With no interpreter to ask (the stub uv installs none) the
     step's line is what it was, and no folders: line is printed."""
