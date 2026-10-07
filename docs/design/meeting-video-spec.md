@@ -930,12 +930,14 @@ Run when the converter's emitter or the reading skill changes. Thresholds are th
 | B minus A | +7.5 and +9.5 points | +6 or more |
 | C minus B | +1.5 and +1.5 | 0 or more |
 | Wrong and confident, any reader | 0 of 108 answers `[R vk:38-42, vj:59-63]` | 0 |
-| Quoted pieces found in the sources, B | 18 of 18, 56 of 56 | all |
+| Quoted pieces found in the sources, B | 51 of 51 and 55 of 55 pieces (the v2 verdicts counted 18 of 18 answers and 56 of 56 pieces) | all pieces, and every credited answer quotes one |
 | B citation time within 30 s of a gold time | 18 of 18 (lenient rule) and 18 of 18 `[R vk:33, vj:35-37]` | 17 or more |
 | The three known B misses are fixed or still explained | slide count shown under 4 s; a typed command; a 0.3-confidence number `[R vk:86, vj:114-116]` | S6 rules 4 and 5 must print the typed command; the other two may still miss |
 | Layout, `teams` (C19) | T3 673 of 682 in-sample; holdout 435 of 467 share, 105 of 106 camera `[R PL:16, PL:145-146]` | 95 % or more of hand-labelled Teams pane ticks, the `oct` excerpt included |
 | Layout, every other profile (C19) | R4 96.2 % in-sample `[R PL:17]` | 90 % or more of its hand-labelled ticks |
 | Voice naming, per operator recording (C19, A-R6) | not yet run | 0 names the listen contradicts |
+
+Units, settled in P1 (2026-10-07). A quoted piece is one fragment of an answer's evidence, split on ` / ` and ` ... `, with its time and tag taken off, of 4 characters or more; a shorter one is found almost anywhere and is not counted. "All" means every such piece of reader B is a substring of B's sources and every answer credited with a score quotes at least one; `scripts/meeting-eval/score.py` counts it so. Citation is read against each question's gold `times` list, every time the answer is said or shown with the verification's distractors left out; both fixtures carry one from P1 on. The lenient rule (every time the verification names) applies only to a fixture without that list.
 
 Caveats that travel with these numbers: one run per condition, one judge, questions written to need the screen (12 and 11 of 18), no question about a chart or diagram `[R vk:104-110, vj:143-152]`. The thresholds test that a rebuild does not regress; they do not show how often a real question needs the screen. Reader A had a transcript without speaker names and without the deck (`vk:12`); a Teams transcript with name tags plus the synced deck would answer five of the slide call's eleven screen-only gains `[R complete:23]`. The bar the red team set was not run: 10 real recordings, a blind reader given transcript, chat and synced deck, and frames carrying a decision or a number that reader misses in 3 or more of the 10 `[R adv-red-team:17]` (R25).
 
