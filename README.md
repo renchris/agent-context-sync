@@ -154,6 +154,8 @@ What is read:
 - **Image files** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.heic`, `.heif`): one page
   with the text in reading order. A TIFF with several pages is read page by page.
 - **PDF pages without a text layer** (a scan), and a picture on a PDF page that the page's own text does not cover.
+  How much text covers a picture goes by the picture's size, so a scanned page under one stamped line (an envelope
+  ID, a page number with a notice) is still read.
 - **Pictures in a deck** (`.pptx`), **a Word document** (`.docx`) or an OpenDocument text file (`.odt`): the text
   follows the picture's `[image…]` line.
 

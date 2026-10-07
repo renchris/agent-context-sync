@@ -1048,7 +1048,7 @@ def test_pdf_version_and_options_change_only_with_an_engine(tmp_path: Path) -> N
     assert reading.options() == {
         **plain.options(),
         **image._OCR_OPTIONS,
-        "ocr_pdf_rules": 1,
+        "ocr_pdf_rules": 2,
         "ocr_page_dpi": 300,
         "ocr_page_max_px": 6000,
         "ocr_pictures_seen": 400,
@@ -1212,6 +1212,34 @@ def test_pdf_ocr_reads_a_picture_only_where_the_text_layer_does_not_cover_it(tmp
     assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
 
 
+def test_a_scan_under_one_stamped_line_is_read_and_a_searchable_scan_is_not(tmp_path: Path) -> None:
+    """An e-signed or numbered scan is a full-page picture under one line of real text.  Twenty characters
+    anywhere in a picture used to cover it, so the page came out as the stamp alone, with no marker.  What
+    covers a picture goes by its size: the stamp does not, the text of a searchable scan does."""
+    stamp = "Envelope ID 4F2A9C1E-77B0-4D5A"
+    searchable = [f"Line {n} of the text layer of a searchable scan" for n in range(3)]
+    assert 20 <= len(stamp.replace(" ", "")) < 40 <= len("".join(searchable).replace(" ", ""))
+    pages = [
+        ([stamp], [page_picture(90)]),
+        (searchable, [page_picture(91)]),
+        (["Page 3"], [page_picture(92)]),
+    ]
+    src = _staged(tmp_path, pages)
+    said = {90: ["Clause 4: delivery in thirty days"], 91: ["never read"], 92: ["Signed in Rotterdam"]}
+    engine = shade_engine(tmp_path / "bin", said)
+    u = _ocr_one(src, engine)
+    assert u.body == (
+        f"<!-- page: 1 -->\n\n{stamp}\n\n{_OCR_PICTURE}\nClause 4: delivery in thirty days\n\n"
+        "<!-- page: 2 -->\n\n" + "\n".join(searchable) + "\n\n"
+        f"<!-- page: 3 -->\n\nPage 3\n\n{_OCR_READ}\n\nSigned in Rotterdam\n"
+    )
+    assert u.summary == (
+        "PDF: 3 page(s), 1 read by on-device OCR; text of 1 picture(s) read by on-device OCR"
+    )
+    # The rule is the picture's size on the page: a letter page needs 324 characters, a thumbnail 20.
+    assert pdf_mod._COVER_PT2_PER_CHAR == 1500 and 612 * 792 / 1500 > 323
+
+
 def test_pdf_ocr_reads_each_distinct_picture_once_and_none_that_fails_the_size_rule(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1238,8 +1266,39 @@ def test_pdf_ocr_reads_each_distinct_picture_once_and_none_that_fails_the_size_r
         f"<!-- page: 2 -->\n\n{text}\n\n{_OCR_PICTURE}\nOrders by month\n"
     )
     assert u.summary == "PDF: 2 page(s); text of 2 picture(s) read by on-device OCR"
-    assert decoded == [(96, 64)] * 3, "the icon and the poster are turned away before a pixel is decoded"
+    assert decoded == [(96, 64)] * 2, (
+        "the icon and the poster are turned away before a pixel is decoded, and so is the logo's second copy"
+    )
     assert [len(run) for run in reads(engine.helper)] == [2], "the logo's second copy is not read again"
+
+
+def test_the_picture_limits_are_not_spent_on_icons_or_on_a_picture_drawn_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A web page saved as a PDF has dozens of icons a page, and a report the same chart or logo on every
+    page.  Neither is read more than once (an icon never), so neither may use up the limits: the screenshot
+    on the last page is still read, and nothing is reported as cut."""
+    decoded: list[int] = []
+    real = pdf_mod._png
+
+    def spy(bitmap: Any) -> bytes:
+        decoded.append(bitmap.buffer[0])
+        return real(bitmap)
+
+    monkeypatch.setattr(pdf_mod, "_png", spy)
+    monkeypatch.setattr(pdf_mod, "_MAX_PICTURES_SEEN", 7)  # the six charts and the screenshot
+    monkeypatch.setattr(pdf_mod, "_MAX_PICTURE_PIXELS", 2 * 96 * 64)  # room for two pictures
+    chart = PdfPicture(40, _BESIDE)
+    icons = [PdfPicture(50 + n, f"8 0 0 8 {20 + 10 * n} 20", px=(16, 16)) for n in range(4)]
+    pages: list[tuple[list[str], list[PdfPicture]]] = [(_TEXT, [chart, *icons]) for _page in range(6)]
+    pages[-1][1].append(PdfPicture(41, "96 0 0 64 20 20"))
+    said = {40: ["Orders by month"], 41: ["Stock on hand"], **{50 + n: ["an icon"] for n in range(4)}}
+    engine = shade_engine(tmp_path / "bin", said)
+    u = _ocr_one(_staged(tmp_path, pages), engine)
+    assert decoded == [40, 41], "the chart is decoded once, an icon never"
+    assert u.summary == "PDF: 6 page(s); text of 2 picture(s) read by on-device OCR"
+    assert u.body.count("Orders by month") == 1 and u.body.rstrip().endswith(f"{_OCR_PICTURE}\nStock on hand")
+    assert u.body.index("Orders by month") < u.body.index("<!-- page: 2 -->"), "under the page it is first on"
 
 
 _NO_SIZE = {

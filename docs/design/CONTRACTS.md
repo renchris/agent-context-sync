@@ -6560,7 +6560,11 @@ deck and pandoc converters call it (below).
   excluded from Time Machine, wiped at the start of every cycle), never `$TMPDIR` (plan D13).
 - **Bounds.** At most `limit` distinct pictures (by sha256) and `max_bytes` read, the copies of a repeated
   picture included (a caller offers each picture once). The picture that passes the byte limit is not read,
-  nor any after it. Both are counts, so a document gives the same pictures on every run.
+  nor any after it. A picture the helper skips as too small to hold text (`OcrImage.skipped`: an icon, a
+  bullet) does not count toward `limit`: the pictures are read in rounds, and a round that met such
+  pictures is followed by one that asks for as many more, so a deck of icons does not use up the limit
+  before its charts are reached. All of it goes by counts and by what the bytes are, so a document gives
+  the same pictures on every run.
 - **Time.** The helper has what is left of `budget_s`, counted from the call and shared by every run.
 - **One failure costs one picture.** The helper is run on 16 pictures at a time. A run that fails gives
   nothing, so its pictures are read again one at a time; a picture alone in a failed run is not run twice.
@@ -6658,8 +6662,9 @@ Plan decisions D6, D10 and D13. `PdfConverter(cfg, ocr=None)`. Without an engine
 `version()`, `options()` and every page are those of §16.24, byte for byte, and the emitter stays **2.1.0**.
 The same holds, engine or not, for a file the pdfminer fallback converts: PDFium renders what OCR reads.
 With an engine `version()` ends in its identity (`2.1.0+pypdfium2-…+pdfminer.six-…+ocr-apple-vision-r3-h2.0.0-l1`)
-and `options()` gains the shared OCR options and five of its own: `ocr_pdf_rules` (1; bumped when a rule
-below changes without one of the numbers changing), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
+and `options()` gains the shared OCR options and five of its own: `ocr_pdf_rules` (2; bumped when a rule
+below changes without one of the numbers changing; 2 is the cover rule and the picture limits as written
+here), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
 `ocr_pictures_seen` (400) and `ocr_picture_pixels` (400,000,000). The emitter version is not what moves
 with an OCR rule: it would move the key of every PDF on a Mac without an engine.
 
@@ -6715,23 +6720,31 @@ Signed in Rotterdam
 - **A picture on a page with text** is read when all of these hold. Its stored size passes the helper's own
   rule (no side under 48 px, no more than `ocr.MAX_MEGAPIXELS`), checked before a pixel is decoded. It is
   drawn with a size: a picture under 1 pt wide or high on the page (a collapsed or hidden placement) is one
-  no viewer shows. And the text layer does not cover it: fewer than 20 characters of the page's text lie
-  inside its box, drawn in by 2 pt because PDFium counts a character that only touches the box. A searchable
-  scan is a picture behind its own text, and reading it would say the page twice. The box of a picture
-  inside a form XObject is placed by the form's matrix and by that of each form around it (a picture up to
-  three forms deep is found). The rule counts characters, not what they say: a full-page scan under a
-  stamped header or footer of 20 characters or more is a page with text whose picture is covered, and is
-  not read.
+  no viewer shows. And the text layer does not cover it (`_covered`). A searchable scan is a picture behind
+  its own text, and reading it would say the page twice. A picture is covered when the page's text inside
+  its box, drawn in by 2 pt because PDFium counts a character that only touches the box, comes to one
+  character per 1,500 square points of the picture (`_COVER_PT2_PER_CHAR`), and to 20 at least: 324
+  characters for a picture the size of a letter page, 20 for a thumbnail. Running text is about one
+  character per 150 to 250 square points, so a searchable scan is covered many times over. The one line
+  stamped across an e-signed or numbered scan (an envelope id, a notice) does not cover it: such a page is
+  a page with text, and its scan is read as the picture on it. A count alone, 20 characters anywhere in the
+  box, left every such page unread with no marker. The rule still counts characters, not what they say: a
+  scan under more stamped text than that is not read, and a sparse searchable scan (a title page) is read
+  and says its few words twice. The box of a picture inside a form XObject is placed by the form's matrix
+  and by that of each form around it (a picture up to three forms deep is found).
 - **Its stored pixels are read**, not a rendering of the page (`PdfImage.get_bitmap()`: the image's matrix
-  and mask are not applied). The same image object gives the same bytes wherever it is drawn, so
-  `_read_pictures` reads a logo on every page once, and its text is printed under the first page it is on.
+  and mask are not applied). A picture is known by the sha256 of its stored stream and its pixel size
+  (`PdfImage.get_data(decode_simple=False)`: nothing is decoded for it), so one drawn on every page is
+  decoded, offered and read once, and its text is printed under the first page it is on.
   A picture stored on its side is read on its side. Each picture with text gets a block after its page's
   text: the head line `[text in an image on this page, read by on-device OCR (Apple Vision):]`, then its
   lines. A picture PDFium cannot place or decode is skipped: nothing a picture holds can fail the document.
-- **Picture limits.** At most 400 image objects of a file are looked at (`_MAX_PICTURES_SEEN`) and
-  400,000,000 pixels decoded (`_MAX_PICTURE_PIXELS`), on top of the 100 distinct pictures and 256 MiB of
-  `_read_pictures`. All four are counts, so a file gives the same pictures on every run. When one of them
-  left a picture unread, the summary says `; pictures past the OCR picture limit not read`.
+- **Picture limits.** At most 400 image objects of a file that pass the size rule are looked at
+  (`_MAX_PICTURES_SEEN`) and 400,000,000 pixels decoded (`_MAX_PICTURE_PIXELS`), on top of the distinct
+  pictures and 256 MiB of `_read_pictures`. All four are counts, so a file gives the same pictures on every
+  run. Neither is spent on what is never read: an image object the size rule turns away (an icon) counts
+  for nothing, and a picture drawn again is charged its pixels once. When a limit left a picture unread,
+  the summary says `; pictures past the OCR picture limit not read`.
 - **Time.** One limit per file, `_DOCUMENT_BUDGET_S` (300 seconds, below the 1800 the launcher gives a whole
   background job), counted from the start of the OCR pass and shared by the page reads, the looking for
   pictures and the pictures' read, rendering included. Past it no helper run is started and the pass fails
@@ -6772,15 +6785,16 @@ class PdfConverter:                          # converter_id = "pdf-pypdfium2"
 ```
 
 Every new name in `agentsync.convert.pdf` is private (`_OcrText`, `_ocr_text`, `_read_pages`,
-`_read_page_pictures`, `_PagePictures`, `_render_page`, `_png`, `_page_box`, `_covered`, `_SCANNED_OUTCOMES`,
-`_PDF_OCR_OPTIONS`, `_OCR_RULES`).
+`_read_page_pictures`, `_PagePictures`, `_render_page`, `_png`, `_page_box`, `_covered`,
+`_COVER_PT2_PER_CHAR`, `_SCANNED_OUTCOMES`, `_PDF_OCR_OPTIONS`, `_OCR_RULES`, `_NO_TEXT_FOUND`).
 
 Tests: `tests/test_convert_formats.py` (version and options with and without an engine, and the two
 relations between the limits; a page read beside a page of text, the helper's folder and what it leaves;
 a PDF of page images read, and refused when nothing is found; the page limit and its reason; pages rendered
 a few at a time; a page's own short text; the title in page order; comments after a page OCR read; a picture
-behind the text, beside it, and inside a form either way; each distinct picture once, an icon and an
-oversized picture never decoded; a picture drawn with no size, four ways; a picture that cannot be decoded;
+behind the text, beside it, and inside a form either way; a scan under one stamped line read and a
+searchable scan not; each distinct picture once, an icon and an oversized picture never decoded; icons and
+a picture drawn on every page using up neither limit; a picture drawn with no size, four ways; a picture that cannot be decoded;
 the three picture limits and a limit that is reached and not passed; every kind of line that could pose as
 structure, on a page and in a picture; the same page twice; a helper failure, its fixed wording, its log
 line and no further run; a page image the helper cannot read; a picture left unread; memory and a full
@@ -7035,7 +7049,7 @@ sidecar through `Registry.default`; an unreadable image cached and a failure not
 container named `.png` refused by the screen, the helper not started; `_read_pictures`: order,
 one read per distinct picture, vector art not read past its head, the folder removed, a picture that cannot
 be read from its first byte, part-way and at its end, and no memory, the count limit and the
-byte limit without opening the next picture, `over_bytes` only for the picture that passed the limit,
+byte limit without opening the next picture, pictures too small to hold text not counted toward the limit, `over_bytes` only for the picture that passed the limit,
 `_raster_left` for a raster image, vector art and a damaged picture left over, one failing picture among
 five, the shared time limit, `recognition failed`), `tests/test_convert_core.py` (the registry with and without an engine; each label
 rule) and `tests/test_convert_determinism.py` (an image converted twice, and from the cache under a second

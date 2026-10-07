@@ -19,7 +19,8 @@ bounded (``_CommentBudget``).
 
 With an OCR engine (``PdfConverter(cfg, ocr=engine)``; ``convert/ocr.py``) the converter also reads what the
 text layer lacks.  A page with under 20 characters of text is rendered and read, and so is a picture on a
-page with text, unless the text layer already covers it.  Without an engine nothing here runs: the version,
+page with text, unless the text layer already covers it (``_covered``: by the picture's size, so a scan
+under one stamped line is read).  Without an engine nothing here runs: the version,
 the options and every page are the ones from before OCR existed.  The same holds for a file the pdfminer
 fallback converts.  A failure of the helper is ``OcrError`` with fixed wording, raised before anything is
 written: ``convert_file`` then converts the file with the registry's converter that has no engine, so no page
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import hashlib
 import io
 import logging
 import math
@@ -109,12 +111,18 @@ _PAGES_PER_RUN = 4  # page images written, read and removed together
 _FORM_DEPTH = 4  # levels of page objects looked at: the page's own and three of nested form XObjects
 _PICTURE_MIN_PT = 1.0  # a picture drawn narrower or lower than this has no size on the page
 _PICTURE_INSET_PT = 2.0  # text that only touches a picture's edge (a caption) is not text in it
+_COVER_PT2_PER_CHAR = 1500.0
+"""A picture is covered by the text layer at one character of it per this many square points of the picture
+(and never under ``_SCANNED_MIN_CHARS``).  A letter page of running text holds about one per 150 to 250, so
+a searchable scan is covered many times over, and the one stamped line of an e-signed or numbered scan (a
+letter page needs 324 characters) is not."""
 _MAX_PICTURES_SEEN = 4 * MAX_PAGES  # image objects of one file that are looked at
 _MAX_PICTURE_PIXELS = 8 * MAX_MEGAPIXELS * 1_000_000  # pixels of one file's pictures decoded here
-_OCR_RULES = 1
+_OCR_RULES = 2
 """Bumped when a rule here that decides what OCR reads, or how a page shows it, changes without one of the
 numbers below changing.  It is in the options only with an engine, so it moves no key of a Mac without one
-(the emitter version would)."""
+(the emitter version would).  2: a picture is covered by its size, not by 20 characters anywhere in it; an
+image object counts toward the limits once it may be read, and a repeated one is decoded once."""
 _PDF_OCR_OPTIONS: dict[str, OptionValue] = {
     "ocr_pdf_rules": _OCR_RULES,
     "ocr_page_dpi": _RENDER_DPI,
@@ -625,15 +633,20 @@ def _page_box(obj: Any) -> _Box | None:
 
 
 def _covered(textpage: Any, box: _Box) -> bool:
-    """True when the text layer already holds what is in ``box``: ``_SCANNED_MIN_CHARS`` characters or more
-    lie inside it (a searchable scan, a picture behind the page's text).  Reading such a picture would say
-    the page twice.  The box is drawn in a little first, because PDFium counts a character that only touches
-    it."""
+    """True when the text layer already holds what is in ``box`` (a searchable scan, a picture behind the
+    page's text): reading such a picture would say the page twice.
+
+    How much text that takes goes by the picture's size on the page: one character per
+    ``_COVER_PT2_PER_CHAR`` square points, and never under ``_SCANNED_MIN_CHARS``.  A count alone would call
+    a full-page scan covered by the one line stamped across it (an envelope id, a page number with a
+    notice), and that page would never be read.  The box is drawn in a little first, because PDFium counts
+    a character that only touches it."""
     left, bottom, right, top = box
     dx = min(_PICTURE_INSET_PT, (right - left) / 4)
     dy = min(_PICTURE_INSET_PT, (top - bottom) / 4)
     text = str(textpage.get_text_bounded(left + dx, bottom + dy, right - dx, top - dy))
-    return len("".join(text.split())) >= _SCANNED_MIN_CHARS
+    needed = max(_SCANNED_MIN_CHARS, math.ceil((right - left) * (top - bottom) / _COVER_PT2_PER_CHAR))
+    return len("".join(text.split())) >= needed
 
 
 class _PagePictures:
@@ -643,14 +656,15 @@ class _PagePictures:
     A picture is offered when it passes the helper's own size rule (no side under 48 px, no more than
     ``MAX_MEGAPIXELS``; checked from its stored size, before a pixel is decoded), is drawn with a size, and
     is not covered by the text layer (``_covered``).  Its stored pixels are offered, not a rendering of the
-    page: the same image object gives the same bytes wherever it is drawn, so a logo on every page is read
-    once.  A picture PDFium cannot place or decode is skipped; nothing here can fail the document but the
-    time limit and memory.
+    page, and once: a picture whose stored stream and size were offered before (a logo on every page) is
+    not decoded again.  A picture PDFium cannot place or decode is skipped; nothing here can fail the
+    document but the time limit and memory.
 
-    At most ``_MAX_PICTURES_SEEN`` image objects are looked at and ``_MAX_PICTURE_PIXELS`` pixels decoded.
-    Both are counts, so a file gives the same pictures on every run.  ``pages`` holds the page index of each
-    picture offered so far, ``cut`` says one of the two limits stopped the looking, and ``done`` that every
-    page was looked at.
+    At most ``_MAX_PICTURES_SEEN`` image objects that pass the size rule are looked at, and
+    ``_MAX_PICTURE_PIXELS`` pixels decoded.  Both are counts, so a file gives the same pictures on every
+    run, and neither is spent on what is never read: an icon counts for nothing, and a repeated picture is
+    charged its pixels once.  ``pages`` holds the page index of each picture offered so far, ``cut`` says
+    one of the two limits stopped the looking, and ``done`` that every page was looked at.
     """
 
     def __init__(self, doc: Any, pdfium_c: Any, indexes: Sequence[int], deadline: float) -> None:
@@ -661,26 +675,31 @@ class _PagePictures:
         self._deadline = deadline
         self._seen = 0
         self._pixels = 0
+        self._offered: set[tuple[bytes, int, int]] = set()  # (sha256 of the stored stream, width, height)
         self.pages: list[int] = []
         self.cut = False
         self.done = False
 
     def _picture(self, obj: Any, textpage: Any) -> bytes | None:
         """One image object as PNG bytes, or None when it is not one to read."""
+        width, height = obj.get_px_size()
+        pixels = width * height
+        if min(width, height) < _MIN_PX or pixels > MAX_MEGAPIXELS * 1_000_000:
+            return None  # the helper would not read it: looking at it costs nothing, so it counts for nothing
         if self._seen >= _MAX_PICTURES_SEEN:
             self.cut = True
             return None
         self._seen += 1
-        width, height = obj.get_px_size()
-        pixels = width * height
-        if min(width, height) < _MIN_PX or pixels > MAX_MEGAPIXELS * 1_000_000:
-            return None
         box = _page_box(obj)
         if box is None or _covered(textpage, box):
             return None
+        stored = (hashlib.sha256(obj.get_data(decode_simple=False)).digest(), width, height)
+        if stored in self._offered:
+            return None  # drawn again: it was offered, and charged, where it was first seen
         if self._pixels + pixels > _MAX_PICTURE_PIXELS:
             self.cut = True
             return None
+        self._offered.add(stored)
         self._pixels += pixels
         bitmap = obj.get_bitmap()  # the stored image: its matrix and mask are not applied
         try:
