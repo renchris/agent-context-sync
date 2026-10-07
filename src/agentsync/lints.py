@@ -84,6 +84,9 @@ _SIDECAR_DIR_SUFFIX = ".files"
 _DIR_GUIDES = frozenset({"CLAUDE.md", "INDEX.md"})
 _PIPELINE_DIRS = ("_manifest", "_sync", "_index", "CHANGELOG")
 _PIPELINE_FILES = ("INDEX.md", "CHANGELOG.md", "DEPENDS.tsv")
+_TEXT_SUFFIXES = (".md", ".txt", ".csv")
+"""The page and sidecar files the token lint and the secret scan read; a keyframe's JPEG bytes can spell
+``PWd=`` (spec S10), and its scan would stub the whole recording for good."""
 _GITLEAKS_CANDIDATES = (Path("/opt/homebrew/bin/gitleaks"), Path("/usr/local/bin/gitleaks"))
 _GITLEAKS_TIMEOUT_S = 300.0
 
@@ -376,6 +379,11 @@ def _first_token_hit(
     return None
 
 
+def _is_text_file(path: str) -> bool:
+    """A page or a text sidecar (``.md``, ``.txt``, ``.csv``): what the token lint and secret scan read."""
+    return path.lower().endswith(_TEXT_SUFFIXES)
+
+
 def lint_no_tokens(
     repo: Path, paths: Sequence[str] | None = None, *, known_secrets: Sequence[str] = ()
 ) -> list[LintFinding]:
@@ -398,6 +406,8 @@ def lint_no_tokens(
             continue
         pipeline = _is_pipeline_file(path)
         if not (pipeline or path.startswith((_MIRROR + "/", _ARCHIVE + "/", "topics/"))):
+            continue
+        if not (pipeline or _is_text_file(path)):  # a keyframe or other binary sidecar: never read
             continue
         hit = _first_token_hit(full, PIPELINE_TOKEN_PATTERN if pipeline else TOKEN_PATTERN, known)
         if hit is None:
@@ -520,12 +530,16 @@ def _gitleaks_scan(exe: Path, repo: Path, paths: Sequence[str]) -> list[LintFind
 
 def lint_secrets(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
     """SECRET: content secret scan over the given mirror pages; each hit names the page (caller quarantines it
-    to an ``UNREADABLE: contains a credential`` stub instead of blocking the whole cycle: blocking=False)."""
+    to an ``UNREADABLE: contains a credential`` stub instead of blocking the whole cycle: blocking=False).
+    Only text files are read (``.md``, ``.txt``, ``.csv``); a binary sidecar such as a keyframe is skipped."""
     existing = sorted(
         {
             p
             for p in paths
-            if (repo / p).is_file() and not (repo / p).is_symlink() and not p.startswith(".git/")
+            if _is_text_file(p)
+            and (repo / p).is_file()
+            and not (repo / p).is_symlink()
+            and not p.startswith(".git/")
         }
     )
     if not existing:

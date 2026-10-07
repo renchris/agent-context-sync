@@ -452,6 +452,23 @@ def test_builtin_secret_scan_ignores_teams_join_pwd(
     assert [("generic-password" in f.message) for f in found] == ([True] if flagged else [])
 
 
+def test_a_jpeg_sidecar_is_not_read_by_the_secret_scan_or_the_token_lint(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec S10: a keyframe's bytes can spell a password assignment; only pages and ``.txt``, ``.md`` and
+    ``.csv`` sidecars are read, so the same bytes in a text sidecar still hit."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    frame = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\nPWd=xxxxxx\n" + f"access_token={QUERY_TOKEN}\n".encode()
+    folder = repo / "mirror/src/weekly-sync.mp4.d/01-t000000.files"
+    folder.mkdir(parents=True)
+    (folder / "t000148.jpg").write_bytes(frame)
+    (folder / "rows.txt").write_bytes(frame)
+    jpg, txt = (f"mirror/src/weekly-sync.mp4.d/01-t000000.files/{n}" for n in ("t000148.jpg", "rows.txt"))
+    assert lints.lint_secrets(repo, [jpg]) == []
+    assert [f.path for f in lints.lint_no_tokens(repo) if f.code == "TOKEN"] == [txt]
+    assert [f.path for f in lints.lint_secrets(repo, [jpg, txt])] == [txt]
+
+
 def test_secret_scan_of_nothing(repo: Path) -> None:
     assert lints.lint_secrets(repo, []) == []
 
