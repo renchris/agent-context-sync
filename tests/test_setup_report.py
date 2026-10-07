@@ -33,7 +33,7 @@ from agentsync.convert.registry import Registry
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind
 from agentsync.ops import doctor, launchd
-from agentsync.paths import expand
+from agentsync.paths import TEMPORARY_ROOTS, expand, is_temporary
 from test_ocr import fake_engine, write_fake
 
 ORG = "Contoso"
@@ -691,6 +691,9 @@ def test_run_type_is_computed(fake_mac: dict[str, Path], monkeypatch: pytest.Mon
     assert "run_type=Real%20Mac" in text.splitlines()[-1]
     assert setup_report.is_sandbox_home("/private/tmp/x") and setup_report.is_sandbox_home("/tmp")
     assert not setup_report.is_sandbox_home("/tmpfoo") and not setup_report.is_sandbox_home("/Users/tmp")
+    # One rule, shared with the skill's $CLAUDE_CONFIG_DIR copy (agentsync.skill.config_dir_skipped).
+    assert setup_report.SANDBOX_HOMES is TEMPORARY_ROOTS
+    assert all(is_temporary(root) and is_temporary(f"{root}/x") for root in TEMPORARY_ROOTS)
 
 
 def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str, Path]) -> None:

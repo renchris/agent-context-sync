@@ -225,6 +225,13 @@ The run type is computed too:
 
 The agent's own opinion is not asked for.
 
+The same test guards the skill. A run whose HOME is under one of those folders writes its `agentsync-docs`
+skill under that HOME only, and not under a `CLAUDE_CONFIG_DIR` that is outside them: a sandbox run that
+kept a real session's config folder would otherwise put a skill there that names a docs repo in a temporary
+folder ([CONTRACTS §16.30](../design/CONTRACTS.md), "A temporary home writes no skill into a real
+`CLAUDE_CONFIG_DIR`"). A `CLAUDE_CONFIG_DIR` that is itself under a temporary folder is still written. So a
+sandbox report whose status says the skill is current counts the home copy alone.
+
 ### The prompt version
 
 The prompt's first line carries its version, and the version changes with every change of its text, a reworded

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import os
 import re
@@ -67,6 +68,21 @@ def is_under(path: Path, root: Path) -> bool:
 def is_cloud_path(path: Path) -> bool:
     """Return True for any path under ``~/Library/CloudStorage`` (a File Provider tree)."""
     return is_under(path, expand(CLOUD_STORAGE_ROOT))
+
+
+TEMPORARY_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+"""Where macOS keeps throwaway files: ``/tmp`` and the per-user ``$TMPDIR`` tree, each also by the path it
+resolves to."""
+
+
+def is_temporary(path: str | Path) -> bool:
+    """Whether ``path`` (or what it resolves to) is one of :data:`TEMPORARY_ROOTS` or lies under one.  The
+    setup report's run type (a home folder there is a sandbox run) and the skill's ``$CLAUDE_CONFIG_DIR``
+    copy (:mod:`agentsync.skill`) both go by it."""
+    candidates = {str(path)}
+    with contextlib.suppress(OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
+        candidates.add(str(Path(path).resolve()))
+    return any(c == p or c.startswith(p + "/") for c in candidates for p in TEMPORARY_ROOTS)
 
 
 @dataclass(frozen=True, slots=True)

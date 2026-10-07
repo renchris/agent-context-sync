@@ -5489,6 +5489,10 @@ advice and the manual `checkpoint` step (a session ends with `sync`), and its de
 any work session that needs company documents. Tests never write the real folders: `tests/conftest.py` points
 HOME at a tmp dir and unsets `CLAUDE_CONFIG_DIR` for every test, through its own `MonkeyPatch` so a test's
 `monkeypatch.undo()` cannot restore them. Test: `tests/test_skill.py`.
+**Amended (2026-10-07, §16.30 "A temporary home writes no skill into a real `CLAUDE_CONFIG_DIR`"):** the
+`$CLAUDE_CONFIG_DIR` copy is left out when the home folder is under a temporary folder and that folder is
+not (`skill.config_dir_skipped`). The tests' isolation is no longer the only thing between a scratch run and
+the operator's real skills folder.
 
 ```python
 # agentsync.skill
@@ -5497,6 +5501,7 @@ SKILL_NAME = "agentsync-docs"
 AGENTSYNC_BIN = "~/.local/bin/agentsync"
 def skill_text(docs_repo: Path) -> str: ...  # the SKILL.md every sync writes
 def skill_paths() -> list[Path]: ...  # ~/.claude/skills/<SKILL_NAME>/SKILL.md, then $CLAUDE_CONFIG_DIR/skills/... if different
+def config_dir_skipped(config_dir: Path, home: Path | None = None) -> bool: ...  # 2026-10-07, §16.30: temporary home, real config folder
 def write_skill(docs_repo: Path) -> list[tuple[Path, bool]]: ...  # (path, written) per current copy; never raises OSError
 ```
 
@@ -9006,3 +9011,52 @@ fix when run from another environment), `tests/test_setup_report.py` (the field 
 `build_report`: 21 arguments installed against 23, `interpreter same`, one canary path of two; with no pin
 to read, `interpreter differs (the same file: yes ...)`; exit 64 decoded), `tests/test_install_oneshot.py`
 (a first background run that exits 64 says what 64 is).
+
+#### A temporary home writes no skill into a real `CLAUDE_CONFIG_DIR` (amends §16.14 and §16.16; `agentsync.skill`, `agentsync.paths`)
+
+On 2026-10-07 agentsync was run by hand with HOME set to a temporary folder while the operator's own
+`CLAUDE_CONFIG_DIR` was still in the environment. The sync wrote
+the `agentsync-docs` skill into that real skills folder, as §16.16 says it does, and the skill names the
+docs repo by its path: a folder under the temporary home. A real session was then told its company
+documents are in a folder about to be deleted. The same happens to a sandbox run of the setup prompt
+whose tool keeps its real config folder, and to a test that loses its isolation.
+
+```python
+# agentsync.paths
+TEMPORARY_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+def is_temporary(path: str | Path) -> bool: ...   # the path, or what it resolves to, is one of them or under one
+# agentsync.skill
+def config_dir_skipped(config_dir: Path, home: Path | None = None) -> bool: ...
+```
+
+- **The rule.** The copy under `$CLAUDE_CONFIG_DIR/skills` is left out when the home folder is under a
+  temporary folder and `$CLAUDE_CONFIG_DIR` is not. `skill_paths()` then returns the home copy only.
+- **One test for "temporary".** `is_temporary` is the rule the setup report already used to call a run a
+  sandbox. It moved from `agentsync.setup_report` to `agentsync.paths`, because `agentsync.skill` imports
+  only that module. `setup_report.SANDBOX_HOMES` is `paths.TEMPORARY_ROOTS` and
+  `setup_report.is_sandbox_home` calls `is_temporary`, so the run type is computed as before (§16.14). A
+  symlink loop no longer raises out of it on Python 3.11.
+- **Why not "never under a temporary home".** A config folder that is itself temporary belongs to the same
+  throwaway run, and no real session reads it. Writing it is what the variable asks for, and the tests of
+  that copy run under a temporary home: under the wider rule they could only run with the guard patched
+  out.
+- **Why the home folder and not the docs repo.** The docs repo is under the home folder unless the config
+  says otherwise, and the home folder is what a scratch run changes. A config whose `docs_repo` is under a
+  temporary folder on a real home is not covered: that is a choice written in a file, not an accident of
+  the environment.
+- **Nothing calls the copy missing.** `skill.write_skill`, `loop.skill_state` and status's `skill` check all
+  go by `skill_paths()`. The write logs one INFO line that the copy was left out, with no path in it.
+- A real Mac is unchanged: both copies, as §16.16 has them. So is a real home with a temporary
+  `CLAUDE_CONFIG_DIR`, where the skill names a real docs repo.
+
+This guard does not replace the rule for whoever runs agentsync by hand: set HOME to a temporary folder
+and unset `CLAUDE_CONFIG_DIR` (`env -u CLAUDE_CONFIG_DIR HOME=<tmp> ...`). It makes forgetting the second
+half harmless for the skill.
+
+Tests: `tests/test_skill.py` (the rule on nine pairs of paths that are never touched: four temporary homes
+with a real config folder, a real home with a real and with a temporary one, two temporary homes with a
+temporary one, and a home that only starts like `/tmp`; a sync under the tests' temporary home with
+`CLAUDE_CONFIG_DIR` set to a path nothing can be created under: one path, the home copy written, no "cannot
+write" warning, the INFO line, `loop.skill_state` current, and a temporary config folder still listed),
+`tests/test_setup_report.py` and `tests/test_deploy_pack.py` (the run type's rule and its four folders,
+unchanged).

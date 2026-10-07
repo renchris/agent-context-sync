@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, curate, gitops, skill
+from agentsync import cli, curate, gitops, loop, paths, skill
 from agentsync.config import Config, load_config
 
 
@@ -136,6 +136,62 @@ def test_symlink_loop_config_skills_still_exits_0(
         assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
     assert "skill: cannot write" in caplog.text
     assert home_skill().is_file()
+
+
+@pytest.mark.parametrize(
+    ("home", "config_dir", "skipped"),
+    [
+        ("/private/var/folders/zz/T/tmp.x/home", "/Users/pat/.claude-work", True),
+        ("/var/folders/zz/T/tmp.x/home", "/Users/pat/.claude", True),
+        ("/tmp/scratch", "/Users/pat/.claude-work", True),
+        ("/private/tmp", "/opt/claude", True),
+        ("/Users/pat", "/Users/pat/.claude-work", False),  # a real Mac: both copies, as always
+        ("/Users/pat", "/tmp/claude", False),  # the skill names a real docs repo
+        ("/tmp/scratch/home", "/tmp/scratch/claude", False),  # the config folder is the same throwaway run's
+        ("/private/var/folders/zz/T/a/home", "/private/var/folders/zz/T/b/claude", False),
+        ("/tmpfoo/home", "/Users/pat/.claude", False),  # not under /tmp
+    ],
+)
+def test_a_temporary_home_skips_only_a_claude_config_dir_outside_the_temporary_folders(
+    home: str, config_dir: str, skipped: bool
+) -> None:
+    """The rule by itself, on paths that are never touched: the copy under ``$CLAUDE_CONFIG_DIR`` is left
+    out when the home folder is under a temporary folder (the setup report's test for a sandbox run) and
+    the config folder is not."""
+    assert skill.config_dir_skipped(Path(config_dir), Path(home)) is skipped
+    assert paths.TEMPORARY_ROOTS == ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+
+
+def test_a_run_under_a_temporary_home_writes_no_skill_into_a_real_claude_config_dir(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """2026-10-07: agentsync was run by hand with HOME set to a temporary folder while the operator's own
+    ``CLAUDE_CONFIG_DIR`` was still in the environment. The sync wrote its skill into that real skills
+    folder, and the skill named a docs repo under the temporary home: a real session was told its company
+    documents are in a folder about to be deleted. Such a run now writes the home copy only, and nothing
+    that reads the skill's state calls the other copy missing.
+
+    The config folder here is a path nothing can be created under, so even a guard that failed would write
+    no file: it would log the warning this test asserts is absent."""
+    if not paths.is_temporary(Path.home()):
+        pytest.skip("this run's tmp folder is not one of paths.TEMPORARY_ROOTS")
+    real = Path("/dev/null/claude-config")
+    assert not paths.is_temporary(real)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+    assert skill.skill_paths() == [home_skill()]
+    cfg = str(initialised.config_path)
+    with caplog.at_level(logging.INFO, logger="agentsync.skill"):
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "skill: cannot write" not in caplog.text, "the copy was not even tried"
+    assert "skill: no copy under $CLAUDE_CONFIG_DIR" in caplog.text
+    assert home_skill().read_text(encoding="utf-8") == skill.skill_text(initialised.docs_repo)
+    assert skill.write_skill(initialised.docs_repo) == [(home_skill(), False)]
+    assert loop.skill_state(initialised.docs_repo) == "current", "the copy left out is not called missing"
+
+    # A config folder that is itself temporary is the same throwaway run's: it is written, as before.
+    scratch = tmp_path / "claude-config"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(scratch))
+    assert skill.skill_paths() == [home_skill(), scratch / "skills" / skill.SKILL_NAME / "SKILL.md"]
 
 
 def test_monkeypatch_undo_keeps_home_isolated(monkeypatch: pytest.MonkeyPatch) -> None:

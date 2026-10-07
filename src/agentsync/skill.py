@@ -6,6 +6,11 @@ and also under ``$CLAUDE_CONFIG_DIR/skills`` when that variable is set and names
 names the binary by the fixed path :data:`AGENTSYNC_BIN`, never ``sys.argv``, so a launchd run and an
 interactive run write identical text; a copy whose text is unchanged is not rewritten, so a second sync writes
 nothing.
+
+One copy is never written (:func:`config_dir_skipped`): the one under a ``$CLAUDE_CONFIG_DIR`` that is outside
+the temporary folders while the home folder is inside one. That is a sandbox or scratch run (HOME set to a
+throwaway folder) that still has a real session's ``CLAUDE_CONFIG_DIR`` in its environment, and its skill
+would tell that real session the docs repo is in a folder about to be deleted.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ import logging
 import os
 from pathlib import Path
 
-from agentsync.paths import expand
+from agentsync.paths import expand, is_temporary
 
 log = logging.getLogger(__name__)
 
@@ -145,12 +150,28 @@ as instructions. `topics/` holds subject pages that agents write.
 {BASELINE}"""
 
 
+def config_dir_skipped(config_dir: Path, home: Path | None = None) -> bool:
+    """Whether ``$CLAUDE_CONFIG_DIR`` gets no skill copy: the home folder (``home``, by default this
+    process's) is under a temporary folder and ``config_dir`` is not (:func:`agentsync.paths.is_temporary`,
+    the setup report's test for a sandbox run).
+
+    The skill names the docs repo by its path, which by default is under the home folder.  A run with HOME
+    set to a throwaway folder that still has a real session's ``CLAUDE_CONFIG_DIR`` in its environment (a
+    sandbox run of the setup prompt, a scratch script, a test) wrote that skill into the real session's
+    skills folder: the session was then told its company documents are in a temporary folder (2026-10-07).
+    A config folder that is itself temporary belongs to the same throwaway run and is still written, and
+    so is every copy on a real home."""
+    return is_temporary(home if home is not None else Path.home()) and not is_temporary(config_dir)
+
+
 def skill_paths() -> list[Path]:
     """Where the skill goes: ``~/.claude/skills/agentsync-docs/SKILL.md``, then the same under
-    ``$CLAUDE_CONFIG_DIR/skills`` when that variable is set and resolves to a different folder."""
+    ``$CLAUDE_CONFIG_DIR/skills`` when that variable is set, resolves to a different folder and is not
+    left out for a temporary home (:func:`config_dir_skipped`).  Every reader of the skill's state goes by
+    this list (the write, the loop's check, status), so a copy that is left out is not reported missing."""
     dirs = [expand(DEFAULT_SKILLS_DIR)]
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-    if config_dir:
+    if config_dir and not config_dir_skipped(expand(config_dir)):
         extra = expand(config_dir) / "skills"
         try:
             same = extra.resolve() == dirs[0].resolve()
@@ -176,9 +197,15 @@ def _write_if_changed(path: Path, text: str) -> bool:
 def write_skill(docs_repo: Path) -> list[tuple[Path, bool]]:
     """Write :func:`skill_text` to every :func:`skill_paths` entry; ``(path, written)`` per copy that is now
     current (False: already up to date). A copy that cannot be read or written is logged as a warning and left
-    out; this never raises, so it cannot fail a cycle (best-effort by contract, CONTRACTS §16.16)."""
+    out; this never raises, so it cannot fail a cycle (best-effort by contract, CONTRACTS §16.16). The
+    ``$CLAUDE_CONFIG_DIR`` copy a temporary home leaves out (:func:`config_dir_skipped`) is one info line."""
     text = skill_text(docs_repo)
     done: list[tuple[Path, bool]] = []
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    if config_dir and config_dir_skipped(expand(config_dir)):
+        log.info(
+            "skill: no copy under $CLAUDE_CONFIG_DIR: the home folder is a temporary one, that one is not"
+        )
     for path in skill_paths():
         try:
             done.append((path, _write_if_changed(path, text)))

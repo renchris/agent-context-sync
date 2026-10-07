@@ -104,7 +104,7 @@ from urllib.parse import quote, unquote, urlencode, urlsplit
 from agentsync import __version__, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, load_config
-from agentsync.paths import default_config_path, expand
+from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
 
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES = (
@@ -254,7 +254,7 @@ def prompt_layout(version: int | None) -> PromptLayout:
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
 
 
-SANDBOX_HOMES = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+SANDBOX_HOMES = TEMPORARY_ROOTS
 """A HOME under one of these is a sandbox run (a throwaway home), whatever the agent says."""
 APPROVAL_HIDDEN_TOOLS = ("claude code", "copilot")
 """Agent tools (lower-case substrings of the ``Agent:`` line) that ask the person to approve commands without
@@ -1346,10 +1346,7 @@ def home_path() -> str:
 
 def is_sandbox_home(home: str) -> bool:
     """Whether ``home`` (or what it resolves to) is under a temporary folder (:data:`SANDBOX_HOMES`)."""
-    candidates = {home}
-    with contextlib.suppress(OSError):
-        candidates.add(str(Path(home).resolve()))
-    return any(c == p or c.startswith(p + "/") for c in candidates for p in SANDBOX_HOMES)
+    return is_temporary(home)
 
 
 def compute_run_type(runs: Sequence[InstallRun], home: str) -> str:
