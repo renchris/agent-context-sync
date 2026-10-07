@@ -252,6 +252,16 @@ def test_graph_company_line_names_the_line_to_delete(text: str, line: int | None
     assert parse(text, tmp_path).graph_company_line == line
 
 
+def test_convert_recordings_is_one_boolean_key_that_defaults_to_on(tmp_path: Path) -> None:
+    """Spec section 6 and lead decision L1: recordings are converted unless the key turns them off."""
+    assert parse("", tmp_path).convert.recordings is True
+    assert parse("[convert]\nrecordings = false\n", tmp_path).convert.recordings is False
+    with pytest.raises(ConfigError, match=r"\[convert\]: 'recordings' must be true or false, got 'off'"):
+        parse('[convert]\nrecordings = "off"\n', tmp_path)
+    with pytest.raises(ConfigError, match="unknown key"):
+        parse("[convert]\nrecording = false\n", tmp_path)
+
+
 def test_convert_ocr_is_one_boolean_key_that_defaults_to_on(tmp_path: Path) -> None:
     """Decision D2: the one switch a LaunchAgent run sees too.  Languages and page caps are constants."""
     assert parse("", tmp_path).convert.ocr is True

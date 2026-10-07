@@ -122,6 +122,7 @@ class UnitKind(enum.StrEnum):
     INDEX = "index"  # e.g. <Name>.xlsx.d/00-index.md, the workbook's grep-recall surface
     SHEET = "sheet"
     SUMMARY = "summary"  # streaming path for giant workbooks: schema + sample + CSV sidecar
+    WINDOW = "window"  # one five-minute window of a meeting recording, <Name>.mp4.d/NN-tHHMMSS.md
 
 
 class ChangeOp(enum.StrEnum):
