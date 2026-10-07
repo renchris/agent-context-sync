@@ -2434,8 +2434,13 @@ def _status(r: _Run) -> list[str]:
 
 EVIDENCE_BUDGET_S = 3.0
 """The seconds the evidence parts (the ``### `` blocks under Status) may take in all, inside the report's own
-budget. A part with no time left prints :data:`NOT_MEASURED`."""
+budget. A part with no time left prints :data:`NOT_MEASURED`. The OCR probe is not counted
+(:data:`_PROBE_S`)."""
 NOT_MEASURED = "not measured (time limit)"
+_PROBE_S = 1.5
+"""The seconds the OCR part waits for ``convert.ocr.probe``, beside :data:`EVIDENCE_BUDGET_S`. The probe is
+the one thing the evidence starts a program for (a built helper's ``--version``, which a cycle gives 5 s), so
+a helper that hangs costs this much and nothing of what the manifest parts have."""
 EVIDENCE_TITLES = (
     "OCR",
     "Quarantine by reason",
@@ -2565,11 +2570,13 @@ class _Mirror:
     """The manifest, read only, for the evidence parts. One connection opened ``mode=ro``: nothing is
     created, migrated or written. Every statement is stopped once the evidence's time is used up, and
     ``steps`` counts the looks at the clock (one per :data:`_STEP_TICK` VM instructions): the work done,
-    whatever the Mac's speed."""
+    whatever the Mac's speed. ``latest``: the time the deadline is never moved past (the report's own
+    deadline less its reserve)."""
 
-    def __init__(self, db: Path, budget_s: float) -> None:
+    def __init__(self, db: Path, budget_s: float, *, latest: float | None = None) -> None:
         self.db = db
         self.deadline = time.monotonic() + budget_s
+        self.latest = latest
         self.steps = 0
         self.statements: list[str] = []
         self.kept: dict[str, object] = {}
@@ -2577,6 +2584,12 @@ class _Mirror:
 
     def left(self) -> float:
         return self.deadline - time.monotonic()
+
+    def not_counted(self, seconds: float) -> None:
+        """Move the deadline on by ``seconds`` that went to something with a time of its own (the OCR
+        probe): the manifest parts keep all of theirs, inside ``latest``."""
+        moved = self.deadline + max(seconds, 0.0)
+        self.deadline = moved if self.latest is None else min(moved, max(self.latest, self.deadline))
 
     def _tick(self) -> int:
         self.steps += 1
@@ -2761,20 +2774,36 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 
 def _ocr_helper(r: _Run, m: _Mirror) -> list[str]:
     """The probe's state and detail (``convert.ocr.probe``: it looks, compiles nothing and stamps nothing;
-    the one program it may start is a built helper's ``--version``), and whether a label rule is on."""
-    from agentsync import policy  # noqa: PLC0415 - lazy: the report must import even if these are broken
-    from agentsync.convert import ocr  # noqa: PLC0415
+    the one program it may start is a built helper's ``--version``), and whether a label rule is on.
 
+    The probe has :data:`_PROBE_S` of its own, and the time it takes is not the manifest parts'
+    (``_Mirror.not_counted``): a helper that hangs is the Mac the OCR evidence is wanted from, and it used
+    to leave every part after it unmeasured. A probe that does not answer is a line of fixed words, not
+    :data:`NOT_MEASURED`: writing the report again would say the same."""
     config = cast(Config, r.config)
-    try:
-        state, detail = r.call(
-            lambda: ocr.probe(config.convert, config.cache_dir), timeout=min(6.0, max(0.3, m.left()))
-        )
-    except TimeoutError:
-        raise _OutOfTimeError from None
     words = {"ready": "ready", "off": "off", "not-built": "not built", "failed": "failed"}
-    out = [f"- helper: {words.get(state, 'unknown state')} ({_shorten(str(detail), 200)})"]
+    room = r.remaining() - _RESERVE_S
+    started = time.monotonic()
     try:
+        from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        state, detail = r.call(lambda: ocr.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
+        out = [f"- helper: {words.get(state, 'unknown state')} ({_shorten(str(detail), 200)})"]
+    except TimeoutError:
+        if room < _PROBE_S:  # the report's own time ended the wait, not the helper
+            out = [f"- helper: {NOT_MEASURED}"]
+        else:
+            out = [
+                f"- helper: did not answer within {_PROBE_S:.1f}s (a built helper's `--version`; Doctor's "
+                "ocr line gives the same probe more time)"
+            ]
+    except Exception as exc:
+        out = [f"- helper: not measured ({type(exc).__name__})"]
+    finally:
+        m.not_counted(time.monotonic() - started)
+    try:
+        from agentsync import policy  # noqa: PLC0415 - lazy, as above
+
         active = policy.load_policy(config).labels_active
         out.append(f"- label rule in [policy]: {'on (no image is read under one)' if active else 'off'}")
     except Exception as exc:
@@ -3359,7 +3388,11 @@ def _evidence(r: _Run) -> list[str]:
     states, seconds, version strings and fixed words: never a file name, a folder name or a reason's text."""
     if r.config is None:
         return []
-    mirror = _Mirror(r.config.state_paths.db, min(EVIDENCE_BUDGET_S, r.remaining() - _RESERVE_S))
+    mirror = _Mirror(
+        r.config.state_paths.db,
+        min(EVIDENCE_BUDGET_S, r.remaining() - _RESERVE_S),
+        latest=r.deadline - _RESERVE_S,
+    )
     labels = _Labels(r.config, r.red)
     parts: tuple[Callable[[_Run, _Mirror, _Labels], list[str]], ...] = (
         _ocr_part,

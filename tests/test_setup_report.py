@@ -14,6 +14,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -2956,6 +2957,60 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
         '- evidence: 5 line(s) at the end of Status say "not measured": write the report again when this Mac '
         "is idle (`install.sh --report-only`) before sending it\n" in section(text, "Summary")
     )
+
+
+class Clock:
+    """``setup_report``'s ``time``: the real monotonic clock, which a test can move on."""
+
+    def __init__(self) -> None:
+        self.ahead = 0.0
+
+    def monotonic(self) -> float:
+        return time.monotonic() + self.ahead
+
+
+def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The probe starts a built helper, and it ran inside the time every part shares: a helper that did not
+    answer left its own line and every manifest block unmeasured, on the Mac the OCR evidence is wanted
+    from, and writing the report again gave the same. The probe has a wait of its own, and what it takes is
+    not counted."""
+    seed_ocr(fake_mac)
+    release = threading.Event()
+
+    def hung(_convert: ConvertConfig, _cache_dir: Path) -> tuple[str, str]:
+        release.wait(60)
+        return "ready", "too late"
+
+    monkeypatch.setattr(ocr, "probe", hung)
+    monkeypatch.setattr(setup_report, "_PROBE_S", 0.3)
+    try:
+        text, parts = status_parts(fake_mac)
+    finally:
+        release.set()
+    assert "- helper: did not answer within 0.3s (a built helper's `--version`;" in parts["OCR"]
+    assert "- label rule in [policy]: off\n" in parts["OCR"] and "too late" not in text
+    assert "not measured" not in section(text, "Status"), "fixed words: a second report would say the same"
+    assert (
+        "- images: 8 file(s): page 2" in parts["OCR"] and "- OCR time: of the last 3 run(s)" in parts["OCR"]
+    )
+    assert "| <folder-2> | quarantined | no text in image | 1 | 0 | - |" in parts["Quarantine by reason"]
+    assert "of the last 3 run(s), 2 recorded what they converted" in parts["Repeat conversions"]
+    assert "- evidence: the 6 parts at the end of Status were measured\n" in section(text, "Summary")
+    # On the report's own clock: a probe that answers after more time than the six parts have between them.
+    clock = Clock()
+    monkeypatch.setattr(setup_report, "time", clock)
+
+    def slow(_convert: ConvertConfig, _cache_dir: Path) -> tuple[str, str]:
+        clock.ahead += setup_report.EVIDENCE_BUDGET_S + 1.0
+        return "ready", "paper-vision revision 2, helper 0.3.0"
+
+    monkeypatch.setattr(ocr, "probe", slow)
+    text, parts = status_parts(fake_mac)
+    assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
+    assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
+    assert "- images: 8 file(s): page 2" in parts["OCR"]
 
 
 def test_a_statement_that_runs_past_the_time_is_stopped(fake_mac: dict[str, Path]) -> None:

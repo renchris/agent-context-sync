@@ -7551,7 +7551,13 @@ comes from `convert.ocr.probe`, which compiles nothing and does not renew the he
 queue is read through `governance.pending_purges`.
 
 **Bounded.** The six parts share `EVIDENCE_BUDGET_S`, counted from the first and never past the report's own
-deadline less its reserve. SQLite's progress handler looks at the clock every 2,000 VM instructions
+deadline less its reserve. The OCR probe is not counted in it: it is the one thing the evidence starts a
+program for (a built helper's `--version`), so it waits `_PROBE_S` (1.5 s) of its own and the shared
+deadline moves on by what it took (`_Mirror.not_counted`). Run inside the shared time, a helper that hung
+left its own line and every manifest block after it as `NOT_MEASURED`, on the Mac the OCR evidence is wanted
+from, and a second report said the same. A probe that does not answer prints `- helper: did not answer
+within 1.5s (...)`, fixed words that the Summary does not count as unmeasured; Doctor's `ocr` line is the
+same probe with more time. SQLite's progress handler looks at the clock every 2,000 VM instructions
 (`_STEP_TICK`) and stops the statement that is running; a part, or a block of one, with no time left prints
 `NOT_MEASURED`, and the parts after it print the same. Each statement reads a table from end to end at most
 once, and a subquery that runs once per row is an index lookup. Per-item lookups are capped: 300 queued
@@ -7604,8 +7610,8 @@ decides before a word inside the text does.
 
 **OCR.**
 
-- `- helper: ready | off | not built | failed (<the probe's detail>)`, then whether a label rule is on
-  (under one no image is read, §16.26).
+- `- helper: ready | off | not built | failed (<the probe's detail>)`, or `did not answer within 1.5s`, then
+  whether a label rule is on (under one no image is read, §16.26).
 - Images (the suffixes of `ImageConverter.extensions`) by outcome: `page`, `no-text stub`, `not-readable
   stub`, `not-on-this-Mac stub` (the `no converter` refusal of an online-only image), `no-converter stub on
   this Mac`, `deferred on this Mac`, `deferred online-only`, `not converted yet`, `failed`, `other stub`.
