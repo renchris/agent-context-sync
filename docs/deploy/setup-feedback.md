@@ -215,11 +215,14 @@ version, and the installer wrote its own number into the log.
   <agent>` are v8). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
-  `prompt: v7 or older (older than this installer's v8: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v8: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. Triage such a report as `known K18`, not as a failed setup.
-- A copy newer than the installer (`newer than this installer's v8`) means the checkout on that Mac did not
+- A copy newer than the installer (`newer than the installer's v8`) means the checkout on that Mac did not
   update: look at step 1's `git pull` in the friction log.
+- Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
+  the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
+  wrote its own number there, so an old v7 attempt is not a stale copy, and it is not K18.
 
 ### The evidence parts
 

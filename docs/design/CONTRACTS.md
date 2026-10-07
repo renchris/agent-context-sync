@@ -7704,12 +7704,22 @@ def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry 
   click; `form_step`: steps 1 to 3 onto the form's 1 to 3), so a v8 attempt gets each of them. `PromptLayout.
   version` is the first version with those steps, and `Outcome.version` is that number for a computed
   outcome.
-- The Summary's prompt line names a copy that is not this build's: `- prompt: v7 (older than this
-  installer's v8: the pasted copy was not the current README) · run: ...`, `v7 or older (older than ...)`
-  when the header is those fixed words of the installer, and `v9 (newer than this installer's v8: this Mac's
-  checkout is older than the pasted copy)` the other way (`_prompt_copy_note`). A v5, v6 or v7 attempt is
-  judged as before, with its own steps, and the line now says its copy was older. The issue link's
-  `prompt_version` stays the attempt's own (`v7`); the form's placeholder is `v8`.
+- The Summary's prompt line names a copy the installer stopped: `- prompt: v7 (older than the installer's
+  v8: the pasted copy was not the current README) · run: ...`, `v7 or older (older than ...)` when the header
+  is those fixed words of the installer, and `v9 (newer than the installer's v8: this Mac's checkout is older
+  than the pasted copy)` the other way (`_prompt_copy_note`). The installer's number and which of its two
+  reasons applies are read from its own stop line in the attempt (`_PROMPT_STOP_RE`), the rule
+  `friction_attempt_stopped` goes by. A header of `vN or older` with no such line (a log cut short) reads
+  `(the installer stopped this copy: it named no version)`.
+- The number alone adds nothing: `- prompt: v7 · run: ...` for any other attempt, as before v8. The line
+  first compared the attempt's number with this build's `PROMPT_VERSION`, and both directions were false.
+  An installer before v8 wrote its own number as the `Prompt:` line, so a Mac set up with the then-current
+  v7 prompt read "the pasted copy was not the current README" as soon as a v8 build wrote its report again.
+  And `install.sh --report-only` runs the agentsync a previous install left (`report_agentsync`), which can
+  be older than the installer that accepted the attempt: after the next bump, a v9 attempt that ended
+  before its install step would read "newer than this installer's v8: this Mac's checkout is older". A
+  v5, v6 or v7 attempt is judged as before, with its own steps. The issue link's `prompt_version` stays the
+  attempt's own (`v7`); the form's placeholder is `v8`.
 
 **One round.** Step 3, after the loop and before the report: while a `note:` line of the last sync starts
 with "sync again:" (the note above), or its `NEXT:` line asks only for another sync, the agent runs the sync
@@ -7742,9 +7752,11 @@ a colon, a dash and with nothing after the number; the report of a current attem
 an attempt an earlier installer logged, of a stopped session's own late lines and of a later session with
 no header, with and without a report in between; eleven logs that the installer and `parse_friction` end
 at the same line; a saved v6 copy's `--log-end && --report-only`),
-`tests/test_setup_report.py` (the layout of every version from 0 to 99; one log under `Prompt: v8` and
-`Prompt: v7`, the Summary equal line for line but for the prompt line, and the same computed outcome; a
-stopped copy's attempt as "v7 or older", "v7" and "v9", and free text after the installer's words not shown).
+`tests/test_setup_report.py` (the layout of every version from 0 to 99; one log under `Prompt: v7`,
+`Prompt: v8` and `Prompt: v9`, the Summary equal line for line but for the number, and the same computed
+outcome; a stopped copy's attempt as "v7 or older", "v7" and "v9", against an installer of v8 and of v12,
+free text after the installer's words not shown, the header's words with no stop line, and an agent's own
+error line that is not the installer's; the v5, v6 and v7 happy paths with the bare number).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
 

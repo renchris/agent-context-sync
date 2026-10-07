@@ -16,8 +16,9 @@ end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--repo
 KISS K17) since setup prompt v6 (by the agent itself in v5); :class:`PromptLayout` keeps the step numbers of
 each version that moved a step, picked by the ``Prompt:`` line's explicit version (:func:`prompt_layout`: v8
 and later read as v7); v4 ``F<n> | ...`` lines are shown as legacy, never counted. Since v8 the ``Prompt:``
-line is the version the pasted copy of the prompt gave, and the Summary says when that is not this build's
-(:data:`PROMPT_VERSION`). Everything the
+line is the version the pasted copy of the prompt gave, and the Summary says that a copy was not the
+installer's when the installer's own stop line in the attempt says so (:func:`_prompt_copy_note`).
+Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
 did: install.log's last install run exit, questions beyond the folder question, clicks beyond the Allow
 clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
@@ -141,8 +142,10 @@ PROBLEM_KINDS = ("error", "deviation", "prompt")
 PROMPT_VERSION = 8
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
-whose ``Prompt:`` line states no version is read with its step numbers; one that states another was started
-by a copy of the prompt that is not this build's, which the Summary's prompt line says."""
+whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
+nothing about its copy by that: an installer before v8 wrote its own number there, and the build that
+writes a report can be older than the installer that logged the attempt (``install.sh --report-only`` runs
+the agentsync a previous install left)."""
 PROMPT_STEPS = {
     1: "preflight",
     2: "install and start",
@@ -4025,19 +4028,35 @@ def _prompt_version(attempt: Attempt | None) -> str | None:
     return f"v{int(m.group(1))}" if m else None
 
 
+_PROMPT_STOP_RE = re.compile(
+    r"install\.sh --log-start: the pasted setup prompt is .*? and this installer is for setup prompt "
+    r"v(\d{1,3}): (the pasted copy is not the current one|this checkout is older than the prompt)"
+)
+"""The error line ``install.sh --log-start`` logs when it stops a copy of the prompt that is not its own
+(``PROMPT_STOPPED`` there): the installer's version, and which of its two reasons it gave."""
+
+
 def _prompt_copy_note(attempt: Attempt | None) -> str:
-    """What the Summary's prompt line adds when the attempt's version is not this build's
-    (:data:`PROMPT_VERSION`): the prompt that was pasted was not the README's of the installer that ran it.
-    ``install.sh --log-start`` writes the version the pasted copy gave, and ``v7 or older`` for a copy from
-    before v8, which gave none; those fixed words are kept, anything else of the line is not."""
-    version = attempt.version if attempt is not None else None
-    if attempt is None or version is None or version == PROMPT_VERSION:
+    """What the Summary's prompt line adds when the installer stopped the attempt's copy of the prompt:
+    the pasted prompt was not the README's of the installer that ran it.  ``install.sh --log-start`` says
+    so in the attempt, with its own version and the reason, and writes ``v7 or older`` as the header for a
+    copy from before v8, which gave no version.  Those fixed words are all that is shown.
+
+    Only the installer's line is evidence.  The number alone is not: an installer before v8 wrote its own
+    number as the ``Prompt:`` line, so ``v7`` in an old log is the installer that was current then, and
+    a number above :data:`PROMPT_VERSION` is an attempt a newer installer accepted, reported by the
+    agentsync an earlier install left."""
+    if attempt is None:
         return ""
     stated = " or older" if re.fullmatch(r"v\d{1,3} or older", attempt.header.get("Prompt", "")) else ""
-    mine = f"this installer's v{PROMPT_VERSION}"
-    if version < PROMPT_VERSION:
-        return f"{stated} (older than {mine}: the pasted copy was not the current README)"
-    return f" (newer than {mine}: this Mac's checkout is older than the pasted copy)"
+    stops = (_PROMPT_STOP_RE.match(e.what) for e in attempt.events if e.kind == "error" and e.step == 1)
+    stop = next((found for found in stops if found is not None), None)
+    if stop is None:  # the header's fixed words are the installer's too: only its stop writes them
+        return f"{stated} (the installer stopped this copy: it named no version)" if stated else ""
+    theirs = f"the installer's v{int(stop.group(1))}"
+    if stop.group(2).startswith("the pasted copy"):
+        return f"{stated} (older than {theirs}: the pasted copy was not the current README)"
+    return f"{stated} (newer than {theirs}: this Mac's checkout is older than the pasted copy)"
 
 
 def _doctor_fails(r: _Run) -> list[str]:

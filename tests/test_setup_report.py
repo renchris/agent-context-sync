@@ -378,11 +378,8 @@ V5_HAPPY = (
 """Setup prompt v5 run through as its README block asks: one Attempt header, start/end per step, the folder
 question, the two Allow clicks, the closing line. With install.log's rc 0 this is fully one command."""
 
-OLDER_COPY = (
-    f"(older than this installer's v{setup_report.PROMPT_VERSION}: "
-    "the pasted copy was not the current README)"
-)
-"""What the Summary's prompt line adds for an attempt whose prompt is older than this build's."""
+OLDER_COPY = "(older than the installer's v8: the pasted copy was not the current README)"
+"""What the Summary's prompt line adds for an attempt a v8 installer stopped: its copy was an older one."""
 
 
 def write_friction(fake_mac: dict[str, Path], text: str = V5_HAPPY, path: Path | None = None) -> Path:
@@ -446,10 +443,9 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert "agent said" not in summary, "no Outcome: line, so nothing the agent said"
     assert "- attempt:" not in summary, "one attempt: no attempt line"
     assert (
-        f"- prompt: v5 {OLDER_COPY} · run: Sandbox with simulated launchd (computed: install.log says "
-        "launchd=simulated; "
+        "- prompt: v5 · run: Sandbox with simulated launchd (computed: install.log says launchd=simulated; "
         "HOME is also under a temporary folder) · agent: Claude Code, claude-opus-5-5" in summary
-    ), "the issue form's run-type label (K10)"
+    ), "the issue form's run-type label (K10); an older version alone says nothing about the copy"
     assert "WARNING" not in summary, "the attempt has its end | finished line"
     assert (
         "- human turns: 3 (1 question; 2 clicks logged, though none is possible; approvals: not observable)"
@@ -1798,7 +1794,7 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert summary.strip().splitlines()[0] == (
         "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
     )
-    assert f"- prompt: v6 {OLDER_COPY} · run: Sandbox with simulated launchd" in summary
+    assert "- prompt: v6 · run: Sandbox with simulated launchd" in summary
     assert "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)" in summary, (
         "the folder question is a turn although v6 does not log it (L9)"
     )
@@ -1865,18 +1861,24 @@ and a step 2 error logged after install.sh exited 0, which is agent friction sin
 
 
 @pytest.mark.usefixtures("clean_doctor")
-def test_a_v8_attempt_is_judged_like_v7_and_a_v7_one_says_its_copy_was_older(
+def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_the_copy(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
-    """The same log under ``Prompt: v8`` and ``Prompt: v7``: the outcome, the turns, the expected turns, the
-    agent friction, the times and the missing IT line are the same, line for line. Only the Summary's
-    prompt line differs: a v7 attempt reported by this build was started by a copy of the prompt that is
-    not the README's, and the line says so. The issue link carries each attempt's own version."""
+    """The same log under ``Prompt: v7``, ``Prompt: v8`` and ``Prompt: v9``: the outcome, the turns, the
+    expected turns, the agent friction, the times and the missing IT line are the same, line for line, and
+    the Summary's prompt line differs by the number alone. The issue link carries each attempt's own version.
+
+    The line once added "older than this installer's v8: the pasted copy was not the current README" to
+    every attempt below this build's number. But a v7 installer wrote "Prompt: v7" from its own number, so
+    a Mac set up with the then-current v7 prompt, whose report is written again by this build, was called
+    a stale copy. And "newer than this installer's" was said of a v9 attempt a v9 installer had accepted,
+    by the v8 agentsync an earlier install left (what ``install.sh --report-only`` runs). The number is
+    no evidence either way; the installer's stop line is (the next test)."""
     v6_install_log(fake_mac, simulated=False, agent="seconds=2 rc=0 result=done")
     busy = _insert_before("2026-09-29T10:01:10Z | end", V8_BUSY_LINES, V7_HAPPY)
     summaries: dict[int, list[str]] = {}
     links: dict[int, dict[str, list[str]]] = {}
-    for version in (7, 8):
+    for version in (7, 8, 9):
         friction = busy.replace("Prompt: v7", f"Prompt: v{version}")
         write_friction(fake_mac, friction)
         rc, text, _ = report(tmp_path, fake_mac["config"])
@@ -1903,11 +1905,12 @@ def test_a_v8_attempt_is_judged_like_v7_and_a_v7_one_says_its_copy_was_older(
         [line] = [ln for ln in summaries[version] if ln.startswith("- prompt: ")]
         return line
 
-    assert prompt_line(8).startswith("- prompt: v8 · run: "), "this build's prompt: nothing to add"
-    assert prompt_line(7) == prompt_line(8).replace("- prompt: v8 · ", f"- prompt: v7 {OLDER_COPY} · ")
-    assert "older than" not in prompt_line(8) and "installer" not in prompt_line(8)
-    same = [[ln for ln in summaries[v] if not ln.startswith("- prompt: ")] for v in (7, 8)]
-    assert same[0] == same[1] and len(same[0]) > 10
+    assert prompt_line(8).startswith("- prompt: v8 · run: ")
+    for version in (7, 9):
+        assert prompt_line(version) == prompt_line(8).replace("- prompt: v8 · ", f"- prompt: v{version} · ")
+        assert "older than" not in prompt_line(version) and "installer" not in prompt_line(version)
+    same = [[ln for ln in summaries[v] if not ln.startswith("- prompt: ")] for v in (7, 8, 9)]
+    assert same[0] == same[1] == same[2] and len(same[0]) > 10
     said = "\n".join(same[1])
     assert "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond" in said
     assert "- expected turns: the folder question (step 1; not logged) · " in said
@@ -1927,26 +1930,34 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     the version that copy gave: "v7 or older" for a copy from before v8, which names none. The report of
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
-    other way round. Only the installer's fixed words of the Prompt: line are shown."""
-    what = (
-        "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt v8"
-    )
+    other way round. The installer's version and its reason come from that line, never from the number of
+    the build that writes the report: here the installer was v8 or v12, whatever this build is. Only the
+    installer's fixed words are shown."""
+    what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    for header, shown, why in (
-        ("v7 or older", f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
-        ("v7", f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
-        ("v7 or older, said Fabrikam", f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
+    assert setup_report.PROMPT_VERSION < 12
+    for header, installer, shown, why in (
+        ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
+        ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
+        ("v7 or older, said Fabrikam", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
         (
             "v9",
-            "v9 (newer than this installer's v8: this Mac's checkout is older than the pasted copy)",
+            8,
+            "v9 (newer than the installer's v8: this Mac's checkout is older than the pasted copy)",
             "this checkout is older than the prompt",
+        ),
+        (
+            "v9",
+            12,
+            "v9 (older than the installer's v12: the pasted copy was not the current README)",
+            "the pasted copy is not the current one",
         ),
     ):
         write_friction(
             fake_mac,
             f"Attempt: 2026-09-29T09:58:00Z\nPrompt: {header}\nAgent: Claude Code, claude-opus-5-5\n"
-            f"2026-09-29T09:58:00Z | step 1 | error | {what.format(said=header)}: {why}; setup stopped | "
-            "copy the prompt again from README.md on the main branch\n"
+            f"2026-09-29T09:58:00Z | step 1 | error | {what.format(said=header)} v{installer}: {why}; setup "
+            "stopped | copy the prompt again from README.md on the main branch\n"
             "2026-09-29T09:58:40Z | end | finished\n",
         )
         rc, text, _ = report(tmp_path, fake_mac["config"])
@@ -1960,6 +1971,21 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
         assert link["outcome"] == ["Failed at step 1 (preflight)"]
         assert link["prompt_version"] == [shown.split(" ", 1)[0]]
+    # The header's fixed words with no stop line (a log cut short): only the installer's stop writes them.
+    write_friction(fake_mac, "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7 or older\nAgent: x\n")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- prompt: ")]
+    assert line.startswith("- prompt: v7 or older (the installer stopped this copy: it named no version) · ")
+    # An error line of the agent's own that only looks like the installer's is no evidence.
+    write_friction(
+        fake_mac,
+        "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7\nAgent: x\n"
+        "2026-09-29T09:58:00Z | step 2 | error | the pasted setup prompt is old, said the person | -\n"
+        "2026-09-29T09:58:40Z | end | finished\n",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- prompt: ")]
+    assert line.startswith("- prompt: v7 · run: ")
 
 
 def test_loop_stage_and_next_text() -> None:
@@ -2005,7 +2031,7 @@ def test_v7_sync_only_reads_synced_and_draft_the_baseline_questions(
     [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
     assert loop.startswith("- Loop: synced; NEXT: draft the baseline questions"), loop
     assert "~/" not in loop and "/Users/" not in loop and "`agentsync sync`" in loop
-    assert f"- prompt: v7 {OLDER_COPY} · " in summary, "a v7 attempt is still judged; its copy was older"
+    assert "- prompt: v7 · " in summary, "a v7 attempt is still judged, and nothing says its copy was old"
     assert "IT draft" not in summary, "v7 has no IT request step"
     assert "NEXT:" not in section(text, "Status")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
@@ -2298,7 +2324,7 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     assert setup_report.stopping_error(attempt, ()) is None
     text, summary = summary_of(fake_mac)
     assert "1 attempt(s):" in section(text, "Agent friction log") and "- attempt:" not in summary
-    assert "**outcome: failed" not in summary and f"- prompt: v7 {OLDER_COPY} · " in summary
+    assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
     assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
 
 
