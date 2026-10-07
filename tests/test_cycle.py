@@ -547,6 +547,36 @@ def test_tightening_looks_at_a_bounded_number_of_entries_below_each_tree(
     assert cycle_mod._OWN_WALK >= doctor._PERM_SAMPLE, "a sync reaches every entry the check samples"
 
 
+def test_tightening_walks_a_tree_in_the_order_the_check_does_and_leaves_no_descriptor_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The walk goes from descriptor to descriptor, and the check from path to path (``os.walk``). The bound
+    holds only while both list a tree in one order: the first entries the check samples are then the first
+    the sync reaches. A folder that is a symlink is listed and not entered by either."""
+    tree, outside = tmp_path / "cache", tmp_path / "outside"
+    for d in (tree / "b" / "deep" / "deeper", tree / "a", tree / "c" / "empty", outside / "inner"):
+        d.mkdir(parents=True)
+    for f in (tree / "z.txt", tree / "b" / "y.txt", tree / "b" / "deep" / "x.txt", outside / "kept.txt"):
+        f.write_text("x\n", encoding="utf-8")
+    (tree / "a" / "dir-link").symlink_to(outside, target_is_directory=True)
+    (tree / "c" / "gone-link").symlink_to(tmp_path / "missing")
+    as_the_check = [Path(at) / name for at, dirs, files in os.walk(tree) for name in (*dirs, *files)]
+    assert len(as_the_check) == 11 and tree / "a" / "dir-link" in as_the_check
+
+    def open_descriptors() -> int:
+        return len(list(Path("/dev/fd").iterdir()))
+
+    before = open_descriptors()
+    assert [path for path, _name, _dir_fd in cycle_mod._below(tree, tree)] == as_the_check
+    monkeypatch.setattr(cycle_mod, "_OWN_WALK", 4)
+    stopped = cycle_mod._below(tree, tree)
+    assert [path for path, _name, _dir_fd in stopped] == as_the_check[:4]
+    left = cycle_mod._below(tree, tree)  # a caller that stops asking: closing it closes what it had open
+    assert next(left)[0] == as_the_check[0] and open_descriptors() > before
+    left.close()
+    assert open_descriptors() == before
+
+
 def test_a_path_of_another_users_keeps_its_fail_and_the_chmod(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -588,16 +618,63 @@ def test_tightening_never_follows_an_entry_swapped_for_a_symlink(
     before.chmod(0o644)
     swapped = repo / "_eval" / "notes.md"
     swapped.symlink_to(outside, target_is_directory=True)
-    lstat = Path.lstat
+    lstat = os.lstat
 
-    def first_look(self: Path) -> os.stat_result:  # what the entry was before the swap: a loose file
-        return lstat(before) if self == swapped else lstat(self)
+    def first_look(path: str | Path, *, dir_fd: int | None = None) -> os.stat_result:
+        """What the entry was before the swap: a loose file."""
+        return lstat(before) if Path(path).name == swapped.name else lstat(path, dir_fd=dir_fd)
 
-    monkeypatch.setattr(Path, "lstat", first_look)
+    monkeypatch.setattr(os, "lstat", first_look)
     with pytest.raises(OSError):
         cycle_mod._clear_group_other(swapped)
     cycle_mod._tighten_own_paths(own_config(tmp_path, repo))
     assert outside.stat().st_mode & 0o777 == 0o755
+
+
+@pytest.mark.parametrize("swapped", ["a folder in _eval", "the docs repo"])
+def test_tightening_never_follows_a_folder_swapped_for_a_symlink_above_an_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swapped: str
+) -> None:
+    """Review, 2026-10-07: ``O_NOFOLLOW`` covers an entry, not the folders above it. An entry opened by its
+    full path after a folder above it had become a symlink was changed in the link's target: files outside
+    the docs repo went from 0644 to 0600. Each entry is opened by its name from a descriptor on the folder
+    that holds it, so what the walk listed is what is changed, wherever that folder is by then, and
+    nothing where the link points."""
+
+    def loose_tree(root: Path) -> tuple[list[Path], list[Path]]:
+        folders = [root, root / "_eval", root / "_eval" / "sub"]
+        folders[-1].mkdir(parents=True)
+        files = [root / "NOTES.txt", root / "PLAN.txt", *(folders[-1] / f"{n}.txt" for n in "abc")]
+        for f in files:
+            f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+            f.chmod(0o644)
+        for d in folders:
+            d.chmod(0o755)
+        return folders, files
+
+    repo, outside, moved = tmp_path / "docs", tmp_path / "outside", tmp_path / "moved"
+    _, files = loose_tree(repo)
+    outside_folders, outside_files = loose_tree(outside)
+    if swapped == "the docs repo":  # while the entries at its top are made owner-only
+        was, link_to, after = repo, outside, [moved / f.relative_to(repo) for f in files]
+        watched = {p.stat().st_ino for p in repo.iterdir()}
+    else:  # while the three files in it are
+        was, link_to, after = repo / "_eval" / "sub", outside / "_eval" / "sub", files[:2]
+        after += [moved / f.name for f in files[2:]]
+        watched = {f.stat().st_ino for f in files[2:]}
+    fchmod = os.fchmod
+
+    def swap_at_the_first_change(fd: int, bits: int) -> None:
+        if not was.is_symlink() and os.fstat(fd).st_ino in watched:
+            was.rename(moved)
+            was.symlink_to(link_to, target_is_directory=True)
+        fchmod(fd, bits)
+
+    monkeypatch.setattr(os, "fchmod", swap_at_the_first_change)
+    cycle_mod._tighten_own_paths(own_config(tmp_path, repo))
+    assert was.is_symlink(), "the folder was swapped while its entries were being changed"
+    assert {mode(f) for f in outside_files} == {0o644} and {mode(d) for d in outside_folders} == {0o755}
+    assert {mode(f) for f in after} == {0o600}, "every file the walk listed, where it is now"
 
 
 def test_paused_source_is_skipped_and_retired_source_is_tombstoned_with_banners(

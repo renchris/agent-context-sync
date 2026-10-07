@@ -26,7 +26,6 @@ import dataclasses
 import enum
 import gc
 import hashlib
-import itertools
 import json
 import logging
 import os
@@ -494,21 +493,30 @@ def _clear_staging(staging: Path) -> None:
 
 _AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, under its own umask
 _OWN_WALK = 2000  # entries looked at below each tree that is made owner-only (status samples 500 a tree)
+# How an own path is opened: never through a symlink, and never waiting (a FIFO opens at once).
+_NO_LINK = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+_Own = tuple[Path, str | Path, int | None]
+"""A path :func:`_tighten_own_paths` makes owner-only, and how it is opened: the path as
+``docs_repo.permissions`` names it, then its name in the folder that holds it and a descriptor on that
+folder.  A folder the config names has no such folder: its path, and None."""
 
 
-def _clear_group_other(path: Path) -> bool:
+def _clear_group_other(path: str | Path, *, dir_fd: int | None = None) -> bool:
     """Clear ``path``'s group/other permission bits; True when they were set.  A symlink is left alone (its
     target may lie outside the docs repo), and so is anything that is not a regular file or a folder.  The
     mode is read again and changed through one descriptor opened without following a link: these are
     entries others can still write, so one swapped for a symlink after the first look is an error (ELOOP),
-    never a chmod of its target."""
+    never a chmod of its target.  ``O_NOFOLLOW`` covers the entry and not the folders above it, so an
+    entry found by a walk is given as its name in the folder that holds it, with ``dir_fd`` a descriptor
+    on that folder: no folder above it is looked up a second time."""
 
     def loose(mode: int) -> bool:
         return bool(mode & 0o077) and (stat.S_ISREG(mode) or stat.S_ISDIR(mode))
 
-    if not loose(path.lstat().st_mode):
+    if not loose(os.lstat(path, dir_fd=dir_fd).st_mode):
         return False
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    fd = os.open(path, _NO_LINK, dir_fd=dir_fd)
     try:
         mode = os.fstat(fd).st_mode
         if not loose(mode):
@@ -517,6 +525,112 @@ def _clear_group_other(path: Path) -> bool:
     finally:
         os.close(fd)
     return True
+
+
+def _open_folder(top: str | Path, below: Sequence[str] = (), *, dir_fd: int | None = None) -> int:
+    """A descriptor on the folder ``below`` (names, outermost first) under ``top``, which is a path, or a
+    name in the open folder ``dir_fd``.  Each step is opened from the one above it and none through a
+    symlink, so what is reached is inside ``top`` whatever was renamed meanwhile.  Nor does it wait: a
+    FIFO put where a folder was is an error, not a sync that hangs (``os.fwalk`` opens without
+    ``O_NONBLOCK`` before Python 3.12)."""
+    fd = os.open(top, _NO_LINK | os.O_DIRECTORY, dir_fd=dir_fd)
+    for name in below:
+        try:
+            inner = os.open(name, _NO_LINK | os.O_DIRECTORY, dir_fd=fd)
+        finally:
+            os.close(fd)
+        fd = inner
+    return fd
+
+
+def _listed(fd: int) -> tuple[list[str], list[str]]:
+    """The names in the open folder ``fd``: its folders, then the rest, split and ordered as ``os.walk``
+    does (the check walks with it), so a symlink to a folder counts as a folder here too."""
+    dirs: list[str] = []
+    rest: list[str] = []
+    with os.scandir(fd) as entries:
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                is_dir = False
+            (dirs if is_dir else rest).append(entry.name)
+    return dirs, rest
+
+
+def _below(tree: Path, top: str | Path, dir_fd: int | None = None) -> Iterator[_Own]:
+    """At most :data:`_OWN_WALK` entries below the folder ``tree``, in the order ``os.walk`` lists them.
+    ``tree`` is opened once, as ``top``: its own path, or its name in the open folder ``dir_fd``.  Each
+    entry comes with a descriptor on the folder that holds it, good until the next entry is asked for.
+    One folder below is open at a time, reached again from the tree's descriptor (:func:`_open_folder`),
+    so a deep tree takes no more descriptors than a flat one.  A tree or a folder that is a symlink, is
+    gone or cannot be listed is passed over, as ``os.walk`` passes it."""
+    try:
+        root = _open_folder(top, dir_fd=dir_fd)
+    except OSError:
+        return
+    pending: list[tuple[str, ...]] = [()]  # folders still to list, as names below the tree: the last is next
+    seen = 0
+    try:
+        while pending:
+            below = pending.pop()
+            try:
+                fd = _open_folder(".", below, dir_fd=root)
+            except OSError:
+                continue
+            try:
+                try:
+                    dirs, rest = _listed(fd)
+                except OSError:
+                    continue
+                folder = tree.joinpath(*below)
+                for name in (*dirs, *rest):
+                    if seen == _OWN_WALK:
+                        return
+                    seen += 1
+                    yield folder / name, name, fd
+            finally:
+                os.close(fd)
+            pending.extend((*below, name) for name in reversed(dirs))
+    finally:
+        os.close(root)
+
+
+def _in_repo(repo: Path) -> Iterator[_Own]:
+    """Each entry at the top of the docs repo, then what is below :data:`_AGENT_TREES`, all of it reached
+    from one descriptor on the repo.  A docs repo that is not made yet, or is a symlink, has none."""
+    try:
+        fd = _open_folder(repo)
+    except OSError:
+        return
+    try:
+        with contextlib.suppress(OSError):
+            dirs, rest = _listed(fd)
+            for name in sorted((*dirs, *rest)):
+                yield repo / name, name, fd
+        for name in _AGENT_TREES:
+            yield from _below(repo / name, name, fd)
+    finally:
+        os.close(fd)
+
+
+def _own_entries(config: Config) -> Iterator[_Own]:
+    """:func:`_own_paths`, each with how it is opened (:data:`_Own`).  A folder the config names is opened
+    by its path.  Everything inside one is opened by its name from a descriptor on the folder that holds
+    it, so a folder swapped for a symlink after the walk listed it leads no change into the link's
+    target: the walk does not enter it, and an entry it listed before is still found where it was."""
+    repo, home = expand(config.docs_repo), Path.home()
+    ctx = expand(config.config_path).parent
+    own = [
+        d for d in (expand(config.cache_dir), expand(config.log_dir)) if d != home and d not in home.parents
+    ]
+    if ctx != home and ctx in repo.parents:
+        yield ctx, ctx, None
+    for folder in (repo, *own):
+        yield folder, folder, None
+    yield from _in_repo(repo)
+    for folder in own:
+        yield from _below(folder, folder)
 
 
 def _own_paths(config: Config) -> Iterator[Path]:
@@ -528,31 +642,9 @@ def _own_paths(config: Config) -> Iterator[Path]:
     tree, in the order the check walks them, so the walk is bounded and still reaches every entry the
     check samples.  ``mirror/`` and ``.git`` are not walked: the publisher writes pages 0600 and git
     writes under ``core.sharedRepository``, which ``gitops.ensure_repo`` sets.  A tree that is a symlink
-    is not walked, and a cache or log folder that is the home folder, or holds it, is not agentsync's
-    alone: it is left out."""
-    repo, home = expand(config.docs_repo), Path.home()
-    ctx = expand(config.config_path).parent
-    if ctx != home and ctx in repo.parents:
-        yield ctx
-    yield repo
-    try:
-        top = sorted(repo.iterdir())
-    except OSError:
-        top = []
-    yield from top
-    own = [
-        d for d in (expand(config.cache_dir), expand(config.log_dir)) if d != home and d not in home.parents
-    ]
-    yield from own
-    for tree in (*(repo / name for name in _AGENT_TREES), *own):
-        if tree.is_symlink() or not tree.is_dir():
-            continue
-        below = (
-            Path(dirpath) / child
-            for dirpath, dirnames, filenames in os.walk(tree, followlinks=False)
-            for child in (*dirnames, *filenames)
-        )
-        yield from itertools.islice(below, _OWN_WALK)
+    is not walked, nor is anything in a docs repo that is one, and a cache or log folder that is the home
+    folder, or holds it, is not agentsync's alone: it is left out."""
+    return (path for path, _name, _dir_fd in _own_entries(config))
 
 
 def _tighten_own_paths(config: Config) -> int:
@@ -564,13 +656,14 @@ def _tighten_own_paths(config: Config) -> int:
     made does the same.  Every non-dry cycle calls this, and so do ``init`` and ``add-source``
     (``cli._ensure_setup``), which ``install.sh`` runs before its status step: a setup run stopped on that
     FAIL before the sync that would have cleared it.  Only group and other bits are cleared, so no mode is
-    widened, and no symlink is followed or changed.  Modes are not content: git tracks only the executable
-    bit, so this never dirties the tree.  A path that cannot be changed is skipped with one warning (the
-    status check still reports it, with a chmod as its fix)."""
+    widened, and no symlink is followed or changed, at an entry or at a folder above it inside the folders
+    the config names (:func:`_own_entries`).  Modes are not content: git tracks only the executable bit,
+    so this never dirties the tree.  A path that cannot be changed is skipped with one warning (the status
+    check still reports it, with a chmod as its fix)."""
     changed, failed = 0, 0
-    for path in _own_paths(config):
+    for _path, name, dir_fd in _own_entries(config):
         try:
-            changed += _clear_group_other(path)
+            changed += _clear_group_other(name, dir_fd=dir_fd)
         except FileNotFoundError:  # not made yet (the log folder before the first job), or gone since
             continue
         except OSError:
