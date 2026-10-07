@@ -556,7 +556,15 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert "copy `~/agent-context/bring-back.md` back" in private
     assert "never paste this file into the public form" in private
     assert "Section 2 is the whole file, every session's part in the order written" in private
-    assert "triage reads from the last session heading down" in private
+    # Where triage starts. Not at the last heading: nothing on the Mac knows what was copied back, so a part
+    # whose file nobody copied sits above the next session's heading. The file received last is what is known.
+    assert "Do not start at the last session heading: the Mac cannot know what was copied back" in private
+    assert (
+        "triage compares section 2 with section 2 of the last bring-back file received from that Mac, finds "
+        "the first line that differs, and reads from the session heading above it down to the end. With no "
+        "earlier file from that Mac, it reads all of section 2"
+    ) in private
+    assert "triaged then" not in feedback, "no page says an earlier part was already triaged: none knows it"
     # Section 3 is the local work kept since an earlier attempt's report; an older patch is one line there,
     # which the page names by the installer's own first words.
     assert "Section 3 holds the local work kept since an earlier attempt reached its report" in private

@@ -8763,8 +8763,19 @@ The fix is prompt wording, on v9 before it is published. The file stays cumulati
   session that lost its context could take the other's part for its own and rewrite it, which "rewrite only
   your own part" and step 3's "rewrite that one" allow. v9 was still unpublished, so again only the digest
   moved.
-- `install.sh` is unchanged: `write_bring_back` still copies the whole file into section 2. Triage reads
-  from the last session heading down (`docs/deploy/setup-feedback.md`, the private route, and K23).
+- `install.sh` is unchanged: `write_bring_back` still copies the whole file into section 2.
+- **Triage rule** (`docs/deploy/setup-feedback.md`, the private route, and K23): compare section 2 with
+  section 2 of the last bring-back file received from that Mac, find the first line that differs, and read
+  from the session heading above it down to the end. With no earlier file from that Mac, read all of it.
+- The first rule was "from the last session heading down", because the parts above it "came back in an
+  earlier round and were triaged then". Nothing knows that (review, 2026-10-07). A v9 session fails at step
+  2, writes its request under its heading and runs the report. Nobody copies the file. The prompt is pasted
+  again, and the second session writes under its own heading. The one file that comes back holds the first
+  request above the last heading, and triage by that rule never read it. That is the hole the set-aside
+  below was rejected for, moved from the installer to the page. The rule now rests on the one place where
+  delivery is known, the file the intake already holds. It goes by lines and not by headings alone, because
+  a session may rewrite its own part after a report: that part's heading is in the earlier file, and its
+  text is not.
 
 **Why the installer does not set an earlier request aside.** That was the first proposal: at `--log-start`,
 rename a request that an existing `bring-back.md` is newer than. It was rejected, and must not come back as a
@@ -8785,8 +8796,8 @@ Limit: the earlier parts still come back with every file, real names included, u
 by hand on that Mac. The person reviews section 2 before sending, as before.
 
 Tests: `tests/test_deploy_pack.py` (`test_prompt_routes_changes_to_the_source_not_the_checkout`: both new
-sentences where they stand, one version in the block, and the private route's two sentences; the block's
-digest beside version 9).
+sentences where they stand, one version in the block, no "today's date", and the private route's sentences
+with the triage rule word for word; the block's digest beside version 9).
 
 #### The bring-back sends local work once (amends §16.22; `scripts/install.sh`)
 
