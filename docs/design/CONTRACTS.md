@@ -7665,7 +7665,10 @@ decides before a word inside the text does.
     the lead says the column is as last recorded, by whichever build wrote the record.
   - **No engine.** When the probe's state is not `ready` the lead says a cycle has no engine and reads
     again only what needs none (a page of the field build, the fourth column), and that the count is what
-    a re-read looks at once there is one. The count stays: it is the work that waits for the helper.
+    a re-read looks at when there is one. The count stays: it is the work that waits for the helper. When
+    the probe gave no state (it did not answer in its 1.5 s), the lead says the helper did not say whether
+    it is ready and points at Doctor's `ocr` line, and does not claim there is no engine. When the run the
+    second column goes by had no engine, the lead adds that a finished scan says nothing of OCR.
   - **A label rule.** Under one there is no image converter, so the images are left out of the count and
     the lead says so.
   A Graph source has no row, and nothing of it is counted: a re-read never downloads.

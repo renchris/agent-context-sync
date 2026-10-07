@@ -2648,11 +2648,11 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         in lead
     )
     assert (
-        "The helper is not ready (its line above), so a cycle has no engine and reads again only what needs "
-        "none, such as a page of the field build. The third column is the report's own count of files on "
-        "this Mac from before OCR, which a re-read looks at once there is an engine: images with the "
-        "no-converter stub, scanned PDFs whose stub says OCR was not run and documents whose page has no "
-        "OCR identity or is the field build's (fourth column)." in lead
+        "The helper is not ready (its line above), so a cycle has no engine. Without an engine a cycle reads "
+        "again only what needs none, such as a page of the field build. The third column is the report's own "
+        "count of files on this Mac from before OCR, which a re-read looks at when there is an engine: "
+        "images with the no-converter stub, scanned PDFs whose stub says OCR was not run and documents "
+        "whose page has no OCR identity or is the field build's (fourth column)." in lead
     )
     assert (
         "- OCR time: of the last 3 run(s), 2 recorded these counts (a run of an earlier build did not) and 2 "
@@ -2731,7 +2731,10 @@ def test_the_re_read_table_goes_by_what_the_newest_run_looked_for(
     seed.run(10, {"converted": 0, "reread_for": int(earlier[:8], 16)})
     seed.close()
     parts = status_parts(fake_mac)[1]
-    assert "what run 10 looked for, the newest run that says so (it had no engine)" in parts["OCR"]
+    assert (
+        "what run 10 looked for, the newest run that says so (it had no engine, so a finished scan says "
+        "nothing of OCR)" in parts["OCR"]
+    )
     assert [cells[0] for cells in reread_rows(parts["OCR"]).values()] == ["not started", "not started", "yes"]
     # Under a label rule no image is read: the image with the no-converter stub is not a file to read again.
     cfg.write_text(
@@ -3197,6 +3200,10 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     finally:
         release.set()
     assert "- helper: did not answer within 0.3s (a built helper's `--version`;" in parts["OCR"]
+    assert (
+        "The helper did not say whether it is ready (its line above; Doctor's ocr line does)." in parts["OCR"]
+    )
+    assert "The helper is not ready" not in parts["OCR"]
     assert "- label rule in [policy]: off\n" in parts["OCR"] and "too late" not in text
     assert "not measured" not in section(text, "Status"), "fixed words: a second report would say the same"
     assert (

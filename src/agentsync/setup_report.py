@@ -3032,10 +3032,12 @@ def _reread_lines(
             "column is as last recorded, by whichever build wrote the record."
         )
     else:
+        had = (
+            "an engine" if "ocr_ms" in looked.counts else "no engine, so a finished scan says nothing of OCR"
+        )
         scan = (
             f"The second column is for what run {looked.run_id} looked for, the newest run that says so (it "
-            f"had {'an' if 'ocr_ms' in looked.counts else 'no'} engine): `not started` is a record another "
-            "build or engine left, which no cycle goes by."
+            f"had {had}): `not started` is a record another build or engine left, which no cycle goes by."
         )
     kinds = [
         *([] if label_rule else ["images with the no-converter stub"]),
@@ -3046,10 +3048,15 @@ def _reread_lines(
     if state == "ready":
         third = f"The third column is the report's own count of files a re-read would look at: {counted}."
     else:
+        why = (
+            "The helper is not ready (its line above), so a cycle has no engine."
+            if state
+            else "The helper did not say whether it is ready (its line above; Doctor's ocr line does)."
+        )
         third = (
-            "The helper is not ready (its line above), so a cycle has no engine and reads again only what "
-            "needs none, such as a page of the field build. The third column is the report's own count of "
-            f"files on this Mac from before OCR, which a re-read looks at once there is an engine: {counted}."
+            f"{why} Without an engine a cycle reads again only what needs none, such as a page of the field "
+            "build. The third column is the report's own count of files on this Mac from before OCR, which "
+            f"a re-read looks at when there is an engine: {counted}."
         )
     if label_rule:
         third += " A label rule is on, so no image is read and none is counted."
