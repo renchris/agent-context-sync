@@ -4,15 +4,20 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import io
 import itertools
+import json
+import logging
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import threading
 import time
+import zlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -28,8 +33,10 @@ from agentsync import cycle as cycle_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
 from agentsync.convert import ocr
+from agentsync.convert import pandoc as pandoc_mod
+from agentsync.convert import pdf as pdf_mod
 from agentsync.cycle import RecoveryAction, recover, run_cycle
-from agentsync.errors import LockHeldError
+from agentsync.errors import ConversionError, LockHeldError
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
@@ -39,9 +46,26 @@ from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
-from test_convert_builders import build_picture_pdf, page_picture, pandoc_build, shade_engine
+from test_convert_builders import (
+    build_annotated_pdf,
+    build_picture_pdf,
+    page_picture,
+    pandoc_build,
+    shade_engine,
+)
 from test_convert_image import picture, picture_bytes, reads, text_png
-from test_e2e import GRAPH_SOURCE, SID, FakeDrive, FakeTokens, clock, config_with, git, page, porcelain
+from test_e2e import (
+    GRAPH_SOURCE,
+    SID,
+    FakeDrive,
+    FakeTokens,
+    clock,
+    config_with,
+    git,
+    page,
+    porcelain,
+    source_report,
+)
 from test_ocr import calls, fake_engine, write_fake
 from test_review_fixes import committed_blobs_containing
 
@@ -1450,7 +1474,8 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
 ) -> None:
     """A document does not wait as an image does. Each read here 'takes' 100 s, so the second PDF passes
     the 180 s budget and the third is converted as on a Mac without an engine: the page it would have
-    there, under that version, which is what tells a later re-read that OCR has not read it."""
+    there, under that version, which is what tells a later re-read that OCR has not read it. The next
+    cycle, with its own OCR time, is that re-read."""
     assert run(sample_config).exit_code == 0
     engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(3)})
     monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
@@ -1479,9 +1504,19 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
     runs = calls(engine.helper)
     assert len(runs) == 2 and all(Path(c["cwd"]).parent.parent == staging for c in runs)
     assert all(Path(c["cwd"]).name.startswith(".ocr-") for c in runs) and list(staging.iterdir()) == []
-    again = run(sample_config)
-    assert again.commit_sha is None and len(calls(engine.helper)) == 2, "a settled row is not converted again"
     assert loop.next_step(sample_config).rule != 3, "nothing waits on this Mac"
+    again = run(sample_config)
+    (late,) = unread
+    fm, body = page(sample_config.docs_repo, slug.mirror_rel_path(SID, f"scans/scan {late}.pdf"))
+    assert again.commit_sha is not None and "+ocr-paper-vision-" in fm["converter"]
+    assert body.rstrip().endswith(f"(Apple Vision)]\n\nDelivery note {late}")
+    assert again.sources[0].converted == 0, "read again: the same bytes are no new conversion"
+    assert len(calls(engine.helper)) == 3 and all(
+        Path(c["cwd"]).parent.parent == staging for c in calls(engine.helper)
+    )
+    settled = run(sample_config)
+    assert settled.commit_sha is None and len(calls(engine.helper)) == 3, "no file is read a third time"
+    assert loop.next_step(sample_config).rule != 3
 
 
 def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it_was(
@@ -1691,3 +1726,564 @@ def test_a_credential_read_from_an_image_is_quarantined_like_any_other_text(
     fm, body = _image_page(sample_config, console)
     assert fm["reason"] == "contains a credential" and key not in body + str(fm)
     assert not committed_blobs_containing(sample_config.docs_repo, key.encode())
+
+
+# ---------------------------------------------------------------------------------------------------------
+# re-read once: a file converted before something its converter has is read again, once (CONTRACTS 16.27)
+# ---------------------------------------------------------------------------------------------------------
+
+COMMENTS = "[comments on this page (PDF annotations):]"
+REVIEW = "projects/Contoso widget review.pdf"
+PLAIN_PDF = "projects/sample.pdf"
+
+
+def _commented(path: Path, title: str) -> Path:
+    """A one-page PDF with one reviewer's note on it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    note = f"/Subtype /Text /Rect [400 700 420 720] /T (Roe, John) /Contents (Check {title})"
+    return build_annotated_pdf(path, [([title, "Totals by region"], [note])])
+
+
+@contextlib.contextmanager
+def _before_comments(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The PDF emitter from before comments were kept: it says 2.0.0 and writes no comment."""
+    with monkeypatch.context() as old:
+        old.setattr(pdf_mod, "_EMITTER_VERSION", "2.0.0")
+        old.setattr(pdf_mod, "_render_comments", lambda _found: [])
+        yield
+
+
+def _shade_png(path: Path, shade: int) -> Path:
+    """A real gray PNG, every pixel ``shade``: an image file the ``shade_engine`` helper tells by it."""
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    head = chunk(b"IHDR", struct.pack(">IIBBBBB", 96, 64, 8, 0, 0, 0, 0))
+    pixels = chunk(b"IDAT", zlib.compress((b"\x00" + bytes([shade]) * 96) * 64))
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + head + pixels + chunk(b"IEND", b""))
+    return path
+
+
+def _reread_record(config: Config, sid: str = SID) -> tuple[bool, list[str]]:
+    """(done, tried) of the re-read record the last cycle wrote for ``sid``."""
+    with Manifest(config.state_paths.db) as m:
+        raw = m.get_meta(cycle_mod._REREAD_META + sid)
+    assert raw is not None
+    newest = json.loads(raw)[0]
+    return newest["done"], newest["tried"]
+
+
+def _mirror_page(config: Config, rel: str) -> tuple[dict[str, Any], str]:
+    return page(config.docs_repo, slug.mirror_rel_path(SID, rel))
+
+
+def _mirror_bytes(config: Config, *rels: str) -> dict[str, bytes]:
+    return {rel: (config.docs_repo / slug.mirror_rel_path(SID, rel)).read_bytes() for rel in rels}
+
+
+def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_once(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A PDF mirrored by emitter 2.0.0 gets its reviewers' comments without its bytes changing: the next
+    cycle reads it again, once.  A PDF with no comment is read too, and its page stays as it is, byte for
+    byte, its 2.0.0 line included.  After that no cycle looks: none of the three queries is run."""
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    fetched = _fetches(monkeypatch)
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+        fm, body = _mirror_page(sample_config, REVIEW)
+        assert fm["converter"].startswith("pdf-pypdfium2@2.0.0+") and COMMENTS not in body
+        del fetched[:]
+        # The floor is above the emitter that runs here: what a re-read wrote would be below it too, so
+        # nothing is outdated and no file is read every cycle.
+        assert _reread_record(sample_config) == (True, [])
+        assert run(sample_config).commit_sha is None and fetched == []
+    plain = _mirror_bytes(sample_config, PLAIN_PDF)
+    assert run(sample_config, mode=CycleMode.DRY_RUN).exit_code == 0 and fetched == [], (
+        "a dry run reads nothing"
+    )
+    second = run(sample_config)
+    [rep] = second.sources
+    assert second.commit_sha is not None and sorted(fetched) == [REVIEW, PLAIN_PDF]
+    assert (rep.converted, rep.deferred, rep.errors) == (0, 0, ()), "the same bytes are no new conversion"
+    assert [c.path for c in second.changes] == [slug.mirror_rel_path(SID, REVIEW)]
+    fm, body = _mirror_page(sample_config, REVIEW)
+    assert fm["converter"].startswith("pdf-pypdfium2@2.1.0+") and fm["summary"].endswith(
+        "1 comment(s) on 1 page(s)"
+    )
+    assert body.rstrip().endswith(f"{COMMENTS}\n- Note by Roe, John: Check Contoso widget review")
+    assert _mirror_bytes(sample_config, PLAIN_PDF) == plain and b"pdf-pypdfium2@2.0.0+" in plain[PLAIN_PDF]
+    assert _reread_record(sample_config) == (True, [])
+    third = run(sample_config)
+    assert third.commit_sha is None and len(fetched) == 2, "no file is read a second time"
+    for query in ("produced_by", "reread_candidates", "reread_left"):
+        monkeypatch.setattr(Manifest, query, crash)
+    assert run(sample_config).commit_sha is None, "nothing is left, and no cycle looks"
+
+
+def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The files OCR exists for were mirrored before it: an image refused as ``no converter``, a scan
+    quarantined as ``no text layer``, a PDF whose scanned page was a marker.  With an engine each is read
+    again, once.  A page the engine adds nothing to stays as it is, byte for byte, and so does the stub of a
+    scan it reads nothing in."""
+    scans = local_source_dir / "scans"
+    scans.mkdir()
+    note, agreement, blank = (
+        f"scans/Contoso {n}.pdf" for n in ("delivery note", "supply agreement", "blank scan")
+    )
+    cover = ["The cover page has a text layer of its own"]
+    _shade_png(local_source_dir / SITE_PLAN, 70)
+    build_picture_pdf(local_source_dir / note, [([], [page_picture(90)])])
+    build_picture_pdf(local_source_dir / agreement, [(cover, []), ([], [page_picture(91)])])
+    build_picture_pdf(local_source_dir / blank, [([], [page_picture(92)])])
+    assert run(sample_config).exit_code == 0
+    assert _mirror_page(sample_config, SITE_PLAN)[0]["reason"] == "no converter for .png"
+    for scan in (note, blank):
+        fm, _body = _mirror_page(sample_config, scan)
+        assert (fm["status"], fm["reason"]) == ("unreadable", pdf_mod._NO_TEXT)
+    fm, body = _mirror_page(sample_config, agreement)
+    assert fm["status"] == "current" and "ocr" not in fm["converter"]
+    assert body.rstrip().endswith("[scanned page: no text layer]")
+    assert run(sample_config).commit_sha is None and _reread_record(sample_config) == (True, [])
+    documents = [PLAIN_PDF, "projects/sample.pptx", "projects/sample.docx", KICKOFF]
+    before = _mirror_bytes(sample_config, blank, *documents)
+
+    said = {70: ["Loading dock"], 90: ["Delivery note 7"], 91: ["Signed in Rotterdam"]}
+    engine = shade_engine(tmp_path / "ocr-bin", said)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    fetched = _fetches(monkeypatch)
+    second = run(sample_config)
+    [rep] = second.sources
+    assert sorted(fetched) == sorted([SITE_PLAN, note, agreement, blank, *documents])
+    assert (rep.converted, rep.deferred, rep.errors) == (1, 0, ()), (
+        "the image: its bytes were never read before"
+    )
+    fm, body = _mirror_page(sample_config, SITE_PLAN)
+    assert fm["status"] == "current" and body.rstrip().endswith("(Apple Vision)]\n\nLoading dock")
+    fm, body = _mirror_page(sample_config, note)
+    assert fm["status"] == "current" and "+ocr-paper-vision-" in fm["converter"]
+    assert body.rstrip().endswith("(Apple Vision)]\n\nDelivery note 7")
+    fm, body = _mirror_page(sample_config, agreement)
+    assert "+ocr-paper-vision-" in fm["converter"] and body.rstrip().endswith("Signed in Rotterdam")
+    assert _mirror_bytes(sample_config, blank, *documents) == before
+    assert sorted(c.path for c in second.changes) == sorted(
+        slug.mirror_rel_path(SID, rel) for rel in (SITE_PLAN, note, agreement)
+    )
+    rows = _file_rows(sample_config)
+    assert [rows[rel].state for rel in (SITE_PLAN, note, blank)] == [
+        RowState.LIVE,
+        RowState.LIVE,
+        RowState.QUARANTINED,
+    ]
+    assert _reread_record(sample_config) == (True, []) and loop.next_step(sample_config).rule != 3
+    runs = len(calls(engine.helper))
+    third = run(sample_config)
+    assert third.commit_sha is None and len(fetched) == 8 and len(calls(engine.helper)) == runs
+
+
+def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_is(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An image can carry a label nothing here reads, so under a label rule it has no converter, engine or
+    not: the stub it got before there was an engine stays, and the file is not read.  When the rule goes,
+    the registry has a converter for it again, and the image is read like any file from before it."""
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
+    engine = _use_ocr(monkeypatch, tmp_path)
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    fetched = _fetches(monkeypatch)
+    assert run(labelled).exit_code == 0 and run(labelled).exit_code == 0
+    assert SITE_PLAN not in fetched and not any(
+        SITE_PLAN.endswith(Path(r[0]).name) for r in reads(engine.helper)
+    )
+    assert _image_page(labelled, SITE_PLAN)[0]["reason"] == "no converter for .png"
+    opened = config_with(tmp_path, local_source_dir)
+    assert run(opened).exit_code == 0 and fetched.count(SITE_PLAN) == 1
+    fm, body = _image_page(opened, SITE_PLAN)
+    assert fm["status"] == "current" and body.rstrip().endswith("Loading dock")
+    assert run(opened).commit_sha is None and fetched.count(SITE_PLAN) == 1
+
+
+def test_a_re_read_that_fails_keeps_the_page_and_the_file_is_not_read_a_third_time(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A converter that breaks while files are read again costs no page: nothing is published, nothing is
+    committed, and the rows keep their hashes and their verdict.  Each file is tried once for what this
+    install has, so a file that cannot be converted is not read every cycle.  Something new to look for
+    starts over."""
+    repo = sample_config.docs_repo
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    pages = _mirror_bytes(sample_config, REVIEW, PLAIN_PDF)
+    rows, head = _file_rows(sample_config), git(repo, "rev-parse", "HEAD")
+    fetched = _fetches(monkeypatch)
+
+    def broken(self: Any, src: Path, *, name: str) -> Any:
+        raise RuntimeError(f"cannot open /Users/someone/Library/{name}")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pdf_mod.PdfConverter, "convert", broken)
+        report = run(sample_config)
+    [rep] = report.sources
+    assert (report.exit_code, report.commit_sha, rep.errors) == (0, None, ())
+    assert rep.alarms == (
+        "2 file(s) read again for what their converter has gained could not be converted; their pages are "
+        "kept as they were",
+    )
+    assert _mirror_bytes(sample_config, *pages) == pages
+    assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
+    after = _file_rows(sample_config)
+    for rel in pages:
+        was, now = rows[rel], after[rel]
+        assert (now.state, now.state_reason, now.last_verdict) == (RowState.LIVE, None, Verdict.UNCHANGED)
+        assert (now.content_sha256, now.canonical_sha256) == (was.content_sha256, was.canonical_sha256)
+    done, tried = _reread_record(sample_config)
+    assert done and sorted(tried) == sorted(after[rel].stable_id for rel in pages)
+    assert sorted(fetched) == sorted(pages)
+    # The converter works again.  The two files were tried for what this install has: they are left alone.
+    assert run(sample_config).commit_sha is None and len(fetched) == 2
+    assert loop.next_step(sample_config).rule != 3
+    # A new floor is something new to look for, so the files are read once more.
+    monkeypatch.setattr(pdf_mod.PdfConverter, "outdated_key", "2.1.0<2.1.0, and one thing more")
+    again = run(sample_config)
+    assert again.commit_sha is not None and len(fetched) == 4
+    assert COMMENTS in _mirror_page(sample_config, REVIEW)[1] and _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and len(fetched) == 4
+
+
+def test_a_re_read_downloads_nothing_reads_nothing_out_of_scope_and_waits_for_materialise(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three PDFs from before comments were kept.  One is online-only now, one is under a folder the config
+    has since excluded, one is here.  Only the last is read again, on a walk that does not complete, and not
+    by the ``materialise PATH`` run before it.  Once the person downloads the first, it is read too."""
+    online_rel, excluded_rel = "projects/Contoso online review.pdf", "archive/Contoso old review.pdf"
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    online = _commented(local_source_dir / online_rel, "Contoso online review")
+    _commented(local_source_dir / excluded_rel, "Contoso old review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        record = m.get_meta(cycle_mod._REREAD_META + SID)
+    inos = {online.stat().st_ino}
+    real = materialise.is_dataless
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in inos or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    config = _incomplete(sample_config, "archive")
+    fetched = _fetches(monkeypatch)
+    named = run(config, materialise_paths=[local_source_dir / "README.txt"], budget_bytes=10_000_000)
+    assert named.exit_code == 0 and fetched == ["README.txt"], "materialise reads the file it names"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._REREAD_META + SID) == record, "and looks for nothing to read again"
+    second = run(config)
+    [rep] = second.sources
+    assert not rep.enumeration_complete and sorted(fetched[1:]) == [REVIEW, PLAIN_PDF]
+    assert (rep.deferred, rep.deferred_online_only, rep.materialised_bytes) == (0, 0, 0)
+    assert COMMENTS in _mirror_page(config, REVIEW)[1] and COMMENTS not in _mirror_page(config, online_rel)[1]
+    rows = _file_rows(config)
+    assert rows[online_rel].state is RowState.DATALESS and rows[online_rel].last_verdict is Verdict.DATALESS
+    assert (rows[excluded_rel].state, rows[excluded_rel].state_reason) == (
+        RowState.TOMBSTONE,
+        "retired:scope-change",
+    )
+    step = loop.next_step(config)
+    assert step.rule != 3 and not any("online-only" in line for line in step.lines()), step.lines()
+    assert _reread_record(config) == (True, []), "a file that is not on this Mac is not waited for"
+    assert run(config).commit_sha is None and len(fetched) == 3
+    # The person downloads it (Finder's Download Now changes the inode's flags, so its change time).  The
+    # walk sees the row move and reads the file as it reads any touched file; the pass after that finds
+    # it unchanged and on this Mac, and reads it again.
+    inos.clear()
+    online.chmod(0o600)
+    assert run(config).exit_code == 0 and fetched[3:] == [online_rel]
+    assert COMMENTS not in _mirror_page(config, online_rel)[1] and not _reread_record(config)[0]
+    assert run(config).commit_sha is not None and fetched[3:] == [online_rel, online_rel]
+    assert COMMENTS in _mirror_page(config, online_rel)[1] and _reread_record(config) == (True, [])
+    assert run(config).commit_sha is None and len(fetched) == 5
+
+
+def test_a_file_evicted_after_the_walk_listed_it_is_not_downloaded_for_a_re_read(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The walk lists a file as on this Mac and the provider evicts it before it is read.  The work queue
+    would download it within the byte budget; a re-read never does.  The row is not deferred, the loop has
+    nothing to wait for, and the file is not remembered as tried: it is asked about again."""
+    review = _commented(local_source_dir / REVIEW, "Contoso widget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    before = _mirror_bytes(sample_config, REVIEW)
+    evicted, real = review.stat().st_ino, materialise.is_dataless
+    monkeypatch.setattr(materialise, "is_dataless", lambda st: st.st_ino == evicted or real(st))
+    report = run(sample_config, budget_bytes=10_000_000)
+    [rep] = report.sources
+    assert (rep.deferred, rep.deferred_online_only, rep.materialised_bytes, rep.errors) == (0, 0, 0, ())
+    assert _mirror_bytes(sample_config, REVIEW) == before
+    row = _file_rows(sample_config)[REVIEW]
+    assert (row.state, row.state_reason, row.last_verdict) == (RowState.LIVE, None, Verdict.UNCHANGED)
+    assert _reread_record(sample_config) == (False, []) and loop.next_step(sample_config).rule != 3
+    monkeypatch.setattr(materialise, "is_dataless", real)  # on this Mac again
+    assert run(sample_config).commit_sha is not None and COMMENTS in _mirror_page(sample_config, REVIEW)[1]
+
+
+def test_a_re_read_leaves_the_deletion_breaker_and_its_held_files_as_they_were(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Files absent from a complete listing are deletion candidates, held while the breaker is tripped.
+    They are not read again and not tried, the breaker counts what it counted, and nothing is removed; the
+    files the pass did list are read again all the same."""
+    config = config_with(
+        tmp_path, local_source_dir, "\n[breaker]\nfraction = 0.2\nfloor = 2\nhold_days = 7\n"
+    )
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    victims = [f"reviews/Contoso review {n}.pdf" for n in range(6)]
+    for n, rel in enumerate(victims):
+        _commented(local_source_dir / rel, f"Contoso review {n}")
+    with _before_comments(monkeypatch):
+        assert run(config).commit_sha is not None
+    for rel in victims:
+        (local_source_dir / rel).unlink()
+    fetched = _fetches(monkeypatch)
+    report = run(config)
+    rep = source_report(report)
+    assert rep.breaker_tripped and any("breaker TRIPPED: 6 absent file(s) held" in a for a in rep.alarms)
+    assert sorted(fetched) == [REVIEW, PLAIN_PDF]
+    assert [c.path for c in report.changes] == [slug.mirror_rel_path(SID, REVIEW)]
+    rows = _file_rows(config)
+    assert all(rows[rel].state is RowState.LIVE for rel in victims)
+    assert all(
+        page(config.docs_repo, slug.mirror_rel_path(SID, rel))[0]["status"] == "current" for rel in victims
+    )
+    with Manifest(config.state_paths.db) as m:
+        srow = m.get_source(SID)
+        assert (
+            srow is not None
+            and srow.breaker_candidates == 6
+            and m.breaker_active(SID, "2026-09-29T12:00:00Z")
+        )
+    assert _reread_record(config) == (False, []), "the held files may come back: the look stays open"
+    held = run(config)
+    assert source_report(held).breaker_tripped and held.changes == () and len(fetched) == 2
+    assert all(_file_rows(config)[rel].state is RowState.LIVE for rel in victims)
+
+
+def test_a_file_an_incomplete_pass_did_not_list_is_not_read_again(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An incomplete pass holds deletions: a file it did not list is unknown, never gone.  It is not read
+    again either (there may be nothing to read), and the files the pass did list are."""
+    absent_rel = "projects/Contoso absent review.pdf"
+    absent = _commented(local_source_dir / absent_rel, "Contoso absent review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    absent.unlink()
+    config = _incomplete(sample_config)
+    fetched = _fetches(monkeypatch)
+    report = run(config)
+    [rep] = report.sources
+    assert not rep.enumeration_complete and not rep.breaker_tripped and fetched == [PLAIN_PDF]
+    assert report.changes == () and report.commit_sha is None, "read again, the same page: nothing to commit"
+    assert _file_rows(config)[absent_rel].state is RowState.LIVE
+    assert _mirror_page(config, absent_rel)[0]["status"] == "current"
+    assert _reread_record(config) == (False, []), "it may be listed again: the look stays open"
+    assert run(config).commit_sha is None and fetched == [PLAIN_PDF]
+
+
+def test_a_file_the_engine_fails_on_is_read_again_once_and_an_engine_that_comes_back_reads_what_is_new(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OCR never fails a document: a PDF the engine fails on keeps the page it has without OCR, under the
+    version without OCR.  That version is what a re-read looks for, so the file is remembered as tried and
+    not read every cycle.  An engine that goes away and comes back reads the file converted meanwhile, and
+    neither the one it read before nor the one it failed on."""
+    scans = local_source_dir / "scans"
+    scans.mkdir()
+
+    def scan(name: str, shade: int) -> str:
+        pages = [([f"{name}: the cover page has a text layer of its own"], []), ([], [page_picture(shade)])]
+        build_picture_pdf(scans / f"Contoso {name}.pdf", pages)
+        return f"scans/Contoso {name}.pdf"
+
+    good, bad = scan("good scan", 91), scan("bad scan", 95)
+    assert run(sample_config).exit_code == 0
+    said = {91: ["Signed in Rotterdam"], 93: ["Counted in Antwerp"], 95: "fail"}
+    engine = shade_engine(tmp_path / "ocr-bin", said)
+    found: list[Any] = [engine]
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: found[0])
+    fetched = _fetches(monkeypatch)
+    unread = _mirror_bytes(sample_config, bad)
+    second = run(sample_config)
+    assert second.exit_code == 0 and second.sources[0].errors == ()
+    assert _mirror_page(sample_config, good)[1].rstrip().endswith("Signed in Rotterdam")
+    assert _mirror_bytes(sample_config, bad) == unread and b"ocr" not in unread[bad]
+    bad_id = _file_rows(sample_config)[bad].stable_id
+    assert _reread_record(sample_config) == (True, [bad_id])
+    runs = len(calls(engine.helper))
+    assert run(sample_config).commit_sha is None and len(calls(engine.helper)) == runs
+    assert (fetched.count(good), fetched.count(bad)) == (1, 1)
+    # The engine goes away.  A scan mirrored meanwhile is converted as on a Mac without one.
+    found[0] = None
+    late = scan("late scan", 93)
+    assert (
+        run(sample_config).exit_code == 0 and "ocr" not in _mirror_page(sample_config, late)[0]["converter"]
+    )
+    assert run(sample_config).commit_sha is None and len(calls(engine.helper)) == runs
+    # It comes back: the late scan is read again, the other two are not.
+    found[0] = engine
+    assert run(sample_config).commit_sha is not None
+    assert _mirror_page(sample_config, late)[1].rstrip().endswith("Counted in Antwerp")
+    assert (fetched.count(good), fetched.count(bad), fetched.count(late)) == (1, 1, 2)
+    assert _mirror_bytes(sample_config, bad) == unread and _reread_record(sample_config) == (True, [bad_id])
+    assert run(sample_config).commit_sha is None and fetched.count(late) == 2
+    # A new scan the engine fails on is converted without OCR.  That leaves a file to read again, so the
+    # cycle after looks, reads it once more, and remembers it too.
+    worse = scan("worse scan", 95)
+    assert run(sample_config).exit_code == 0 and fetched.count(worse) == 1
+    assert "ocr" not in _mirror_page(sample_config, worse)[0]["converter"]
+    assert _reread_record(sample_config) == (False, [bad_id])
+    assert run(sample_config).commit_sha is None and fetched.count(worse) == 2
+    worse_id = _file_rows(sample_config)[worse].stable_id
+    assert _reread_record(sample_config) == (True, sorted([bad_id, worse_id]))
+    assert run(sample_config).commit_sha is None and fetched.count(worse) == 2
+
+
+def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_that_fails(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Six PDFs to read again, two to a transaction, each read 'taking' 25 s of a cycle's 60: three a
+    cycle.  One of them fails every time it is converted.  It costs its one read and holds nobody up: the
+    other five are read over two cycles, and the third cycle reads nothing.  A cycle says what it did in one
+    line, a count, with no name in it."""
+    reviews = [f"reviews/Contoso review {n}.pdf" for n in range(5)]
+    for n, rel in enumerate(reviews):
+        _commented(local_source_dir / rel, f"Contoso review {n}")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    stuck = _mirror_bytes(sample_config, reviews[0])
+    real = pdf_mod.PdfConverter.convert
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name == "Contoso review 0.pdf":
+            raise RuntimeError("this file breaks the converter")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(pdf_mod.PdfConverter, "convert", convert)
+    ticks = itertools.count(0.0, 25.0)
+    monkeypatch.setattr(cycle_mod, "_reread_clock", lambda: next(ticks))
+    monkeypatch.setattr(cycle_mod, "_REREAD_BUDGET_S", 60.0)
+    monkeypatch.setattr(cycle_mod, "_REREAD_BATCH", 2)
+    fetched = _fetches(monkeypatch)
+    caplog.set_level(logging.INFO, logger="agentsync.cycle")
+    first = run(sample_config)
+    assert first.exit_code == 0 and len(fetched) == 3 and not _reread_record(sample_config)[0]
+    second = run(sample_config)
+    assert second.exit_code == 0 and sorted(fetched) == sorted([*reviews, PLAIN_PDF]), "each file once"
+    stuck_id = _file_rows(sample_config)[reviews[0]].stable_id
+    assert _reread_record(sample_config) == (True, [stuck_id])
+    assert _mirror_bytes(sample_config, reviews[0]) == stuck
+    assert all(COMMENTS in _mirror_page(sample_config, rel)[1] for rel in reviews[1:])
+    third = run(sample_config)
+    assert third.commit_sha is None and len(fetched) == 6
+    said = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "agentsync.cycle" and "read again" in r.getMessage()
+    ]
+    assert said == [
+        "3 file(s) converted before a capability this install has were read again; "
+        f"{kept} of them could not be converted and keep the page they had"
+        for kept in ([1, 0] if reviews[0] in fetched[:3] else [0, 1])
+    ]
+    assert "Contoso" not in "".join(said) and "sample" not in "".join(said)
+
+
+def test_a_file_a_materialise_run_converted_without_ocr_is_read_again_by_the_next_sync(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``materialise PATH`` run reads nothing again, and it can still leave a file to read again: the
+    file it names, converted after the cycle's OCR time was used.  The source's record says so in that
+    run, so the next sync looks although the run before it had found nothing left."""
+    engine = shade_engine(tmp_path / "ocr-bin", {91: ["Signed in Rotterdam"], 93: ["Counted in Antwerp"]})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    rel = "scans/Contoso supply agreement.pdf"
+    cover = ["The cover page has a text layer of its own"]
+    (local_source_dir / "scans").mkdir()
+    build_picture_pdf(local_source_dir / rel, [(cover, []), ([], [page_picture(91)])])
+    assert run(sample_config).exit_code == 0 and _reread_record(sample_config) == (True, [])
+    assert _mirror_page(sample_config, rel)[1].rstrip().endswith("Signed in Rotterdam")
+    build_picture_pdf(local_source_dir / rel, [(cover, []), ([], [page_picture(93)])])
+    with monkeypatch.context() as spent:
+        spent.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)
+        named = run(sample_config, materialise_paths=[local_source_dir / rel], budget_bytes=10_000_000)
+    fm, body = _mirror_page(sample_config, rel)
+    assert named.exit_code == 0 and "ocr" not in fm["converter"] and "Antwerp" not in body
+    assert _reread_record(sample_config) == (False, [])
+    assert run(sample_config).commit_sha is not None and _reread_record(sample_config) == (True, [])
+    assert _mirror_page(sample_config, rel)[1].rstrip().endswith("Counted in Antwerp")
+    assert run(sample_config).commit_sha is None
+
+
+def test_a_converter_that_cannot_run_costs_its_files_neither_a_page_nor_their_one_re_read(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pandoc cannot be run in the cycle that would read the Word files again.  That is no failure of those
+    files: they are not read, their pages stay, and they are not remembered as tried, so the cycle in which
+    pandoc runs again reads them.  The files of the other converters are read meanwhile."""
+    assert run(sample_config).exit_code == 0
+    words = ["projects/sample.docx", KICKOFF]
+    before = _mirror_bytes(sample_config, *words)
+    _use_ocr(monkeypatch, tmp_path)
+    fetched = _fetches(monkeypatch)
+
+    def missing(self: Any) -> str:
+        raise ConversionError("cannot run pandoc: [Errno 2] No such file or directory")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pandoc_mod._PandocRunner, "version", missing)
+        report = run(sample_config)
+    [rep] = report.sources
+    assert (report.exit_code, rep.errors, rep.alarms) == (0, (), ())
+    assert sorted(fetched) == [PLAIN_PDF, "projects/sample.pptx"]
+    assert _mirror_bytes(sample_config, *words) == before and _reread_record(sample_config) == (False, [])
+    assert run(sample_config).exit_code == 0 and sorted(fetched[2:]) == sorted(words)
+    assert _mirror_bytes(sample_config, *words) == before, "no picture in them: the pages stay as they are"
+    assert _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and len(fetched) == 4
+
+
+def test_a_graph_file_is_never_read_again(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every read of a Graph item is a download, and nothing is downloaded for a re-read: a PDF a drive
+    source mirrored before comments were kept gains them when its bytes next change."""
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
+    data = _commented(tmp_path / "review.pdf", "Contoso widget review").read_bytes()
+    drive = FakeDrive({"I1": ("Contoso widget review.pdf", data)})
+    with GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    ) as client:
+        with _before_comments(monkeypatch):
+            assert run(config, client=client, only=["drive"]).exit_code == 0
+        downloads = [entry for entry in drive.log if entry.endswith("/content")]
+        assert len(downloads) == 1
+        assert run(config, client=client, only=["drive"]).commit_sha is None
+        assert [entry for entry in drive.log if entry.endswith("/content")] == downloads
+    [mirrored] = (config.docs_repo / "mirror" / "drive").rglob("*.pdf.md")
+    text = mirrored.read_text(encoding="utf-8")
+    assert "pdf-pypdfium2@2.0.0+" in text and COMMENTS not in text
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._REREAD_META + "drive") is None

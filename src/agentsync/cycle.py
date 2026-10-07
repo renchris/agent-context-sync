@@ -55,7 +55,8 @@ from agentsync.arm_local import (
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
-from agentsync.convert import convert_file, ocr
+from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, ocr
+from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.image import ImageConverter
@@ -139,6 +140,22 @@ a page takes about 2 to 6 s, a 49-megapixel one about 26 s (``convert/ocr.py``).
 past the budget it is converted without OCR (``_Cycle._converting``)."""
 _NO_CONVERTERS = Registry([])
 _ocr_clock = time.monotonic
+_REREAD_META = "reread:"
+"""``reread:<source_id>``, for a local or inbox source: what the cycle looked for among the source's pages
+and how far it got.  A JSON list of at most two records ``{"done": bool, "for": <sha256>, "tried": [<stable
+id>, ...]}``: the one the last cycle wrote, then the last one written for another ``for``.
+
+``for`` is ``_Cycle._capabilities``: the suffixes that have a converter, the OCR engine's identity and each
+converter's ``outdated_key``.  ``tried``: the files read again that still lack what they were read for.  They
+are not read a second time for the same ``for``, and the second record keeps that true when an engine goes
+and comes back.  ``done`` counts in the first record only: no file on this Mac was left to read again, so
+no cycle looks until one leaves such a file."""
+_REREAD_BATCH = 20  # files read again per manifest transaction and lock beat
+_REREAD_BUDGET_S = 120.0
+"""The seconds one cycle may spend reading files again before it starts no more (the read that passes it
+finishes).  The rest wait for later cycles.  Reading again also stops once the cycle's OCR time is used up
+(``_OCR_BUDGET_S``): past it a file would be converted without OCR, which is what it was read again for."""
+_reread_clock = time.monotonic
 _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
@@ -248,6 +265,51 @@ def _item_from_row(row: ItemRow) -> SourceItem:
         mode=row.mode,
         content_type=row.content_type,
         extra=dict(row.extra),
+    )
+
+
+def _outdated_rule(conv: Converter) -> Callable[[str, str | None], bool] | None:
+    """A converter's own answer to "is what version X made of a file worth reading the file again for?":
+    its ``outdated(produced, reason)``, looked for behind the registry's guard.  None for a converter that
+    has none, which is one that never asks for a re-read."""
+    rule = getattr(getattr(conv, "inner", conv), "outdated", None)
+    return rule if callable(rule) else None
+
+
+def _reread_records(stored: str | None) -> list[tuple[str, bool, list[str]]]:
+    """The (for, done, tried) records of a ``_REREAD_META`` value, newest first; none for a value that is
+    not there or cannot be read."""
+    try:
+        doc = json.loads(stored) if stored else None
+    except ValueError:
+        doc = None
+    records: list[tuple[str, bool, list[str]]] = []
+    for record in doc if isinstance(doc, list) else ():
+        if isinstance(record, dict) and isinstance(record.get("for"), str):
+            tried = record.get("tried")
+            ids = [t for t in tried if isinstance(t, str)] if isinstance(tried, list) else []
+            records.append((record["for"], record.get("done") is True, ids))
+    return records
+
+
+def _reread_state(stored: str | None, capabilities: str) -> tuple[bool, set[str]]:
+    """(done, tried) for ``capabilities`` from a ``_REREAD_META`` value.  ``done`` only when the last cycle
+    wrote its record for them; ``tried`` from whichever record is theirs."""
+    for n, (wanted, done, tried) in enumerate(_reread_records(stored)):
+        if wanted == capabilities:
+            return done and n == 0, set(tried)
+    return False, set()
+
+
+def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult) -> bool:
+    """True when ``result`` is the unreadable stub ``row`` already has: one page, the same reason."""
+    live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+    return (
+        result.status is ConversionStatus.UNREADABLE
+        and row.state is RowState.QUARANTINED
+        and row.state_reason == _one_line(result.reason or result.status.value, 200)
+        and len(live) == 1
+        and live[0].status is OutputStatus.QUARANTINED
     )
 
 
@@ -823,6 +885,13 @@ class _Cycle:
         self.checkpoint_detail = ""
         self.checkpoint_blockers: tuple[LintFinding, ...] = ()
         self.snapshot_tag: str | None = None
+        # files converted before a capability this install has, read again once (CONTRACTS.md 16.27)
+        self._capability: str | None = None  # what a re-read looks for (``_capabilities``), worked out once
+        self._reread_open: set[str] = set()  # sources this cycle found a file to read again in
+        self._reread_s = 0.0  # seconds spent reading files again
+        self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
+        self._reread_n = 0  # files read again
+        self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
 
     # ---- time ---------------------------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -872,6 +941,13 @@ class _Cycle:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
                 self._flush_changes()
+            if self._reread_n:  # one line a cycle, and a count: never a name
+                log.info(
+                    "%d file(s) converted before a capability this install has were read again; %d of "
+                    "them could not be converted and keep the page they had",
+                    self._reread_n,
+                    self._reread_kept,
+                )
             self.lock.beat("secrets")
             self._quarantine_secrets()
             self._flush_changes(rewrite=True)
@@ -1547,6 +1623,9 @@ class _Cycle:
                         state = row.state
                     else:
                         state = self._observed_state(item, row)
+                        if row is not None and row.dataless and not item.dataless and not item.is_dir:
+                            # downloaded since the last pass: on this Mac now, so it can be read again
+                            self._reread_reopen(src)
                     observations.append((item, c.verdict, state))
                     if c.prev_path is not None or c.verdict is Verdict.METADATA_ONLY:
                         moved.add(c.stable_id)
@@ -1611,6 +1690,11 @@ class _Cycle:
         # include/exclude no longer covers is never work, and an incomplete pass does not prune it)
         for start in range(0, len(work), _WORK_BATCH):
             self._process_batch(src, arm, work[start : start + _WORK_BATCH], budget, acc)
+        if isinstance(arm, LocalArm) and not self.forced_paths:
+            # After the source's own work: new and changed files had the cycle's OCR time first.  Never for
+            # a Graph source (every read there is a download) and never while ``materialise PATH`` names
+            # the files to read.
+            self._reread_source(src, arm, acc, queued)
         acc.materialised_bytes = budget.used
         # ---- renames / metadata-only rows that needed no bytes --------------------------------------------
         for stable_id in sorted(moved - queued):
@@ -1689,6 +1773,210 @@ class _Cycle:
             self._flush_changes()  # the batch's changes are durable with its outputs rows
         if failure is not None:
             raise failure
+
+    # ---- files converted before a capability existed: read again once ------------------------------------
+    def _capabilities(self) -> str:
+        """Digest of what a re-read looks for: the suffixes that have a converter, the OCR engine's identity
+        and what each converter's ``outdated`` goes by besides (its ``outdated_key``: the PDF converter's
+        emitter and comments floor).  ``_REREAD_META`` stores it per source."""
+        if self._capability is None:
+            keys = {
+                (c.converter_id, str(getattr(getattr(c, "inner", c), "outdated_key", "")))
+                for c in self.registry.converters()
+            }
+            doc = {
+                "extensions": list(self.registry.extensions()),
+                "ocr": self.ocr.identity if self.ocr is not None else "",
+                "rules": sorted(list(k) for k in keys if k[1]),
+            }
+            self._capability = hashlib.sha256(json.dumps(doc, sort_keys=True).encode("utf-8")).hexdigest()
+        return self._capability
+
+    def _lacks(self, name: str, result: ConversionResult) -> bool:
+        """True when ``result`` is one this cycle's registry would read ``name`` again for: the file was
+        converted without something its converter has (past the OCR time, or after the engine failed)."""
+        if result.status not in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
+            return False
+        conv = self.registry.for_name(name)
+        if conv is None or conv.converter_id != result.converter_id:
+            return False
+        rule = _outdated_rule(conv)
+        reason = result.reason if result.status is ConversionStatus.UNREADABLE else None
+        return rule is not None and rule(result.converter_version, reason)
+
+    def _reread_targets(self, source_id: str) -> list[tuple[str, str, str | None, str]]:
+        """What to look for among ``source_id``'s files (``Manifest.reread_candidates``): each (converter
+        id, version, stub reason or None, suffix) a converter of this cycle's registry calls outdated, and
+        each ``no converter`` refusal of a suffix that has a converter now."""
+        targets: set[tuple[str, str, str | None, str]] = set()
+        converters, extensions = self.registry.converters(), self.registry.extensions()
+        for converter_id, version, reason in self.manifest.produced_by(source_id):
+            if reason is not None and reason.startswith(NO_CONVERTER_PREFIX):
+                suffix = reason[len(NO_CONVERTER_PREFIX) :]
+                targets.update(
+                    (converter_id, version, reason, ext)
+                    for ext in extensions
+                    if ext.endswith(suffix) or suffix.endswith(ext)
+                )
+                continue
+            for conv in converters:
+                rule = _outdated_rule(conv)
+                if conv.converter_id == converter_id and rule is not None and rule(version, reason):
+                    targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
+        return sorted(targets, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
+
+    def _reread_over(self) -> bool:
+        """True once this cycle starts no more re-reads: their time is used up, or the cycle's OCR time is."""
+        return self._reread_s >= _REREAD_BUDGET_S or (
+            self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S
+        )
+
+    def _save_reread(self, source_id: str, done: bool, tried: set[str]) -> None:
+        """Store the source's ``_REREAD_META`` value, when it is not the one stored: this cycle's record,
+        then the newest one written for other capabilities."""
+        key, mine = _REREAD_META + source_id, self._capabilities()
+        stored = self.manifest.get_meta(key)
+        records = [(mine, done, sorted(tried))]
+        records += [r for r in _reread_records(stored) if r[0] != mine][:1]
+        value = json.dumps(
+            [{"done": was_done, "for": wanted, "tried": ids} for wanted, was_done, ids in records],
+            sort_keys=True,
+        )
+        if stored != value:
+            self.manifest.set_meta(key, value)
+
+    def _reread_reopen(self, src: SourceConfig) -> None:
+        """``src`` has a file to read again that it did not have when its record said ``done``: a file
+        converted just now without something its converter has, or one that is on this Mac again.  The
+        record says so at once, so the look happens even when this cycle does not get to it (a
+        ``materialise PATH`` run, a source that fails further on)."""
+        if src.kind.is_graph or src.id in self._reread_open:
+            return
+        self._reread_open.add(src.id)
+        done, tried = _reread_state(self.manifest.get_meta(_REREAD_META + src.id), self._capabilities())
+        if done:
+            self._save_reread(src.id, False, tried)
+
+    def _reread_source(self, src: SourceConfig, arm: LocalArm, acc: _SourceAcc, queued: set[str]) -> None:
+        """Read again, once, the files of ``src`` whose pages were made before something this cycle's
+        registry has (CONTRACTS.md 16.27): a ``no converter`` stub of a type that has a converter now, a
+        page or a ``no text layer`` stub written without OCR when there is an engine, a PDF page from before
+        comments were kept.
+
+        Only a file this pass listed and left unchanged, in scope and on this Mac, is read, and ``queued``
+        (the rows the pass's own work held) wait for the next pass.  No row is marked and nothing is
+        downloaded: a file is read with its hashes in place, so whatever stops the cycle leaves it as it
+        was.  A file is read again at most once for what the registry has: the read either gives its pages
+        a version that lacks nothing, or puts it among the source's ``tried``."""
+        done, tried = _reread_state(self.manifest.get_meta(_REREAD_META + src.id), self._capabilities())
+        if done:
+            return  # nothing was left to read again, and this cycle found nothing either (_reread_reopen)
+        targets = self._reread_targets(src.id)
+        kept, after, more = self._reread_kept, "", bool(targets)
+        while more and not self._reread_over():
+            rows = self.manifest.reread_candidates(
+                src.id, targets, seen_run=self.run_id, skip=tried, after=after, limit=_REREAD_BATCH
+            )
+            if not rows:
+                break
+            after = rows[-1].stable_id
+            batch = [r for r in rows if r.stable_id not in queued and arm.in_scope(r.rel_path)]
+            more = self._reread_batch(src, arm, batch, acc, tried)
+        if self._reread_kept > kept:
+            acc.alarms.append(
+                f"{self._reread_kept - kept} file(s) read again for what their converter has gained could "
+                "not be converted; their pages are kept as they were"
+            )
+        # Done when no file on this Mac is left to read again: none the cycle's time ran out before, none
+        # that is pending and none this pass did not list.
+        left = bool(targets) and self.manifest.reread_left(src.id, targets, skip=tried)
+        self._save_reread(src.id, not left, tried)
+
+    def _reread_batch(
+        self, src: SourceConfig, arm: LocalArm, rows: Sequence[ItemRow], acc: _SourceAcc, tried: set[str]
+    ) -> bool:
+        """Read ``rows`` again with their manifest writes in one transaction, as ``_process_batch`` does for
+        the work queue.  False when the cycle's time for re-reads ran out before the last of them.
+
+        A row is put in ``tried`` before it is read and taken out unless the read left it lacking what it
+        was for; the record is stored with the batch.  So a file whose read fails, falls back or stops the
+        source is not read a second time."""
+        if not rows:
+            return True
+        self.lock.beat(f"work:{src.id}")
+        failure: BaseException | None = None
+        finished = True
+        with self.manifest.transaction():
+            for row in rows:
+                if self._reread_over():
+                    finished = False
+                    break
+                tried.add(row.stable_id)
+                started = _reread_clock()
+                try:
+                    if self._reread(src, arm, row, acc) is not False:
+                        tried.discard(row.stable_id)
+                except BaseException as exc:  # commit what finished, then re-raise outside the transaction
+                    failure = exc
+                    # Its pages may be half written: as pending work the next pass reads it, checks them
+                    # against the manifest and publishes them again when they do not match.
+                    with contextlib.suppress(Exception):
+                        self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.MAYBE_CHANGED)
+                    break
+                finally:
+                    self._reread_s += _reread_clock() - started
+            self._flush_changes()
+            self._save_reread(src.id, False, tried)
+        if failure is not None:
+            raise failure
+        return finished
+
+    def _reread(self, src: SourceConfig, arm: LocalArm, row: ItemRow, acc: _SourceAcc) -> bool | None:
+        """Read ``row`` again and convert it with this cycle's registry.
+
+        True: done with, its pages come from a version that lacks nothing.  False: it still lacks what it
+        was read for (the file could not be read, its conversion failed and the page was kept, the engine
+        failed on it again), which is final for this file.  None: not now, for a reason that is no failure
+        of this file, so a later cycle asks again: its converter cannot run at all (pandoc is missing), or
+        the file has gone or been evicted since the walk listed it.
+
+        Nothing is downloaded: the fetch has a budget of no bytes, so a file evicted since the walk is left
+        alone.  A file the work queue refuses unread (an excluded label, an inbox copy of a Graph file) is
+        not read here either."""
+        conv = self.registry.for_name(row.name)
+        if (
+            conv is None
+            or self.publisher.policy_refusal(row) is not None
+            or self._inbox_name_size_duplicate(src, row) is not None
+        ):
+            return False
+        if id(conv) not in self._cannot_run:
+            try:
+                conv.version()
+            except Exception as exc:
+                self._cannot_run[id(conv)] = True
+                log.warning(
+                    "%s cannot run (%s): no file is read again for it in this cycle",
+                    conv.converter_id,
+                    type(exc).__name__,
+                )
+            else:
+                self._cannot_run[id(conv)] = False
+        if self._cannot_run[id(conv)]:
+            return None
+        try:
+            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
+        except (BudgetExhaustedError, DatalessRefusedError, FileNotFoundError):
+            return None  # evicted or gone since the walk: the next pass says what the file is now
+        except Exception as exc:  # unreadable: the row and its page are as they were
+            log.info("a file could not be read again (%s); its page is as it was", type(exc).__name__)
+            return False
+        self._reread_n += 1
+        try:
+            result = self._after_fetch(src, row, fetched, acc, reread=True)
+        finally:
+            _discard_staged(fetched, self.staging)
+        return result is not None and not self._lacks(row.name, result)
 
     def _forced_ids(self, src: SourceConfig) -> set[str] | None:
         """Stable ids named by ``agentsync materialise PATH`` for this source (None = no restriction)."""
@@ -2026,12 +2314,21 @@ class _Cycle:
                 "max_materialise_bytes or run `agentsync materialise --budget BYTES PATH`"
             )
 
-    def _after_fetch(self, src: SourceConfig, row: ItemRow, fetched: FetchResult, acc: _SourceAcc) -> None:
+    def _after_fetch(
+        self, src: SourceConfig, row: ItemRow, fetched: FetchResult, acc: _SourceAcc, *, reread: bool = False
+    ) -> ConversionResult | None:
+        """H1, convert, H2, publish for one fetched file.  Returns the conversion its pages now stand for;
+        None when none took the place of what they stood for before.
+
+        ``reread``: the file is read again for what its converter has gained (``_reread_source``), so bytes
+        that are the ones its pages were made from are converted all the same.  Such a re-read never costs
+        the file its page: a conversion that fails leaves the page as it is, and one that gives the page or
+        the stub it already has leaves it untouched and only moves its action key."""
         sid, stable = row.source_id, row.stable_id
         h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
         if self.suppressions.matches_content(h1.sha256):
             self._suppress_purged_content(src, row, acc)
-            return
+            return None
         c2 = classify_content(row, h1)
         if c2.changed_parts:
             log.info("%s/%s changed parts: %s", sid, row.rel_path, ", ".join(c2.changed_parts))
@@ -2048,12 +2345,15 @@ class _Cycle:
         # The stub of a page with no room for its sidecar is never the last word on the bytes: its cause is
         # the path, so every read plans the item again at the path it has now.
         intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
-        if c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact:
+        same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact
+        if same and not reread:
             if self._rewrite_if_moved(src, fresh, outs, acc):
                 acc.counts[Verdict.TOUCHED_NOT_CHANGED] += 1
                 self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
-            return
-        acc.converted += 1
+            return None
+        again = reread and same  # the bytes its pages were made from, converted once more
+        if not again:
+            acc.converted += 1
         result = convert_file(
             fetched.path,
             name=row.name,
@@ -2074,28 +2374,42 @@ class _Cycle:
                 size=sum(len(u.body.encode("utf-8")) for u in result.units),
                 run_id=self.run_id,
             )
+        if not reread and self._lacks(row.name, result):
+            # Converted without something its converter has (past the OCR time, or the engine failed on
+            # it): the source has a file to read again, so a later cycle looks.
+            self._reread_reopen(src)
         duplicate = self._inbox_duplicate(src, h1.sha256)
         if duplicate is not None:
             result = dataclasses.replace(result, status=ConversionStatus.REFUSED, units=(), reason=duplicate)
+        if again and result.status is ConversionStatus.FAILED:
+            # A re-read that fails keeps the page: nothing is published and no verdict moves.
+            self._reread_kept += 1
+            return None
+        if again and _same_stub(outs, fresh, result):  # the stub it has says what this conversion says
+            self._move_key(sid, stable, outs, result.action_key, OutputStatus.QUARANTINED)
+            return result
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
-            if any(o.action_key != result.action_key for o in outs if o.status is OutputStatus.OK):
-                self.manifest.replace_outputs(
-                    sid,
-                    stable,
-                    [
-                        dataclasses.replace(o, action_key=result.action_key)
-                        if o.status is OutputStatus.OK
-                        else o
-                        for o in outs
-                    ],
-                )
+            self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
             if self._rewrite_if_moved(src, fresh, outs, acc):
                 acc.counts[Verdict.OUTPUT_UNCHANGED] += 1
                 self.manifest.set_verdict(sid, stable, Verdict.OUTPUT_UNCHANGED)
-            return
+            return result
         acc.counts[Verdict.CHANGED] += 1
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
+        return result
+
+    def _move_key(
+        self, sid: str, stable: str, outs: Sequence[OutputRow], key: str, status: OutputStatus
+    ) -> None:
+        """Give ``key`` to the item's output rows of ``status``, which stay as they are otherwise: the
+        conversion under that key gave the pages they already describe."""
+        if any(o.action_key != key for o in outs if o.status is status):
+            self.manifest.replace_outputs(
+                sid,
+                stable,
+                [dataclasses.replace(o, action_key=key) if o.status is status else o for o in outs],
+            )
 
     def _suppress_purged_content(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
         """The fetched bytes are content purged for erasure/DLP/label reasons (a copy, or a re-upload under
