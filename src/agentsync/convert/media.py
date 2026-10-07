@@ -46,11 +46,12 @@ class MediaInfo:
 
 @dataclass(frozen=True, slots=True)
 class Scan:
-    """What ``scan`` wrote: ``grids`` holds ``ticks`` grids of ``GRID_W x GRID_H`` bytes, tick ``k`` at media
-    time ``k x step_ms``."""
+    """What ``scan`` wrote: ``grids`` holds ``ticks`` grids of ``GRID_W x GRID_H`` bytes from tick ``first``,
+    tick ``k`` at media time ``k x step_ms``."""
 
     grids: Path
     step_ms: int
+    first: int
     ticks: int
 
 
@@ -96,9 +97,17 @@ class MediaEngine:
         raise NotImplementedError
 
     def scan(
-        self, src: Path, *, out: Path, timeout: float, step_ms: int = STEP_MS, max_ticks: int | None = None
+        self,
+        src: Path,
+        *,
+        out: Path,
+        timeout: float,
+        step_ms: int = STEP_MS,
+        first_tick: int = 0,
+        max_ticks: int | None = None,
     ) -> Scan:
-        """``scan FILE --out DIR``: one grid per tick into ``out/grids.bin``; raises MediaError."""
+        """``scan FILE --out DIR [--first-tick K] [--max-ticks N]``: one grid per tick from tick
+        ``first_tick`` into ``out/grids.bin`` (its first grid is tick ``first_tick``); raises MediaError."""
         raise NotImplementedError
 
     def frames(

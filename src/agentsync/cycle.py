@@ -199,6 +199,10 @@ HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
 processed."""
+RECORDING_WAITS = "recording-waits"
+"""``state_reason`` of a local recording the recording pass has not finished reading: it waits for a
+background sync or ``agentsync materialise <file>`` (spec S0 rule 6, ruling 4).  ``loop`` counts it in a
+bucket of its own with the minutes read so far; it is never rule 3.  Cleared when its page is published."""
 
 
 class RecoveryAction(enum.StrEnum):
