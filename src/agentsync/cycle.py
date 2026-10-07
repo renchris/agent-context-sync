@@ -2174,13 +2174,13 @@ class _Cycle:
         state = self._reread_load(src.id)
         if state.done or state.failed.get(row.stable_id, 0) >= _REREAD_ATTEMPTS:
             return False
-        conv = self.registry.for_name(row.name)
-        if conv is None or not self._runs(conv):
-            return False
         if src.id not in self._queue_targets:
             self._queue_targets[src.id] = self._reread_targets(src.id)
         targets = self._queue_targets[src.id]
-        return bool(targets) and self.manifest.reread_left(src.id, targets, only=row.stable_id)
+        if not targets or not self.manifest.reread_left(src.id, targets, only=row.stable_id):
+            return False
+        conv = self.registry.for_name(row.name)  # asked last: whether it runs can start a process
+        return conv is not None and self._runs(conv)
 
     def _forced_ids(self, src: SourceConfig) -> set[str] | None:
         """Stable ids named by ``agentsync materialise PATH`` for this source (None = no restriction)."""
