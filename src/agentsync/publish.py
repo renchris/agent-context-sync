@@ -31,6 +31,7 @@ from typing import Any
 
 from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root
+from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.registry import sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
@@ -907,7 +908,7 @@ class Publisher:
         refusal = policy.is_refusal_reason(result.reason)
         if status is ConversionStatus.REFUSED or refusal:
             page_status, out_status = PageStatus.REFUSED, OutputStatus.REFUSED
-            default = f"no converter for {Path(item.name).suffix.lower() or 'this file type'}"
+            default = NO_CONVERTER_PREFIX + (Path(item.name).suffix.lower() or "this file type")
         elif status is ConversionStatus.UNREADABLE:
             page_status, out_status = PageStatus.UNREADABLE, OutputStatus.QUARANTINED
             default = "unreadable (encrypted, password-protected or rights-managed)"

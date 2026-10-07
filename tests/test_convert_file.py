@@ -10,7 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from agentsync.convert import ConverterCache, Registry, convert_file, double_conversion_differs
+from agentsync.convert import (
+    NO_CONVERTER_PREFIX,
+    ConverterCache,
+    Registry,
+    convert_file,
+    double_conversion_differs,
+)
 from agentsync.convert.base import make_unit, options_hash
 from agentsync.convert.cache import action_key
 from agentsync.convert.ocr import OcrError
@@ -85,11 +91,12 @@ def test_unknown_suffix_is_refused_not_cached(src: Path, cache: ConverterCache) 
     reg = Registry([Fake(lambda s, n: (_unit("x\n"),))])
     r = _run(src, reg, cache, name="Thing.XYZ")
     assert r.status is ConversionStatus.REFUSED
-    assert r.reason == "no converter for .xyz"
+    assert r.reason == "no converter for .xyz" == NO_CONVERTER_PREFIX + ".xyz"
     assert r.units == () and r.converter_id == "none"
     assert r.content_sha256 == CONTENT and r.canonical_sha256 == H1
     assert not (cache.root.exists() and any(cache.root.iterdir()))
-    assert _run(src, reg, cache, name="Makefile").reason == "no converter for files without an extension"
+    bare = _run(src, reg, cache, name="Makefile").reason
+    assert bare == "no converter for files without an extension" and bare.startswith(NO_CONVERTER_PREFIX)
 
 
 def test_ok_is_cached_write_once_and_served_from_cache(src: Path, cache: ConverterCache) -> None:

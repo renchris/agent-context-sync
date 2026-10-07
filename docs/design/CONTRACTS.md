@@ -2153,6 +2153,10 @@ def materialise(
 L3 conversion: registry, write-once cache, per-format converters (owner: convert).
 
 ```python
+NO_CONVERTER_PREFIX = "no converter for "
+# How the reason of a file no converter claims starts: `convert_file` and the stub `publish` writes for
+# such a file use it, and the cycle goes by it (§16.27). The wording of the reason is unchanged.
+
 def convert_file(
     src: Path,
     *,

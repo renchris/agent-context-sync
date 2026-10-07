@@ -15,6 +15,10 @@ from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit
 
 log = logging.getLogger(__name__)
 
+NO_CONVERTER_PREFIX = "no converter for "
+"""How the reason of a file no converter claims starts (``convert_file``; the stub ``publish`` writes for
+such a file says the same).  The cycle goes by it to find the files a converter registered since can read."""
+
 _NO_CONVERTER_ID = "none"
 _NO_CONVERTER_VERSION = "0"
 _REASON_MAX = 300
@@ -130,7 +134,7 @@ def convert_file(
             ),
             content_sha256=content_sha256,
             canonical_sha256=canonical_sha256,
-            reason=f"no converter for {suffix}" if suffix else "no converter for files without an extension",
+            reason=NO_CONVERTER_PREFIX + (suffix or "files without an extension"),
         )
     try:
         version, opts = _identity(conv, name)
@@ -267,4 +271,4 @@ def double_conversion_differs(src: Path, *, name: str, registry: Registry) -> bo
     return first != second
 
 
-__all__ = ["ConverterCache", "Registry", "convert_file", "double_conversion_differs"]
+__all__ = ["NO_CONVERTER_PREFIX", "ConverterCache", "Registry", "convert_file", "double_conversion_differs"]
