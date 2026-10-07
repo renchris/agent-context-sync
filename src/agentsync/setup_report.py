@@ -2493,6 +2493,7 @@ _EMPTY_DIRS_CHECKED = 50
 _FOLDERS_S = 2.0  # one source's empty folders: the lstat calls, then the exclude rule, each at most this long
 _PAIRS_SHOWN = 20
 _REREAD_META = "reread:"  # cycle._REREAD_META
+_REREAD_FOR_DIGITS = 8  # cycle._REREAD_FOR_DIGITS: the hex digits of a record's ``for`` a run record holds
 _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
 _PRESENT_SQL = "('live', 'dataless')"
 
@@ -2773,9 +2774,11 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 # ---- OCR ------------------------------------------------------------------------------------------------
 
 
-def _ocr_helper(r: _Run, m: _Mirror) -> list[str]:
+def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
     """The probe's state and detail (``convert.ocr.probe``: it looks, compiles nothing and stamps nothing;
     the one program it may start is a built helper's ``--version``), and whether a label rule is on.
+    Returns the two lines, the state ("" when the probe gave none) and whether a label rule is on: the
+    file counts after it are worded by them. Never raises.
 
     The probe has :data:`_PROBE_S` of its own, and the time it takes is not the manifest parts'
     (``_Mirror.not_counted``): a helper that hangs is the Mac the OCR evidence is wanted from, and it used
@@ -2785,10 +2788,12 @@ def _ocr_helper(r: _Run, m: _Mirror) -> list[str]:
     words = {"ready": "ready", "off": "off", "not-built": "not built", "failed": "failed"}
     room = r.remaining() - _RESERVE_S
     started = time.monotonic()
+    state, active = "", False
     try:
         from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        state, detail = r.call(lambda: ocr.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
+        found, detail = r.call(lambda: ocr.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
+        state = str(found)
         out = [f"- helper: {words.get(state, 'unknown state')} ({_shorten(str(detail), 200)})"]
     except TimeoutError:
         if room < _PROBE_S:  # the report's own time ended the wait, not the helper
@@ -2805,11 +2810,11 @@ def _ocr_helper(r: _Run, m: _Mirror) -> list[str]:
     try:
         from agentsync import policy  # noqa: PLC0415 - lazy, as above
 
-        active = policy.load_policy(config).labels_active
+        active = bool(policy.load_policy(config).labels_active)
         out.append(f"- label rule in [policy]: {'on (no image is read under one)' if active else 'off'}")
     except Exception as exc:
         out.append(f"- label rule in [policy]: not read ({type(exc).__name__})")
-    return out
+    return out, state, active
 
 
 _IMAGE_OUTCOMES = (
@@ -2826,16 +2831,17 @@ _IMAGE_OUTCOMES = (
 )
 
 
-def _image_outcome(state: str, dataless: int, verdict: str, cls: str, page: int) -> str:
-    """One of :data:`_IMAGE_OUTCOMES` for an image's row."""
+def _image_outcome(state: str, away: bool, verdict: str, cls: str, page: int) -> str:
+    """One of :data:`_IMAGE_OUTCOMES` for an image's row. ``away``: the file is not on this Mac (it is
+    online-only, or a Graph source's: no image is downloaded for OCR)."""
     if state in ("live", "dataless"):
         if page:
             return "page"
         if verdict == "deferred":
-            return "deferred online-only" if dataless else "deferred on this Mac"
+            return "deferred online-only" if away else "deferred on this Mac"
         return "not converted yet"
     stubs = {
-        "no converter": "not-on-this-Mac stub" if dataless else "no-converter stub on this Mac",
+        "no converter": "not-on-this-Mac stub" if away else "no-converter stub on this Mac",
         "no text in image": "no-text stub",
         "image not readable": "not-readable stub",
         "too large": "not-readable stub",
@@ -2844,33 +2850,41 @@ def _image_outcome(state: str, dataless: int, verdict: str, cls: str, page: int)
     return stubs.get(cls, "other stub")
 
 
-def _ocr_files(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: bool) -> list[str]:
     """What OCR has done to the files the manifest holds, as counts: images by outcome, documents by
-    whether their page was made with an engine, scanned PDFs by stub, and the re-read record per source."""
+    whether their page was made with an engine, scanned PDFs by stub, and the re-read record per source.
+    ``state``: the probe's (``_ocr_helper``); ``label_rule``: one is on, so no image is read.
+
+    A Graph source's file is never on this Mac, whatever its ``dataless`` column says (it is 0 there):
+    its image has the not-on-this-Mac stub, and nothing of it waits for a re-read, which never downloads."""
     out: list[str] = []
-    waiting: Counter[str] = Counter()  # source id -> files on this Mac a re-read would look at
+    graph = {src.id for src in cast(Config, r.config).sources if src.kind.is_graph}
+    waiting: Counter[str] = Counter()  # source id -> files on this Mac from before OCR
+    field: Counter[str] = Counter()  # source id -> of those, pages of the field build of OCR
     outcomes: Counter[str] = Counter()
-    online = [0, 0]  # online-only images: files, bytes
+    absent = [0, 0, 0]  # images not on this Mac: online-only files, a Graph source's files, bytes of both
     image = _suffix_sql("i.name", _IMAGE_SUFFIXES)
-    for sid, state, dataless, verdict, cls, page, files, size in m.rows(
+    for sid, row_state, dataless, verdict, cls, page, files, size in m.rows(
         "SELECT i.source_id, i.state, i.dataless, COALESCE(i.last_verdict, ''), "
         "reason_class(i.state_reason), "
         "EXISTS (SELECT 1 FROM outputs o WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
         "AND o.status = 'ok'), COUNT(*), COALESCE(SUM(i.size), 0) FROM items i "
         f"WHERE i.is_dir = 0 AND i.state != 'tombstone' AND {image} IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6"
     ):
-        outcome = _image_outcome(str(state), int(dataless), str(verdict), str(cls), int(page))
+        remote = bool(dataless) or str(sid) in graph
+        outcome = _image_outcome(str(row_state), remote, str(verdict), str(cls), int(page))
         outcomes[outcome] += int(files)
-        if dataless:
-            online[0] += int(files)
-            online[1] += int(size)
-        if outcome == "no-converter stub on this Mac":
+        if remote:
+            absent[0 if dataless else 1] += int(files)
+            absent[2] += int(size)
+        if outcome == "no-converter stub on this Mac" and not label_rule:
             waiting[str(sid)] += int(files)
     shown = " · ".join(f"{name} {outcomes[name]}" for name in _IMAGE_OUTCOMES if outcomes[name])
     out.append(f"- images: {sum(outcomes.values())} file(s)" + (f": {shown}" if shown else ""))
     out.append(
-        f"- images that are online-only: {online[0]} file(s), {_megabytes(online[1])} (none is downloaded "
-        "for OCR; a deferred image on this Mac waits for a cycle's OCR time or its file limit)"
+        f"- images that are not on this Mac: {absent[0] + absent[1]} file(s), {_megabytes(absent[2])} "
+        f"({absent[0]} online-only, {absent[1]} of a Graph source; none is downloaded for OCR; a deferred "
+        "image on this Mac waits for a cycle's OCR time or its file limit)"
     )
     documents: Counter[tuple[str, int, int]] = Counter()  # (suffix, version class, online-only) -> files
     ext = _suffix_sql("i.name", _OCR_DOCUMENTS)
@@ -2884,8 +2898,9 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "GROUP BY i.source_id, i.stable_id) GROUP BY 1, 2, 3, 4"
     ):
         documents[(str(suffix), int(cls), int(bool(dataless)))] += int(files)
-        if int(cls) != 2 and not dataless:
+        if int(cls) != 2 and not dataless and str(sid) not in graph:
             waiting[str(sid)] += int(files)
+            field[str(sid)] += int(files) if int(cls) == 1 else 0
     for suffix, name in _OCR_DOCUMENTS.items():
         cells = []
         for cls in (2, 0, 1):
@@ -2896,10 +2911,10 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 )
         out.append(f"- {name} ({suffix}) files with a page: " + ", ".join(cells))
     scans: Counter[str] = Counter()
-    for sid, state, cls, dataless, files, _lo, _hi in _stub_rows(m):
-        if state == "quarantined" and cls.startswith("no text layer"):
+    for sid, row_state, cls, dataless, files, _lo, _hi in _stub_rows(m):
+        if row_state == "quarantined" and cls.startswith("no text layer"):
             scans[cls] += files
-            if cls == "no text layer (OCR not run)" and not dataless:
+            if cls == "no text layer (OCR not run)" and not dataless and sid not in graph:
                 waiting[sid] += files
     out.append(
         "- scanned PDFs with a stub: "
@@ -2917,39 +2932,85 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "- engine identities on pages: "
         + (", ".join(f"{name} ({n} page(s))" for name, n in sorted(identities.items())[:6]) or "none")
     )
-    return [*out, *_reread_lines(r, m, labels, waiting)]
+    return [
+        *out,
+        *_reread_lines(r, m, labels, waiting=waiting, field=field, state=state, label_rule=label_rule),
+    ]
 
 
-def _reread_lines(r: _Run, m: _Mirror, labels: _Labels, waiting: Counter[str]) -> list[str]:
+def _reread_records(stored: str | None) -> list[dict[str, Any]]:
+    """The records of a ``reread:<source id>`` value, newest first, read as the cycle reads them
+    (``cycle._reread_records``): a JSON list of objects that each say what they are ``for``."""
+    try:
+        doc = json.loads(stored or "[]")
+    except ValueError:
+        return []
+    found = doc if isinstance(doc, list) else []
+    return [x for x in found if isinstance(x, dict) and isinstance(x.get("for"), str)]
+
+
+def _reread_number(wanted: str) -> int | None:
+    """``cycle._reread_number`` of a record's ``for``: what a run record holds of it (``reread_for``).
+    None for a value that is no digest."""
+    try:
+        return int(wanted[:_REREAD_FOR_DIGITS], 16)
+    except ValueError:
+        return None
+
+
+def _reread_lines(
+    r: _Run,
+    m: _Mirror,
+    labels: _Labels,
+    *,
+    waiting: Counter[str],
+    field: Counter[str],
+    state: str,
+    label_rule: bool,
+) -> list[str]:
     """The re-read record of each local or inbox source (manifest meta ``reread:<source id>``, CONTRACTS
     16.27) as counts: whether its scan is finished, the files given up, those that failed once, and the
-    report's own count of files on this Mac whose page a re-read would look at."""
+    report's own count of files on this Mac from before OCR.
+
+    A record says what it was written ``for`` (the build, the converters, the engine), and a cycle goes
+    by a record only when that is what it looks for itself. So does the report: the newest run that
+    brought a record up to date says what it looked for (``reread_for`` in its run record), and a record
+    for anything else is ``not started``, whatever its ``done`` says. A source no cycle of this build has
+    reached keeps the record an earlier build left, and "scan finished: yes" would be that build's."""
     config = cast(Config, r.config)
     stored = {
         str(key)[len(_REREAD_META) :]: str(value)
         for key, value in m.rows("SELECT key, value FROM meta WHERE key LIKE ?", (_REREAD_META + "%",))
     }
+    runs = _run_rows(m)
+    looked = next((x for x in runs if "reread_for" in x.counts), None)
     rows: list[tuple[object, ...]] = []
     for src in config.sources:
         if src.path is None or (src.id not in stored and not waiting[src.id]):
             continue
-        try:
-            doc = json.loads(stored.get(src.id) or "[]")
-        except ValueError:
-            doc = []
-        records = [x for x in doc if isinstance(x, dict)] if isinstance(doc, list) else []
-        first = records[0] if records else {}
-        tried, failed = first.get("tried"), first.get("failed")
-        older = sum(len(x.get("tried") or ()) for x in records[1:] if isinstance(x.get("tried"), list))
+        records = _reread_records(stored.get(src.id))
+        mine = records[0] if records else None
+        if mine is not None and looked is not None and _reread_number(mine["for"]) != looked.n("reread_for"):
+            mine = None  # left by another build or engine: no cycle goes by it
+        if not records:
+            finished = "no record"
+        elif mine is None:
+            finished = "not started"
+        else:
+            finished = "yes" if mine.get("done") is True and "reading" not in mine else "no"
+        current = mine or {}
+        tried, failed = current.get("tried"), current.get("failed")
+        others = [x.get("tried") for x in records if x is not mine]
         rows.append(
             (
                 labels.of(src.id),
-                ("yes" if first.get("done") is True else "no") if records else "no record",
+                finished,
                 waiting[src.id],
+                field[src.id],
                 len(failed) if isinstance(failed, dict) else 0,
                 (len(tried) if isinstance(tried, list) else 0),
-                older,
-                "yes" if isinstance(first.get("reading"), str) else "no",
+                sum(len(x) for x in others if isinstance(x, list)),
+                "yes" if isinstance(current.get("reading"), str) else "no",
             )
         )
     if not rows:
@@ -2958,16 +3019,43 @@ def _reread_lines(r: _Run, m: _Mirror, labels: _Labels, waiting: Counter[str]) -
         "source",
         "scan finished",
         "on this Mac, from before OCR",
+        "of them field build",
         "failed once",
         "given up",
         "given up (other engine or version)",
         "reading when a cycle died",
     )
+    if looked is None:
+        scan = (
+            f"{f'None of the last {len(runs)} run(s) says' if runs else 'No run is recorded that says'} what "
+            "its re-read looked for (a run of this build that reaches a local source does), so the second "
+            "column is as last recorded, by whichever build wrote the record."
+        )
+    else:
+        scan = (
+            f"The second column is for what run {looked.run_id} looked for, the newest run that says so (it "
+            f"had {'an' if 'ocr_ms' in looked.counts else 'no'} engine): `not started` is a record another "
+            "build or engine left, which no cycle goes by."
+        )
+    kinds = [
+        *([] if label_rule else ["images with the no-converter stub"]),
+        "scanned PDFs whose stub says OCR was not run",
+        "documents whose page has no OCR identity or is the field build's (fourth column)",
+    ]
+    counted = f"{', '.join(kinds[:-1])} and {kinds[-1]}"
+    if state == "ready":
+        third = f"The third column is the report's own count of files a re-read would look at: {counted}."
+    else:
+        third = (
+            "The helper is not ready (its line above), so a cycle has no engine and reads again only what "
+            "needs none, such as a page of the field build. The third column is the report's own count of "
+            f"files on this Mac from before OCR, which a re-read looks at once there is an engine: {counted}."
+        )
+    if label_rule:
+        third += " A label rule is on, so no image is read and none is counted."
     return [
-        "- re-read, per source. The third column is the report's own count of files a re-read would "
-        "look at: images with the no-converter stub, scanned PDFs whose stub says OCR was not run and "
-        "documents whose page has no OCR identity. It includes the files given up (two failed tries) and "
-        "those that failed once and are tried once more:",
+        f"- re-read, per source. {scan} {third} The count includes the files given up (two failed tries) "
+        "and those that failed once and are tried once more:",
         "",
         *_table(header, rows),
     ]
@@ -3053,9 +3141,10 @@ def _ocr_time(m: _Mirror) -> list[str]:
 
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    helper, state, label_rule = _ocr_helper(r, m)
     return [
-        *_lines(lambda: _ocr_helper(r, m)),
-        *_lines(lambda: _ocr_files(r, m, labels)),
+        *helper,
+        *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
         *_lines(lambda: _ocr_time(m)),
     ]
 

@@ -202,7 +202,7 @@ says otherwise.
 
 | Part | What it settles | How to read it |
 |---|---|---|
-| OCR | Did the OCR build work on this Mac, and what did it leave unread? | `helper:` is the state doctor reports. The image line counts files by outcome. A `no-converter stub on this Mac` is an image OCR has not read yet or failed on. The document lines say how many pages were made with an engine. The re-read table says, per source, whether the one-time re-read is finished and how many files it gave up. The `waiting for OCR` line gives the files the newest run left for a later cycle; the sums beside it are over all the runs read, so a file that waited in ten runs is ten waits. The last table is OCR's time per run against the cycle's 180 s. |
+| OCR | Did the OCR build work on this Mac, and what did it leave unread? | `helper:` is the state doctor reports. The image line counts files by outcome. A `no-converter stub on this Mac` is an image OCR has not read yet or failed on; an image that is online-only, or a Graph source's, is a `not-on-this-Mac stub` and is never downloaded for OCR. The document lines say how many pages were made with an engine. The re-read table says, per source, whether the one-time re-read is finished and how many files it gave up. The `waiting for OCR` line gives the files the newest run left for a later cycle; the sums beside it are over all the runs read, so a file that waited in ten runs is ten waits. The last table is OCR's time per run against the cycle's 180 s. |
 | Quarantine by reason | Why are files quarantined or refused, per source? | A reason is shown as one of a fixed list of classes, never as its text. The last column is when those stubs were built: a stub older than a fix has not been read since. |
 | Purge queue | Are the queued purges real deletions? | `same bytes live` and `same path live` are files that were renamed, re-exported or saved again, not deleted. `no live twin` is a deletion. |
 | Overlapping sources | Is one source's folder inside another's, and which of the two holds the files? | One line per pair with each source's counts, and whether the outer source's `exclude` prunes the inner folder. |
@@ -222,6 +222,12 @@ before it are read again over several syncs (two minutes of re-reads and three m
 report written right after the first sync says `scan finished: no` for a source with many such files. That is
 not a fault: the re-read table says how many files are left, and the per-run table how many each sync read.
 A report written once the table says `yes` for every source shows the finished state.
+
+`scan finished` is `yes` or `no` only for a record the newest sync could have written: the sentence above the
+table names that run and says whether it had an engine. `not started` is a source whose record an earlier
+build or another engine left, which is how a source reads that no sync of this build has reached yet (paused,
+or waiting at a macOS permission prompt). When the `helper:` line is not `ready`, no sync has an engine: the
+count of files from before OCR is then the work that waits for the helper, and the sentence says so.
 
 ### Fix classes
 

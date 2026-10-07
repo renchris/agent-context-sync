@@ -1787,6 +1787,43 @@ def _run_record(config: Config) -> dict[str, int]:
     return record
 
 
+LOOKED = {"reread_for": ANY}
+"""In the record of a run that brought a source's re-read record up to date: what it looked for, a number
+of its own (``test_a_run_record_says_what_its_re_read_looked_for``)."""
+
+
+def test_a_run_record_says_what_its_re_read_looked_for(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A source's re-read record says what it was written for, and a cycle goes by it only when that is
+    what it looks for.  The setup report cannot work that out (it builds no registry), so each run that
+    brings a record up to date says it in its run record: the front of the same digest, as an integer.
+    A new number once there is an engine, and none from a ``materialise PATH`` run, which reads no file
+    again and leaves the records as they are."""
+
+    def stored() -> int:
+        with Manifest(sample_config.state_paths.db) as m:
+            raw = m.get_meta(cycle_mod._REREAD_META + SID)
+        assert raw is not None
+        return int(json.loads(raw)[0]["for"][: cycle_mod._REREAD_FOR_DIGITS], 16)
+
+    assert run(sample_config).exit_code == 0
+    plain = _run_record(sample_config)["reread_for"]
+    assert plain == stored() and isinstance(plain, int)
+    assert run(sample_config).commit_sha is None and _run_record(sample_config)["reread_for"] == plain
+    _use_ocr(monkeypatch, tmp_path)
+    assert run(sample_config).exit_code == 0
+    with_engine = _run_record(sample_config)["reread_for"]
+    assert with_engine == stored() and with_engine != plain, "an engine is something else to look for"
+    named = run(
+        sample_config,
+        materialise_paths=[local_source_dir / "projects" / "sample.md"],
+        budget_bytes=10_000_000,
+    )
+    assert named.exit_code == 0 and "reread_for" not in _run_record(sample_config)
+    assert stored() == with_engine
+
+
 def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1822,7 +1859,7 @@ def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
         None,
     )
     assert run(sample_config).commit_sha is None
-    assert _run_record(sample_config) == {"converted": 0, "ocr_budget_s": 180, "ocr_ms": 0}, (
+    assert _run_record(sample_config) == {"converted": 0, "ocr_budget_s": 180, "ocr_ms": 0, **LOOKED}, (
         "an idle cycle with an engine"
     )
 
@@ -1877,7 +1914,8 @@ def test_the_run_record_counts_a_file_converted_again_from_the_same_bytes(
     first = _run_record(sample_config)
     assert first["converted"] > 1 and "converted_again" not in first
     assert "converted_seen" not in first, "a first run has seen no bytes before"
-    assert run(sample_config).commit_sha is None and _run_record(sample_config) == {"converted": 0}
+    assert run(sample_config).commit_sha is None
+    assert _run_record(sample_config) == {"converted": 0, **LOOKED}
     monkeypatch.setattr(cycle_mod, "_pages_intact", lambda _repo, _outs: False)
     source = local_source_dir / "projects" / "sample.md"
 
@@ -1948,7 +1986,7 @@ def test_a_conversion_that_failed_is_counted_once_and_not_tried_again(
     assert first["converted_failed"] == 1 and first["converted"] > 1 and len(tries) == 1
     for _ in range(2):
         assert run(sample_config).commit_sha is None
-        assert _run_record(sample_config) == {"converted": 0}
+        assert _run_record(sample_config) == {"converted": 0, **LOOKED}
     assert len(tries) == 1, "the same bytes are not converted again"
     with Manifest(sample_config.state_paths.db) as m:
         row = m.item_by_path(SID, "projects/Contoso broken.md")

@@ -314,6 +314,14 @@ class _Rereads:
 
 
 _RereadRecord = tuple[str, bool, dict[str, int], str | None]  # for, done, failed, reading
+_REREAD_FOR_DIGITS = 8
+
+
+def _reread_number(wanted: str) -> int:
+    """The first ``_REREAD_FOR_DIGITS`` hex digits of a ``for`` digest as an integer: all a run record
+    holds of it (``reread_for``), since a run record holds integers only.  Enough to tell two digests apart,
+    and it names nothing."""
+    return int(wanted[:_REREAD_FOR_DIGITS], 16)
 
 
 def _reread_records(stored: str | None) -> list[_RereadRecord]:
@@ -1010,6 +1018,9 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._reread_n = 0  # files read again
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
+        self._reread_looked = (
+            False  # a source's record was brought up to date for this cycle (_reread_source)
+        )
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
 
@@ -1456,13 +1467,20 @@ class _Cycle:
         for a later cycle's OCR (``_ocr_waits``); ``ocr_without_budget`` and ``ocr_without_down``: files
         converted without the engine for either reason; ``ocr_failed``: files the engine failed on (a
         helper failure, or the file's own time limit); ``ocr_page_cap`` and ``ocr_picture_cap``:
-        conversions that say a count limit left pages or pictures unread."""
+        conversions that say a count limit left pages or pictures unread.
+
+        ``reread_for`` is the one key that is no count: what this run's re-read looked for
+        (``_reread_number`` of ``_capabilities``), there when the run brought a source's re-read record
+        up to date (``_reread_source``).  The report holds each source's stored record against the newest
+        one, and so knows a record an earlier build or another engine left from one this build wrote."""
         tally = Counter({key: count for key, count in self._tally.items() if count})
         tally["converted"] = self._tally["converted"]
         if self._reread_n:
             tally["reread"] = self._reread_n
         if self._reread_kept:
             tally["reread_kept"] = self._reread_kept
+        if self._reread_looked:
+            tally["reread_for"] = _reread_number(self._capabilities())
         if self.ocr is not None:
             tally["ocr_ms"] = round(self.ocr.spent_s * 1000)
             tally["ocr_budget_s"] = round(_OCR_BUDGET_S)
@@ -2134,6 +2152,7 @@ class _Cycle:
         file; after ``_REREAD_ATTEMPTS`` cycles in which it failed, the file is among the source's
         ``tried`` and is not read again for what the registry has."""
         state = self._reread_load(src.id)
+        self._reread_looked = True  # from here the source's record is one for this cycle's capabilities
         if state.done:
             return  # nothing was left to read again, and this cycle found nothing either (_reread_reopen)
         targets = self._reread_targets(src.id)

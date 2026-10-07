@@ -2612,7 +2612,10 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "- images: 8 file(s): page 2 · no-text stub 1 · not-on-this-Mac stub 1 · no-converter stub on this "
         "Mac 1 · deferred on this Mac 1 · deferred online-only 1 · failed 1\n" in ocr_part
     )
-    assert "- images that are online-only: 2 file(s), 8.0 MB (none is downloaded for OCR;" in ocr_part
+    assert (
+        "- images that are not on this Mac: 2 file(s), 8.0 MB (2 online-only, 0 of a Graph source; none is "
+        "downloaded for OCR;" in ocr_part
+    )
     assert (
         "- PDF (.pdf) files with a page: 1 with an OCR identity, 1 without an OCR identity\n" in ocr_part
     ), "the version is the cache row's when the page's key has one"
@@ -2632,10 +2635,25 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     rows = [ln for ln in ocr_part.splitlines() if ln.startswith("| <")]
     assert rows[:2] == [
         # one PDF without an identity and one scan OCR was not run on; the online-only image does not wait
-        "| <folder-2> | no | 2 | 1 | 1 | 2 | yes |",
+        "| <folder-2> | no | 2 | 0 | 1 | 1 | 2 | yes |",
         # the image with the no-converter stub and the deck of the field build; the Word file is online-only
-        "| <folder-3> | no record | 2 | 0 | 0 | 0 | no |",
+        "| <folder-3> | no record | 2 | 1 | 0 | 0 | 0 | no |",
     ]
+    # OCR is off in this test (AGENTSYNC_OCR=0) and no run says what its re-read looked for: the table says
+    # both, so its counts are not read as what a cycle is about to do.
+    lead = next(ln for ln in ocr_part.splitlines() if ln.startswith("- re-read, per source."))
+    assert (
+        "None of the last 3 run(s) says what its re-read looked for (a run of this build that reaches a "
+        "local source does), so the second column is as last recorded, by whichever build wrote the record."
+        in lead
+    )
+    assert (
+        "The helper is not ready (its line above), so a cycle has no engine and reads again only what needs "
+        "none, such as a page of the field build. The third column is the report's own count of files on "
+        "this Mac from before OCR, which a re-read looks at once there is an engine: images with the "
+        "no-converter stub, scanned PDFs whose stub says OCR was not run and documents whose page has no "
+        "OCR identity or is the field build's (fourth column)." in lead
+    )
     assert (
         "- OCR time: of the last 3 run(s), 2 recorded these counts (a run of an earlier build did not) and 2 "
         "had an engine; 1 used up the cycle's OCR time; 1 ended with the helper not working; the helper ran "
@@ -2659,6 +2677,102 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     ], "the run of an earlier build had no engine: it is not in the OCR table"
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
         assert raw not in text, raw
+
+
+def reread_rows(part: str) -> dict[str, list[str]]:
+    """The re-read table's rows by their source cell."""
+    rows = [ln.strip("| ").split(" | ") for ln in part.splitlines() if ln.startswith(("| <", "| inbox"))]
+    return {cells[0]: cells[1:] for cells in rows}
+
+
+def test_the_re_read_table_goes_by_what_the_newest_run_looked_for(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record says what it was written for (the build, the converters, the engine) and a cycle goes by
+    it only when that is what it looks for itself. The table printed ``done`` of whatever record was
+    stored: a source no cycle of this build had reached (paused, or held at the macOS prompt) said "scan
+    finished: yes" for a scan the build never started."""
+    cfg = fake_mac["config"]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    seed = Seed(cfg)
+    one, inbox, two = seed.ids()
+    now, earlier = "c0ffee11" + "0" * 56, "0ddba11" + "0" * 57
+    seed.m.set_meta("reread:" + one, json.dumps([{"done": True, "for": now, "tried": []}]))
+    seed.m.set_meta("reread:" + inbox, json.dumps([{"done": False, "for": now, "tried": ["id-7"]}]))
+    stale = [{"done": True, "for": earlier, "tried": ["id-8", "id-9"], "failed": {"id-5": 1}}]
+    seed.m.set_meta("reread:" + two, json.dumps(stale))
+    seed.item(two, "Tailspin scan.tiff", state="refused", reason=NO_CONVERTER, page="refused")
+    seed.item(two, "merger deck.pptx", version="1.0.0+python-pptx-1.0.2+ocr-off")
+    seed.run(7, {"converted": 0, "reread_for": int(earlier[:8], 16)})
+    seed.run(8, {"converted": 2, "ocr_ms": 900, "ocr_budget_s": 180, "reread_for": int(now[:8], 16)})
+    seed.run(9, {"converted": 0, "ocr_ms": 0, "ocr_budget_s": 180})  # `materialise PATH`: no re-read ran
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
+    assert reread_rows(parts["OCR"]) == {
+        "<folder-2>": ["yes", "0", "0", "0", "0", "0", "no"],
+        "inbox": ["no", "0", "0", "0", "1", "0", "no"],
+        # its record is the earlier build's: no cycle goes by its "done", and what it gave up is the other
+        # build's too
+        "<folder-3>": ["not started", "2", "1", "0", "0", "2", "no"],
+    }
+    lead = next(ln for ln in parts["OCR"].splitlines() if ln.startswith("- re-read, per source."))
+    assert (
+        "The second column is for what run 8 looked for, the newest run that says so (it had an engine): "
+        "`not started` is a record another build or engine left, which no cycle goes by. The third column "
+        "is the report's own count of files a re-read would look at: images with the no-converter stub, "
+        in lead
+    )
+    assert "c0ffee" not in text and "0ddba11" not in text and str(int(now[:8], 16)) not in text
+    # The newest run that looked had no engine (OCR switched off for one run in a terminal): said as such.
+    seed = Seed(cfg)
+    seed.run(10, {"converted": 0, "reread_for": int(earlier[:8], 16)})
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert "what run 10 looked for, the newest run that says so (it had no engine)" in parts["OCR"]
+    assert [cells[0] for cells in reread_rows(parts["OCR"]).values()] == ["not started", "not started", "yes"]
+    # Under a label rule no image is read: the image with the no-converter stub is not a file to read again.
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
+        encoding="utf-8",
+    )
+    parts = status_parts(fake_mac)[1]
+    assert reread_rows(parts["OCR"])["<folder-3>"][1:3] == ["1", "1"], "the deck of the field build only"
+    lead = next(ln for ln in parts["OCR"].splitlines() if ln.startswith("- re-read, per source."))
+    assert "would look at: scanned PDFs whose stub says OCR was not run and documents whose page" in lead
+    assert "A label rule is on, so no image is read and none is counted." in lead
+
+
+def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]) -> None:
+    """A Graph item's ``dataless`` column is 0, and no image is ever downloaded for OCR: its ``no
+    converter`` stub was counted as one "on this Mac", among the files a re-read would look at."""
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000000"\n'
+        + '\n[[source]]\nid = "tailspin-drive"\nkind = "graph_drive"\ndrive_id = "me"\n',
+        encoding="utf-8",
+    )
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    seed.item("tailspin-drive", "Northwind photo.png", state="refused", reason=NO_CONVERTER, page="refused")
+    seed.item("tailspin-drive", "merger notes.pdf", version=PLAIN_VERSION)
+    seed.item(one, "Wingtip plan.png", state="refused", reason=NO_CONVERTER, page="refused", size=2_000_000)
+    seed.item(one, "Wingtip cloud.png", state="refused", reason=NO_CONVERTER, page="refused", dataless=True)
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    assert "- images: 3 file(s): not-on-this-Mac stub 2 · no-converter stub on this Mac 1\n" in parts["OCR"]
+    assert (
+        "- images that are not on this Mac: 2 file(s), 0.0 MB (1 online-only, 1 of a Graph source; none is "
+        "downloaded for OCR;" in parts["OCR"]
+    )
+    assert reread_rows(parts["OCR"]) == {"<folder-2>": ["no record", "1", "0", "0", "0", "0", "no"]}, (
+        "a Graph source has no row: nothing of it is read again"
+    )
+    assert "tailspin-drive" not in text
 
 
 def test_a_backlog_read_over_many_runs_is_reported_as_files_waiting_not_as_a_sum(
@@ -3133,6 +3247,10 @@ def test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own(tmp_path: 
     assert set(setup_report._OCR_DOCUMENTS) == reads_pictures
     assert setup_report._OCR_MARK == image._IDENTITY_MARK and setup_report._FIELD_MARKS == image._FIELD_MARKS
     assert setup_report._REREAD_META == cycle._REREAD_META
+    assert setup_report._REREAD_FOR_DIGITS == cycle._REREAD_FOR_DIGITS
+    digest = "c0ffee11" + "0" * 56
+    assert setup_report._reread_number(digest) == cycle._reread_number(digest) == 0xC0FFEE11
+    assert setup_report._reread_number("not a digest") is None
     assert setup_report._EMPTY_DIRS_META == cycle._EMPTY_DIRS_META
     assert [
         setup_report._version_class(v) for v in (PLAIN_VERSION, PLAIN_VERSION + "+ocr-off", OCR_VERSION)

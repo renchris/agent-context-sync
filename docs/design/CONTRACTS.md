@@ -7501,6 +7501,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
+| `reread_for` | no count: the first 8 hex digits of `_Cycle._capabilities()` as an integer (`_reread_number`), which is what this run's re-read looked for. There when the run brought a source's re-read record up to date (`_reread_source`), so not in a `materialise PATH` run or one with Graph sources only |
 | `ocr_ms`, `ocr_budget_s` | milliseconds the OCR helper ran (`_CycleOcr.spent_s`) and the cycle's OCR time (`_OCR_BUDGET_S`) |
 | `ocr_over`, `ocr_down` | 1 when that time was used up; 1 when the helper stopped working in the cycle |
 | `ocr_deferred` | files left for a later cycle's OCR before a byte was read (`_ocr_waits`): images on this Mac past the budget, Graph documents. A file is counted in every run it waits in |
@@ -7523,20 +7524,28 @@ other key that would be 0 is left out. No reader depended on the old content.
   `conversion failed`, and its Repeat conversions part says so under the table when a run it shows has a
   failure. Whether a failed conversion should be tried again is older behavior and a separate decision.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
+- `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
+  `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
+  engine's identity, each converter's `outdated_key`), and `_reread_load` goes by a record only when that is
+  the running cycle's own. The report builds no registry and cannot work that digest out. The run record
+  holds integers only, so the run stores the digest's first 32 bits: enough to tell two digests apart, and it
+  names nothing. The report never prints it.
 - `Manifest.cache_last_used(action_key) -> int | None` returns the run that last used a cache index row, None
   when there is none. The cycle asks before `record_cache` moves it, and only through `_converted_before`.
 - The record of a run from before this build holds change counts only and no `converted` key. The report
   says "not recorded" for it.
 
-Every new name in `agentsync.cycle` is private (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`, and on `_Cycle`:
-`_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`, `_converted_before`).
+Every new name in `agentsync.cycle` is private (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`, `_REREAD_FOR_DIGITS`,
+`_reread_number`, and on `_Cycle`: `_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`,
+`_converted_before`, `_reread_looked`).
 
 Tests: `tests/test_cycle.py` (a cycle without an engine records no OCR key; five images at 100 s each against
 the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle with an engine; a scan past the
 page limit, a PDF converted past the budget and its re-read, a helper that fails on everything; a file
 converted again from the same bytes in two runs running; a copy of a file the run before converted, and a
 second copy in the run after, neither a repeat; a conversion that fails, counted once and not tried again
-until the bytes change; the limit marks are the converters' wording) and
+until the bytes change; what a run's re-read looked for, with and without an engine and not from a
+`materialise PATH` run; the limit marks are the converters' wording) and
 `tests/test_manifest.py` (`cache_last_used`).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
@@ -7627,10 +7636,13 @@ decides before a word inside the text does.
 - `- helper: ready | off | not built | failed (<the probe's detail>)`, or `did not answer within 1.5s`, then
   whether a label rule is on (under one no image is read, §16.26).
 - Images (the suffixes of `ImageConverter.extensions`) by outcome: `page`, `no-text stub`, `not-readable
-  stub`, `not-on-this-Mac stub` (the `no converter` refusal of an online-only image), `no-converter stub on
-  this Mac`, `deferred on this Mac`, `deferred online-only`, `not converted yet`, `failed`, `other stub`.
-  Then the online-only images as a file count and megabytes, which is what downloading them for OCR would
-  cost (the open decision O2).
+  stub`, `not-on-this-Mac stub` (the `no converter` refusal of an image that is not on this Mac),
+  `no-converter stub on this Mac`, `deferred on this Mac`, `deferred online-only`, `not converted yet`,
+  `failed`, `other stub`. Then the images that are not on this Mac as a file count and megabytes, split into
+  online-only ones and a Graph source's: what downloading them for OCR would cost (the open decision O2). A
+  Graph item's `dataless` column is 0 and no image is downloaded for OCR (`_Cycle._no_converter`), so a Graph
+  source's image is counted as not on this Mac by its source's kind; by the column alone its stub was a
+  `no-converter stub on this Mac`.
 - PDF, deck, Word and OpenDocument files with a page, by whether its converter version has an engine's
   identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache row's of
   the page's action key, else the output row's, as in `Manifest.reread_candidates`.
@@ -7639,9 +7651,24 @@ decides before a word inside the text does.
 - Re-read, per local or inbox source, from manifest meta `reread:<source id>`: whether the scan is
   finished, the files that failed once, the files given up, those given up under another engine or version,
   and whether a file was being read when a cycle died. Beside them the report's own count of files on this
-  Mac a re-read would look at: images with the no-converter stub, scanned PDFs whose stub says OCR was not
-  run, and documents whose page has no OCR identity. The report builds no registry, so it cannot ask a
-  converter's `outdated`; the count is the rule of the table in §16.27 and includes the files given up.
+  Mac from before OCR: images with the no-converter stub, scanned PDFs whose stub says OCR was not run, and
+  documents whose page has no OCR identity or is the field build's, with the field build's in a column of
+  their own. The report builds no registry, so it cannot ask a converter's `outdated`; the count is the rule
+  of the table in §16.27 and includes the files given up. Three things keep the table to what this Mac's
+  cycles do now:
+  - **Scan finished** is `yes` or `no` only for a record written for what the newest run that says so
+    looked for (`reread_for` above; the lead sentence names that run and whether it had an engine). A record
+    for anything else is `not started`, whatever its `done` says, and what it gave up moves to the "other
+    engine or version" column: `_reread_load` does the same. Printed from the stored record alone, a source
+    no cycle of this build had reached (paused, or its listing held at the macOS prompt) said "scan
+    finished: yes" for a scan the build never started. When none of the runs read says what it looked for,
+    the lead says the column is as last recorded, by whichever build wrote the record.
+  - **No engine.** When the probe's state is not `ready` the lead says a cycle has no engine and reads
+    again only what needs none (a page of the field build, the fourth column), and that the count is what
+    a re-read looks at once there is one. The count stays: it is the work that waits for the helper.
+  - **A label rule.** Under one there is no image converter, so the images are left out of the count and
+    the lead says so.
+  A Graph source has no row, and nothing of it is counted: a re-read never downloads.
 - Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
   time, or ended with the helper not working; the files the newest run that had an engine left waiting; the
   sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine.
@@ -7712,8 +7739,9 @@ name, a configured one is a placeholder).
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
 and their helpers, `_plist_lines`, `_plist_compared`, `_argument_lines`, `_class_text`, `_run_list`,
-`_reached`, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
-`_EMPTY_DIRS_META` repeat values the converters and the cycle own; a test holds each pair equal.
+`_reached`, `_reread_records`, `_reread_number`, and the constants beside them). `_IMAGE_SUFFIXES`,
+`_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META`, `_REREAD_FOR_DIGITS` and `_EMPTY_DIRS_META`
+repeat values the converters and the cycle own; a test holds each pair equal.
 
 Tests: `tests/test_setup_report.py` (the six headings under Status with the `## ` headings as they were, an
 empty manifest and no manifest, which reading does not create; the OCR part on images in every outcome,
@@ -7728,4 +7756,10 @@ time; 50,000 files bounded by VM instructions and by each statement's query plan
 differs, the same file under another name, an unreadable plist and no launcher, and no log line from the
 comparison; `argument_roles`; every
 installer run and one with no end line; the folders named like a coding agent; a source the Redactor does
-not know). Each test seeds made-up folder and file names and asserts none reaches the report.
+not know, and one it knows a word of; an id that starts as a folder's name does, and the longest match
+whichever value is fuzzy; a helper that hangs and a probe slower than all the parts' time, with every
+manifest block still measured; the exclude rule asked of the checked folders only, and stopped; a backlog
+read over 33 runs as files waiting and as waits; the re-read table against what the newest run looked for,
+with a record another build left, a run without an engine and a label rule; a Graph source's image; the
+note under a run with a failed conversion). Each test seeds made-up folder and file names and asserts none
+reaches the report.
