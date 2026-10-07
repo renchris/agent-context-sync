@@ -374,7 +374,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (9, "afd01c8212d6f82c9e58656e1ed85065555c17e9ee66e7c8315fe08d3f254d7c")
+PROMPT = (9, "c44e99174bec1286aa7a30a2e3ea9c3faf89893a0fd3b0a2daebdd3b178e32ee")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -539,14 +539,29 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         'In that file, name a folder, a file or a person by its role ("a project folder") or by the setup '
         "report's placeholder (<folder-1>), not by its real name, unless the name itself is the bug."
     ) in block
+    # The second bring-back (2026-10-07): the file outlives a session and nothing may be deleted, so a session
+    # that found an earlier request could only append to it, and one that ran the report twice rewrote its own
+    # "## Not used". The rules give the file its boundary: one part per session, under that session's heading.
+    assert (
+        "arrives with the next pull. That file is kept from session to session: leave an earlier session's "
+        "text as it is, write yours after it under a heading of your own that names this prompt's version "
+        "and today's date, and rewrite only your own part. In that file, name a folder"
+    ) in block
+    assert len(re.findall(r"setup prompt v\d+", block)) == 1, "the heading rule holds no version of its own"
     feedback = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
     private = feedback.split("**Privately (no public post needed):**", 1)[1].split("**", 1)[0]
     assert "copy `~/agent-context/bring-back.md` back" in private
     assert "never paste this file into the public form" in private
+    assert "Section 2 is the whole file, every session's part in the order written" in private
+    assert "triage reads from the last session heading down" in private
     finish = _prompt_steps()[3].rsplit("Finish with three lines", 1)[1]
     assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
     step3 = _prompt_steps()[3]
     assert 'add a "## Not used" section to the end of ~/agent-context/setup/fix-request.md' in step3
+    assert (
+        "~/agent-context/setup/fix-request.md (one per session: if this session already added one, rewrite "
+        "that one): one line for each part of agentsync this session never used"
+    ) in step3
     assert step3.index("## Not used") < step3.index("Then the report, always")
     for verb in (
         "sync",

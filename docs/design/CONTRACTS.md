@@ -8234,7 +8234,9 @@ real run with no folder wrote).
 
 #### Setup prompt v9 (amends §16.14, §16.22 and §16.28; README, `scripts/install.sh`, `agentsync.setup_report`)
 
-v9 changes two places of the prompt's text and nothing else. `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 9,
+v9 changes two places of the prompt's text and nothing else (**amended 2026-10-07, §16.30 "The fix request
+marks each session's part":** and two more, in the rules and in step 3; v9 was still unpublished, so the
+version did not move, only the block's digest). `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 9,
 and the issue form's placeholder is `v9`. v9 moves no step, so it has no entry in `PROMPT_LAYOUTS` and
 `prompt_layout(9)` is v7's layout, as v8's is. A saved v8 copy is stopped at step 1 like every older copy
 (§16.28).
@@ -8718,3 +8720,47 @@ Tests: `tests/test_setup_report.py` (the queue of §16.28 with two more entries:
 came back, which is `still listed`, and one re-keyed and deleted again, which is `no live twin`, both
 written by `Manifest.rekey`; an id that was never a row, still `no row`; the three lines; no id in the
 report; the same queue on a manifest with no alias table).
+
+#### The fix request marks each session's part (amends §16.22 and §16.29 "Setup prompt v9"; README)
+
+`~/agent-context/setup/fix-request.md` is one fixed path, and the rules forbid deleting anything. No sentence
+said whether the file is one session's. The v8 session found the v7 session's request, could only append to
+it, and logged a deviation. It then ran the report twice in one attempt, met its own `## Not used` section on
+the second pass and rewrote it, which the prompt did not say either. The bring-back copies the whole file
+into section 2, so 53 of its 122 lines were the earlier round's request, already built.
+
+The fix is prompt wording, on v9 before it is published. The file stays cumulative.
+
+- **Rules**, after "arrives with the next pull.": "That file is kept from session to session: leave an
+  earlier session's text as it is, write yours after it under a heading of your own that names this
+  prompt's version and today's date, and rewrite only your own part."
+- **Step 3**, after the path of the `## Not used` section: "(one per session: if this session already added
+  one, rewrite that one)".
+- The two sentences tests already held are word for word what they were, and the new text follows each.
+- The heading rule names no version number, so the block still states its version in the six places it did.
+  Both field sessions wrote such a heading unprompted (`# agentsync fix request (setup prompt v8, source
+  commit ...)`). The date is added because v9 makes several sessions of one version on one Mac normal.
+- `install.sh` is unchanged: `write_bring_back` still copies the whole file into section 2. Triage reads
+  from the last session heading down (`docs/deploy/setup-feedback.md`, the private route, and K23).
+
+**Why the installer does not set an earlier request aside.** That was the first proposal: at `--log-start`,
+rename a request that an existing `bring-back.md` is newer than. It was rejected, and must not come back as a
+shortcut:
+
+- The Mac cannot know what was copied back. "bring-back.md is newer" proves the text was written into that
+  file, not that anyone took it. Every reporting exit of `install.sh` rewrites `bring-back.md` in place, so
+  the guard turns true in the middle of a session, as soon as step 2 exits.
+- A request written in one session and never copied back would then be set aside by the next session's
+  step 1, and the file that finally comes back would not hold it. That costs a request, where the wording
+  costs at most a repeated section.
+- Any rule that drops text from section 2 by what the Mac knows has the same hole. Dropping what was already
+  sent belongs where delivery is known: the intake holds the earlier round's file.
+- It would also hide the earlier request from the agent, whose status paragraph about earlier items ("item 1
+  looks fixed") is the only field evidence that a fix arrived.
+
+Limit: the earlier parts still come back with every file, real names included, until someone clears the file
+by hand on that Mac. The person reviews section 2 before sending, as before.
+
+Tests: `tests/test_deploy_pack.py` (`test_prompt_routes_changes_to_the_source_not_the_checkout`: both new
+sentences where they stand, one version in the block, and the private route's two sentences; the block's
+digest beside version 9).
