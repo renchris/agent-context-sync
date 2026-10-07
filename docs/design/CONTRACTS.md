@@ -7651,7 +7651,9 @@ path`, `other`), then each class compared (`same`, `differs`, `only installed`, 
 the launcher, interpreter and config path also whether the two are the same file and whether the installed
 one exists, and the canary paths as three counts; for `EnvironmentVariables` four counts. No argument, path
 or variable name is printed. A plist that cannot be read, or a config for which this build would write no
-job, is `not compared (<exception type>)`.
+job, is `not compared (<exception type>)`. Building a job's spec logs a WARNING when no launcher is
+installed; doctor's own build of it has said so, and the `agentsync.ops.launchd` logger is quiet while the
+report builds its own, so the comparison adds no line to what the installer prints.
 
 **Installer.** After the tables of the last three runs: every run on one line (the last 20: start, kind, step
 lines, last step logged, end), and the runs with no end line, each with its start time and the step it
@@ -7663,8 +7665,8 @@ name, a configured one is a placeholder).
 
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
-and their helpers, `_plist_lines`, `_argument_lines`, `_class_text`, `_run_list`, `_reached`, and the
-constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
+and their helpers, `_plist_lines`, `_plist_compared`, `_argument_lines`, `_class_text`, `_run_list`,
+`_reached`, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
 `_EMPTY_DIRS_META` repeat values the converters and the cycle own; a test holds each pair equal.
 
 Tests: `tests/test_setup_report.py` (the six headings under Status with the `## ` headings as they were, an
@@ -7677,6 +7679,7 @@ that was never a row; a source inside another, with and without the exclude line
 are dataless, materialised with and without entries, gone and not a folder, with no folder listed and the
 cap of 50; the run records and the cache for repeat conversions; no time left; a statement that runs past the
 time; 50,000 files bounded by VM instructions and by each statement's query plan; an installed plist that
-differs, the same file under another name, an unreadable plist and no launcher; `argument_roles`; every
+differs, the same file under another name, an unreadable plist and no launcher, and no log line from the
+comparison; `argument_roles`; every
 installer run and one with no end line; the folders named like a coding agent; a source the Redactor does
 not know). Each test seeds made-up folder and file names and asserts none reaches the report.

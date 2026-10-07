@@ -73,6 +73,7 @@ import functools
 import hashlib
 import importlib.metadata
 import json
+import logging
 import os
 import platform
 import plistlib
@@ -3572,12 +3573,28 @@ def _argument_lines(installed: Sequence[object], expected: Sequence[str]) -> lis
 def _plist_lines(r: _Run) -> list[str]:
     """For each job with a plist in this home folder: whether it is what this build would write
     (``ops.launchd``), and when not, which keys differ and how the arguments do (:func:`_argument_lines`).
-    Doctor's line says only that ``ProgramArguments`` differ."""
+    Doctor's line says only that ``ProgramArguments`` differ.
+
+    Building a job's spec logs a WARNING when no launcher is installed (doctor's own build of it has said
+    so already): that logger is quiet here, so the report adds no line to what the installer prints."""
     from agentsync.ops import launchd  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     if r.config is None:
         return []
     out = ["", "Installed plist against what this build would write (classes and counts, never a value):", ""]
+    quiet = logging.getLogger(launchd.__name__)
+    was_disabled, quiet.disabled = quiet.disabled, True
+    try:
+        return out + _plist_compared(r, r.config)
+    finally:
+        quiet.disabled = was_disabled
+
+
+def _plist_compared(r: _Run, config: Config) -> list[str]:
+    """One or more lines per job (:func:`_plist_lines`)."""
+    from agentsync.ops import launchd  # noqa: PLC0415
+
+    out: list[str] = []
     builders = (("poll", launchd.poll_spec), ("reconcile", launchd.reconcile_spec))
     for suffix, build in builders:
         label = f"{r.label_prefix()}.{suffix}"
@@ -3589,7 +3606,7 @@ def _plist_lines(r: _Run) -> list[str]:
             installed = plistlib.loads(path.read_bytes())
             if not isinstance(installed, dict):
                 raise ValueError("not a dictionary")
-            expected = plistlib.loads(launchd.render_plist(build(r.config)))
+            expected = plistlib.loads(launchd.render_plist(build(config)))
         except Exception as exc:  # an unreadable plist, or a spec this config cannot give (no launcher)
             out.append(f"- {label}: not compared ({type(exc).__name__})")
             continue

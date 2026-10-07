@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import itertools
 import json
+import logging
 import os
 import plistlib
 import re
@@ -3142,6 +3143,30 @@ def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_m
     assert "- com.agentsync.reconcile: not compared (ConfigError)\n" in bg, (
         "no launcher: this build writes none"
     )
+
+
+def test_comparing_a_plist_adds_no_log_line(
+    fake_mac: dict[str, Path], caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """Without a launcher, building a job's spec warns that the job would run the interpreter directly.
+    Doctor says so once; the comparison must not say it again in what the installer prints."""
+    project = tmp_path / "plain"
+    project.mkdir()
+    cfg = fake_mac["config"]  # no source under a protected folder: no launcher is needed
+    cfg.write_text(f'[[source]]\nid = "plain"\nkind = "local"\npath = "{project}"\n', "utf-8")
+    config = load_config(cfg)
+    agents = fake_mac["home"] / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    with caplog.at_level("WARNING", logger="agentsync.ops.launchd"):
+        (agents / "com.agentsync.poll.plist").write_bytes(launchd.render_plist(launchd.poll_spec(config)))
+        assert len(caplog.records) == 1, "the build itself warns"
+        caplog.clear()
+        report_text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        assert caplog.records == []
+    bg = section(report_text, "Background runs")
+    assert "- com.agentsync.poll: the installed plist is what this build would write\n" in bg
+    assert "- com.agentsync.reconcile: no plist\n" in bg
+    assert not logging.getLogger("agentsync.ops.launchd").disabled, "the logger is as it was"
 
 
 def test_argument_roles_follow_the_shape_launchd_writes() -> None:
