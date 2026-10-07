@@ -6829,7 +6829,7 @@ Plan decisions D6 and D10. `PptxConverter(cfg, ocr=None)`. Without an engine not
 `version()`, `options()` and every page are the ones from before OCR existed, byte for byte, and the emitter
 stays **1.0.0**. With an engine `version()` ends in its identity
 (`1.0.0+python-pptx-1.0.2+ocr-apple-vision-r3-h2.0.0-l1`) and `options()` gains the shared OCR options and
-`ocr_pptx_rules` (1; bumped when a rule below changes).
+`ocr_pptx_rules` (2; bumped when a rule below changes; 2 is the one block per picture).
 
 ```text
 <!-- Slide number: 1 -->
@@ -6856,7 +6856,9 @@ North | 12
   and in the notes, are not on the page and are not read.
 - **Once per distinct picture.** Each distinct picture (by its bytes) is offered to `_read_pictures` once,
   so a logo on every slide is read once. Its text is printed under the first `[image…]` line of that
-  picture and nowhere else: the head line (`_PICTURE_HEAD`), then its lines, in the same block.
+  picture and nowhere else: the head line (`_PICTURE_HEAD`), then its lines, in the same block. The blank
+  lines `ocr.text_lines` puts between the blocks it read are left out: on a slide what follows a blank line
+  is the next shape's own text, and a second paragraph of the picture's would be cited as that.
 - **What decides whether there is text.** The helper's own rules (§16.25): a picture with a side under
   48 px (an icon, a bullet) is skipped, one over 50 megapixels is not decoded, and vector art (EMF, WMF) is
   no raster type and is not read past its first bytes.
@@ -6910,7 +6912,8 @@ ones from before OCR existed, byte for byte, and the emitter stays **1.0.0**.
 With an engine the converter reads the pictures of `.docx` and `.odt` files, and those two suffixes are all
 its instance claims (`extensions`). Its `version()` ends in the engine's identity
 (`1.0.0+pandoc-3.9+ocr-apple-vision-r3-h2.0.0-l1`) and its `options()` gain the shared OCR options and
-`ocr_pandoc_rules` (1; bumped when a rule below, or how the filter shows the text, changes). `.rtf`,
+`ocr_pandoc_rules` (2; bumped when a rule below, or how the filter shows the text, changes; 2 is the one
+paragraph per picture and the title rule). `.rtf`,
 `.html` and `.htm` never change: no picture in them is read, and `Registry.default` gives them
 `_PandocWithoutOcr`, the same converter without an engine. Their pages, versions and action keys are those
 of a Mac without one, so an engine that arrives, fails or runs out of its cycle's time never converts one
@@ -6973,8 +6976,11 @@ Approved \| 12 May
   in a footnote is shown where the note is written out, at the end of the page, so its text follows the
   block of the note that shows it, indented with the note, and it does not count for the paragraph that
   refers to the note. The body is placed first, then the notes: a picture both show has its text in the
-  body. Then one paragraph per block of lines `ocr.text_lines` read, its lines kept apart by hard line breaks (a backslash
-  at the end of a line), which is how pandoc writes a line break of the document's own.
+  body. Then one paragraph that holds every line `ocr.text_lines` read, kept apart by hard line breaks (a
+  backslash at the end of a line), which is how pandoc writes a line break of the document's own. The
+  blank lines between the blocks it read are left out: what follows a blank line is the document's own next
+  block, and a second paragraph of the picture's text would be cited as that. So a picture's text is always
+  the head line and exactly one paragraph.
 - **The filter** (`_LUA_FILTER`; its first pass, `ocr`). The converter writes `agentsync-ocr.json` into
   pandoc's job folder: `{"pictures": {source: key}, "text": {key: [lines]}}`, the lines as read
   (`escape=False`). The file is JSON, never Lua source. The pass reads and decodes it inside one `pcall`,
@@ -6997,9 +7003,11 @@ Approved \| 12 May
   summary gives.
 - **Title and summary.** As before: the title is the document's first heading, else its first line, and the
   summary lists its headings. No heading is ever text read from a picture (pandoc escapes a `#` it did not
-  write). The first line is looked for above the first head line (`_HEAD_RE`), so it is never a head
-  line or a line OCR read; a document with no heading and no line of its own above its first picture's
-  text is `Untitled Word document`. The summary gains counts only, before the headings: `Word document; text of 2
+  write). The first line is looked for in the page less what OCR put in it (`_own_text`: each head
+  line, `_HEAD_RE` at any indent, and the one paragraph after it), so it is never a head line or a line OCR
+  read, and it is the line the file is titled by without an engine wherever its first picture stands: a
+  document that opens with a letterhead table holding a logo keeps its title. Only a document with no line
+  of its own is `Untitled Word document`. The summary gains counts only, before the headings: `Word document; text of 2
   picture(s) read by on-device OCR; headings: …`, and `; pictures past the OCR picture limit not read`.
 - **Failure** (plan D10). One `OcrError("on-device OCR failed")`, raised before anything is returned:
   `_read_pictures` left a picture unread (the helper may not be run, exits non-zero, runs out of time,
@@ -7023,7 +7031,7 @@ class PandocConverter:                       # converter_id = "pandoc-gfm"
 
 Every new name in `agentsync.convert.pandoc` is private (`_PandocWithoutOcr`, `_Pictures`, `_picture_text`,
 `_docx_pictures`, `_odt_pictures`, `_relationships`, `_attribute_values`, `_small_part`, `_LISTERS`,
-`_PICTURED`, `_OCR_RULES`, `_OCR_SIDE_FILE`, `_PLACED_RE`, `_HEAD_RE`, `_RID_RE`, `_HREF_RE`,
+`_PICTURED`, `_own_text`, `_OCR_RULES`, `_OCR_SIDE_FILE`, `_PLACED_RE`, `_HEAD_RE`, `_RID_RE`, `_HREF_RE`,
 `_MAX_RELS_BYTES`, `_MAX_SCAN_BYTES`, and `_PandocRunner.to_gfm_with_picture_text`).
 
 Tests: `tests/test_convert_formats.py` (suffixes, version and options with and without an engine, and of
@@ -7035,7 +7043,8 @@ too; order of first use against the order of names, an
 entry nothing uses and a header's logo never read, a third picture never opened past a limit of one; the
 count limit and the byte limit; every kind of line that could pose as structure, in a docx and an odt, as
 written and as pandoc's own reader parses the page back; a marker as the first and as the last line of a
-picture's text; a document with no heading, and one that opens with a table; a damaged entry and a missing
+picture's text; a document with no heading, one that opens with a table and keeps its title, and one that is only a
+table; a picture with two areas of text as one block, in a deck too; a damaged entry and a missing
 one; a relationships part and a
 body past their bounds; a reference that spans two chunks; an error while the pictures are looked for, and
 a package `zipfile` cannot open; a helper failure, its fixed wording and its log lines; a full disk and no

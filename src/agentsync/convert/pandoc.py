@@ -65,10 +65,11 @@ _EMPTY_PLACEHOLDER = "[empty document]"
 
 _FORMATS: dict[str, str] = {".docx": "docx", ".odt": "odt", ".rtf": "rtf", ".html": "html", ".htm": "html"}
 
-_OCR_RULES = 1
+_OCR_RULES = 2
 """Bumped when a rule here that decides which pictures OCR reads, or how the filter shows their text,
 changes.  It is in the options only with an engine, so it moves no key of a Mac without one (the emitter
-version and ``lua_filter`` would)."""
+version and ``lua_filter`` would).  2: a picture's text is one paragraph after its head line, and the title
+of a document with no heading is its own first line wherever its first picture is."""
 _OCR_SIDE_FILE = "agentsync-ocr.json"  # in pandoc's job folder: what the filter's first pass is to place
 _PLACED_RE = re.compile(r"^agentsync-ocr: placed (\d+)$", re.MULTILINE)  # what that pass says on stderr
 # A head line of that pass, as it stands in the page.  The document's own brackets come out escaped.
@@ -104,11 +105,11 @@ _PANDOC_FLAGS: tuple[str, ...] = (
 # The first pass (``ocr``) is for a docx or odt whose pictures on-device OCR read text in.  The converter
 # then writes ``_OCR_SIDE_FILE`` into the job folder: ``pictures`` (image source -> picture key) and ``text``
 # (picture key -> the lines read, not escaped).  After each top-level block that shows such a picture, and
-# after each block of a footnote that does, the pass adds a head line and the lines, once per key however
-# many sources share it.  The lines are built as words and spaces, which the gfm writer escapes as it
-# escapes the document's own text: nothing read in a picture is ever written raw.  Without the file the pass
-# changes nothing, so the output is what it was.  Whatever goes wrong in it leaves the document as it is
-# and unreported (``_PLACED_RE``), never failed.
+# after each block of a footnote that does, the pass adds a head line and then the lines as one paragraph
+# (``_own_text`` goes by that), once per key however many sources share it.  The lines are built as words
+# and spaces, which the gfm writer escapes as it escapes the document's own text: nothing read in a picture
+# is ever written raw.  Without the file the pass changes nothing, so the output is what it was.  Whatever
+# goes wrong in it leaves the document as it is and unreported (``_PLACED_RE``), never failed.
 _LUA_FILTER = r"""
 local ocr_text = nil
 pcall(function()
@@ -147,15 +148,14 @@ local function ocr_line(line)
   end
   return out
 end
+-- The head line, then every line read as ONE paragraph: what follows a blank line is the document's own
+-- next block, and a second paragraph of the picture's text would read as that.
 local function ocr_blocks(head, lines)
   local out = pandoc.Blocks({ pandoc.Para({ pandoc.RawInline("gfm", head) }) })
   local block = {}
   for _, line in ipairs(lines) do
     if type(line) == "string" and line:match("%S") then
       block[#block + 1] = ocr_line(line)
-    elseif #block > 0 then
-      out:insert(pandoc.LineBlock(block))
-      block = {}
     end
   end
   if #block > 0 then out:insert(pandoc.LineBlock(block)) end
@@ -500,6 +500,22 @@ def _odt_pictures(zf: zipfile.ZipFile) -> Iterator[tuple[str, str]]:
             yield href, entry
 
 
+def _own_text(body: str) -> str:
+    """``body`` without what the filter's first pass put in it: each head line (``_HEAD_RE``, at any indent:
+    a footnote's is indented) and the one paragraph of picture text that follows it.  What is left is the
+    document's own text, block for block as it is without OCR, which is what a title is taken from."""
+    kept: list[str] = []
+    skip = False
+    for block in re.split(r"\n[ \t]*\n", body):
+        if skip:
+            skip = False
+        elif _HEAD_RE.fullmatch(block.strip()):
+            skip = True
+        else:
+            kept.append(block)
+    return "\n\n".join(kept)
+
+
 _LISTERS: dict[str, Callable[[zipfile.ZipFile], Iterator[tuple[str, str]]]] = {
     "docx": _docx_pictures,
     "odt": _odt_pictures,
@@ -693,9 +709,9 @@ class PandocConverter:
         if cut:
             described += "; " + _PICTURES_CUT
         # A title is the document's own.  Without a heading it is the first line, and that is looked for
-        # above the first picture's text: never a head line, nor a line OCR read.
-        head = _HEAD_RE.search(body) if placed else None
-        own = body if head is None else body[: head.start()]
+        # in the page less what OCR put in it: never a head line, nor a line OCR read, and the line it is
+        # without an engine wherever the first picture stands (a letterhead table with a logo in it).
+        own = _own_text(body) if placed else body
         title = _title_from_markdown(body, _first_line(own) or f"Untitled {kind}")
         summary = _summary_from_markdown(described, body)
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)

@@ -159,8 +159,10 @@ What is read:
 - **Pictures in a deck** (`.pptx`), **a Word document** (`.docx`) or an OpenDocument text file (`.odt`): the text
   follows the picture's `[image…]` line.
 
-Every block of such text starts with a line that says it was `read by on-device OCR (Apple Vision)`, so a reader
-can tell it from the document's own words. It is third-party content like the rest of `docs/mirror/`.
+The text of each picture or scanned page starts with a line that says it was `read by on-device OCR (Apple Vision)`,
+so a reader can tell it from the document's own words. In a deck or a Word document it is one block under that line,
+and the document's own text goes on after the next blank line. It is third-party content like the rest of
+`docs/mirror/`.
 
 What is not:
 

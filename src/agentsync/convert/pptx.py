@@ -54,10 +54,10 @@ _ROW_TOLERANCE_EMU = (
 _WS_RE = re.compile(r"[ \t\f]+")
 _BULLET_PLACEHOLDERS = frozenset({"BODY", "OBJECT"})
 _PICTURE_SHAPES = ("Picture", "PlaceholderPicture")
-_OCR_RULES = 1
+_OCR_RULES = 2
 """Bumped when a rule here that decides which pictures OCR reads, or how a slide shows their text, changes.
 It is in the options only with an engine, so it moves no key of a Mac without one (the emitter version
-would)."""
+would).  2: a picture's text is one block under its head line, with no blank line in it."""
 
 
 def _norm(text: str) -> str:
@@ -308,7 +308,9 @@ def _shape_blocks(
         if texts:  # never without an engine, nor once every picture's text is on the page
             blob = _picture_blob(shape)
             if blob is not None and blob in texts:
-                block += [_PICTURE_HEAD, *texts.pop(blob)]
+                # One block, with no blank line in it: what follows a blank line is the next shape's own
+                # text, and a second paragraph of the picture's would read as that.
+                block += [_PICTURE_HEAD, *(line for line in texts.pop(blob) if line)]
         blocks.append(block)
         return blocks
     if type_name == "Movie":

@@ -1861,7 +1861,7 @@ def test_pptx_version_and_options_change_only_with_an_engine(tmp_path: Path) -> 
     assert re.fullmatch(r"1\.0\.0\+python-pptx-\d+(\.\d+)+", plain.version())
     assert plain.options() == {"max_page_bytes": CFG.max_page_bytes, "row_tolerance_emu": 45_720}
     assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
-    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 1}
+    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 2}
 
 
 def test_a_deck_without_an_engine_is_the_page_from_before_ocr(tmp_path: Path) -> None:
@@ -2174,7 +2174,7 @@ def test_pandoc_version_options_and_suffixes_change_only_with_an_engine(tmp_path
     assert plain.options()["lua_filter"] == "agentsync-images@1", "the filter's id is what it was before OCR"
     assert reading.extensions == (".docx", ".odt"), "the formats whose pictures are read, and no other"
     assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
-    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pandoc_rules": 1}
+    assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pandoc_rules": 2}
     rest = _PandocWithoutOcr(CFG)  # what Registry.default registers for the other three beside ``reading``
     assert rest.extensions == (".rtf", ".html", ".htm") and rest.converter_id == plain.converter_id
     assert (rest.version(), rest.options()) == (plain.version(), plain.options())
@@ -2447,12 +2447,48 @@ def test_a_word_document_with_no_heading_is_never_titled_by_what_ocr_read(tmp_pa
     assert "Not the title of this file" in on.body
     assert on.title == off.title and on.title.startswith("[image: shot — media/")
     # A table is no title line, so here the first line after it is: the head of the picture's text, were
-    # it not left out with everything below it.
+    # it not left out with the paragraph OCR read.  The title is the one the file has without an engine: a
+    # letterhead table with a logo in it does not cost a document its title.
     table = "| step | picture |\n|------|---------|\n| one  | ![shot](shot.png) |\n\nClosing paragraph.\n"
     src = _staged_doc(tmp_path / "table", table, shot)
     off, on = _doc_one(src, None), _doc_one(src, engine)
     assert f"|\n\n{_PICTURE_HEAD}\n\nNot the title of this file\n\nClosing paragraph.\n" in on.body
-    assert (off.title, on.title) == ("Closing paragraph.", "Untitled Word document")
+    assert off.title == on.title == "Closing paragraph."
+    # Nothing of its own but the table: no line OCR read stands in.
+    src = _staged_doc(tmp_path / "bare", table.replace("\nClosing paragraph.\n", ""), shot)
+    assert _doc_one(src, engine).title == _doc_one(src, None).title == "Untitled Word document"
+
+
+def _two_areas(*texts: str) -> bytes:
+    """A picture with a line of text near its top and one near its bottom: two blocks for ``text_lines``."""
+    top, bottom = texts
+    return text_png(frames=[[[top, 0.1, 0.05, 0.6, 0.05], [bottom, 0.1, 0.9, 0.6, 0.05]]])
+
+
+def test_the_text_of_one_picture_is_one_block_in_a_deck_and_in_a_word_document(tmp_path: Path) -> None:
+    """Text OCR read keeps a blank line between its blocks.  In a deck and in a Word document what follows
+    a blank line is the document's own next block, so a picture's second block would be cited as that: the
+    picture's text is one block under its head line, and the document's own text comes after a blank line."""
+    shot = _two_areas("Units by region", "Approved by finance")
+    engine = fake_engine(tmp_path / "bin")
+    ((frame,),) = engine.read([_write(tmp_path, "s.png", shot)], work_dir=tmp_path, budget_s=60)
+    assert ocr.text_lines(frame) == ["Units by region", "", "Approved by finance"], "two blocks, as read"
+    src = _staged_doc(tmp_path / "doc", "![shot](shot.png)\n\nThe minutes follow.\n", {"shot.png": shot})
+    body = _doc_one(src, engine).body
+    assert body.endswith(
+        f"\n\n{_PICTURE_HEAD}\n\nUnits by region\\\nApproved by finance\n\nThe minutes follow.\n"
+    )
+    prs = Presentation()
+    shapes = prs.slides.add_slide(prs.slide_layouts[6]).shapes
+    shapes.add_picture(io.BytesIO(shot), Inches(1), Inches(1))
+    shapes.add_textbox(Inches(1), Inches(4), Inches(4), Inches(1)).text_frame.text = "Speaker: J. Roe"
+    deck = tmp_path / "deck" / "review.pptx"
+    deck.parent.mkdir()
+    prs.save(str(deck))
+    slide = _one(PptxConverter(CFG, ocr=engine).convert(deck, name=deck.name)).body
+    assert slide.endswith(
+        f"[image: image.png]\n{_PICTURE_HEAD}\nUnits by region\nApproved by finance\n\nSpeaker: J. Roe\n"
+    )
 
 
 def _damaged(src: Path, entry: str) -> None:
