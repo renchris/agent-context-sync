@@ -58,11 +58,11 @@ from agentsync.convert._common import (
 )
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.image import (
-    _DOCUMENT_BUDGET_S,
     _ENGINE_LABEL,
     _OCR_OPTIONS,
     _PICTURES_CUT,
     _PICTURES_READ,
+    _budget_s,
     _ocr_lines,
     _read_pictures,
     _read_without_ocr,
@@ -116,7 +116,7 @@ _COVER_PT2_PER_CHAR = 1500.0
 (and never under ``_SCANNED_MIN_CHARS``).  A letter page of running text holds about one per 150 to 250, so
 a searchable scan is covered many times over, and the one stamped line of an e-signed or numbered scan (a
 letter page needs 324 characters) is not."""
-_MAX_PICTURES_SEEN = 4 * MAX_PAGES  # image objects of one file that are looked at
+_MAX_PICTURES_SEEN = 400  # image objects of one file that are looked at
 _MAX_PICTURE_PIXELS = 8 * MAX_MEGAPIXELS * 1_000_000  # pixels of one file's pictures decoded here
 _OCR_RULES = 2
 """Bumped when a rule here that decides what OCR reads, or how a page shows it, changes without one of the
@@ -823,8 +823,9 @@ def _ocr_text(src: Path, engine: OcrEngine, scanned: Sequence[int], texted: Sequ
     characters; at most ``MAX_PAGES`` of them) and the pictures on the pages ``texted``.
 
     Every image is written into a folder made beside the staged file, so under the cycle's staging folder
-    and never ``$TMPDIR``, and removed before this returns.  Pages and pictures share one time limit:
-    ``_DOCUMENT_BUDGET_S`` seconds from this call, rendering included.
+    and never ``$TMPDIR``, and removed before this returns.  Pages and pictures share one time limit,
+    counted from this call, rendering included: ``image._budget_s`` of the pages that will be read, so the
+    page limit is one the time can hold.
 
     Raises OcrError when the helper fails or the time runs out; an image that cannot be written or a
     document that cannot be opened again raises what it raises.  The caller treats every exception alike.
@@ -832,8 +833,8 @@ def _ocr_text(src: Path, engine: OcrEngine, scanned: Sequence[int], texted: Sequ
     import pypdfium2  # noqa: PLC0415 - heavy native import
     import pypdfium2.raw as pdfium_c  # noqa: PLC0415
 
-    deadline = _clock() + _DOCUMENT_BUDGET_S
     wanted = scanned[:MAX_PAGES]
+    deadline = _clock() + _budget_s(len(wanted))
     found = _OcrText(over_limit=frozenset(scanned[MAX_PAGES:]))
     doc = pypdfium2.PdfDocument(str(src))
     try:

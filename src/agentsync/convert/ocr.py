@@ -50,12 +50,16 @@ log = logging.getLogger(__name__)
 
 LANGUAGES: tuple[str, ...] = ("en-US",)
 """The languages the helper reads.  A constant, not a config key."""
-MAX_PAGES = 100
-"""The most pages of one document, or frames of one multi-page image, that are read."""
+MAX_PAGES = 40
+"""The most pages of one document, or frames of one multi-page image, that are read.  A count, so that a
+file gives the same page on every run, and one the time a document is given can hold: a page image is
+allowed 15 s (``convert/image.py``, ``_PAGE_S``), so forty of them fit inside half of what the launcher gives
+a whole background job.  It was 100, which no scan could reach inside its 300 s."""
 MAX_MEGAPIXELS = 50
 """An image with more pixels is refused before it is decoded (``error`` "too large").  Fifty covers a 48 MP
 phone photo and a 600 dpi A4 scan.  Measured on an Apple silicon Mac: a 49 MP page full of text takes about
-26 s and 950 MB at its peak; a 300 dpi letter page (8 MP) about 6 s and 340 MB."""
+26 s and 950 MB at its peak; a 300 dpi letter page (8 MP) about 6 s and 340 MB, and up to 13 s when the
+page is dense and the Mac is busy."""
 
 _TILE_PX = 1536  # the helper also reads an image longer than 4/3 of this in overlapping tiles of this size
 _MIN_PX = 48  # an image with a shorter side is an icon or a bullet: skipped, not read

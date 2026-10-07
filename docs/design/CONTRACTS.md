@@ -6361,7 +6361,7 @@ by `""`.
 ```python
 # agentsync.convert.ocr
 LANGUAGES: tuple[str, ...] = ("en-US",)
-MAX_PAGES = 100        # pages of one document, or frames of one multi-page image, that are read
+MAX_PAGES = 40         # pages of one document, or frames of one multi-page image, that are read (§16.26)
 MAX_MEGAPIXELS = 50    # a larger image is refused before it is decoded
 
 class OcrError(ConversionError): ...  # the helper could not be built, may not be run, failed or ran out of time
@@ -6465,8 +6465,9 @@ file gives the same page on every run; past a time limit a document gets the pag
   OpenDocument converter raises one `OcrError("on-device OCR failed")` before it returns anything, and
   `convert_file` converts the file with the registry's converter that has no engine: the page, the version
   and the action key of a Mac without one. What went wrong goes to the log.
-- **Bounds.** One document: 100 pages read (PDF), 100 distinct pictures, 256 MiB of picture bytes, 300
-  seconds of helper time (`_DOCUMENT_BUDGET_S`). A PDF also looks at no more than 400 image objects and
+- **Bounds.** One document: 40 pages read (a PDF's scanned pages, a TIFF's frames), 100 distinct pictures,
+  256 MiB of picture bytes, and 300 seconds of helper time (`_DOCUMENT_BUDGET_S`) plus 15 for each page
+  read (`_PAGE_S`, `_budget_s`): 900 at most. A PDF also looks at no more than 400 image objects and
   decodes no more than 400,000,000 pixels. A Word or OpenDocument file is looked through for at most 64 MiB
   per part, and a relationships part over 4 MiB is not read. One cycle: 180 seconds (`_OCR_BUDGET_S`).
   The helper itself skips a picture with a side under 48 px and refuses one over 50 megapixels (§16.25).
@@ -6504,7 +6505,7 @@ Phase one | discovery | May
 - **Summary.** `Image 1440x900 px; OCR: 2 line(s)`. Never the text: a summary sits in front matter, above
   the banner.
 - **Pages.** A TIFF is read page by page, at most `ocr.MAX_PAGES`. With more than one page, each page read
-  gets a `<!-- page: N -->` anchor, the header says `· 3 pages` (`· 250 pages, first 100 read`) and the summary
+  gets a `<!-- page: N -->` anchor, the header says `· 3 pages` (`· 250 pages, first 40 read`) and the summary
   `, 3 pages (3 read)`. A page with no text is `[no text on this page]`. A page the helper could not read is
   `[page not read: <why>]`, where `<why>` is the engine's fixed `error` wording or `too small to hold text`,
   and it is not counted as read. Every other type is read from its first frame; when it has more, the header
@@ -6532,8 +6533,23 @@ curation work for ever.
 that is not the expected JSON) is `OcrError("on-device OCR failed")`: the result is FAILED and is never cached.
 The stub reason is `conversion failed: on-device OCR failed`; the engine's own reason goes to the log as
 `WARNING <name>: on-device OCR failed: <reason>`. The same holds when no frame gave text and Vision gave up on
-one (`recognition failed`, the one `error` that is not a fact about the bytes). One document has 300 seconds
-of helper time (`_DOCUMENT_BUDGET_S`; pandoc's limit is the same).
+one (`recognition failed`, the one `error` that is not a fact about the bytes). An image has 300 seconds
+of helper time (`_DOCUMENT_BUDGET_S`; pandoc's limit is the same), and a TIFF, of which up to
+`ocr.MAX_PAGES` frames are asked, `_budget_s(MAX_PAGES)`: 900.
+
+**The page limit fits the time limit** (2026-10-06). Running out of time fails a whole reading: the file is
+then converted without OCR, the one re-read fails the same way, and a result cut short by the clock could not
+be cached, because the same file would give another page on another run. So a count limit the time cannot
+hold means a long scan is never read at all, which is what `MAX_PAGES = 100` under a fixed 300 seconds was:
+measured, a dense 300 dpi letter page takes 6 to 13 s, so the time ran out between the 24th and the 50th
+page. Now `_budget_s(pages) = _DOCUMENT_BUDGET_S + _PAGE_S * pages`: every page read is allowed 15 s
+(`_PAGE_S`) on top of the 300 the pictures have, and the limit is known before the first page is read.
+`ocr.MAX_PAGES` is 40, so the longest reading is 900 s, half of what the launcher gives a whole background
+job (`launchd.WATCHDOG_MIN_S`), and a cycle's 180, one such document and its 120 of re-reads stay inside it.
+A scan of more than 40 pages has its first 40 read and says so on each page past them and in its summary.
+`_MAX_PICTURES` (100) and `pdf._MAX_PICTURES_SEEN` (400) are numbers of their own, no longer multiples of the
+page limit. The time one document's pictures may take is still fixed, and is not derived from their count
+or size: a document whose pictures cannot be read in 300 s is converted without OCR.
 
 **The raster table.** `_RASTERS` is one table of (a test of a file's first 16 bytes, the suffixes of the
 type): PNG, JPEG, GIF87a and GIF89a, BMP, TIFF in both byte orders, WebP (`RIFF....WEBP`), and HEIF by its
@@ -6710,7 +6726,7 @@ Signed in Rotterdam
   | past the page limit | `[scanned page: no text layer; over the OCR page limit]` | `, N without a text layer (over the OCR page limit)` |
   | not read: no engine, the fallback, a page PDFium cannot render | `[scanned page: no text layer]` | `, N without a text layer (scanned; OCR not run)` |
 
-- **The page limit.** The first `ocr.MAX_PAGES` (100) such pages of a file are read. They are rendered four
+- **The page limit.** The first `ocr.MAX_PAGES` (40) such pages of a file are read. They are rendered four
   at a time (`_PAGES_PER_RUN`) into a `.ocr-*` folder made beside the staged file, read by one run of the
   helper and removed, so a long scan never has more than four page images on disk. The folder is under the
   cycle's staging folder (plan D13), never `$TMPDIR`, and is gone when `convert` returns or raises.
@@ -6745,11 +6761,10 @@ Signed in Rotterdam
   run. Neither is spent on what is never read: an image object the size rule turns away (an icon) counts
   for nothing, and a picture drawn again is charged its pixels once. When a limit left a picture unread,
   the summary says `; pictures past the OCR picture limit not read`.
-- **Time.** One limit per file, `_DOCUMENT_BUDGET_S` (300 seconds, below the 1800 the launcher gives a whole
-  background job), counted from the start of the OCR pass and shared by the page reads, the looking for
-  pictures and the pictures' read, rendering included. Past it no helper run is started and the pass fails
-  (Failure, below). By the measurements of §16.25 (about 6 s for a 300 dpi letter page) some 50 such pages
-  fit: a longer scan runs out of time and is converted without OCR.
+- **Time.** One limit per file, `image._budget_s` of the pages that will be read (300 seconds, and 15 for
+  each of at most 40 pages: see "The page limit fits the time limit", above), counted from the start of the
+  OCR pass and shared by the page reads, the looking for pictures and the pictures' read, rendering
+  included. Past it no helper run is started and the pass fails (Failure, below).
 - **Title and summary.** The title is the first line of three characters or more in page order, whoever read
   it: a scanned cover now gives the title, where the second page did. The summary is counts only: `PDF: 3
   page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text); text of 1 picture(s) read by
@@ -6761,7 +6776,7 @@ Signed in Rotterdam
   without one moves, and `outdated` asks about the `OCR not run` stub only: a file OCR read and found
   nothing in is not read again. A file none of whose pages PDFium could render keeps `OCR not run`, which
   is true of it. When pages past the limit were not read the reason says so: `no text layer (scanned or
-  image-only PDF; OCR found no text on the first 100 pages, the rest are over the OCR page limit)`.
+  image-only PDF; OCR found no text on the first 40 pages, the rest are over the OCR page limit)`.
 - **Escaping.** Every line OCR read goes through `image._ocr_lines` (above): no heading, rule, setext
   underline, code fence, HTML block or `<!-- page: N -->` anchor can come out of a picture.
 - **Failure** (plan D10). Any failure of the OCR pass is one `OcrError("on-device OCR failed")`, raised
@@ -6788,8 +6803,8 @@ Every new name in `agentsync.convert.pdf` is private (`_OcrText`, `_ocr_text`, `
 `_read_page_pictures`, `_PagePictures`, `_render_page`, `_png`, `_page_box`, `_covered`,
 `_COVER_PT2_PER_CHAR`, `_SCANNED_OUTCOMES`, `_PDF_OCR_OPTIONS`, `_OCR_RULES`, `_NO_TEXT_FOUND`).
 
-Tests: `tests/test_convert_formats.py` (version and options with and without an engine, and the two
-relations between the limits; a page read beside a page of text, the helper's folder and what it leaves;
+Tests: `tests/test_convert_formats.py` (version and options with and without an engine; the page limit against the time limit and the
+launcher's, and a scan of as many pages as the limit read to its end at the worst page time; a page read beside a page of text, the helper's folder and what it leaves;
 a PDF of page images read, and refused when nothing is found; the page limit and its reason; pages rendered
 a few at a time; a page's own short text; the title in page order; comments after a page OCR read; a picture
 behind the text, beside it, and inside a form either way; a scan under one stamped line read and a
@@ -7037,7 +7052,7 @@ name, and from a cold cache).
 
 Every other name in `agentsync.convert.image` is private (`_RASTERS`, `_raster_suffix`, `_ocr_lines`,
 `_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_raster_left`, `_OCR_OPTIONS`,
-`_DOCUMENT_BUDGET_S`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
+`_DOCUMENT_BUDGET_S`, `_PAGE_S`, `_budget_s`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
 `_PICTURES_CUT`).
 
 Tests: `tests/test_convert_image.py` (the raster table, one case per type and per look-alike; the page byte
@@ -7078,7 +7093,7 @@ for the fake helper of `tests/test_ocr.py`.
   `spent_s` reaches `_OCR_BUDGET_S` (180 seconds), each image still in the queue is deferred like a file past
   `max_files`: `Verdict.DEFERRED`, counted in `deferred` and not in `deferred_online_only`, and loop rule 3
   says to sync again while files on this Mac wait. The read that passes the budget finishes, so one cycle
-  spends at most the budget plus one document's 300 seconds. A folder of thousands of screenshots is read
+  spends at most the budget plus one document's time (900 seconds for the longest scan). A folder of thousands of screenshots is read
   over many cycles; no cycle, and not the installer's first sync, is held for an hour by it.
 - **A document does not wait.** A PDF converts without OCR, and so do a deck and a Word or OpenDocument
   file, so past the budget such a file is neither deferred nor read: `_Cycle._converting` hands

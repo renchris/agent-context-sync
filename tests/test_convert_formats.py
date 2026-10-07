@@ -28,6 +28,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.oxml.chart.series import CT_NumDataSource
 from pptx.util import Inches
 
+from agentsync import cycle as cycle_mod
 from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
@@ -1054,10 +1055,55 @@ def test_pdf_version_and_options_change_only_with_an_engine(tmp_path: Path) -> N
         "ocr_pictures_seen": 400,
         "ocr_picture_pixels": 400_000_000,
     }
-    # The largest page image stays under what the helper reads, and one document's OCR time under the
-    # time the launcher gives a whole background job.
+    # The largest page image stays under what the helper reads.
     assert (pdf_mod._RENDER_MAX_PX + 1) ** 2 <= ocr.MAX_MEGAPIXELS * 1_000_000
-    assert image._DOCUMENT_BUDGET_S < launchd.WATCHDOG_MIN_S
+
+
+def test_the_page_limit_is_one_the_time_limit_can_hold() -> None:
+    """Running out of time fails the whole reading, and the file is then converted without OCR: a page
+    limit the time cannot hold means a long scan is never read at all.  Every page read is allowed more
+    than the worst time measured for one, on top of the time the pictures have; and the longest reading
+    still leaves a cycle, with its own OCR time and its re-reads, inside the launcher's limit for a job."""
+    worst_page_s = 13.0  # a dense 300 dpi letter page on a busy Mac (ocr.MAX_MEGAPIXELS)
+    assert worst_page_s <= image._PAGE_S
+    for pages in (1, 7, ocr.MAX_PAGES):
+        assert pages * worst_page_s <= image._budget_s(pages) - image._DOCUMENT_BUDGET_S
+    longest = image._budget_s(ocr.MAX_PAGES)
+    assert longest <= launchd.WATCHDOG_MIN_S / 2
+    assert cycle_mod._OCR_BUDGET_S + longest + cycle_mod._REREAD_BUDGET_S < launchd.WATCHDOG_MIN_S
+
+
+def test_a_scan_of_as_many_pages_as_the_limit_is_read_to_its_end_at_the_worst_page_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each page here 'takes' 13 s, the worst measured.  Under one fixed limit of 300 s the reading ran out
+    of time at the 24th page and the file got no OCR at all; the limit now grows with the pages to read."""
+    count = 30
+    monkeypatch.setattr(pdf_mod, "MAX_PAGES", count)
+    monkeypatch.setattr(pdf_mod, "_render_page", lambda _doc, index, path: bool(path.write_bytes(b"page")))
+    now = [1000.0]
+
+    class Slow(ocr.OcrEngine):
+        def read(self, images: Any, *, work_dir: Path, budget_s: float, frames: int = 1) -> Any:
+            if budget_s <= 0:
+                raise ocr.OcrError("the OCR helper ran out of time")
+            now[0] += 13.0 * len(images)
+            return [(_frame(f"page {Path(p).stem[-2:]}"),) for p in images]
+
+    def _frame(text: str) -> ocr.OcrImage:
+        return ocr.OcrImage(800, 600, 1, 0, (ocr.OcrLine(text, 1.0, 0.1, 0.1, 0.5, 0.05),))
+
+    monkeypatch.setattr(pdf_mod, "_clock", lambda: now[0])
+    plain = fake_engine(tmp_path / "bin")
+    engine = Slow(plain.helper, name=plain.name, revision=plain.revision, helper_version="0.3.0")
+    src = _staged(tmp_path, [([], [page_picture(90)])] * (count + 2))
+    u = _ocr_one(src, engine)
+    assert now[0] - 1000.0 == 13.0 * count > image._DOCUMENT_BUDGET_S
+    assert u.summary == (
+        f"PDF: {count + 2} page(s), {count} read by on-device OCR, "
+        "2 without a text layer (over the OCR page limit)"
+    )
+    assert f"page {count:02d}" in u.body and f"page {count + 1:02d}" not in u.body
 
 
 def test_pdf_ocr_reads_a_page_without_a_text_layer_and_leaves_the_rest_as_it_was(tmp_path: Path) -> None:
@@ -1640,7 +1686,7 @@ def test_pdf_ocr_pages_and_pictures_share_one_time_limit(
     pages = [([], [page_picture(90)]), ([], [page_picture(91)]), (_TEXT, [PdfPicture(40, _BESIDE)])]
     src = _staged(tmp_path, pages)
     engine = Recording(shade_engine(tmp_path / "bin", {90: ["one"], 91: ["two"], 40: ["three"]}))
-    limit = image._DOCUMENT_BUDGET_S
+    limit = image._budget_s(2)  # two pages are read
 
     def at(*ticks: float) -> None:
         clock = iter(ticks)

@@ -486,7 +486,7 @@ def test_a_registry_with_an_engine_keeps_the_one_without() -> None:
             assert now.version() == f"{was.version()}+ocr-paper-vision-r2-h0.3.0-l1", ext
             options = dict(now.options())
             assert {k: v for k, v in options.items() if not k.startswith("ocr")} == was.options(), ext
-            assert options["ocr_languages"] == "en-US" and options["ocr_max_pages"] == 100, ext
+            assert options["ocr_languages"] == "en-US" and options["ocr_max_pages"] == 40, ext
         else:
             assert (now.version(), now.options()) == (was.version(), was.options()), ext
     assert twin.for_name("scan.png") is None, "an image has no converter there, so a failed read stays one"

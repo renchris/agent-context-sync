@@ -170,8 +170,10 @@ What is not:
 - While a sensitivity-label rule is set under `[policy]`, no image file is converted: an image can carry a label
   agentsync cannot read. Pictures inside a PDF, a deck or a Word document are still read, because that document's
   own label is screened first.
-- Only English is recognized. One PDF has its first 100 pages without a text layer read, and one document its first
-  100 distinct pictures; the page's `summary` says when a limit left something unread.
+- Only English is recognized. One PDF has its first 40 pages without a text layer read (a TIFF its first 40 pages),
+  and one document its first 100 distinct pictures; the page's `summary` says when a limit left something unread.
+  A file has a fixed time for OCR that grows with the pages to read, 15 minutes at most; a document whose pictures
+  cannot be read in that time is converted without OCR.
 - Each sync has a fixed time budget for OCR. Images past it wait, and the `NEXT:` line says to sync again. A PDF, deck
   or Word document past it is converted without OCR and read again by a later sync.
 - OCR never fails a document. When it fails on a PDF, a deck or a Word document, the file gets the page it would

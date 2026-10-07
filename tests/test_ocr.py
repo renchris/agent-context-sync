@@ -515,7 +515,7 @@ def test_engine_identity_names_engine_helper_and_layout_but_no_machine(tmp_path:
     eng = fake_engine(tmp_path)
     assert eng.identity == f"ocr-paper-vision-r2-h0.3.0-l{ocr._LAYOUT_REVISION}"
     assert eng.description == "paper-vision revision 2, helper 0.3.0"
-    assert ocr.LANGUAGES == ("en-US",) and ocr.MAX_PAGES == 100 and ocr.MAX_MEGAPIXELS == 50
+    assert ocr.LANGUAGES == ("en-US",) and ocr.MAX_PAGES == 40 and ocr.MAX_MEGAPIXELS == 50
 
 
 # ---------------------------------------------------------------------------------------------------------

@@ -225,7 +225,7 @@ def test_an_image_page_is_a_header_with_the_size_then_the_text(tmp_path: Path, e
     assert conv.options() == {
         "max_page_bytes": CFG.max_page_bytes,
         "ocr_languages": "en-US",
-        "ocr_max_pages": 100,
+        "ocr_max_pages": 40,
         "ocr_max_pictures": 100,
         "ocr_max_picture_bytes": 256 * 1024 * 1024,
     }
@@ -242,8 +242,9 @@ def test_the_helper_gets_one_time_limit_for_the_whole_document(tmp_path: Path, e
     one(recording, scan)
     assert recording.asked == [
         {"work_dir": tmp_path, "budget_s": image._DOCUMENT_BUDGET_S, "frames": 1},
-        {"work_dir": tmp_path, "budget_s": image._DOCUMENT_BUDGET_S, "frames": ocr.MAX_PAGES},
+        {"work_dir": tmp_path, "budget_s": image._budget_s(ocr.MAX_PAGES), "frames": ocr.MAX_PAGES},
     ]
+    assert image._budget_s(ocr.MAX_PAGES) == image._DOCUMENT_BUDGET_S + image._PAGE_S * ocr.MAX_PAGES
 
 
 @pytest.mark.parametrize("suffix", sorted(MAGIC))

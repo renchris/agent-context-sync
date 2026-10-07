@@ -46,9 +46,13 @@ log = logging.getLogger(__name__)
 _EMITTER_VERSION = "2.0.0"  # 1.0.0 was a field build that wrote the file name into the page
 _ENGINE_LABEL = "Apple Vision"
 _DOCUMENT_BUDGET_S = 300.0
-"""The seconds the helper may take over one document, whatever it holds (pandoc's limit is the same).  Past
-it the read is an ``OcrError``."""
-_MAX_PICTURES = MAX_PAGES  # distinct pictures of one document that are read
+"""The seconds the helper may take over one document's pictures, whatever it holds (pandoc's limit is the
+same).  Past it the read is an ``OcrError``."""
+_PAGE_S = 15.0
+"""The seconds each page image read is allowed on top of that (``_budget_s``).  A dense 300 dpi letter page
+took 6 to 13 s when measured (``ocr.MAX_MEGAPIXELS``).  Running out of time fails the whole reading, so the
+page limit has to fit the time: with this, ``MAX_PAGES`` pages always do."""
+_MAX_PICTURES = 100  # distinct pictures of one document that are read
 _MAX_PICTURE_BYTES = 256 * 1024 * 1024  # picture bytes read from one document, copies of a picture included
 _PICTURES_PER_RUN = 16  # one helper run; a run that fails is read again one picture at a time
 _CHUNK = 1024 * 1024
@@ -78,6 +82,15 @@ _PICTURES_CUT = "pictures past the OCR picture limit not read"
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f\ud800-\udfff]")
 _BLOCK_RE = re.compile(r"^(?:`{3,}|~{3,}|<)")  # a code fence, or a tag: either can open a block
 _clock = time.monotonic
+
+
+def _budget_s(pages: int) -> float:
+    """The seconds on-device OCR may take over one document of which ``pages`` page images are read (the
+    scanned pages of a PDF, the frames asked of a TIFF): ``_DOCUMENT_BUDGET_S``, and ``_PAGE_S`` for each.
+
+    The limit is known before the first page is read and grows with the count, never the other way round:
+    a reading cut short by the clock would be cached as if it were whole."""
+    return _DOCUMENT_BUDGET_S + _PAGE_S * pages
 
 
 def _heif(head: bytes) -> bool:
@@ -371,12 +384,13 @@ class ImageConverter:
             kind = _raster_suffix(fh.read(_HEAD_BYTES))
         if kind is None:
             raise UnreadableSourceError(_NOT_RASTER)
+        asked = MAX_PAGES if kind == _PAGED else 1  # a frame of any other type is not a page
         try:
             (frames,) = self._engine.read(
                 [src],
                 work_dir=src.parent,
-                budget_s=_DOCUMENT_BUDGET_S,
-                frames=MAX_PAGES if kind == _PAGED else 1,
+                budget_s=_budget_s(asked) if kind == _PAGED else _DOCUMENT_BUDGET_S,
+                frames=asked,
             )
         except OcrError as exc:  # the engine's text has no path in it, and still it is not a stub reason
             log.warning("%s: on-device OCR failed: %s", name, exc)
