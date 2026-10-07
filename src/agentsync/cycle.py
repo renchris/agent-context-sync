@@ -26,6 +26,7 @@ import dataclasses
 import enum
 import gc
 import hashlib
+import itertools
 import json
 import logging
 import os
@@ -114,6 +115,7 @@ from agentsync.model import (
 )
 from agentsync.ops.launchd import rotate_logs
 from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read_heartbeat, write_heartbeat
+from agentsync.paths import expand
 from agentsync.publish import (
     DELETED_UPSTREAM,
     Publisher,
@@ -491,6 +493,7 @@ def _clear_staging(staging: Path) -> None:
 
 
 _AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, under its own umask
+_OWN_WALK = 2000  # entries looked at below each tree that is made owner-only (status samples 500 a tree)
 
 
 def _clear_group_other(path: Path) -> bool:
@@ -516,45 +519,64 @@ def _clear_group_other(path: Path) -> bool:
     return True
 
 
-def _tighten_agent_writes(repo: Path) -> int:
-    """Make owner-only what a coding agent writes into the docs repo; return how many paths changed.
-
-    agentsync writes under umask 077, but an agent's file tool runs under the agent's umask (usually 022),
-    so the baseline draft left ``_eval/`` readable by group and other and the next ``status`` ended on a
-    ``docs_repo.permissions`` FAIL the loop itself had caused.  Covered: every entry at the top of the docs
-    repo (the entry itself, not its contents) and everything below :data:`_AGENT_TREES`.  ``mirror/`` and
-    ``.git`` are not walked: the publisher writes pages 0600 and git writes under
-    ``core.sharedRepository``.  No symlink is followed or changed.  Modes are not content: git tracks only
-    the executable bit, so this never dirties the tree.  A path that cannot be changed is skipped with one
-    warning (the doctor check still reports it)."""
-    changed, failed = 0, 0
-
-    def tighten(path: Path) -> None:
-        nonlocal changed, failed
-        try:
-            changed += _clear_group_other(path)
-        except OSError:
-            failed += 1
-
+def _own_paths(config: Config) -> Iterator[Path]:
+    """The paths :func:`_tighten_own_paths` makes owner-only: agentsync's own, and all of them paths
+    ``docs_repo.permissions`` looks at.  The agent-context folder (the config's folder when the docs repo
+    is inside it and it is not the home folder, which is the check's rule), the docs repo and every entry
+    at its top (the entry itself, not its contents), the cache folder and the log folder; then what is
+    below :data:`_AGENT_TREES`, the cache folder and the log folder: at most :data:`_OWN_WALK` entries a
+    tree, in the order the check walks them, so the walk is bounded and still reaches every entry the
+    check samples.  ``mirror/`` and ``.git`` are not walked: the publisher writes pages 0600 and git
+    writes under ``core.sharedRepository``, which ``gitops.ensure_repo`` sets.  A tree that is a symlink
+    is not walked, and a cache or log folder that is the home folder, or holds it, is not agentsync's
+    alone: it is left out."""
+    repo, home = expand(config.docs_repo), Path.home()
+    ctx = expand(config.config_path).parent
+    if ctx != home and ctx in repo.parents:
+        yield ctx
+    yield repo
     try:
         top = sorted(repo.iterdir())
     except OSError:
-        return 0
-    for entry in top:
-        tighten(entry)
-    for name in _AGENT_TREES:
-        tree = repo / name
+        top = []
+    yield from top
+    own = [
+        d for d in (expand(config.cache_dir), expand(config.log_dir)) if d != home and d not in home.parents
+    ]
+    yield from own
+    for tree in (*(repo / name for name in _AGENT_TREES), *own):
         if tree.is_symlink() or not tree.is_dir():
             continue
-        for dirpath, dirnames, filenames in os.walk(tree, followlinks=False):
-            for child in (*dirnames, *filenames):
-                tighten(Path(dirpath) / child)
-    if changed:
-        log.info("docs repo: cleared group/other access on %d path(s) an agent wrote", changed)
-    if failed:
-        log.warning(
-            "docs repo: %d path(s) could not be made owner-only (agentsync doctor names them)", failed
+        below = (
+            Path(dirpath) / child
+            for dirpath, dirnames, filenames in os.walk(tree, followlinks=False)
+            for child in (*dirnames, *filenames)
         )
+        yield from itertools.islice(below, _OWN_WALK)
+
+
+def _tighten_own_paths(config: Config) -> int:
+    """Make agentsync's own paths owner-only (:func:`_own_paths`); return how many changed.
+
+    agentsync writes under umask 077, but an agent's file tool runs under the agent's umask (usually 022),
+    so the baseline draft left ``_eval/`` readable by group and other and the next ``status`` ended on a
+    ``docs_repo.permissions`` FAIL the loop itself had caused; a cache folder or a log that something else
+    made does the same.  Every non-dry cycle calls this.  Only group and other bits are cleared, so no
+    mode is widened, and no symlink is followed or changed.  Modes are not content: git tracks only the
+    executable bit, so this never dirties the tree.  A path that cannot be changed is skipped with one
+    warning (the status check still reports it)."""
+    changed, failed = 0, 0
+    for path in _own_paths(config):
+        try:
+            changed += _clear_group_other(path)
+        except FileNotFoundError:  # not made yet (the log folder before the first job), or gone since
+            continue
+        except OSError:
+            failed += 1
+    if changed:
+        log.info("cleared group/other access on %d of agentsync's own path(s)", changed)
+    if failed:
+        log.warning("%d path(s) could not be made owner-only (agentsync status names them)", failed)
     return changed
 
 
@@ -1057,9 +1079,7 @@ class _Cycle:
             self._note_roots(fp_changed)
             self._check_policy_change()
             self.publisher.ensure_scaffold()
-            _tighten_agent_writes(
-                self.repo
-            )  # an agent's umask is not ours: no permissions FAIL of its making
+            _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
             arms = build_arms(self.config, self.manifest, self.client)
