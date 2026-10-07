@@ -1356,19 +1356,78 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     assert install_log(env)[-2].endswith(" result=done note=listed-1"), "no synced= count: it was not read"
 
 
-def test_list_folders_marks_nothing_while_a_provider_is_denied(env: dict[str, str]) -> None:
-    """A list that ends on a click for the person is not the folder question yet: it is printed as it
-    always was, and the marks come with the complete list after the click."""
-    (_cloud(env) / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
-    shared = _cloud(env) / "Dropbox" / "Shared"
-    shared.mkdir(parents=True)
-    _write_config(env, local_source_table("shared", shared))
+STUB_FIND_HELD = """#!/bin/bash
+for a in "$@"; do
+  case "$a" in
+    */Dropbox) HELD ;;
+  esac
+done
+exec /usr/bin/find "$@"
+"""
+"""find with one provider (Dropbox) that macOS holds: HELD is what it does there."""
+
+
+@pytest.mark.parametrize(
+    ("held", "note", "click"),
+    [
+        (
+            'echo "find: $a: Operation not permitted" >&2; exit 1',
+            "denied",
+            "NEXT: this terminal app was denied access to files managed by Dropbox: allow it in ",
+        ),
+        (
+            "exec sleep 30",
+            "tcc-pending",
+            "NEXT: macOS is asking whether this terminal app may access files managed by Dropbox: click ",
+        ),
+    ],
+)
+def test_list_folders_marks_what_it_listed_while_another_provider_waits_for_a_click(
+    env: dict[str, str], held: str, note: str, click: str
+) -> None:
+    """A Mac that syncs OneDrive folders, and a second provider this terminal app was denied or never
+    allowed. The list still ends on that click, exit 4. It used to print no mark and no "already synced"
+    line then, so an unattended agent saw folder paths without the line, took the Mac for a new one and
+    stopped at the folder question: the lost round again (review, 2026-10-07). The marks need only the
+    config and the lines that were listed, so they are printed, and the log line has the count."""
+    cs = _cloud(env)
+    for d in ("OneDrive-Contoso/FY26 Projects", "OneDrive-Contoso/Documents", "Dropbox/Shared"):
+        (cs / d).mkdir(parents=True)
+    _write_config(env, local_source_table("fy26", cs / "OneDrive-Contoso" / "FY26 Projects"), _inbox(env))
+    _tool_python(env)
+    _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_HELD.replace("HELD", held))
+    cp = install_sh({**env, "AGENTSYNC_LIST_TIMEOUT": "1"}, "--list-folders", timeout=20)
+    assert cp.returncode == 4, cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        f"{cs}/OneDrive-Contoso/Documents",
+        f"[synced] {cs}/OneDrive-Contoso/FY26 Projects",
+    ]
+    assert last_line(cp).startswith(click) and last_line(cp).endswith(f"re-run: {INSTALL_SH} --list-folders")
+    assert steps(install_log(env)) == [("list-folders", "failed", "4", note)]
+    assert install_log(env)[-2].endswith(f" result=failed note={note} synced=1")
+
+
+def test_list_folders_names_a_synced_folder_of_the_provider_that_was_denied(env: dict[str, str]) -> None:
+    """The provider this terminal app was denied holds the synced folder, so no line lists it: it is
+    printed first, as every synced folder the list does not reach is. Without a config the denied list is
+    what it always was (``test_list_folders_names_the_click_when_this_terminal_was_denied``)."""
+    cs = _cloud(env)
+    for d in ("OneDrive-Contoso/FY26 Projects", "Dropbox/Shared"):
+        (cs / d).mkdir(parents=True)
+    _write_config(env, local_source_table("fy26", cs / "OneDrive-Contoso" / "FY26 Projects"))
     _tool_python(env)
     _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 4, cp.stdout + cp.stderr
-    assert cp.stdout.splitlines()[:-1] == [str(shared)] and "already synced" not in cp.stdout
-    assert steps(install_log(env)) == [("list-folders", "failed", "4", "denied")]
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "the list)",
+        f"[synced] {cs}/OneDrive-Contoso/FY26 Projects",
+        f"{cs}/Dropbox/Shared",
+    ]
+    assert last_line(cp).startswith("NEXT: this terminal app was denied access to files managed by OneDrive")
+    assert install_log(env)[-2].endswith(" result=failed note=denied synced=1")
 
 
 # ---- a re-run on a Mac that is already set up, with the real agentsync (field report 2026-10-07) ----------

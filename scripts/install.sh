@@ -33,7 +33,8 @@
 #                           "[synced] " before its path (one the list does not reach is printed first, as
 #                           the config names it); a listed folder inside one of them has "[inside a
 #                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
-#                           NEXT: names the command that keeps them
+#                           NEXT: names the command that keeps them. A list that exits 4 has that line and
+#                           the marks too, for what it could list, and still ends on the click
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -1251,9 +1252,10 @@ list_folders() {
 	total="$(wc -l <"$tmp/list" | tr -d ' ')"
 	sort "$tmp/list" | awk -v m="$max" 'NR <= m' >"$tmp/shown" # awk reads it all: no SIGPIPE for sort under pipefail
 	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
-	# list says which they are and nobody is asked again. Only for a complete list (a denied or pending
-	# provider ends on its click), and only with a config: without one the output is what it always was.
-	if [ -f "$CONFIG" ] && [ -z "$denied$asking" ] && [ "$total" -gt 0 ]; then
+	# list says which they are and nobody is asked again. Only with a config: without one the output is what
+	# it always was. Also when a provider was denied or is still asking: the marks need only the config and
+	# the lines that were listed, and the list still ends on that click (exit 4).
+	if [ -f "$CONFIG" ] && [ "$total" -gt 0 ]; then
 		py="$(tool_python)"
 		if [ -n "$py" ] && synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>/dev/null; then
 			synced="$(sed -n 1p "$tmp/marked")"
@@ -1286,11 +1288,11 @@ list_folders() {
 	if [ -n "$denied" ]; then
 		rc=4
 		NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings > Privacy & Security > Files and Folders (turn on $denied under $term; a click, not a command), then re-run: $RERUN"
-		step_end failed "$rc" denied
+		step_end failed "$rc" "denied${synced:+ synced=$synced}"
 	elif [ -n "$asking" ]; then
 		rc=4
 		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
-		step_end failed "$rc" tcc-pending
+		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN"

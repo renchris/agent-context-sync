@@ -239,6 +239,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
 - A sync reads the whole tree under a synced folder. So a listed folder inside one has
   `[inside a synced folder]` before its path, and one that holds one has `[contains a synced folder]`. Only
   an unmarked folder is one to add: a marked one, added, would be read twice.
+- A list that ends on a click (exit 4: a provider this terminal app was denied, or macOS still asking) has
+  the line and the marks too, for what it could list. Step 1's exception applies there as well, and the click
+  is needed only to add a folder from that provider. Its log line reads `result=failed note=denied synced=2`.
 - Step 1 then tells the person which folders those are and asks only whether to add an unmarked one. An agent that
   cannot ask adds none and goes on to step 2. That is not a deviation and is not logged; the agent says it in
   its final message. On a Mac with no synced folder nothing changed: an agent that cannot ask logs a deviation,

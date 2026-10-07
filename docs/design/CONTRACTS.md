@@ -8066,8 +8066,16 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
 - The `NEXT:` line names the command that keeps them, since nothing has to be chosen: `install.sh` alone, with
   `--source-local` only for a folder to add. With no synced folder it is the line it was.
 - **Without a config the output is byte for byte what it was**, and the installed agentsync is not asked. The
-  same holds for a config with no synced folder (the inbox alone), and for a list that ends on a click for the
-  person (a denied or pending provider, exit 4): the marks come with the complete list after the click.
+  same holds for a config with no synced folder (the inbox alone).
+- **A list that ends on a click is marked too** (review, 2026-10-07; a denied or pending provider, exit 4).
+  The first line and the marks need only the config and the lines that were listed, so they are printed for
+  whatever was listed. A synced folder of the provider that was held is one the list does not reach, and
+  comes first. The exit status, the `NEXT:` (the click) and the note (`denied`, `tcc-pending`) are what they
+  were, and the log line gains `synced=N`. At first the marks waited for the complete list after the click.
+  Then a Mac that synced two OneDrive folders, with a second provider this terminal app was never allowed,
+  printed folder paths and no first line on every run: an unattended agent took it for a new Mac, logged a
+  deviation and stopped, which is the round this section exists to save. With the first line the prompt's
+  exception applies, and the click is needed only to add a folder from that provider.
 - **Who reads the config.** The installed agentsync does, through its own interpreter
   (`<uv tool dir>/agentsync/bin/python -I`, the path step 2 names `TOOL_PY`; `tool_python`): `load_config`,
   then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
@@ -8084,7 +8092,8 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   one line on stderr, `warning: could not read which folders <config> already syncs (no installed agentsync
   loads it), so none is marked below`, and the unmarked list. The person is then asked, as on a new Mac.
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
-  (`note=listed-25 synced=2`). The note itself is unchanged, and so is a line written without a config.
+  (`note=listed-25 synced=2`, and `result=failed note=denied synced=2` for a list that ends on a click). The
+  note itself is unchanged, and so is a line written without a config.
 - Nothing new reaches a report unredacted. The first line holds counts. A marked line holds a path the
   report already redacts: every folder name under `~/Library/CloudStorage` at the depths the list shows is a
   placeholder (§16.14), whatever comes before it on the line. A synced folder the list does not reach is a
@@ -8099,7 +8108,9 @@ inside a synced one and one that holds one, each with its mark; then a source de
 outside `~/Library/CloudStorage`, each printed first with its mark; a Mac whose one synced folder the list
 does not reach; a config path in lower case and one in the other Unicode form, each marked; a synced
 folder past the cap, printed first; no installed agentsync and a config that does not load, each with the
-warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and the three marks
+warning and no mark; a second provider that was denied and one still asking, each with the marks, exit 4,
+the click and `synced=1` in the log; a denied provider that holds the synced folder, printed first),
+`tests/test_setup_report.py` (the first line and the three marks
 in install.out, with a synced folder three levels deep and one under `~/Documents` printed first: the
 counts and the marks kept, every folder a placeholder).
 
