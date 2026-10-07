@@ -82,6 +82,25 @@ Changed from the decisions above while building (each reviewed):
 - **CI:** the real-Vision test first failed on GitHub's virtual Mac, which reads about half of the 16 px labels.
   It now checks whole-and-once everywhere and seam stitching where Vision reads every label (`582c9e8`).
 
+## B7 The next bring-back is the last one (2026-10-07)
+
+Added after the operator asked whether the round was exhaustive: it was not. The setup report said nothing about
+what OCR did, the triage still asked for eight facts by hand, and wording-only prompt edits had kept the version at
+v7, so an old copy could not be told from the current one. 27 commits, `02ee347..63a4f2e`; gate 2660 passed.
+Runs `wf_f74fb161-ff0` and `wf_18e5a3df-d6c`. CONTRACTS §16.28.
+
+- **Evidence in the report:** six parts under Status (OCR results and time per run, quarantine by reason, purge
+  queue by reason and age, overlapping sources, empty cloud folders as dataless or materialised-and-empty, repeat
+  conversions), plus which plist arguments differ and installer runs with no end line. Counts and fixed words only.
+- **Prompt v8:** the version is bumped on any change to the prompt's text (a test pins the block's digest to its
+  number). The prompt hands its version to the installer inside the `--log-start` value; a copy that is not the
+  installer's version is stopped in step 1 with a message to copy the prompt again from the README on `main`.
+- **One round:** `sync` prints `note: sync again: N file(s) ...` while the one-time re-read is not finished, and
+  prompt step 3 syncs again while that note shows, up to 12 more times, downloading nothing extra and running no
+  destructive step, before it writes the bring-back file.
+- Not measured: how many syncs a real mirror needs. A mirror heavy in scans can hit the cap of 12; the report's
+  Loop line and per-run table then say how much is left.
+
 Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
 is not read; a picture drawn rotated is read as stored; image types outside the raster table are stubs; a long
 scan past the time limit converts without OCR.
