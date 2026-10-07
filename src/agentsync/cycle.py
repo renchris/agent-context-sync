@@ -2270,9 +2270,25 @@ class _Cycle:
             cache=self.cache,
         )
 
-    def _ocr_spent(self, row: ItemRow) -> bool:
-        """True when ``row`` is an image for OCR and this cycle has used its OCR time (``_OCR_BUDGET_S``)."""
-        return self.ocr is not None and self.ocr.spent_s >= _OCR_BUDGET_S and self._ocr_image(row)
+    def _reads_with_ocr(self, name: str) -> bool:
+        """True when the converter this cycle's registry routes ``name`` to reads with the engine: an
+        image, a PDF, a deck, a Word or OpenDocument file.  Such a converter has the OCR options."""
+        conv = self.registry.for_name(name)
+        return self.ocr is not None and conv is not None and "ocr_languages" in conv.options()
+
+    def _ocr_waits(self, src: SourceConfig, row: ItemRow) -> bool:
+        """True when ``row`` is left for a later cycle's OCR, before a byte of it is read.
+
+        An image on this Mac waits once the cycle's OCR time is used (``_OCR_BUDGET_S``).  So does a Graph
+        item whose converter reads with the engine, and also when the helper stopped working: converted
+        now it would get the page without OCR, and nothing reads a Graph file again (a re-read never
+        downloads), so that page would stay until the file's bytes change.  Waiting costs no download; the
+        next cycle converts it with OCR.  A document on this Mac does not wait (``_converting``)."""
+        if self.ocr is None or not self._ocr_over():
+            return False
+        if self._ocr_image(row):
+            return self.ocr.spent_s >= _OCR_BUDGET_S
+        return src.kind.is_graph and self._reads_with_ocr(row.name)
 
     def _converting(self) -> Registry:
         """The registry the next file is converted with. Once the cycle has used its OCR time
@@ -2316,7 +2332,7 @@ class _Cycle:
         if not budget.can_afford(_download_cost(src, row)):
             self._defer(src, row, budget, acc)
             return
-        if self._ocr_spent(row):  # a file on this Mac that waits: the next sync reads it (loop rule 3)
+        if self._ocr_waits(src, row):  # it waits for OCR, not for a download: the next sync reads it
             self._defer(src, row, budget, acc, online_only=False)
             return
         try:

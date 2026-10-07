@@ -7126,6 +7126,17 @@ for the fake helper of `tests/test_ocr.py`.
   with OCR time left does, once). Deferring it instead would hold back every PDF
   behind a folder of scans, the ones with nothing to read included. An `.rtf` or `.html` file gets the same
   version, options and action key from both registries, so the budget changes nothing for it.
+- **A Graph document does wait** (amended 2026-10-06; `_Cycle._ocr_waits`). The rule above leans on the
+  re-read of §16.27, and that never runs for a Graph source: a re-read downloads nothing. A drive file
+  converted without OCR past the budget therefore kept that page until its bytes changed, and in a first
+  sync of a library of scans only the files of each cycle's first 180 seconds were ever read. So a Graph
+  item whose converter reads with the engine (`_reads_with_ocr`: it has the OCR options) is deferred
+  before it is fetched once the cycle reads nothing more with its engine (`_ocr_over`: the budget is used,
+  or the helper stopped working): `Verdict.DEFERRED`, counted in `deferred` and not in
+  `deferred_online_only`, nothing downloaded, and the next cycle converts it with OCR. That does hold a
+  drive's PDFs back behind its scans, the ones with nothing to read included, since which they are is not
+  known before the download. What is left: a Graph document the engine failed on by itself (the helper
+  works on the blank image) gets the page without OCR and keeps it until its bytes change.
 - **A failed read** (amended 2026-10-06). An image the engine failed on gets the `no converter` stub
   (above), with no error line, and `_Cycle._lacks` counts that result as lacking, so the source's re-read
   record reopens and §16.27 reads the file again. `loop` does not wait on it.
@@ -7154,7 +7165,8 @@ first two read under the
 staging folder and converted without OCR once the budget is used, the third under the version without OCR
 both times; an online-only image beside a local one, under a byte budget, named to
 `materialise`, and after it
-is downloaded; a Graph image whose content is never requested; a helper
+is downloaded; a Graph image whose content is never requested; a Graph PDF past the OCR budget: deferred, not downloaded, and
+converted with OCR by the next cycle; a helper
 that fails on everything: three images get the `no converter` stub, the helper is run on one of them and
 on the blank image, one alarm, no file tried, and each read once the helper works;
 an image without text: its stub, not in `curate.uncovered_mirror_pages`, never fetched again; a key in an
@@ -7365,7 +7377,8 @@ None of the three holds a file name or a path.
   rules one out. It is limited to the cases in the table; a converter upgrade as such (a new pandoc, a new
   PDFium, another engine identity on a page that has one) still re-reads nothing.
 - A Graph item and an online-only file gain OCR or comments when their bytes next change, or once the file
-  is on this Mac.
+  is on this Mac. A Graph document is therefore never converted past the cycle's OCR time (§16.26, "A Graph
+  document does wait"); one the engine failed on by itself keeps its page without OCR until it changes.
 - Sources run in turn, so the re-reads of one source can use OCR time before a later source's new files.
   Such a file is converted without OCR in that cycle and read again in a later one; an image waits one cycle.
 

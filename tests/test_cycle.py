@@ -1638,6 +1638,41 @@ def test_a_graph_image_is_not_downloaded_for_ocr(
     assert (fm["status"], fm["reason"]) == ("refused", "no converter for .png") and reads(engine.helper) == []
 
 
+def test_a_graph_document_waits_for_ocr_time_and_is_not_converted_without_it(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file on this Mac that is converted past the cycle's OCR time is read again later.  Nothing reads a
+    Graph file again (a re-read never downloads), so converted without OCR it would keep that page until its
+    bytes changed.  A Graph document whose converter reads with the engine is left for the next cycle
+    before it is downloaded; a file OCR has nothing to do with is not held up."""
+    engine = shade_engine(tmp_path / "ocr-bin", {90: ["Delivery note 7"]})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE)
+    pages = [(["The cover page has a text layer of its own"], []), ([], [page_picture(90)])]
+    scan = build_picture_pdf(tmp_path / "scan.pdf", pages).read_bytes()
+    drive = FakeDrive({"I1": ("notes.md", b"# Notes\n"), "I2": ("Contoso delivery note.pdf", scan)})
+    with GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    ) as client:
+        with monkeypatch.context() as spent:
+            spent.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)  # an earlier source used the cycle's OCR time
+            first = run(config, client=client, only=["drive"])
+        rep = source_report(first, "drive")
+        assert first.exit_code == 0 and (rep.deferred, rep.deferred_online_only, rep.errors) == (1, 0, ())
+        assert any(entry.endswith("/items/I1/content") for entry in drive.log)
+        assert not any(entry.endswith("/items/I2/content") for entry in drive.log), "not downloaded to wait"
+        assert not list((config.docs_repo / "mirror" / "drive").rglob("*.pdf.md"))
+        second = run(config, client=client, only=["drive"])
+        assert second.exit_code == 0 and source_report(second, "drive").deferred == 0
+        assert sum(entry.endswith("/items/I2/content") for entry in drive.log) == 1
+    [mirrored] = (config.docs_repo / "mirror" / "drive").rglob("*.pdf.md")
+    text = mirrored.read_text(encoding="utf-8")
+    assert "+ocr-paper-vision-" in text and text.rstrip().endswith("(Apple Vision)]\n\nDelivery note 7")
+
+
 LABEL_RULE = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
 
 

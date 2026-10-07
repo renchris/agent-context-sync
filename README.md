@@ -177,7 +177,9 @@ What is not:
   A file has a fixed time for OCR that grows with the pages to read, 15 minutes at most; a document whose pictures
   cannot be read in that time is converted without OCR.
 - Each sync has a fixed time budget for OCR. Images past it wait, and the `NEXT:` line says to sync again. A PDF, deck
-  or Word document past it is converted without OCR and read again by a later sync.
+  or Word document in a synced folder or the inbox past it is converted without OCR and read again by a later sync.
+  One in a Microsoft Graph source waits like an image instead: nothing downloads a file a second time, so it is left
+  for the next sync before it is downloaded.
 - OCR never fails a document. When it fails on a PDF, a deck or a Word document, the file gets the page it would
   have had without OCR.
 
