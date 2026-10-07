@@ -79,6 +79,11 @@ log line or in the agent's words) is yours to remove. The CLI always redacts.
   session to session and nothing in it is deleted. Since prompt v9 each session writes under a heading of its
   own, which names the prompt's version and the date, and rewrites only its own part. So triage reads from the
   last session heading down. The parts above it came back in an earlier round and were triaged then (K23).
+  Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
+  not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
+  hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
+  the patch you hold (`shasum -a 256`). If you hold none, that work never arrived: the Mac cannot know what was
+  copied back, so ask for the file the line names.
   Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
   no contact with the agentsync maintainer.
   To hand a report to the maintainer without a public post, the optional route is the contact on the maintainer's

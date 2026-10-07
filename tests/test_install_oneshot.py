@@ -27,7 +27,7 @@ import subprocess
 import sys
 import time
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -835,6 +835,173 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     text = back.read_text(encoding="utf-8")
     assert text.split("## 2. Fix request", 1)[1].split("\n\n", 2)[1] == "none"
     assert text.rstrip().endswith("none")
+
+
+# ---- section 3 of the bring-back file: local work is sent once ---------------------------------------------
+
+PATCH_NAME = "0001-local-changes-kept-before-update.patch"
+"""The file step 1's keep command writes: its commit subject is constant, so a second keep overwrites it."""
+ENDED = "2026-10-06T16:46:11Z"
+"""When the earlier attempt of these tests reached its report (its ``end | finished`` line)."""
+
+
+def _stamp(text: str) -> float:
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
+
+
+def _keep_patch(
+    env: dict[str, str], written: str, body: str = "+def ocr(): ...\n", name: str = PATCH_NAME
+) -> Path:
+    """A patch in the setup folder's local-work, last written at ``written`` (UTC)."""
+    patch = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / name
+    patch.parent.mkdir(parents=True, exist_ok=True)
+    patch.write_text(body, encoding="utf-8")
+    os.utime(patch, (_stamp(written), _stamp(written)))
+    return patch
+
+
+def _two_attempts(env: dict[str, str], *, ended: str = f"{ENDED} | end | finished", extra: str = "") -> None:
+    """A friction log of an attempt that reached its report (``ended``, its closing line) and a later one
+    that is still open."""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\n{extra}{ended}\n"
+        f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n",
+        encoding="utf-8",
+    )
+
+
+def _local_work(env: dict[str, str]) -> str:
+    """Section 3 of the bring-back file a ``--report-only`` run writes, without its heading."""
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    heading = "## 3. Local work kept by setup prompt step 1 (~/agent-context/setup/local-work)\n\n"
+    return text.split(heading, 1)[1]
+
+
+def _not_repeated(patch: Path, written: str, ended: str = ENDED) -> str:
+    """The one line section 3 has for a patch it does not send again."""
+    data = patch.read_bytes()
+    lines, sha = data.count(b"\n"), hashlib.sha256(data).hexdigest()[:12]
+    return (
+        f"not repeated: a patch file last written {written}, at or before an earlier attempt's report "
+        f"({ended}): {lines} lines, sha256 {sha}; still in ~/agent-context/setup/local-work\n"
+    )
+
+
+def test_bring_back_does_not_repeat_local_work_an_earlier_attempt_reported(env: dict[str, str]) -> None:
+    """Field report 2026-10-07: the bring-back file carried the same 3,587-line patch a second time, a round
+    after it had been rebuilt, because section 3 was every patch in the folder. A patch last written at or
+    before an earlier attempt reached its report is not repeated. One line gives its time, its line count
+    and the start of its SHA-256, so whoever receives the file can check it against what they hold, and says
+    where it still is. Nothing is deleted or moved."""
+    _two_attempts(env)
+    written = (
+        "2026-10-06T16:42:39Z"  # the field's order: 5 s before the Attempt: line of the attempt that kept it
+    )
+    patch = _keep_patch(env, written, "+def ocr(): ...\n+    return None\n")
+    before = (patch.read_bytes(), patch.stat().st_mtime_ns)
+    section = _local_work(env)
+    assert section == _not_repeated(patch, written)
+    assert ": 2 lines, sha256 " in section
+    assert "~~~~~~~~~~" not in section and "def ocr" not in section, "the patch itself is not sent again"
+    assert env["HOME"] not in section, "the line names the folder with ~: the home path holds the login name"
+    assert "carried" not in section and "sent" not in section, "this Mac cannot know what was copied back"
+    assert (patch.read_bytes(), patch.stat().st_mtime_ns) == before
+    assert _local_work(env) == section, "a second report of the same attempt says the same"
+
+    _keep_patch(env, ENDED)
+    assert _local_work(env) == _not_repeated(patch, ENDED), "written in the report's own second: before it"
+
+
+def test_bring_back_sends_local_work_kept_since_the_earlier_report(env: dict[str, str]) -> None:
+    """Step 1's keep command runs before the command that logs the ``Attempt:`` line, so a fresh patch is a
+    few seconds OLDER than the attempt that kept it. It is still new: it was written after the earlier
+    attempt's report. A second report in the same attempt sends it again, since the attempt's own end line
+    never counts (the field ran the report twice in one attempt)."""
+    _two_attempts(env)
+    _keep_patch(env, "2026-10-07T15:58:27Z")
+    sent = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+    assert _local_work(env) == sent
+    assert friction_path(env).read_text().splitlines()[-1].endswith(" | end | finished"), "now closed"
+    assert _local_work(env) == sent
+
+
+def test_bring_back_names_older_local_work_beside_the_new(env: dict[str, str]) -> None:
+    """One patch from before the earlier report and one kept since: only the new one is fenced, and the
+    older one has its line after the fence."""
+    _two_attempts(env)
+    old = _keep_patch(env, "2026-10-06T16:42:39Z", "+old = 1\n", "0001-old.patch")
+    _keep_patch(env, "2026-10-07T15:58:27Z", "+new = 2\n", "0002-new.patch")
+    assert _local_work(env) == (
+        "~~~~~~~~~~diff\n+new = 2\n~~~~~~~~~~\n" + _not_repeated(old, "2026-10-06T16:42:39Z")
+    )
+
+
+@pytest.mark.parametrize(
+    ("log", "why"),
+    [
+        (None, "no friction log: nothing says an earlier attempt reported"),
+        (
+            f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\n{ENDED} | end | finished\n",
+            "one attempt",
+        ),
+        (
+            f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\nyesterday | end | finished\n"
+            f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n",
+            "an end line with no time is no moment to compare with",
+        ),
+        (
+            f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\n"
+            f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n",
+            "the earlier attempt never reached its report",
+        ),
+    ],
+)
+def test_bring_back_sends_local_work_whenever_it_cannot_tell(
+    env: dict[str, str], log: str | None, why: str
+) -> None:
+    """Every doubt sends the patch, as before this rule: leaving out work nobody received costs a round."""
+    if log is not None:
+        friction_path(env).parent.mkdir(parents=True)
+        friction_path(env).write_text(log, encoding="utf-8")
+    _keep_patch(env, "2026-10-06T16:42:39Z")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n", why
+
+
+def test_bring_back_does_not_count_the_report_of_a_stopped_copy(env: dict[str, str]) -> None:
+    """An attempt ``--log-start`` stopped (a copy of the prompt that is not this installer's) closes itself,
+    and its report's NEXT says not to bring it back. So its end line is no report that took the patch."""
+    stop = install_sh(env, "--log-start", "Claude Code, claude-opus-5-5")
+    assert stop.returncode == 2, stop.stderr
+    stopped = friction_path(env).read_text(encoding="utf-8")
+    assert stopped.splitlines()[-1].endswith(" | end | finished")
+    friction_path(env).write_text(
+        re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", ENDED, stopped)
+        + f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n",
+        encoding="utf-8",
+    )
+    _keep_patch(env, "2026-10-06T16:42:39Z")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+
+
+def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:
+    """The rule's known limit, held as documented: this Mac cannot know what was copied back. A session
+    keeps work and reports, nobody copies that file, and a second session starts. Its bring-back file
+    replaces the first and does not hold the patch. The line is what shows it: the receiver holds no patch
+    with that hash, and the file is still where the line says."""
+    first = install_sh(env, "--log-start", started("Claude Code, claude-opus-5-5"))
+    assert first.returncode == 0, first.stderr
+    patch = _keep_patch(env, "2026-10-06T10:00:00Z")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n", "the first report sends it"
+    second = install_sh(env, "--log-start", started("Claude Code, claude-opus-5-5"))
+    assert second.returncode == 0, second.stderr
+    ended = next(
+        ln[:20] for ln in friction_path(env).read_text().splitlines() if ln.endswith(" | end | finished")
+    )
+    assert _local_work(env) == _not_repeated(patch, "2026-10-06T10:00:00Z", ended)
+    assert patch.read_text(encoding="utf-8") == "+def ocr(): ...\n", "still on this Mac"
 
 
 def test_report_only_falls_back_when_setup_report_fails(env: dict[str, str]) -> None:

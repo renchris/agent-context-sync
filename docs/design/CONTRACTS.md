@@ -5993,7 +5993,9 @@ opened by its name from a descriptor on the folder that holds it, not by its ful
   login name. The line under the title reads "Private: copy this file back as it is, and never paste it into
   the public issue form. Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so
   review them before sending." Sections 2 and 3 stay unredacted on purpose: redacting them would corrupt the
-  patch and hide over-redaction bugs.
+  patch and hide over-redaction bugs. **Amended (2026-10-07, §16.30):** section 3 is no longer every patch
+  in the folder: one last written at or before an earlier attempt's report is named by a `not repeated:`
+  line and not sent again ("The bring-back sends local work once").
 
 **Setup prompt (still v7: wording only, nothing new for the installer to do; §16.28 "Setup prompt v8" ends
 that practice: the version now moves with every change of the text).** Step 1 ends: if the agent
@@ -8764,3 +8766,61 @@ by hand on that Mac. The person reviews section 2 before sending, as before.
 Tests: `tests/test_deploy_pack.py` (`test_prompt_routes_changes_to_the_source_not_the_checkout`: both new
 sentences where they stand, one version in the block, and the private route's two sentences; the block's
 digest beside version 9).
+
+#### The bring-back sends local work once (amends §16.22; `scripts/install.sh`)
+
+Section 3 of `bring-back.md` was every `*.patch` in `~/agent-context/setup/local-work`, written again by
+every report. Nothing compared a patch with the attempt, and nothing ever removes one. So the patch step 1
+kept on 2026-10-06 came back a second time on 2026-10-07, a round after it had been rebuilt: 3,587 of the
+file's 4,205 lines, real names included, from an attempt that had kept nothing.
+
+**Rule.** A patch is left out of section 3 when it was last written at or before the moment an earlier
+attempt reached its report. Every other patch is sent, fenced, as before.
+
+- **The moment** (`friction_earlier_end`): the time of the friction log's last `<UTC> | end | finished` line
+  that a later `Attempt:` line follows, and that does not close an attempt `--log-start` stopped (§16.28:
+  that report's `NEXT:` says not to bring it back). The current attempt's own end line never counts, so a
+  second `--report-only` in one attempt writes the same section 3. The field ran the report twice in one
+  attempt.
+- **The patch's time** is its mtime, read with `/usr/bin/stat` (an absolute path, as for `shasum` and
+  `codesign`: a GNU `stat` first on `PATH` takes `-f` and `-t` to mean something else).
+- **Not "newer than this attempt's start".** Step 1's keep command runs before the command that logs the
+  `Attempt:` line, so a fresh patch is a few seconds older than the attempt that kept it. It is compared
+  with the earlier attempt's end, which it is newer than.
+- **Not by file name.** `git format-patch -1` with the prompt's constant commit subject always writes
+  `0001-local-changes-kept-before-update.patch`, and a second keep overwrites it. The new mtime sends it.
+
+**Every doubt sends the patch.** No friction log, no earlier attempt that ended, an end line or an mtime
+that is not exactly `YYYY-MM-DDTHH:MM:SSZ` (`utc_stamp`), or a hash that is not 12 hex digits: the patch is
+sent as before. Leaving out work nobody received costs a round. Sending it twice costs a review.
+
+**The line for a patch that is left out**, one per patch, after the fence of the ones sent:
+
+```text
+not repeated: a patch file last written 2026-10-06T16:42:39Z, at or before an earlier attempt's report (2026-10-06T16:46:11Z): 3587 lines, sha256 4f1c9a02be77; still in ~/agent-context/setup/local-work
+```
+
+- The count and the first 12 hex digits of the file's SHA-256 (`/usr/bin/shasum -a 256`) let whoever
+  receives the file check it against the patch they hold. A hash and two times identify nobody, and the
+  folder is named with `~`.
+- The line does not say the patch was sent or carried. The Mac cannot observe that: `bring-back.md` is one
+  path, and every reporting exit of `install.sh` replaces it.
+- With no patch at all the section is still `none`. The section's heading and the `bring back:` line are
+  unchanged. Nothing is deleted, moved or marked: the patch and its `local-work-<time>` branch stay.
+
+**Limit, kept on purpose.** A session keeps work and reports, nobody copies that file, and the prompt is
+pasted again. The second session's file replaces the first and leaves the patch out. The line is what shows
+it: the receiver holds no patch with that hash. That costs one round and loses nothing. A marker file for
+"sent" was not built: it would start empty on the field Mac and send the patch a third time, and it would
+still record writing, not delivery. A list of known hashes in the checkout would put hashes of private
+patches in a public repo.
+
+Not done: section 2 has no such rule (see "The fix request marks each session's part").
+
+Tests: `tests/test_install_oneshot.py` (the field's order: a patch 5 s before its attempt's `Attempt:` line
+and before the earlier attempt's end, left out with its exact line, bytes and mtime unchanged, the same
+after a second report, and a patch written in the report's own second; a patch kept since the earlier
+report, sent on both reports of its attempt; an old and a new patch together; no friction log, one attempt,
+an end line with no time and an attempt that never ended, each sent; a stopped copy's end line; and the
+limit above with real `--log-start` and `--report-only` runs), `tests/test_deploy_pack.py` (the private
+route's sentences).

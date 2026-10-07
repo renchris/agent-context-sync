@@ -554,6 +554,15 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert "never paste this file into the public form" in private
     assert "Section 2 is the whole file, every session's part in the order written" in private
     assert "triage reads from the last session heading down" in private
+    # Section 3 is the local work kept since an earlier attempt's report; an older patch is one line there,
+    # which the page names by the installer's own first words.
+    assert "Section 3 holds the local work kept since an earlier attempt reached its report" in private
+    assert (
+        "one `not repeated:` line gives the time it was last written, its line count and the first 12"
+        in private
+    )
+    assert "still in `~/agent-context/setup/local-work`" in private
+    assert "}not repeated: a patch file last written $at," in SCRIPTS[0].read_text(encoding="utf-8")
     finish = _prompt_steps()[3].rsplit("Finish with three lines", 1)[1]
     assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
     step3 = _prompt_steps()[3]

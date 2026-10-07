@@ -1005,15 +1005,46 @@ write_fallback_report() { # RC WHY
 	}
 	mv -f "$tmp" "$REPORT_PATH"
 }
+# When an earlier attempt reached its report, for section 3 of the bring-back file: the time of the last
+# "<UTC> | end | finished" line that a later "Attempt:" line follows, and that does not close an attempt
+# --log-start stopped (a copy of the prompt that is not this installer's: its report is not brought back).
+# Prints nothing when there is none, or no friction log. The current attempt's own end line never counts,
+# so a second --report-only in one attempt writes the same section 3.
+friction_earlier_end() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	awk -v mark="| step 1 | error | $PROMPT_STOPPED " '
+		/^Attempt:/ { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
+		index($0, mark) { stopped = 1 }
+		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z \| end \| finished[[:space:]]*$/ { e = substr($0, 1, 20) }
+		END { print last }' "$f" 2>/dev/null || true
+}
+# A value that is exactly "<YYYY>-<MM>-<DD>T<HH>:<MM>:<SS>Z", else nothing: what section 3 compares. Anything
+# else (a hand-written end line, the output of a stat that is not macOS's) is no time, and the patch is sent.
+utc_stamp() {
+	case "$1" in
+	[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) printf '%s' "$1" ;;
+	esac
+}
 # The one file the person copies back (field report 2026-10-05): the redacted setup report, then the fix request
 # and the local work step 1 of the prompt kept, which are NOT redacted, so the person reviews it first. The
 # file's own headings name the setup folder with ~: the home path holds the login name (field report
 # 2026-10-06).
+# Section 3 holds the local work kept since an earlier attempt reached its report (field report 2026-10-07:
+# one 3,587-line patch came back a second time, a round after it was rebuilt). A patch file last written at
+# or before that moment (friction_earlier_end) is not repeated: one line gives its time, line count and the
+# first 12 hex digits of its SHA-256, so whoever receives the file can check it against what they hold, and
+# says where it still is. This Mac cannot know what was copied back, so the line claims nothing about that.
+# Every doubt sends the patch: no friction log, no earlier finished attempt, a time or a hash that cannot be
+# read. Nothing is deleted or moved.
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence="~~~~~~~~~~" shown="$SETUP_DIR"
+	local prev at sha sent=0 skipped=""
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
+	prev="$(utc_stamp "$(friction_earlier_end)")"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	{
 		printf '# agentsync: the one file to bring back\n\n'
@@ -1025,14 +1056,26 @@ write_bring_back() {
 		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
 		if [ -s "$SETUP_DIR/fix-request.md" ]; then cat "$SETUP_DIR/fix-request.md"; else printf 'none\n'; fi
 		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
-		set -- "$SETUP_DIR"/local-work/*.patch
-		if [ -e "$1" ]; then
-			printf '%sdiff\n' "$fence"
-			for p in "$@"; do cat "$p"; done
-			printf '%s\n' "$fence"
-		else
-			printf 'none\n'
-		fi
+		for p in "$SETUP_DIR"/local-work/*.patch; do
+			[ -e "$p" ] || continue
+			at=""
+			[ -z "$prev" ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
+			if [ -n "$at" ] && [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ]; then
+				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
+				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
+				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+					skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					continue
+					;;
+				esac
+			fi
+			[ "$sent" -gt 0 ] || printf '%sdiff\n' "$fence"
+			sent=$((sent + 1))
+			cat "$p"
+		done
+		[ "$sent" -eq 0 ] || printf '%s\n' "$fence"
+		printf '%s' "$skipped"
+		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || printf 'none\n'
 	} >"$tmp" 2>/dev/null || {
 		rm -f "$tmp"
 		return 1
