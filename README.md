@@ -58,7 +58,9 @@ docs repo (`~/agent-context/inbox` by default); the inbox folders are the `kind 
 in `src/agentsync/model.py`), one file per channel or chat and month, written by your own export script under the
 [inbox writer contract](docs/design/CONTRACTS.md#11-local-arm-and-hydration).
 Only `.eml`, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`) carry a sensitivity label, so a `.vtt`, a
-`.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. Files stay in the
+`.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. A screenshot or a
+photo carries no label agentsync can read either, so while a label exclusion is set no image file is converted
+([Images and scans](#images-and-scans-on-device-ocr)). Files stay in the
 inbox: never empty it by hand, because removing a file turns its page into a tombstone and queues a purge.
 
 **The diff is part of every sync, not a separate step.** Each run lists every source, decides from metadata alone
@@ -138,6 +140,58 @@ With `archive = true`, agentsync keeps everything:
 tags are rewritten with the rest of history. `archive = true` with `purge_on_upstream_delete = true` in the same
 table is a configuration error. Keeping deleted company content may run past your company's retention policy, so
 turn it on only when that is your call to make.
+
+### Images and scans: on-device OCR
+
+Text that exists only as pixels is read on the Mac, by Apple's Vision framework, which is part of macOS. agentsync
+uploads nothing and downloads no model for it. `scripts/install.sh` builds a small helper once, when Xcode or the
+Command Line Tools are installed, and prints one `OCR helper:` line; nothing else ever compiles it.
+`~/.local/bin/agentsync status` says on its `ocr` line whether OCR is ready, off, not built or not working. On a
+Mac without the helper every file converts exactly as it did before.
+
+What is read:
+
+- **Image files** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tif`, `.tiff`, `.webp`, `.heic`, `.heif`): one page
+  with the text in reading order. A TIFF with several pages is read page by page.
+- **PDF pages without a text layer** (a scan), and a picture on a PDF page that the page's own text does not cover.
+- **Pictures in a deck** (`.pptx`), **a Word document** (`.docx`) or an OpenDocument text file (`.odt`): the text
+  follows the picture's `[image…]` line.
+
+Every block of such text starts with a line that says it was `read by on-device OCR (Apple Vision)`, so a reader
+can tell it from the document's own words. It is third-party content like the rest of `docs/mirror/`.
+
+What is not:
+
+- An image with no text to read (a photo, a logo) gets a stub, not a page, and is not read again until it changes.
+- An online-only image is never downloaded for OCR. It is read once it is on the Mac. An image in a Microsoft Graph
+  source is not read.
+- While a sensitivity-label rule is set under `[policy]`, no image file is converted: an image can carry a label
+  agentsync cannot read. Pictures inside a PDF, a deck or a Word document are still read, because that document's
+  own label is screened first.
+- Only English is recognized. One PDF has its first 100 pages without a text layer read, and one document its first
+  100 distinct pictures; the page's `summary` says when a limit left something unread.
+- Each sync has a fixed time budget for OCR. Images past it wait, and the `NEXT:` line says to sync again. A PDF, deck
+  or Word document past it is converted without OCR and read again by a later sync.
+- OCR never fails a document. When it fails on a PDF, a deck or a Word document, the file gets the page it would
+  have had without OCR.
+
+To turn OCR off, for example on a Mac that must not run a locally built program, set this in `sources.toml`. The
+helper is then neither built nor run:
+
+```toml
+[convert]
+ocr = false
+```
+
+Files in a synced folder or the inbox that were converted before OCR was there are read again once, a few per sync,
+and only the ones already on the Mac: nothing is downloaded for it. A page that comes out the same is left
+untouched, and a file that cannot be converted again keeps the page it had.
+
+**Comments in PDFs.** A reviewer's comments on a PDF (notes, highlights, strikethroughs, text boxes and the like) are
+listed after the text of the page they are on, under `[comments on this page (PDF annotations):]`: one line per
+comment with its kind, its author, the text it marks and what it says, and replies under the comment they answer.
+Annotations no viewer shows are left out. A PDF converted before this is read again once, under the same rule: only
+when it is already on the Mac.
 
 ## Set up on a new Mac: one prompt
 
