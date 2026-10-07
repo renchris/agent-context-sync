@@ -7100,7 +7100,12 @@ for the fake helper of `tests/test_ocr.py`.
   for the engine runs the helper's `--version`. No engine (no helper built, `[convert] ocr = false`,
   `AGENTSYNC_OCR=0`, not macOS) leaves the registry as it was before OCR existed.
 - **Where the helper works** (plan D13). In the staged file's own folder, `<staging>/<key>/`, which the cycle
-  removes after each file and wipes at the start of every cycle. Nothing is written to `$TMPDIR`.
+  removes after each file and wipes at the start of every cycle. The helper, every page image and every
+  copy of a picture stay there, and none of them is written to `$TMPDIR`. One thing OCR read is: the text
+  of a docx or odt's pictures goes to pandoc as `agentsync-ocr.json` in pandoc's own job folder, which is a
+  private folder under `$TMPDIR` beside the `out.md` pandoc writes, and is removed when pandoc returns
+  (above, "The filter"). A cycle killed while pandoc runs can leave that folder behind, and no cycle
+  clears `$TMPDIR`. (This bullet said nothing is written there; that was true before the pandoc part.)
 - **Online-only images are not downloaded** (plan D9). No image was ever downloaded, and hydrating a photo
   library is the operator's choice, not a side effect of OCR. While reading an image would be a download (a
   local or inbox file the walk saw online-only, or any Graph item), `_no_converter` refuses it from its name
