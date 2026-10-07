@@ -15,6 +15,9 @@ error or reason text from this module holds a path: it says "the OCR helper".
 
 Switches: ``[convert] ocr = false``, and ``AGENTSYNC_OCR=0`` (or ``off``) for the test suite.
 
+The media helper (``convert/media.py``) is built, trusted, run and pruned by the same functions: each takes a
+:class:`Helper` that names the helper, its folder, its file prefix and its source, and defaults to OCR's.
+
 :func:`text_lines` turns the helper's boxes into reading order: a recursive XY cut (the widest whitespace
 gap first) separates columns, paragraphs and diagram labels; short cells that line up in rows (tables,
 diagram rows) are read row by row, joined with `` | ``.
@@ -37,10 +40,11 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+from typing import Protocol, TypeVar
 
 from agentsync.config import ConvertConfig, load_config
 from agentsync.errors import ConfigError, ConversionError
@@ -92,6 +96,40 @@ _clock = time.monotonic
 
 class OcrError(ConversionError):
     """The OCR helper could not be built, may not be run, failed or ran out of time."""
+
+
+@dataclass(frozen=True, slots=True)
+class Helper:
+    """What sets one of this package's Swift helpers apart; building, trusting, running and pruning are the
+    same for each.  ``name`` is what every reason and log line calls it (``the OCR helper``); ``folder`` is
+    its folder under ``cache_dir``; ``prefix`` starts its file name (``<prefix>-<digest>``) and is the name
+    swiftc writes; ``source`` reads its packaged Swift source; ``error`` is what it raises; ``off_macos`` is
+    why it is off where there is no macOS."""
+
+    name: str
+    folder: str
+    prefix: str
+    source: Callable[[], bytes]
+    error: type[OcrError]
+    off_macos: str
+
+
+_OCR = Helper(
+    "OCR helper",
+    "ocr",
+    "agentsync-ocr",
+    lambda: _source(),  # noqa: PLW0108 - looked up when read, so swapping _source swaps OCR's
+    OcrError,
+    "on-device OCR needs macOS",
+)
+
+
+class _Engine(Protocol):
+    @property
+    def description(self) -> str: ...
+
+
+_E = TypeVar("_E", bound=_Engine)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,31 +195,33 @@ def _strerror(exc: OSError) -> str:
 # ---------------------------------------------------------------------------------------------------------
 
 
-def _untrusted(helper: Path) -> str | None:
+def _untrusted(helper: Path, kind: Helper = _OCR) -> str | None:
     """Why ``helper`` may not be run, or None.  This does not stop another process of the same user (nothing
     here can); it stops a helper that anyone else could have replaced."""
     try:
         st = helper.lstat()
         folder = helper.parent.lstat()
     except OSError as exc:
-        return f"the OCR helper cannot be checked: {_strerror(exc)}"
+        return f"the {kind.name} cannot be checked: {_strerror(exc)}"
     uid = os.geteuid()
     if not stat.S_ISREG(st.st_mode) or st.st_uid != uid:
-        return "the OCR helper is not a regular file this user owns"
+        return f"the {kind.name} is not a regular file this user owns"
     if not stat.S_ISDIR(folder.st_mode) or folder.st_uid != uid:
-        return "the OCR helper's folder is not a folder this user owns"
+        return f"the {kind.name}'s folder is not a folder this user owns"
     if (st.st_mode | folder.st_mode) & 0o022:
-        return "the OCR helper or its folder can be written by other users"
+        return f"the {kind.name} or its folder can be written by other users"
     if not st.st_mode & 0o100:
-        return "the OCR helper is not executable"
+        return f"the {kind.name} is not executable"
     return None
 
 
-def _run_helper(helper: Path, args: Sequence[str], *, timeout: float, cwd: Path | None = None) -> bytes:
-    """The helper's stdout for ``args``; raises OcrError."""
-    refusal = _untrusted(helper)
+def _run_helper(
+    helper: Path, args: Sequence[str], *, timeout: float, cwd: Path | None = None, kind: Helper = _OCR
+) -> bytes:
+    """The helper's stdout for ``args``; raises ``kind.error``."""
+    refusal = _untrusted(helper, kind)
     if refusal is not None:
-        raise OcrError(refusal)
+        raise kind.error(refusal)
     try:  # no new session: the helper stays in the LaunchAgent's process group, which launchd cleans up
         cp = subprocess.run(
             [str(helper), *args],
@@ -193,13 +233,13 @@ def _run_helper(helper: Path, args: Sequence[str], *, timeout: float, cwd: Path 
             check=False,
         )
     except subprocess.TimeoutExpired:  # its text holds the command line, so the helper's path
-        raise OcrError("the OCR helper ran out of time") from None
+        raise kind.error(f"the {kind.name} ran out of time") from None
     except OSError as exc:
-        raise OcrError(f"the OCR helper does not run: {_strerror(exc)}") from None
+        raise kind.error(f"the {kind.name} does not run: {_strerror(exc)}") from None
     if cp.stderr:
-        log.debug("OCR helper: %s", _plain(cp.stderr))
+        log.debug("%s: %s", kind.name, _plain(cp.stderr))
     if cp.returncode != 0:
-        raise OcrError(f"the OCR helper exited {cp.returncode}: {_plain(cp.stderr)}")
+        raise kind.error(f"the {kind.name} exited {cp.returncode}: {_plain(cp.stderr)}")
     return cp.stdout
 
 
@@ -337,32 +377,33 @@ class OcrEngine:
 # ---------------------------------------------------------------------------------------------------------
 
 
-def _source() -> bytes:
-    return resources.files("agentsync.convert").joinpath(_HELPER_SOURCE).read_bytes()
+def _source(name: str = _HELPER_SOURCE) -> bytes:
+    """The packaged Swift source ``name`` (OCR's by default)."""
+    return resources.files("agentsync.convert").joinpath(name).read_bytes()
 
 
 def _build_flags() -> list[str]:
     return ["-O", "-swift-version", "5", "-target", f"{platform.machine()}-apple-macos{_MIN_MACOS}"]
 
 
-def _helper_path(cache_dir: Path) -> Path:
+def _helper_path(cache_dir: Path, kind: Helper = _OCR) -> Path:
     """Where this agentsync's helper is once built: a new source or new flags give a new name."""
-    digest = hashlib.sha256(_source() + b"\0" + "\0".join(_build_flags()).encode()).hexdigest()[:16]
-    return expand(cache_dir) / "ocr" / f"agentsync-ocr-{digest}"
+    digest = hashlib.sha256(kind.source() + b"\0" + "\0".join(_build_flags()).encode()).hexdigest()[:16]
+    return expand(cache_dir) / kind.folder / f"{kind.prefix}-{digest}"
 
 
 def _marker(helper: Path) -> Path:
     return helper.with_name(helper.name + ".failed")
 
 
-def _failure(helper: Path) -> str:
+def _failure(helper: Path, kind: Helper = _OCR) -> str:
     """Why the last build failed, from the marker beside where the helper goes; "" when there is none."""
     try:
         with os.fdopen(os.open(_marker(helper), os.O_RDONLY | os.O_NOFOLLOW), "rb") as fh:
             text = fh.read(4096)
     except OSError:
         return ""
-    return _plain(text) if text.strip() else "the last build of the OCR helper failed"
+    return _plain(text) if text.strip() else f"the last build of the {kind.name} failed"
 
 
 def _open(helper: Path) -> OcrEngine:
@@ -398,12 +439,11 @@ def _switched_off(cfg: ConvertConfig) -> str:
     return ""
 
 
-def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, OcrEngine | None]:
-    off = _switched_off(cfg)
-    if off:
-        return "off", off, None
+def _look(cache_dir: Path, kind: Helper, open_: Callable[[Path], _E]) -> tuple[str, str, _E | None]:
+    """(state, detail, engine) of ``kind``'s helper under ``cache_dir``, for a helper not switched off: it
+    looks, runs at most ``--version`` (through ``open_``) and never raises."""
     try:
-        helper = _helper_path(cache_dir)
+        helper = _helper_path(cache_dir, kind)
         try:
             helper.lstat()
         except FileNotFoundError:
@@ -411,18 +451,25 @@ def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, OcrEngine |
         else:
             built = True
     except OSError as exc:  # the packaged source cannot be read, or the cache folder is not a folder
-        return "failed", f"the OCR helper cannot be looked up: {_strerror(exc)}", None
+        return "failed", f"the {kind.name} cannot be looked up: {_strerror(exc)}", None
     if built:
-        refusal = _untrusted(helper)
+        refusal = _untrusted(helper, kind)
         if refusal is not None:
             return "failed", refusal, None
         try:
-            found = _open(helper)
-        except OcrError as exc:  # built, and it does not answer: OCR is broken, which is more than not built
-            return "failed", _failure(helper) or str(exc), None
+            found = open_(helper)
+        except OcrError as exc:  # built, and it does not answer: it is broken, which is more than not built
+            return "failed", _failure(helper, kind) or str(exc), None
         return "ready", found.description, found
-    failure = _failure(helper)  # the reason of a build that failed is the news, when there is one
-    return ("failed", failure, None) if failure else ("not-built", "the OCR helper is not built", None)
+    failure = _failure(helper, kind)  # the reason of a build that failed is the news, when there is one
+    return ("failed", failure, None) if failure else ("not-built", f"the {kind.name} is not built", None)
+
+
+def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, OcrEngine | None]:
+    off = _switched_off(cfg)
+    if off:
+        return "off", off, None
+    return _look(cache_dir, _OCR, _open)
 
 
 def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
@@ -474,33 +521,34 @@ def _tool(argv: Sequence[str]) -> str:
     return cp.stdout.decode("utf-8", errors="replace").strip() if cp.returncode == 0 else ""
 
 
-def _own_folder(folder: Path) -> None:
-    """Create ``<cache_dir>/ocr`` owner-only, or tighten it: it holds a program this process will run."""
+def _own_folder(folder: Path, kind: Helper = _OCR) -> None:
+    """Create ``<cache_dir>/<kind.folder>`` owner-only, or tighten it: it holds a program this process will
+    run."""
     folder.parent.parent.mkdir(parents=True, exist_ok=True)
     for path in (folder.parent, folder):
         path.mkdir(mode=0o700, exist_ok=True)
     st = folder.lstat()
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid():
-        raise OcrError("the OCR helper's folder is not a folder this user owns")
+        raise kind.error(f"the {kind.name}'s folder is not a folder this user owns")
     folder.chmod(0o700)
 
 
-def _compile(helper: Path) -> None:
-    """Compile the packaged source to ``helper``; raises OcrError or OSError."""
+def _compile(helper: Path, kind: Helper = _OCR) -> None:
+    """Compile the packaged source to ``helper``; raises ``kind.error`` or OSError."""
     # xcode-select first: without developer tools the /usr/bin/xcrun shim opens the install dialog.
     developer = _tool([_XCODE_SELECT, "-p"])
     if not developer or not Path(developer).is_dir():
-        raise OcrError("no Xcode or Command Line Tools (xcode-select -p names no folder)")
+        raise kind.error("no Xcode or Command Line Tools (xcode-select -p names no folder)")
     swiftc = _tool([_XCRUN, "--find", "swiftc"])
     if not swiftc or not Path(swiftc).is_file() or not os.access(swiftc, os.X_OK):
-        raise OcrError("no swiftc in the developer tools")
+        raise kind.error("no swiftc in the developer tools")
     sdk = _tool([_XCRUN, "--sdk", "macosx", "--show-sdk-path"])
     if not sdk or not Path(sdk).is_dir():
-        raise OcrError("no macOS SDK in the developer tools")
+        raise kind.error("no macOS SDK in the developer tools")
     with tempfile.TemporaryDirectory(dir=helper.parent, prefix=".build-", ignore_cleanup_errors=True) as tmp:
-        built = Path(tmp) / "agentsync-ocr"
-        (Path(tmp) / "main.swift").write_bytes(_source())
-        log.info("building the on-device OCR helper")
+        built = Path(tmp) / kind.prefix
+        (Path(tmp) / "main.swift").write_bytes(kind.source())
+        log.info("building the on-device %s", kind.name)
         try:  # relative names, so a compiler message names main.swift and not the cache folder
             cp = subprocess.run(
                 [swiftc, *_build_flags(), "-sdk", sdk, "-o", built.name, "main.swift"],
@@ -512,14 +560,16 @@ def _compile(helper: Path) -> None:
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            raise OcrError("swiftc ran out of time building the OCR helper") from None
+            raise kind.error(f"swiftc ran out of time building the {kind.name}") from None
         if cp.returncode != 0 or not built.is_file():
-            raise OcrError(f"swiftc did not build the OCR helper (exit {cp.returncode}): {_plain(cp.stderr)}")
+            raise kind.error(
+                f"swiftc did not build the {kind.name} (exit {cp.returncode}): {_plain(cp.stderr)}"
+            )
         built.chmod(0o700)
         built.replace(helper)
 
 
-def _prune(helper: Path) -> None:
+def _prune(helper: Path, kind: Helper = _OCR) -> None:
     """Remove other helpers, failure markers and abandoned build folders a week after their last use, and
     make the younger ones owner-only.  Nothing is removed at build time just for being old-versioned: a cycle
     that started before an upgrade may still be running its helper.  The last use is the modification time,
@@ -528,7 +578,7 @@ def _prune(helper: Path) -> None:
     cutoff = time.time() - _PRUNE_AFTER_S
     with contextlib.suppress(OSError):
         for entry in sorted(helper.parent.iterdir()):
-            if entry == helper or not entry.name.startswith(("agentsync-ocr-", ".build-")):
+            if entry == helper or not entry.name.startswith((f"{kind.prefix}-", ".build-")):
                 continue
             with contextlib.suppress(OSError):
                 st = entry.lstat()
@@ -541,7 +591,7 @@ def _prune(helper: Path) -> None:
                     entry.unlink()
 
 
-def _tidy(helper: Path) -> None:
+def _tidy(helper: Path, kind: Helper = _OCR) -> None:
     """Make ``helper``'s folder owner-only and :func:`_prune` it, when the folder is there and this user's.
     It creates nothing, so it also runs when nothing is built: ``docs_repo.permissions`` walks ``cache_dir``
     and FAILs on what an earlier build left readable by others."""
@@ -549,7 +599,40 @@ def _tidy(helper: Path) -> None:
         st = helper.parent.lstat()
         if stat.S_ISDIR(st.st_mode) and st.st_uid == os.geteuid():
             helper.parent.chmod(0o700)
-            _prune(helper)
+            _prune(helper, kind)
+
+
+def _build(cache_dir: Path, kind: Helper, open_: Callable[[Path], object]) -> Path:
+    """Build ``kind``'s helper under ``<cache_dir>/<kind.folder>`` unless one that ``open_`` accepts is
+    already there; return its path.  Raises ``kind.error`` with the reason, which is also left in
+    ``<helper>.failed`` until a build works.  Whether or not it works, the folder is tidied."""
+    helper: Path | None = None
+    try:
+        if sys.platform != "darwin":
+            raise kind.error(kind.off_macos)
+        helper = _helper_path(cache_dir, kind)
+        _own_folder(helper.parent, kind)
+        try:
+            open_(helper)
+        except OcrError:  # none yet, or one that no longer runs
+            _compile(helper, kind)
+            open_(helper)
+    except (OSError, OcrError) as exc:
+        reason = (
+            str(exc) if isinstance(exc, OcrError) else f"the {kind.name} could not be built: {_strerror(exc)}"
+        )
+        if helper is not None:
+            with contextlib.suppress(OSError):
+                fd = os.open(_marker(helper), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(reason + "\n")
+        raise kind.error(reason) from None
+    finally:
+        if helper is not None:
+            _tidy(helper, kind)
+    with contextlib.suppress(OSError):
+        _marker(helper).unlink(missing_ok=True)
+    return helper
 
 
 def build(cache_dir: Path) -> Path:
@@ -559,38 +642,17 @@ def build(cache_dir: Path) -> Path:
     reason; the same reason is left in ``<helper>.failed`` for :func:`probe`, and the next build that works
     removes it.  Whether or not the build works, what earlier builds left in the folder is tidied.
     """
-    helper: Path | None = None
-    try:
-        if sys.platform != "darwin":
-            raise OcrError("on-device OCR needs macOS")
-        helper = _helper_path(cache_dir)
-        _own_folder(helper.parent)
-        try:
-            _open(helper)
-        except OcrError:  # none yet, or one that no longer runs
-            _compile(helper)
-            _open(helper)
-    except (OSError, OcrError) as exc:
-        reason = (
-            str(exc) if isinstance(exc, OcrError) else f"the OCR helper could not be built: {_strerror(exc)}"
-        )
-        if helper is not None:
-            with contextlib.suppress(OSError):
-                fd = os.open(_marker(helper), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(reason + "\n")
-        raise OcrError(reason) from None
-    finally:
-        if helper is not None:
-            _tidy(helper)
-    with contextlib.suppress(OSError):
-        _marker(helper).unlink(missing_ok=True)
-    return helper
+    return _build(cache_dir, _OCR, _open)
 
 
-def _main() -> int:
-    """``python -m agentsync.convert.ocr``: what scripts/install.sh runs to build the helper.  It is not an
-    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built.
+def _entry(
+    kind: Helper,
+    switched_off: Callable[[ConvertConfig], str],
+    build_: Callable[[Path], Path],
+    probe_: Callable[[ConvertConfig, Path], tuple[str, str]],
+) -> int:
+    """What ``python -m`` of a helper's module runs: read the config, build unless switched off, and print
+    one ``<kind.name>: <state> (<detail>)`` line.  Exit 0 when ready or switched off, 1 when not built.
     Switched off, it builds nothing and still tidies the folder an earlier build left."""
     os.umask(0o077)
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
@@ -599,22 +661,29 @@ def _main() -> int:
             config = load_config()
             cfg, cache_dir = config.convert, config.cache_dir
     except (ConfigError, OSError):
-        sys.stdout.write("OCR helper: not built (the config cannot be read)\n")
+        sys.stdout.write(f"{kind.name}: not built (the config cannot be read)\n")
         return 1
-    off = _switched_off(cfg)
+    off = switched_off(cfg)
     if off:
         with contextlib.suppress(OSError):  # the packaged source, which names the helper, cannot be read
-            _tidy(_helper_path(cache_dir))
-        sys.stdout.write(f"OCR helper: off ({off})\n")
+            _tidy(_helper_path(cache_dir, kind), kind)
+        sys.stdout.write(f"{kind.name}: off ({off})\n")
         return 0
     try:
-        build(cache_dir)
+        build_(cache_dir)
     except OcrError as exc:
-        sys.stdout.write(f"OCR helper: not built ({exc})\n")
+        sys.stdout.write(f"{kind.name}: not built ({exc})\n")
         return 1
-    state, detail = probe(cfg, cache_dir)
-    sys.stdout.write(f"OCR helper: {state} ({detail})\n")
+    state, detail = probe_(cfg, cache_dir)
+    sys.stdout.write(f"{kind.name}: {state} ({detail})\n")
     return 0 if state == "ready" else 1
+
+
+def _main() -> int:
+    """``python -m agentsync.convert.ocr``: what scripts/install.sh runs to build the helper.  It is not an
+    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built.
+    Switched off, it builds nothing and still tidies the folder an earlier build left."""
+    return _entry(_OCR, _switched_off, build, probe)
 
 
 # ---------------------------------------------------------------------------------------------------------
