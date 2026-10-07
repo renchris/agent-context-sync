@@ -1482,26 +1482,34 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
 ) -> None:
     """``install.sh --list-folders`` on a Mac that already syncs folders prints one line that counts them and
     a mark before each (field report 2026-10-07), and a mark of its own before a listed folder inside one
-    and before one that holds one. All reach install.out, whose tail the report embeds: the count and the
-    marks are kept, and a marked folder is a placeholder like every other listed one."""
+    and before one that holds one. A synced folder the list does not reach is printed first, with the path
+    the config has: one deeper than the list goes, and one outside ~/Library/CloudStorage. All reach
+    install.out, whose tail the report embeds: the count and the marks are kept, and every folder is a
+    placeholder, a marked one like every other listed one and an unlisted one because it is a source."""
     write_install_log(fake_mac)
     write_friction(fake_mac)
-    library = fake_mac["one"].parents[1]
-    whole, other = library / "Harbor Works", fake_mac["one"].parent / "Quay Drafts"
-    for d in (whole / "Pier Nine", other):
+    library, mine_too = fake_mac["one"].parents[1], fake_mac["one"].parent
+    whole, other, unsynced = library / "Harbor Works", mine_too / "Quay Drafts", mine_too / "Open Berth"
+    deep, notes = other / "Tide Tables", fake_mac["home"] / "Documents" / "Ledger Notes"
+    for d in (whole / "Pier Nine", deep, unsynced, notes):
         d.mkdir(parents=True)
-    assert cli.main(["add-source", str(whole), "--config", str(fake_mac["config"])]) == 0
+    for folder in (whole, deep, notes):
+        assert cli.main(["add-source", str(folder), "--config", str(fake_mac["config"])]) == 0
+    first = "already synced on this Mac: 5 folder(s) (marked [synced] below: first the 2 outside the list, "
     keep = (
-        "NEXT: this Mac already syncs 3 folder(s), and a re-run keeps them: run "
+        "NEXT: this Mac already syncs 5 folder(s), and a re-run keeps them: run "
         f'{fake_mac["home"]}/src/agent-context-sync/scripts/install.sh, with one --source-local "<folder>" '
         "for each unmarked folder to add from the list above (none is needed)"
     )
     lines = [
         "# run=20260929T095805Z-11 2026-09-29T09:58:05Z install.sh --list-folders",
-        "already synced on this Mac: 3 folder(s) (marked [synced] below)",
-        f"[contains a synced folder] {fake_mac['one'].parent}",
+        first + "then the list)",
+        f"[synced] {notes}",
+        f"[synced] {deep}",
+        f"[contains a synced folder] {mine_too}",
         f"[synced] {fake_mac['one']}",
-        str(other),
+        str(unsynced),
+        f"[contains a synced folder] {other}",
         f"[synced] {whole}",
         f"[inside a synced folder] {whole / 'Pier Nine'}",
         f"[contains a synced folder] {fake_mac['two'].parent}",
@@ -1511,21 +1519,24 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     shown = section(text, "Installer").split("(what the agent saw)</summary>", 1)[1]
-    assert "already synced on this Mac: 3 folder(s) (marked [synced] below)\n" in shown
+    assert f"\n{first}then the list)\n" in shown
     cloud, name = "~/Library/CloudStorage", r"<folder-\d>"
     mine, shared = f"{cloud}/OneDrive-<org-1>", f"{cloud}/OneDrive-SharedLibraries-<org-1>/<library-1>"
     for line in (
+        rf"\[synced\] ~/Documents/{name}",  # outside ~/Library/CloudStorage
+        rf"\[synced\] {mine}/{name}/{name}/{name}",  # deeper than the list goes
         rf"\[synced\] {mine}/{name}/{name}",
         rf"\[synced\] {mine}/{name}",
         rf"\[synced\] {shared}/{name}",
         rf"\[inside a synced folder\] {mine}/{name}/{name}",
         rf"\[contains a synced folder\] {mine}/{name}",
+        rf"\[contains a synced folder\] {mine}/{name}/{name}",
         rf"\[contains a synced folder\] {shared}",
         rf"{mine}/{name}/{name}",  # the folder this Mac does not sync, a placeholder too
     ):
         assert len(re.findall(rf"(?m)^{line}$", shown)) == 1, line
-    assert "NEXT: this Mac already syncs 3 folder(s), and a re-run keeps them: run ~/src/" in shown
-    for raw in (*RAW, "Harbor", "Works", "Pier", "Nine", "Quay", "Drafts"):
+    assert "NEXT: this Mac already syncs 5 folder(s), and a re-run keeps them: run ~/src/" in shown
+    for raw in (*RAW, "Harbor", "Works", "Pier", "Nine", "Quay", "Drafts", "Tide", "Berth", "Ledger"):
         assert raw not in text, raw
 
 

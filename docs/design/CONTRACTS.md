@@ -8055,9 +8055,14 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   not synced, and `agentsync add-source` accepts a folder inside a source. The marks say where a folder is:
   a source's `exclude` list is not read, and the count on the first line is still the folders the config
   names.
-- A synced folder the list does not show is counted and said to be outside it: `already synced on this Mac: 3
-  folder(s) (2 marked [synced] below; 1 not in this list)`. That is a source deeper than the list goes (it
-  shows 1 or 2 levels inside each provider), one outside `~/Library/CloudStorage`, or one past the cap of 200.
+- **Every synced folder is printed, with its mark** (review, 2026-10-07). One the list does not reach comes
+  first, under the first line, as `[synced] <the path the config has>`, sorted, and the first line says how
+  many: `already synced on this Mac: 3 folder(s) (marked [synced] below: first the 1 outside the list, then
+  the list)`. That is a source deeper than the list goes (it shows 1 or 2 levels inside each provider), one
+  outside `~/Library/CloudStorage`, or one past the cap of 200. So N lines start with `[synced] `, and the
+  prompt's "each has [synced] before its path" and "tell me which they are" hold for all N. Until then such
+  a folder was only counted (`2 marked [synced] below; 1 not in this list`), and a Mac whose one synced
+  folder was `~/Documents/notes` got that line over a list with no mark.
 - The `NEXT:` line names the command that keeps them, since nothing has to be chosen: `install.sh` alone, with
   `--source-local` only for a folder to add. With no synced folder it is the line it was.
 - **Without a config the output is byte for byte what it was**, and the installed agentsync is not asked. The
@@ -8080,17 +8085,23 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   loads it), so none is marked below`, and the unmarked list. The person is then asked, as on a new Mac.
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
   (`note=listed-25 synced=2`). The note itself is unchanged, and so is a line written without a config.
-- Nothing new reaches a report unredacted. The first line holds a count. A marked line holds a path the
+- Nothing new reaches a report unredacted. The first line holds counts. A marked line holds a path the
   report already redacts: every folder name under `~/Library/CloudStorage` at the depths the list shows is a
-  placeholder (§16.14), whatever comes before it on the line.
+  placeholder (§16.14), whatever comes before it on the line. A synced folder the list does not reach is a
+  configured source, and the report registers every source's folder names, wherever the folder is
+  (`_build_redactor`: each component below the provider, or `_project_values` outside
+  `~/Library/CloudStorage`). The shell report embeds no installer output.
 
 Tests: `tests/test_install_oneshot.py` (the output with no config, with an installed agentsync and no
 config, and with the inbox alone, each byte for byte the list of before; two synced folders marked, one of
 them configured through the home folder's link, a paused source and the inbox not marked, a listed folder
-inside a synced one and one that holds one, each with its mark, and a third source deeper than the list; a
-config path in lower case and one in the other Unicode form, each marked; a synced folder past the cap; no installed agentsync and a config that does not load, each
-with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and the
-three marks in install.out: the count and the marks kept, every folder a placeholder).
+inside a synced one and one that holds one, each with its mark; then a source deeper than the list and one
+outside `~/Library/CloudStorage`, each printed first with its mark; a Mac whose one synced folder the list
+does not reach; a config path in lower case and one in the other Unicode form, each marked; a synced
+folder past the cap, printed first; no installed agentsync and a config that does not load, each with the
+warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and the three marks
+in install.out, with a synced folder three levels deep and one under `~/Documents` printed first: the
+counts and the marks kept, every folder a placeholder).
 
 #### A run with no folder keeps them (amends §16.13 and §16.14; `scripts/install.sh`)
 

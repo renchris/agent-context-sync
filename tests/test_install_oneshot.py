@@ -1242,17 +1242,51 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-6")]
     assert install_log(env)[-2].endswith(" result=done note=listed-6 synced=2")
     assert not report_path(env).exists()
+    # A synced folder the list does not reach is printed too, so the reader can name every one: first,
+    # under the line that counts them, with the same mark and the path the config has.
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    notes.mkdir(parents=True)
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
     cfg.write_text(
-        cfg.read_text(encoding="utf-8") + local_source_table("deep", projects / "Alpha" / "Deep"),
+        cfg.read_text(encoding="utf-8")
+        + local_source_table("deep", projects / "Alpha" / "Deep")
+        + local_source_table("notes", notes),
         encoding="utf-8",
     )
+    listed = cp.stdout.splitlines()[1:-1]
     cp = install_sh(env, "--list-folders")
-    assert cp.stdout.splitlines()[0] == (
-        "already synced on this Mac: 3 folder(s) (2 marked [synced] below; 1 not in this list)"
-    )
-    assert cp.stdout.splitlines()[1:-1].count(f"[synced] {cs}/OneDrive-Contoso/Documents") == 1
-    assert last_line(cp) == keep.replace("syncs 2 folder(s)", "syncs 3 folder(s)")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines() == [
+        "already synced on this Mac: 4 folder(s) (marked [synced] below: first the 2 outside the list, then "
+        "the list)",
+        f"[synced] {notes}",
+        f"[synced] {cs}/OneDrive-Contoso/FY26 Projects/Alpha/Deep",
+        *listed,
+        keep.replace("syncs 2 folder(s)", "syncs 4 folder(s)"),
+    ]
+    assert sum(ln.startswith("[synced] ") for ln in cp.stdout.splitlines()) == 4, "each one, once"
+    assert install_log(env)[-2].endswith(" result=done note=listed-6 synced=4")
+
+
+def test_list_folders_names_a_synced_folder_when_the_list_reaches_none(env: dict[str, str]) -> None:
+    """A Mac whose only synced folder is outside ~/Library/CloudStorage: the line said "1 folder(s) (0
+    marked [synced] below; 1 not in this list)" over a list with no mark, so nobody could say which folder
+    was kept without reading sources.toml (review, 2026-10-07). It is printed, with its mark."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    notes.mkdir(parents=True)
+    _write_config(env, local_source_table("notes", notes), _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "the list)",
+        f"[synced] {notes}",
+        f"{cs}/OneDrive-Contoso/FY26 Projects",
+    ]
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: ")
 
 
 def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_form(
@@ -1284,7 +1318,7 @@ def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_f
     assert install_log(env)[-2].endswith(" result=done note=listed-3 synced=2")
 
 
-def test_list_folders_counts_a_synced_folder_past_its_cap_as_not_listed(env: dict[str, str]) -> None:
+def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, str]) -> None:
     lib = _cloud(env) / "OneDrive-Contoso"
     for i in range(205):
         (lib / f"P{i:03d}").mkdir(parents=True)
@@ -1293,9 +1327,13 @@ def test_list_folders_counts_a_synced_folder_past_its_cap_as_not_listed(env: dic
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[0] == "already synced on this Mac: 2 folder(s) (1 marked [synced] below; 1 not in this list)"
-    assert lines[2] == f"[synced] {lib}/P001" and lines[200] == f"{lib}/P199" and lines[201] == "(5 more)"
-    assert len(lines) == 203 and sum(ln.startswith("[synced] ") for ln in lines) == 1
+    assert lines[0] == (
+        "already synced on this Mac: 2 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "the list)"
+    )
+    assert lines[1] == f"[synced] {lib}/P203", "past the cap of 200: not in the list, so printed first"
+    assert lines[3] == f"[synced] {lib}/P001" and lines[201] == f"{lib}/P199" and lines[202] == "(5 more)"
+    assert len(lines) == 204 and sum(ln.startswith("[synced] ") for ln in lines) == 2
 
 
 @pytest.mark.parametrize("broken", ["no installed agentsync", "a config that does not load"])

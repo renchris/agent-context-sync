@@ -29,8 +29,9 @@
 #                           4 this terminal app was denied access (macOS "Operation not permitted"), or macOS
 #                           is still asking; its NEXT: line says which and names the click. On a Mac whose
 #                           config already syncs folders (see "Folders already synced" below) the list starts
-#                           with "already synced on this Mac: N folder(s) ..." and each of them it lists has
-#                           "[synced] " before its path; a listed folder inside one of them has "[inside a
+#                           with "already synced on this Mac: N folder(s) ..." and each of them has
+#                           "[synced] " before its path (one the list does not reach is printed first, as
+#                           the config names it); a listed folder inside one of them has "[inside a
 #                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
 #                           NEXT: names the command that keeps them
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
@@ -1165,9 +1166,11 @@ SYNCED_MARK="[synced]" # what --list-folders writes before a folder the config a
 INSIDE_MARK="[inside a synced folder]"
 CONTAINS_MARK="[contains a synced folder]"
 # The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
-# $1: prints their number, then each line of the file $2 (one folder path per line), with "$SYNCED_MARK "
-# before a folder that is one of them, "$INSIDE_MARK " before one inside one of them and "$CONTAINS_MARK "
-# before one that holds one. Both sides go through agentsync's own rule, so a folder the config
+# $1: prints their number, then how many of them the file $2 (one folder path per line) does not hold, then
+# each of those as "$SYNCED_MARK <path>" (the path the config has, sorted), then each line of the file, with
+# "$SYNCED_MARK " before a folder that is one of them, "$INSIDE_MARK " before one inside one of them and
+# "$CONTAINS_MARK " before one that holds one. So every synced folder is printed once with its mark, the
+# ones no line of the file names first. Both sides go through agentsync's own rule, so a folder the config
 # names through a link is still that folder. Both are then compared the way macOS names a folder, in any
 # case and in either Unicode form (NFC + casefold, agentsync's own key for "the same path"): a config path
 # typed in lower case, or with a composed é where the disk holds e and an accent, is that folder. Fails when
@@ -1185,22 +1188,27 @@ def key(path):
     return unicodedata.normalize("NFC", unicodedata.normalize("NFC", str(path)).casefold()).rstrip("/") + "/"
 
 
-sources = load_config(Path(sys.argv[1])).sources
-synced = {key(s.path) for s in sources if s.kind.value == "local" and s.state.value == "live" and s.path is not None}
+synced = {}
+for s in load_config(Path(sys.argv[1])).sources:
+    if s.kind.value == "local" and s.state.value == "live" and s.path is not None:
+        synced.setdefault(key(s.path), str(s.path))
 with open(sys.argv[2], "rb") as fh:
     listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
 same, inside, contains = (mark + " " for mark in sys.argv[3:6])
-out = [str(len(synced))]
+shown, body = set(), []
 for p in listed:
     folder = key(canonical_source_root(Path(p)))
     if folder in synced:
-        out.append(same + p)
+        shown.add(folder)
+        body.append(same + p)
     elif any(folder.startswith(s) for s in synced):
-        out.append(inside + p)
+        body.append(inside + p)
     elif any(s.startswith(folder) for s in synced):
-        out.append(contains + p)
+        body.append(contains + p)
     else:
-        out.append(p)
+        body.append(p)
+first = sorted(same + path for k, path in synced.items() if k not in shown)
+out = [str(len(synced)), str(len(first)), *first, *body]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 ' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK"
 }
@@ -1209,7 +1217,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py synced="" marked=0
+	local deadline=$((SECONDS + LIST_TOTAL)) t py synced="" unlisted=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -1248,23 +1256,25 @@ list_folders() {
 	if [ -f "$CONFIG" ] && [ -z "$denied$asking" ] && [ "$total" -gt 0 ]; then
 		py="$(tool_python)"
 		if [ -n "$py" ] && synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>/dev/null; then
-			synced="$(head -n 1 "$tmp/marked")"
+			synced="$(sed -n 1p "$tmp/marked")"
+			unlisted="$(sed -n 2p "$tmp/marked")"
 		fi
-		case "$synced" in
-		'' | *[!0-9]*)
+		case "$synced/$unlisted" in
+		/* | */ | *[!0-9/]*)
 			synced=""
 			warn "could not read which folders $CONFIG already syncs (no installed agentsync loads it), so none is marked below"
 			;;
 		esac
 	fi
+	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
+	# reach (deeper than it goes, outside ~/Library/CloudStorage, past its cap) come first, then the list.
 	if [ "${synced:-0}" -gt 0 ]; then
-		marked="$(grep -c "^\\$SYNCED_MARK " "$tmp/marked" || true)"
-		if [ "$marked" -eq "$synced" ]; then
+		if [ "$unlisted" -eq 0 ]; then
 			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below)"
 		else
-			say "already synced on this Mac: $synced folder(s) ($marked marked $SYNCED_MARK below; $((synced - marked)) not in this list)"
+			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
 		fi
-		tail -n +2 "$tmp/marked"
+		tail -n +3 "$tmp/marked"
 	else
 		cat "$tmp/shown"
 	fi
