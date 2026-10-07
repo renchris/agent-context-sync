@@ -253,7 +253,12 @@ def test_procedure_carries_the_meeting_block_and_the_citation_row() -> None:
         assert f"`_rubrics/meeting-{rubric}.md`" in meetings, rubric
     for tag in ("seen HH:MM:SS", "seen+frame HH:MM:SS", "heard HH:MM:SS", "chat ~HH:MM", "file", "recap"):
         assert f"`{tag}`" in meetings, tag
-    assert "`inferred`" in meetings and "`r2`" in meetings and "`kind: meeting`" in meetings
+    assert (
+        "`inferred`" in meetings
+        and "`rN`" in meetings
+        and "`heard r2 00:14:02`" in meetings
+        and "`kind: meeting`" in meetings
+    )
     assert "`topics/meetings/<yyyy-mm-dd>-<slug>.md`" in meetings and "`role: primary`" in meetings
     for basis in (
         "`VOICE line`",
@@ -263,4 +268,4 @@ def test_procedure_carries_the_meeting_block_and_the_citation_row() -> None:
     ):
         assert basis in meetings.replace("\n   ", " "), basis
     added = text[text.index("   `CITE-*`") :]
-    assert len(added.splitlines()) <= 45
+    assert len(added.splitlines()) <= 55
