@@ -91,6 +91,145 @@ _TOPICS_CLAUDE_MD_PRIOR_SHA256 = frozenset(
 """sha256 of every earlier ``TOPICS_CLAUDE_MD``: a topics/CLAUDE.md still byte-identical to one of them was
 never edited, so the scaffold upgrades it; any other content is the editors' and is kept."""
 
+RUBRICS: dict[str, str] = {
+    "_rubrics/meeting-page.md": """\
+---
+kind: meeting
+entity: contoso-storage-capacity
+purpose: >-
+  What the 2026-10-02 FY27 storage capacity review showed, said and decided.
+  NOT the standing budget: that is contoso-storage-capacity-budget.md.
+sources:
+  - {path: mirror/onedrive/recordings/contoso-fy27-...-meeting-recording.mp4.d/00-index.md, \
+at_rendered_sha256: <64 hex>, role: primary}
+  - {path: mirror/onedrive/recordings/contoso-fy27-...-meeting-recording.mp4.d/02-t000500.md, \
+at_rendered_sha256: <64 hex>, role: primary}
+  - {path: mirror/inbox/mail/2026-09-29-fy27-capacity-review-invite.md, at_rendered_sha256: <64 hex>, \
+role: corroborating}
+aliases: [FY27 capacity review, Q3 storage budget]
+---
+# Contoso FY27 storage capacity review, 2026-10-02
+
+> **Bottom line.** 60 words or fewer: what was decided, the figure that matters, what is open.
+
+Recording `r1` = `mirror/onedrive/recordings/contoso-fy27-...-meeting-recording.mp4.d/`. Times are media \
+time.
+
+## Decisions
+| # | Decision | Evidence |
+|---|---|---|
+| D1 | Q3 budget becomes 1,310,000 USD (was 1,240,000). | `seen+frame 00:08:46` "Q3 | B | 118 | \
+1,310,000" · `heard 00:08:58` "okay, one point three one, I can live with that if tier B holds" |
+
+## Action items
+| Owner | Action | Due | Evidence |
+|---|---|---|---|
+
+## Numbers shown
+| Figure | As shown | Said as | Evidence |
+|---|---|---|---|
+
+## Open questions
+
+## Where sources disagree
+| Claim | Recording | Other source | This page follows | Why |
+|---|---|---|---|---|
+
+## What was shown
+| From | To | On screen | Also a file in the mirror? |
+|---|---|---|---|
+
+## People
+| Person | Voice | Basis |
+|---|---|---|
+
+## Not observed, not captured
+
+## Verification log
+- Keyframes opened: t000538, t000846.
+- Searches run for "every" or "all" questions: pattern, channel, hits.
+""",
+    "_rubrics/meeting-decision.md": """\
+# Rubric: decision
+Sweep: read every window unit of the recording in order, both channels.
+A decision is: a choice between options that the meeting closes. It needs a
+commitment that is heard ("so we go with B", "agreed", "let's do that") or typed
+on screen in notes or a ticket.
+Not a decision: a proposal nobody closes (write it under Open questions); a
+status report; something only a recap page states.
+Required evidence, at least one:
+- `heard HH:MM:SS` with the commitment quoted word for word.
+- `seen HH:MM:SS` or `seen+frame HH:MM:SS` with the typed line quoted.
+Add when present: the proposal that it closes (`heard`), an acknowledgement in chat.
+Row: # | Decision in one sentence, present tense | Evidence.
+Who decided: name a person only when the People table has a basis for that
+voice; else write "voice N".
+If the discussion is heard and the close is not: write the row under Open
+questions with "proposed, not closed".
+End of sweep, always write one line under "Not observed, not captured":
+"Decisions: N found in windows 01 to NN" or "Decisions: none heard or seen in
+windows 01 to NN". Name any window you did not read.
+""",
+    "_rubrics/meeting-action-item.md": """\
+# Rubric: action item
+Sweep: read every window unit in order, both channels, and the meeting chat page.
+An action item is: a task one person or team takes on, said, typed on screen,
+or written in chat ("I will get the quote by Friday").
+Not an action item: a wish with no taker; something the curator thinks should
+follow.
+Required evidence: `heard`, `seen`, `seen+frame` or `chat`, with the taking-on
+quoted word for word.
+Row: Owner | Action | Due | Evidence.
+Owner: a name only with a basis in the People table, else "voice N". Never the
+person who was merely addressed.
+Due: the date as said or shown. If none was stated write "not stated". A date
+you work out ("Friday" = 2026-10-09) is written with `inferred` and the tag of
+the line it rests on.
+An action that follows from a decision and that nobody took on is written with
+`inferred` in the Evidence cell and the decision's number; never with an owner.
+End of sweep, always write: "Action items: N found" or "Action items: none
+stated", with the windows read.
+""",
+    "_rubrics/meeting-open-question.md": """\
+# Rubric: open question
+Sweep: read every window unit in order, both channels.
+An open question is: a question asked and not answered before the recording
+ends; a proposal not closed; an item put off ("let's take that offline");
+something on screen marked TBD, "?" or "open" that nobody settles.
+Not an open question: a question answered within the meeting (the answer goes
+where it belongs); a rhetorical question.
+Required evidence: `heard` or `seen` of the question or the mark, quoted.
+Check before writing: search the later windows for an answer
+(`rg -n '<key word>' <recording folder>`), and say in the bullet that none was
+found.
+Bullet: the question in one sentence · evidence · "not answered by the end" or
+"put off: <quoted words>".
+End of sweep, always write: "Open questions: N found" or "Open questions: none".
+""",
+    "_rubrics/meeting-number-shown.md": """\
+# Rubric: number shown
+Sweep: read every window unit in order; SCREEN, SCREEN+ and SCREEN- lines first.
+A number shown is: a figure, date, amount, version, identifier or count that was
+on screen and that a decision, action or open question on this page relies on.
+Every SCREEN- / SCREEN+ pair that changes a digit is a candidate: a live edit.
+Not for this table: page numbers, clock times in a taskbar, line numbers.
+Required evidence: `seen+frame HH:MM:SS` with the line quoted. Open the keyframe
+of that state before writing the row. If the picture and the line differ, the
+picture wins: write the figure as the picture shows it and say so in the row.
+A line ending in [?] is never the only support for a figure.
+If the state has no keyframe (a NOTE says so) write `seen HH:MM:SS` and
+"picture not kept" in the row.
+Row: Figure | As shown (before and after for an edit, with both times) |
+Said as (`heard`, quoted, or "not said") | Evidence.
+Spelling of names and identifiers comes from the screen, never from speech.
+End of sweep, always write: "Numbers: N rows; keyframes opened: <names>" and
+add those names to the Verification log.
+""",
+}
+"""The curated meeting page's template and its four rubric sweeps (spec §7.1, §7.3), docs-repo path to text.
+:meth:`Publisher.ensure_scaffold` writes them as fixed files, rewritten when different.  ``_rubrics/`` is
+outside ``topics/``, so they are not curated pages."""
+
 _ROOT_GUIDE_HEAD = """\
 This folder is the company knowledge repo that agentsync keeps in sync; work from here (every path below is
 relative to it).  mirror/ is generated (never edit it); topics/ is curated.
@@ -724,8 +863,9 @@ class Publisher:
 
     def ensure_scaffold(self) -> list[str]:
         """Create dirs and the fixed files (.gitignore, .gitattributes, README.md, root/mirror/topics
-        CLAUDE.md, root AGENTS.md) if missing or different; return written paths.  SYNONYMS.tsv is not
-        seeded (KISS K07); an existing one is the editors' and is left alone."""
+        CLAUDE.md, root AGENTS.md, the meeting page template and rubrics under ``_rubrics/``, :data:`RUBRICS`)
+        if missing or different; return written paths.  SYNONYMS.tsv is not seeded (KISS K07); an existing
+        one is the editors' and is left alone."""
         for d in (self._layout.mirror, self._layout.topics, self._layout.sync_dir, self._layout.manifest_dir):
             d.mkdir(parents=True, exist_ok=True)
         guide = self.root_guide()
@@ -736,6 +876,7 @@ class Publisher:
             "CLAUDE.md": guide,
             "AGENTS.md": guide,
             "mirror/CLAUDE.md": MIRROR_CLAUDE_MD,
+            **RUBRICS,
         }
         settings = self._claude_settings()
         if settings is not None:

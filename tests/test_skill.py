@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 import os
 import pwd
+import re
 from pathlib import Path
 
 import pytest
 
 from agentsync import cli, curate, gitops, loop, paths, skill
 from agentsync.config import Config, load_config
+from test_recording_grammar import LINE_RE
 
 
 @pytest.fixture
@@ -202,3 +204,63 @@ def test_monkeypatch_undo_keeps_home_isolated(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.undo()
     assert Path.home() != real_home and "CLAUDE_CONFIG_DIR" not in os.environ
     assert all(not p.is_relative_to(real_home / ".claude") for p in skill.skill_paths())
+
+
+def _grammar_tags() -> set[str]:
+    """The line tags of the pinned recording grammar (``test_recording_grammar.LINE_RE``), ``SAID vN`` as
+    ``SAID``."""
+    alternation = re.search(r"\] \(([^()]*)\): ", LINE_RE.pattern)
+    assert alternation is not None
+    return {re.sub(r" v\\d.*$", "", tag).replace("\\", "") for tag in alternation.group(1).split("|")}
+
+
+def _skill_tags(text: str) -> set[str]:
+    """Every backticked span that is a tag and nothing else: capitals, an optional ``+``/``-``, and for
+    speech an optional `` vN``."""
+    return {m.group(1) for m in re.finditer(r"`([A-Z]{2,}[+-]?)(?: vN)?`", text)}
+
+
+def test_the_skill_names_every_tag_the_converter_emits_and_no_other() -> None:
+    """Spec §8's drift test: the reading block and the converter's grammar name the same line tags.  The
+    converter is pinned by tests/test_recording_grammar.py until it lands; switch to its tag set then."""
+    grammar = _grammar_tags()
+    assert grammar == {
+        "SAID",
+        "SCREEN",
+        "SCREEN+",
+        "SCREEN-",
+        "TILE",
+        "SPEAKING",
+        "KEYFRAME",
+        "NOTE",
+        "TERM",
+        "VOICE",
+    }
+    assert _skill_tags(skill.MEETINGS) == grammar
+    assert "`SAID vN`" in skill.MEETINGS
+    # The extraction rule sees an extra tag and a missing one.
+    assert _skill_tags("`SAID vN`, `SCREEN+`, `CHAPTER`, `VOICE line`") == {"SAID", "SCREEN+", "CHAPTER"}
+
+
+def test_procedure_carries_the_meeting_block_and_the_citation_row() -> None:
+    text = skill.procedure()
+    assert text.endswith("7. Meeting recordings:\n" + skill.MEETINGS)
+    assert skill.MEETINGS in skill.skill_text(Path("/srv/docs"))
+    assert "`CITE-*` (warn): a meeting page's citation does not resolve to its evidence line" in text
+    assert "never holds the checkpoint" in text
+    meetings = skill.MEETINGS
+    for rubric in ("page", "decision", "action-item", "open-question", "number-shown"):
+        assert f"`_rubrics/meeting-{rubric}.md`" in meetings, rubric
+    for tag in ("seen HH:MM:SS", "seen+frame HH:MM:SS", "heard HH:MM:SS", "chat ~HH:MM", "file", "recap"):
+        assert f"`{tag}`" in meetings, tag
+    assert "`inferred`" in meetings and "`r2`" in meetings and "`kind: meeting`" in meetings
+    assert "`topics/meetings/<yyyy-mm-dd>-<slug>.md`" in meetings and "`role: primary`" in meetings
+    for basis in (
+        "`VOICE line`",
+        "`mixed`",
+        "`voice N, unidentified`",
+        "`voice N, on shared audio of <label>`",
+    ):
+        assert basis in meetings.replace("\n   ", " "), basis
+    added = text[text.index("   `CITE-*`") :]
+    assert len(added.splitlines()) <= 45

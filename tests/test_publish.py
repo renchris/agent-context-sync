@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, cycle, gitops, lints, loop, policy, publish, skill, slug
+from agentsync import cli, curate, cycle, gitops, lints, loop, policy, publish, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root, parse_config
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, _with_sidecar_digests
 from agentsync.curate import refresh_queue
@@ -45,6 +45,7 @@ from agentsync.publish import (
     GITATTRIBUTES,
     GITIGNORE,
     MIRROR_CLAUDE_MD,
+    RUBRICS,
     TOPICS_CLAUDE_MD,
     PlannedPage,
     Publisher,
@@ -261,6 +262,51 @@ def test_scaffold_keeps_curated_and_operator_content(env: Env) -> None:
     assert "PO\tpurchase order" in (repo / "SYNONYMS.tsv").read_text()
     assert (repo / ".gitignore").read_text() == "*.swp\n" + GITIGNORE
     assert (repo / "mirror/CLAUDE.md").read_text() == MIRROR_CLAUDE_MD
+
+
+def test_scaffold_writes_the_meeting_rubrics_once_and_restores_an_edited_one(env: Env) -> None:
+    repo = env.repo
+    names = ("page", "decision", "action-item", "open-question", "number-shown")
+    assert sorted(RUBRICS) == sorted(f"_rubrics/meeting-{name}.md" for name in names)
+    for rel, text in RUBRICS.items():
+        assert (repo / rel).read_text(encoding="utf-8") == text, rel
+    assert env.pub.ensure_scaffold() == []
+    (repo / "_rubrics/meeting-decision.md").write_text("# edited\n")
+    (repo / "_rubrics/meeting-page.md").unlink()
+    assert env.pub.ensure_scaffold() == ["_rubrics/meeting-decision.md", "_rubrics/meeting-page.md"]
+    assert (repo / "_rubrics/meeting-decision.md").read_text() == RUBRICS["_rubrics/meeting-decision.md"]
+    assert "_rubrics" in gitops.COMMIT_PATHSPECS  # the sync commits them
+
+
+def test_rubrics_hold_the_spec_text_verbatim() -> None:
+    spec = (Path(__file__).resolve().parents[1] / "docs/design/meeting-video-spec.md").read_text("utf-8")
+    for rel, text in RUBRICS.items():
+        assert f"\n{text}```" in spec, rel  # a whole fenced body of spec §7.1 or §7.3
+        if rel != "_rubrics/meeting-page.md":
+            assert text.startswith("# Rubric: "), rel
+    page = RUBRICS["_rubrics/meeting-page.md"]
+    assert (
+        page.startswith("---\nkind: meeting\n") and "\n## People\n" in page and "## Verification log" in page
+    )
+    assert parse_frontmatter(page) is not None
+
+
+def test_scaffolded_rubrics_draw_no_lint_finding(env: Env) -> None:
+    repo, layout = env.repo, env.config.layout
+    rubrics = sorted(RUBRICS)
+    findings = [
+        *lints.lint_no_symlinks(repo),
+        *lints.lint_mirror_frontmatter(repo),
+        *lints.lint_paths(repo),
+        *lints.lint_paths(repo, rubrics),
+        *lints.lint_no_cache_in_git(repo),
+        *lints.lint_no_tokens(repo),
+        *lints.lint_no_tokens(repo, rubrics),
+        *lints.run_land_gate(repo, rubrics),
+        *curate.generate_depends(layout)[2],
+    ]
+    assert [f for f in findings if "_rubrics" in f.path] == []
+    assert not any(p.startswith("_rubrics") for p in curate.iter_topic_pages(layout))  # not curated pages
 
 
 def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:

@@ -52,6 +52,7 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
     *GENERATED_PATHSPECS,
     "topics",
     "_eval",
+    "_rubrics",
     "README.md",
     "CLAUDE.md",
     "AGENTS.md",
