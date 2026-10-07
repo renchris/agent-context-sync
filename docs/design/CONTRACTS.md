@@ -7525,3 +7525,134 @@ the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle 
 page limit, a PDF converted past the budget and its re-read, a helper that fails on everything; a file
 converted again from the same bytes in two runs running; the limit marks are the converters' wording) and
 `tests/test_manifest.py` (`cache_last_used`).
+
+#### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
+
+The Status section ends with six parts, each under a `### ` heading (`EVIDENCE_TITLES`, in this order). They
+are sub-headings, as `RUN_METADATA_HEADING` is, so the `## ` headings stay `SECTION_TITLES` and the report
+`scripts/install.sh` writes without agentsync keeps the same headings. The README prompt is unchanged: the
+tool writes all of it.
+
+```python
+# agentsync.setup_report
+EVIDENCE_BUDGET_S = 3.0      # seconds the six parts may take in all, inside TIME_BUDGET_S
+NOT_MEASURED = "not measured (time limit)"
+EVIDENCE_TITLES = ("OCR", "Quarantine by reason", "Purge queue", "Overlapping sources",
+                   "Empty cloud folders", "Repeat conversions")
+QUARANTINE_CLASSES: tuple[str, ...]   # every value of quarantine_class
+def quarantine_class(reason: str | None) -> str: ...
+```
+
+**Read-only.** The manifest is opened by its own connection with `mode=ro` (`_Mirror`): nothing is created,
+migrated or written, and with no manifest a part says `no manifest yet (no sync has run)`. The OCR state
+comes from `convert.ocr.probe`, which compiles nothing and does not renew the helper's modification time
+(`engine` does, and is never called here). A folder is looked at with one `lstat` and never listed. The purge
+queue is read through `governance.pending_purges`.
+
+**Bounded.** The six parts share `EVIDENCE_BUDGET_S`, counted from the first and never past the report's own
+deadline less its reserve. SQLite's progress handler looks at the clock every 2,000 VM instructions
+(`_STEP_TICK`) and stops the statement that is running; a part, or a block of one, with no time left prints
+`NOT_MEASURED`, and the parts after it print the same. Each statement reads a table from end to end at most
+once, and a subquery that runs once per row is an index lookup. Per-item lookups are capped: 300 queued
+purges (`_PURGE_LOOKUPS`), 50 empty folders per source (`_EMPTY_DIRS_CHECKED`), the last 200 runs
+(`_RUNS_READ`), 40 table rows shown (`_ROWS_SHOWN`). The probe and the `lstat` calls run through
+`_Run.call`, the timed-call seam (`arm_local.call_with_timeout`). `_Run.evidence_steps` holds the looks at the
+clock, so a test can bound the work without a wall clock. A part that raises prints `not measured (<exception
+type>)`, never the message.
+
+**Sources are never named in clear** (`_Labels`). A configured id is printed as the Redactor shows it. One
+the Redactor leaves alone is kept only when it is one of agentsync's own words (`_GENERIC_IDS`); otherwise
+it is `(source N)`, its place in sources.toml. An id the config does not have (a retired source's rows, a
+hand-edited queue) is `(not in the config, N)`. A run's mode and status and a row's state are printed only
+when they are a lower-case word; a day only when it is a date.
+
+**`quarantine_class`.** A row's `state_reason` is free text in places: a duplicate names a mirror path, a
+failed conversion carries an exception's words. The report prints the class and never the reason. A prefix
+decides before a word inside the text does.
+
+| Class | Reason |
+|---|---|
+| `no converter` | starts `no converter for ` (`NO_CONVERTER_PREFIX`) |
+| `label policy` | starts `refused: ` (`policy.REFUSED_PREFIX`) |
+| `credential` | `contains a credential` |
+| `duplicate` | starts `duplicate-of ` |
+| `conversion failed` | starts `conversion failed` |
+| `download refused by the OS` | `hydration-refused`, on a live or dataless row |
+| `path too long` | starts `path too long` |
+| `no text layer (OCR not run)`, `(OCR found no text)`, `(over the OCR page limit)` | the three scanned-PDF stubs of §16.26 |
+| `too large` | holds `too large` or `exceeds` |
+| `no text in image`, `image not readable` | the image stubs of §16.26 |
+| `encrypted` | holds `encrypted`, `password-protected` or `IRM-protected` |
+| `empty`, `not the type its name says` | `empty-output`, `empty PDF`; `not-ooxml` |
+| `no reason recorded`, `other` | no text; anything else |
+
+**OCR.**
+
+- `- helper: ready | off | not built | failed (<the probe's detail>)`, then whether a label rule is on
+  (under one no image is read, §16.26).
+- Images (the suffixes of `ImageConverter.extensions`) by outcome: `page`, `no-text stub`, `not-readable
+  stub`, `not-on-this-Mac stub` (the `no converter` refusal of an online-only image), `no-converter stub on
+  this Mac`, `deferred on this Mac`, `deferred online-only`, `not converted yet`, `failed`, `other stub`.
+  Then the online-only images as a file count and megabytes, which is what downloading them for OCR would
+  cost (the open decision O2).
+- PDF, deck, Word and OpenDocument files with a page, by whether its converter version has an engine's
+  identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache row's of
+  the page's action key, else the output row's, as in `Manifest.reread_candidates`.
+- Scanned PDFs with a stub, by the three reasons, and the engine identities found on pages with their page
+  counts (an identity is printed only when it is `ocr-` and plain tokens).
+- Re-read, per local or inbox source, from manifest meta `reread:<source id>`: whether the scan is
+  finished, the files that failed once, the files given up, those given up under another engine or version,
+  and whether a file was being read when a cycle died. Beside them the report's own count of files on this
+  Mac a re-read would look at: images with the no-converter stub, scanned PDFs whose stub says OCR was not
+  run, and documents whose page has no OCR identity. The report builds no registry, so it cannot ask a
+  converter's `outdated`; the count is the rule of the table in §16.27 and includes the files given up.
+- Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
+  time, or ended with the helper not working; the sums of every `ocr_*` and `reread*` key; and one row for
+  each of the last five runs that had an engine.
+
+**Quarantine by reason.** Every file whose row carries a reason: the quarantined and refused ones, and a
+present file whose download the OS refused. One row per source, state and class with the file count, how
+many are online-only, and the UTC days the oldest and newest of those stubs were built (`outputs.built_run`
+looked up in `runs`). A stub built before a fix landed is one the fix has not read.
+
+**Purge queue.** The queued purges by source, reason (`governance.PurgeReason`), selector kind and the UTC
+day they were queued. For a queued stable id the manifest is asked what took the file's place
+(`_purge_fate`): `same bytes live` (a live file elsewhere has its canonical hash: a renamed or re-exported
+copy), `same path live` (a live file with another id at its path), `still listed`, `no live twin`, `no row`.
+A glob selector is `not looked up`. No selector text is printed.
+
+**Overlapping sources.** Each pair of sources whose configured folder is the same, or one inside the other,
+by their configured paths: how many folder levels down, whether the outer source's exclude list prunes the
+inner folder (`arm_local._unexcluded`, the walk's own rule), and for each its live, online-only, stub and
+tombstone counts and whether its last listing was complete.
+
+**Empty cloud folders** (the open decision O1). Per source, from manifest meta `empty_cloud_dirs:<source
+id>`: `N unknown: D dataless, M materialised-and-empty`, from one `lstat` of each of the first 50 folders
+(`materialise.is_dataless` on the folder itself). Of the materialised ones, how many have a link count of 2:
+APFS counts 2 plus one per entry, so that is a folder with no entry by its own metadata. Then the folders
+that are gone, not readable or no folder, how many were checked, how many sources.toml excludes now, and how
+many files the mirror still holds below them (a range lookup on `items_by_path`). "Empty" is what the last
+walk found: the report lists nothing.
+
+**Repeat conversions.** One row for each of the last five runs: files converted, of them failed, from bytes
+an earlier run converted, from bytes the run just before converted (`not recorded` for a run from before
+the run record). Then the converter cache: how many rows a later run used again than the one that made
+them, and how many of those the newest run and the one before it used last. That count needs no run record,
+so it also speaks for the runs of an earlier build.
+
+Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
+`_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
+and their helpers, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
+`_EMPTY_DIRS_META` repeat values the converters and the cycle own; a test holds each pair equal.
+
+Tests: `tests/test_setup_report.py` (the six headings under Status with the `## ` headings as they were, an
+empty manifest and no manifest, which reading does not create; the OCR part on images in every outcome,
+documents with and without an identity, a field-build page, scans, a re-read record and three runs; the
+helper ready, not built and under a label rule, its modification time untouched; quarantine by source, state
+and class with a source the config no longer has; every reason constant of the code against its class; the
+purge queue with a renamed copy, a new id at an old path, a file listed again, a file with no twin and an id
+that was never a row; a source inside another, with and without the exclude line; empty cloud folders that
+are dataless, materialised with and without entries, gone and not a folder, with no folder listed and the
+cap of 50; the run records and the cache for repeat conversions; no time left; a statement that runs past the
+time; 50,000 files bounded by VM instructions and by each statement's query plan; a source the Redactor
+does not know). Each test seeds made-up folder and file names and asserts none reaches the report.

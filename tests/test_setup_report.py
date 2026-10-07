@@ -5,6 +5,8 @@ Provider, no prompt), and a canned ``launchctl print`` (this Mac's real LaunchAg
 
 from __future__ import annotations
 
+import itertools
+import json
 import os
 import re
 import subprocess
@@ -18,12 +20,15 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agentsync import cli, net, setup_report
+from agentsync import cli, cycle, governance, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
+from agentsync.convert import image, ocr, pdf
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
+from agentsync.manifest import Manifest
 from agentsync.ops import doctor
 from agentsync.paths import expand
+from test_ocr import fake_engine, write_fake
 
 ORG = "Contoso"
 FOLDERS = ("FY26 Projects", "Client Alpha", "Budget Review")
@@ -2388,3 +2393,695 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     env = section(text, "Environment")
     assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain" in env
+
+
+# ---------------------------------------------------------------------------------------------------------
+# the next round's evidence (CONTRACTS.md 16.28): the ### parts under Status. Counts and fixed words only.
+# ---------------------------------------------------------------------------------------------------------
+
+SECRET_NAMES = ("Wingtip", "Northwind", "Tailspin", "Fourth Coffee", "merger", "payroll", "ledger-2031")
+"""Made-up folder and file names the seeded data holds: none may reach a report."""
+OCR_VERSION = "2.1.0+pypdfium2-4.30.0+pdfminer.six-20231228+ocr-paper-vision-r2-h0.3.0-l1"
+PLAIN_VERSION = "2.1.0+pypdfium2-4.30.0+pdfminer.six-20231228"
+
+
+SEED_NUMBERS = itertools.count(1)
+
+
+class Seed:
+    """A manifest with made-up rows, written straight into its tables: what a few hundred cycles leave."""
+
+    def __init__(self, cfg: Path) -> None:
+        self.config = load_config(cfg)
+        self.m = Manifest(self.config.state_paths.db)
+        self.m.sync_sources(self.config.sources)
+        self.n = 0  # the last number taken from SEED_NUMBERS: unique across the seeds of one test
+
+    def ids(self) -> list[str]:
+        return [s.id for s in self.config.sources]
+
+    def source(self, source_id: str, *, complete: bool = True) -> None:
+        """A ``sources`` row for an id the config does not have (a retired source keeps its rows)."""
+        self.m._db.execute(
+            "INSERT OR IGNORE INTO sources (source_id, kind, config_state, config_fingerprint) "
+            "VALUES (?, 'local', 'live', 'f')",
+            (source_id,),
+        )
+        self.m._db.execute(
+            "UPDATE sources SET enumeration_complete = ? WHERE source_id = ?", (int(complete), source_id)
+        )
+
+    def item(
+        self,
+        source_id: str,
+        name: str,
+        *,
+        state: str = "live",
+        reason: str | None = None,
+        dataless: bool = False,
+        verdict: str = "unchanged",
+        size: int = 1000,
+        canonical: str | None = None,
+        rel: str | None = None,
+        page: str | None = "ok",
+        version: str | None = PLAIN_VERSION,
+        cached: str | None = None,
+        built: int = 1,
+    ) -> str:
+        """One file row and, unless ``page`` is None, its one output row (``cached``: the version of the
+        cache row behind its action key, when that differs from the output row's own)."""
+        self.n = next(SEED_NUMBERS)
+        stable = f"id-{self.n:06d}"
+        where = rel or f"Wingtip merger/{name}"
+        self.m._db.execute(
+            "INSERT INTO items (source_id, stable_id, name, rel_path, is_dir, size, dataless, state, "
+            "state_reason, last_verdict, first_seen_run, last_seen_run, canonical_sha256) "
+            "VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, 1, ?)",
+            (source_id, stable, name, where, size, int(dataless), state, reason, verdict, canonical),
+        )
+        if page is not None:
+            key = f"key-{self.n:06d}"
+            self.m._db.execute(
+                "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, action_key, converter_id, "
+                "converter_version, status, built_run) VALUES (?, ?, ?, 'whole', ?, 'conv', ?, ?, ?)",
+                (f"mirror/{source_id}/{stable}.md", source_id, stable, key, version, page, built),
+            )
+            if cached is not None:
+                self.m._db.execute(
+                    "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, "
+                    "canonical_sha256, status, unit_count, bytes, created_run, last_used_run) "
+                    "VALUES (?, 'conv', ?, 'o', 'c', 'ok', 1, 1, ?, ?)",
+                    (key, cached, built, built),
+                )
+        return stable
+
+    def run(
+        self, run_id: int, counts: dict[str, int], *, mode: str = "poll", day: str = "2026-10-06"
+    ) -> None:
+        self.m._db.execute(
+            "INSERT INTO runs (run_id, mode, started_at, finished_at, status, host, pid, counts_json) "
+            "VALUES (?, ?, ?, ?, 'ok', 'Tailspin-MacBook', 1, ?)",
+            (run_id, mode, f"{day}T10:00:00Z", f"{day}T10:01:05Z", json.dumps(counts)),
+        )
+
+    def close(self) -> None:
+        self.m.close()
+
+
+def status_parts(fake_mac: dict[str, Path], **kwargs: Any) -> tuple[str, dict[str, str]]:
+    """The report (no hooks) and each evidence part's text by its ``### `` title."""
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), **kwargs)
+    status = section(text, "Status")
+    parts = {}
+    for title in setup_report.EVIDENCE_TITLES:
+        parts[title] = status.split(f"\n### {title}\n", 1)[1].split("\n### ", 1)[0]
+    for name in SECRET_NAMES:
+        assert name not in text and name.lower() not in text.lower(), f"{name!r} reached the report"
+    return text, parts
+
+
+def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
+    fake_mac: dict[str, Path],
+) -> None:
+    text, parts = status_parts(fake_mac)
+    headings = re.findall(r"^## (.+)$", text, flags=re.MULTILINE)
+    assert headings == list(setup_report.SECTION_TITLES), "sub-headings: the ## headings are as they were"
+    status = section(text, "Status")
+    assert re.findall(r"^### (.+)$", status, flags=re.MULTILINE) == list(setup_report.EVIDENCE_TITLES)
+    assert (
+        "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- label rule in [policy]: off" in parts["OCR"]
+    )
+    assert "- images: 0 file(s)\n" in parts["OCR"] and "- OCR time: no run is recorded" in parts["OCR"]
+    assert parts["Quarantine by reason"].strip() == "- no file is quarantined or refused"
+    assert parts["Purge queue"].strip() == "- no purge is queued"
+    assert parts["Overlapping sources"].strip() == (
+        "- none: no source's folder is inside another's (3 source(s) with a folder)"
+    )
+    assert parts["Empty cloud folders"].strip() == (
+        "- none: no source's last walk held a zero-child cloud folder as unknown"
+    )
+    assert parts["Repeat conversions"].strip() == "- no run is recorded"
+    # No sync has run on this Mac: there is no manifest, and reading makes none.
+    db = load_config(fake_mac["config"]).state_paths.db
+    before = sorted(p.name for p in db.parent.iterdir())
+    _text, parts = status_parts(fake_mac)
+    assert sorted(p.name for p in db.parent.iterdir()) == before, "the manifest is opened read-only"
+    for leftover in db.parent.glob(db.name + "*"):
+        leftover.unlink()
+    _text, parts = status_parts(fake_mac)
+    for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
+        assert parts[title].strip() == "- no manifest yet (no sync has run)", title
+    assert "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- no manifest yet" in parts["OCR"]
+    assert not db.exists(), "reading made no manifest"
+
+
+NO_CONVERTER = "no converter for .png"
+IMAGE_VERSION = "2.0.0+ocr-paper-vision-r2-h0.3.0-l1"
+NOT_RUN = "no text layer (scanned or image-only PDF; OCR not run)"
+NO_TEXT_FOUND = "no text layer (scanned or image-only PDF; on-device OCR found no text)"
+
+
+def seed_ocr(fake_mac: dict[str, Path]) -> tuple[str, str]:
+    """Images in every outcome, documents with and without an engine's identity, two scanned PDFs, one
+    source's re-read record and three runs: one of an earlier build, one that used up its OCR time, one
+    whose helper stopped. Returns the two cloud sources' ids."""
+    seed = Seed(fake_mac["config"])
+    one, _inbox, two = seed.ids()
+    seed.item(one, "Wingtip plan.png", version=IMAGE_VERSION)
+    seed.item(one, "Wingtip plan 2.PNG", version=IMAGE_VERSION)
+    no_text = "no text found in the image by on-device OCR"
+    seed.item(one, "Northwind logo.jpeg", state="quarantined", reason=no_text, page="quarantined")
+    online = {"dataless": True, "size": 4_000_000}
+    seed.item(one, "Northwind photo.heic", state="refused", reason=NO_CONVERTER, page="refused", **online)
+    seed.item(two, "Tailspin scan.tiff", state="refused", reason=NO_CONVERTER, page="refused")
+    seed.item(two, "Tailspin late.png", verdict="deferred", page=None)
+    seed.item(two, "Tailspin cloud.png", verdict="deferred", state="dataless", page=None, **online)
+    failed = "conversion failed: KeyError('Fourth Coffee payroll')"
+    seed.item(two, "payroll.gif", state="quarantined", reason=failed, verdict="error", page="failed")
+    seed.item(one, "ledger-2031.pdf", version=PLAIN_VERSION, cached=OCR_VERSION)  # the H2 cutoff's key
+    seed.item(one, "ledger-2031 b.pdf", version=PLAIN_VERSION)
+    seed.item(two, "merger deck.pptx", version="1.0.0+python-pptx-1.0.2+ocr-off")
+    seed.item(two, "merger notes.docx", version="1.0.0+pandoc-3.1", dataless=True, state="dataless")
+    seed.item(one, "Wingtip scan.pdf", state="quarantined", reason=NOT_RUN, page="quarantined", built=3)
+    seed.item(
+        one, "Wingtip blank.pdf", state="quarantined", reason=NO_TEXT_FOUND, page="quarantined", built=4
+    )
+    record = [
+        {"done": False, "for": "a" * 64, "tried": ["id-9"], "failed": {"id-10": 1}, "reading": "id-1"},
+        {"done": True, "for": "b" * 64, "tried": ["Wingtip x", "Wingtip y"]},
+    ]
+    seed.m.set_meta("reread:" + one, json.dumps(record))
+    seed.run(3, {"A": 4}, day="2026-09-30")
+    again = {"converted": 6, "converted_seen": 6, "converted_again": 6}
+    over = {"ocr_ms": 181_500, "ocr_budget_s": 180, "ocr_over": 1, "ocr_deferred": 3, "ocr_without_budget": 2}
+    seed.run(4, {**again, **over, "reread": 4, "reread_kept": 1})
+    down = {"ocr_ms": 2_250, "ocr_budget_s": 180, "ocr_down": 1, "ocr_failed": 1, "ocr_without_down": 2}
+    seed.run(
+        5, {**again, **down, "converted_failed": 1, "ocr_page_cap": 1, "ocr_picture_cap": 1}, mode="reconcile"
+    )
+    seed.close()
+    return one, two
+
+
+def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, Path]) -> None:
+    seed_ocr(fake_mac)
+    text, parts = status_parts(fake_mac)
+    ocr_part = parts["OCR"]
+    assert (
+        "- images: 8 file(s): page 2 · no-text stub 1 · not-on-this-Mac stub 1 · no-converter stub on this "
+        "Mac 1 · deferred on this Mac 1 · deferred online-only 1 · failed 1\n" in ocr_part
+    )
+    assert "- images that are online-only: 2 file(s), 8.0 MB (none is downloaded for OCR;" in ocr_part
+    assert (
+        "- PDF (.pdf) files with a page: 1 with an OCR identity, 1 without an OCR identity\n" in ocr_part
+    ), "the version is the cache row's when the page's key has one"
+    assert (
+        "- deck (.pptx) files with a page: 0 with an OCR identity, 0 without an OCR identity, 1 from the "
+        "field build of OCR\n" in ocr_part
+    )
+    assert (
+        "- Word (.docx) files with a page: 0 with an OCR identity, 1 without an OCR identity (1 "
+        "online-only)\n" in ocr_part
+    )
+    assert (
+        "- scanned PDFs with a stub: 1 no text layer (OCR not run), 1 no text layer (OCR found no text), 0 "
+        "no text layer (over the OCR page limit)\n" in ocr_part
+    )
+    assert "- engine identities on pages: ocr-paper-vision-r2-h0.3.0-l1 (3 page(s))\n" in ocr_part
+    rows = [ln for ln in ocr_part.splitlines() if ln.startswith("| <")]
+    assert rows[:2] == [
+        # one PDF without an identity and one scan OCR was not run on; the online-only image does not wait
+        "| <folder-2> | no | 2 | 1 | 1 | 2 | yes |",
+        # the image with the no-converter stub and the deck of the field build; the Word file is online-only
+        "| <folder-3> | no record | 2 | 0 | 0 | 0 | no |",
+    ]
+    assert (
+        "- OCR time: of the last 3 run(s), 2 recorded these counts (a run of an earlier build did not) and 2 "
+        "had an engine; 1 used up the cycle's OCR time; 1 ended with the helper not working; the helper ran "
+        "184s in all\n" in ocr_part
+    )
+    assert (
+        "- in those runs: 3 file(s) waited for a later cycle's OCR · 2 converted without OCR because the "
+        "cycle's OCR time was used up · 2 converted without OCR because the helper had stopped working · 1 "
+        "the engine failed on (a helper failure, or the file's own time limit) · 1 conversion(s) say pages "
+        "past the OCR page limit were not read · 1 say pictures past the picture limit were not read · 4 "
+        "read again (1 kept the page they had)\n" in ocr_part
+    )
+    started = "2026-10-06T10:00:00Z | 1m05s"
+    assert [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)] == [
+        f"| 5 | reconcile | ok | {started} | 2.2s of 180s | no | yes | 0 | 0 + 2 | 1 | 1 + 1 | 0 (0) |",
+        f"| 4 | poll | ok | {started} | 181.5s of 180s | yes | no | 3 | 2 + 0 | 0 | 0 + 0 | 4 (1) |",
+    ], "the run of an earlier build had no engine: it is not in the OCR table"
+    for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
+        assert raw not in text, raw
+
+
+def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The probe looks and stamps nothing: the helper's modification time is its last use by a cycle, and a
+    report is not one."""
+    cfg = fake_mac["config"]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    helper = write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    os.utime(helper, (1_700_000_000, 1_700_000_000))
+    _text, parts = status_parts(fake_mac)
+    assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
+    assert helper.stat().st_mtime == 1_700_000_000, "the report is no use of the helper"
+    helper.unlink()
+    assert "- helper: not built (the OCR helper is not built)\n" in status_parts(fake_mac)[1]["OCR"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
+        encoding="utf-8",
+    )
+    assert "- label rule in [policy]: on (no image is read under one)\n" in status_parts(fake_mac)[1]["OCR"]
+
+
+def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[str, Path]) -> None:
+    one, two = seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    seed.source("northwind-archive")  # a source the config no longer has: its id is registered with no one
+    dup = "duplicate-of tailspin-mail (mirror/tailspin-mail/Wingtip merger/terms.eml.md)"
+    seed.item("northwind-archive", "terms.eml", state="refused", reason=dup, page="refused")
+    label = 'refused: sensitivity label "Wingtip Secret" is excluded by [policy]'
+    seed.item(one, "payroll.xlsx", state="refused", reason=label, page="refused", built=5)
+    seed.item(one, "payroll 2.xlsx", state="refused", reason=label, page="refused", built=3)
+    seed.item(
+        two, "ledger-2031.docx", state="quarantined", reason="contains a credential", page="quarantined"
+    )
+    seed.item(two, "ledger-2031.zip", reason="hydration-refused", dataless=True, state="dataless", page=None)
+    seed.item(two, "Fourth Coffee", state="quarantined", reason="Fourth Coffee said no", page="quarantined")
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    part = parts["Quarantine by reason"]
+    assert (
+        "- files whose row carries a reason: 1 dataless, 6 quarantined, 5 refused (a reason is shown as"
+        in part
+    )
+    rows = [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:]
+    assert rows == [
+        "| (not in the config, 1) | refused | duplicate | 1 | 0 | - |",
+        "| <folder-2> | quarantined | no text layer (OCR not run) | 1 | 0 | 2026-09-30 |",
+        "| <folder-2> | quarantined | no text layer (OCR found no text) | 1 | 0 | 2026-10-06 |",
+        "| <folder-2> | quarantined | no text in image | 1 | 0 | - |",
+        "| <folder-2> | refused | no converter | 1 | 1 | - |",
+        "| <folder-2> | refused | label policy | 2 | 0 | 2026-09-30 to 2026-10-06 |",
+        "| <folder-3> | dataless | download refused by the OS | 1 | 1 | - |",
+        "| <folder-3> | quarantined | credential | 1 | 0 | - |",
+        "| <folder-3> | quarantined | conversion failed | 1 | 0 | - |",
+        "| <folder-3> | quarantined | other | 1 | 0 | - |",
+        "| <folder-3> | refused | no converter | 1 | 0 | - |",
+    ]
+    for raw in ("northwind-archive", "tailspin-mail", "terms.eml", "Secret", "said no"):
+        assert raw not in text, raw
+
+
+REASONS = {
+    "no converter for .xyz": "no converter",
+    "no converter for files without an extension": "no converter",
+    pdf._NO_TEXT: "no text layer (OCR not run)",
+    pdf._NO_TEXT_FOUND: "no text layer (OCR found no text)",
+    pdf._NO_TEXT_PAST_LIMIT.format(40): "no text layer (over the OCR page limit)",
+    image._NO_TEXT: "no text in image",
+    image._TOO_SMALL: "no text in image",
+    image._NOT_RASTER: "image not readable",
+    f"{image._NOT_READABLE} (not an image)": "image not readable",
+    f"{image._NOT_READABLE} (too large)": "too large",
+    "encrypted": "encrypted",
+    "password-protected": "encrypted",
+    "IRM-protected": "encrypted",
+    "encrypted or legacy binary Office file (OLE container, not OOXML)": "encrypted",
+    policy.ENCRYPTED_OFFICE_REASON: "encrypted",
+    policy.ENCRYPTED_PDF_REASON: "encrypted",
+    f"{pdf._ENCRYPTED_PDF} (password-protected)": "encrypted",
+    cycle._CREDENTIAL: "credential",
+    f'{policy.REFUSED_PREFIX}sensitivity label "Encrypted, too large" is excluded': "label policy",
+    f"{policy.REFUSED_PREFIX}no sensitivity label; refuse_unlabelled = true": "label policy",
+    "duplicate-of contoso-mail (mirror/contoso-mail/too large to mail.eml.md)": "duplicate",
+    "conversion failed: the encrypted stream is too large": "conversion failed",
+    cycle._SIDECAR_PATH: "path too long",
+    policy.EMPTY_OUTPUT_REASON: "empty",
+    "empty PDF: no pages": "empty",
+    policy.NOT_OOXML_REASON: "not the type its name says",
+    cycle.HYDRATION_REFUSED: "download refused by the OS",
+    None: "no reason recorded",
+    "  ": "no reason recorded",
+    "Contoso Roadmap said no": "other",
+}
+
+
+@pytest.mark.parametrize("reason", list(REASONS), ids=[str(n) for n in range(len(REASONS))])
+def test_a_reason_is_reported_as_one_of_the_fixed_classes(reason: str | None) -> None:
+    """A reason is free text in places, so only its class is printed. A prefix decides before a word inside
+    the text does: a duplicate's mirror path or a label's name that says "too large" is still what it is."""
+    assert setup_report.quarantine_class(reason) == REASONS[reason]
+    assert REASONS[reason] in setup_report.QUARANTINE_CLASSES
+    assert set(REASONS.values()) == set(setup_report.QUARANTINE_CLASSES), "every class has a case here"
+
+
+def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
+    seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    for created, last_used in ((1, 5), (2, 5), (1, 4), (3, 3), (1, 2)):
+        seed.n = next(SEED_NUMBERS)
+        seed.m._db.execute(
+            "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, canonical_sha256, "
+            "status, unit_count, bytes, created_run, last_used_run) "
+            "VALUES (?, 'c', '1', 'o', 'c', 'ok', 1, 1, ?, ?)",
+            (f"loop-{seed.n}", created, last_used),
+        )
+    seed.close()
+    _text, parts = status_parts(fake_mac)
+    part = parts["Repeat conversions"]
+    assert (
+        "- of the last 3 run(s), 2 recorded what they converted; 2 of those converted at least one file from "
+        "bytes the run just before had converted too (the sign of a loop)\n" in part
+    )
+    assert [ln for ln in part.splitlines() if re.match(r"\| \d", ln)] == [
+        "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 6 | 1 | 6 | 6 |",
+        "| 4 | poll | ok | 2026-10-06T10:00:00Z | 6 | 0 | 6 | 6 |",
+        "| 3 | poll | ok | 2026-09-30T10:00:00Z | not recorded | - | - | - |",
+    ]
+    assert (
+        "- converter cache: 4 conversion(s) were used again by a later run than the one that made them (the "
+        "same bytes converted again); 2 of them last by the newest run (5), 1 by the run before it" in part
+    )
+
+
+def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
+    fake_mac: dict[str, Path],
+) -> None:
+    """The first bring-back file could not tell fourteen queued purges from renamed exports. For a queued
+    stable id the manifest can: a live file with the same bytes, or one at the same path under a new id."""
+    seed = Seed(fake_mac["config"])
+    one, inbox, _two = seed.ids()
+    root = seed.config.state_paths.root
+    seed.item(inbox, "Wingtip terms v2.eml", canonical="c" * 64)  # the re-export of the first purge's file
+    seed.item(inbox, "Northwind memo.eml", rel="Tailspin/Northwind memo.eml")  # a new id at an old path
+    gone = [
+        seed.item(inbox, "Wingtip terms.eml", state="tombstone", canonical="c" * 64),
+        seed.item(inbox, "Northwind memo.eml", state="tombstone", rel="Tailspin/Northwind memo.eml"),
+        seed.item(inbox, "payroll.eml", state="tombstone", canonical="d" * 64),
+        seed.item(inbox, "merger.eml"),  # queued, and listed again since
+        "id-that-was-never-a-row",
+    ]
+    seed.close()
+    day = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
+    upstream = governance.PurgeReason.UPSTREAM_DELETED
+    for stable in gone:
+        governance.enqueue_purge(
+            root, governance.PurgeSelector(source_id=inbox, stable_id=stable), upstream, now=day
+        )
+    later = datetime(2026, 10, 5, 9, 30, tzinfo=UTC)
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id=one, path_glob="Wingtip merger/**"),
+        governance.PurgeReason.ERASURE_REQUEST,
+        now=later,
+    )
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id="tailspin-bridge", stable_id="ledger-2031"),
+        governance.PurgeReason.LABEL_ESCALATION,
+        now=later,
+    )
+    text, parts = status_parts(fake_mac)
+    part = parts["Purge queue"]
+    assert (
+        "- 7 purge(s) queued. For a queued stable id the last six columns say what the manifest holds" in part
+    )
+    header = "| source | reason | selector | queued (UTC day) | purges | same bytes live | same path live | "
+    assert header + "still listed | no live twin | no row | not looked up |" in part
+    assert [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:] == [
+        "| (not in the config, 1) | label-escalation | stable-id | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |",
+        "| <folder-2> | erasure-request | path-glob | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |",
+        "| inbox | upstream-deleted | stable-id | 2026-10-02 | 5 | 1 | 1 | 1 | 1 | 1 | 0 |",
+    ]
+    for raw in ("tailspin-bridge", "id-that-was", "terms", "memo", "c" * 16, "merger/"):
+        assert raw not in text, raw
+
+
+def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: dict[str, Path]) -> None:
+    """One source's folder inside another's: the pair as placeholders, how deep, whether the outer source's
+    exclude list prunes the inner folder, and each one's files by state."""
+    inner = fake_mac["one"] / "Wingtip merger" / "Northwind"
+    inner.mkdir(parents=True)
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'id = "client-alpha"', 'id = "client-alpha"\nexclude = ["Wingtip merger/"]', 1
+        )
+        + f'\n[[source]]\nid = "tailspin-deal"\nkind = "local"\npath = "{inner}"\n',
+        encoding="utf-8",
+    )
+    seed = Seed(cfg)
+    seed.source("client-alpha", complete=False)
+    for n in range(3):
+        seed.item("tailspin-deal", f"payroll {n}.docx")
+    seed.item("tailspin-deal", "payroll.heic", state="dataless", dataless=True)
+    seed.item("tailspin-deal", "payroll.zip", state="refused", reason="no converter for .zip", page="refused")
+    seed.item("client-alpha", "ledger-2031.docx", state="tombstone")
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    part = parts["Overlapping sources"].strip()
+    outer, inner_label = re.findall(r"<(?:folder|source)-\d+>", part)[:2]
+    assert part == (
+        f"- {outer} (local, live) contains, 2 folder level(s) down, {inner_label} (local, live); the outer "
+        f"source's exclude list prunes the inner folder: yes; {outer}: live 0 (online-only 0), stubs 0, "
+        f"tombstones 1, listing complete: no; {inner_label}: live 4 (online-only 1), stubs 1, tombstones 0, "
+        "listing complete: no"
+    )
+    assert "tailspin-deal" not in text and "client-alpha" not in text
+    # Without the exclude line the outer walk reaches the inner folder too.
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace('exclude = ["Wingtip merger/"]\n', ""), "utf-8")
+    assert "exclude list prunes the inner folder: no;" in status_parts(fake_mac)[1]["Overlapping sources"]
+
+
+def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The open question about empty cloud folders: is a folder that was never listed told from an empty
+    one by its own dataless flag? One lstat per folder; no folder is listed, so nothing is fetched."""
+    root = fake_mac["one"]
+    names = ["Wingtip merger", "Northwind/Tailspin", "Fourth Coffee", "payroll", "ledger-2031", "../escape"]
+    for rel in names[:3]:
+        (root / rel).mkdir(parents=True)
+    (root / names[2] / "arrived since.txt").write_text("x", encoding="utf-8")  # no longer empty: link count 3
+    (root / names[4]).write_text("a file now", encoding="utf-8")
+    seed = Seed(fake_mac["config"])
+    one, _inbox, two = seed.ids()
+    seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps(names))
+    seed.m.set_meta("empty_cloud_dirs:" + two, "")
+    for n in range(4):
+        seed.item(one, f"old {n}.docx", rel=f"Northwind/Tailspin/old {n}.docx")
+    seed.item(one, "gone.docx", rel="Northwind/Tailspin/gone.docx", state="tombstone")
+    seed.item(one, "beside.docx", rel="Northwind/Tailspin beside.docx")
+    seed.close()
+    dataless = (root / names[1]).lstat().st_ino
+    monkeypatch.setattr(materialise, "is_dataless", lambda st: st.st_ino == dataless)
+    listed: list[str] = []
+    real_scandir = os.scandir
+
+    def scandir(path: Any = ".") -> Any:
+        listed.append(str(path))
+        return real_scandir(path)
+
+    with monkeypatch.context() as watched:
+        watched.setattr(os, "scandir", scandir)
+        watched.setattr(setup_report, "cloud_folder_names", lambda *a, **k: [])  # the redactor's listing
+        _text, parts = status_parts(fake_mac)
+    part = parts["Empty cloud folders"]
+    assert (
+        "Read from each folder's own metadata (one lstat; no folder is listed, so nothing is fetched)."
+        in part
+    )
+    line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
+    assert line.split(": ", 1)[1] == (
+        "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them with a link count of 2: no entry by the "
+        "folder's own metadata); 1 gone, 0 not readable, 1 not a folder, 1 not checked; 6 of 6 checked; 0 "
+        "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s)"
+    )
+    assert part.count("\n- ") == 1, "a source whose walk held none has no line"
+    assert not [p for p in listed if str(root) in p], "no folder of the source was listed"
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'id = "client-alpha"', 'id = "client-alpha"\nexclude = ["Northwind/", "payroll"]', 1
+        ),
+        encoding="utf-8",
+    )
+    assert "; 2 excluded in sources.toml now;" in status_parts(fake_mac)[1]["Empty cloud folders"]
+    seed = Seed(cfg)
+    seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps([f"Wingtip {n}" for n in range(60)]))
+    seed.close()
+    capped = status_parts(fake_mac)[1]["Empty cloud folders"]
+    assert "60 unknown: 0 dataless, 0 materialised-and-empty" in capped and "50 gone" in capped
+    assert "; 50 of 60 checked;" in capped
+
+
+def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed_ocr(fake_mac)
+    monkeypatch.setattr(setup_report, "EVIDENCE_BUDGET_S", 0.0)
+    text, parts = status_parts(fake_mac)
+    assert re.findall(r"^## (.+)$", text, flags=re.MULTILINE) == list(setup_report.SECTION_TITLES)
+    assert "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"], "the probe has a floor of its own"
+    assert parts["OCR"].count(f"- {setup_report.NOT_MEASURED}") == 2, "the files, then the time"
+    for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
+        assert parts[title].strip() == f"- {setup_report.NOT_MEASURED}", title
+
+
+def test_a_statement_that_runs_past_the_time_is_stopped(fake_mac: dict[str, Path]) -> None:
+    """SQLite is asked to stop from inside: a statement over a manifest far larger than any seen cannot
+    hold the report. This one would count to a hundred million."""
+    mirror = setup_report._Mirror(load_config(fake_mac["config"]).state_paths.db, 0.05)
+    endless = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 100000000) "
+    try:
+        with pytest.raises(setup_report._OutOfTimeError):
+            mirror.rows(endless + "SELECT COUNT(*) FROM c")
+        assert mirror.steps > 0
+        with pytest.raises(setup_report._OutOfTimeError):
+            mirror.rows("SELECT 1")
+    finally:
+        mirror.close()
+
+
+def test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own(tmp_path: Path) -> None:
+    assert ImageConverter.extensions == setup_report._IMAGE_SUFFIXES
+    registry = Registry.default(ConvertConfig(), ocr=fake_engine(tmp_path / "bin"))
+    reads_pictures = {
+        ext
+        for conv in registry.converters()
+        if "ocr_languages" in conv.options() and conv.converter_id != ImageConverter.converter_id
+        for ext in conv.extensions
+    }
+    assert set(setup_report._OCR_DOCUMENTS) == reads_pictures
+    assert setup_report._OCR_MARK == image._IDENTITY_MARK and setup_report._FIELD_MARKS == image._FIELD_MARKS
+    assert setup_report._REREAD_META == cycle._REREAD_META
+    assert setup_report._EMPTY_DIRS_META == cycle._EMPTY_DIRS_META
+    assert [
+        setup_report._version_class(v) for v in (PLAIN_VERSION, PLAIN_VERSION + "+ocr-off", OCR_VERSION)
+    ] == [
+        0,
+        1,
+        2,
+    ]
+    assert setup_report._version_class("2.0.0+ocr-apple-vision-r3-h2.0.0-l1+helper-9+macos-15") == 1
+
+
+BIG = 50_000
+
+
+def seed_big(fake_mac: dict[str, Path]) -> None:
+    """A manifest of 50,000 files, each with an output row and a cache row, 300 runs and a re-read record."""
+    seed = Seed(fake_mac["config"])
+    sources = seed.ids()
+    suffixes = (".png", ".pdf", ".docx", ".xlsx", ".jpeg", ".pptx", ".txt", ".heic")
+    states = (
+        ("live", None, 0, "ok"),
+        ("live", None, 0, "ok"),
+        ("quarantined", NOT_RUN, 0, "quarantined"),
+        ("refused", NO_CONVERTER, 1, "refused"),
+        ("live", None, 0, "ok"),
+        ("quarantined", "conversion failed: Wingtip merger said no", 0, "failed"),
+        ("dataless", None, 1, "ok"),
+        ("tombstone", None, 0, "tombstone"),
+        ("live", None, 0, "ok"),
+        ("live", None, 0, "ok"),
+        ("live", None, 0, "ok"),
+    )
+    items, outputs, cache = [], [], []
+    for n in range(BIG):
+        sid = sources[n % len(sources)]
+        state, reason, dataless, status = states[n % len(states)]
+        stable, key = f"big-{n:06d}", f"bigkey-{n:06d}"
+        name = f"Wingtip payroll {n}{suffixes[n % len(suffixes)]}"
+        rel = f"Northwind {n % 500}/{name}"
+        items.append((sid, stable, name, rel, n, dataless, state, reason, "unchanged", f"{n:064d}"))
+        version = OCR_VERSION if n % 3 else PLAIN_VERSION
+        outputs.append((f"mirror/{sid}/{stable}.md", sid, stable, key, version, status, 1 + n % 300))
+        cache.append((key, version, 1 + n % 300, 1 + (n * 7) % 300))
+    db = seed.m._db
+    db.execute("BEGIN")
+    db.executemany(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, is_dir, size, dataless, state, "
+        "state_reason, last_verdict, first_seen_run, last_seen_run, canonical_sha256) "
+        "VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1, 1, ?)",
+        items,
+    )
+    db.executemany(
+        "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, action_key, converter_id, "
+        "converter_version, status, built_run) VALUES (?, ?, ?, 'whole', ?, 'conv', ?, ?, ?)",
+        outputs,
+    )
+    db.executemany(
+        "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, canonical_sha256, "
+        "status, unit_count, bytes, created_run, last_used_run) "
+        "VALUES (?, 'conv', ?, 'o', 'c', 'ok', 1, 1, ?, ?)",
+        cache,
+    )
+    db.execute("COMMIT")
+    for run_id in range(1, 301):
+        seed.run(run_id, {"converted": 6, "converted_again": 6, "ocr_ms": 1000, "ocr_budget_s": 180})
+    seed.m.set_meta("reread:" + sources[0], json.dumps([{"done": False, "for": "a" * 64, "tried": []}]))
+    seed.m.set_meta("empty_cloud_dirs:" + sources[0], json.dumps([f"Northwind {n}" for n in range(60)]))
+    seed.close()
+
+
+def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The report's time limit is kept by the work done, which is what is asserted, not a wall clock: the
+    SQLite VM instructions spent grow with the rows (no statement looks at a table once per row of
+    another), each statement reads a table from end to end at most once, and nothing is left unmeasured.
+    On the Mac this was written on the 50,000 files take 0.7 s of the evidence's 3."""
+    seed_big(fake_mac)
+    monkeypatch.setattr(setup_report, "EVIDENCE_BUDGET_S", 3600.0)  # the bound is the work, not the clock
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 3600.0)
+    text = "\n".join(setup_report._evidence(r))
+    assert setup_report.NOT_MEASURED not in text and "not measured" not in text
+    assert (
+        "- images: 17045 file(s): page 11933 · not-on-this-Mac stub 1704 · failed 1704 · other stub 1704"
+        in text
+    )
+    assert "- files whose row carries a reason: 9091 quarantined, 4546 refused" in text
+    assert "; 50 of 60 checked;" in text and "of the last 200 run(s), 200 recorded" in text
+    for name in SECRET_NAMES:
+        assert name not in text, name
+    instructions = r.evidence_steps * setup_report._STEP_TICK
+    assert 0 < instructions <= 1000 * BIG, f"{instructions} VM instructions for {BIG} files"
+    assert len(r.evidence_statements) < 200, "the statements do not grow with the files either"
+    mirror = setup_report._Mirror(load_config(fake_mac["config"]).state_paths.db, 3600.0)
+    try:
+        conn = mirror._open()
+        for sql in dict.fromkeys(r.evidence_statements):
+            plan = conn.execute("EXPLAIN QUERY PLAN " + sql, [None] * sql.count("?")).fetchall()
+            parent = {row[0]: row[1] for row in plan}
+            detail = {row[0]: str(row[3]) for row in plan}
+            scans = [node for node, what in detail.items() if re.match(r"SCAN (?!\()", what)]
+            assert len(scans) <= 1, f"more than one table read from end to end: {sql}"
+            for node in scans:
+                above = parent[node]
+                while above:
+                    assert "CORRELATED" not in detail[above], f"a table read once per row: {sql}"
+                    above = parent[above]
+    finally:
+        mirror.close()
+
+
+def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:
+    """The evidence parts print a source as the Redactor shows it. With a Redactor that knows nothing (its
+    facts could not be gathered), a configured id is its place in sources.toml, but for agentsync's own
+    words; an id the config does not have is a number of its own."""
+    config = load_config(fake_mac["config"])
+    labels = setup_report._Labels(config, setup_report.Redactor())
+    assert [labels.of(src.id) for src in config.sources] == ["(source 1)", "inbox", "(source 3)"]
+    assert labels.of("northwind-archive") == "(not in the config, 1)"
+    assert labels.of("tailspin-bridge") == "(not in the config, 2)"
+    assert labels.of("northwind-archive") == "(not in the config, 1)" and labels.of(None) == "(any source)"
+    known = setup_report.Redactor()
+    known.add("source", config.sources[0].id)
+    assert setup_report._Labels(config, known).of(config.sources[0].id) == "<source-1>"

@@ -18,6 +18,12 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.
+Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
+reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions); section 4 says how to
+read them. They are counts, states,
+seconds, version strings and fixed words, so they add nothing to review: no file name, folder name or reason
+text is in them. They share 3 of the 12 seconds, and a part that runs out prints "not measured (time limit)".
+The manifest is opened read-only and no folder is listed.
 The command exits 0 unless `--out` cannot be written; then it prints the report and exits 1. It embeds
 `friction.md` with the same redaction, takes the prompt version and agent from the last attempt's header, and works
 out the outcome, the run type and the times itself (section 4), so the agent states none of them and re-running it
@@ -45,6 +51,7 @@ Redaction is on by default and consistent, so the same value is always the same 
 | `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except agentsync's own words such as `inbox` or `mail` |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host name, proxy hosts |
+| `(source N)`, `(not in the config, N)` | in the evidence parts only: a configured source id the redaction does not know, by its place in sources.toml; a source id that is in the manifest or the purge queue and no longer in sources.toml |
 
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping
 when the report embeds it, so the agent should not invent its own placeholders. Before sending, read the whole file
@@ -183,6 +190,25 @@ The run type is computed too:
 - **Real Mac**: neither of the above.
 
 The agent's own opinion is not asked for.
+
+### The evidence parts
+
+One bring-back file should be enough. The parts below are what a maintainer would otherwise have to ask the
+person for after reading the report, so the tool reports them every time
+([CONTRACTS §16.28](../design/CONTRACTS.md)). Each is a `### ` heading at the end of Status.
+
+| Part | What it settles | How to read it |
+|---|---|---|
+| OCR | Did the OCR build work on this Mac, and what did it leave unread? | `helper:` is the state doctor reports. The image line counts files by outcome. A `no-converter stub on this Mac` is an image OCR has not read yet or failed on. The document lines say how many pages were made with an engine. The re-read table says, per source, whether the one-time re-read is finished and how many files it gave up. The last table is OCR's time per run against the cycle's 180 s. |
+| Quarantine by reason | Why are files quarantined or refused, per source? | A reason is shown as one of a fixed list of classes, never as its text. The last column is when those stubs were built: a stub older than a fix has not been read since. |
+| Purge queue | Are the queued purges real deletions? | `same bytes live` and `same path live` are files that were renamed, re-exported or saved again, not deleted. `no live twin` is a deletion. |
+| Overlapping sources | Is one source's folder inside another's, and which of the two holds the files? | One line per pair with each source's counts, and whether the outer source's `exclude` prunes the inner folder. |
+| Empty cloud folders | Can an empty cloud folder be told from one that was never listed? | `N unknown: D dataless, M materialised-and-empty`. A dataless folder's child list is not on this Mac. A materialised one with a link count of 2 has no entry by its own metadata. |
+| Repeat conversions | Are the same files converted on every run? | The last column counts conversions from bytes the run just before had converted too. The cache line gives the same answer for runs of an older build. |
+
+A part that prints "not measured (time limit)" ran out of its share of the report's time. Run
+`agentsync setup-report` again on an idle Mac before asking for anything else. A run of a build older than
+these parts did not record what it converted or OCR's time: its row says "not recorded" or "-".
 
 ### Fix classes
 

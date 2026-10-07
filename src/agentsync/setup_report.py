@@ -27,6 +27,14 @@ apart from the outcome, which judges only the install). The agent's own
 ``Outcome:`` line is shown only as "agent said". The Installer section also embeds the tail of install.sh's
 output copy (``install.out`` next to install.log: what the agent saw) and counts its instruction-like lines.
 
+The Status section ends with the evidence parts (:data:`EVIDENCE_TITLES`, CONTRACTS.md 16.28): what a
+maintainer would otherwise have to ask this Mac for after reading the report, so that one bring-back file is
+enough. They are read from the manifest (opened read-only), the purge queue and one ``lstat`` per folder,
+inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only:
+OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`), the purge
+queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
+flag, and conversions repeated run after run.
+
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
 ``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
@@ -70,6 +78,8 @@ import pwd
 import re
 import shutil
 import socket
+import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -78,7 +88,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
@@ -1561,6 +1571,8 @@ class _Run:
         self.run_type: str | None = None
         self.loop_stage: str | None = None
         self.loop_line: str | None = None  # the Summary's Loop line, computed after Doctor (build_report)
+        self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
+        self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -2336,6 +2348,964 @@ def _status(r: _Run) -> list[str]:
             for sha in _LAST_RUNS_RE.findall(ln):
                 r.red.add_commit(sha)
     return _fence(lines)
+
+
+# ---- the next round's evidence (CONTRACTS.md 16.28): counts, states and fixed words, never a name -------
+
+EVIDENCE_BUDGET_S = 3.0
+"""The seconds the evidence parts (the ``### `` blocks under Status) may take in all, inside the report's own
+budget. A part with no time left prints :data:`NOT_MEASURED`."""
+NOT_MEASURED = "not measured (time limit)"
+EVIDENCE_TITLES = (
+    "OCR",
+    "Quarantine by reason",
+    "Purge queue",
+    "Overlapping sources",
+    "Empty cloud folders",
+    "Repeat conversions",
+)
+"""The ``### `` headings of the evidence parts, in order, at the end of the Status section (sub-headings, so
+the ``## `` headings stay :data:`SECTION_TITLES`)."""
+QUARANTINE_CLASSES = (
+    "no converter",
+    "no text layer (OCR not run)",
+    "no text layer (OCR found no text)",
+    "no text layer (over the OCR page limit)",
+    "no text in image",
+    "image not readable",
+    "encrypted",
+    "credential",
+    "label policy",
+    "too large",
+    "duplicate",
+    "conversion failed",
+    "path too long",
+    "empty",
+    "not the type its name says",
+    "download refused by the OS",
+    "no reason recorded",
+    "other",
+)
+"""Every value of :func:`quarantine_class`: the fixed words a stub's reason is reported as."""
+
+_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
+"""``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
+_OCR_DOCUMENTS = {".pdf": "PDF", ".pptx": "deck", ".docx": "Word", ".odt": "OpenDocument"}
+"""The suffixes of the documents a converter reads pictures or page images in when it has an engine."""
+_OCR_MARK = "+ocr-"  # in a converter version: an engine's identity follows (``OcrEngine.identity``)
+_FIELD_MARKS = ("+ocr-off", "+helper-", "+macos-")  # versions of the field build of OCR (CONTRACTS 16.27)
+_VERSION_WORDS = ("without an OCR identity", "from the field build of OCR", "with an OCR identity")
+_IDENTITY_RE = re.compile(r"\+(ocr-[A-Za-z0-9._-]{1,80})")
+_WORD_RE = re.compile(r"[a-z][a-z_-]{0,23}")
+_DAY_RE = re.compile(r"\d{4}-\d\d-\d\d")
+_STEP_TICK = 2000  # SQLite VM instructions between two looks at the clock
+_RUNS_READ = 200
+_RUNS_SHOWN = 5
+_ROWS_SHOWN = 40
+_PURGES_READ = 5000
+_PURGE_LOOKUPS = 300
+_EMPTY_DIRS_CHECKED = 50
+_PAIRS_SHOWN = 20
+_REREAD_META = "reread:"  # cycle._REREAD_META
+_EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
+_PRESENT_SQL = "('live', 'dataless')"
+
+
+def quarantine_class(reason: str | None) -> str:
+    """The fixed class (one of :data:`QUARANTINE_CLASSES`) of a manifest row's ``state_reason``. A reason is
+    free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
+    so the report prints the class and never the reason."""
+    text = " ".join((reason or "").split()).casefold()
+    if not text:
+        return "no reason recorded"
+    starts = (
+        ("no converter for ", "no converter"),
+        ("refused: ", "label policy"),
+        ("contains a credential", "credential"),
+        ("duplicate-of ", "duplicate"),
+        ("conversion failed", "conversion failed"),
+        ("hydration-refused", "download refused by the OS"),
+        ("path too long", "path too long"),
+    )
+    for prefix, name in starts:
+        if text.startswith(prefix):
+            return name
+    if text.startswith("no text layer"):
+        if "over the ocr page limit" in text:
+            return "no text layer (over the OCR page limit)"
+        return (
+            "no text layer (OCR found no text)" if "found no text" in text else "no text layer (OCR not run)"
+        )
+    if "too large" in text or "exceeds" in text:
+        return "too large"
+    if text.startswith(("no text found in the image", "image too small")):
+        return "no text in image"
+    if text.startswith(("not an image", "image not readable")):
+        return "image not readable"
+    if "encrypted" in text or "password-protected" in text or "irm-protected" in text:
+        return "encrypted"
+    if text.startswith(("empty-output", "empty pdf")):
+        return "empty"
+    if text.startswith(("not-ooxml", "not a zip")):
+        return "not the type its name says"
+    return "other"
+
+
+def _version_class(version: str | None) -> int:
+    """An index into :data:`_VERSION_WORDS` for a converter version: 0 without an engine's identity, 1 for a
+    version of the field build of OCR (``+ocr-off`` holds ``+ocr-`` and is no identity), 2 with one."""
+    text = version or ""
+    if any(mark in text for mark in _FIELD_MARKS):
+        return 1
+    return 2 if _OCR_MARK in text else 0
+
+
+def _suffix_sql(column: str, suffixes: Iterable[str]) -> str:
+    """A SQL expression: the lower-case suffix of ``column`` when it is one of ``suffixes``, else NULL."""
+    by_length: dict[int, list[str]] = {}
+    for suffix in suffixes:
+        by_length.setdefault(len(suffix), []).append(suffix)
+    whens = " ".join(
+        f"WHEN lower(substr({column}, -{n})) IN ({', '.join(repr(s) for s in sorted(group))}) "
+        f"THEN lower(substr({column}, -{n}))"
+        for n, group in sorted(by_length.items())
+    )
+    return f"CASE {whens} END"
+
+
+class _OutOfTimeError(Exception):
+    """The evidence's time is used up."""
+
+
+class _NoManifestError(Exception):
+    """No sync has run: there is no manifest to read."""
+
+
+class _Mirror:
+    """The manifest, read only, for the evidence parts. One connection opened ``mode=ro``: nothing is
+    created, migrated or written. Every statement is stopped once the evidence's time is used up, and
+    ``steps`` counts the looks at the clock (one per :data:`_STEP_TICK` VM instructions): the work done,
+    whatever the Mac's speed."""
+
+    def __init__(self, db: Path, budget_s: float) -> None:
+        self.db = db
+        self.deadline = time.monotonic() + budget_s
+        self.steps = 0
+        self.statements: list[str] = []
+        self.kept: dict[str, object] = {}
+        self._conn: sqlite3.Connection | None = None
+
+    def left(self) -> float:
+        return self.deadline - time.monotonic()
+
+    def _tick(self) -> int:
+        self.steps += 1
+        return 1 if time.monotonic() >= self.deadline else 0
+
+    def _open(self) -> sqlite3.Connection:
+        if self._conn is None:
+            if not self.db.is_file():
+                raise _NoManifestError
+            conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
+            conn.set_progress_handler(self._tick, _STEP_TICK)
+            conn.create_function("reason_class", 1, quarantine_class, deterministic=True)
+            conn.create_function("version_class", 1, _version_class, deterministic=True)
+            self._conn = conn
+        return self._conn
+
+    def rows(self, sql: str, params: Sequence[object] = ()) -> list[tuple[Any, ...]]:
+        """Every row of one statement; _OutOfTimeError once the time is used up, before or while it runs."""
+        if self.left() <= 0:
+            raise _OutOfTimeError
+        conn = self._open()
+        self.statements.append(sql)
+        try:
+            return conn.execute(sql, tuple(params)).fetchall()
+        except sqlite3.OperationalError:
+            if self.left() <= 0:
+                raise _OutOfTimeError from None
+            raise
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+
+class _Labels:
+    """How an evidence part names a source: never by an id in clear. A configured id is shown as the
+    report's Redactor shows it (its ``<source-N>`` or ``<folder-N>`` placeholder); one the Redactor leaves
+    alone is kept only when it is one of agentsync's own words (``inbox``, ``mail``), and is ``(source N)``
+    by its place in sources.toml otherwise. An id the config does not have (a retired source's rows, a
+    hand-edited queue) is registered with no one: it is ``(not in the config, N)``."""
+
+    def __init__(self, config: Config, red: Redactor) -> None:
+        self.red = red
+        self.place = {src.id: n for n, src in enumerate(config.sources, 1)}
+        self._shown: dict[str, str] = {}
+
+    def of(self, source_id: object) -> str:
+        if source_id is None or source_id == "":
+            return "(any source)"
+        text = str(source_id)
+        if text not in self._shown:
+            if text not in self.place:
+                others = sum(1 for known in self._shown if known not in self.place)
+                self._shown[text] = f"(not in the config, {others + 1})"
+            else:
+                shown = self.red.redact(text)
+                clear = shown == text and text not in _GENERIC_IDS
+                self._shown[text] = f"(source {self.place[text]})" if clear else shown
+        return self._shown[text]
+
+
+def _lines(fn: Callable[[], list[str]]) -> list[str]:
+    """``fn()``, or the one line that says why it was not measured. Never an exception's message: it can
+    hold a path."""
+    try:
+        return fn()
+    except _OutOfTimeError:
+        return [f"- {NOT_MEASURED}"]
+    except _NoManifestError:
+        return ["- no manifest yet (no sync has run)"]
+    except Exception as exc:
+        return [f"- not measured ({type(exc).__name__})"]
+
+
+def _table(header: Sequence[str], rows: Sequence[Sequence[object]], limit: int = _ROWS_SHOWN) -> list[str]:
+    out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    out += ["| " + " | ".join(str(cell) for cell in row) + " |" for row in rows[:limit]]
+    if len(rows) > limit:
+        out.append(f"(+{len(rows) - limit} more row(s) not shown)")
+    return out
+
+
+def _megabytes(size: int) -> str:
+    return f"{size / 1_000_000:.1f} MB"
+
+
+def _word(value: object) -> str:
+    """``value`` when it is one of agentsync's own lower-case words (a mode, a status, a state), else
+    ``?``."""
+    text = str(value) if value is not None else ""
+    return text if _WORD_RE.fullmatch(text) else "?"
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _RunRow:
+    """One ``runs`` row: when it ran and its counts (``cycle._Cycle._run_tally`` adds the lower-case keys)."""
+
+    run_id: int
+    mode: str
+    status: str
+    started: datetime | None
+    seconds: float | None
+    counts: dict[str, int]
+
+    def n(self, key: str) -> int:
+        return self.counts.get(key, 0)
+
+
+def _run_rows(m: _Mirror) -> list[_RunRow]:
+    """The last :data:`_RUNS_READ` runs, newest first, read once per report."""
+    kept = m.kept.get("runs")
+    if isinstance(kept, list):
+        return cast(list[_RunRow], kept)
+    out: list[_RunRow] = []
+    for run_id, mode, status, started_at, finished_at, raw in m.rows(
+        "SELECT run_id, mode, status, started_at, finished_at, counts_json FROM runs "
+        "ORDER BY run_id DESC LIMIT ?",
+        (_RUNS_READ,),
+    ):
+        try:
+            doc = json.loads(raw or "{}")
+        except ValueError:
+            doc = {}
+        counts = {
+            str(k): v
+            for k, v in (doc.items() if isinstance(doc, dict) else ())
+            if isinstance(v, int) and not isinstance(v, bool)
+        }
+        started = parse_time(str(started_at or ""))
+        finished = parse_time(str(finished_at or ""))
+        took = (finished - started).total_seconds() if started and finished else None
+        out.append(_RunRow(int(run_id), _word(mode), _word(status), started, took, counts))
+    m.kept["runs"] = out
+    return out
+
+
+def _stub_rows(m: _Mirror) -> list[tuple[str, str, str, int, int, int | None, int | None]]:
+    """(source id, state, reason class, online-only 0/1, files, oldest and newest run that built the stub)
+    for every file whose row carries a reason: the quarantined and refused ones, and a present file whose
+    download the OS refused. Read once per report; grouped by the class, so no reason leaves SQLite."""
+    kept = m.kept.get("stubs")
+    if isinstance(kept, list):
+        return cast(list[tuple[str, str, str, int, int, int | None, int | None]], kept)
+    rows = m.rows(
+        "SELECT source_id, state, reason_class(state_reason), dataless, COUNT(*), MIN(built), MAX(built) "
+        "FROM (SELECT i.source_id AS source_id, i.state AS state, i.state_reason AS state_reason, "
+        "i.dataless AS dataless, (SELECT MAX(o.built_run) FROM outputs o WHERE o.source_id = i.source_id "
+        "AND o.stable_id = i.stable_id) AS built FROM items i WHERE i.is_dir = 0 AND "
+        "(i.state IN ('quarantined', 'refused') OR (i.state_reason IS NOT NULL AND i.state != 'tombstone'))) "
+        "GROUP BY 1, 2, 3, 4"
+    )
+    out = [(str(s), _word(st), str(cls), int(dl), int(n), lo, hi) for s, st, cls, dl, n, lo, hi in rows]
+    m.kept["stubs"] = out
+    return out
+
+
+def _run_days(m: _Mirror, run_ids: Iterable[object]) -> dict[int, str]:
+    """run id -> the UTC day it started, for the ids given (a few)."""
+    wanted = sorted({int(x) for x in run_ids if isinstance(x, int)})[:400]
+    if not wanted:
+        return {}
+    marks = ", ".join("?" for _ in wanted)
+    found = m.rows(f"SELECT run_id, substr(started_at, 1, 10) FROM runs WHERE run_id IN ({marks})", wanted)
+    return {int(rid): str(day) for rid, day in found if _DAY_RE.fullmatch(str(day))}
+
+
+def _span(days: dict[int, str], lo: object, hi: object) -> str:
+    first = days.get(lo) if isinstance(lo, int) else None
+    last = days.get(hi) if isinstance(hi, int) else None
+    if first is None and last is None:
+        return "-"
+    if first == last or last is None or first is None:
+        return str(first or last)
+    return f"{first} to {last}"
+
+
+# ---- OCR ------------------------------------------------------------------------------------------------
+
+
+def _ocr_helper(r: _Run, m: _Mirror) -> list[str]:
+    """The probe's state and detail (``convert.ocr.probe``: it looks, compiles nothing and stamps nothing;
+    the one program it may start is a built helper's ``--version``), and whether a label rule is on."""
+    from agentsync import policy  # noqa: PLC0415 - lazy: the report must import even if these are broken
+    from agentsync.convert import ocr  # noqa: PLC0415
+
+    config = cast(Config, r.config)
+    try:
+        state, detail = r.call(
+            lambda: ocr.probe(config.convert, config.cache_dir), timeout=min(6.0, max(0.3, m.left()))
+        )
+    except TimeoutError:
+        raise _OutOfTimeError from None
+    words = {"ready": "ready", "off": "off", "not-built": "not built", "failed": "failed"}
+    out = [f"- helper: {words.get(state, 'unknown state')} ({_shorten(str(detail), 200)})"]
+    try:
+        active = policy.load_policy(config).labels_active
+        out.append(f"- label rule in [policy]: {'on (no image is read under one)' if active else 'off'}")
+    except Exception as exc:
+        out.append(f"- label rule in [policy]: not read ({type(exc).__name__})")
+    return out
+
+
+_IMAGE_OUTCOMES = (
+    "page",
+    "no-text stub",
+    "not-readable stub",
+    "not-on-this-Mac stub",
+    "no-converter stub on this Mac",
+    "deferred on this Mac",
+    "deferred online-only",
+    "not converted yet",
+    "failed",
+    "other stub",
+)
+
+
+def _image_outcome(state: str, dataless: int, verdict: str, cls: str, page: int) -> str:
+    """One of :data:`_IMAGE_OUTCOMES` for an image's row."""
+    if state in ("live", "dataless"):
+        if page:
+            return "page"
+        if verdict == "deferred":
+            return "deferred online-only" if dataless else "deferred on this Mac"
+        return "not converted yet"
+    stubs = {
+        "no converter": "not-on-this-Mac stub" if dataless else "no-converter stub on this Mac",
+        "no text in image": "no-text stub",
+        "image not readable": "not-readable stub",
+        "too large": "not-readable stub",
+        "conversion failed": "failed",
+    }
+    return stubs.get(cls, "other stub")
+
+
+def _ocr_files(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """What OCR has done to the files the manifest holds, as counts: images by outcome, documents by
+    whether their page was made with an engine, scanned PDFs by stub, and the re-read record per source."""
+    out: list[str] = []
+    waiting: Counter[str] = Counter()  # source id -> files on this Mac a re-read would look at
+    outcomes: Counter[str] = Counter()
+    online = [0, 0]  # online-only images: files, bytes
+    image = _suffix_sql("i.name", _IMAGE_SUFFIXES)
+    for sid, state, dataless, verdict, cls, page, files, size in m.rows(
+        "SELECT i.source_id, i.state, i.dataless, COALESCE(i.last_verdict, ''), "
+        "reason_class(i.state_reason), "
+        "EXISTS (SELECT 1 FROM outputs o WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
+        "AND o.status = 'ok'), COUNT(*), COALESCE(SUM(i.size), 0) FROM items i "
+        f"WHERE i.is_dir = 0 AND i.state != 'tombstone' AND {image} IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6"
+    ):
+        outcome = _image_outcome(str(state), int(dataless), str(verdict), str(cls), int(page))
+        outcomes[outcome] += int(files)
+        if dataless:
+            online[0] += int(files)
+            online[1] += int(size)
+        if outcome == "no-converter stub on this Mac":
+            waiting[str(sid)] += int(files)
+    shown = " · ".join(f"{name} {outcomes[name]}" for name in _IMAGE_OUTCOMES if outcomes[name])
+    out.append(f"- images: {sum(outcomes.values())} file(s)" + (f": {shown}" if shown else ""))
+    out.append(
+        f"- images that are online-only: {online[0]} file(s), {_megabytes(online[1])} (none is downloaded "
+        "for OCR; a deferred image on this Mac waits for a cycle's OCR time or its file limit)"
+    )
+    documents: Counter[tuple[str, int, int]] = Counter()  # (suffix, version class, online-only) -> files
+    ext = _suffix_sql("i.name", _OCR_DOCUMENTS)
+    for sid, suffix, cls, dataless, files in m.rows(
+        "SELECT source_id, ext, cls, dataless, COUNT(*) FROM (SELECT i.source_id AS source_id, "
+        f"{ext} AS ext, i.dataless AS dataless, "
+        "MIN(version_class(COALESCE(c.converter_version, o.converter_version))) AS cls FROM items i "
+        "JOIN outputs o ON o.source_id = i.source_id AND o.stable_id = i.stable_id AND o.status = 'ok' "
+        "LEFT JOIN cache c ON c.action_key = o.action_key "
+        f"WHERE i.is_dir = 0 AND i.state IN {_PRESENT_SQL} AND {ext} IS NOT NULL "
+        "GROUP BY i.source_id, i.stable_id) GROUP BY 1, 2, 3, 4"
+    ):
+        documents[(str(suffix), int(cls), int(bool(dataless)))] += int(files)
+        if int(cls) != 2 and not dataless:
+            waiting[str(sid)] += int(files)
+    for suffix, name in _OCR_DOCUMENTS.items():
+        cells = []
+        for cls in (2, 0, 1):
+            here, away = documents[(suffix, cls, 0)], documents[(suffix, cls, 1)]
+            if here or away or cls != 1:
+                cells.append(
+                    f"{here + away} {_VERSION_WORDS[cls]}" + (f" ({away} online-only)" if away else "")
+                )
+        out.append(f"- {name} ({suffix}) files with a page: " + ", ".join(cells))
+    scans: Counter[str] = Counter()
+    for sid, state, cls, dataless, files, _lo, _hi in _stub_rows(m):
+        if state == "quarantined" and cls.startswith("no text layer"):
+            scans[cls] += files
+            if cls == "no text layer (OCR not run)" and not dataless:
+                waiting[sid] += files
+    out.append(
+        "- scanned PDFs with a stub: "
+        + ", ".join(f"{scans[c]} {c}" for c in QUARANTINE_CLASSES if c.startswith("no text layer"))
+    )
+    identities: Counter[str] = Counter()
+    for version, pages in m.rows(
+        "SELECT COALESCE(c.converter_version, o.converter_version, ''), COUNT(*) FROM outputs o "
+        "LEFT JOIN cache c ON c.action_key = o.action_key WHERE o.status = 'ok' GROUP BY 1"
+    ):
+        found = _IDENTITY_RE.search(str(version))
+        if found is not None and _version_class(str(version)) == 2:
+            identities[found.group(1)] += int(pages)
+    out.append(
+        "- engine identities on pages: "
+        + (", ".join(f"{name} ({n} page(s))" for name, n in sorted(identities.items())[:6]) or "none")
+    )
+    return [*out, *_reread_lines(r, m, labels, waiting)]
+
+
+def _reread_lines(r: _Run, m: _Mirror, labels: _Labels, waiting: Counter[str]) -> list[str]:
+    """The re-read record of each local or inbox source (manifest meta ``reread:<source id>``, CONTRACTS
+    16.27) as counts: whether its scan is finished, the files given up, those that failed once, and the
+    report's own count of files on this Mac whose page a re-read would look at."""
+    config = cast(Config, r.config)
+    stored = {
+        str(key)[len(_REREAD_META) :]: str(value)
+        for key, value in m.rows("SELECT key, value FROM meta WHERE key LIKE ?", (_REREAD_META + "%",))
+    }
+    rows: list[tuple[object, ...]] = []
+    for src in config.sources:
+        if src.path is None or (src.id not in stored and not waiting[src.id]):
+            continue
+        try:
+            doc = json.loads(stored.get(src.id) or "[]")
+        except ValueError:
+            doc = []
+        records = [x for x in doc if isinstance(x, dict)] if isinstance(doc, list) else []
+        first = records[0] if records else {}
+        tried, failed = first.get("tried"), first.get("failed")
+        older = sum(len(x.get("tried") or ()) for x in records[1:] if isinstance(x.get("tried"), list))
+        rows.append(
+            (
+                labels.of(src.id),
+                ("yes" if first.get("done") is True else "no") if records else "no record",
+                waiting[src.id],
+                len(failed) if isinstance(failed, dict) else 0,
+                (len(tried) if isinstance(tried, list) else 0),
+                older,
+                "yes" if isinstance(first.get("reading"), str) else "no",
+            )
+        )
+    if not rows:
+        return ["- re-read: no source has a record, and no file on this Mac has a page from before OCR"]
+    header = (
+        "source",
+        "scan finished",
+        "on this Mac, from before OCR",
+        "failed once",
+        "given up",
+        "given up (other engine or version)",
+        "reading when a cycle died",
+    )
+    return [
+        "- re-read, per source. The third column is the report's own count of files a re-read would "
+        "look at: images with the no-converter stub, scanned PDFs whose stub says OCR was not run and "
+        "documents whose page has no OCR identity. It includes the files given up (two failed tries) and "
+        "those that failed once and are tried once more:",
+        "",
+        *_table(header, rows),
+    ]
+
+
+def _took(seconds: float | None) -> str:
+    return "?" if seconds is None else _secs(max(seconds, 0.0))
+
+
+def _ocr_time(m: _Mirror) -> list[str]:
+    """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28)."""
+    runs = _run_rows(m)
+    if not runs:
+        return ["- OCR time: no run is recorded"]
+    engine = [x for x in runs if "ocr_ms" in x.counts]
+    recorded = [x for x in runs if "converted" in x.counts]
+
+    def total(key: str) -> int:
+        return sum(x.n(key) for x in runs)
+
+    out = [
+        f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts (a run of an "
+        f"earlier build did not) and {len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
+        f"OCR time; {total('ocr_down')} ended with the helper not working; the helper ran "
+        f"{total('ocr_ms') / 1000:.0f}s in all",
+        f"- in those runs: {total('ocr_deferred')} file(s) waited for a later cycle's OCR · "
+        f"{total('ocr_without_budget')} converted without OCR because the cycle's OCR time was used up · "
+        f"{total('ocr_without_down')} converted without OCR because the helper had stopped working · "
+        f"{total('ocr_failed')} the engine failed on (a helper failure, or the file's own time limit) · "
+        f"{total('ocr_page_cap')} conversion(s) say pages past the OCR page limit were not read · "
+        f"{total('ocr_picture_cap')} say pictures past the picture limit were not read · "
+        f"{total('reread')} read again ({total('reread_kept')} kept the page they had)",
+    ]
+    shown = (engine or runs)[:_RUNS_SHOWN]
+    rows = []
+    for x in shown:
+        has = "ocr_ms" in x.counts
+        rows.append(
+            (
+                x.run_id,
+                x.mode,
+                x.status,
+                _iso(x.started),
+                _took(x.seconds),
+                f"{x.n('ocr_ms') / 1000:.1f}s of {x.n('ocr_budget_s')}s" if has else "-",
+                ("yes" if x.n("ocr_over") else "no") if has else "-",
+                ("yes" if x.n("ocr_down") else "no") if has else "-",
+                x.n("ocr_deferred"),
+                f"{x.n('ocr_without_budget')} + {x.n('ocr_without_down')}",
+                x.n("ocr_failed"),
+                f"{x.n('ocr_page_cap')} + {x.n('ocr_picture_cap')}",
+                f"{x.n('reread')} ({x.n('reread_kept')})",
+            )
+        )
+    header = (
+        "run",
+        "mode",
+        "status",
+        "started (UTC)",
+        "took",
+        "OCR time used",
+        "used up",
+        "helper stopped",
+        "waited",
+        "without OCR (time + helper)",
+        "engine failed",
+        "past the page + picture limit",
+        "read again (page kept)",
+    )
+    title = "the last runs that had an engine" if engine else "the last runs (none had an engine)"
+    return [*out, "", f"{title}, newest first:", "", *_table(header, rows)]
+
+
+def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    return [
+        *_lines(lambda: _ocr_helper(r, m)),
+        *_lines(lambda: _ocr_files(r, m, labels)),
+        *_lines(lambda: _ocr_time(m)),
+    ]
+
+
+# ---- quarantine, purge queue ----------------------------------------------------------------------------
+
+
+def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """Every file whose row carries a reason, by source, state and reason class. Counts and classes only."""
+    stubs = _stub_rows(m)
+    if not stubs:
+        return ["- no file is quarantined or refused"]
+    days = _run_days(m, [x for row in stubs for x in row[5:7]])
+    grouped: dict[tuple[str, str, str], list[int | None]] = {}
+    for sid, state, cls, dataless, files, lo, hi in stubs:
+        cell = grouped.setdefault((labels.of(sid), state, cls), [0, 0, None, None])
+        cell[0] = (cell[0] or 0) + files
+        cell[1] = (cell[1] or 0) + (files if dataless else 0)
+        cell[2] = lo if cell[2] is None else (cell[2] if lo is None else min(cell[2], lo))
+        cell[3] = hi if cell[3] is None else (cell[3] if hi is None else max(cell[3], hi))
+    order = {name: n for n, name in enumerate(QUARANTINE_CLASSES)}
+    rows = [
+        (source, state, cls, cell[0], cell[1], _span(days, cell[2], cell[3]))
+        for (source, state, cls), cell in sorted(
+            grouped.items(), key=lambda kv: (kv[0][0], kv[0][1], order.get(kv[0][2], 99))
+        )
+    ]
+    by_state: Counter[str] = Counter()
+    for _sid, state, _cls, _dataless, files, _lo, _hi in stubs:
+        by_state[state] += files
+    total = ", ".join(f"{n} {state}" for state, n in sorted(by_state.items()))
+    header = ("source", "state", "reason class", "files", "online-only", "stub built (UTC day)")
+    return [
+        f"- files whose row carries a reason: {total} (a reason is shown as its class, never as its text; "
+        "a live or dataless row here is a download the OS refused)",
+        "",
+        *_table(header, rows),
+    ]
+
+
+_PURGE_FATES = (
+    "same bytes live",
+    "same path live",
+    "still listed",
+    "no live twin",
+    "no row",
+    "not looked up",
+)
+
+
+def _purge_fate(m: _Mirror, source_id: str, stable_id: str) -> str:
+    """What the manifest says of one queued stable id, as one of :data:`_PURGE_FATES`: the file is listed
+    again, a live file elsewhere has its bytes (a renamed or re-exported copy), a live file with another id
+    sits at its path (a safe-save or re-export), or nothing live takes its place."""
+    found = m.rows(
+        "SELECT state, canonical_sha256, rel_path FROM items WHERE source_id = ? AND stable_id = ?",
+        (source_id, stable_id),
+    )
+    if not found:
+        return "no row"
+    state, canonical, rel_path = found[0]
+    if state != "tombstone":
+        return "still listed"
+    if canonical and m.rows(
+        f"SELECT 1 FROM items WHERE canonical_sha256 = ? AND state IN {_PRESENT_SQL} "
+        "AND NOT (source_id = ? AND stable_id = ?) LIMIT 1",
+        (canonical, source_id, stable_id),
+    ):
+        return "same bytes live"
+    if m.rows(
+        "SELECT 1 FROM items WHERE source_id = ? AND rel_path = ? AND stable_id != ? "
+        f"AND state IN {_PRESENT_SQL} LIMIT 1",
+        (source_id, rel_path, stable_id),
+    ):
+        return "same path live"
+    return "no live twin"
+
+
+def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """The queued purges by source, reason, selector kind and the UTC day they were queued, and for a queued
+    stable id what the manifest holds in its place. Counts only: no selector text is printed."""
+    from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    config = cast(Config, r.config)
+    queue = governance.pending_purges(config.state_paths.root)
+    if not queue:
+        return ["- no purge is queued"]
+    reasons = {reason.value for reason in governance.PurgeReason}
+    grouped: dict[tuple[str, str, str, str], Counter[str]] = {}
+    lookups = 0
+    for entry in queue[:_PURGES_READ]:
+        selector = entry.selector
+        day = entry.enqueued_at[:10] if _DAY_RE.fullmatch(entry.enqueued_at[:10]) else "unknown day"
+        reason = entry.reason.value if entry.reason.value in reasons else "other"
+        fate = "not looked up"
+        if selector.stable_id and selector.source_id and lookups < _PURGE_LOOKUPS:
+            lookups += 1
+            try:
+                fate = _purge_fate(m, selector.source_id, selector.stable_id)
+            except (_OutOfTimeError, _NoManifestError):
+                lookups = _PURGE_LOOKUPS
+        key = (labels.of(selector.source_id), reason, selector.kind(), day)
+        grouped.setdefault(key, Counter())[fate] += 1
+    rows = [
+        (*key, sum(fates.values()), *(fates[fate] for fate in _PURGE_FATES))
+        for key, fates in sorted(grouped.items())
+    ]
+    header = ("source", "reason", "selector", "queued (UTC day)", "purges", *_PURGE_FATES)
+    more = f" (the first {_PURGES_READ} are counted)" if len(queue) > _PURGES_READ else ""
+    return [
+        f"- {len(queue)} purge(s) queued{more}. For a queued stable id the last six columns say what the "
+        "manifest holds now: a live file elsewhere with the same bytes (a renamed or re-exported copy), a "
+        "live file with another id at the same path, the file itself listed again, nothing live in its "
+        "place, or no row at all.",
+        "",
+        *_table(header, rows),
+    ]
+
+
+# ---- overlapping sources, empty cloud folders -----------------------------------------------------------
+
+
+def _source_counts(m: _Mirror, source_id: str) -> list[str]:
+    """One line: a source's files by state, as status counts them, and whether its last listing was
+    complete."""
+    states: Counter[str] = Counter()
+    for state, files in m.rows(
+        "SELECT state, COUNT(*) FROM items WHERE source_id = ? AND is_dir = 0 GROUP BY state", (source_id,)
+    ):
+        states[str(state)] += int(files)
+    complete = m.rows("SELECT enumeration_complete FROM sources WHERE source_id = ?", (source_id,))
+    listing = ("yes" if complete[0][0] else "no") if complete else "never listed"
+    return [
+        f"live {states['live'] + states['dataless']} (online-only {states['dataless']}), stubs "
+        f"{states['quarantined'] + states['refused']}, tombstones {states['tombstone']}, listing complete: "
+        f"{listing}"
+    ]
+
+
+def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """Pairs of sources whose configured folder is the same or one inside the other, with each one's file
+    counts and whether the outer source's exclude list prunes the inner folder."""
+    from agentsync import arm_local  # noqa: PLC0415 - _unexcluded: the walk's own pruning rule
+
+    config = cast(Config, r.config)
+    roots = [
+        (src, Path(os.path.normpath(expand(src.path)))) for src in config.sources if src.path is not None
+    ]
+    out: list[str] = []
+    pairs = 0
+    for outer, outer_root in roots:
+        for inner, inner_root in roots:
+            if inner is outer or not inner_root.is_relative_to(outer_root):
+                continue
+            if inner_root == outer_root and outer.id > inner.id:
+                continue  # the same folder twice: one line for the pair
+            pairs += 1
+            if pairs > _PAIRS_SHOWN:
+                continue
+            rel = inner_root.relative_to(outer_root).as_posix()
+            if rel == ".":
+                where = "has the same folder as"
+                pruned = "n/a"
+            else:
+                where = f"contains, {len(rel.split('/'))} folder level(s) down,"
+                pruned = "no" if arm_local._unexcluded(outer, [rel]) else "yes"
+            counts = [
+                _lines(functools.partial(_source_counts, m, sid))[0].removeprefix("- ")
+                for sid in (outer.id, inner.id)
+            ]
+            out.append(
+                f"- {labels.of(outer.id)} ({outer.kind.value}, {outer.state.value}) {where} "
+                f"{labels.of(inner.id)} ({inner.kind.value}, {inner.state.value}); the outer source's "
+                f"exclude list prunes the inner folder: {pruned}; {labels.of(outer.id)}: {counts[0]}; "
+                f"{labels.of(inner.id)}: {counts[1]}"
+            )
+    if not out:
+        return [f"- none: no source's folder is inside another's ({len(roots)} source(s) with a folder)"]
+    if pairs > _PAIRS_SHOWN:
+        out.append(f"- (+{pairs - _PAIRS_SHOWN} more pair(s) not shown)")
+    return out
+
+
+def _folder_facts(paths: Sequence[Path | None]) -> list[tuple[str, bool]]:
+    """(what the folder is, its link count is 2) per path, from one ``lstat`` each: ``dataless`` when the
+    folder itself carries SF_DATALESS (its child list is not on this Mac), ``materialised`` when it does
+    not, else ``gone``, ``not readable``, ``not a folder`` or ``not checked``. No folder is listed, so
+    nothing is downloaded and no child list is fetched. A link count of 2 is a folder with no entry by its
+    own metadata (APFS counts 2 plus one per entry)."""
+    from agentsync.materialise import is_dataless  # noqa: PLC0415
+
+    out: list[tuple[str, bool]] = []
+    for path in paths:
+        if path is None:
+            out.append(("not checked", False))
+            continue
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            out.append(("gone", False))
+        except OSError:
+            out.append(("not readable", False))
+        else:
+            if not stat.S_ISDIR(st.st_mode):
+                out.append(("not a folder", False))
+            else:
+                out.append(("dataless" if is_dataless(st) else "materialised", st.st_nlink == 2))
+    return out
+
+
+def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """Per source: the zero-child cloud folders its last walk held as unknown (manifest meta
+    ``empty_cloud_dirs:<source id>``), and for up to :data:`_EMPTY_DIRS_CHECKED` of them whether the folder
+    itself is dataless. Settles whether an empty cloud folder on this Mac can be told from one never
+    listed (docs/research/corporate-bring-back-2026-10-06.md, O1)."""
+    from agentsync import arm_local  # noqa: PLC0415 - _unexcluded: the walk's own pruning rule
+
+    config = cast(Config, r.config)
+    stored = {
+        str(key)[len(_EMPTY_DIRS_META) :]: str(value)
+        for key, value in m.rows("SELECT key, value FROM meta WHERE key LIKE ?", (_EMPTY_DIRS_META + "%",))
+    }
+    out: list[str] = []
+    for src in config.sources:
+        try:
+            doc = json.loads(stored.get(src.id) or "[]")
+        except ValueError:
+            doc = []
+        names = [d for d in doc if isinstance(d, str)] if isinstance(doc, list) else []
+        if not names or src.path is None:
+            continue
+        if m.left() <= 0:
+            raise _OutOfTimeError
+        root = expand(src.path)
+        checked = names[:_EMPTY_DIRS_CHECKED]
+        paths = [
+            None if Path(rel).is_absolute() or ".." in Path(rel).parts else root / rel for rel in checked
+        ]
+        try:
+            facts = r.call(functools.partial(_folder_facts, paths), timeout=min(2.0, max(0.3, m.left())))
+        except TimeoutError:
+            out.append(f"- {labels.of(src.id)}: {len(names)} unknown: {NOT_MEASURED}")
+            continue
+        kinds = Counter(kind for kind, _two in facts)
+        no_entry = sum(1 for kind, two in facts if kind == "materialised" and two)
+        held = folders = 0
+        for rel in checked:
+            below = m.rows(
+                "SELECT COUNT(*) FROM items WHERE source_id = ? AND rel_path >= ? AND rel_path < ? "
+                "AND is_dir = 0 AND state != 'tombstone'",
+                (src.id, rel + "/", rel + "0"),
+            )[0][0]
+            held += int(below)
+            folders += 1 if below else 0
+        excluded = len(names) - len(arm_local._unexcluded(src, names))
+        rest = ", ".join(
+            f"{kinds[kind]} {kind}" for kind in ("gone", "not readable", "not a folder", "not checked")
+        )
+        out.append(
+            f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
+            f"{kinds['materialised']} materialised-and-empty ({no_entry} of them with a link count of 2: no "
+            f"entry by the folder's own metadata); {rest}; {len(checked)} of {len(names)} checked; "
+            f"{excluded} excluded in sources.toml now; the mirror still holds {held} file(s) below "
+            f"{folders} of the checked folder(s)"
+        )
+    if not out:
+        return ["- none: no source's last walk held a zero-child cloud folder as unknown"]
+    return [
+        "Read from each folder's own metadata (one lstat; no folder is listed, so nothing is fetched). "
+        '"Empty" is what the source\'s last walk found, not a new listing.',
+        "",
+        *out,
+    ]
+
+
+# ---- repeat conversions ---------------------------------------------------------------------------------
+
+
+def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
+    """Whether the same files are converted run after run: per run, the files converted and how many of them
+    from bytes an earlier run, or the run just before, had converted already (``runs.counts_json``), and what
+    the converter cache says for the runs of an earlier build."""
+    runs = _run_rows(m)
+    if not runs:
+        return ["- no run is recorded"]
+    rows = []
+    for x in runs[:_RUNS_SHOWN]:
+        if "converted" in x.counts:
+            cells: tuple[object, ...] = (
+                x.n("converted"),
+                x.n("converted_failed"),
+                x.n("converted_seen"),
+                x.n("converted_again"),
+            )
+        else:
+            cells = ("not recorded", "-", "-", "-")
+        rows.append((x.run_id, x.mode, x.status, _iso(x.started), *cells))
+    header = (
+        "run",
+        "mode",
+        "status",
+        "started (UTC)",
+        "files converted",
+        "of them failed",
+        "from bytes an earlier run converted",
+        "from bytes the run just before converted",
+    )
+    recorded = [x for x in runs if "converted" in x.counts]
+    looping = sum(1 for x in recorded if x.n("converted_again"))
+    out = [
+        f"- of the last {len(runs)} run(s), {len(recorded)} recorded what they converted; {looping} of those "
+        "converted at least one file from bytes the run just before had converted too (the sign of a loop)",
+        "",
+        "the last runs, newest first:",
+        "",
+        *_table(header, rows),
+    ]
+    newest = runs[0].run_id
+    again = dict.fromkeys((newest, newest - 1), 0)
+    total = 0
+    for last_used, files in m.rows(
+        "SELECT last_used_run, COUNT(*) FROM cache WHERE last_used_run > created_run GROUP BY 1"
+    ):
+        total += int(files)
+        if last_used in again:
+            again[int(last_used)] += int(files)
+    out += [
+        "",
+        f"- converter cache: {total} conversion(s) were used again by a later run than the one that made "
+        f"them (the same bytes converted again); {again[newest]} of them last by the newest run "
+        f"({newest}), {again[newest - 1]} by the run before it (a count that also holds for runs of an "
+        "earlier build)",
+    ]
+    return out
+
+
+def _evidence(r: _Run) -> list[str]:
+    """The evidence parts, :data:`EVIDENCE_TITLES` in order, each under its ``### `` heading: what the
+    maintainers need from this Mac to judge the OCR build and settle the open questions of the last
+    bring-back file, so that no further round is needed. Read-only (the manifest is opened ``mode=ro``; a
+    folder is lstat-ed, never listed), bounded by :data:`EVIDENCE_BUDGET_S` in all, and made of counts,
+    states, seconds, version strings and fixed words: never a file name, a folder name or a reason's text."""
+    if r.config is None:
+        return []
+    mirror = _Mirror(r.config.state_paths.db, min(EVIDENCE_BUDGET_S, r.remaining() - _RESERVE_S))
+    labels = _Labels(r.config, r.red)
+    parts: tuple[Callable[[_Run, _Mirror, _Labels], list[str]], ...] = (
+        _ocr_part,
+        _quarantine_part,
+        _purge_part,
+        _overlap_part,
+        _empty_part,
+        _repeat_part,
+    )
+    out: list[str] = []
+    try:
+        for title, fn in zip(EVIDENCE_TITLES, parts, strict=True):
+            out += ["", f"### {title}", "", *_lines(functools.partial(fn, r, mirror, labels))]
+    finally:
+        r.evidence_steps = mirror.steps
+        r.evidence_statements = tuple(mirror.statements)
+        mirror.close()
+    return out
+
+
+def _status_section(r: _Run) -> list[str]:
+    """The Status section: status's lines, then the evidence parts. A status hook that fails says so as any
+    section does, and the evidence is still read."""
+    try:
+        body = _status(r)
+    except Exception as exc:
+        body = [f"_This section failed: {type(exc).__name__}: {exc}_"]
+    return [*body, *_evidence(r)]
 
 
 def parse_launchctl_print(text: str) -> tuple[dict[str, str], list[str]]:
@@ -3199,7 +4169,7 @@ def build_report(
         ("Configuration", _configuration),
         ("Background runs", _background),
         ("Recent errors", _recent_errors),
-        ("Status", _status),
+        ("Status", _status_section),
         ("Doctor", _doctor),
         ("Agent friction log", _friction_section),
     )
