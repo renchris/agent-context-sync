@@ -370,7 +370,7 @@ them onto the form's Failed-at options, which keep v6's four names)."""
 
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 
-PROMPT = (8, "5078aebbd3b869c4d068e04469be529a692dfbe62f39fb6c5c31bcca66bdfc3f")
+PROMPT = (8, "af92b0d91adb89778ba73d05793be48e19b589bf6332cd416b4ecee7def0a81a")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -420,6 +420,11 @@ AGENTSYNC = "~/.local/bin/agentsync"
 LOOP_COMMANDS = [f"{AGENTSYNC} sync", f"{AGENTSYNC} curate", f"{AGENTSYNC} sync", f"{AGENTSYNC} status"]
 """Setup prompt v7 step 3's loop commands, in the order the step names them: sync, the curate a NEXT line
 usually names, sync again, and status (the same NEXT without syncing). Each has an exact pre-allow rule."""
+
+SYNC_NO_DOWNLOAD = f"{AGENTSYNC} sync --materialise-budget 0"
+"""Setup prompt v8 step 3's sync before the report: one that downloads nothing, the form of install.sh's own
+first sync (``FIRST_SYNC``). The plain sync downloads up to each folder's budget every time, and the files it
+brings take the OCR time first, so twelve more of those cost up to 12 GiB a folder and read nothing again."""
 
 REPORT_COMMAND = f"{INSTALL_SH} --report-only"
 """Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
@@ -893,7 +898,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     block = _one_prompt_block()
     steps = _prompt_steps()
     step3 = steps[3]
-    assert _commands(step3) == [*LOOP_COMMANDS, REPORT_COMMAND]
+    assert _commands(step3) == [*LOOP_COMMANDS, SYNC_NO_DOWNLOAD, REPORT_COMMAND]
     assert f"Run `{AGENTSYNC} sync` and do what its NEXT: line says" in step3
     flat = " ".join(step3.split())
     assert 'Repeat until the NEXT: line itself says "session done".' in flat
@@ -939,29 +944,56 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
     only begun, and the next question took another round. Step 3 now keeps syncing before the report, and
     leans on sync's own line for when to stop: the note that starts ``loop.SYNC_AGAIN``, which the tool
     prints only while another sync reads more (tests/test_loop.py). The cap is the cycle's two budgets: 12
-    syncs at 2 minutes of re-reads and 3 of OCR are an hour of that work at most. (A sync's downloads of
-    online-only files come on top, so the prompt names the count and no time.) It runs nothing else: no
-    purge, no command a WAITING line names."""
-    from agentsync import cycle, loop  # noqa: PLC0415
+    syncs at 2 minutes of re-reads and 3 of OCR are an hour of that work at most.
+
+    These syncs download nothing. The plain sync downloads up to 1 GiB a folder every time, and the files
+    it brings have the OCR time first: twelve more of them were up to 12 GiB a folder that step 1 never
+    told the person about, and on a folder of scans they read nothing again. The first one runs whatever
+    the last note said: a file the last sync downloaded is counted only by the next listing, and a note
+    that says downloads took the OCR time does not say "sync again". The count is of these syncs alone, so
+    the loop's own syncs before "session done" do not use it up. And the one command it runs is named,
+    so "no command a WAITING line names" cannot be read as forbidding the sync itself."""
+    import argparse  # noqa: PLC0415
+
+    from agentsync import cli, cycle, loop  # noqa: PLC0415
 
     step3 = _prompt_steps()[3]
     said = (
-        'Then make one report enough: while a note: line of the last sync starts with "sync again:" (files '
-        "are still being read again; the note counts them), or its NEXT: line asks only for another sync, "
-        "run the sync again, up to 12 more times. Run nothing else for this: never purge, accept-deletions "
-        "or offboard, and no command a WAITING ON YOU: line names."
+        'Once the NEXT: line has said "session done", make one report enough: run '
+        f"`{SYNC_NO_DOWNLOAD}` (a sync that downloads nothing, so the files already on this Mac "
+        "get its whole time), and run it again while a note: line of the last one starts with "
+        '"sync again:" (files are still being read again; the note counts them) or its NEXT: line asks '
+        "only for another sync. Run it up to 12 times in all; the syncs before "
+        '"session done" are not counted. Run no other command for this: never purge, accept-deletions or '
+        "offboard, and nothing else a WAITING ON YOU: line names."
     )
     assert said in step3
     assert f'"{loop.SYNC_AGAIN.strip()}"' in said and loop.NOTE_PREFIX.strip() in said
     assert 12 * (cycle._REREAD_BUDGET_S + cycle._OCR_BUDGET_S) == 3600, "an hour of re-reads and OCR"
     order = [
         'Repeat until the NEXT: line itself says "session done".',
-        "Then make one report enough",
+        'Once the NEXT: line has said "session done", make one report enough',
         'add a "## Not used" section',
         "Then the report, always",
     ]
     assert [step3.index(part) for part in order] == sorted(step3.index(part) for part in order)
-    assert _commands(said) == [], "it names no new command: the sync it repeats is the loop's own"
+    assert _commands(said) == [SYNC_NO_DOWNLOAD], "the one command it runs, and it names no other"
+    assert "more times" not in step3 and "no command a WAITING" not in step3
+    # The option is one sync has, though its help hides it, and 0 is what the installer's first sync passes.
+    args = cli.build_parser().parse_args(SYNC_NO_DOWNLOAD.split()[1:])
+    assert (args.command, args.materialise_budget) == ("sync", "0")
+    sub = next(a for a in cli.build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    [option] = [a for a in sub.choices["sync"]._actions if "--materialise-budget" in a.option_strings]
+    assert option.help is argparse.SUPPRESS, "KISS K13b: sync shows no option"
+    assert "FIRST_SYNC=(sync --once --materialise-budget 0)" in SCRIPTS[0].read_text(encoding="utf-8")
+    step1 = _prompt_steps()[1]
+    assert "online-only files in them are downloaded by each sync, up to 1 GiB per folder per run" in step1, (
+        "what step 1 tells the person is of the loop's own syncs; these add no download to it"
+    )
+    intro = _intro()
+    assert "`agentsync sync --materialise-budget 0`: they download nothing" in intro
+    assert "syncs once more, and again while `sync` says files are still being read again, up to 12" in intro
+    assert "`sync --help` does not list the option" in intro
 
 
 def test_readme_report_step_after_any_failure() -> None:
@@ -1232,7 +1264,7 @@ def test_every_command_the_readme_one_prompt_names_exists() -> None:
         for m in re.finditer(r"(?:^|[\s/])agentsync\s+([a-z][a-z-]*)((?:\s+--[a-z][a-z-]*)*)", span):
             commands |= {(m.group(1), flag) for flag in m.group(2).split()} | {(m.group(1), "")}
     assert install_flags == ONE_PROMPT_INSTALL_FLAGS
-    assert commands == {("sync", ""), ("curate", ""), ("status", "")}
+    assert commands == {("sync", ""), ("sync", "--materialise-budget"), ("curate", ""), ("status", "")}
     missing: list[str] = []
     for flag in sorted(install_flags):
         if not re.search(rf"^\s*(?:-\S+ \| )*{re.escape(flag)}(?: \| -\S+)*\)", script, flags=re.MULTILINE):
@@ -1366,6 +1398,7 @@ def _agent_commands() -> list[str]:
         STEP1_COMMAND,
         f'{INSTALL_SH} --source-local "<folder>"',
         *LOOP_COMMANDS,
+        SYNC_NO_DOWNLOAD,
         REPORT_COMMAND,
     ], commands
     return commands
@@ -1384,6 +1417,7 @@ def test_split_top_follows_the_documented_separators() -> None:
     ]
     assert _subcommands(REPORT_COMMAND) == [f"{INSTALL_SH} --report-only"]
     assert [_subcommands(c) for c in LOOP_COMMANDS] == [[c] for c in LOOP_COMMANDS]
+    assert _subcommands(SYNC_NO_DOWNLOAD) == [SYNC_NO_DOWNLOAD]
     assert _subcommands(FRICTION_LOG_TEMPLATE) == [FRICTION_LOG_TEMPLATE]
     assert _subcommands("a 'x; y' && b \"$(c; d)\" | e") == ["a 'x; y'", 'b "$(c; d)"', "c", "d", "e"]
 
@@ -1433,6 +1467,14 @@ def test_readme_pre_allow_rules_cover_every_command() -> None:
     unused = [r for r in claude if not any(_claude_code_rule_matches(r, s) for s in subs)]
     unused += [r for r in copilot if not any(_copilot_rule_matches(r, s) for s in subs)]
     assert unused == [], "every rule is needed by a command in the block"
+    # The sync that downloads nothing has a rule of its own: the loop's sync rule is exact and does not cover
+    # it, and a rule wide enough for both would also cover a download budget the person never agreed to.
+    assert f"Bash({SYNC_NO_DOWNLOAD})" in claude and SYNC_NO_DOWNLOAD in copilot
+    assert not _claude_code_rule_matches(f"Bash({AGENTSYNC} sync)", SYNC_NO_DOWNLOAD)
+    assert not _copilot_rule_matches(f"{AGENTSYNC} sync", SYNC_NO_DOWNLOAD)
+    exact = [r for r in claude if r.startswith(f"Bash({AGENTSYNC} ")]
+    assert len(exact) == 4 and not any("*" in r for r in exact)
+    assert "The four agentsync rules are exact" in " ".join(_approval_section().split())
 
 
 def _redirects(cmd: str) -> list[str]:

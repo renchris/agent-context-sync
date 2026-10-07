@@ -255,10 +255,12 @@ not a fault: the re-read table says how many files are left, and the per-run tab
 A report written once the table says `yes` for every source shows the finished state.
 
 Since prompt v8 the report is not written that early. While files are left, `sync` prints
-`note: sync again: N file(s) in <sources> are still to be read again, ...`, and step 3 runs the sync again while
-a note starts with `sync again:`, up to 12 more times, before it writes the report (12 syncs at both limits are
-an hour of re-reads and OCR; listing and downloads come on top). The note says "sync again" only while a sync
-reads more: the last sync read a file again, or other work had its OCR time first and the count did not rise.
+`note: sync again: N file(s) in <sources> are still to be read again, ...`. Once the loop's `NEXT:` line has said
+"session done", step 3 runs `agentsync sync --materialise-budget 0`, a sync that downloads nothing, and runs it
+again while a note starts with `sync again:`, up to 12 times in all, before it writes the report (12 syncs at
+both limits are an hour of re-reads and OCR; listing comes on top). They download nothing because a plain sync
+brings up to 1 GiB a folder each time, and those files have the OCR time first. The note says "sync again" only
+while a sync reads more: the last sync read a file again, or other work had its OCR time first and the count did not rise.
 In every other state it says why not, and the agent goes on to the report:
 
 - The last sync read none of the files left with OCR time to spare (pandoc cannot run, the OCR helper stopped
@@ -272,7 +274,8 @@ In every other state it says why not, and the agent goes on to the report:
 So `scan finished: no` in a v8 report means one of three things: the 12 syncs were not enough (the per-run
 table's last column falls run by run and has not reached 0), something stops the re-read (the last runs read
 none and the column stands still), or downloads take the OCR time (the last runs read none and the column
-rises). An image left for a later sync's OCR needs no note: it is a file not converted
+rises; step 3's own syncs download nothing, so this is a report whose loop did not reach them, or one written
+by hand between plain syncs). An image left for a later sync's OCR needs no note: it is a file not converted
 yet, and the loop's `NEXT:` line itself says to sync again until none is left.
 
 `scan finished` is `yes` or `no` only for a record the newest sync could have written: the sentence above the
@@ -339,12 +342,12 @@ named as "v5b review, its L<n>").
 | K11 | every distinct command could cost a tool approval, and no pre-allow list was shipped (v5 review, its K11 and K12) | prompt wording | step 1 is one command; the README's "Fewer approval prompts" rules; `test_readme_step1_is_one_command`, `test_readme_pre_allow_rules_cover_every_command` |
 | K12 | the pack told the person to reset the privacy grant with a Terminal command after a denied Allow, while the installer's `NEXT:` line names the System Settings toggle (v5 review, its K13) | IT pack | the Files and Folders toggle everywhere; `test_denied_access_remedy_is_the_files_and_folders_toggle` |
 | K13 | every friction line was a `printf ... >> ~/agent-context/setup/friction.md`, and Claude Code asks for every redirect target that starts with `~`, whatever the allow rules say (v5b review, its L4) | prompt wording | v6 logs with `install.sh --log`, which appends at 0600; the block has no redirect; `test_readme_block_redirects_to_no_file`, `test_readme_friction_line_never_runs_the_agents_words` |
-| K14 | the block took six tool calls, each a possible approval: the friction header, preflight, the folder list, the IT draft, the end line and the report (v5b review, its L5) | prompt wording | v6 has three: step 1 (preflight, code, `--log-start`, `--list-folders`), step 2 (install) and step 3 (IT draft, the end line, report; since 2026-10-05 `--report-only` writes the end line itself); v7's step 3 is the sync loop, whose `sync`, `curate` and `status` have exact pre-allow rules, then the report alone; `test_readme_step1_is_one_command`, `test_readme_report_is_the_last_command` |
+| K14 | the block took six tool calls, each a possible approval: the friction header, preflight, the folder list, the IT draft, the end line and the report (v5b review, its L5) | prompt wording | v6 has three: step 1 (preflight, code, `--log-start`, `--list-folders`), step 2 (install) and step 3 (IT draft, the end line, report; since 2026-10-05 `--report-only` writes the end line itself); v7's step 3 is the sync loop, whose `sync`, `curate` and `status` have exact pre-allow rules (and v8's `sync --materialise-budget 0`), then the report alone; `test_readme_step1_is_one_command`, `test_readme_report_is_the_last_command` |
 | K15 | the `start` and `end` kinds could not be followed literally (step 5's `start` never had an `end`), and the Summary's event count did not add up (v5b review, its L9 and V2) | prompt wording | v6 has no step lines: install.log times the steps and the kinds are the six in section 4; `test_readme_friction_line_format_and_kinds` |
 | K16 | the setup ended at the install, and the loop (baseline questions, curation) lived in a second prompt that was never pasted on the field Mac (KISS K04) | prompt wording | v7 replaces both prompts: step 3 runs `agentsync sync` and follows its `NEXT:` line until the session is done or waits on the person, then the report; `test_readme_step3_runs_the_loop_then_the_report` |
 | K17 | no prompt said where the inbox was, what to drop in it or that emptying it erases pages, and on the field Mac the agent's own exporters read other apps' private stores and drove the browser, which raised clicks (field report N3, N9, N14, N16) | prompt wording | v7 step 2 names the inbox by its `sources.toml` entries, the formats and the label caveat, and says it is never emptied; the rules say agentsync never needs `~/Library/Containers`, Group Containers or the browser; `test_readme_prompt_carries_the_field_lines` |
 | K18 | a copy of the prompt saved before an edit was pasted again, twice, and nobody knew it was old: the edit had kept the version (still v7), the copy's check read "7 or higher", and the installer wrote its own number as the attempt's `Prompt:` line (field, 2026-10-06) | prompt wording and installer automation | since v8 the version moves with every change of the text, step 1 hands it to `install.sh --log-start`, which stops a copy that is not its own, and the report names the copy's version; `test_the_prompt_text_changes_only_with_its_version`, `test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1`, and `tests/test_install_oneshot.py` for each shape of the value |
-| K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs the sync again while it does, up to 12 more times, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
+| K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs a sync that downloads nothing (`sync --materialise-budget 0`) once the loop is done and again while the note says so, up to 12 times in all, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
 
 ## 5. Unavoidable steps so far
 

@@ -216,8 +216,11 @@ for you to review and bring back ([how reports are used](docs/deploy/setup-feedb
 
 Copy the block from this page each time, never from a saved note: its first line carries a version that changes
 with every edit of its text, and the installer stops a copy that is not the current one at step 1 and says to
-copy it again. Before the report the agent keeps syncing while `sync` says files are still being read again, so
-one report is enough.
+copy it again. Before the report the agent syncs once more, and again while `sync` says files are still being
+read again, up to 12 times in all, so the report shows the finished state or says what is left. Those syncs are
+`agentsync sync --materialise-budget 0`: they download nothing, as the installer's first sync does, so they
+take no more disk and the files already on the Mac get the whole OCR time. `sync --help` does not list the
+option; it is for this step and the installer.
 
 ```text
 Set up agentsync on this Mac (setup prompt v8). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
@@ -289,11 +292,13 @@ unclear; include better wording). Do not log the steps themselves; the installer
    follow it, and go to the report only when no NEXT: line was printed. Repeat until the NEXT: line itself says
    "session done". WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says. If a sync
    stops on "click Allow", a macOS prompt is waiting for me (it can sit behind other windows): tell me to click
-   Allow, then run the sync again. Then make one report enough: while a note: line of the last sync starts
-   with "sync again:" (files are still being read again; the note counts them), or its NEXT: line asks only
-   for another sync, run the sync again, up to 12 more times. Run nothing else for this: never purge,
-   accept-deletions or offboard, and no command a WAITING ON YOU: line names. Before the report, add a
-   "## Not used" section to the end of
+   Allow, then run the sync again. Once the NEXT: line has said "session done", make one report enough: run
+   `~/.local/bin/agentsync sync --materialise-budget 0` (a sync that downloads nothing, so the files already
+   on this Mac get its whole time), and run it again while a note: line of the last one starts with
+   "sync again:" (files are still being read again; the note counts them) or its NEXT: line asks only for
+   another sync. Run it up to 12 times in all; the syncs before "session done" are not counted. Run no other
+   command for this: never purge, accept-deletions or offboard, and nothing else a WAITING ON YOU: line
+   names. Before the report, add a "## Not used" section to the end of
    ~/agent-context/setup/fix-request.md: one line for each part of agentsync this session never used or barely
    used (each visible command: sync, curate, status, add-source, accept-deletions, adopt, purge, hold, offboard;
    the inbox; the baseline questions; background sync), saying why. Then the report, always,
@@ -319,9 +324,10 @@ for approval, one ask per write, unless you let your tool accept file edits.
 **Claude Code:** merge this into `~/.claude/settings.json` ([permission rules](https://code.claude.com/docs/en/permissions)).
 Claude Code checks each part of a compound command (`&&`, `;`) on its own, so step 1 needs the first six rules.
 The block logs every friction line with `install.sh --log`, never with a `>>` redirect, because Claude Code's
-documentation says a `>>` target that starts with `~` always needs approval, whatever the rules say. The three
-agentsync rules are exact: they cover the loop's `sync`, `curate` and `status` and never `purge`, `hold` or
-`offboard`, so any other command a `NEXT:` line names still asks.
+documentation says a `>>` target that starts with `~` always needs approval, whatever the rules say. The four
+agentsync rules are exact: they cover the loop's `sync`, `curate` and `status` and step 3's
+`sync --materialise-budget 0`, and never `purge`, `hold` or `offboard`, so any other command a `NEXT:` line
+names still asks.
 
 ```json
 {
@@ -334,6 +340,7 @@ agentsync rules are exact: they cover the loop's `sync`, `curate` and `status` a
       "Bash(git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync)",
       "Bash(~/src/agent-context-sync/scripts/install.sh *)",
       "Bash(~/.local/bin/agentsync sync)",
+      "Bash(~/.local/bin/agentsync sync --materialise-budget 0)",
       "Bash(~/.local/bin/agentsync curate)",
       "Bash(~/.local/bin/agentsync status)"
     ]
@@ -346,7 +353,7 @@ Its documentation does not say how it matches a command run by its path or one p
 it may still ask for some of them.
 
 ```sh
-cd ~ && copilot --allow-tool='shell(sw_vers:*), shell(xcode-select -p), shell(git clone:*), shell(git -C ~/src/agent-context-sync pull:*), shell(~/src/agent-context-sync/scripts/install.sh:*), shell(~/.local/bin/agentsync sync), shell(~/.local/bin/agentsync curate), shell(~/.local/bin/agentsync status)'
+cd ~ && copilot --allow-tool='shell(sw_vers:*), shell(xcode-select -p), shell(git clone:*), shell(git -C ~/src/agent-context-sync pull:*), shell(~/src/agent-context-sync/scripts/install.sh:*), shell(~/.local/bin/agentsync sync), shell(~/.local/bin/agentsync sync --materialise-budget 0), shell(~/.local/bin/agentsync curate), shell(~/.local/bin/agentsync status)'
 ```
 
 </details>

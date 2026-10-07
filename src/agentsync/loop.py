@@ -73,7 +73,8 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 """Where the README's setup prompt clones the checkout; ``--list-folders`` lists the candidate folders."""
 SYNC_AGAIN = "sync again: "
 """How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_notes`).
-The README's setup prompt runs ``sync`` again while a ``note:`` line starts with it, before its report."""
+The README's setup prompt runs ``sync --materialise-budget 0`` again while a ``note:`` line starts with it,
+before its report."""
 ROWS_PER_SESSION = 10
 """Rule 9's session bound: curate at most this many queue rows, then sync and end the session."""
 AFTER_BASELINE_PAGES = 20

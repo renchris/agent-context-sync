@@ -7632,7 +7632,8 @@ downloaded two a sync, then three syncs that download nothing; a listing held fo
 
 Two things made a round of the bring-back worthless. A copy of the prompt saved before an edit was pasted
 again, twice, and nobody knew it was old. And the report was written while the re-read had only begun.
-v8 adds no command, flag, installer option, config key or environment variable.
+v8 adds no command, flag, installer option, config key or environment variable. (Its step 3 names
+`sync --materialise-budget 0`, an option `sync` has had since 2026-09-30.)
 
 **A copy is known by its version.**
 
@@ -7721,18 +7722,37 @@ def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry 
   v5, v6 or v7 attempt is judged as before, with its own steps. The issue link's `prompt_version` stays the
   attempt's own (`v7`); the form's placeholder is `v8`.
 
-**One round.** Step 3, after the loop and before the report: while a `note:` line of the last sync starts
-with "sync again:" (the note above), or its `NEXT:` line asks only for another sync, the agent runs the sync
-again, up to 12 more times, and runs nothing else for it (never `purge`, `accept-deletions` or `offboard`,
-and no command a `WAITING ON YOU:` line names). It names no new command: the sync is the loop's own, with
-its pre-allow rule.
+**One round.** Step 3, once the loop's `NEXT:` line has said "session done" and before the report: the
+agent runs `~/.local/bin/agentsync sync --materialise-budget 0`, and runs it again while a `note:` line of
+the last one starts with "sync again:" (the note above) or its `NEXT:` line asks only for another sync, up
+to 12 times in all. It runs no other command for this: never `purge`, `accept-deletions` or `offboard`, and
+nothing else a `WAITING ON YOU:` line names.
 
+- These syncs download nothing. The option is `sync`'s own since 2026-09-30 (§16.10 keeps it out of
+  `--help`), and 0 is what `scripts/install.sh` passes for its first sync (`FIRST_SYNC`): every file
+  already on this Mac is converted, and no online-only file is fetched. The first wording ran the loop's
+  plain sync up to 12 more times. Each of those downloads up to the source's budget (1 GiB a folder), so
+  the session could add 12 GiB a folder that step 1's folder question never mentioned, and the files it
+  brought had the OCR time first: on a folder of decks and scans the re-read the loop waited for never
+  started (`_Cycle._reread_over`), and every sync left more files than the one before. Without downloads the
+  re-read has the whole OCR time once the images left for OCR are read.
+- The first of them runs whatever the last note said. A file the loop's last sync downloaded and converted
+  past the OCR time is counted only by the next listing, so that sync may have printed no note; and a note
+  that says downloads took the OCR time does not start "sync again".
+- The count is of these syncs alone. "Up to 12 more times" could be read as a cap on every sync after the
+  first, and the loop's own rule 3 syncs (images waiting for OCR, 30 to 90 a sync) can be more than 12
+  before the baseline step: an agent that applied the cap there wrote its report before the questions were
+  drafted.
+- "No command a `WAITING ON YOU:` line names" forbade the sync itself, read to the letter: the waits for a
+  held listing and for refused downloads both end "then run `~/.local/bin/agentsync sync`". The sentence now
+  names the one command it runs and rules out every other.
+- It has two more pre-allow rules, one per tool, exact as the loop's are: the loop's `sync` rule does not
+  cover a sync with an option, and a rule wide enough for both would cover any download budget.
 - The stop is the tool's: the note says "sync again" only while a sync reads more, so the agent counts
   nothing but the cap.
 - The cap is the cycle's two budgets. One sync spends at most `_REREAD_BUDGET_S` (120 s) on re-reads and
   `_OCR_BUDGET_S` (180 s) on OCR, plus the read that passes each, so 12 syncs are an hour of that work at
-  most. The prompt names the count and no time: a sync also lists the folders and downloads online-only
-  files up to each source's budget, which no number here bounds.
+  most. The prompt names the count and no time: a sync also lists the folders, which no number here bounds.
 - 12 syncs re-read about 24 minutes' worth. A mirror of 1,300 files that all need a re-read is finished
   inside the cap when a file takes 1.1 s or less on average. The repo's own small samples take 0.09 s
   (Word, one pandoc start), 0.01 s (deck) and under 0.01 s (PDF) without OCR on an Apple silicon Mac, so
@@ -7744,8 +7764,9 @@ its pre-allow rule.
 Tests: `tests/test_deploy_pack.py` (the version in the first line, in step 1's check and in the value handed
 to `--log-start`, with "or higher" gone; the text against its version; the module's and the installer's
 number; a saved v7 copy's exact step 1 command under bash and zsh: exit 2, no folder listed, the one error
-line, the attempt logged as "v7 or older", and its report's `NEXT:`; step 3's sentence, the note's prefix
-and the cap against the two budgets), `tests/test_install_oneshot.py` (`--log-start` with no version, an
+line, the attempt logged as "v7 or older", and its report's `NEXT:`; step 3's sentence, the note's prefix,
+the cap against the two budgets, the option against `sync`'s parser and the installer's first sync, and
+the two exact pre-allow rules), `tests/test_install_oneshot.py` (`--log-start` with no version, an
 older one, a newer one, one in another place, one with a letter after the number and one of four digits,
 each closed by the stop and none shown a value that passes; the value without its space, with a capital,
 a colon, a dash and with nothing after the number; the report of a current attempt after stopped ones, of
