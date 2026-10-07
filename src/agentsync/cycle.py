@@ -2255,8 +2255,9 @@ class _Cycle:
 
         An image OCR would read is refused the same way while reading it means a download (an online-only
         file, any Graph item). No image was ever downloaded, and hydrating a photo library is the operator's
-        choice, never a side effect of OCR: the image keeps the stub it has without an engine. Only an image
-        already on this Mac is read."""
+        choice, never a side effect of OCR: an image that was never read keeps the stub it has without an
+        engine, and one that was read while it was on this Mac keeps its page (``_keeps_page``). Only an
+        image already on this Mac is read."""
         if self.registry.for_name(row.name) is not None and not (
             self._ocr_image(row) and (src.kind.is_graph or row.dataless)
         ):
@@ -2290,6 +2291,27 @@ class _Cycle:
             return self.ocr.spent_s >= _OCR_BUDGET_S
         return src.kind.is_graph and self._reads_with_ocr(row.name)
 
+    def _keeps_page(self, row: ItemRow, acc: _SourceAcc) -> bool:
+        """True when ``row`` is an image that is not read because reading it would be a download, and that
+        has the page OCR made of it while it was on this Mac: the page is kept.
+
+        The row is settled as the online-only file it is, and nothing is published.  Without this, whatever
+        made such a row pending work (a ``materialise PATH`` run that names it, a repair) replaced its page
+        with the ``no converter`` stub.  Under a label rule there is no image converter at all, and the
+        stub is what the rule asks for."""
+        if self.registry.for_name(row.name) is None:
+            return False
+        outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+        if not any(o.status is OutputStatus.OK for o in outs) or not _pages_intact(self.repo, outs):
+            return False
+        settled = Verdict.DATALESS if row.dataless else _SETTLED_PUBLISHED
+        self.manifest.set_verdict(row.source_id, row.stable_id, settled)
+        if self.forced_paths:
+            acc.alarms.append(
+                f"{row.rel_path}: an online-only image is not downloaded for OCR; its page is kept as it was"
+            )
+        return True
+
     def _converting(self) -> Registry:
         """The registry the next file is converted with. Once the cycle has used its OCR time
         (``_OCR_BUDGET_S``) it is the one without an engine (``Registry.without_ocr``): a document that
@@ -2307,7 +2329,8 @@ class _Cycle:
             self.manifest.set_state(sid, stable, row.state, None)
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
-            self._publish(src, row, refused, acc)
+            if not self._keeps_page(row, acc):
+                self._publish(src, row, refused, acc)
             return
         screening = self.publisher.policy_refusal(row)
         if screening is not None:  # an excluded item label: never download it (C15 section 9 item 27)

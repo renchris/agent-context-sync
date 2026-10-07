@@ -7106,7 +7106,13 @@ for the fake helper of `tests/test_ocr.py`.
   local or inbox file the walk saw online-only, or any Graph item), `_no_converter` refuses it from its name
   exactly as without an engine: the `no converter for .png` stub (`converter: none@0`), no byte read, nothing
   charged to `max_materialise_bytes`, nothing for `loop` to wait on, and `materialise PATH` naming it changes
-  nothing. An image on this Mac is read. The rule looks at the manifest row, as `_download_cost` does. Once
+  nothing. **Amended (2026-10-06):** that holds for an image that was never read. One that was read while
+  it was on this Mac and evicted afterwards has a page, and `_keeps_page` keeps it: when such a row becomes
+  work (a `materialise PATH` run names it, a repair queues it) and its page is intact, nothing is
+  published, the row is settled as the online-only file it is (`Verdict.DATALESS`), and a `materialise
+  PATH` run gets the alarm `<path>: an online-only image is not downloaded for OCR; its page is kept as it
+  was`. It used to get the stub over its page, committed. Under a label rule there is no image converter,
+  and the stub is what the rule asks for. An image on this Mac is read. The rule looks at the manifest row, as `_download_cost` does. Once
   the person has downloaded the file, the next sync reads it when the walk sees the row changed; a download
   changes the file's flags, so its inode's change time. That was not checked against a real File Provider
   here: the test moves the change time by hand.
@@ -7165,7 +7171,8 @@ first two read under the
 staging folder and converted without OCR once the budget is used, the third under the version without OCR
 both times; an online-only image beside a local one, under a byte budget, named to
 `materialise`, and after it
-is downloaded; a Graph image whose content is never requested; a Graph PDF past the OCR budget: deferred, not downloaded, and
+is downloaded; an image read by OCR, evicted and named to `materialise`: its page kept, one alarm; a Graph
+image whose content is never requested; a Graph PDF past the OCR budget: deferred, not downloaded, and
 converted with OCR by the next cycle; a helper
 that fails on everything: three images get the `no converter` stub, the helper is run on one of them and
 on the blank image, one alarm, no file tried, and each read once the helper works;

@@ -1673,6 +1673,43 @@ def test_a_graph_document_waits_for_ocr_time_and_is_not_converted_without_it(
     assert "+ocr-paper-vision-" in text and text.rstrip().endswith("(Apple Vision)]\n\nDelivery note 7")
 
 
+def test_an_image_read_by_ocr_keeps_its_page_once_it_is_online_only_whatever_queues_it(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An image is read while it is on this Mac, and the provider evicts it later.  It is not downloaded
+    for OCR, and that used to mean its row got the ``no converter`` stub as soon as anything made it
+    pending work: a ``materialise PATH`` run that names it committed the stub over the page.  The page is
+    kept, the row is settled as the online-only file it is, and the run says why nothing was read."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    photo = picture(local_source_dir / SITE_PLAN, "Loading dock", "North gate: closed")
+    assert (
+        run(sample_config).exit_code == 0 and _image_page(sample_config, SITE_PLAN)[0]["status"] == "current"
+    )
+    online, real = {photo.stat().st_ino}, materialise.is_dataless
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in online or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    photo.chmod(0o600)  # an eviction changes the file's flags, so its change time: the walk sees the row move
+    assert run(sample_config).exit_code == 0
+    before = _mirror_bytes(sample_config, SITE_PLAN)
+    assert b"North gate: closed" in before[SITE_PLAN]
+    fetched = _fetches(monkeypatch)
+    named = run(sample_config, materialise_paths=[photo], budget_bytes=10_000_000)
+    [rep] = named.sources
+    assert (named.exit_code, named.commit_sha, fetched) == (0, None, [])
+    assert rep.alarms == (
+        f"{SITE_PLAN}: an online-only image is not downloaded for OCR; its page is kept as it was",
+    )
+    assert _mirror_bytes(sample_config, SITE_PLAN) == before and len(reads(engine.helper)) == 1
+    row = _file_rows(sample_config)[SITE_PLAN]
+    assert (row.state, row.last_verdict) == (RowState.DATALESS, Verdict.DATALESS)
+    assert run(sample_config).commit_sha is None and loop.next_step(sample_config).rule != 3
+    assert _mirror_bytes(sample_config, SITE_PLAN) == before
+
+
 LABEL_RULE = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
 
 
