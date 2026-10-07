@@ -7588,7 +7588,9 @@ record is not `done`, or says a file was being read (`_reread_note`):
   line, with no count kept by the agent. A file that fails is read in two cycles and then given up, so a
   cycle that read files and finished none is still followed by an end.
 - `sync` and `status` print it with the other notes, after `NEXT:` and the waits. The setup report's `Loop:`
-  line shows no note; its OCR part has the re-read table.
+  line (§16.14, K16b) ends with this note when the loop has it, after the first wait, and with no other
+  note (`_loop_line` takes the `note:` line that says "read again"): a report that shows `note: sync again:`
+  there was written before the re-read finished. The OCR part has the re-read table.
 
 ```python
 # agentsync.loop

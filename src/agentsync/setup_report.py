@@ -4272,7 +4272,9 @@ def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
     first ``WAITING ON YOU:`` line and how many more there are (rule 5's NEXT and a held listing point at
-    one). Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before ``took``."""
+    one), then the loop's ``note:`` about files still to be read again, when it has one: a report that shows
+    ``note: sync again:`` there was written before the one-time re-read finished. Sets ``r.loop_stage`` for
+    the issue link; :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
@@ -4291,6 +4293,9 @@ def _loop_line(r: _Run) -> str:
     if waits:
         more = f" (+{len(waits) - 1} more)" if len(waits) > 1 else ""
         text += f"; {loop_next_text(waits[0])}{more}"
+    reread = next((ln for ln in lines if ln.startswith("note: ") and "read again" in ln), None)
+    if reread is not None:
+        text += f"; {loop_next_text(reread)}"
     return f"- Loop: {stage}; {text}"
 
 

@@ -2013,6 +2013,34 @@ def test_v7_sync_only_reads_synced_and_draft_the_baseline_questions(
     assert link["outcome"] == ["Fully one command"]
 
 
+def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[str, Path]) -> None:
+    """The setup prompt syncs again before the report while sync's note says "sync again". A report whose
+    Loop line still shows that note was written at the cap, before the re-read finished; one that shows the
+    other wording, after a sync that read none of the files left. No other note is on the line."""
+    online = "note: 2 online-only file(s) in one wait for a later sync's download budget; they do not block"
+    again = (
+        "note: sync again: 412 file(s) in one are still to be read again, once, for what this build's "
+        "converters have gained (each sync reads about 2 minutes' worth); it does not block the next step"
+    )
+    stuck = (
+        "note: 3 file(s) in one wait to be read again, and the last sync read none of them (a converter or "
+        "on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear "
+        "it; it does not block the next step"
+    )
+    step = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    wait = "WAITING ON YOU: the baseline questions are a draft"
+    for note in (again, stuck):
+        hooks = setup_report.ReportHooks(loop_next=lambda _config, note=note: [step, wait, online, note])
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+        assert line.endswith(f"; {step}; {wait}; {note}"), line
+        assert "online-only" not in line
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait, online])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert line.endswith(f"; {step}; {wait}") and "note:" not in line
+
+
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("loop exploded")

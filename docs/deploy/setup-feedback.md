@@ -183,8 +183,10 @@ status's loop line; the NEXT line is the one `agentsync status` would print, wit
 (`~/.local/bin/agentsync` is `agentsync`). So a setup that synced and stopped before drafting the baseline
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
 something waits on the person, the line ends with the first `WAITING ON YOU:` line and `(+N more)` for the
-rest; `agentsync status` prints them all. The line holds no path, so redaction is unchanged; its stage prefills
-the form's Loop stage.
+rest; `agentsync status` prints them all. When files are still to be read again, the loop's note about them
+follows: `note: sync again: N file(s) ...` means the report was written before the one-time re-read finished
+(section "The evidence parts" says what that takes). The line holds no path, so redaction is unchanged; its
+stage prefills the form's Loop stage.
 
 The run type is computed too:
 
