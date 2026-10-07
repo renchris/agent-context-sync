@@ -3183,6 +3183,46 @@ def test_argument_roles_follow_the_shape_launchd_writes() -> None:
     assert roles([]) == [] and roles([7, "--mode"]) == ["interpreter", "other"]
 
 
+def test_installer_lists_every_run_and_the_ones_with_no_end_line(fake_mac: dict[str, Path]) -> None:
+    """The first bring-back file counted four runs and showed three. Every run is one line now, and a run
+    with no end line says when it started and the step it reached."""
+    log = fake_mac["setup"] / "install.log"
+    stopped = "20261006T021601Z-777"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-10-06T02:10:00Z run=20261006T021000Z-600 start install.sh compat=7 commit=0123456789ab "
+        "kind=checkout source=- args=--list-folders\n"
+        "2026-10-06T02:10:00Z run=20261006T021000Z-600 step=list-folders seconds=1 rc=0 result=done "
+        "note=listed-24\n"
+        "2026-10-06T02:10:01Z run=20261006T021000Z-600 end rc=0 seconds=1\n"
+        f"2026-10-06T02:16:01Z run={stopped} start install.sh compat=7 commit=0123456789ab kind=checkout "
+        "source=- args=--source-local Wingtip\\ merger\n"
+        f"2026-10-06T02:16:01Z run={stopped} step=uv seconds=0 rc=0 result=skipped note=present\n"
+        f"2026-10-06T02:16:02Z run={stopped} step=agentsync seconds=9 rc=1 result=failed\n",
+        encoding="utf-8",
+    )
+    write_install_log(fake_mac, start="2026-10-06T16:42:00Z", run="20261006T164200Z-900", append=True)
+    write_install_log(fake_mac, start="2026-10-06T16:50:00Z", run="20261006T165000Z-901", append=True)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    inst = section(text, "Installer").split("<details>", 1)[0]
+    assert "5 install.sh run(s) in" in inst and "the last 3 (run ids without their process id):" in inst
+    assert "Every run, oldest first (the last 5 of 5; run ids without their process id):" in inst
+    assert [ln for ln in inst.splitlines() if ln.startswith("| 2026")] == [
+        "| 20260929T100000Z | 2026-09-29T10:00:00Z | install | 6 | agent (skipped) | exit 0 after 57s |",
+        "| 20261006T021000Z | 2026-10-06T02:10:00Z | list-folders | 1 | list-folders (done) "
+        "| exit 0 after 1s |",
+        "| 20261006T021601Z | 2026-10-06T02:16:01Z | install | 2 | agentsync (failed, rc 1) | no end line |",
+        "| 20261006T164200Z | 2026-10-06T16:42:00Z | install | 6 | report (done) | exit 0 after 57s |",
+        "| 20261006T165000Z | 2026-10-06T16:50:00Z | install | 6 | report (done) | exit 0 after 57s |",
+    ]
+    assert "Runs with no end line (stopped early, or still running): 1\n" in inst
+    assert (
+        "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, reached agentsync (failed, rc 1) after 2 step "
+        "line(s)" in inst
+    )
+    assert "Wingtip" not in inst and "-777" not in inst
+
+
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:
     """The evidence parts print a source as the Redactor shows it. With a Redactor that knows nothing (its
     facts could not be gathered), a configured id is its place in sources.toml, but for agentsync's own

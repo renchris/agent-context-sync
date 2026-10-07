@@ -7530,8 +7530,8 @@ converted again from the same bytes in two runs running; the limit marks are the
 
 The Status section ends with six parts, each under a `### ` heading (`EVIDENCE_TITLES`, in this order). They
 are sub-headings, as `RUN_METADATA_HEADING` is, so the `## ` headings stay `SECTION_TITLES` and the report
-`scripts/install.sh` writes without agentsync keeps the same headings. Background runs gains
-lines (below). The README prompt is unchanged: the tool writes all of it.
+`scripts/install.sh` writes without agentsync keeps the same headings. Background runs and
+Installer each gain lines (below). The README prompt is unchanged: the tool writes all of it.
 
 ```python
 # agentsync.setup_report
@@ -7653,9 +7653,14 @@ one exists, and the canary paths as three counts; for `EnvironmentVariables` fou
 or variable name is printed. A plist that cannot be read, or a config for which this build would write no
 job, is `not compared (<exception type>)`.
 
+**Installer.** After the tables of the last three runs: every run on one line (the last 20: start, kind, step
+lines, last step logged, end), and the runs with no end line, each with its start time and the step it
+reached. A step name or result is printed only when it is one of install.sh's own words.
+
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
-and their helpers, `_plist_lines`, `_argument_lines`, `_class_text`, and the constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
+and their helpers, `_plist_lines`, `_argument_lines`, `_class_text`, `_run_list`, `_reached`, and the
+constants beside them). `_IMAGE_SUFFIXES`, `_OCR_DOCUMENTS`, `_OCR_MARK`, `_FIELD_MARKS`, `_REREAD_META` and
 `_EMPTY_DIRS_META` repeat values the converters and the cycle own; a test holds each pair equal.
 
 Tests: `tests/test_setup_report.py` (the six headings under Status with the `## ` headings as they were, an
@@ -7668,5 +7673,5 @@ that was never a row; a source inside another, with and without the exclude line
 are dataless, materialised with and without entries, gone and not a folder, with no folder listed and the
 cap of 50; the run records and the cache for repeat conversions; no time left; a statement that runs past the
 time; 50,000 files bounded by VM instructions and by each statement's query plan; an installed plist that
-differs, the same file under another name, an unreadable plist and no launcher; `argument_roles`; a source
-the Redactor does not know). Each test seeds made-up folder and file names and asserts none reaches the report.
+differs, the same file under another name, an unreadable plist and no launcher; `argument_roles`; every
+installer run and one with no end line; a source the Redactor does not know). Each test seeds made-up folder and file names and asserts none reaches the report.

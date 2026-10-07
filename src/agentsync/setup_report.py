@@ -34,7 +34,8 @@ inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version stri
 OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`), the purge
 queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
 flag, and conversions repeated run after run. Background runs says how an installed plist's arguments
-differ from what this build would write, by class (:func:`argument_roles`).
+differ from what this build would write, by class (:func:`argument_roles`), and Installer lists every run
+and the ones with no end line.
 
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
@@ -2187,6 +2188,63 @@ def _installer_output(r: _Run) -> list[str]:
     ]
 
 
+_RUNS_LISTED = 20
+_STEP_WORD_RE = re.compile(r"[a-z][a-z0-9-]{0,23}")
+
+
+def _step_word(value: str | None) -> str:
+    """An install.sh step name or result as the report prints it: its own word, or ``?``."""
+    return value if value is not None and _STEP_WORD_RE.fullmatch(value) else "?"
+
+
+def _reached(run: InstallRun) -> str:
+    """The last step a run logged, with its result: how far it got."""
+    if not run.steps:
+        return "no step line"
+    name, fields = run.steps[-1]
+    rc = fields.get("rc", "")
+    return f"{_step_word(name)} ({_step_word(fields.get('result'))}" + (
+        f", rc {rc})" if rc.isdigit() and rc != "0" else ")"
+    )
+
+
+def _run_list(runs: Sequence[InstallRun]) -> list[str]:
+    """Every run on one line (the tables above show the last :data:`INSTALL_RUNS_SHOWN` only), and the runs
+    with no end line by their start time and the step they reached."""
+    listed = runs[-_RUNS_LISTED:]
+    rows = [
+        (
+            run.display_id,
+            _iso(run.started),
+            "list-folders" if run.list_only else "install",
+            len(run.steps),
+            _reached(run),
+            f"exit {run.rc} after {run.seconds if run.seconds is not None else '?'}s"
+            if run.rc is not None
+            else "no end line",
+        )
+        for run in listed
+    ]
+    open_runs = [run for run in runs if run.rc is None]
+    out = [
+        "",
+        f"Every run, oldest first (the last {len(listed)} of {len(runs)}; run ids without their process id):",
+        "",
+        *_table(
+            ("run", "started (UTC)", "kind", "step lines", "last step logged", "end"), rows, _RUNS_LISTED
+        ),
+        "",
+        f"Runs with no end line (stopped early, or still running): {len(open_runs)}",
+    ]
+    for run in open_runs[-_RUNS_LISTED:]:
+        newest = " (the newest run)" if run is runs[-1] else ""
+        out.append(
+            f"- run {run.display_id}{newest}: started {_iso(run.started)}, reached {_reached(run)} after "
+            f"{len(run.steps)} step line(s)"
+        )
+    return out
+
+
 def _installer_runs(r: _Run) -> list[str]:
     log = r.install_log
     if not log.exists():
@@ -2225,6 +2283,7 @@ def _installer_runs(r: _Run) -> list[str]:
             ]
         if run is runs[-1]:
             r.facts.last_install = status
+    out += _run_list(runs)
     raw = [_PID_SUFFIX_RE.sub(r"\1", ln) for run in shown for ln in run.lines]
     out += [
         "",

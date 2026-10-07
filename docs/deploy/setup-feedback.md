@@ -19,8 +19,8 @@ The machine part is read-only and bounded: no network (doctor runs without its G
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
-reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs carries
-a few more lines; section 4 says how to read them. They are counts, states,
+reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs and
+Installer carry a few more lines; section 4 says how to read them. They are counts, states,
 seconds, version strings and fixed words, so they add nothing to review: no file name, folder name or reason
 text is in them. They share 3 of the 12 seconds, and a part that runs out prints "not measured (time limit)".
 The manifest is opened read-only and no folder is listed.
@@ -207,6 +207,7 @@ says otherwise.
 | Empty cloud folders | Can an empty cloud folder be told from one that was never listed? | `N unknown: D dataless, M materialised-and-empty`. A dataless folder's child list is not on this Mac. A materialised one with a link count of 2 has no entry by its own metadata. |
 | Repeat conversions | Are the same files converted on every run? | The last column counts conversions from bytes the run just before had converted too. The cache line gives the same answer for runs of an older build. |
 | Background runs: installed plist | Which arguments of an installed LaunchAgent differ from what this build would write? | Positions and their class (launcher, interpreter, config path, canary path, ...), never a value. `the same file: yes` means only the spelling of the path differs. |
+| Installer: every run | Was a run cut short? | One line per run, and each run with no end line with its start time and the step it reached. |
 
 A part that prints "not measured (time limit)" ran out of its share of the report's time. Run
 `agentsync setup-report` again on an idle Mac before asking for anything else. A run of a build older than
