@@ -2988,18 +2988,29 @@ def _ocr_time(m: _Mirror) -> list[str]:
     def total(key: str) -> int:
         return sum(x.n(key) for x in runs)
 
+    # A file that waits is counted in every run it waits in, so the sum over the runs is waits, not files:
+    # 1,000 screenshots read 30 a cycle add up to some 16,000. The files waiting are the newest run's.
+    newest = engine[0] if engine else None
+    waiting = (
+        f"- waiting for OCR: the newest run that had an engine (run {newest.run_id}) left "
+        f"{newest.n('ocr_deferred')} file(s) for a later cycle's OCR; the {len(runs)} run(s) add up to "
+        f"{total('ocr_deferred')} wait(s), a file counted once in every run it waited in"
+        if newest is not None
+        else "- waiting for OCR: no run that had an engine is recorded"
+    )
     out = [
         f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts (a run of an "
         f"earlier build did not) and {len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
         f"OCR time; {total('ocr_down')} ended with the helper not working; the helper ran "
         f"{total('ocr_ms') / 1000:.0f}s in all",
-        f"- in those runs: {total('ocr_deferred')} file(s) waited for a later cycle's OCR · "
-        f"{total('ocr_without_budget')} converted without OCR because the cycle's OCR time was used up · "
-        f"{total('ocr_without_down')} converted without OCR because the helper had stopped working · "
+        waiting,
+        "- in those runs, each count a sum over the runs (a file converted or read in two of them counts "
+        f"twice): {total('ocr_without_budget')} conversion(s) without OCR because the cycle's OCR time was "
+        f"used up · {total('ocr_without_down')} without OCR because the helper had stopped working · "
         f"{total('ocr_failed')} the engine failed on (a helper failure, or the file's own time limit) · "
-        f"{total('ocr_page_cap')} conversion(s) say pages past the OCR page limit were not read · "
-        f"{total('ocr_picture_cap')} say pictures past the picture limit were not read · "
-        f"{total('reread')} read again ({total('reread_kept')} kept the page they had)",
+        f"{total('ocr_page_cap')} that say pages past the OCR page limit were not read · "
+        f"{total('ocr_picture_cap')} that say pictures past the picture limit were not read · "
+        f"{total('reread')} read(s) again ({total('reread_kept')} kept the page they had)",
     ]
     shown = (engine or runs)[:_RUNS_SHOWN]
     rows = []
@@ -3031,7 +3042,7 @@ def _ocr_time(m: _Mirror) -> list[str]:
         "OCR time used",
         "used up",
         "helper stopped",
-        "waited",
+        "left waiting",
         "without OCR (time + helper)",
         "engine failed",
         "past the page + picture limit",

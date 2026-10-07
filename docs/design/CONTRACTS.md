@@ -7503,7 +7503,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
 | `ocr_ms`, `ocr_budget_s` | milliseconds the OCR helper ran (`_CycleOcr.spent_s`) and the cycle's OCR time (`_OCR_BUDGET_S`) |
 | `ocr_over`, `ocr_down` | 1 when that time was used up; 1 when the helper stopped working in the cycle |
-| `ocr_deferred` | files left for a later cycle's OCR before a byte was read (`_ocr_waits`): images on this Mac past the budget, Graph documents |
+| `ocr_deferred` | files left for a later cycle's OCR before a byte was read (`_ocr_waits`): images on this Mac past the budget, Graph documents. A file is counted in every run it waits in |
 | `ocr_without_budget`, `ocr_without_down` | files converted with the registry that has no engine (`_converting`) because the time was used up, or because the helper had stopped working |
 | `ocr_failed` | files the engine was tried on and failed: a helper failure, or the file's own time limit (§16.26). An image then has the `no converter` refusal, a document its page without OCR |
 | `ocr_page_cap`, `ocr_picture_cap` | conversions whose summary or stub reason says a count limit of OCR left pages or pictures unread (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`: the converters' fixed wording) |
@@ -7643,8 +7643,13 @@ decides before a word inside the text does.
   run, and documents whose page has no OCR identity. The report builds no registry, so it cannot ask a
   converter's `outdated`; the count is the rule of the table in §16.27 and includes the files given up.
 - Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
-  time, or ended with the helper not working; the sums of every `ocr_*` and `reread*` key; and one row for
-  each of the last five runs that had an engine.
+  time, or ended with the helper not working; the files the newest run that had an engine left waiting; the
+  sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine.
+  A sum over runs is not a count of files: `ocr_deferred` counts a file in every run it waits in, so 1,000
+  screenshots read 30 a cycle add up to some 16,000, and a file read again after the engine failed on it is
+  in `ocr_failed` once per try. The sums are worded as waits and conversions, and the number of files
+  waiting is the newest run's `ocr_deferred` (the image line's `deferred on this Mac` is the same backlog
+  from the manifest).
 
 **Quarantine by reason.** Every file whose row carries a reason: the quarantined and refused ones, and a
 present file whose download the OS refused. One row per source, state and class with the file count, how

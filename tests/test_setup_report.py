@@ -2642,11 +2642,15 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "184s in all\n" in ocr_part
     )
     assert (
-        "- in those runs: 3 file(s) waited for a later cycle's OCR · 2 converted without OCR because the "
-        "cycle's OCR time was used up · 2 converted without OCR because the helper had stopped working · 1 "
-        "the engine failed on (a helper failure, or the file's own time limit) · 1 conversion(s) say pages "
-        "past the OCR page limit were not read · 1 say pictures past the picture limit were not read · 4 "
-        "read again (1 kept the page they had)\n" in ocr_part
+        "- waiting for OCR: the newest run that had an engine (run 5) left 0 file(s) for a later cycle's "
+        "OCR; the 3 run(s) add up to 3 wait(s), a file counted once in every run it waited in\n" in ocr_part
+    )
+    assert (
+        "- in those runs, each count a sum over the runs (a file converted or read in two of them counts "
+        "twice): 2 conversion(s) without OCR because the cycle's OCR time was used up · 2 without OCR "
+        "because the helper had stopped working · 1 the engine failed on (a helper failure, or the file's "
+        "own time limit) · 1 that say pages past the OCR page limit were not read · 1 that say pictures past "
+        "the picture limit were not read · 4 read(s) again (1 kept the page they had)\n" in ocr_part
     )
     started = "2026-10-06T10:00:00Z | 1m05s"
     assert [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)] == [
@@ -2655,6 +2659,31 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     ], "the run of an earlier build had no engine: it is not in the OCR table"
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
         assert raw not in text, raw
+
+
+def test_a_backlog_read_over_many_runs_is_reported_as_files_waiting_not_as_a_sum(
+    fake_mac: dict[str, Path],
+) -> None:
+    """A file that waits for OCR is counted in every run it waits in. 1,000 screenshots read 30 a cycle:
+    the sum over the runs was printed as "file(s) waited", some 16 times the files there are. The files
+    waiting are the newest run's; the sum is worded as waits."""
+    seed = Seed(fake_mac["config"])
+    left = list(range(970, 0, -30))
+    for run_id, waits in enumerate(left, 1):
+        seed.run(run_id, {"converted": 30, "ocr_ms": 180_000, "ocr_budget_s": 180, "ocr_deferred": waits})
+    seed.run(len(left) + 1, {"converted": 10, "ocr_ms": 60_000, "ocr_budget_s": 180})
+    seed.run(len(left) + 2, {"converted": 0})  # a run without an engine: AGENTSYNC_OCR=0 in a terminal
+    seed.close()
+    ocr_part = status_parts(fake_mac)[1]["OCR"]
+    assert sum(left) == 16_170 and len(left) == 33
+    assert (
+        "- waiting for OCR: the newest run that had an engine (run 34) left 0 file(s) for a later cycle's "
+        "OCR; the 35 run(s) add up to 16170 wait(s), a file counted once in every run it waited in\n"
+        in ocr_part
+    )
+    assert "file(s) waited" not in ocr_part
+    rows = [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)]
+    assert [row.split(" | ")[8] for row in rows] == ["0", "10", "40", "70", "100"], "left waiting, per run"
 
 
 def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
