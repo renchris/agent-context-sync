@@ -242,6 +242,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
 - A list that ends on a click (exit 4: a provider this terminal app was denied, or macOS still asking) has
   the line and the marks too, for what it could list. Step 1's exception applies there as well, and the click
   is needed only to add a folder from that provider. Its log line reads `result=failed note=denied synced=2`.
+- A set-up Mac with nothing to list (OneDrive signed out, and a synced folder outside
+  `~/Library/CloudStorage`) gets the line, its synced folders and exit 0, logged `note=listed-0 synced=1`. The
+  `NEXT:` names `install.sh` alone, so step 2 runs. A Mac that syncs no folder still gets exit 3 there.
 - Step 1 then tells the person which folders those are and asks only whether to add an unmarked one. An agent that
   cannot ask adds none and goes on to step 2. That is not a deviation and is not logged; the agent says it in
   its final message. On a Mac with no synced folder nothing changed: an agent that cannot ask logs a deviation,

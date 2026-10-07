@@ -58,7 +58,9 @@ On a Mac that is already set up nothing has to be chosen again. `--list-folders`
 and `install.sh` with no `--source-local` keeps every source, updates agentsync and runs status and a sync.
 A sync reads everything under a synced folder, so a listed folder inside one has `[inside a synced folder]`
 before it, and one that holds one has `[contains a synced folder]`. Add only an unmarked folder: a marked one
-would be read twice.
+would be read twice. A synced folder the list does not reach (deeper than two levels, or outside
+`~/Library/CloudStorage`) is printed first with the same mark. Such a Mac gets that line and exit 0 even when
+nothing else can be listed, and the line and the marks even when the list ends on a click (exit 4).
 
 ### Optional: background sync (the operator's choice)
 

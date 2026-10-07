@@ -1318,6 +1318,70 @@ def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_f
     assert install_log(env)[-2].endswith(" result=done note=listed-3 synced=2")
 
 
+@pytest.mark.parametrize("cloud_storage", ["absent", "no folder yet"])
+def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
+    env: dict[str, str], cloud_storage: str
+) -> None:
+    """A Mac that is set up, with nothing to list: OneDrive is signed out, or its folder is still empty,
+    and the config syncs a folder outside ~/Library/CloudStorage. The config was read only when there was a
+    line to mark, so this Mac got the new Mac's exit 3 and "sign in to OneDrive". The prompt then goes to
+    the report without step 2: no update and no sync, though install.sh alone keeps that folder and syncs
+    it (review, 2026-10-07). The list now says what is synced, exits 0 and names that command. A Mac that
+    syncs no folder still gets exit 3 and the line it always got."""
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    notes.mkdir(parents=True)
+    why = "OneDrive is not signed in on this Mac"
+    if cloud_storage == "no folder yet":
+        (_cloud(env) / "OneDrive-Contoso").mkdir(parents=True)
+        why = f"no folders are synced yet in {_cloud(env)}"
+    cfg = _write_config(env, local_source_table("notes", notes), _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines() == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "the list)",
+        f"[synced] {notes}",
+        f"NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run {INSTALL_SH} (no folder to "
+        f"add is listed: {why})",
+    ]
+    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-0")]
+    assert install_log(env)[-2].endswith(" result=done note=listed-0 synced=1")
+    assert not report_path(env).exists()
+    _write_config(env, _inbox(env))  # the inbox alone: no folder is synced, so this is a new Mac
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (3, ""), cp.stdout + cp.stderr
+    [only] = cp.stdout.splitlines()
+    assert only.startswith("NEXT: ") and only.endswith(f"then re-run: {INSTALL_SH} --list-folders")
+    assert re.search(r" result=failed note=(not-signed-in|no-folders) synced=0$", install_log(env)[-2])
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 3 and cp.stdout.splitlines() == [only], "a config nobody can read: a new Mac"
+    assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
+    assert re.search(r" result=failed note=(not-signed-in|no-folders)$", install_log(env)[-2])
+
+
+def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied(
+    env: dict[str, str],
+) -> None:
+    """Nothing could be listed, and the click is still the NEXT (exit 4). The folders the config syncs are
+    printed all the same, so the "already synced" line is there for the prompt's exception."""
+    projects = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects"
+    projects.mkdir(parents=True)
+    _write_config(env, local_source_table("fy26", projects), _inbox(env))
+    _tool_python(env)
+    _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 4, cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "the list)",
+        f"[synced] {projects}",
+    ]
+    assert last_line(cp).startswith("NEXT: this terminal app was denied access to files managed by OneDrive")
+    assert install_log(env)[-2].endswith(" result=failed note=denied synced=1")
+
+
 def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, str]) -> None:
     lib = _cloud(env) / "OneDrive-Contoso"
     for i in range(205):
@@ -1547,6 +1611,31 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     assert _config_line(env).endswith(" result=done note=add-source kept=1 added=1")
     after = cfg.read_bytes()
     assert after.startswith(before) and after.count(b'kind = "local"') == 2, "Beta added, Alpha not twice"
+
+
+def test_a_set_up_mac_with_nothing_to_list_is_kept_by_the_run_its_list_names(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """The list's NEXT on a Mac whose one synced folder is outside ~/Library/CloudStorage, with OneDrive
+    signed out, names install.sh alone. With the real agentsync: that run keeps the folder, syncs it and
+    exits 0, where step 1 used to end at exit 3 and the prompt went to the report without it."""
+    env = real_env
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    notes.mkdir(parents=True)
+    (notes / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(notes))
+    assert first.returncode == 0, first.stdout + first.stderr
+    listing = install_sh(env, "--list-folders")
+    assert listing.returncode == 0, listing.stdout + listing.stderr
+    assert listing.stdout.splitlines()[1] == f"[synced] {notes}"
+    assert last_line(listing).startswith(
+        f"NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run {INSTALL_SH} (no folder "
+    )
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "folders: kept the 1 already synced (none added)" in again.stdout.splitlines()
+    assert "sync: converted 0, deferred 0 online-only" in again.stdout.splitlines()
+    assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
 
 
 def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:

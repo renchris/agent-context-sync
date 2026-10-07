@@ -34,7 +34,8 @@
 #                           the config names it); a listed folder inside one of them has "[inside a
 #                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
 #                           NEXT: names the command that keeps them. A list that exits 4 has that line and
-#                           the marks too, for what it could list, and still ends on the click
+#                           the marks too, for what it could list, and still ends on the click. With nothing
+#                           to list, such a Mac gets that line, its synced folders and exit 0, not 3
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -49,7 +50,9 @@
 # link (config.canonical_source_root), so --list-folders marks exactly the folders a sync reads: each of
 # them, and every listed folder inside one (a sync reads the whole tree under a source; an exclude list is
 # not read here). A listed folder that holds one has a mark of its own: adding it would read that tree twice.
-# So an unmarked folder is one no sync reads, in whole or in part. Without a
+# So an unmarked folder is one no sync reads, in whole or in part. A synced folder the list does not reach
+# is printed first, so each one is named, also when nothing else is listed (OneDrive signed out) or a
+# provider waits for a click. Without a
 # config, or with one that holds no such source, --list-folders prints what it always did. A config the
 # installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked. A run
 # with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
@@ -1254,8 +1257,9 @@ list_folders() {
 	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
 	# list says which they are and nobody is asked again. Only with a config: without one the output is what
 	# it always was. Also when a provider was denied or is still asking: the marks need only the config and
-	# the lines that were listed, and the list still ends on that click (exit 4).
-	if [ -f "$CONFIG" ] && [ "$total" -gt 0 ]; then
+	# the lines that were listed, and the list still ends on that click (exit 4). And also when nothing was
+	# listed: a Mac whose synced folders are all elsewhere is set up all the same.
+	if [ -f "$CONFIG" ]; then
 		py="$(tool_python)"
 		if [ -n "$py" ] && synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>/dev/null; then
 			synced="$(sed -n 1p "$tmp/marked")"
@@ -1293,17 +1297,24 @@ list_folders() {
 		rc=4
 		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
 		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}"
+	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
+		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
+		if [ "$providers" -eq 0 ]; then
+			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF (no folder to add is listed: OneDrive is not signed in on this Mac)"
+		elif [ "$total" -eq 0 ]; then
+			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
+		else
+			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
+		fi
+		step_end "done" 0 "listed-$total synced=$synced"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN"
-		step_end failed "$rc" not-signed-in
+		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
-		step_end failed "$rc" no-folders
-	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
-		NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
-		step_end "done" 0 "listed-$total synced=$synced"
+		step_end failed "$rc" "no-folders${synced:+ synced=$synced}"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}"

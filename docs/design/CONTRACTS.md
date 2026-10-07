@@ -8076,6 +8076,16 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   printed folder paths and no first line on every run: an unattended agent took it for a new Mac, logged a
   deviation and stopped, which is the round this section exists to save. With the first line the prompt's
   exception applies, and the click is needed only to add a folder from that provider.
+- **A set-up Mac with nothing to list is still set up** (review, 2026-10-07). The config is read before the
+  two exits 3 (no provider: "OneDrive is not signed in"; a provider with no folder yet). When it syncs a
+  folder, the first line and each synced folder are printed, the run exits 0 with note `listed-0 synced=N`,
+  and the `NEXT:` names `install.sh` alone: `this Mac already syncs 1 folder(s), and a re-run keeps them: run
+  install.sh (no folder to add is listed: OneDrive is not signed in on this Mac)`, or `(... no folders are
+  synced yet in ~/Library/CloudStorage)`. Until then the config was read only when the list had a line, so a
+  Mac whose one source was `~/Documents/notes`, with OneDrive signed out, got the new Mac's exit 3. The
+  prompt then goes to the report without step 2: no update and no sync, though `install.sh` alone keeps the
+  folder and syncs it. A Mac that syncs no folder (no config, the inbox alone, a config nobody can read)
+  still gets exit 3 and the same `NEXT:`; its log line gains `synced=0` when the config was read.
 - **Who reads the config.** The installed agentsync does, through its own interpreter
   (`<uv tool dir>/agentsync/bin/python -I`, the path step 2 names `TOOL_PY`; `tool_python`): `load_config`,
   then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
@@ -8109,7 +8119,11 @@ outside `~/Library/CloudStorage`, each printed first with its mark; a Mac whose 
 does not reach; a config path in lower case and one in the other Unicode form, each marked; a synced
 folder past the cap, printed first; no installed agentsync and a config that does not load, each with the
 warning and no mark; a second provider that was denied and one still asking, each with the marks, exit 4,
-the click and `synced=1` in the log; a denied provider that holds the synced folder, printed first),
+the click and `synced=1` in the log; a denied provider that holds the synced folder, printed first, also
+when it is the only provider; a config that syncs a folder outside `~/Library/CloudStorage` with no provider
+and with a provider that has no folder: the first line, the folder, exit 0 and the `NEXT:`, then the inbox
+alone and a config that does not load, each exit 3 as before; with the real agentsync, the run that
+`NEXT:` names keeps the folder and syncs),
 `tests/test_setup_report.py` (the first line and the three marks
 in install.out, with a synced folder three levels deep and one under `~/Documents` printed first: the
 counts and the marks kept, every folder a placeholder).
@@ -8248,6 +8262,9 @@ text above the block gains three sentences that say a re-run keeps the folders c
   or stops when it cannot.
 - A Mac whose only synced folders are outside `~/Library/CloudStorage`, on which OneDrive is not signed in,
   still ends step 1 at `--list-folders`' exit 3 and its `NEXT:`: nothing is listed, so nothing is marked.
+  **CORRECTED (2026-10-07, review):** no longer a limit. It was the one set-up state where "the same block
+  is a re-run" did not hold. The list now reads the config there too ("A set-up Mac with nothing to list is
+  still set up", above).
 - The final message is the agent's. Nothing checks that it says nobody was asked; the report's `expected
   turns` and `folders:` lines carry the same facts from the log.
 - The list compares names and asks the file system nothing. On a case-sensitive volume a listed folder that
