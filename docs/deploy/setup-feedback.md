@@ -184,9 +184,9 @@ status's loop line; the NEXT line is the one `agentsync status` would print, wit
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
 something waits on the person, the line ends with the first `WAITING ON YOU:` line and `(+N more)` for the
 rest; `agentsync status` prints them all. When files are still to be read again, the loop's note about them
-follows: `note: sync again: N file(s) ...` means the report was written before the one-time re-read finished
-(section "The evidence parts" says what that takes). The line holds no path, so redaction is unchanged; its
-stage prefills the form's Loop stage.
+follows (two notes when the last sync did not get to one of the sources): `note: sync again: N file(s) ...`
+means the report was written before the one-time re-read finished (section "The evidence parts" says what that
+takes). The line holds no path, so redaction is unchanged; its stage prefills the form's Loop stage.
 
 The run type is computed too:
 
@@ -252,11 +252,21 @@ Since prompt v8 the report is not written that early. While files are left, `syn
 `note: sync again: N file(s) in <sources> are still to be read again, ...`, and step 3 runs the sync again while
 a note starts with `sync again:`, up to 12 more times, before it writes the report (12 syncs at both limits are
 an hour of re-reads and OCR; listing and downloads come on top). The note says "sync again" only while a sync
-reads more. When the last sync read none of the files left
-(pandoc cannot run, the OCR helper stopped working, a folder is not listed), the note says another sync does not
-clear it, and the agent goes on to the report. So `scan finished: no` in a v8 report means one of two things:
-the 12 syncs were not enough (the per-run table's last column falls run by run and has not reached 0), or
-something stops the re-read (the last runs read none and the column stands still). An image left for a later sync's OCR needs no note: it is a file not converted
+reads more: the last sync read a file again, or other work had its OCR time first and the count did not rise.
+In every other state it says why not, and the agent goes on to the report:
+
+- The last sync read none of the files left with OCR time to spare (pandoc cannot run, the OCR helper stopped
+  working, a folder is not listed), or it did not get to the source at all (macOS held its listing for a privacy
+  prompt, or the source failed). The note says another sync does not clear it. A source the last sync did not
+  get to has a note of its own, with no count.
+- The last sync read none because new and changed files took its OCR time, more files joined the count, and
+  online-only files still wait for a download. The note says so, and that they are read once a sync has OCR
+  time left.
+
+So `scan finished: no` in a v8 report means one of three things: the 12 syncs were not enough (the per-run
+table's last column falls run by run and has not reached 0), something stops the re-read (the last runs read
+none and the column stands still), or downloads take the OCR time (the last runs read none and the column
+rises). An image left for a later sync's OCR needs no note: it is a file not converted
 yet, and the loop's `NEXT:` line itself says to sync again until none is left.
 
 `scan finished` is `yes` or `no` only for a record the newest sync could have written: the sentence above the

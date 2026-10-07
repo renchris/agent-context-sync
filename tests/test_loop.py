@@ -17,10 +17,10 @@ import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, skill
 from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
-from agentsync.cycle import NETWORK_POLICY_FAILED, run_cycle
+from agentsync.cycle import LISTING_HELD, NETWORK_POLICY_FAILED, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, Verdict
+from agentsync.model import CycleMode, PassKind, Verdict
 
 BIN = "~/.local/bin/agentsync"
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
@@ -573,6 +573,11 @@ STUCK_TAIL = (
     "run, or a folder that could not be listed): another sync does not clear it; it does not block the next "
     "step"
 )
+CROWDED_TAIL = (
+    "wait to be read again, and the last sync read none of them: new and changed files took its OCR time, "
+    "more files joined, and more downloads wait. They are read once a sync has OCR time left; it does not "
+    "block the next step"
+)
 
 
 def _reread(
@@ -593,6 +598,27 @@ def _reread(
     return [line for line in _lines(config) if line.startswith("note: ")]
 
 
+def _pass_without_a_look(config: Config, sid: str, *, held: bool) -> list[str]:
+    """Record a sync that did not get to the files of ``sid``, as a cycle does: macOS held its listing
+    (``held``), or the source failed.  Such a run says nothing about a re-read; return the note lines."""
+    with Manifest(config.state_paths.db) as manifest:
+        run_id = manifest.begin_run(CycleMode.POLL, host="mac", pid=1)
+        manifest.record_source_pass(
+            run_id,
+            sid,
+            pass_kind=PassKind.FULL,
+            enumeration_complete=False,
+            cursor_reset=False,
+            counts={},
+            skipped_reason=LISTING_HELD + "click Allow on the macOS prompt" if held else None,
+            error=None if held else "OSError: the folder is gone",
+        )
+        manifest.finish_run(
+            run_id, status="ok" if held else "partial", commit_sha=None, counts={"converted": 0}
+        )
+    return [line for line in _lines(config) if line.startswith("note: ")]
+
+
 def test_an_unfinished_re_read_is_a_sync_again_note_with_the_count_the_last_sync_left(
     tmp_path: Path, folder: Path
 ) -> None:
@@ -609,6 +635,54 @@ def test_an_unfinished_re_read_is_a_sync_again_note_with_the_count_the_last_sync
     assert _reread(config, done=True, run={"reread": 37}) == [], "finished: no note"
 
 
+def test_a_re_read_that_downloads_keep_out_of_the_ocr_time_does_not_say_sync_again(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each sync downloads up to its budget, and new files have the OCR time first.  While they use all
+    of it, no file is read again, and the ones converted past it join the count.  "Used up its OCR time"
+    is then no progress: the count rises, and the next sync downloads more.  The note says so, and an
+    agent that syncs while the note says "sync again" stops, instead of downloading for twelve syncs that
+    read nothing.  A sync that read a file, or one that left no more than the sync before, says "sync
+    again" as before; so does a count that rose with nothing left to download, which the next sync reads."""
+    (folder / "small.txt").write_text("small\n", encoding="utf-8")
+    online = {(folder / "small.txt").stat().st_ino}
+    real = materialise.is_dataless
+
+    def fake(st: os.stat_result) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return st.st_ino in online or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+    config = _setup(tmp_path, local_source_table("work", folder))
+    assert run_cycle(config, mode=None, budget_bytes=0).exit_code == 0
+
+    def said(run: dict[str, int]) -> list[str]:
+        return [note for note in _reread(config, done=False, run=run) if "read again" in note]
+
+    waits = "note: 1 online-only file(s) in work wait for a later sync's download budget"
+    assert any(line.startswith(waits) for line in _lines(config)), "a later sync has a file to download"
+    again = f"note: {loop.SYNC_AGAIN}%d file(s) in work are {REREAD_TAIL}"
+    with Manifest(config.state_paths.db) as manifest:
+        manifest._db.execute("UPDATE runs SET counts_json = '{}'")  # as if no run had looked before
+    assert said({"ocr_over": 1, "reread_left": 5}) == [again % 5], "the first look: nothing to hold it to"
+    for left in (6, 7, 8):
+        crowded = f"note: {left} file(s) in work {CROWDED_TAIL}"
+        assert said({"ocr_over": 1, "reread_left": left}) == [crowded]
+        assert loop.SYNC_AGAIN not in crowded and "another sync does not clear it" not in crowded
+    assert said({"ocr_over": 1, "reread_left": 8}) == [again % 8], "no more joined"
+    assert said({"ocr_over": 1, "reread": 2, "reread_left": 9}) == [again % 9], (
+        "it read two: more joined than were read, and the next sync reads on"
+    )
+    assert said({"reread_left": 12}) == [f"note: 12 file(s) in work {STUCK_TAIL}"], (
+        "OCR time left and nothing read: that is not new files"
+    )
+    assert said({"ocr_over": 1, "reread_left": 13}) == [f"note: 13 file(s) in work {CROWDED_TAIL}"]
+    online.clear()
+    assert run_cycle(config, mode=None).exit_code == 0, "the last file is downloaded"
+    assert not any(line.startswith(waits) for line in _lines(config))
+    assert said({"ocr_over": 1, "reread_left": 14}) == [again % 14], "the next sync brings no new file"
+
+
 def test_a_re_read_the_last_sync_read_nothing_of_does_not_say_sync_again(
     tmp_path: Path, folder: Path
 ) -> None:
@@ -620,6 +694,37 @@ def test_a_re_read_the_last_sync_read_nothing_of_does_not_say_sync_again(
     assert _reread(config, done=False, run={"reread_left": 37}) == [stuck]
     assert _reread(config, done=False, run={"reread": 3, "reread_left": 37, "ocr_down": 1}) == [stuck]
     assert loop.SYNC_AGAIN not in stuck
+
+
+@pytest.mark.parametrize("held", [True, False], ids=["listing held", "source failed"])
+def test_a_sync_that_did_not_get_to_the_source_ends_the_sync_again_note(
+    tmp_path: Path, folder: Path, held: bool
+) -> None:
+    """A sync reaches a source's re-read only after it listed the folder and did the source's own work.
+    When macOS holds the listing for a privacy prompt, or the source fails, the run says nothing about a
+    re-read, and the note went by the last run that did: "sync again: 37 file(s)" stood for as long as
+    the prompt was unanswered, and an agent that follows the note ran every sync it was allowed.  The
+    note now goes by the source's newest pass: skipped or failed, it does not say "sync again"."""
+    config = _synced(tmp_path, folder)
+    assert _reread(config, done=False, run={"reread": 12, "reread_left": 37}) == [
+        f"note: {loop.SYNC_AGAIN}37 file(s) in work are {REREAD_TAIL}"
+    ]
+    for _ in range(12):
+        assert _pass_without_a_look(config, "work", held=held) == [f"note: file(s) in work {STUCK_TAIL}"], (
+            "no count: no sync has counted them since"
+        )
+    # The prompt is answered (or the source reads again): the next sync looks, and the note is its own.
+    with Manifest(config.state_paths.db) as manifest:
+        run_id = manifest.begin_run(CycleMode.POLL, host="mac", pid=1)
+        manifest.record_source_pass(
+            run_id, "work", pass_kind=PassKind.FULL, enumeration_complete=True, cursor_reset=False, counts={}
+        )
+        manifest.finish_run(
+            run_id, status="ok", commit_sha=None, counts={"reread_for": 7, "reread": 9, "reread_left": 28}
+        )
+    assert [line for line in _lines(config) if line.startswith("note: ")] == [
+        f"note: {loop.SYNC_AGAIN}28 file(s) in work are {REREAD_TAIL}"
+    ]
 
 
 def test_a_re_read_with_no_count_yet_says_sync_again_once(tmp_path: Path, folder: Path) -> None:
@@ -643,6 +748,11 @@ def test_the_re_read_note_names_every_source_that_is_not_finished(tmp_path: Path
     _reread(config, done=False, run=None, sid="archive")
     assert _reread(config, done=False, run={"reread": 5, "reread_left": 9}) == [
         f"note: {loop.SYNC_AGAIN}9 file(s) in archive, work are {REREAD_TAIL}"
+    ]
+    # One of the two was not reached by the last sync: the count is the other's, and each has its note.
+    assert _pass_without_a_look(config, "archive", held=True) == [
+        f"note: {loop.SYNC_AGAIN}9 file(s) in work are {REREAD_TAIL}",
+        f"note: file(s) in archive {STUCK_TAIL}",
     ]
 
 

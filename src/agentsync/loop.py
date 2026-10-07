@@ -21,7 +21,8 @@ rule wins:
 
 A local or inbox source whose one-time re-read is not finished (CONTRACTS.md 16.27: files converted before
 something this build's converters have) is a note, never a rule: ``sync again: N file(s) ...`` while another
-sync reads more of them, and other words once the last sync read none (:func:`_reread_note`).
+sync reads more of them, and other words once the last sync read none or did not get to the source
+(:func:`_reread_notes`).
 
 The text is fixed wording plus counts and source ids, never a mirror path or file name (a page name is
 third-party content). One wait is the exception: the ``exclude = [...]`` line for a source's empty cloud
@@ -71,7 +72,7 @@ BIN = skill.AGENTSYNC_BIN
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 """Where the README's setup prompt clones the checkout; ``--list-folders`` lists the candidate folders."""
 SYNC_AGAIN = "sync again: "
-"""How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_note`).
+"""How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_notes`).
 The README's setup prompt runs ``sync`` again while a ``note:`` line starts with it, before its report."""
 ROWS_PER_SESSION = 10
 """Rule 9's session bound: curate at most this many queue rows, then sync and end the session."""
@@ -194,32 +195,67 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     return out
 
 
-def _reread_note(sources: Sequence[str], run: dict[str, int] | None) -> str | None:
-    """The note for ``sources``, the ones whose one-time re-read is not finished (manifest meta
-    ``reread:<source id>``: the newest record is not ``done``, or a cycle died reading a file); None for
-    none.  ``run``: the counts of the newest run that looked (``Manifest.last_reread_counts``).
+_REREAD_AGAIN = (
+    "are still to be read again, once, for what this build's converters have gained (each sync reads about "
+    f"{_REREAD_BUDGET_S / 60:g} minutes' worth)"
+)
+_REREAD_STUCK = (
+    "wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot "
+    "run, or a folder that could not be listed): another sync does not clear it"
+)
+_REREAD_CROWDED = (
+    "wait to be read again, and the last sync read none of them: new and changed files took its OCR time, "
+    "more files joined, and more downloads wait. They are read once a sync has OCR time left"
+)
 
-    It starts :data:`SYNC_AGAIN` only while another sync reads more: that run read a file again or used up
-    its OCR time, it left no count (a file joined after it looked), or no run says how it went.  A run that
-    read none with time left was stopped by something no sync clears (a converter that cannot run, a helper
-    that stopped working, a folder it could not list), and "sync again" would then never end."""
-    if not sources:
-        return None
-    ids = ", ".join(sorted(sources))
-    left = (run or {}).get("reread_left", 0)
-    stopped = run is not None and bool(run.get("ocr_down"))
-    went_on = run is None or not left or bool(run.get("reread") or run.get("ocr_over"))
-    if went_on and not stopped:
-        return (
-            f"{SYNC_AGAIN}{f'{left} ' if left else ''}file(s) in {ids} are still to be read again, once, "
-            f"for what this build's converters have gained (each sync reads about {_REREAD_BUDGET_S / 60:g} "
-            "minutes' worth); it does not block the next step"
-        )
-    return (
-        f"{f'{left} ' if left else ''}file(s) in {ids} wait to be read again, and the last sync read none "
-        "of them (a converter or on-device OCR that cannot run, or a folder that could not be listed): "
-        "another sync does not clear it; it does not block the next step"
-    )
+
+def _reread_notes(
+    sources: Sequence[str], unread: Sequence[str], runs: Sequence[dict[str, int]], *, downloads: bool
+) -> list[str]:
+    """The notes for ``sources``, the ones whose one-time re-read is not finished (manifest meta
+    ``reread:<source id>``: the newest record is not ``done``, or a cycle died reading a file); [] for
+    none.  ``unread``: those of them whose newest pass was skipped or failed, so the last sync did not get
+    to their files.  ``runs``: the counts of the two newest runs that looked, the newest first
+    (``Manifest.last_reread_counts``).  ``downloads``: online-only files wait for a later sync's download
+    budget, so the next sync brings new files.
+
+    A note starts :data:`SYNC_AGAIN` only while another sync reads more.  That is: the newest run that
+    looked read a file again; or it read none because other work used up its OCR time, which the next sync
+    has for them; or there is no count to go by (it left none, so a file joined after it looked, or no run
+    has looked yet).  Every other state gets other words, because "sync again" would never end in it:
+
+    - a source of ``unread`` (macOS held its listing, or the source failed): no sync has looked since, so
+      what an earlier run read says nothing.  It gets a note of its own, without a count;
+    - the helper stopped working, or the run read none with OCR time left (a converter that cannot run, a
+      folder it could not list);
+    - the run read none, its OCR time was used up, it left more than the run before, and ``downloads``:
+      new files have the OCR time first, the ones converted past it join the files to read again, and the
+      next sync downloads more.  Used-up OCR time is no progress then."""
+
+    def said(ids: Sequence[str], count: int, words: str) -> str:
+        counted = f"{count} " if count else ""
+        return f"{counted}file(s) in {', '.join(ids)} {words}; it does not block the next step"
+
+    notes: list[str] = []
+    looked = sorted(set(sources) - set(unread))
+    if looked:
+        new = runs[0] if runs else None
+        left = (new or {}).get("reread_left", 0)
+        grew = len(runs) > 1 and left > runs[1].get("reread_left", 0)
+        if new is not None and new.get("ocr_down"):
+            notes.append(said(looked, left, _REREAD_STUCK))
+        elif new is None or not left or new.get("reread"):
+            notes.append(SYNC_AGAIN + said(looked, left, _REREAD_AGAIN))
+        elif not new.get("ocr_over"):
+            notes.append(said(looked, left, _REREAD_STUCK))
+        elif grew and downloads:
+            notes.append(said(looked, left, _REREAD_CROWDED))
+        else:
+            notes.append(SYNC_AGAIN + said(looked, left, _REREAD_AGAIN))
+    held = sorted(set(sources) & set(unread))
+    if held:
+        notes.append(said(held, 0, _REREAD_STUCK))
+    return notes
 
 
 def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, int]]:
@@ -338,17 +374,20 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
     rereading: list[str] = []  # the one-time re-read of files from before a capability is not finished
-    reread_run: dict[str, int] | None = None
+    unread: list[str] = []  # ... and the source's newest pass was skipped or failed: no sync got to them
+    reread_runs: list[dict[str, int]] = []
     pending: str | None = None
     if db.exists():
         with Manifest(db) as manifest:
-            reread_run = manifest.last_reread_counts()
+            reread_runs = manifest.last_reread_counts()
             for src in live:
                 newest = next(iter(_reread_records(manifest.get_meta(_REREAD_META + src.id))), None)
                 if newest is not None and (not newest[1] or newest[3] is not None):
                     rereading.append(src.id)
                 row = manifest.get_source(src.id)
                 last = manifest.last_source_pass(src.id)
+                if src.id in rereading and last is not None and (last.skipped_reason or last.error):
+                    unread.append(src.id)
                 if (
                     src.kind.is_graph
                     and last is not None
@@ -447,9 +486,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"{sum(files.online.values())} online-only file(s) in {_ids(files.online)} wait for a later "
             "sync's download budget; they do not block the next step"
         )
-    reread = _reread_note(rereading, reread_run)
-    if reread is not None:
-        notes.append(reread)
+    notes += _reread_notes(rereading, unread, reread_runs, downloads=bool(files.online))
     eval_dir = docs / _EVAL_DIR
     questions = _eval_status(eval_dir / "questions.md")
     answers = _eval_status(eval_dir / "answers.md")

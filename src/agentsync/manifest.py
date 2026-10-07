@@ -1281,21 +1281,25 @@ class Manifest:
                 raise KeyError(f"no run {run_id}")
             _write_meta(self._db, "written_at_ns", str(time.time_ns()))
 
-    def last_reread_counts(self) -> dict[str, int] | None:
-        """The ``counts_json`` of the newest run that says what its re-read looked for (``reread_for``:
-        the run brought a source's re-read record up to date, CONTRACTS.md 16.28); None when no run does.
-        ``loop.next_step`` reads how many files that run left to read again and whether it read any."""
-        row = self._db.execute(
+    def last_reread_counts(self) -> list[dict[str, int]]:
+        """The ``counts_json`` of the two newest runs that say what their re-read looked for
+        (``reread_for``: the run brought a source's re-read record up to date, CONTRACTS.md 16.28), the
+        newest first; fewer when fewer runs do.  ``loop.next_step`` reads how many files the newest left
+        to read again, whether it read any, and whether it left more than the one before."""
+        rows = self._db.execute(
             "SELECT counts_json FROM runs WHERE counts_json LIKE '%\"reread_for\"%' "
-            "ORDER BY run_id DESC LIMIT 1"
-        ).fetchone()
-        try:
-            doc = json.loads(row[0]) if row is not None else None
-        except ValueError:
-            return None
-        if not isinstance(doc, dict):
-            return None
-        return {str(k): v for k, v in doc.items() if isinstance(v, int) and not isinstance(v, bool)}
+            "ORDER BY run_id DESC LIMIT 2"
+        ).fetchall()
+        out: list[dict[str, int]] = []
+        for row in rows:
+            try:
+                doc = json.loads(row[0])
+            except ValueError:
+                break
+            if not isinstance(doc, dict):
+                break
+            out.append({str(k): v for k, v in doc.items() if isinstance(v, int) and not isinstance(v, bool)})
+        return out
 
     def last_runs(self, limit: int = 10) -> list[tuple[int, str, str, str | None]]:
         """Return (run_id, mode, status, commit_sha) newest first."""

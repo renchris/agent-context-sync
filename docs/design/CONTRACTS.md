@@ -7544,9 +7544,9 @@ other key that would be 0 is left out. No reader depended on the old content.
   when there is none. The cycle asks before `record_cache` moves it, and only through `_converted_before`.
 - `Manifest.reread_count(source_id, targets, *, skip=()) -> int` counts the files `reread_left` is true for,
   each once. A source's `done` is now that count being 0: the same statement the cycle ran before, without
-  its `LIMIT 1`. `Manifest.last_reread_counts() -> dict[str, int] | None` returns the record of
-  the newest run that has `reread_for`, None when no run has: `loop.next_step` words its note from it
-  ("One round", below).
+  its `LIMIT 1`. `Manifest.last_reread_counts() -> list[dict[str, int]]` returns the records of the two
+  newest runs that have `reread_for`, the newest first, and fewer when fewer runs have it: `loop.next_step`
+  words its note from the newest, and holds what it left against the one before ("One round", below).
 - The record of a run from before this build holds change counts only and no `converted` key. The report
   says "not recorded" for it.
 
@@ -7572,26 +7572,48 @@ nothing about it: rule 3 covers a file on this Mac that is not converted yet, wh
 later cycle's OCR is (`Verdict.DEFERRED`, not online-only), so `NEXT:` already said "sync again" for those;
 a file to read again is `unchanged` and was no rule, wait or note.
 
-`next_step` now adds one `note:` line for the live local and inbox sources whose newest `reread:<source id>`
-record is not `done`, or says a file was being read (`_reread_note`):
+`next_step` now adds a `note:` line for the live local and inbox sources whose newest `reread:<source id>`
+record is not `done`, or says a file was being read (`_reread_notes`). It goes by the newest run that has
+`reread_for`, and holds what that run left against the run with `reread_for` before it:
 
 | The newest run that has `reread_for` | Note |
 |---|---|
-| read a file again (`reread`), or used up its OCR time (`ocr_over`), and its helper did not stop | `sync again: N file(s) in <ids> are still to be read again, once, for what this build's converters have gained (each sync reads about 2 minutes' worth); it does not block the next step`, N its `reread_left` |
+| read a file again (`reread`) | `sync again: N file(s) in <ids> are still to be read again, once, for what this build's converters have gained (each sync reads about 2 minutes' worth); it does not block the next step`, N its `reread_left` |
+| read none and used up its OCR time (`ocr_over`), and did not leave more than the run before, or no online-only file waits for a download | the same: other work had the OCR time first, and the next sync has it for them |
 | has no `reread_left`, or there is no such run | the same without N: a file joined after that run looked (`_reread_reopen`), a cycle died in a read, or no run of this build has looked. The next sync counts them |
-| read none with time left, or its helper stopped working (`ocr_down`) | `N file(s) in <ids> wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear it; it does not block the next step` |
+| read none with OCR time left, or its helper stopped working (`ocr_down`) | `N file(s) in <ids> wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear it; it does not block the next step` |
+| read none, used up its OCR time, left more than the run before, and online-only files wait for a later sync's download budget | `N file(s) in <ids> wait to be read again, and the last sync read none of them: new and changed files took its OCR time, more files joined, and more downloads wait. They are read once a sync has OCR time left; it does not block the next step` |
+
+A source whose newest pass was skipped or failed (`run_sources.skipped_reason` or `error`: macOS held its
+listing for a privacy prompt, or the source raised) is left out of that note and gets one of its own, the
+fourth row's wording without N. No sync has looked at its files since, so what an earlier run read says
+nothing about it.
 
 - It is a note and never rule 3. A file whose converter cannot run (pandoc is missing) or whose folder a
   sync cannot list is asked about in every cycle and never counted against the file (§16.27), so its source
   is never `done`: as a rule it would hold every session at "sync again" for ever.
-- The first wording starts `SYNC_AGAIN` (`"sync again: "`) and the third does not. That is what a caller
+- The first three rows start `SYNC_AGAIN` (`"sync again: "`) and the others do not. That is what a caller
   loops on: the note says "sync again" only while a sync reads more, so the loop ends by the tool's own
   line, with no count kept by the agent. A file that fails is read in two cycles and then given up, so a
   cycle that read files and finished none is still followed by an end.
-- `sync` and `status` print it with the other notes, after `NEXT:` and the waits. The setup report's `Loop:`
-  line (§16.14, K16b) ends with this note when the loop has it, after the first wait, and with no other
-  note (`_loop_line` takes the `note:` line that says "read again"): a report that shows `note: sync again:`
-  there was written before the re-read finished. The OCR part has the re-read table.
+- Used-up OCR time alone is not progress (the fifth row). Each sync downloads up to its budget, and the new
+  files have the OCR time first: while they use all of it the re-read never starts
+  (`_Cycle._reread_over`), and the documents converted past it join the files to read again. The note said
+  "sync again: N" with a larger N after each such sync. It now needs both signs: the count rose, and a
+  later sync has files to download (`_Files.online`). A count that rose with nothing left to download is
+  read by the next sync, so that note still says "sync again". A sync that downloads nothing
+  (`--materialise-budget 0`) gives the files already on this Mac the whole OCR time.
+- A file downloaded in one sync is counted from the next: its row says online-only until a listing finds it
+  on this Mac (`_reread_reopen` in `_sync_source`). So the sync that converted it past the OCR time may
+  print no note at all, and the next one counts it.
+- The note went by the newest run that has `reread_for` alone. A sync that never reaches the re-read
+  records none (`_sync_source` returns at a held listing, before `_reread_source`), so an earlier run's
+  "sync again: 37 file(s)" stood for as long as the prompt was unanswered. The source's own newest pass
+  now decides first.
+- `sync` and `status` print the notes with the other notes, after `NEXT:` and the waits. The setup report's
+  `Loop:` line (§16.14, K16b) ends with them when the loop has any, after the first wait, and with no
+  other note (`_loop_line` takes each `note:` line that says "read again"): a report that shows `note: sync
+  again:` there was written before the re-read finished. The OCR part has the re-read table.
 
 ```python
 # agentsync.loop
@@ -7599,8 +7621,12 @@ SYNC_AGAIN = "sync again: "  # how the note starts while another sync reads more
 ```
 
 Tests: `tests/test_loop.py` (each row of the table from a stored record and run, the rule unchanged, two
-sources named), `tests/test_cycle.py` (six files against the re-read time; a PDF converted past the OCR time;
-pandoc missing for two cycles, then back; three images left for OCR are rule 3).
+sources named; a count that rises with and without a download waiting; twelve syncs whose listing was held
+or whose source failed, then one that looked; two sources of which one was not reached),
+`tests/test_cycle.py` (six files against the re-read time; a PDF converted past the OCR time;
+pandoc missing for two cycles, then back; three images left for OCR are rule 3; eight online-only scans
+downloaded two a sync, then three syncs that download nothing; a listing held for two syncs),
+`tests/test_setup_report.py` (the `Loop:` line with one note and with two).
 
 #### Setup prompt v8 (amends §16.14 and §16.22; README, `scripts/install.sh`, `agentsync.setup_report`)
 

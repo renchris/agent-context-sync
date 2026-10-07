@@ -2954,6 +2954,115 @@ def test_the_loop_says_sync_again_while_a_sync_reads_more_of_what_is_left_and_no
     assert all(isinstance(value, int) for value in record.values())
 
 
+def test_downloads_that_take_the_ocr_time_end_the_sync_again_note_and_a_sync_without_them_reads_on(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder of scans that are still online-only.  Each sync downloads two: the first uses up the
+    cycle's OCR time, the second is converted without OCR and joins the files to read again, and the
+    re-read never starts.  The note said "sync again: N file(s)" with a larger N after every such sync,
+    and the setup prompt ran twelve more of them.  It now says the downloads took the time, and does not
+    say "sync again".  A sync that downloads nothing (``--materialise-budget 0``, what the setup prompt
+    runs before its report) has the OCR time for them: the count falls, the note says "sync again" while
+    it does, and it ends."""
+    assert run(sample_config).exit_code == 0
+    engine = shade_engine(tmp_path / "ocr-bin", {90 + n: [f"Delivery note {n}"] for n in range(8)})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    assert run(sample_config).exit_code == 0 and _reread_notes(sample_config) == [], "the samples: read"
+    (local_source_dir / "scans").mkdir()
+    cover = (["The cover page has a text layer of its own"], [])
+    scans = [
+        build_picture_pdf(
+            local_source_dir / "scans" / f"Contoso scan {n}.pdf", [cover, ([], [page_picture(90 + n)])]
+        )
+        for n in range(8)
+    ]
+    online = {scan.stat().st_ino for scan in scans}
+    real_dataless, real_materialise = materialise.is_dataless, al.materialise
+
+    def is_dataless(st: Any) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return st.st_ino in online or real_dataless(st)
+
+    def download(src: Path, dest: Path, budget: Any) -> Any:
+        result = real_materialise(src, dest, budget)
+        online.discard(src.stat().st_ino)  # a file that was read is on this Mac from now on
+        return result
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "materialise", download)
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 1e-9)  # the first scanned page of a sync uses it up
+    two = 2 * scans[0].stat().st_size
+
+    def sync(budget: int) -> tuple[int | None, int | None, list[str]]:
+        """One sync with this download budget: (files read again, files left, the loop's notes)."""
+        assert run(sample_config, budget_bytes=budget).exit_code == 0
+        record = _run_record(sample_config)
+        assert record["ocr_over"] == 1
+        return record.get("reread"), record.get("reread_left"), _reread_notes(sample_config)
+
+    crowded = (
+        "{n} file(s) in local-fixture wait to be read again, and the last sync read none of them: new and "
+        "changed files took its OCR time, more files joined, and more downloads wait. They are read once a "
+        "sync has OCR time left; it does not block the next step"
+    )
+    # A file downloaded in a sync is counted from the next one, whose listing finds it on this Mac.
+    assert sync(two) == (None, None, [])
+    assert sync(two) == (None, 1, [crowded.format(n=1)])
+    assert sync(two) == (None, 2, [crowded.format(n=2)]), "two more scans are still online-only"
+    assert len(online) == 2 and "sync again" not in crowded
+    # No download: each sync reads one scan again before its OCR time is used, and the count falls.
+    assert sync(0) == (1, 2, [_sync_again(2)]), "three were left: the one the third sync converted is counted"
+    assert sync(0) == (1, 1, [_sync_again(1)])
+    assert sync(0) == (1, None, [])
+    assert len(online) == 2, "nothing was downloaded for it"
+    assert run(sample_config, budget_bytes=0).commit_sha is None and _reread_notes(sample_config) == []
+
+
+def test_a_sync_whose_listing_macos_holds_does_not_leave_the_sync_again_note_standing(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sync read some files again and left two.  Then a macOS privacy prompt holds the folder's listing:
+    each sync waits out the listing's time limit and never gets to the re-read, so its run record says
+    nothing about one.  The note went by the last run that did, and "sync again: 2 file(s)" stood through
+    every held sync.  It now goes by the source's newest pass, and says another sync does not clear it.
+    Once the listing is back, the next sync reads the files and the note is gone."""
+    assert run(sample_config).exit_code == 0
+    _use_ocr(monkeypatch, tmp_path)
+
+    def missing(self: Any) -> str:
+        raise ConversionError("cannot run pandoc: [Errno 2] No such file or directory")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pandoc_mod._PandocRunner, "version", missing)
+        assert run(sample_config).exit_code == 0
+    assert _reread_notes(sample_config) == [_sync_again(2)], "the two Word files: pandoc was missing"
+    real = al._list_dir
+    release = threading.Event()
+
+    def held(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if path == local_source_dir / "projects":
+            release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    with monkeypatch.context() as prompt:
+        prompt.setattr(al, "_list_dir", held)
+        prompt.setattr(al, "LISTING_TIMEOUT_S", 0.2, raising=False)
+        try:
+            for _sync in range(2):
+                report = run(sample_config)
+                assert any("click Allow" in alarm for alarm in report.sources[0].alarms)
+                assert "reread_for" not in _run_record(sample_config), "it never got to the re-read"
+                assert _reread_notes(sample_config) == [
+                    f"file(s) in {SID} wait to be read again, and the last sync read none of them (a "
+                    "converter or on-device OCR that cannot run, or a folder that could not be listed): "
+                    "another sync does not clear it; it does not block the next step"
+                ]
+        finally:
+            release.set()
+    assert run(sample_config).exit_code == 0
+    assert _run_record(sample_config)["reread"] == 2 and _reread_notes(sample_config) == []
+
+
 def test_a_graph_file_is_never_read_again(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

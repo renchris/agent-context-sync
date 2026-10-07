@@ -2035,6 +2035,11 @@ def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[
         [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
         assert line.endswith(f"; {step}; {wait}; {note}"), line
         assert "online-only" not in line
+    # Two sources, and the last sync did not get to one of them: the loop has a note for each, and both show.
+    hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait, online, again, stuck])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert line.endswith(f"; {step}; {wait}; {again}; {stuck}") and "online-only" not in line
     hooks = setup_report.ReportHooks(loop_next=lambda _config: [step, wait, online])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]

@@ -1565,20 +1565,33 @@ def test_reread_targets_past_one_statement_give_each_file_once(
     assert m.reread_count("src", targets) == 5 and m.reread_count("src", targets, skip=["f0", "f4"]) == 3
 
 
-def test_last_reread_counts_are_those_of_the_newest_run_that_says_what_it_looked_for(m: Manifest) -> None:
+def test_last_reread_counts_are_those_of_the_two_newest_runs_that_say_what_they_looked_for(
+    m: Manifest,
+) -> None:
     """``loop.next_step`` words its re-read note from the newest run that brought a re-read record up to
-    date.  A later run that looked at nothing (a ``materialise PATH`` run, a run that failed before its
-    sources) has no ``reread_for`` and is passed over."""
+    date, and holds what it left against the one before.  A run that looked at nothing (a ``materialise
+    PATH`` run, a run that failed before its sources) has no ``reread_for`` and is passed over: whether a
+    source's own newest pass got that far is the source's row to say (``last_source_pass``)."""
 
     def ran(status: str, counts: dict[str, int]) -> None:
         run = m.begin_run(CycleMode.POLL, host="h", pid=1)
         m.finish_run(run, status=status, commit_sha=None, counts=counts)
 
-    assert m.last_reread_counts() is None
+    assert m.last_reread_counts() == []
     looked = {"converted": 0, "reread": 12, "reread_for": 7, "reread_left": 30}
     ran("ok", {"converted": 4})
     ran("ok", looked)
-    assert m.last_reread_counts() == looked
+    assert m.last_reread_counts() == [looked]
     ran("failed", {"converted": 1})
     m.begin_run(CycleMode.POLL, host="h", pid=1)  # still running: its record is empty
-    assert m.last_reread_counts() == looked
+    assert m.last_reread_counts() == [looked]
+    later = {"converted": 2, "ocr_over": 1, "reread_for": 7, "reread_left": 34}
+    ran("ok", later)
+    ran("ok", {"converted": 0})
+    assert m.last_reread_counts() == [later, looked], "the newest first, and no third"
+    ran("ok", {**looked, "reread_left": 1})
+    assert m.last_reread_counts() == [{**looked, "reread_left": 1}, later]
+    m._db.execute(
+        "UPDATE runs SET counts_json = '[\"reread_for\"]' WHERE run_id = (SELECT MAX(run_id) FROM runs)"
+    )
+    assert m.last_reread_counts() == [], "a record that is no object says nothing, and nothing older is used"
