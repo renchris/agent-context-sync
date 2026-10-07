@@ -1477,6 +1477,70 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     }
 
 
+def out_run(number: int, filler: int) -> list[str]:
+    """One run in install.out as install.sh writes it: its header, what it printed, one doctor fix and its
+    one NEXT: line, last."""
+    return [
+        f"# run=2026092{number}T100000Z-4242 2026-09-2{number}T10:00:00Z install.sh --source-local x",
+        *(f"run {number} filler line {i:04d} of what the installer printed" for i in range(filler)),
+        "[warn] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)",
+        f"NEXT: run {number} is done",
+    ]
+
+
+def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Field report 2026-10-07: "6 NEXT: line(s) in 5 run(s)", and no run had printed two. The report reads
+    the last 64 KiB of install.out by bytes, which started inside a run: that run's NEXT: line (its last
+    line) was read and its header (its first) was not. The count now starts at the first header read. The
+    embedded tail is still the file's last 60 lines."""
+    write_install_log(fake_mac)
+    out = fake_mac["setup"] / "install.out"
+    lines = [*out_run(1, 2000), *out_run(2, 100), *out_run(3, 100)]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    window = setup_report._tail(out)
+    assert out.stat().st_size > setup_report._TAIL_BYTES and not window[0].startswith("# run=")
+    cut = next(i for i, ln in enumerate(window) if ln.startswith("# run="))
+    assert cut > 2 and window[cut - 1] == "NEXT: run 1 is done", "the read starts inside run 1"
+    assert setup_report.instruction_counts(window)["NEXT:"] == 3, "read as it was: 3 NEXT: in 2 runs"
+    counted = (
+        "2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 2 other "
+        "instruction-like line(s) (2 fix:) in the last 206 line(s) of install.out (whole runs only: the "
+        f"{cut} line(s) read before the first run header are not counted)"
+    )
+    text, summary = summary_of(fake_mac)
+    inst = section(text, "Installer")
+    assert f"Installer output: {counted}." in inst
+    assert f"- installer output: {counted}" in summary
+    shown = inst.split("<details><summary>the last 60 line(s) of ", 1)[1].split("~~~text\n", 1)[1]
+    assert shown.split("\n~~~", 1)[0].splitlines() == [
+        ln.replace("-4242", "") for ln in lines[-setup_report.INSTALL_OUT_TAIL :]
+    ]
+
+    # One run longer than what is read: no header in it, so nothing is left out and no run is counted.
+    out.write_text("\n".join(out_run(1, 3000)) + "\n", encoding="utf-8")
+    window = setup_report._tail(out)
+    assert not any(ln.startswith("# run=") for ln in window)
+    text, summary = summary_of(fake_mac)
+    counted = (
+        "1 NEXT: line(s) (exactly one per install.sh run is expected) and 1 other instruction-like line(s) "
+        f"(1 fix:) in the last {len(window)} line(s) of install.out"
+    )
+    assert f"- installer output: {counted}\n" in summary + "\n"
+    assert f"Installer output: {counted}. An instruction-like line" in section(text, "Installer")
+
+    # install.sh keeps the file's last 2000 lines, which cuts a run the same way in a file read whole.
+    lines = [*out_run(1, 5)[1:], *out_run(2, 5)]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- installer output: 1 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected) and 1 "
+        "other instruction-like line(s) (1 fix:) in the last 8 line(s) of install.out (whole runs only: the "
+        "7 line(s) read before the first run header are not counted)" in summary
+    )
+
+
 def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

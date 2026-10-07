@@ -1628,7 +1628,8 @@ class _Facts:
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
-    instructions: tuple[Counter[str], int, int] | None = None  # (per kind, lines read, runs among them)
+    # (per kind, lines counted, runs among them, lines read before the first run header: not counted)
+    instructions: tuple[Counter[str], int, int, int] | None = None
     first_sync: tuple[int, int] | None = None  # the last "converted N, deferred M online-only" in install.out
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
@@ -2242,15 +2243,19 @@ def install_out_path(log: Path | None = None) -> Path:
     return (log if log is not None else default_setup_log()).parent / INSTALL_OUT_NAME
 
 
-def _instruction_text(counts: Counter[str], read: int, runs: int) -> str:
+def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0) -> str:
+    """The counts of ``read`` lines of install.out, which hold ``runs`` run headers. ``cut``: the lines read
+    before the first header, which are the end of a run whose start was not read and are not counted."""
     others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
     in_runs = f" in {runs} run(s)" if runs else ""
+    whole = f" (whole runs only: the {cut} line(s) read before the first run header are not counted)"
     return (
         f"{counts['NEXT:']} NEXT: line(s){in_runs} (exactly one per install.sh run is expected) and "
         f"{other_total} other instruction-like line(s)"
         + (f" ({', '.join(others)})" if others else "")
         + f" in the last {read} line(s) of install.out"
+        + (whole if cut else "")
     )
 
 
@@ -2265,15 +2270,20 @@ def _installer_output(r: _Run) -> list[str]:
         ]
     except OSError as exc:
         return [f"Cannot read the installer output at {path}: {type(exc).__name__}: {exc.strerror or exc}"]
-    counts = instruction_counts(lines)
-    runs = sum(1 for ln in lines if _OUT_RUN_RE.match(ln))
-    r.facts.instructions = (counts, len(lines), runs)
+    # What is read can start inside a run: the last 64 KiB by bytes here, and install.sh keeps the last
+    # 2000 lines. That run's NEXT: line is read and its header is not, so the count starts at the first
+    # header: NEXT: lines and runs are then counted over the same whole runs.
+    first = next((i for i, ln in enumerate(lines) if _OUT_RUN_RE.match(ln)), 0)
+    counted = lines[first:]
+    counts = instruction_counts(counted)
+    runs = sum(1 for ln in counted if _OUT_RUN_RE.match(ln))
+    r.facts.instructions = (counts, len(counted), runs, first)
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:
         r.facts.first_sync = (int(synced[-1].group(1)), int(synced[-1].group(2)))
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     return [
-        f"Installer output: {_instruction_text(counts, len(lines), runs)}. An instruction-like line other "
+        f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
         "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors.",

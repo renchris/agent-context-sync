@@ -4959,7 +4959,8 @@ line counted once, `NEXT:` and `next:` at a line start, `fix:` anywhere, `run:` 
 section and the Summary say "<a> NEXT: line(s) in <r> run(s) (exactly one per install.sh run is expected) and <b>
 other instruction-like line(s) (...) in the last <n> line(s) of install.out", <r> being the lines read that are
 install.sh's `# run=<id> <UTC> install.sh <arguments>` header (the "in <r> run(s)" is left out when there is none);
-with no file, "No installer output at <path>".
+with no file, "No installer output at <path>". **Amended (2026-10-07, §16.30):** the lines counted start at the
+first header line read, so `NEXT:` lines and runs are counted over the same whole runs.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -8503,3 +8504,29 @@ late lines and the run that ended 0, with the Summary, the item, the attempt's l
 attempt beside it, which keeps its own outcome while the earlier one reads "worked with help", and the link
 when the Summary fails; thirteen orders of exits; v7, v8 and v9 alike, v6 and v5 as before, a denied list
 run, a run before the attempt and an attempt with no time; the three exits against the script's traps).
+
+#### `NEXT:` lines and runs are counted over the same whole runs (amends §16.14; `agentsync.setup_report`)
+
+The Summary said `6 NEXT: line(s) in 5 run(s) (exactly one per install.sh run is expected)`. No run had
+printed two. `install.sh` writes one header and one `NEXT:` per run, the header first and the `NEXT:` last.
+The report reads the last 64 KiB of install.out by bytes (`_tail`) and drops only the first partial line, so
+what it read began inside a run: that run's `NEXT:` was counted and its header was not.
+
+`_installer_output` now counts from the first `# run=` header among the lines read: the instruction-like
+lines, the runs and the line count in "in the last <n> line(s)". When lines were read before that header the
+text ends `(whole runs only: the <k> line(s) read before the first run header are not counted)`. With no
+header among the lines read (one run longer than 64 KiB, or an installer from before the header) nothing is
+left out and no "in <r> run(s)" is printed, as before. The same rule covers install.sh's own trim, which keeps
+the file's last 2000 lines and also cuts inside a run.
+
+The embedded tail is still the file's last `INSTALL_OUT_TAIL` lines, and the first sync's counts are still
+looked for in every line read.
+
+Not changed: the counts cover every run read, not only this attempt's. Most of the field's `11 fix:` lines
+were printed by older installers in earlier attempts; the tail under Installer shows what the last run
+printed.
+
+Tests: `tests/test_setup_report.py` (three runs whose first is cut by the 64 KiB read: 2 `NEXT:` in 2 runs,
+the first run's `fix:` line left out, the line count from the first header, the note, and the embedded tail
+still the file's last 60 lines; one run longer than what is read; a file read whole that starts inside a
+run).
