@@ -3083,7 +3083,9 @@ def _took(seconds: float | None) -> str:
 
 
 def _ocr_time(m: _Mirror) -> list[str]:
-    """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28)."""
+    """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28). The last
+    column is the files each run's re-read left (``reread_left``): read down the runs, it is how many syncs
+    a mirror's one-time re-read takes."""
     runs = _run_rows(m)
     if not runs:
         return ["- OCR time: no run is recorded"]
@@ -3136,6 +3138,9 @@ def _ocr_time(m: _Mirror) -> list[str]:
                 x.n("ocr_failed"),
                 f"{x.n('ocr_page_cap')} + {x.n('ocr_picture_cap')}",
                 f"{x.n('reread')} ({x.n('reread_kept')})",
+                # A run that looked says what it left (0 is left out of its record); one that did not look
+                # (an earlier build's, a ``materialise PATH`` run) has no count to give.
+                x.n("reread_left") if "reread_for" in x.counts else "-",
             )
         )
     header = (
@@ -3152,6 +3157,7 @@ def _ocr_time(m: _Mirror) -> list[str]:
         "engine failed",
         "past the page + picture limit",
         "read again (page kept)",
+        "left to read again",
     )
     title = "the last runs that had an engine" if engine else "the last runs (none had an engine)"
     return [*out, "", f"{title}, newest first:", "", *_table(header, rows)]

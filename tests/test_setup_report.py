@@ -2799,9 +2799,12 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     )
     started = "2026-10-06T10:00:00Z | 1m05s"
     assert [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)] == [
-        f"| 5 | reconcile | ok | {started} | 2.2s of 180s | no | yes | 0 | 0 + 2 | 1 | 1 + 1 | 0 (0) |",
-        f"| 4 | poll | ok | {started} | 181.5s of 180s | yes | no | 3 | 2 + 0 | 0 | 0 + 0 | 4 (1) |",
+        f"| 5 | reconcile | ok | {started} | 2.2s of 180s | no | yes | 0 | 0 + 2 | 1 | 1 + 1 | 0 (0) | - |",
+        f"| 4 | poll | ok | {started} | 181.5s of 180s | yes | no | 3 | 2 + 0 | 0 | 0 + 0 | 4 (1) | - |",
     ], "the run of an earlier build had no engine: it is not in the OCR table"
+    assert "| read again (page kept) | left to read again |" in ocr_part, (
+        "what each run's re-read left; these runs do not say what they looked for, so they have no count"
+    )
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
         assert raw not in text, raw
 
@@ -2832,12 +2835,22 @@ def test_the_re_read_table_goes_by_what_the_newest_run_looked_for(
     seed.m.set_meta("reread:" + two, json.dumps(stale))
     seed.item(two, "Tailspin scan.tiff", state="refused", reason=NO_CONVERTER, page="refused")
     seed.item(two, "merger deck.pptx", version="1.0.0+python-pptx-1.0.2+ocr-off")
+    engine = {"ocr_ms": 900, "ocr_budget_s": 180}
+    seed.run(6, {"converted": 1, **engine, "reread": 3, "reread_for": int(now[:8], 16)})
     seed.run(7, {"converted": 0, "reread_for": int(earlier[:8], 16)})
-    seed.run(8, {"converted": 2, "ocr_ms": 900, "ocr_budget_s": 180, "reread_for": int(now[:8], 16)})
+    seed.run(8, {"converted": 2, **engine, "reread": 5, "reread_left": 31, "reread_for": int(now[:8], 16)})
     seed.run(9, {"converted": 0, "ocr_ms": 0, "ocr_budget_s": 180})  # `materialise PATH`: no re-read ran
     seed.close()
     text, parts = status_parts(fake_mac)
     assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
+    # The per-run table's last column: the files each run's re-read left. Read down the runs it is how many
+    # syncs the re-read takes. A run that did not look has no count; one that looked and left none says 0.
+    runs = [ln.strip("| ").split(" | ") for ln in parts["OCR"].splitlines() if re.match(r"\| \d", ln)]
+    assert [(cells[0], *cells[-2:]) for cells in runs] == [
+        ("9", "0 (0)", "-"),
+        ("8", "5 (0)", "31"),
+        ("6", "3 (0)", "0"),
+    ]
     assert reread_rows(parts["OCR"]) == {
         "<folder-2>": ["yes", "0", "0", "0", "0", "0", "no"],
         "inbox": ["no", "0", "0", "0", "1", "0", "no"],

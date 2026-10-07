@@ -7818,6 +7818,9 @@ decides before a word inside the text does.
 - Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
   time, or ended with the helper not working; the files the newest run that had an engine left waiting; the
   sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine.
+  The row's last column is the files that run's re-read left (`reread_left`; `-` for a run that did not
+  look, which is one without `reread_for`): read down the runs, it is how many syncs a real mirror's re-read
+  takes, which no one has timed.
   A sum over runs is not a count of files: `ocr_deferred` counts a file in every run it waits in, so 1,000
   screenshots read 30 a cycle add up to some 16,000, and a file read again after the engine failed on it is
   in `ocr_failed` once per try. The sums are worded as waits and conversions, and the number of files

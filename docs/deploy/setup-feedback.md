@@ -225,7 +225,7 @@ says otherwise.
 
 | Part | What it settles | How to read it |
 |---|---|---|
-| OCR | Did the OCR build work on this Mac, and what did it leave unread? | `helper:` is the state doctor reports. The image line counts files by outcome. A `no-converter stub on this Mac` is an image OCR has not read yet or failed on; an image that is online-only, or a Graph source's, is a `not-on-this-Mac stub` and is never downloaded for OCR. The document lines say how many pages were made with an engine. The re-read table says, per source, whether the one-time re-read is finished and how many files it gave up. The `waiting for OCR` line gives the files the newest run left for a later cycle; the sums beside it are over all the runs read, so a file that waited in ten runs is ten waits. The last table is OCR's time per run against the cycle's 180 s. |
+| OCR | Did the OCR build work on this Mac, and what did it leave unread? | `helper:` is the state doctor reports. The image line counts files by outcome. A `no-converter stub on this Mac` is an image OCR has not read yet or failed on; an image that is online-only, or a Graph source's, is a `not-on-this-Mac stub` and is never downloaded for OCR. The document lines say how many pages were made with an engine. The re-read table says, per source, whether the one-time re-read is finished and how many files it gave up. The `waiting for OCR` line gives the files the newest run left for a later cycle; the sums beside it are over all the runs read, so a file that waited in ten runs is ten waits. The last table is OCR's time per run against the cycle's 180 s; its last column is the files that run left to read again (`-` for a run that did not look), so the column read down the runs says how many syncs the re-read takes on this mirror. |
 | Quarantine by reason | Why are files quarantined or refused, per source? | A reason is shown as one of a fixed list of classes, never as its text. The last column is when those stubs were built: a stub older than a fix has not been read since. |
 | Purge queue | Are the queued purges real deletions? | `same bytes live` and `same path live` are files that were renamed, re-exported or saved again, not deleted. `no live twin` is a deletion. |
 | Overlapping sources | Is one source's folder inside another's, and which of the two holds the files? | One line per pair with each source's counts, and whether the outer source's `exclude` prunes the inner folder. |
@@ -252,8 +252,8 @@ a note starts with `sync again:`, up to 12 more times, before it writes the repo
 an hour). The note says "sync again" only while a sync reads more. When the last sync read none of the files left
 (pandoc cannot run, the OCR helper stopped working, a folder is not listed), the note says another sync does not
 clear it, and the agent goes on to the report. So `scan finished: no` in a v8 report means one of two things:
-the 12 syncs were not enough (the per-run table shows a full re-read count in each), or something stops the
-re-read (the last runs read none). An image left for a later sync's OCR needs no note: it is a file not converted
+the 12 syncs were not enough (the per-run table's last column falls run by run and has not reached 0), or
+something stops the re-read (the last runs read none and the column stands still). An image left for a later sync's OCR needs no note: it is a file not converted
 yet, and the loop's `NEXT:` line itself says to sync again until none is left.
 
 `scan finished` is `yes` or `no` only for a record the newest sync could have written: the sentence above the
