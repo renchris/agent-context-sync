@@ -209,23 +209,36 @@ Spec S0 to S6, S9, S10, 3.1 to 3.6, 4, 4.1, 6; tests 9.3. Profiles `teams`, `mee
   both Zoom fixtures through `scripts/meeting-eval/`, and `git ls-tree origin/main src/agentsync/convert/recording.py`
   lists the file; do not name the tenant or commit a recording.
 
-### P2 — Meeting page skill, rubrics, citation lint (upcoming)
+### P2 — Meeting page skill, rubrics, citation lint (done, 2026-10-07)
 
-Spec 7.1 to 7.4, section 8, the C11 basis forms.
+Spec 7.1 to 7.4, section 8, the C11 basis forms. Two teammates (*lint*, *skill*), then three fresh-context
+reviewers (the skill as a reader sees it, the lint's correctness, its robustness) and two fix passes.
+Commits: `ebf21b0`, `555d5ca` (skill, rubrics, §16.31); `a99a017`, `6d8175a`, `f5d96d4` (lint); `ff7812f`, `7b4330f`,
+`6765532`, `6ee63bf` (review fixes).
 
-- `lint_meeting_citations` in `src/agentsync/curate.py` beside `generate_depends` `:428` and `_finding` `:332`; never
-  called from `checkpoint_blockers` `:860-884`. Pages under `topics/` only: `iter_topic_pages` `:157-170`; parser
-  `_parse_topic_text` `:245-271`; limits `:73-74`; `uncovered_mirror_pages` `:762-788`.
-- `CITE-*` findings as `warn` lines in `_curate_findings` `src/agentsync/cli.py:1457-1471`, beside TOPIC-BUDGET
-  `:1469`; `_cmd_curate` `:1474-1503`. The sync's `_curate` (`cycle.py:3022-3025`) does not run the lint.
-- `MEETINGS` block in `procedure` `src/agentsync/skill.py:56-93`; five baseline questions in `BASELINE` `:96-116`.
-  `_rubrics/*.md` written with the scaffold, `ensure_scaffold` `src/agentsync/publish.py:725`.
-- CONTRACTS §16.31.
-- Review before landing: a reader-side review (does the skill text match every tag the converter emits) and the
-  drift test of spec section 8.
-- Done when (goal): `uv run --locked pytest -q tests/test_curate.py tests/test_skill.py tests/test_publish.py`
-  prints 0 failed with one passing and one failing page per lint rule, and a `CITE-*` finding never holds the
-  checkpoint; do not make any finding blocking.
+- **What landed.** `skill.MEETINGS`, step 7 of `procedure()` (the skill, the root CLAUDE.md and AGENTS.md), plus a
+  `CITE-*` row in step 6. `publish.RUBRICS`: `_rubrics/meeting-page.md` (the 7.1 template) and the four 7.3
+  sweeps, written by `ensure_scaffold` as fixed files; `gitops.COMMIT_PATHSPECS` gains `_rubrics`.
+  `curate.lint_meeting_citations` and `curate.CITE_CODES`, run only by `agentsync curate` as `warn` lines, never
+  from `generate_depends`, `checkpoint_blockers` or the sync. CONTRACTS §16.31.
+- **Proof.** `tests/test_curate.py` has one test per 7.4 rule, each with a passing and a failing page, plus the five
+  named 9.3 tests and a hostile-input test. A 100 KB row lints in under 1 s. The drift test
+  `test_the_skill_names_every_tag_the_converter_emits_and_no_other` reads the tag set from the pinned grammar
+  (`tests/test_recording_grammar.py`), because the converter is P1's.
+- **Choices the spec left open (CONTRACTS §16.31 lists them all).**
+  - A `heard` tag falls back only to a page whose `converter` is `vtt-turns@…`. Before this, a forged `SAID` line
+    in any mirror page made an uncited decision pass.
+  - Rule 5 accepts `chat` or `file` with a quote, and an action row whose evidence is `inferred` plus an existing
+    `D<n>`, as the action-item rubric asks.
+  - Rule 6 takes the last keyframe at or before the time, across a continuation.
+  - The skill adds TERM and NOTE to spec 8's block, case-insensitive channel searches, numbers spoken as words,
+    the revisit keyframe path, the window number as the key, and the one-person check written out.
+- **Items for later waves.**
+  - P1: the converter must emit exactly the grammar's tags, or the drift test and the lint drift with it. Retarget
+    the drift test at the converter's own tag list once `convert/recording.py` lands.
+  - P3: `vtt.py` must use the converter id `vtt-turns`, or `heard` tags stop resolving against transcripts. Settle
+    the `VOICE` wording (H learning 3) in the skill too.
+  - F / R20: measure how often the lint fails a correct citation before any `CITE-*` becomes an ERROR.
 
 ### P3 — Speech plus voice naming S8b (upcoming)
 
