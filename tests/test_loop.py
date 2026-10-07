@@ -4,6 +4,7 @@ file."""
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -559,6 +560,90 @@ def test_status_line_tracks_skill_baseline_topics_and_queue(tmp_path: Path, fold
     assert states == ["draft", "confirmed", "before", "after"]
     _hand_written(config, 2)
     assert " topics 2 " in loop.status_line(config) and "skill missing" in loop.status_line(config)
+
+
+# ---- the one-time re-read: a note that says "sync again" while a sync reads more --------------------------
+
+REREAD_TAIL = (
+    "still to be read again, once, for what this build's converters have gained (each sync reads about 2 "
+    "minutes' worth); it does not block the next step"
+)
+STUCK_TAIL = (
+    "wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot "
+    "run, or a folder that could not be listed): another sync does not clear it; it does not block the next "
+    "step"
+)
+
+
+def _reread(
+    config: Config, *, done: bool, run: dict[str, int] | None, reading: str | None = None, sid: str = "work"
+) -> list[str]:
+    """Store a re-read record for ``sid`` as a cycle does, and a run that says what it looked for with
+    the counts ``run`` (None: no later run); return the loop's note lines."""
+    record: dict[str, object] = {"done": done, "for": "ab" * 32, "tried": []}
+    if reading is not None:
+        record["reading"] = reading
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_meta(f"reread:{sid}", json.dumps([record]))
+        if run is not None:
+            run_id = manifest.begin_run(CycleMode.POLL, host="mac", pid=1)
+            manifest.finish_run(run_id, status="ok", commit_sha=None, counts={"reread_for": 7, **run})
+    step = loop.next_step(config)
+    assert step.rule == 4, "a re-read that is not finished is a note: it never holds a rule"
+    return [line for line in _lines(config) if line.startswith("note: ")]
+
+
+def test_an_unfinished_re_read_is_a_sync_again_note_with_the_count_the_last_sync_left(
+    tmp_path: Path, folder: Path
+) -> None:
+    """Files converted before something this build's converters have are read again over several syncs
+    (two minutes' worth each).  While one is left and the last sync read some, the note starts "sync
+    again:" and gives the count that sync left.  The setup prompt runs sync again while it does."""
+    config = _synced(tmp_path, folder)
+    assert not [line for line in _lines(config) if line.startswith("note: ")], "nothing to read again"
+    said = f"note: {loop.SYNC_AGAIN}37 file(s) in work are {REREAD_TAIL}"
+    assert _reread(config, done=False, run={"reread": 12, "reread_left": 37}) == [said]
+    assert said.startswith("note: sync again: 37 file(s) in work are still to be read again")
+    # The cycle's OCR time ran out before a file was read again: the next sync has it for them.
+    assert _reread(config, done=False, run={"ocr_over": 1, "reread_left": 37}) == [said]
+    assert _reread(config, done=True, run={"reread": 37}) == [], "finished: no note"
+
+
+def test_a_re_read_the_last_sync_read_nothing_of_does_not_say_sync_again(
+    tmp_path: Path, folder: Path
+) -> None:
+    """A sync that read none of the files left, with time to spare, was stopped by something another sync
+    does not clear: pandoc cannot be run, the OCR helper stopped working, a folder is not listed.  The note
+    then gives the count and does not say "sync again", so a loop on that note ends."""
+    config = _synced(tmp_path, folder)
+    stuck = f"note: 37 file(s) in work {STUCK_TAIL}"
+    assert _reread(config, done=False, run={"reread_left": 37}) == [stuck]
+    assert _reread(config, done=False, run={"reread": 3, "reread_left": 37, "ocr_down": 1}) == [stuck]
+    assert loop.SYNC_AGAIN not in stuck
+
+
+def test_a_re_read_with_no_count_yet_says_sync_again_once(tmp_path: Path, folder: Path) -> None:
+    """A record that is not finished and no count to go with it: a file joined after the last sync looked
+    (converted past the OCR time by a later step), a cycle died while it read one, or no run of this build
+    has looked yet.  One more sync counts them, so the note says "sync again" without a number."""
+    config = _synced(tmp_path, folder)
+    unknown = f"note: {loop.SYNC_AGAIN}file(s) in work are {REREAD_TAIL}"
+    assert _reread(config, done=False, run={}) == [unknown]
+    assert _reread(config, done=True, run={}, reading="0123") == [unknown], "a cycle died in that read"
+    with Manifest(config.state_paths.db) as manifest:
+        manifest._db.execute("UPDATE runs SET counts_json = '{}'")
+    assert _reread(config, done=False, run=None) == [unknown], "no run says what it looked for"
+
+
+def test_the_re_read_note_names_every_source_that_is_not_finished(tmp_path: Path, folder: Path) -> None:
+    other = tmp_path / "Archive"
+    other.mkdir()
+    (other / "Old Note.txt").write_text("An older note.\n", encoding="utf-8")
+    config = _synced(tmp_path, folder, local_source_table("archive", other))
+    _reread(config, done=False, run=None, sid="archive")
+    assert _reread(config, done=False, run={"reread": 5, "reread_left": 9}) == [
+        f"note: {loop.SYNC_AGAIN}9 file(s) in archive, work are {REREAD_TAIL}"
+    ]
 
 
 # ---- the operator's waits ---------------------------------------------------------------------------------

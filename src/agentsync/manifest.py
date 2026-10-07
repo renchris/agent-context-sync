@@ -1281,6 +1281,22 @@ class Manifest:
                 raise KeyError(f"no run {run_id}")
             _write_meta(self._db, "written_at_ns", str(time.time_ns()))
 
+    def last_reread_counts(self) -> dict[str, int] | None:
+        """The ``counts_json`` of the newest run that says what its re-read looked for (``reread_for``:
+        the run brought a source's re-read record up to date, CONTRACTS.md 16.28); None when no run does.
+        ``loop.next_step`` reads how many files that run left to read again and whether it read any."""
+        row = self._db.execute(
+            "SELECT counts_json FROM runs WHERE counts_json LIKE '%\"reread_for\"%' "
+            "ORDER BY run_id DESC LIMIT 1"
+        ).fetchone()
+        try:
+            doc = json.loads(row[0]) if row is not None else None
+        except ValueError:
+            return None
+        if not isinstance(doc, dict):
+            return None
+        return {str(k): v for k, v in doc.items() if isinstance(v, int) and not isinstance(v, bool)}
+
     def last_runs(self, limit: int = 10) -> list[tuple[int, str, str, str | None]]:
         """Return (run_id, mode, status, commit_sha) newest first."""
         rows = self._db.execute(
@@ -2062,6 +2078,18 @@ class Manifest:
             return bool(self._reread_rows("1", source_id, targets, skip, tail=" LIMIT 1"))
         tail = " AND i.stable_id = ? LIMIT 1"
         return bool(self._reread_rows("1", source_id, targets, skip, tail=tail, params=(only,)))
+
+    def reread_count(
+        self,
+        source_id: str,
+        targets: Sequence[tuple[str, str, str | None, str]],
+        *,
+        skip: Iterable[str] = (),
+    ) -> int:
+        """How many files ``reread_left`` is True for: the files of ``source_id`` still to read again.
+        The cycle asks once per source it looked at, for its run record.  A file that two statements name
+        is counted once."""
+        return len({str(r[0]) for r in self._reread_rows("i.stable_id", source_id, targets, skip, tail="")})
 
     def set_redacted(self, source_id: str, stable_id: str) -> None:
         """Record that the item's name/path carries a credential: pages, shards and QUARANTINE.tsv show a

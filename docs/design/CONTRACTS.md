@@ -5653,7 +5653,9 @@ to paste, but only for folders with no mirrored file below them; with none store
 sources.toml excludes them all it is rule 3 (sync again). An inbox whose newest FULL pass
 was incomplete (often a file still being written) is a `note:`. Online-only files within the budget
 are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. Item
-errors are retried by every sync and are not rule 3 (they would make it loop). The text is fixed wording plus
+errors are retried by every sync and are not rule 3 (they would make it loop). **Amended (2026-10-07,
+§16.28):** a source whose one-time re-read (§16.27) is not finished is one more `note:`, which starts
+`sync again:` while another sync reads more of it. The text is fixed wording plus
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
 
 Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
@@ -5677,6 +5679,7 @@ WAIT_PREFIX = "WAITING ON YOU: "
 NOTE_PREFIX = "note: "
 BIN = skill.AGENTSYNC_BIN
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"  # where the README's setup prompt clones it
+SYNC_AGAIN = "sync again: "  # §16.28: how the note of an unfinished re-read starts
 ROWS_PER_SESSION = 10
 AFTER_BASELINE_PAGES = 20
 
@@ -7412,7 +7415,8 @@ one statement, no row decoded. `Manifest.reread_candidates(source_id, targets, *
 limit)` returns the files that `targets` name, a page at a time by stable id; a target is `(converter id,
 version, stub reason or None, lower-case suffix)`. `Manifest.reread_left(source_id, targets, *, skip=(), only=None)` says
 whether such a file is on this Mac at all, whatever its verdict; with `only` it says so of one stable id,
-which is what the work queue asks about a file it has in hand. The id and version are those of the `cache`
+which is what the work queue asks about a file it has in hand. (`Manifest.reread_count`, §16.28, is the
+number of them.) The id and version are those of the `cache`
 row of the page's action key (the H2 cutoff moves the key and nothing else); the join is LEFT with COALESCE
 onto the `outputs` columns, so a page whose cache row is gone costs at most one more read, which writes the
 row. A stub counts only when it is its item's own state (`outputs.status` equals `items.state`): a
@@ -7501,6 +7505,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
+| `reread_left` | files on this Mac still to read again when the cycle stopped looking, summed over the sources it looked at (`Manifest.reread_count` at the end of `_reread_source`: the files `reread_left` is true for, those given up left out). Left out at 0, which is a finished re-read |
 | `reread_for` | no count: the first 8 hex digits of `_Cycle._capabilities()` as an integer (`_reread_number`), which is what this run's re-read looked for. There when the run brought a source's re-read record up to date (`_reread_source`), so not in a `materialise PATH` run or one with Graph sources only |
 | `ocr_ms`, `ocr_budget_s` | milliseconds the OCR helper ran (`_CycleOcr.spent_s`) and the cycle's OCR time (`_OCR_BUDGET_S`) |
 | `ocr_over`, `ocr_down` | 1 when that time was used up; 1 when the helper stopped working in the cycle |
@@ -7532,12 +7537,17 @@ other key that would be 0 is left out. No reader depended on the old content.
   names nothing. The report never prints it.
 - `Manifest.cache_last_used(action_key) -> int | None` returns the run that last used a cache index row, None
   when there is none. The cycle asks before `record_cache` moves it, and only through `_converted_before`.
+- `Manifest.reread_count(source_id, targets, *, skip=()) -> int` counts the files `reread_left` is true for,
+  each once. A source's `done` is now that count being 0: the same statement the cycle ran before, without
+  its `LIMIT 1`. `Manifest.last_reread_counts() -> dict[str, int] | None` returns the record of
+  the newest run that has `reread_for`, None when no run has: `loop.next_step` words its note from it
+  ("One round", below).
 - The record of a run from before this build holds change counts only and no `converted` key. The report
   says "not recorded" for it.
 
 Every new name in `agentsync.cycle` is private (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`, `_REREAD_FOR_DIGITS`,
 `_reread_number`, and on `_Cycle`: `_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`,
-`_converted_before`, `_reread_looked`).
+`_converted_before`, `_reread_looked`, `_reread_left`).
 
 Tests: `tests/test_cycle.py` (a cycle without an engine records no OCR key; five images at 100 s each against
 the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle with an engine; a scan past the
@@ -7545,8 +7555,45 @@ page limit, a PDF converted past the budget and its re-read, a helper that fails
 converted again from the same bytes in two runs running; a copy of a file the run before converted, and a
 second copy in the run after, neither a repeat; a conversion that fails, counted once and not tried again
 until the bytes change; what a run's re-read looked for, with and without an engine and not from a
-`materialise PATH` run; the limit marks are the converters' wording) and
-`tests/test_manifest.py` (`cache_last_used`).
+`materialise PATH` run; the limit marks are the converters' wording; the files a re-read left, against its
+time, past the OCR time and with pandoc missing) and
+`tests/test_manifest.py` (`cache_last_used`, `reread_count`, `last_reread_counts`).
+
+#### One round: `sync` says when to sync again (amends §16.20; `agentsync.loop`)
+
+A bring-back file written right after the first sync on an upgraded Mac showed a re-read that had only
+begun (§16.27 reads two minutes' worth a cycle), and the next question needed another round. The loop said
+nothing about it: rule 3 covers a file on this Mac that is not converted yet, which an image left for a
+later cycle's OCR is (`Verdict.DEFERRED`, not online-only), so `NEXT:` already said "sync again" for those;
+a file to read again is `unchanged` and was no rule, wait or note.
+
+`next_step` now adds one `note:` line for the live local and inbox sources whose newest `reread:<source id>`
+record is not `done`, or says a file was being read (`_reread_note`):
+
+| The newest run that has `reread_for` | Note |
+|---|---|
+| read a file again (`reread`), or used up its OCR time (`ocr_over`), and its helper did not stop | `sync again: N file(s) in <ids> are still to be read again, once, for what this build's converters have gained (each sync reads about 2 minutes' worth); it does not block the next step`, N its `reread_left` |
+| has no `reread_left`, or there is no such run | the same without N: a file joined after that run looked (`_reread_reopen`), a cycle died in a read, or no run of this build has looked. The next sync counts them |
+| read none with time left, or its helper stopped working (`ocr_down`) | `N file(s) in <ids> wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear it; it does not block the next step` |
+
+- It is a note and never rule 3. A file whose converter cannot run (pandoc is missing) or whose folder a
+  sync cannot list is asked about in every cycle and never counted against the file (§16.27), so its source
+  is never `done`: as a rule it would hold every session at "sync again" for ever.
+- The first wording starts `SYNC_AGAIN` (`"sync again: "`) and the third does not. That is what a caller
+  loops on: the note says "sync again" only while a sync reads more, so the loop ends by the tool's own
+  line, with no count kept by the agent. A file that fails is read in two cycles and then given up, so a
+  cycle that read files and finished none is still followed by an end.
+- `sync` and `status` print it with the other notes, after `NEXT:` and the waits. The setup report's `Loop:`
+  line shows no note; its OCR part has the re-read table.
+
+```python
+# agentsync.loop
+SYNC_AGAIN = "sync again: "  # how the note starts while another sync reads more of an unfinished re-read
+```
+
+Tests: `tests/test_loop.py` (each row of the table from a stored record and run, the rule unchanged, two
+sources named), `tests/test_cycle.py` (six files against the re-read time; a PDF converted past the OCR time;
+pandoc missing for two cycles, then back; three images left for OCR are rule 3).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
 

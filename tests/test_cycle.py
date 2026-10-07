@@ -1850,6 +1850,13 @@ def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
         "ocr_over": 1,
     }
     assert all(isinstance(value, int) for value in record.values()) and "shot" not in json.dumps(record)
+    # Images left for a later cycle's OCR are files on this Mac not converted yet: the NEXT line itself
+    # says to sync again (rule 3), so a loop on NEXT reads them all before it goes on.
+    step = loop.next_step(sample_config)
+    assert (step.rule, step.step) == (
+        3,
+        f"1 source(s) not fully listed or converted yet ({SID}): run `{loop.BIN} sync` again",
+    )
     assert run(sample_config).exit_code == 0 and run(sample_config).exit_code == 0
     last = _run_record(sample_config)
     assert (last["converted"], last["ocr_ms"], last.get("ocr_deferred"), last.get("ocr_over")) == (
@@ -1858,6 +1865,7 @@ def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
         None,
         None,
     )
+    assert loop.next_step(sample_config).rule != 3, "none waits any more"
     assert run(sample_config).commit_sha is None
     assert _run_record(sample_config) == {"converted": 0, "ocr_budget_s": 180, "ocr_ms": 0, **LOOKED}, (
         "an idle cycle with an engine"
@@ -1889,6 +1897,8 @@ def test_the_run_record_counts_what_was_converted_without_ocr_and_why(
     record = _run_record(sample_config)
     assert (record["converted"], record["ocr_without_budget"], record["ocr_over"]) == (1, 1, 1)
     assert "ocr_page_cap" not in record, "converted without OCR: no limit of OCR was reached"
+    assert record["reread_left"] == 1 and "reread" not in record, "it waits for a sync with OCR time"
+    assert loop.next_step(sample_config).notes[-1].startswith("sync again: 1 file(s) in ")
     monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 180.0)
     assert run(sample_config).exit_code == 0
     record = _run_record(sample_config)
@@ -2090,6 +2100,18 @@ def _reread_record(config: Config, sid: str = SID) -> tuple[bool, list[str]]:
     return newest["done"], newest["tried"]
 
 
+def _reread_notes(config: Config) -> list[str]:
+    """The loop's note lines about files still to read again (``loop._reread_note``)."""
+    return [note for note in loop.next_step(config).notes if "read again" in note]
+
+
+def _sync_again(left: int, sid: str = SID) -> str:
+    return (
+        f"sync again: {left} file(s) in {sid} are still to be read again, once, for what this build's "
+        "converters have gained (each sync reads about 2 minutes' worth); it does not block the next step"
+    )
+
+
 def _reread_failed(config: Config, sid: str = SID) -> dict[str, int]:
     """Stable id -> the cycles its re-read failed in, for the files not yet given up."""
     with Manifest(config.state_paths.db) as m:
@@ -2141,7 +2163,7 @@ def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_
     assert _reread_record(sample_config) == (True, [])
     third = run(sample_config)
     assert third.commit_sha is None and len(fetched) == 2, "no file is read a second time"
-    for query in ("produced_by", "reread_candidates", "reread_left"):
+    for query in ("produced_by", "reread_candidates", "reread_left", "reread_count"):
         monkeypatch.setattr(Manifest, query, crash)
     assert run(sample_config).commit_sha is None, "nothing is left, and no cycle looks"
 
@@ -2713,8 +2735,12 @@ def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_tha
     caplog.set_level(logging.INFO, logger="agentsync.cycle")
     first = run(sample_config)
     assert first.exit_code == 0 and len(fetched) == 3 and not _reread_record(sample_config)[0]
+    record = _run_record(sample_config)
+    assert record["reread_left"] == 3 + record.get("reread_kept", 0), "six, less the ones that were read"
+    assert _reread_notes(sample_config) == [_sync_again(record["reread_left"])]
     assert run(sample_config).exit_code == 0 and len(fetched) == 6
     assert run(sample_config).exit_code == 0 and len(fetched) == 7
+    assert "reread_left" not in _run_record(sample_config) and _reread_notes(sample_config) == []
     assert sorted(fetched) == sorted([*reviews, reviews[0], PLAIN_PDF]), "each once, the one that fails twice"
     stuck_id = _file_rows(sample_config)[reviews[0]].stable_id
     assert _reread_record(sample_config) == (True, [stuck_id])
@@ -2789,7 +2815,7 @@ def test_a_file_the_walk_calls_maybe_changed_in_every_pass_is_read_again_by_the_
     assert _mirror_bytes(sample_config, PLAIN_PDF) == plain, "no comment in it: its page is as it was"
     assert _file_rows(sample_config)[PLAIN_PDF].last_verdict is Verdict.OUTPUT_UNCHANGED
     assert _reread_record(sample_config) == (True, [])
-    for query in ("produced_by", "reread_candidates", "reread_left"):
+    for query in ("produced_by", "reread_candidates", "reread_left", "reread_count"):
         monkeypatch.setattr(Manifest, query, crash)
     assert run(sample_config).commit_sha is None, "nothing is left, and no cycle looks"
 
@@ -2892,6 +2918,40 @@ def test_a_converter_that_cannot_run_costs_its_files_neither_a_page_nor_their_on
     assert _mirror_bytes(sample_config, *words) == before, "no picture in them: the pages stay as they are"
     assert _reread_record(sample_config) == (True, [])
     assert run(sample_config).commit_sha is None and len(fetched) == 4
+
+
+def test_the_loop_says_sync_again_while_a_sync_reads_more_of_what_is_left_and_not_after_one_read_none(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each run records how many files its re-read left, and ``sync`` prints that as a note.  The note
+    says "sync again" while the last sync read some of them.  With pandoc missing the two Word files are
+    never read: the first such sync still read the others, the second read nothing, and from then the note
+    no longer says "sync again", so an agent told to follow that note stops.  The setup prompt is."""
+    assert run(sample_config).exit_code == 0
+    assert "reread_left" not in _run_record(sample_config) and _reread_notes(sample_config) == []
+    _use_ocr(monkeypatch, tmp_path)
+
+    def missing(self: Any) -> str:
+        raise ConversionError("cannot run pandoc: [Errno 2] No such file or directory")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pandoc_mod._PandocRunner, "version", missing)
+        assert run(sample_config).exit_code == 0
+        record = _run_record(sample_config)
+        assert (record["reread"], record["reread_left"]) == (2, 2), "the PDF and the deck; two Word files"
+        assert _reread_notes(sample_config) == [_sync_again(2)]
+        assert run(sample_config).exit_code == 0
+        record = _run_record(sample_config)
+        assert "reread" not in record and record["reread_left"] == 2
+        assert _reread_notes(sample_config) == [
+            f"2 file(s) in {SID} wait to be read again, and the last sync read none of them (a converter or "
+            "on-device OCR that cannot run, or a folder that could not be listed): another sync does not "
+            "clear it; it does not block the next step"
+        ]
+    assert run(sample_config).exit_code == 0, "pandoc runs again: whichever sync comes next reads them"
+    record = _run_record(sample_config)
+    assert record["reread"] == 2 and "reread_left" not in record and _reread_notes(sample_config) == []
+    assert all(isinstance(value, int) for value in record.values())
 
 
 def test_a_graph_file_is_never_read_again(

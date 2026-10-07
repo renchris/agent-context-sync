@@ -1018,6 +1018,7 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._reread_n = 0  # files read again
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
+        self._reread_left = 0  # files still to read again, over the sources this cycle looked at
         self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
@@ -1459,7 +1460,9 @@ class _Cycle:
         were made from the same bytes by an earlier run (``_converted_before``; a copy of a file is not
         one); ``converted_again``: of those, when the bytes were last converted in the run just before.
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
-        of them that kept their page.
+        of them that kept their page.  ``reread_left``: files on this Mac still to read again when the
+        cycle stopped looking, over the sources it looked at (``_reread_source``); ``loop.next_step`` words
+        its "sync again" note from it.
         ``ocr_ms``: milliseconds the helper ran; ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1
         when it was used up; ``ocr_down``: 1 when the helper stopped working; ``ocr_deferred``: files left
         for a later cycle's OCR (``_ocr_waits``); ``ocr_without_budget`` and ``ocr_without_down``: files
@@ -1477,6 +1480,8 @@ class _Cycle:
             tally["reread"] = self._reread_n
         if self._reread_kept:
             tally["reread_kept"] = self._reread_kept
+        if self._reread_left:
+            tally["reread_left"] = self._reread_left
         if self._reread_looked:
             tally["reread_for"] = _reread_number(self._capabilities())
         if self.ocr is not None:
@@ -2171,7 +2176,9 @@ class _Cycle:
             )
         # Done when no file on this Mac is left to read again: none the cycle's time ran out before, none
         # that is pending, none this pass did not list and none whose read failed fewer times than it may.
-        state.done = not (bool(targets) and self.manifest.reread_left(src.id, targets, skip=state.tried()))
+        left = self.manifest.reread_count(src.id, targets, skip=state.tried()) if targets else 0
+        self._reread_left += left
+        state.done = not left
         self._save_reread(src.id)
 
     def _reread_batch(

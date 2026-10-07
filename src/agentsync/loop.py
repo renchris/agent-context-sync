@@ -19,6 +19,10 @@ rule wins:
 9. the curation queue is not empty: curate up to :data:`ROWS_PER_SESSION` rows, sync, session done;
 10. nothing to do: session done.
 
+A local or inbox source whose one-time re-read is not finished (CONTRACTS.md 16.27: files converted before
+something this build's converters have) is a note, never a rule: ``sync again: N file(s) ...`` while another
+sync reads more of them, and other words once the last sync read none (:func:`_reread_note`).
+
 The text is fixed wording plus counts and source ids, never a mirror path or file name (a page name is
 third-party content). One wait is the exception: the ``exclude = [...]`` line for a source's empty cloud
 folders names them, since the operator has to paste it; the setup report shows that list as ``<path>``.
@@ -41,10 +45,13 @@ from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
     _EMPTY_DIRS_META,
     _PRESENT,
+    _REREAD_BUDGET_S,
+    _REREAD_META,
     _SEED_PAGE_NAMES,
     HYDRATION_REFUSED,
     LISTING_HELD,
     NETWORK_POLICY_FAILED,
+    _reread_records,
 )
 from agentsync.errors import AgentSyncError
 from agentsync.manifest import Manifest
@@ -63,6 +70,9 @@ NOTE_PREFIX = "note: "
 BIN = skill.AGENTSYNC_BIN
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 """Where the README's setup prompt clones the checkout; ``--list-folders`` lists the candidate folders."""
+SYNC_AGAIN = "sync again: "
+"""How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_note`).
+The README's setup prompt runs ``sync`` again while a ``note:`` line starts with it, before its report."""
 ROWS_PER_SESSION = 10
 """Rule 9's session bound: curate at most this many queue rows, then sync and end the session."""
 AFTER_BASELINE_PAGES = 20
@@ -184,6 +194,34 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     return out
 
 
+def _reread_note(sources: Sequence[str], run: dict[str, int] | None) -> str | None:
+    """The note for ``sources``, the ones whose one-time re-read is not finished (manifest meta
+    ``reread:<source id>``: the newest record is not ``done``, or a cycle died reading a file); None for
+    none.  ``run``: the counts of the newest run that looked (``Manifest.last_reread_counts``).
+
+    It starts :data:`SYNC_AGAIN` only while another sync reads more: that run read a file again or used up
+    its OCR time, it left no count (a file joined after it looked), or no run says how it went.  A run that
+    read none with time left was stopped by something no sync clears (a converter that cannot run, a helper
+    that stopped working, a folder it could not list), and "sync again" would then never end."""
+    if not sources:
+        return None
+    ids = ", ".join(sorted(sources))
+    left = (run or {}).get("reread_left", 0)
+    stopped = run is not None and bool(run.get("ocr_down"))
+    went_on = run is None or not left or bool(run.get("reread") or run.get("ocr_over"))
+    if went_on and not stopped:
+        return (
+            f"{SYNC_AGAIN}{f'{left} ' if left else ''}file(s) in {ids} are still to be read again, once, "
+            f"for what this build's converters have gained (each sync reads about {_REREAD_BUDGET_S / 60:g} "
+            "minutes' worth); it does not block the next step"
+        )
+    return (
+        f"{f'{left} ' if left else ''}file(s) in {ids} wait to be read again, and the last sync read none "
+        "of them (a converter or on-device OCR that cannot run, or a folder that could not be listed): "
+        "another sync does not clear it; it does not block the next step"
+    )
+
+
 def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, int]]:
     """The zero-child cloud folders the source's last walk stored (manifest meta ``empty_cloud_dirs:<id>``):
     whether it stored any, and those sources.toml does not exclude today, each with the number of files the
@@ -299,10 +337,16 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
     signin: list[str] = []
+    rereading: list[str] = []  # the one-time re-read of files from before a capability is not finished
+    reread_run: dict[str, int] | None = None
     pending: str | None = None
     if db.exists():
         with Manifest(db) as manifest:
+            reread_run = manifest.last_reread_counts()
             for src in live:
+                newest = next(iter(_reread_records(manifest.get_meta(_REREAD_META + src.id))), None)
+                if newest is not None and (not newest[1] or newest[3] is not None):
+                    rereading.append(src.id)
                 row = manifest.get_source(src.id)
                 last = manifest.last_source_pass(src.id)
                 if (
@@ -403,6 +447,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"{sum(files.online.values())} online-only file(s) in {_ids(files.online)} wait for a later "
             "sync's download budget; they do not block the next step"
         )
+    reread = _reread_note(rereading, reread_run)
+    if reread is not None:
+        notes.append(reread)
     eval_dir = docs / _EVAL_DIR
     questions = _eval_status(eval_dir / "questions.md")
     answers = _eval_status(eval_dir / "answers.md")

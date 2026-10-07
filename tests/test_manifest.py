@@ -1528,6 +1528,10 @@ def test_reread_left_counts_what_a_pass_could_not_reach_and_nothing_that_is_not_
     assert m.reread_left("src", [PDF_PAGE]) and _candidates(m, [PDF_PAGE]) == []
     assert m.reread_left("src", [PDF_PAGE], skip=["pending"])
     assert not m.reread_left("src", [PDF_PAGE], skip=["pending", "unlisted"])
+    # The same files as a number, for the run record: what is left, the files given up left out.
+    assert m.reread_count("src", [PDF_PAGE]) == 2 and m.reread_count("src", [PDF_PAGE], skip=["pending"]) == 1
+    assert m.reread_count("src", [PDF_STUB, PNG_STUB]) == 0 and m.reread_count("src", []) == 0
+    assert m.reread_count("other", [PDF_PAGE]) == 0
     assert not m.reread_left("src", [PDF_STUB, PNG_STUB]) and not m.reread_left("other", [PDF_PAGE])
     # The work queue asks about the one file it has in hand, whatever its verdict.
     assert m.reread_left("src", [PDF_PAGE], only="pending") and m.reread_left(
@@ -1558,3 +1562,23 @@ def test_reread_targets_past_one_statement_give_each_file_once(
     assert m.reread_left("src", targets) and not m.reread_left(
         "src", targets, skip=[f"f{n}" for n in range(5)]
     )
+    assert m.reread_count("src", targets) == 5 and m.reread_count("src", targets, skip=["f0", "f4"]) == 3
+
+
+def test_last_reread_counts_are_those_of_the_newest_run_that_says_what_it_looked_for(m: Manifest) -> None:
+    """``loop.next_step`` words its re-read note from the newest run that brought a re-read record up to
+    date.  A later run that looked at nothing (a ``materialise PATH`` run, a run that failed before its
+    sources) has no ``reread_for`` and is passed over."""
+
+    def ran(status: str, counts: dict[str, int]) -> None:
+        run = m.begin_run(CycleMode.POLL, host="h", pid=1)
+        m.finish_run(run, status=status, commit_sha=None, counts=counts)
+
+    assert m.last_reread_counts() is None
+    looked = {"converted": 0, "reread": 12, "reread_for": 7, "reread_left": 30}
+    ran("ok", {"converted": 4})
+    ran("ok", looked)
+    assert m.last_reread_counts() == looked
+    ran("failed", {"converted": 1})
+    m.begin_run(CycleMode.POLL, host="h", pid=1)  # still running: its record is empty
+    assert m.last_reread_counts() == looked
