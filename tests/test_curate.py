@@ -40,6 +40,7 @@ from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.manifest import DependsRow
 from agentsync.model import PageStatus
 from agentsync.paths import DocsLayout
+from test_recording_grammar import EXAMPLE
 
 H = "a" * 64
 TODAY = "2026-09-29"
@@ -1265,3 +1266,239 @@ def test_source_missing_names_a_file_without_a_mirror_head(layout: DocsLayout) -
     assert "mirror/s/CLAUDE.md" in finding.message
     blockers = curate.checkpoint_blockers(layout.root)
     assert [(f.path, f.code) for f in blockers] == [("topics/p.md", "SOURCE-MISSING")]
+
+
+# ---------------------------------------------------------------------------------------------------------
+# meeting citation lint (meeting-video spec 7.4)
+# ---------------------------------------------------------------------------------------------------------
+
+REC = "mirror/onedrive/recordings/contoso-review.mp4.d"
+MEETING = "topics/meetings/2026-10-02-contoso-review.md"
+WINDOW_1 = """# Recording 00:00:00-00:05:00 · window 1 of 2
+
+## 00:00:00-00:04:12 · s001 · camera
+[00:00:00] KEYFRAME: t000000.jpg
+[00:00:00] TILE: Dana Okafor
+[00:01:10] SAID v2: my name is Dana Okafor, I look after capacity planning
+[00:01:14] SAID v1: thanks Dana, let us start with the forecast
+
+## 00:04:12-00:05:38 · s004 · share · "Demand forecast by region"
+[00:04:12] KEYFRAME: t000412.jpg
+[00:04:12] SCREEN: Demand forecast by region
+[00:04:12] SCREEN: West | 31 %
+"""
+# The spec's window 2, with a SPEAKING line inside s004, the state whose keyframe is in window 1.
+WINDOW_2 = EXAMPLE.replace("[00:05:06] SAID", "[00:05:02] SPEAKING: Dana Okafor\n[00:05:06] SAID")
+D1 = (
+    '| D1 | Q3 budget becomes 1,310,000 USD. | `seen+frame 00:08:46` "Q3 | B | 118 | 1,310,000" · '
+    '`heard 00:08:58` "okay, one point three one, I can live with that" |'
+)
+PAGE = f"""# Contoso FY27 storage capacity review, 2026-10-02
+
+Recording `r1` = `{REC}/`. Times are media time.
+
+## Decisions
+| # | Decision | Evidence |
+|---|---|---|
+{D1}
+
+## Action items
+| Owner | Action | Due | Evidence |
+|---|---|---|---|
+| Dana Okafor | Re-send the sheet | Friday | `heard 00:05:52` "this is the sheet ... mailed on   Tuesday" |
+| Mei Tanaka | Book the cluster review | none | `chat ~00:41` "I'll book it" |
+
+## Numbers shown
+| Figure | As shown | Said as | Evidence |
+|---|---|---|---|
+| Q3 budget | 1,310,000 | one point three one | `seen+frame 00:08:46` "1,310,000" |
+| Growth | 9 % | | `seen 00:05:38` "Assumes 9 % growth, West migration lands in Q3" · picture not kept |
+| Presenter | Dana Okafor | | `seen+frame 00:05:02` "Dana Okafor" |
+
+## Open questions
+- Does tier B hold? `inferred` from `heard 00:08:58` "if tier B holds".
+
+## People
+| Person | Voice | Basis |
+|---|---|---|
+| Dana Okafor | v2 | `heard 00:01:10` "my name is Dana Okafor" |
+| Luis Ferreira | v1 | voice 1, on shared audio of Room 4 |
+| Mei Tanaka | v3 | voice 3, unidentified |
+| Priya Raman | v4 | `VOICE line` |
+
+## Verification log
+- Keyframes opened: t000412, t000846.jpg.
+"""
+
+
+def unit_page(layout: DocsLayout, rel: str, body: str, kind: str, index: int, of: int) -> str:
+    """Write one recording unit (``part: {kind, index, of}``); return its pin."""
+    fm = MirrorFrontmatter(
+        source_kind="local",
+        source_id="s",
+        stable_id="v:rec",
+        source_path=rel,
+        status=PageStatus.CURRENT,
+        content_sha256=H,
+        canonical_sha256="b" * 64,
+        rendered_sha256=sha(body),
+        part_kind=kind,
+        unit_index=index,
+        unit_of=of,
+        converter="recording@1",
+        options_hash="sha256:" + "c" * 64,
+        summary="s",
+        tokens_estimate=3,
+    )
+    path = layout.root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_mirror_page(fm, body), encoding="utf-8")
+    return sha(body)
+
+
+def recording(
+    layout: DocsLayout,
+    folder: str = REC,
+    windows: tuple[str, ...] = (WINDOW_1, WINDOW_2),
+    stems: tuple[str, ...] = (),
+) -> list[tuple[str, str, str]]:
+    """An index unit and one window unit per body; ``stems`` overrides the window file names."""
+    index = f"{folder}/00-index.md"
+    entries = [(index, unit_page(layout, index, "# Recording index\n", "index", 0, len(windows)), "primary")]
+    for n, body in enumerate(windows, 1):
+        rel = f"{folder}/{stems[n - 1] if stems else f'{n:02d}-t00{(n - 1) * 5:02d}00'}.md"
+        entries.append((rel, unit_page(layout, rel, body, "window", n, len(windows)), "primary"))
+    return entries
+
+
+def meeting(
+    layout: DocsLayout, body: str, entries: list[tuple[str, str, str]], kind: str = "meeting"
+) -> None:
+    frontmatter = f"kind: {kind}\nentity: contoso-review\npurpose: what the review decided\n"
+    topic_page(layout, MEETING, frontmatter + sources_yaml(*entries), body)
+
+
+def cite_codes(layout: DocsLayout, body: str, entries: list[tuple[str, str, str]]) -> list[str]:
+    meeting(layout, body, entries)
+    findings = curate.lint_meeting_citations(layout)
+    assert all(f.path == MEETING and not f.blocking for f in findings)
+    return [f.code for f in findings]
+
+
+def test_cite_codes_are_named_in_rule_order() -> None:
+    assert curate.CITE_CODES == (
+        "CITE-UNRESOLVED", "CITE-QUOTE", "CITE-MISSING", "CITE-FRAME", "CITE-INFERRED", "CITE-BASIS",
+        "CITE-SHARED",
+    )  # fmt: skip
+
+
+def test_rule_1_a_tag_is_a_backticked_class_recording_and_time(layout: DocsLayout) -> None:
+    """No ``rN`` means r1; a tag inside a quote is text."""
+    entries = recording(layout)
+    passing = PAGE.replace('`heard 00:08:58` "okay', '`heard r1 00:08:58` "okay') + (
+        '\nA reader wrote "see `heard 00:00:59` there", which is quoted text.\n'
+    )
+    assert cite_codes(layout, passing, entries) == []
+    failing = PAGE.replace('`heard 00:08:58` "okay', '`heard r2 00:08:58` "okay')
+    assert cite_codes(layout, failing, entries) == ["CITE-UNRESOLVED"]
+
+
+def test_rule_2_the_window_unit_must_be_in_sources(layout: DocsLayout) -> None:
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    codes = cite_codes(layout, PAGE, [e for e in entries if not e[0].endswith("02-t000500.md")])
+    assert codes and set(codes) == {"CITE-UNRESOLVED"}  # the unit is on disk, but not in sources:
+
+
+def test_rule_3_the_unit_holds_a_line_of_the_tags_channel(layout: DocsLayout) -> None:
+    """A heard tag resolves to a transcript page's SAID line too."""
+    transcript = "mirror/onedrive/recordings/contoso-review.vtt.md"
+    pin = mirror_page(layout, transcript, "[00:12:00] SAID Dana Okafor: let us wrap up here\n")
+    entries = [*recording(layout), (transcript, pin, "corroborating")]
+    passing = PAGE + '\n- Close: `heard 00:12:00` "let us wrap up".\n'
+    assert cite_codes(layout, passing, entries) == []
+    failing = PAGE.replace('`seen+frame 00:08:46` "Q3', '`seen+frame 00:08:58` "Q3')  # 08:58 is a SAID
+    assert cite_codes(layout, failing, entries) == ["CITE-UNRESOLVED"]
+
+
+def test_rule_4_the_quote_occurs_in_the_line(layout: DocsLayout) -> None:
+    """Whitespace runs and ``...`` pieces match (the passing page has both); a changed word does not."""
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    failing = PAGE.replace("one point three one, I can live with that", "one point three two")
+    assert cite_codes(layout, failing, entries) == ["CITE-QUOTE"]
+
+
+def test_the_ten_second_hint_is_still_a_finding(layout: DocsLayout) -> None:
+    entries = recording(layout)
+    page = PAGE + '\n- Opening: `heard 00:01:10` "let us start with the forecast".\n'
+    meeting(layout, page, entries)
+    (finding,) = curate.lint_meeting_citations(layout)
+    assert finding.code == "CITE-QUOTE" and not finding.blocking
+    assert "`heard 00:01:10`" in finding.message and "00:01:14, 4 s away" in finding.message
+
+
+def test_rule_5_decision_action_and_number_rows_need_a_quoted_tag(layout: DocsLayout) -> None:
+    """A chat tag with a quote counts (the passing page's second action item)."""
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    failing = PAGE.replace('`heard 00:05:52` "this is the sheet ... mailed on   Tuesday"', "`heard 00:05:52`")
+    assert cite_codes(layout, failing, entries) == ["CITE-MISSING"]
+
+
+def test_rule_6_a_figure_needs_an_opened_keyframe(layout: DocsLayout) -> None:
+    """The passing page's 00:05:02 state began in window 1: its keyframe t000412 is found there."""
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    assert cite_codes(layout, PAGE.replace("t000412, ", ""), entries) == ["CITE-FRAME"]
+    no_frame = PAGE.replace(" · picture not kept", "")
+    assert cite_codes(layout, no_frame, entries) == ["CITE-FRAME"]
+
+
+def test_rule_7_an_inference_names_the_tags_it_rests_on(layout: DocsLayout) -> None:
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    failing = PAGE.replace('from `heard 00:08:58` "if tier B holds"', "from the mood in the room")
+    assert cite_codes(layout, failing, entries) == ["CITE-INFERRED"]
+
+
+def test_rule_8_a_people_basis_is_a_c11_form(layout: DocsLayout) -> None:
+    entries = recording(layout)
+    assert cite_codes(layout, PAGE, entries) == []
+    failing = PAGE.replace("voice 3, unidentified", "sounds like Mei")
+    assert cite_codes(layout, failing, entries) == ["CITE-BASIS"]
+    shared = PAGE.replace("| Luis Ferreira | v1 |", "| Room  4 | v1 |")
+    assert cite_codes(layout, shared, entries) == ["CITE-SHARED"]
+
+
+def test_a_page_that_is_not_kind_meeting_is_not_linted(layout: DocsLayout) -> None:
+    entries = recording(layout)
+    failing = PAGE.replace("voice 3, unidentified", "sounds like Mei")
+    meeting(layout, failing, entries, kind="client")
+    assert curate.lint_meeting_citations(layout) == []
+
+
+def test_a_window_is_found_by_its_unit_index_not_its_file_name(layout: DocsLayout) -> None:
+    """Publish may suffix a stem; here the names even point at the wrong windows."""
+    entries = recording(layout, stems=("02-t000500", "01-t000000-1"))
+    assert cite_codes(layout, PAGE, entries) == []
+
+
+def test_a_page_citing_r2_resolves_into_the_second_recording_folder(layout: DocsLayout) -> None:
+    second = "# Recording 00:00:00-00:05:00 · window 1 of 1\n\n## 00:00:00-00:05:00 · s001 · camera\n"
+    second += "[00:00:00] KEYFRAME: t000000.jpg\n[00:01:10] SAID v1: the second meeting opens here\n"
+    entries = [
+        *recording(layout),
+        *recording(layout, "mirror/onedrive/recordings/contoso-2.mp4.d", (second,)),
+    ]
+    assert cite_codes(layout, PAGE + '\n- `heard r2 00:01:10` "second meeting opens".\n', entries) == []
+    assert cite_codes(layout, PAGE + '\n- `heard 00:01:10` "second meeting opens".\n', entries) == [
+        "CITE-QUOTE"
+    ]
+
+
+def test_the_citation_lint_is_never_part_of_generate_depends_or_the_checkpoint(layout: DocsLayout) -> None:
+    meeting(layout, PAGE.replace("voice 3, unidentified", "sounds like Mei"), recording(layout))
+    assert [f.code for f in curate.lint_meeting_citations(layout)] == ["CITE-BASIS"]
+    assert not [f for f in generate_depends(layout)[2] if f.code.startswith("CITE-")]
+    assert not [f for f in curate.checkpoint_blockers(layout.root) if f.code.startswith("CITE-")]

@@ -1481,9 +1481,10 @@ def _print_changes_since_checkpoint(layout: DocsLayout) -> None:
 
 
 def _curate_findings(config: Config) -> list[LintFinding]:
-    """Every whole-repo land-gate lint, TOPIC-BUDGET (the one curation finding that stays a warning), then
-    the checkpoint blockers from the base the next sync checks (``loop.checkpoint_findings``): every curation
-    lint finding and UNLISTED as an ERROR, STALE pins and missing sources of pages changed since that base."""
+    """Every whole-repo land-gate lint, TOPIC-BUDGET and the meeting citation lint's CITE-* (the curation
+    findings that stay warnings), then the checkpoint blockers from the base the next sync checks
+    (``loop.checkpoint_findings``): every curation lint finding and UNLISTED as an ERROR, STALE pins and
+    missing sources of pages changed since that base."""
     repo, layout = config.docs_repo, config.layout
     findings: list[LintFinding] = []
     findings += lints.lint_no_symlinks(repo)
@@ -1493,6 +1494,7 @@ def _curate_findings(config: Config) -> list[LintFinding]:
     findings += lints.lint_no_tokens(repo)
     findings += lints.lint_index_budget(repo)
     findings += [f for f in curate.generate_depends(layout)[2] if f.code == "TOPIC-BUDGET"]
+    findings += curate.lint_meeting_citations(layout)
     findings += loop.checkpoint_findings(config)
     return sorted(findings, key=lambda f: (not f.blocking, f.code, f.path))
 
