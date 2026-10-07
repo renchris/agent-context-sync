@@ -496,7 +496,7 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
     ``~/x/..``, a path through a symlink and, where the volume takes a name in any case, another case all
     passed a comparison of the paths as written, and the home folder and what is in it were made
     owner-only."""
-    repo, home = tmp_path / "docs", tmp_path / "people" / "me"
+    repo, home = tmp_path / "docs", tmp_path / "volume" / "people" / "me"
     repo.mkdir()
     (home / "x").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
@@ -516,6 +516,9 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
         assert cycle_mod._sync_leaves(config, [mine]) == [mine]
     assert not cycle_mod._holds_home(home / "x") and not cycle_mod._holds_home(tmp_path / "missing")
     assert "chmod -R go-rwx" in (permissions(dataclasses.replace(config, log_dir=home)).fix or "")
+    monkeypatch.setenv("HOME", str(tmp_path / "link" / "me"))  # a home folder reached through a symlink
+    assert cycle_mod._holds_home(tmp_path / "volume"), "the folder above where it really is holds it too"
+    assert cycle_mod._holds_home(home) and not cycle_mod._holds_home(repo)
 
 
 def test_tightening_never_widens_a_mode(tmp_path: Path) -> None:

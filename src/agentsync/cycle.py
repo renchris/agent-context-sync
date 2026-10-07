@@ -620,7 +620,8 @@ def _holds_home(folder: Path) -> bool:
     (``cli._owner_only_dirs``) makes it owner-only.  The file system says which folder a path is (the
     same device and inode), not its spelling: ``~/x/..``, a path through a symlink and, on a volume that
     takes a name in any case, another case are all the home folder, and the folder that is opened is the
-    one that is changed.  A folder that is not there is neither."""
+    one that is changed.  The folders above it are those of its path as written and of where it really is
+    (a home folder reached through a symlink).  A folder that is not there is neither."""
 
     def same(above: Path) -> bool:
         try:
@@ -629,7 +630,10 @@ def _holds_home(folder: Path) -> bool:
             return False
 
     home = Path.home()
-    return any(same(above) for above in (home, *home.parents))
+    above = {home, *home.parents}
+    with contextlib.suppress(OSError, RuntimeError):  # a home folder that does not resolve (a symlink loop)
+        above.update(home.resolve().parents)
+    return any(same(path) for path in above)
 
 
 def _own_entries(config: Config) -> Iterator[_Own]:
