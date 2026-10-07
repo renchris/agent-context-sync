@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from agentsync.config import ConvertConfig
-from agentsync.convert._common import _cap_body, _escape_line
+from agentsync.convert import image, pdf
+from agentsync.convert._common import _cap_body, _emitter, _escape_line
 from agentsync.convert.base import estimate_tokens, make_unit, options_hash, rendered_sha256
 from agentsync.convert.cache import KEY_SCHEMA_VERSION, ConverterCache, action_key
 from agentsync.convert.canonical import OOXML_SUFFIXES, canonical_hash, differing_parts
@@ -530,6 +531,95 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert len(reg.converters()) == 9, "the eight, and pandoc-gfm a second time: no image converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
+
+
+def _outdated(reg: Registry, name: str, produced: str, reason: str | None = None) -> bool:
+    """What the converter ``reg`` routes ``name`` to says about a page (or the stub ``reason``) it made
+    under version ``produced``, asked behind the guard as the cycle asks."""
+    conv = reg.for_name(name)
+    assert conv is not None
+    rule = getattr(conv.inner, "outdated", None)  # type: ignore[attr-defined]
+    return bool(rule(produced, reason)) if rule is not None else False
+
+
+def test_a_converter_calls_a_page_from_before_ocr_outdated_only_when_it_has_an_engine() -> None:
+    """The pages a re-read is for: written by a converter that reads with an engine now, under a version
+    without one.  The version a converter runs under is never outdated, with an engine or without, and a
+    Mac without an engine calls nothing outdated for OCR."""
+    plain, reg = Registry.default(ConvertConfig()), Registry.default(ConvertConfig(), ocr=_engine())
+    for name in ("a.pdf", "a.pptx", "a.docx", "a.odt"):
+        was, now = plain.for_name(name).version(), reg.for_name(name).version()  # type: ignore[union-attr]
+        assert now.startswith(was + image._IDENTITY_MARK), "the mark is how a version with an engine ends"
+        assert _outdated(reg, name, was), name
+        assert not _outdated(reg, name, now), name
+        assert not _outdated(plain, name, was), name
+        assert not _outdated(plain, name, now), "an engine that went away asks for nothing"
+        assert not _outdated(reg, name, "unavailable") and not _outdated(reg, name, ""), name
+    # Suffixes whose converter reads nothing with an engine, and converters with no rule at all.
+    for name in ("a.rtf", "a.html", "a.htm", "a.xlsx", "a.md", "a.txt", "a.eml", "a.png"):
+        produced = plain.for_name(name).version() if plain.for_name(name) else "2.0.0"  # type: ignore[union-attr]
+        assert not _outdated(reg, name, produced), name
+
+
+def test_a_stub_is_outdated_only_when_it_is_the_no_text_stub_of_a_pdf() -> None:
+    """A scanned PDF is the file OCR exists for, and its stub is what a Mac without an engine gave it.  No
+    other stub is worth a re-read: an encrypted file stays encrypted, a refusal stays a refusal."""
+    plain, reg = Registry.default(ConvertConfig()), Registry.default(ConvertConfig(), ocr=_engine())
+    was = plain.for_name("a.pdf").version()  # type: ignore[union-attr]
+    assert _outdated(reg, "scan.pdf", was, pdf._NO_TEXT)
+    assert not _outdated(plain, "scan.pdf", was, pdf._NO_TEXT), (
+        "no engine, and the emitter is the running one"
+    )
+    assert not _outdated(reg, "scan.pdf", reg.for_name("a.pdf").version(), pdf._NO_TEXT)  # type: ignore[union-attr]
+    for reason in ("encrypted-pdf", "empty PDF: no pages", "refused: excluded label", ""):
+        assert not _outdated(reg, "scan.pdf", was, reason), reason
+    for name in ("a.pptx", "a.docx"):
+        produced = plain.for_name(name).version()  # type: ignore[union-attr]
+        assert not _outdated(reg, name, produced, "empty output"), name
+
+
+def test_a_pdf_page_from_before_comments_is_outdated_and_nothing_at_or_above_the_running_emitter_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The comments floor, with its end: a re-read writes under the running emitter, so what it wrote is
+    never outdated.  That holds for a floor set above the running emitter and for a version nobody can read,
+    the two ways the same file could otherwise be read again every cycle."""
+    plain = Registry.default(ConvertConfig())
+    assert pdf._REREAD_BELOW == "2.1.0" and pdf.PdfConverter(ConvertConfig()).outdated_key == "2.1.0<2.1.0"
+    assert _emitter(pdf._REREAD_BELOW) <= _emitter(pdf._EMITTER_VERSION)  # type: ignore[operator]
+    assert _outdated(plain, "a.pdf", "2.0.0+pypdfium2-4.30.0+pdfium-6462+pdfminer.six-20231228")
+    assert _outdated(plain, "a.pdf", "1.9.9") and _outdated(plain, "scan.pdf", "2.0.0+x", pdf._NO_TEXT)
+    for produced in ("2.1.0+x", "2.1.1+x", "3.0.0", "2.0.0rc1+x", "2.0+x", "v2.0.0", "unavailable", ""):
+        assert not _outdated(plain, "a.pdf", produced), produced
+    assert not _outdated(plain, "a.pptx", "0.9.0+python-pptx-1.0.2"), "only the PDF converter has a floor"
+    monkeypatch.setattr(pdf, "_REREAD_BELOW", "9.0.0")  # a floor nobody's emitter reaches
+    assert _outdated(plain, "a.pdf", "2.0.0+x") and not _outdated(
+        plain, "a.pdf", plain.for_name("a.pdf").version()
+    )  # type: ignore[union-attr]
+    monkeypatch.setattr(pdf, "_EMITTER_VERSION", "2.0.0")  # the floor landed before the emitter it names
+    assert not _outdated(plain, "a.pdf", "2.0.0+x") and _outdated(plain, "a.pdf", "1.0.0+x")
+
+
+@pytest.mark.parametrize(
+    ("version", "emitter"),
+    [
+        ("2.1.0+pypdfium2-4.30.0+pdfium-6462", (2, 1, 0)),
+        ("1.0.0", (1, 0, 0)),
+        ("10.20.30+x", (10, 20, 30)),
+        ("2.1.0rc1+x", None),
+        ("2.1+x", None),
+        ("2.1.0.4+x", None),
+        ("v2.1.0", None),
+        ("\u0662.\u0661.\u0660+x", None),  # digits, and not the plain ones
+        ("unavailable", None),
+        ("0", None),
+        ("", None),
+    ],
+)
+def test_the_emitter_of_a_version_is_three_plain_numbers_or_nothing(
+    version: str, emitter: tuple[int, int, int] | None
+) -> None:
+    assert _emitter(version) == emitter
 
 
 @pytest.mark.parametrize(

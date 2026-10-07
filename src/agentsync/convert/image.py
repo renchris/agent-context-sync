@@ -35,7 +35,7 @@ from types import MappingProxyType
 from typing import BinaryIO
 
 from agentsync.config import ConvertConfig
-from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body, _escape_line
+from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body, _emitter, _escape_line
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, text_lines
 from agentsync.errors import ConversionError, UnreadableSourceError
@@ -108,6 +108,15 @@ _OCR_OPTIONS: Mapping[str, OptionValue] = MappingProxyType(
 )
 """The options of every converter that has an engine: the limits here that can change a page.  (What the
 helper is run with is in ``OcrEngine.identity``, so in the version.)"""
+
+_IDENTITY_MARK = "+ocr-"  # in the version of a converter that has an engine: ``+`` and ``OcrEngine.identity``
+
+
+def _read_without_ocr(produced: str) -> bool:
+    """True when ``produced``, the version a document converter ran under, names an emitter and no engine:
+    the page was written without OCR.  There was no engine then, the cycle's OCR time was used up, or the
+    engine failed on the file.  A version with no emitter to read is never one."""
+    return _emitter(produced) is not None and _IDENTITY_MARK not in produced
 
 
 def _raster_suffix(head: bytes) -> str | None:

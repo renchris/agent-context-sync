@@ -28,6 +28,15 @@ _SLUG_DROP_RE = re.compile(r"[^a-z0-9]+")
 # Block syntax that would change a plain-text line's meaning: ATX headings, setext underlines, rules.
 # Lists and quotes are left alone (they render as what they are in e-mail and slide text).
 _LEADING_BLOCK_RE = re.compile(r"^(\s{0,3})(#|=+\s*$|-+\s*$|\*{3,}\s*$|_{3,}\s*$)")
+_EMITTER_RE = re.compile(r"(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:\+|$)", re.ASCII)
+
+
+def _emitter(version: str) -> tuple[int, int, int] | None:
+    """The emitter part of a converter version as numbers: ``(2, 1, 0)`` of ``2.1.0+pypdfium2-…``.  None when
+    the version does not start with three plain numbers (``unavailable``, ``2.2.0rc1``): a converter asked
+    whether a page it once produced is outdated never says yes to a version it cannot read."""
+    found = _EMITTER_RE.match(version)
+    return None if found is None else (int(found[1]), int(found[2]), int(found[3]))
 
 
 def _dist_version(dist: str) -> str:

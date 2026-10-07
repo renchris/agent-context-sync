@@ -38,6 +38,7 @@ from agentsync.convert.image import (
     _PICTURES_READ,
     _raster_left,
     _read_pictures,
+    _read_without_ocr,
 )
 from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import OcrEngine, OcrError
@@ -359,6 +360,12 @@ class PptxConverter:
             opts.update(_OCR_OPTIONS)
             opts["ocr_pptx_rules"] = _OCR_RULES
         return opts
+
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True when the page this converter wrote under version ``produced`` is worth reading the deck
+        again for: it was written without OCR and there is an engine now.  Never for a stub (``reason`` is
+        the stub's)."""
+        return reason is None and self._ocr is not None and _read_without_ocr(produced)
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors.

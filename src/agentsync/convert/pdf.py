@@ -50,6 +50,7 @@ from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _dist_version,
+    _emitter,
     _escape_line,
     _escape_plain,
 )
@@ -62,6 +63,7 @@ from agentsync.convert.image import (
     _PICTURES_READ,
     _ocr_lines,
     _read_pictures,
+    _read_without_ocr,
 )
 from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import _MIN_PX, MAX_MEGAPIXELS, MAX_PAGES, OcrEngine, OcrError
@@ -71,6 +73,11 @@ from agentsync.model import RenderedUnit, UnitKind
 log = logging.getLogger(__name__)
 
 _EMITTER_VERSION = "2.1.0"  # 2.1.0: reviewer comments (annotations) follow each page's text
+_REREAD_BELOW = "2.1.0"
+"""The comments floor.  A PDF whose page an emitter below this wrote is read again once, so that a file
+mirrored before comments were kept gains them without its bytes changing (``PdfConverter.outdated``).  Raise
+it only for a change worth reading every mirrored PDF again for, and never above ``_EMITTER_VERSION``: a
+page at or above the running emitter is never outdated, so such a floor would do nothing."""
 _SCANNED_MIN_CHARS = 20
 _SCANNED = "[scanned page: no text layer]"
 _ENGINE = "pypdfium2:text-range"
@@ -863,6 +870,34 @@ class PdfConverter:
             opts.update(_OCR_OPTIONS)
             opts.update(_PDF_OCR_OPTIONS)
         return opts
+
+    @property
+    def outdated_key(self) -> str:
+        """What ``outdated`` goes by besides the engine: the running emitter and the floor.  The cycle keeps
+        it in what it remembers having looked for, so a new emitter or a new floor makes it look again."""
+        return f"{_EMITTER_VERSION}<{_REREAD_BELOW}"
+
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True when what this converter made of a PDF under version ``produced`` is worth reading the file
+        again for.  ``reason`` is None for a page, else the reason of the stub the file got.
+
+        Two things are: an emitter below ``_REREAD_BELOW`` (comments were not kept), and, with an engine, a
+        version without one (OCR has not read the file).  Of the stubs only the ``no text layer`` one is
+        asked about: OCR exists for that file, and a scan can carry comments.
+
+        Never when ``produced`` cannot be read as a version or names an emitter newer than the running one.
+        A re-read writes under the running emitter, so for the floor the answer about what it wrote is
+        always no.  It can still write a version without an engine (the engine failed on the file): the
+        cycle remembers each file it has read again and does not ask about it twice."""
+        if reason not in (None, _NO_TEXT):
+            return False
+        emitter, running = _emitter(produced), _emitter(_EMITTER_VERSION)
+        if emitter is None or running is None or emitter > running:
+            return False
+        if self._ocr is not None and _read_without_ocr(produced):
+            return True
+        floor = _emitter(_REREAD_BELOW)
+        return floor is not None and emitter < min(floor, running)
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors.
