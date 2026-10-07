@@ -1018,9 +1018,7 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._reread_n = 0  # files read again
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
-        self._reread_looked = (
-            False  # a source's record was brought up to date for this cycle (_reread_source)
-        )
+        self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
 
