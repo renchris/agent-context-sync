@@ -651,6 +651,27 @@ def test_reading_stops_at_the_picture_limit_without_opening_the_next(
     assert opened == [0, 1]
 
 
+def test_a_picture_too_small_to_hold_text_does_not_count_toward_the_picture_limit(
+    staged: Path, engine: ocr.OcrEngine
+) -> None:
+    """A deck of icons with a few charts among them: the helper skips an icon, so an icon may not use up
+    the limit.  The pictures are read in rounds, each asking for as many more as the last one skipped."""
+    opened: list[int] = []
+
+    def offered() -> Iterator[io.BytesIO]:
+        for n in range(7):
+            opened.append(n)
+            small = n in (0, 1, 3)
+            yield io.BytesIO(picture_bytes(f"picture {n}", salt=n, **({"skipped": True} if small else {})))
+
+    got = image._read_pictures(engine, offered(), work_dir=staged, budget_s=60, limit=2)
+    assert opened == [0, 1, 2, 3, 4], "two icons, a chart, an icon, a chart: the sixth is never opened"
+    assert len(got.digests) == 5 and got.unread == 0
+    assert sorted(lines[0] for lines in got.lines.values()) == ["picture 2", "picture 4"]
+    assert [len(run) for run in reads(engine.helper)] == [2, 2, 1], "a round reads only what is new to it"
+    assert list(staged.iterdir()) == []
+
+
 def test_reading_stops_at_the_byte_limit_and_the_picture_that_passes_it_is_not_read(
     staged: Path, engine: ocr.OcrEngine
 ) -> None:

@@ -239,60 +239,78 @@ def _read_pictures(
     cannot be read to its end is not taken (``_next_bytes``).  The rest are copied into a folder made inside
     ``work_dir`` (the staged file's own folder, so under the cycle's staging folder) and removed before this
     returns.  The reading stops at ``limit`` distinct pictures and at ``max_bytes`` read (the copies of a
-    repeated picture count: offer each picture once).  Both are counts, so the same document gives the same
-    pictures on every run.
+    repeated picture count: offer each picture once).  A picture the helper skips as too small to hold text
+    (an icon, a bullet) does not count toward ``limit``: the pictures are read in rounds, and a round that
+    met such pictures is followed by one that asks for as many more.  All of it goes by counts and by what
+    the bytes are, so the same document gives the same pictures on every run.
 
     The helper then has what is left of ``budget_s`` seconds, counted from the call.  Never raises OcrError:
     a picture the helper could not be run on is counted in ``unread`` (and the first reason logged once).
     """
     deadline = _clock() + budget_s
     digests: list[str | None] = []
-    kept: dict[str, Path] = {}
+    read: dict[str, OcrImage | None] = {}  # by digest, in the order first offered; None: the helper failed
+    counted = 0  # the distinct pictures read so far that were not too small to hold text
     spent = 0
     over_bytes = False
+    reason = ""
     offered = iter(pictures)
     with tempfile.TemporaryDirectory(dir=work_dir, prefix=".ocr-", ignore_cleanup_errors=True) as tmp:
-        # The next picture is asked for only while there is room for one: none is opened to be turned away.
-        while len(kept) < limit and spent < max_bytes and (stream := next(offered, None)) is not None:
-            with stream:
-                chunk = _next_bytes(stream, _HEAD_BYTES)
-                suffix = _raster_suffix(chunk) if chunk else None
-                if suffix is None:
+        while not over_bytes:
+            fresh: dict[str, Path] = {}
+            # The next picture is asked for only while there is room for one: none is opened to be turned
+            # away.
+            while (
+                counted + len(fresh) < limit
+                and spent < max_bytes
+                and (stream := next(offered, None)) is not None
+            ):
+                with stream:
+                    chunk = _next_bytes(stream, _HEAD_BYTES)
+                    suffix = _raster_suffix(chunk) if chunk else None
+                    if suffix is None:
+                        digests.append(None)
+                        continue
+                    path = Path(tmp) / f"{len(digests):05d}{suffix}"
+                    sha = hashlib.sha256()
+                    with path.open("wb") as out:
+                        while chunk and spent <= max_bytes:
+                            spent += len(chunk)
+                            sha.update(chunk)
+                            out.write(chunk)
+                            chunk = _next_bytes(stream, _CHUNK)
+                if chunk is None:  # damaged part-way: what was copied is no picture, and is not read
+                    path.unlink()
                     digests.append(None)
                     continue
-                path = Path(tmp) / f"{len(digests):05d}{suffix}"
-                sha = hashlib.sha256()
-                with path.open("wb") as out:
-                    while chunk and spent <= max_bytes:
-                        spent += len(chunk)
-                        sha.update(chunk)
-                        out.write(chunk)
-                        chunk = _next_bytes(stream, _CHUNK)
-            if chunk is None:  # damaged part-way: what was copied is no picture, and is not read
-                path.unlink()
-                digests.append(None)
-                continue
-            if spent > max_bytes:  # the picture that passed the limit is not read, nor any after it
-                digests.append(None)
-                over_bytes = True
+                if spent > max_bytes:  # the picture that passed the limit is not read, nor any after it
+                    digests.append(None)
+                    over_bytes = True
+                    break
+                digest = sha.hexdigest()
+                digests.append(digest)
+                if digest in read or digest in fresh:
+                    path.unlink()
+                else:
+                    fresh[digest] = path
+            if not fresh:
                 break
-            digest = sha.hexdigest()
-            digests.append(digest)
-            if digest in kept:
-                path.unlink()
-            else:
-                kept[digest] = path
-        images, reason = _read_each(engine, list(kept.values()), work_dir=Path(tmp), deadline=deadline)
+            images, why = _read_each(engine, list(fresh.values()), work_dir=Path(tmp), deadline=deadline)
+            reason = reason or why
+            for (digest, path), image in zip(fresh.items(), images, strict=True):
+                read[digest] = image
+                counted += image is None or not image.skipped
+                path.unlink(missing_ok=True)
     lines: dict[str, list[str]] = {}
     unread = 0
-    for digest, image in zip(kept, images, strict=True):
+    for digest, image in read.items():
         if image is None or image.error == _GAVE_UP:
             unread += 1
         elif any(block := _ocr_lines(image, escape=escape)):
             lines[digest] = block
     if unread:
         log.warning(
-            "on-device OCR left %d of %d picture(s) unread: %s", unread, len(kept), reason or _GAVE_UP
+            "on-device OCR left %d of %d picture(s) unread: %s", unread, len(read), reason or _GAVE_UP
         )
     return _PictureText(tuple(digests), lines, unread, over_bytes)
 
