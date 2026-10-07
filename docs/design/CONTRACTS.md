@@ -7940,7 +7940,8 @@ decides before a word inside the text does.
 **Quarantine by reason.** Every file whose row carries a reason: the quarantined and refused ones, and a
 present file whose download the OS refused. One row per source, state and class with the file count, how
 many are online-only, and the UTC days the oldest and newest of those stubs were built (`outputs.built_run`
-looked up in `runs`). A stub built before a fix landed is one the fix has not read.
+looked up in `runs`). A stub built before a fix landed is one the fix has not read. **Amended (2026-10-07,
+§16.30):** under the table, one line per source counts its `no converter` files by a fixed list of file types.
 
 **Purge queue.** The queued purges by source, reason (`governance.PurgeReason`), selector kind and the UTC
 day they were queued. For a queued stable id the manifest is asked what took the file's place
@@ -8616,3 +8617,49 @@ six runs that had an engine and one that had none: the title, the five rows that
 with pages added and changed, and a finished scan whose five failed-once files are one in each state and one
 with no row; five runs or fewer; seven runs with no engine; the 120 s against the cycle's; the lookup in the
 50,000-file bound and its query plan).
+
+#### Quarantine names the file types no converter reads (amends §16.28; `agentsync.setup_report`)
+
+The field's Quarantine part had 22 files refused `no converter` in three sources, and the image line said
+none was an image OCR reads. Nothing said what they were. The part did what §16.28 specifies:
+`quarantine_class` folds every `no converter for <suffix>` reason into one class, and the suffix it carries
+never left SQLite. So nobody could tell which file types the mirror drops.
+
+A row's reason is `no converter for ` and then the lower-cased text of the file's name from its last dot on
+(`convert._suffix`), or `files without an extension`. For a name with a dot and no real extension that text
+is a piece of the name: `minutes.final draft` gives `.final draft`. The Redactor replaces only the values it
+knows. So the suffix cannot be printed as it is, and a pattern such as "a dot and up to eight letters" would
+print `.doe` for a file named `jane.doe`.
+
+- `_REFUSED_TYPES` is a fixed set of some 260 lower-case type suffixes: every suffix a converter reads and
+  every image suffix (a stub can be older than its converter), the image and drawing types OCR does not
+  claim, legacy and template Office, mail and calendar, archives, media, links and cloud placeholders, data
+  and code, books, fonts, certificates and partial downloads. A listed suffix is a fixed word, which the
+  Rule of §16.28 allows.
+- `_refused_type(reason)` is that suffix when it is in the set, `no extension`, or `other`; None for a
+  reason of any other class. It reads the text as `quarantine_class` does, so the two agree on which rows
+  are `no converter`. It is a second SQL function (`refused_type`) on the read-only connection.
+- Under the table, one statement, one read of `items`: files, online-only files and the distinct unlisted
+  reasons per source and type, over the rows that are not directories or tombstones. One line per source:
+  `- <source>, no converter by type: .msg 9 (1 online-only) · .mp4 2 · no extension 1 · other 1 (1
+  distinct)`. Listed types come most first, then by name; `no extension` and `other` come last.
+- `other N (D distinct)`: D is how many different unlisted suffixes the N files have. One distinct suffix
+  is most likely a type the list lacks. Many are more likely odd names. Either way no suffix is printed.
+- Bounded: at most 12 listed types a source (`_TYPES_SHOWN`), then `(+N file(s) of M more type(s))`. The rest
+  is counted there and not folded into `other`, so `other` keeps one meaning. At most `_ROWS_SHOWN` sources,
+  then a count of the rest. Each line adds up to its source's `no converter` rows in the table.
+- The part's first line now says that a `no converter` file is counted by its type under the table. With no
+  such file there is no line, and with no stub at all the part is one line, as before.
+
+Limits. A type outside the list still reads `other`, and learning which costs a round or a look at
+`_sync/QUARANTINE.tsv` in the docs repo, whose third column holds the reason. A source id or folder name
+that is spelled like a listed type is replaced there by its placeholder, as it is everywhere in the report.
+Not done: fixed shape words for `other` (digits only, has a space, long), which would tell an unlisted type
+from a dotted name.
+
+Tests: `tests/test_setup_report.py` (two sources with listed types, an online-only file, a file with no
+extension, two name tails, an image stub, a tombstone and a file refused for its label: the exact lines,
+each adding up to its table rows, no tail in the report and no residue; fifteen listed types in one source
+with the cap; thirteen reasons against `_refused_type` and `quarantine_class`; the list against every
+converter's suffixes, its shape and `convert.convert_file`'s own reasons; the statement in the 50,000-file
+bound and its query plan).

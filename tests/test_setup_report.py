@@ -24,9 +24,10 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agentsync import arm_local, cli, cycle, governance, loop, materialise, net, policy, setup_report
+from agentsync import arm_local, cli, convert, cycle, governance, loop, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, ocr, pdf
+from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
 from agentsync.manifest import Manifest
@@ -3786,6 +3787,138 @@ def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[
     ]
     for raw in ("northwind-archive", "tailspin-mail", "terms.eml", "Secret", "said no"):
         assert raw not in text, raw
+    assert [ln for ln in part.splitlines() if ", no converter by type: " in ln] == [
+        "- <folder-2>, no converter by type: .png 1 (1 online-only)",
+        "- <folder-3>, no converter by type: .png 1",
+    ], "the two image stubs: a stub can be older than the converter that reads its type now"
+
+
+def type_counts(part: str) -> dict[str, dict[str, int]]:
+    """The "no converter by type" lines of a Quarantine part: source -> type -> files, with what a line
+    left out as ``more``."""
+    out: dict[str, dict[str, int]] = {}
+    for line in part.splitlines():
+        if ", no converter by type: " not in line:
+            continue
+        source, cells = line[2:].split(", no converter by type: ", 1)
+        more = re.search(r" \(\+(\d+) file\(s\) of \d+ more type\(s\)\)$", cells)
+        if more is not None:
+            cells = cells[: more.start()]
+        out[source] = {"more": int(more.group(1))} if more is not None else {}
+        for cell in cells.split(" · "):
+            found = re.fullmatch(r"(.+?) (\d+)(?: \(.*\))?", cell)
+            assert found is not None, cell
+            out[source][found.group(1)] = int(found.group(2))
+    return out
+
+
+def table_counts(part: str) -> dict[str, int]:
+    """The files in the Quarantine table's ``no converter`` rows, by source."""
+    out: dict[str, int] = {}
+    for line in part.splitlines():
+        cells = line.strip("| ").split(" | ")
+        if line.startswith("| ") and len(cells) == 6 and cells[2] == "no converter":
+            out[cells[0]] = out.get(cells[0], 0) + int(cells[3])
+    return out
+
+
+def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[str, Path]) -> None:
+    """Field report 2026-10-07: 22 files refused "no converter" in three sources, none of them an image
+    OCR reads, and nothing to say what they were. The class kept the reason and dropped the suffix it
+    carries. The suffix is now counted, per source, when it is one of a fixed list of file types. A row
+    stores its name's text from the last dot on, which for a name with a dot and no extension is a piece
+    of the name: that is ``other``, counted and never printed."""
+    seed = Seed(fake_mac["config"])
+    one, _inbox, two = seed.ids()
+    refused = {"state": "refused", "page": "refused"}
+    seed.item(one, "Wingtip thread.msg", reason="no converter for .msg", **refused)
+    seed.item(one, "Wingtip thread 2.MSG", reason="no converter for .msg", dataless=True, **refused)
+    seed.item(one, "merger call.mp4", reason="no converter for .mp4", **refused)
+    seed.item(one, "Makefile", reason="no converter for files without an extension", **refused)
+    seed.item(one, "notes.wingtip", reason="no converter for .wingtip", **refused)
+    seed.item(one, "notes 2.wingtip", reason="no converter for .wingtip", dataless=True, **refused)
+    seed.item(one, "minutes.final payroll", reason="no converter for .final payroll", **refused)
+    seed.item(one, "Northwind logo.png", reason=NO_CONVERTER, **refused)
+    seed.item(two, "ledger-2031.zip", reason="no converter for .zip", **refused)
+    seed.item(two, "Tailspin old.msg", state="tombstone", reason="no converter for .msg", page="tombstone")
+    label = 'refused: sensitivity label "Wingtip Secret" is excluded by [policy]'
+    seed.item(two, "payroll.xlsx", reason=label, **refused)
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    part = parts["Quarantine by reason"]
+    assert (
+        "- files whose row carries a reason: 10 refused (a reason is shown as its class, never as its text; "
+        "a live or dataless row here is a download the OS refused; under the table, a `no converter` file is "
+        "counted by its type when that is one of a fixed list, else as `other`)\n" in part
+    )
+    assert [ln for ln in part.splitlines() if ln.startswith("- <")] == [
+        "- <folder-2>, no converter by type: .msg 2 (1 online-only) · .mp4 1 · .png 1 · no extension 1 · "
+        "other 3 (1 online-only, 2 distinct)",
+        "- <folder-3>, no converter by type: .zip 1",
+    ], "most first, then by name; a deleted file and a file refused for its label are not counted"
+    assert {src: sum(found.values()) for src, found in type_counts(part).items()} == table_counts(part)
+    assert table_counts(part) == {"<folder-2>": 8, "<folder-3>": 1}
+    assert ".final" not in text and "Secret" not in text, "SECRET_NAMES holds the other tail"
+    assert residue_free(text), "no word beside the source's placeholder reads as a name the Redactor missed"
+
+
+def residue_free(text: str) -> bool:
+    """Whether the Status section adds no hit to the report's own residue check."""
+    return not any(title == "Status" for title, _words in setup_report.residue_by_section(text))
+
+
+def test_a_source_with_many_refused_types_shows_the_most_and_counts_the_rest(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Bounded: at most 12 listed types a source. The rest are counted as files and types, apart from
+    ``other``, so "other N (D distinct)" always means suffixes that are not in the list."""
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    types = sorted(setup_report._REFUSED_TYPES)[:15]
+    for n, suffix in enumerate(types):
+        for copy in range(1 + (n < 3)):  # the first three types twice: they sort first
+            seed.item(
+                one, f"ledger-2031 {n} {copy}{suffix}", state="refused", reason=f"no converter for {suffix}"
+            )
+    seed.item(one, "minutes.Tailspin", state="refused", reason="no converter for .tailspin")
+    seed.item(one, "LICENSE", state="refused", reason="no converter for files without an extension")
+    seed.close()
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    [line] = [ln for ln in part.splitlines() if ln.startswith("- <folder-2>, no converter by type: ")]
+    shown = " · ".join(f"{suffix} {2 if n < 3 else 1}" for n, suffix in enumerate(types[:12]))
+    assert line == (
+        f"- <folder-2>, no converter by type: {shown} · no extension 1 · other 1 (1 distinct) (+3 file(s) of "
+        "3 more type(s))"
+    )
+    counts = type_counts(part)["<folder-2>"]
+    assert counts["more"] == 3 and sum(counts.values()) == table_counts(part)["<folder-2>"] == 20
+
+
+@pytest.mark.parametrize(
+    ("reason", "kind"),
+    [
+        ("no converter for .msg", ".msg"),
+        ("  No  Converter For   .MSG ", ".msg"),
+        ("no converter for .teams.json", ".teams.json"),
+        ("no converter for files without an extension", "no extension"),
+        ("no converter for .wingtip", "other"),
+        ("no converter for .final draft", "other"),
+        ("no converter for .msg and more", "other"),
+        ("no converter for ." + "x" * 200, "other"),
+        ("no converter for .zürich", "other"),
+        ("no converter for ", None),
+        ("contains a credential", None),
+        ("duplicate-of mail (no converter for .msg)", None),
+        (None, None),
+    ],
+)
+def test_a_no_converter_reason_is_a_listed_type_no_extension_or_other(
+    reason: str | None, kind: str | None
+) -> None:
+    assert setup_report._refused_type(reason) == kind
+    assert (setup_report.quarantine_class(reason) == "no converter") is (kind is not None), (
+        "the two read a reason the same way, so the type line counts the table's rows"
+    )
 
 
 REASONS = {
@@ -4176,6 +4309,24 @@ def test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own(tmp_path: 
     }
     assert set(setup_report._OCR_DOCUMENTS) == reads_pictures
     assert setup_report._OCR_MARK == image._IDENTITY_MARK and setup_report._FIELD_MARKS == image._FIELD_MARKS
+    listed = setup_report._REFUSED_TYPE_LIST.split()
+    assert len(listed) == len(setup_report._REFUSED_TYPES) > 200, "no type twice, and a broad list"
+    assert all(re.fullmatch(r"\.[a-z0-9]+(\.json)?", suffix) for suffix in listed), "type words only"
+    reads = {*registry.extensions(), *ImageConverter.extensions}
+    assert reads <= setup_report._REFUSED_TYPES, "a stub can be older than the converter of its type"
+    assert setup_report._NO_CONVERTER == convert.NO_CONVERTER_PREFIX
+    staged = tmp_path / "staged.bin"
+    staged.write_bytes(b"bytes")
+    for name, kind in (("Wingtip thread.MSG", ".msg"), ("Makefile", "no extension"), ("a.b c", "other")):
+        refused = convert.convert_file(
+            staged,
+            name=name,
+            content_sha256="0" * 64,
+            canonical_sha256="0" * 64,
+            registry=registry,
+            cache=ConverterCache(tmp_path / "cache"),
+        )
+        assert setup_report._refused_type(refused.reason) == kind, refused.reason
     assert setup_report._REREAD_META == cycle._REREAD_META
     assert setup_report._REREAD_BUDGET_S == cycle._REREAD_BUDGET_S, "the seconds the per-run table names"
     assert setup_report._REREAD_FOR_DIGITS == cycle._REREAD_FOR_DIGITS
@@ -4271,6 +4422,10 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
         in text
     )
     assert "- files whose row carries a reason: 9091 quarantined, 4546 refused" in text
+    by_type = re.findall(
+        r"^- (?:\(source \d\)|inbox), no converter by type: \.png (\d+) \((\d+) online-only\)$", text, re.M
+    )
+    assert len(by_type) == 3 and sum(int(files) for files, _online in by_type) == 4546
     assert "; 50 of 60 checked;" in text and "of the last 200 run(s), 200 recorded" in text
     assert (
         "- (source 1), the 2 file(s) that failed once, by their row in the manifest now: 1 on this Mac · 1 "

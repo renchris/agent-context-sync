@@ -37,7 +37,8 @@ The Status section ends with the evidence parts (:data:`EVIDENCE_TITLES`, CONTRA
 maintainer would otherwise have to ask this Mac for after reading the report, so that one bring-back file is
 enough. They are read from the manifest (opened read-only), the purge queue and one ``lstat`` per folder,
 inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only:
-OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`), the purge
+OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`) and the ones
+no converter reads by a fixed list of file types (:func:`_refused_type`), the purge
 queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
 flag, and conversions repeated run after run. Background runs says how an installed plist's arguments
 differ from what this build would write, by class (:func:`argument_roles`), and Installer lists every run
@@ -2604,7 +2605,7 @@ def quarantine_class(reason: str | None) -> str:
     if not text:
         return "no reason recorded"
     starts = (
-        ("no converter for ", "no converter"),
+        (_NO_CONVERTER, "no converter"),
         ("refused: ", "label policy"),
         ("contains a credential", "credential"),
         ("duplicate-of ", "duplicate"),
@@ -2634,6 +2635,60 @@ def quarantine_class(reason: str | None) -> str:
     if text.startswith(("not-ooxml", "not a zip")):
         return "not the type its name says"
     return "other"
+
+
+_NO_CONVERTER = "no converter for "  # convert.NO_CONVERTER_PREFIX: a suffix follows, or _NO_EXTENSION
+_NO_EXTENSION = "files without an extension"  # what convert.convert_file writes for a name with no suffix
+_REFUSED_TYPE_LIST = """
+    .csv .docx .eml .htm .html .json .log .markdown .md .odt .pdf .pptx .rtf .teams.json .tsv .txt .vtt .xlsm
+    .xlsx .xml .yaml .yml
+    .bmp .gif .heic .heif .jpeg .jpg .png .tif .tiff .webp
+    .ai .avif .cr2 .dng .drawio .dwg .dxf .emf .eps .fig .ico .indd .jfif .jpe .nef .psd .raw .sketch .svg
+    .wmf .xcf
+    .doc .docm .dot .dotm .dotx .mpp .mpt .odf .odg .odp .ods .one .onepkg .onetoc2 .oxps .pot .potm .potx
+    .pps .ppsm .ppsx .ppt .pptm .pub .thmx .vsd .vsdm .vsdx .vss .vst .vstx .xls .xlsb .xlt .xltm .xltx .xlw
+    .xps
+    .key .numbers .pages
+    .emlx .ics .mbox .msg .oft .ost .p7m .p7s .pst .vcf .vcs
+    .7z .bz2 .cab .dmg .gz .iso .jar .pkg .rar .tar .tgz .xz .zip
+    .3gp .aac .aiff .avi .flac .m4a .m4v .mkv .mov .mp3 .mp4 .mpeg .mpg .ogg .srt .wav .webm .wmv
+    .desktop .lnk .url .webloc .website
+    .gdoc .gdraw .gform .gmap .gsheet .gsite .gslides .loop .whiteboard
+    .accdb .avro .dat .db .dta .hyper .mat .mdb .orc .parquet .pbit .pbix .qvf .qvw .sas .sav .sqlite
+    .sqlite3 .twb .twbx
+    .bas .bat .c .cfg .class .cmd .conf .cpp .cs .css .dll .env .exe .go .h .ini .ipynb .java .js .jsonl
+    .jsx .kt .lock .ndjson .php .plist .properties .ps1 .py .r .rb .reg .rmd .scss .sh .sql .swift .toml .ts
+    .tsx .vb .vba .wasm
+    .adoc .bib .chm .djvu .epub .mht .mhtml .mobi .org .ps .rst .tex .xhtml .xmind
+    .otf .ttf .woff .woff2
+    .asc .cer .crt .gpg .p12 .pem .pfx .sig
+    .geojson .gpx .igs .kml .kmz .shp .step .stl .stp
+    .bak .bin .crdownload .download .dtd .dump .har .old .out .part .partial .swp .tmp .wsdl .xsd .xsl .xslt
+"""
+_REFUSED_TYPES = frozenset(_REFUSED_TYPE_LIST.split())
+"""The file types a ``no converter`` refusal is reported by (:func:`_refused_type`): fixed words, so naming
+one says nothing of a file. A row stores its name's lower-cased text from the last dot on, and for a name
+with a dot and no real extension that is a piece of the name ("minutes.final draft"), so a suffix that is
+not listed here is counted as ``other`` and never printed. The list is broad because an unlisted type costs
+one more round to learn of: every suffix a converter reads (a stub can be older than its converter), the
+image and drawing types OCR does not claim, legacy and template Office, mail and calendar, archives, media,
+links and cloud placeholders, data and code, and partial downloads."""
+_REFUSED_OTHER = "other"
+_REFUSED_BARE = "no extension"
+_TYPES_SHOWN = 12
+
+
+def _refused_type(reason: str | None) -> str | None:
+    """What a ``no converter`` reason says the file is: its suffix when that is one of
+    :data:`_REFUSED_TYPES`, ``no extension``, else ``other``. None for a reason of any other class
+    (:func:`quarantine_class` reads the text the same way, so the two agree on which rows these are)."""
+    text = " ".join((reason or "").split()).casefold()
+    if not text.startswith(_NO_CONVERTER):
+        return None
+    tail = text[len(_NO_CONVERTER) :]
+    if tail == _NO_EXTENSION:
+        return _REFUSED_BARE
+    return tail if tail in _REFUSED_TYPES else _REFUSED_OTHER
 
 
 def _version_class(version: str | None) -> int:
@@ -2702,6 +2757,7 @@ class _Mirror:
             conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
             conn.set_progress_handler(self._tick, _STEP_TICK)
             conn.create_function("reason_class", 1, quarantine_class, deterministic=True)
+            conn.create_function("refused_type", 1, _refused_type, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
             self._conn = conn
         return self._conn
@@ -3333,8 +3389,45 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 # ---- quarantine, purge queue ----------------------------------------------------------------------------
 
 
+def _refused_types(m: _Mirror, labels: _Labels) -> list[str]:
+    """One line per source with files no converter reads: how many of each type, most first. The types
+    are :func:`_refused_type`'s fixed words; the suffix a row stores never leaves SQLite. ``other`` also
+    says how many different unlisted suffixes it holds, which is how to tell one missing type from many
+    odd names. At most :data:`_TYPES_SHOWN` listed types a source and :data:`_ROWS_SHOWN` sources; what is
+    past either is counted, so each line adds up to that source's ``no converter`` rows in the table."""
+    by_source: dict[str, list[tuple[str, int, int, int]]] = {}
+    for sid, kind, files, online, distinct in m.rows(
+        "SELECT source_id, refused_type(state_reason), COUNT(*), SUM(dataless != 0), "
+        "COUNT(DISTINCT CASE WHEN refused_type(state_reason) = 'other' THEN lower(state_reason) END) "
+        "FROM items WHERE is_dir = 0 AND state != 'tombstone' AND state_reason IS NOT NULL "
+        "AND refused_type(state_reason) IS NOT NULL GROUP BY 1, 2"
+    ):
+        found = by_source.setdefault(labels.of(sid), [])
+        found.append((str(kind), int(files), int(online or 0), int(distinct)))
+
+    def cell(kind: str, files: int, online: int, distinct: int) -> str:
+        notes = [f"{online} online-only"] if online else []
+        if kind == _REFUSED_OTHER:
+            notes.append(f"{distinct} distinct")
+        return f"{kind} {files}" + (f" ({', '.join(notes)})" if notes else "")
+
+    out: list[str] = []
+    for label, found in sorted(by_source.items())[:_ROWS_SHOWN]:
+        last = (_REFUSED_BARE, _REFUSED_OTHER)  # after the listed types, and never among the ones cut off
+        listed = sorted((x for x in found if x[0] not in last), key=lambda x: (-x[1], x[0]))
+        cells = [cell(*x) for x in listed[:_TYPES_SHOWN]]
+        cells += [cell(*x) for name in last for x in found if x[0] == name]
+        rest = listed[_TYPES_SHOWN:]
+        more = f" (+{sum(x[1] for x in rest)} file(s) of {len(rest)} more type(s))" if rest else ""
+        out.append(f"- {label}, no converter by type: {' · '.join(cells)}{more}")
+    if len(by_source) > _ROWS_SHOWN:
+        out.append(f"(+{len(by_source) - _ROWS_SHOWN} more source(s) not shown)")
+    return out
+
+
 def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
-    """Every file whose row carries a reason, by source, state and reason class. Counts and classes only."""
+    """Every file whose row carries a reason, by source, state and reason class, then the files no
+    converter reads by their type (:func:`_refused_types`). Counts, classes and fixed type words only."""
     stubs = _stub_rows(m)
     if not stubs:
         return ["- no file is quarantined or refused"]
@@ -3360,9 +3453,11 @@ def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     header = ("source", "state", "reason class", "files", "online-only", "stub built (UTC day)")
     return [
         f"- files whose row carries a reason: {total} (a reason is shown as its class, never as its text; "
-        "a live or dataless row here is a download the OS refused)",
+        "a live or dataless row here is a download the OS refused; under the table, a `no converter` file "
+        "is counted by its type when that is one of a fixed list, else as `other`)",
         "",
         *_table(header, rows),
+        *_lines(lambda: _refused_types(m, labels)),
     ]
 
 
