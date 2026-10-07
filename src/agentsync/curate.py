@@ -13,6 +13,7 @@ the last tag before it in its bullet or line, even past a sentence end: the spec
 
 from __future__ import annotations
 
+import bisect
 import itertools
 import json
 import logging
@@ -23,7 +24,7 @@ import shutil
 import stat
 import tempfile
 import unicodedata
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -441,14 +442,15 @@ _HMS = r"(\d\d):(\d\d):(\d\d)"
 _CITE_TAG = re.compile(rf"(seen\+frame|seen|heard)(?: r(\d+))? {_HMS}")
 _FREE_TAG = re.compile(r"chat ~\d\d:\d\d|file|recap")
 _CELL_TOKEN = re.compile(r'"([^"]*)"|`([^`\n]*)`')  # a quote first, so a backtick inside a quote is text
-_CELL_SPLIT = re.compile(r'(?<!\\)\|(?=(?:[^"]*"[^"]*")*[^"]*$)')  # a | inside a quote is text
+_CELL_BREAK = re.compile(r'\\\||"|\|')  # an escaped \|, a quote mark, a cell break
 _TABLE_SEPARATOR = re.compile(r":?-+:?")
 _BULLET = re.compile(r"\s*(?:[-*+]|\d+\.)\s")
 _EVIDENCE_LINE = re.compile(rf"\[{_HMS}\] (SAID[^:\n]*|SCREEN|SCREEN\+|SCREEN-|TILE|SPEAKING|KEYFRAME): (.*)")
 _STATE_HEADING = re.compile(rf"## {_HMS}-{_HMS} · s(\d{{3}})")
 _KEYFRAME_LINE = re.compile(rf"\[{_HMS}\] KEYFRAME: (t\d{{6}})")
-_CONTINUATION = re.compile(
-    r"NOTE: s(\d{3}) began at .*; its on-screen lines and keyframe are in window (\d+)"
+_CONTINUATION = re.compile(  # fullmatch: a real NOTE line, never words inside a SCREEN line
+    rf"\[{_HMS}\] NOTE: s(\d{{3}}) began at {_HMS}; "
+    rf"its on-screen lines and keyframe are in window (\d+), {_HMS}"
 )
 _FRAME_NAME = re.compile(r"\bt\d{6}\b")
 _SHARED_BASIS = re.compile(r"voice \d+, on shared audio of (.+?)(?:, \d+ voices)?", re.IGNORECASE)
@@ -459,6 +461,7 @@ _BASIS_FORMS = re.compile(  # fullmatch on the whole Basis cell, whitespace runs
 )
 _ABBREVIATIONS = frozenset({"vs.", "e.g.", "i.e.", "etc.", "approx.", "no."})
 _UNIT_KINDS = ("window", "index")
+_TRANSCRIPT_CONVERTER = "vtt-turns@"  # the service-transcript converter (plan P3)
 _WINDOW_SECONDS = 300
 _HINT_SECONDS = 10
 _QUOTED_SECTIONS = ("decisions", "action items", "numbers shown")
@@ -563,16 +566,30 @@ def _joined(prose: Sequence[str]) -> list[str]:
 def _sentences(line: str) -> list[str]:
     """Rule 7's scope outside tables: each sentence, a bullet's too.  A full stop inside a quote or a tag,
     of a list number, or after a short abbreviation (``vs.``, ``e.g.``) ends none."""
-    masked = _CELL_TOKEN.sub(lambda m: "x" * len(m[0]), line)
+    masked = _CELL_TOKEN.sub(lambda m: "x" * len(m[0]), line).replace("\t", " ")
     start = bullet.end() if (bullet := _BULLET.match(line)) else 0
     cuts = [
         m.end()
         for m in re.finditer(r"[.!?](?=\s)", masked)
         if m.start() >= start
-        and masked[: m.end()].split()[-1].lstrip("(\"'").casefold() not in _ABBREVIATIONS
+        and masked[masked.rfind(" ", 0, m.start()) + 1 : m.end()].lstrip("(\"'").casefold()
+        not in _ABBREVIATIONS
     ]
     bounds = [0, *cuts, len(line)]
     return [line[a:b] for a, b in itertools.pairwise(bounds) if line[a:b].strip()]
+
+
+def _cells(inner: str) -> list[str]:
+    """A table row's cells, split in one linear pass at each ``|`` that is neither escaped (``\\|``) nor in
+    a double-quoted string (the template quotes a spreadsheet row, ``"Q3 | B | 118 | 1,310,000"``)."""
+    cells, start, quoted = [], 0, False
+    for m in _CELL_BREAK.finditer(inner):
+        if m[0] == '"':
+            quoted = not quoted
+        elif m[0] == "|" and not quoted:
+            cells.append(inner[start : m.start()].strip())
+            start = m.end()
+    return [*cells, inner[start:].strip()]
 
 
 def _sections(body: str) -> list[_Section]:
@@ -585,8 +602,7 @@ def _sections(body: str) -> list[_Section]:
             out.append(_Section(line[3:].strip(), [], [], []))
             in_rows = False
         elif row.startswith("|"):
-            inner = row[1:-1] if row.endswith("|") and len(row) > 1 else row[1:]
-            cells = [c.strip() for c in _CELL_SPLIT.split(inner)]
+            cells = _cells(row[1:-1] if row.endswith("|") and len(row) > 1 else row[1:])
             if all(_TABLE_SEPARATOR.fullmatch(c) for c in cells):
                 in_rows = True
             elif in_rows:
@@ -620,27 +636,51 @@ def _column(header: Sequence[str], name: str, default: int) -> int:
     return next((i for i, cell in enumerate(header) if _fold(cell) == name), default)
 
 
+def _read_regular(path: Path) -> str | None:
+    """A regular file's UTF-8 text, never through a symlink (it may point out of the repo) and never a FIFO
+    or a device (the read would hang); None for anything else or an unreadable file."""
+    try:
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            return None
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as fh:
+            return fh.read().decode("utf-8") if stat.S_ISREG(os.fstat(fh.fileno()).st_mode) else None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def _timeline(events: Iterable[_Evidence]) -> tuple[list[int], list[_Evidence]]:
+    ordered = sorted(events, key=lambda e: e.seconds)
+    return [e.seconds for e in ordered], ordered
+
+
+def _between(timeline: tuple[list[int], list[_Evidence]], lo: int, hi: int) -> list[_Evidence]:
+    times, events = timeline
+    return events[bisect.bisect_left(times, lo) : bisect.bisect_right(times, hi)]
+
+
 def _meeting_sources(layout: DocsLayout, page: TopicPage) -> tuple[list[dict[int, list[str]]], list[str]]:
     """The page's recordings in order of first appearance in ``sources:``, each a window index -> body lines
-    map (a ``.d`` folder whose units carry ``part: {kind: window|index}``), and the lines of every other
-    readable source: a transcript page's SAID lines resolve ``heard`` tags too.  The window index is read
-    from ``part`` (``publish`` may suffix a stem), never from the file name."""
+    map (a ``.d`` folder whose units carry ``part: {kind: window|index}``), and the lines of its transcript
+    pages (converter ``vtt-turns``), whose SAID lines resolve ``heard`` tags too; no other page can.  The
+    window index is read from ``part`` (``publish`` may suffix a stem), never from the file name.  A source
+    that cannot be read or parsed is skipped: CITE-UNRESOLVED names the tags that needed it."""
     folders: dict[str, dict[int, list[str]]] = {}
-    other: list[str] = []
+    transcript: list[str] = []
     for src in page.sources:
         try:
             rel = resolve_source_path(page.path, src.path)
-            data, body = parse_frontmatter((layout.root / rel).read_text(encoding="utf-8"))
-        except (CurateError, OSError, UnicodeDecodeError, ValueError, FrontmatterError):
-            continue  # it resolves no tag: CITE-UNRESOLVED names the tags that needed it
-        part, folder = data.get("part"), posixpath.dirname(rel)
+            text = _read_regular(layout.root / rel)
+            data, body = parse_frontmatter(text) if text is not None else ({}, "")
+        except Exception:  # a bad page is unreadable here, whatever the parser raised (RecursionError too)
+            continue
+        part, folder, converter = data.get("part"), posixpath.dirname(rel), data.get("converter")
         if folder.endswith(".d") and isinstance(part, dict) and part.get("kind") in _UNIT_KINDS:
             units = folders.setdefault(folder, {})
-            if part["kind"] == "window" and isinstance(part.get("index"), int):
+            if part["kind"] == "window" and type(part.get("index")) is int:  # a bool is not an index
                 units[part["index"]] = body.splitlines()
-        else:
-            other.extend(body.splitlines())
-    return list(folders.values()), other
+        elif isinstance(converter, str) and converter.startswith(_TRANSCRIPT_CONVERTER):
+            transcript.extend(body.splitlines())
+    return list(folders.values()), transcript
 
 
 class _MeetingLint:
@@ -648,8 +688,11 @@ class _MeetingLint:
 
     def __init__(self, layout: DocsLayout, page: TopicPage, body: str) -> None:
         self.rel = page.path
-        self.recordings, other = _meeting_sources(layout, page)
-        self.transcript = [e for e in _evidence(other) if e.channel == "heard"]
+        self.recordings, transcript = _meeting_sources(layout, page)
+        # Each unit parsed once: per window for rule 3, per recording in time order for the 10 s hint.
+        self.windows = [{n: _evidence(lines) for n, lines in rec.items()} for rec in self.recordings]
+        self.timelines = [_timeline(e for w in rec.values() for e in w) for rec in self.windows]
+        self.transcript = _timeline(e for e in _evidence(transcript) if e.channel == "heard")
         self.sections = _sections(body)
         log = [s for s in self.sections if _fold(s.title) == "verification log"]
         self.opened = {n for s in log for line in s.prose for n in _FRAME_NAME.findall(line)}
@@ -669,12 +712,12 @@ class _MeetingLint:
 
     def _hint(self, r: int, t: int, channel: str, quote: str) -> str:
         """Where a quote is said or shown within 10 s of ``t`` instead (a neighbour window too)."""
-        units = self.recordings[r - 1].values() if r <= len(self.recordings) else []
-        pool = self.transcript if channel == "heard" else []
+        lo, hi = t - _HINT_SECONDS, t + _HINT_SECONDS
+        pool = _between(self.transcript, lo, hi) if channel == "heard" else []
         near = sorted(
             (abs(e.seconds - t), e.seconds)
-            for e in [*(e for unit in units for e in _evidence(unit)), *pool]
-            if e.channel == channel and 0 < abs(e.seconds - t) <= _HINT_SECONDS and _quote_in(quote, e.text)
+            for e in [*(_between(self.timelines[r - 1], lo, hi) if r <= len(self.timelines) else []), *pool]
+            if e.channel == channel and e.seconds != t and _quote_in(quote, e.text)
         )
         return f"; the quote is at {_hms(near[0][1])}, {near[0][0]} s away" if near else ""
 
@@ -685,12 +728,15 @@ class _MeetingLint:
         assert m is not None
         r, t = int(m[2] or 1), _secs(m[3], m[4], m[5])
         channel, n = ("heard" if m[1] == "heard" else "seen"), t // _WINDOW_SECONDS + 1
-        lines = self._window(r, n)
-        pool = self.transcript if channel == "heard" else []
-        here = [e for e in [*_evidence(lines or []), *pool] if e.channel == channel and e.seconds == t]
-        if not here and lines is None and not pool:
-            where = f"window {n} of r{r}" if r <= len(self.recordings) else f"recording r{r}"
-            self._add("CITE-UNRESOLVED", f"`{tag}`: {where} is not a readable unit in sources:")
+        exists = 1 <= r <= len(self.recordings)
+        if not exists and (m[2] is not None or channel != "heard"):  # only a bare heard tag may fall back
+            self._add("CITE-UNRESOLVED", f"`{tag}`: there is no recording r{r} in sources:")
+            return  # no transcript fallback and no hint for a recording that does not exist
+        window = self.windows[r - 1].get(n) if exists else None
+        pool = _between(self.transcript, t, t) if channel == "heard" else []
+        here = [e for e in [*(window or []), *pool] if e.channel == channel and e.seconds == t]
+        if not here and window is None and not pool:
+            self._add("CITE-UNRESOLVED", f"`{tag}`: window {n} of r{r} is not a readable unit in sources:")
         elif not here:
             kind = "SAID" if channel == "heard" else "on-screen"
             hint = next((h for q in quotes if _pieces(q) and (h := self._hint(r, t, channel, q))), "")
@@ -717,9 +763,9 @@ class _MeetingLint:
         if state is None:
             return f"no state of its window holds {_hms(t)}"
         frames: list[str] = []  # the state's frames up to t, from the window it began in first
-        if cont := next((c for line in state[3] if (c := _CONTINUATION.search(line))), None):
-            earlier = _states(self._window(r, int(cont[2])) or [])
-            frames = [f for s in earlier if s[0] == cont[1] for f in _keyframes(s[3], t)]
+        if cont := next((c for line in state[3] if (c := _CONTINUATION.fullmatch(line))), None):
+            earlier = _states(self._window(r, int(cont[8])) or [])
+            frames = [f for s in earlier if s[0] == cont[4] for f in _keyframes(s[3], t)]
         frames += _keyframes(state[3], t)
         if not frames:
             return f"state s{state[0]} has no KEYFRAME at or before {_hms(t)}"

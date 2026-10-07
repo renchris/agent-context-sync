@@ -7,6 +7,7 @@ import os
 import shutil
 import stat
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -1331,8 +1332,17 @@ Recording `r1` = `{REC}/`. Times are media time.
 """
 
 
-def unit_page(layout: DocsLayout, rel: str, body: str, kind: str, index: int, of: int) -> str:
-    """Write one recording unit (``part: {kind, index, of}``); return its pin."""
+def unit_page(
+    layout: DocsLayout,
+    rel: str,
+    body: str,
+    kind: str | None,
+    index: int | None,
+    of: int | None,
+    converter: str = "recording@1",
+) -> str:
+    """Write one recording unit (``part: {kind, index, of}``), or with no kind a page of ``converter``;
+    return its pin."""
     fm = MirrorFrontmatter(
         source_kind="local",
         source_id="s",
@@ -1345,7 +1355,7 @@ def unit_page(layout: DocsLayout, rel: str, body: str, kind: str, index: int, of
         part_kind=kind,
         unit_index=index,
         unit_of=of,
-        converter="recording@1",
+        converter=converter,
         options_hash="sha256:" + "c" * 64,
         summary="s",
         tokens_estimate=3,
@@ -1411,12 +1421,18 @@ def test_rule_2_the_window_unit_must_be_in_sources(layout: DocsLayout) -> None:
 
 
 def test_rule_3_the_unit_holds_a_line_of_the_tags_channel(layout: DocsLayout) -> None:
-    """A heard tag resolves to a transcript page's SAID line too."""
+    """A heard tag resolves to a transcript page's SAID line too, and only to a transcript's (vtt-turns)."""
     transcript = "mirror/onedrive/recordings/contoso-review.vtt.md"
-    pin = mirror_page(layout, transcript, "[00:12:00] SAID Dana Okafor: let us wrap up here\n")
+    said = "[00:12:00] SAID Dana Okafor: let us wrap up here\n"
+    pin = unit_page(layout, transcript, said, None, None, None, converter="vtt-turns@1")
     entries = [*recording(layout), (transcript, pin, "corroborating")]
     passing = PAGE + '\n- Close: `heard 00:12:00` "let us wrap up".\n'
     assert cite_codes(layout, passing, entries) == []
+    forged = [
+        *recording(layout),
+        ("mirror/notes.md", mirror_page(layout, "mirror/notes.md", said), "corroborating"),
+    ]
+    assert cite_codes(layout, passing, forged) == ["CITE-UNRESOLVED"]
     failing = PAGE.replace('`seen+frame 00:08:46` "Q3', '`seen+frame 00:08:58` "Q3')  # 08:58 is a SAID
     assert cite_codes(layout, failing, entries) == ["CITE-UNRESOLVED"]
 
@@ -1547,3 +1563,40 @@ def test_the_citation_lint_is_never_part_of_generate_depends_or_the_checkpoint(l
     assert [f.code for f in curate.lint_meeting_citations(layout)] == ["CITE-BASIS"]
     assert not [f for f in generate_depends(layout)[2] if f.code.startswith("CITE-")]
     assert not [f for f in curate.checkpoint_blockers(layout.root) if f.code.startswith("CITE-")]
+
+
+def test_the_citation_lint_survives_hostile_pages_and_units(layout: DocsLayout, tmp_path: Path) -> None:
+    """Linear time on a 100 KB row or line; no read of a FIFO or through a symlink; a source YAML cannot
+    parse is skipped; a bool is no unit index; an rN that does not exist has no fallback; only a real NOTE
+    line continues a state."""
+    entries = recording(layout)
+    start = time.monotonic()
+    assert set(cite_codes(layout, PAGE.replace(D1, D1 + "\n| D2 | " + '"|' * 50_000 + " |"), entries)) == {
+        "CITE-MISSING"
+    }
+    assert cite_codes(layout, PAGE + "\n" + "Line. " * 17_000 + "\n", entries) == []
+    assert time.monotonic() - start < 1
+    looped = "mirror/onedrive/recordings/looped.md"
+    (layout.root / looped).write_text("---\npart: &a [*a]\n---\nbody\n", encoding="utf-8")
+    assert cite_codes(layout, PAGE, [*entries, (looped, H, "corroborating")]) == []
+    window_2 = layout.root / entries[2][0]
+    noted = PAGE.replace('`heard 00:08:58` "okay', '`heard r0 00:08:58` "okay')
+    meeting(layout, noted, entries)
+    (finding,) = curate.lint_meeting_citations(layout)
+    assert finding.code == "CITE-UNRESOLVED" and "no recording r0" in finding.message
+    assert "s away" not in finding.message
+    outside = tmp_path / "outside.md"
+    shutil.copy2(window_2, outside)
+    for hostile in ("symlink", "fifo"):
+        window_2.unlink()
+        window_2.symlink_to(outside) if hostile == "symlink" else os.mkfifo(window_2)
+        assert set(cite_codes(layout, PAGE, entries)) == {"CITE-UNRESOLVED"}
+    window_2.unlink()
+    shutil.copy2(outside, window_2)
+    window_1 = layout.root / entries[1][0]
+    window_1.write_text(
+        window_1.read_text(encoding="utf-8").replace("index: 1", "index: true"), encoding="utf-8"
+    )
+    assert set(cite_codes(layout, PAGE, entries)) == {"CITE-UNRESOLVED", "CITE-FRAME"}
+    screen = WINDOW_2.replace("[00:05:00] NOTE: s004", "[00:05:00] SCREEN: [00:05:00] NOTE: s004")
+    assert cite_codes(layout, PAGE, recording(layout, windows=(WINDOW_1, screen))) == ["CITE-FRAME"]
