@@ -4954,7 +4954,8 @@ with no file, "No installer output at <path>".
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
 `install.sh --log-start '<agent>'` appends the attempt header (`Attempt: <UTC>`, `Prompt: v<compat>`, `Agent:
-<agent>`), `install.sh --log '<step>' '<kind>' '<what>' '<fix>'` appends `<UTC> | step <n> | <kind> | <what> |
+<agent>`; **amended 2026-10-07, §16.28 "Setup prompt v8":** the value is `'prompt v<N>, <agent>'` and the
+`Prompt:` line is the N the pasted copy gave, not the installer's number), `install.sh --log '<step>' '<kind>' '<what>' '<fix>'` appends `<UTC> | step <n> | <kind> | <what> |
 <fix>` (no step column when the step is not a number), and `install.sh --log-end` appends `<UTC> | end |
 finished`, the close of step 3; the parser is unchanged. v6's kinds are `FRICTION_KINDS` (question, click,
 approval, deviation, error, prompt: no `start`/`end`, the installer times the steps); v5's `STEP_KINDS` (start,
@@ -7675,11 +7676,15 @@ its pre-allow rule.
   nothing but the cap.
 - The cap is the cycle's two budgets. One sync spends at most `_REREAD_BUDGET_S` (120 s) on re-reads and
   `_OCR_BUDGET_S` (180 s) on OCR, plus the read that passes each, so 12 syncs are an hour of that work at
-  most, which the prompt says. 12 syncs re-read about 24 minutes' worth: a mirror of 1,300 files that all
-  need a re-read is finished inside the cap when a file takes 1.1 s or less on average, which holds for
-  documents with few pictures and not for a mirror of decks and scans (a picture or a scanned page is 2 to
-  6 s of OCR, §16.25). None of this was timed on a real mirror. A report written at the cap says `scan
-  finished: no`, and its per-run table shows how many files each sync read.
+  most. The prompt names the count and no time: a sync also lists the folders and downloads online-only
+  files up to each source's budget, which no number here bounds.
+- 12 syncs re-read about 24 minutes' worth. A mirror of 1,300 files that all need a re-read is finished
+  inside the cap when a file takes 1.1 s or less on average. The repo's own small samples take 0.09 s
+  (Word, one pandoc start), 0.01 s (deck) and under 0.01 s (PDF) without OCR on an Apple silicon Mac, so
+  1,300 text documents are a few syncs. OCR is what costs: a picture or a scanned page is 2 to 6 s
+  (§16.25), so 12 syncs read some 240 to 720 of them, and a mirror of decks and scans needs more. None of
+  this was timed on a real mirror. A report written at the cap says so on its `Loop:` line, and the last
+  column of its per-run table gives the rate.
 
 Tests: `tests/test_deploy_pack.py` (the version in the first line, in step 1's check and in the value handed
 to `--log-start`, with "or higher" gone; the text against its version; the module's and the installer's

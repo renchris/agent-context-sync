@@ -251,7 +251,8 @@ A report written once the table says `yes` for every source shows the finished s
 Since prompt v8 the report is not written that early. While files are left, `sync` prints
 `note: sync again: N file(s) in <sources> are still to be read again, ...`, and step 3 runs the sync again while
 a note starts with `sync again:`, up to 12 more times, before it writes the report (12 syncs at both limits are
-an hour). The note says "sync again" only while a sync reads more. When the last sync read none of the files left
+an hour of re-reads and OCR; listing and downloads come on top). The note says "sync again" only while a sync
+reads more. When the last sync read none of the files left
 (pandoc cannot run, the OCR helper stopped working, a folder is not listed), the note says another sync does not
 clear it, and the agent goes on to the report. So `scan finished: no` in a v8 report means one of two things:
 the 12 syncs were not enough (the per-run table's last column falls run by run and has not reached 0), or

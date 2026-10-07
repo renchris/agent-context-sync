@@ -370,7 +370,7 @@ them onto the form's Failed-at options, which keep v6's four names)."""
 
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 
-PROMPT = (8, "1313e7913982917a0a723a24ff3dd36cae926e1705564e40bd37d0f025792963")
+PROMPT = (8, "5078aebbd3b869c4d068e04469be529a692dfbe62f39fb6c5c31bcca66bdfc3f")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -935,7 +935,8 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
     only begun, and the next question took another round. Step 3 now keeps syncing before the report, and
     leans on sync's own line for when to stop: the note that starts ``loop.SYNC_AGAIN``, which the tool
     prints only while another sync reads more (tests/test_loop.py). The cap is the cycle's two budgets: 12
-    syncs at 2 minutes of re-reads and 3 of OCR are the hour the prompt names. It runs nothing else: no
+    syncs at 2 minutes of re-reads and 3 of OCR are an hour of that work at most. (A sync's downloads of
+    online-only files come on top, so the prompt names the count and no time.) It runs nothing else: no
     purge, no command a WAITING line names."""
     from agentsync import cycle, loop  # noqa: PLC0415
 
@@ -943,12 +944,12 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
     said = (
         'Then make one report enough: while a note: line of the last sync starts with "sync again:" (files '
         "are still being read again; the note counts them), or its NEXT: line asks only for another sync, "
-        "run the sync again, up to 12 more times (about an hour at most). Run nothing else for this: never "
-        "purge, accept-deletions or offboard, and no command a WAITING ON YOU: line names."
+        "run the sync again, up to 12 more times. Run nothing else for this: never purge, accept-deletions "
+        "or offboard, and no command a WAITING ON YOU: line names."
     )
     assert said in step3
     assert f'"{loop.SYNC_AGAIN.strip()}"' in said and loop.NOTE_PREFIX.strip() in said
-    assert 12 * (cycle._REREAD_BUDGET_S + cycle._OCR_BUDGET_S) == 3600, "12 syncs at both budgets: an hour"
+    assert 12 * (cycle._REREAD_BUDGET_S + cycle._OCR_BUDGET_S) == 3600, "an hour of re-reads and OCR"
     order = [
         'Repeat until the NEXT: line itself says "session done".',
         "Then make one report enough",

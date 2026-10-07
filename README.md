@@ -291,9 +291,9 @@ unclear; include better wording). Do not log the steps themselves; the installer
    stops on "click Allow", a macOS prompt is waiting for me (it can sit behind other windows): tell me to click
    Allow, then run the sync again. Then make one report enough: while a note: line of the last sync starts
    with "sync again:" (files are still being read again; the note counts them), or its NEXT: line asks only
-   for another sync, run the sync again, up to 12 more times (about an hour at most). Run nothing else for
-   this: never purge, accept-deletions or offboard, and no command a WAITING ON YOU: line names. Before the
-   report, add a "## Not used" section to the end of
+   for another sync, run the sync again, up to 12 more times. Run nothing else for this: never purge,
+   accept-deletions or offboard, and no command a WAITING ON YOU: line names. Before the report, add a
+   "## Not used" section to the end of
    ~/agent-context/setup/fix-request.md: one line for each part of agentsync this session never used or barely
    used (each visible command: sync, curate, status, add-source, accept-deletions, adopt, purge, hold, offboard;
    the inbox; the baseline questions; background sync), saying why. Then the report, always,
