@@ -4381,11 +4381,35 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     return f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
 
 
+_WAIT_BELOW = "(WAITING ON YOU below)"
+"""In the loop's NEXT line when the step is one of its waits (``loop.next_step`` rule 5: the operator
+confirms the baseline questions)."""
+_WAIT_DRAFT = "WAITING ON YOU: the baseline questions are a draft"
+_WAIT_HELD = "WAITING ON YOU: macOS held the listing "
+"""How the two waits a setup stops on start, in ``loop.next_step``'s own words: the draft baseline that rule
+5's NEXT points at, and a listing macOS holds for an Allow click (scripts/install.sh makes that one its own
+NEXT, by the same words)."""
+
+
+def _stopped_wait(found: str | None, waits: Sequence[str]) -> str:
+    """The one of ``waits`` (not empty) the loop stopped on: the draft baseline's when the NEXT line
+    ``found`` says the wait is below, else a held listing's, else the first.
+
+    The loop prints its waits in a fixed order, the queued purges first and a tripped breaker next. Shown
+    by place, a queued purge hid the wait the NEXT line pointed at (field report 2026-10-07: "WAITING ON YOU
+    below", then the purge queue and "+2 more")."""
+    if found is not None and _WAIT_BELOW in found:
+        draft = next((wait for wait in waits if wait.startswith(_WAIT_DRAFT)), None)
+        if draft is not None:
+            return draft
+    return next((wait for wait in waits if wait.startswith(_WAIT_HELD)), waits[0])
+
+
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
-    first ``WAITING ON YOU:`` line and how many more there are (rule 5's NEXT and a held listing point at
-    one), then the loop's ``note:`` lines about files still to be read again, when it has any (a second
+    ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and how many more there are,
+    then the loop's ``note:`` lines about files still to be read again, when it has any (a second
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
     was written before the one-time re-read finished. Sets ``r.loop_stage`` for the issue link;
     :func:`build_report` runs it once, before ``took``."""
@@ -4406,7 +4430,7 @@ def _loop_line(r: _Run) -> str:
     waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
     if waits:
         more = f" (+{len(waits) - 1} more)" if len(waits) > 1 else ""
-        text += f"; {loop_next_text(waits[0])}{more}"
+        text += f"; {loop_next_text(_stopped_wait(found, waits))}{more}"
     for reread in (ln for ln in lines if ln.startswith("note: ") and "read again" in ln):
         text += f"; {loop_next_text(reread)}"
     return f"- Loop: {stage}; {text}"

@@ -24,12 +24,13 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agentsync import arm_local, cli, cycle, governance, materialise, net, policy, setup_report
+from agentsync import arm_local, cli, cycle, governance, loop, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, ocr, pdf
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
 from agentsync.manifest import Manifest
+from agentsync.model import CycleMode, PassKind
 from agentsync.ops import doctor, launchd
 from agentsync.paths import expand
 from test_ocr import fake_engine, write_fake
@@ -2427,7 +2428,7 @@ def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Pat
 
 def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: dict[str, Path]) -> None:
     """KISS K16b review: a WAIT is where setup stopped (a held listing's Allow click), so the Loop line
-    carries the first one, path-free, and a count of the rest; the hook runs before ``took`` is measured."""
+    carries it, path-free, and a count of the rest; the hook runs before ``took`` is measured."""
 
     def slow(config: object) -> list[str]:
         time.sleep(1.0)
@@ -2490,6 +2491,94 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
         "_eval/questions.md, correct the answers in _eval/answers.md, and change both files to status: "
         "confirmed"
     ), loop
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Field report 2026-10-07: the Loop line read "NEXT: stop: the operator confirms the baseline questions
+    (WAITING ON YOU below)" and then showed the purge queue's wait with "(+2 more)". The loop prints the
+    queued purges first, so the first wait hid the one its own NEXT points at. A listing macOS holds for an
+    Allow click was hidden the same way. Both are shown here from the real loop, in its own order."""
+    for folder in (fake_mac["one"], fake_mac["two"]):
+        (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    config = load_config(fake_mac["config"])
+    held = next(src.id for src in config.sources if src.path == fake_mac["one"])
+    selector = governance.PurgeSelector(source_id=held, path_glob="*")
+    assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    purge = "WAITING ON YOU: 1 queued purge(s): run `agentsync purge --queue`"
+
+    def loop_line() -> str:
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        assert rc == 0
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+        return line
+
+    def waits() -> list[str]:
+        return [ln for ln in loop.next_lines(config, count_queue=False) if ln.startswith(loop.WAIT_PREFIX)]
+
+    # No wait is the loop's step: the first one is shown, as before.
+    assert len(waits()) == 1 and loop_line().endswith(f"; {purge}")
+
+    # A held listing: the loop prints it after the purge queue, and it is the click every sync waits for.
+    with Manifest(config.state_paths.db) as manifest:
+        run_id = manifest.begin_run(CycleMode.POLL, host="mac", pid=1)
+        manifest.record_source_pass(
+            run_id,
+            held,
+            pass_kind=PassKind.FULL,
+            enumeration_complete=False,
+            cursor_reset=False,
+            counts={},
+            skipped_reason=cycle.LISTING_HELD + "click Allow on the macOS prompt",
+            error=None,
+        )
+        manifest.finish_run(run_id, status="ok", commit_sha=None, counts={"converted": 0})
+    found = waits()
+    assert len(found) == 2 and "queued purge(s)" in found[0] and found[1].startswith(setup_report._WAIT_HELD)
+    line = loop_line()
+    assert re.search(
+        r"; WAITING ON YOU: macOS held the listing of <(?:source|folder)-\d+> for a privacy prompt: click "
+        r"Allow on the macOS prompt \(it can sit behind other windows\), then run `agentsync sync` "
+        r"\(\+1 more\)$",
+        line,
+    ), line
+    assert "queued purge" not in line and "(WAITING ON YOU below)" not in line
+
+    # A draft baseline: rule 5's NEXT says the wait is below, and the loop prints that wait last.
+    evals = expand(config.docs_repo) / "_eval"
+    evals.mkdir(parents=True, exist_ok=True)
+    (evals / "questions.md").write_text("status: draft\n\n1. Who approved it?\n", encoding="utf-8")
+    (evals / "answers.md").write_text("status: draft\n\n1. Finance.\n", encoding="utf-8")
+    found = waits()
+    assert len(found) == 3 and found[-1].startswith(setup_report._WAIT_DRAFT)
+    assert setup_report._WAIT_BELOW in loop.next_lines(config, count_queue=False)[0]
+    assert loop_line().endswith(
+        "; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done; "
+        "WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md, correct "
+        "the answers in _eval/answers.md, and change both files to status: confirmed (+2 more)"
+    )
+
+
+def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> None:
+    """The rule by itself, on lines in the loop's order. The draft wait is shown only when the NEXT line
+    points at a wait; without that a held listing comes before it; and a NEXT that points at a wait the
+    lines do not have falls back to the same order."""
+    purge = "WAITING ON YOU: 14 queued purge(s): run `~/.local/bin/agentsync purge --queue`"
+    breaker = "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone)"
+    held = "WAITING ON YOU: macOS held the listing of work for a privacy prompt: click Allow"
+    draft = "WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md"
+    rule5 = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    other = "NEXT: run `~/.local/bin/agentsync curate` and follow its NEXT line"
+    pick = setup_report._stopped_wait
+    assert pick(rule5, [purge, breaker, held, draft]) == draft
+    assert pick(other, [purge, breaker, held, draft]) == held
+    assert pick(other, [purge, breaker, draft]) == purge
+    assert pick(rule5, [purge, breaker, held]) == held
+    assert pick(rule5, [purge, breaker]) == purge
+    assert pick(None, [breaker]) == breaker
 
 
 def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft(

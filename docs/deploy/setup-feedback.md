@@ -198,8 +198,11 @@ The outcome judges only the install. How far the loop got after it is the Summar
 status's loop line; the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 (`~/.local/bin/agentsync` is `agentsync`). So a setup that synced and stopped before drafting the baseline
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
-something waits on the person, the line ends with the first `WAITING ON YOU:` line and `(+N more)` for the
-rest; `agentsync status` prints them all. When files are still to be read again, the loop's note about them
+something waits on the person, the line ends with one `WAITING ON YOU:` line and `(+N more)` for the
+rest; `agentsync status` prints them all. The one shown is the wait the loop stopped on: the draft baseline's
+when the NEXT line says "(WAITING ON YOU below)", else a listing macOS holds for an Allow click, else the
+first. The loop prints its queued purges first, so shown by place they hid the wait the NEXT line points at.
+When files are still to be read again, the loop's note about them
 follows (two notes when the last sync did not get to one of the sources): `note: sync again: N file(s) ...`
 means the report was written before the one-time re-read finished (section "The evidence parts" says what that
 takes). The line holds no path, so redaction is unchanged; its stage prefills the form's Loop stage.
