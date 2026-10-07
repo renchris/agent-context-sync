@@ -1427,6 +1427,13 @@ def test_rule_4_the_quote_occurs_in_the_line(layout: DocsLayout) -> None:
     assert cite_codes(layout, PAGE, entries) == []
     failing = PAGE.replace("one point three one, I can live with that", "one point three two")
     assert cite_codes(layout, failing, entries) == ["CITE-QUOTE"]
+    # A curly quote is a quote, a trailing [?] on the quote is dropped, every quote after a tag is checked
+    # and a blank one is no quote.
+    said = '"okay, one point three one, I can live with that"'
+    unsure = PAGE.replace('lands in Q3" ·', 'lands in Q3 [?]" ·')
+    assert cite_codes(layout, unsure.replace(said, "“" + said[1:-1] + "”"), entries) == []
+    for wrong in ("“one point three two”", said + ' "one point three two"', '"..."'):
+        assert cite_codes(layout, PAGE.replace(said, wrong), entries) == ["CITE-QUOTE"]
 
 
 def test_the_ten_second_hint_is_still_a_finding(layout: DocsLayout) -> None:
@@ -1444,6 +1451,9 @@ def test_rule_5_decision_action_and_number_rows_need_a_quoted_tag(layout: DocsLa
     assert cite_codes(layout, PAGE, entries) == []
     failing = PAGE.replace('`heard 00:05:52` "this is the sheet ... mailed on   Tuesday"', "`heard 00:05:52`")
     assert cite_codes(layout, failing, entries) == ["CITE-MISSING"]
+    blank = PAGE.replace('"this is the sheet ... mailed on   Tuesday"', '"   "')
+    assert cite_codes(layout, blank, entries) == ["CITE-MISSING", "CITE-QUOTE"]
+    assert cite_codes(layout, PAGE.replace("`chat ~00:41`", "`file`"), entries) == []
 
 
 def test_rule_6_a_figure_needs_an_opened_keyframe(layout: DocsLayout) -> None:
@@ -1453,6 +1463,17 @@ def test_rule_6_a_figure_needs_an_opened_keyframe(layout: DocsLayout) -> None:
     assert cite_codes(layout, PAGE.replace("t000412, ", ""), entries) == ["CITE-FRAME"]
     no_frame = PAGE.replace(" · picture not kept", "")
     assert cite_codes(layout, no_frame, entries) == ["CITE-FRAME"]
+    # "picture not kept" exempts a row with no seen+frame tag only: t000538 was never opened.
+    assert cite_codes(layout, PAGE.replace("`seen 00:05:38`", "`seen+frame 00:05:38`"), entries) == [
+        "CITE-FRAME"
+    ]
+    # The owning frame is the state's last one at or before 00:05:02, counting window 1's frames of s004:
+    # t000440, never the later t000520 nor window 1's first, t000412.
+    later = WINDOW_2.replace("\n\n## 00:05:38-", "\n[00:05:20] KEYFRAME: t000520.jpg\n\n## 00:05:38-")
+    entries = recording(layout, windows=(WINDOW_1 + "[00:04:40] KEYFRAME: t000440.jpg\n", later))
+    assert cite_codes(layout, PAGE.replace("t000412", "t000440"), entries) == []
+    for name in ("t000412", "t000520"):
+        assert cite_codes(layout, PAGE.replace("t000412", name), entries) == ["CITE-FRAME"]
 
 
 def test_rule_7_an_inference_names_the_tags_it_rests_on(layout: DocsLayout) -> None:
@@ -1460,6 +1481,13 @@ def test_rule_7_an_inference_names_the_tags_it_rests_on(layout: DocsLayout) -> N
     assert cite_codes(layout, PAGE, entries) == []
     failing = PAGE.replace('from `heard 00:08:58` "if tier B holds"', "from the mood in the room")
     assert cite_codes(layout, failing, entries) == ["CITE-INFERRED"]
+    # The unit is the sentence, a bullet's too; a wrapped line joins its bullet; "e.g. " ends no sentence.
+    bullet = '- Does tier B hold? `inferred` from `heard 00:08:58` "if tier B holds".'
+    assert bullet in PAGE
+    wrapped = '- Per `heard 00:08:58` "if tier B holds", e.g. for the cluster,\n  tier B holds: `inferred`.'
+    assert cite_codes(layout, PAGE.replace(bullet, wrapped), entries) == []
+    two = '- Per `heard 00:08:58` "if tier B holds", it holds. The budget is safe, `inferred`.'
+    assert cite_codes(layout, PAGE.replace(bullet, two), entries) == ["CITE-INFERRED"]
     # The action-item rubric: an action nobody took on, `inferred` from a decision row, needs no quote.
     rubric = '| Mei Tanaka | Book the cluster review | none | `chat ~00:41` "I\'ll book it" |'
     assert rubric in PAGE
@@ -1477,6 +1505,15 @@ def test_rule_8_a_people_basis_is_a_c11_form(layout: DocsLayout) -> None:
     assert cite_codes(layout, failing, entries) == ["CITE-BASIS"]
     shared = PAGE.replace("| Luis Ferreira | v1 |", "| Room  4 | v1 |")
     assert cite_codes(layout, shared, entries) == ["CITE-SHARED"]
+    # The whole cell is the form (only a heard tag's quote may have words after it); a VOICE line's
+    # ", k voices" is not part of the label.
+    trailing = PAGE.replace("voice 3, unidentified", "voice 3, unidentified, probably Mei")
+    assert cite_codes(layout, trailing, entries) == ["CITE-BASIS"]
+    voices = PAGE.replace("shared audio of Room 4", "shared audio of Room 4, 3 voices")
+    assert cite_codes(layout, voices, entries) == []
+    assert cite_codes(layout, voices.replace("| Luis Ferreira | v1 |", "| Room 4 | v1 |"), entries) == [
+        "CITE-SHARED"
+    ]
 
 
 def test_a_page_that_is_not_kind_meeting_is_not_linted(layout: DocsLayout) -> None:

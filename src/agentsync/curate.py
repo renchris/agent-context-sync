@@ -7,7 +7,8 @@ DOCS REPO ROOT (``topics/…``, ``mirror/…``) and the refresh queue resolves t
 Every finding this module emits is ``blocking=False``: the curated layer is agent-written, and a bad pin or a
 missing ``entity:`` must never stop the mirror from syncing.  ``checkpoint_blockers`` is where they bite: they
 hold the ``curated`` checkpoint, and ``agentsync curate`` exits 1 on any of them.  The meeting citation lint's
-CITE-* findings never do: ``lint_meeting_citations`` stays a warning.
+CITE-* findings never do: ``lint_meeting_citations`` stays a warning.  Outside tables its quote attaches to
+the last tag before it in its bullet or line, even past a sentence end: the spec defines only the cell end.
 """
 
 from __future__ import annotations
@@ -450,12 +451,13 @@ _CONTINUATION = re.compile(
     r"NOTE: s(\d{3}) began at .*; its on-screen lines and keyframe are in window (\d+)"
 )
 _FRAME_NAME = re.compile(r"\bt\d{6}\b")
-_SHARED_BASIS = re.compile(r"voice \d+, on shared audio of (.+)", re.IGNORECASE)
-_BASIS_FORMS = re.compile(
-    r"VOICE line|service transcript tag, one-person check passed|voice \d+, on shared audio of \S"
-    r"|\bmixed\b|voice \d+, unidentified",
+_SHARED_BASIS = re.compile(r"voice \d+, on shared audio of (.+?)(?:, \d+ voices)?", re.IGNORECASE)
+_BASIS_FORMS = re.compile(  # fullmatch on the whole Basis cell, whitespace runs collapsed
+    r"VOICE line|service transcript tag, one-person check passed|voice \d+, on shared audio of .+"
+    r"|mixed|voice \d+, unidentified",
     re.IGNORECASE,
 )
+_ABBREVIATIONS = frozenset({"vs.", "e.g.", "i.e.", "etc.", "approx.", "no."})
 _UNIT_KINDS = ("window", "index")
 _WINDOW_SECONDS = 300
 _HINT_SECONDS = 10
@@ -512,38 +514,64 @@ def _evidence(lines: Sequence[str]) -> list[_Evidence]:
     return out
 
 
+def _pieces(quote: str) -> list[str]:
+    """A quote's ``...`` pieces, whitespace runs as one space and a trailing ``[?]`` dropped; none for a
+    blank quote (``""``, ``"..."``), which is no quote at all."""
+    text = _squash(quote.replace("\\|", "|").replace("…", "...")).removesuffix("[?]")
+    return [p.strip() for p in text.split("...") if p.strip()]
+
+
 def _quote_in(quote: str, text: str) -> bool:
-    """Rule 4: every ``...`` piece of ``quote`` occurs in ``text`` in order; whitespace runs compare as one
-    space and a trailing `` [?]`` (an unsure OCR line) is ignored."""
-    hay = _squash(text).removesuffix(" [?]")
-    pos = 0
-    for piece in _squash(quote.replace("\\|", "|").replace("…", "...")).split("..."):
-        if piece := piece.strip():
-            found = hay.find(piece, pos)
-            if found < 0:
-                return False
-            pos = found + len(piece)
+    """Rule 4: every piece of ``quote`` occurs in ``text`` in order; a trailing `` [?]`` (an unsure OCR
+    line) is ignored on both."""
+    hay, pos = _squash(text).removesuffix(" [?]"), 0
+    for piece in _pieces(quote):
+        found = hay.find(piece, pos)
+        if found < 0:
+            return False
+        pos = found + len(piece)
     return True
 
 
-def _tagged(unit: str) -> list[tuple[str, str | None]]:
-    """Each backticked tag of a cell or sentence, with the first quote after it before the next tag."""
-    out: list[tuple[str, str | None]] = []
+def _tagged(unit: str) -> list[tuple[str, list[str]]]:
+    """Each backticked tag of a cell, bullet or line, with every quote after it before the next tag."""
+    out: list[tuple[str, list[str]]] = []
     for m in _CELL_TOKEN.finditer(unit):
         if m[2] is not None:
-            out.append((m[2].strip(), None))
-        elif out and out[-1][1] is None:
-            out[-1] = (out[-1][0], m[1])
+            out.append((m[2].strip(), []))
+        elif out:
+            out[-1][1].append(m[1])
+    return out
+
+
+def _quoted(tagged: Sequence[tuple[str, list[str]]], tag: Callable[[str], object]) -> bool:
+    return any(tag(t) and any(_pieces(q) for q in quotes) for t, quotes in tagged)
+
+
+def _joined(prose: Sequence[str]) -> list[str]:
+    """Prose lines with each wrapped continuation (no new bullet marker, no blank line between) joined to
+    the bullet or paragraph line it continues."""
+    out: list[str] = []
+    for prev, line in zip(["", *prose], prose, strict=False):
+        if out and prev.strip() and line.strip() and not _BULLET.match(line) and not line.startswith("#"):
+            out[-1] += " " + line.strip()
+        elif line.strip():
+            out.append(line)
     return out
 
 
 def _sentences(line: str) -> list[str]:
-    """Rule 7's scope outside tables: a bullet whole, else each sentence of the line (a full stop inside a
-    quote or a tag ends none)."""
-    if _BULLET.match(line):
-        return [line]
+    """Rule 7's scope outside tables: each sentence, a bullet's too.  A full stop inside a quote or a tag,
+    of a list number, or after a short abbreviation (``vs.``, ``e.g.``) ends none."""
     masked = _CELL_TOKEN.sub(lambda m: "x" * len(m[0]), line)
-    bounds = [0, *(m.end() for m in re.finditer(r"[.!?](?=\s)", masked)), len(line)]
+    start = bullet.end() if (bullet := _BULLET.match(line)) else 0
+    cuts = [
+        m.end()
+        for m in re.finditer(r"[.!?](?=\s)", masked)
+        if m.start() >= start
+        and masked[: m.end()].split()[-1].lstrip("(\"'").casefold() not in _ABBREVIATIONS
+    ]
+    bounds = [0, *cuts, len(line)]
     return [line[a:b] for a, b in itertools.pairwise(bounds) if line[a:b].strip()]
 
 
@@ -582,11 +610,10 @@ def _states(lines: Sequence[str]) -> list[tuple[str, int, int, list[str]]]:
     return out
 
 
-def _keyframe_of(lines: Sequence[str], at: int = 0) -> str | None:
-    """A state's keyframe name (``tHHMMSS``; a revisit's ``tHHMMSS.jpg of sNNN in window N`` too): the last
-    one at or before ``at``, else its first."""
-    frames = [(_secs(m[1], m[2], m[3]), m[4]) for line in lines if (m := _KEYFRAME_LINE.match(line))]
-    return next((name for s, name in reversed(frames) if s <= at), frames[0][1] if frames else None)
+def _keyframes(lines: Sequence[str], at: int) -> list[str]:
+    """A state's keyframe names (``tHHMMSS``; a revisit's ``tHHMMSS.jpg of sNNN in window N`` too) taken at
+    or before ``at``, in order."""
+    return [m[4] for line in lines if (m := _KEYFRAME_LINE.match(line)) and _secs(m[1], m[2], m[3]) <= at]
 
 
 def _column(header: Sequence[str], name: str, default: int) -> int:
@@ -640,41 +667,42 @@ class _MeetingLint:
             return None
         return self.recordings[recording - 1].get(index)
 
-    def _cite(self, tag: str, quote: str | None) -> None:
-        """Rules 2-4 for one ``seen``/``seen+frame``/``heard`` tag (``r1`` when it names no recording)."""
+    def _hint(self, r: int, t: int, channel: str, quote: str) -> str:
+        """Where a quote is said or shown within 10 s of ``t`` instead (a neighbour window too)."""
+        units = self.recordings[r - 1].values() if r <= len(self.recordings) else []
+        pool = self.transcript if channel == "heard" else []
+        near = sorted(
+            (abs(e.seconds - t), e.seconds)
+            for e in [*(e for unit in units for e in _evidence(unit)), *pool]
+            if e.channel == channel and 0 < abs(e.seconds - t) <= _HINT_SECONDS and _quote_in(quote, e.text)
+        )
+        return f"; the quote is at {_hms(near[0][1])}, {near[0][0]} s away" if near else ""
+
+    def _cite(self, tag: str, quotes: Sequence[str]) -> None:
+        """Rules 2-4 for one ``seen``/``seen+frame``/``heard`` tag (``r1`` when it names no recording) and
+        every quote that follows it."""
         m = _CITE_TAG.fullmatch(tag)
         assert m is not None
         r, t = int(m[2] or 1), _secs(m[3], m[4], m[5])
         channel, n = ("heard" if m[1] == "heard" else "seen"), t // _WINDOW_SECONDS + 1
         lines = self._window(r, n)
         pool = self.transcript if channel == "heard" else []
-        same = [e for e in [*_evidence(lines or []), *pool] if e.channel == channel]
-        here = [e for e in same if e.seconds == t]
-        if quote is not None and any(_quote_in(quote, e.text) for e in here):
-            return
-        hint = ""
-        if quote is not None:
-            units = self.recordings[r - 1].values() if r <= len(self.recordings) else []
-            nearby = [*(e for unit in units for e in _evidence(unit)), *pool]  # a neighbour window too
-            near = sorted(
-                (abs(e.seconds - t), e.seconds)
-                for e in nearby
-                if e.channel == channel
-                and 0 < abs(e.seconds - t) <= _HINT_SECONDS
-                and _quote_in(quote, e.text)
-            )
-            hint = f"; the quote is at {_hms(near[0][1])}, {near[0][0]} s away" if near else ""
-        if here:
-            if quote is not None:
+        here = [e for e in [*_evidence(lines or []), *pool] if e.channel == channel and e.seconds == t]
+        if not here and lines is None and not pool:
+            where = f"window {n} of r{r}" if r <= len(self.recordings) else f"recording r{r}"
+            self._add("CITE-UNRESOLVED", f"`{tag}`: {where} is not a readable unit in sources:")
+        elif not here:
+            kind = "SAID" if channel == "heard" else "on-screen"
+            hint = next((h for q in quotes if _pieces(q) and (h := self._hint(r, t, channel, q))), "")
+            self._add("CITE-UNRESOLVED", f"`{tag}`: no {kind} line at {_hms(t)} in window {n} of r{r}{hint}")
+        for quote in quotes if here else ():
+            if not _pieces(quote):
+                self._add("CITE-QUOTE", f'`{tag}`: "{quote}" is not a quote: quote the words')
+            elif not any(_quote_in(quote, e.text) for e in here):
+                hint = self._hint(r, t, channel, quote)
                 self._add(
                     "CITE-QUOTE", f'`{tag}`: "{_clip(quote)}" is in no {channel} line at {_hms(t)}{hint}'
                 )
-        elif lines is None and not pool:
-            where = f"window {n} of r{r}" if r <= len(self.recordings) else f"recording r{r}"
-            self._add("CITE-UNRESOLVED", f"`{tag}`: {where} is not a readable unit in sources:")
-        else:
-            kind = "SAID" if channel == "heard" else "on-screen"
-            self._add("CITE-UNRESOLVED", f"`{tag}`: no {kind} line at {_hms(t)} in window {n} of r{r}{hint}")
 
     def _frame(self, tag: str) -> str:
         """Rule 6 for one ``seen+frame`` tag: "" when its state's keyframe is in the Verification log."""
@@ -688,24 +716,25 @@ class _MeetingLint:
         state = next((s for s in reversed(states) if s[1] <= t <= s[2]), None)  # at a boundary, the later
         if state is None:
             return f"no state of its window holds {_hms(t)}"
-        name = _keyframe_of(state[3], t)
-        cont = next((c for line in state[3] if (c := _CONTINUATION.search(line))), None)
-        if name is None and cont is not None:
+        frames: list[str] = []  # the state's frames up to t, from the window it began in first
+        if cont := next((c for line in state[3] if (c := _CONTINUATION.search(line))), None):
             earlier = _states(self._window(r, int(cont[2])) or [])
-            name = next((_keyframe_of(s[3]) for s in earlier if s[0] == cont[1]), None)
-        if name is None:
-            return f"state s{state[0]} has no KEYFRAME line"
+            frames = [f for s in earlier if s[0] == cont[1] for f in _keyframes(s[3], t)]
+        frames += _keyframes(state[3], t)
+        if not frames:
+            return f"state s{state[0]} has no KEYFRAME at or before {_hms(t)}"
+        name = frames[-1]
         return "" if name in self.opened else f"keyframe {name} of s{state[0]} is not in the Verification log"
 
     def run(self) -> list[LintFinding]:
         for sec in self.sections:
-            units = [c for row in sec.rows for c in row] + [u for line in sec.prose for u in _sentences(line)]
-            for unit in units:
-                tagged = _tagged(unit)
-                for tag, quote in tagged:
+            cells, lines = [c for row in sec.rows for c in row], _joined(sec.prose)
+            for unit in [*cells, *lines]:
+                for tag, quotes in _tagged(unit):
                     if _CITE_TAG.fullmatch(tag):
-                        self._cite(tag, quote)
-                tags = [t for t, _q in tagged]
+                        self._cite(tag, quotes)
+            for unit in [*cells, *(s for line in lines for s in _sentences(line))]:
+                tags = [t for t, _q in _tagged(unit)]
                 if "inferred" in tags and not any(
                     _CITE_TAG.fullmatch(t) or _FREE_TAG.fullmatch(t) for t in tags
                 ):  # the action-item rubric's "`inferred` from D<n>" rests on a Decisions row of this page
@@ -726,16 +755,16 @@ class _MeetingLint:
         """Rules 5 and 6 for one Decisions, Action items or Numbers shown row.  An action item whose evidence
         is `inferred` from a decision (``D<n>``) needs no quote: rule 7 checks that the row exists."""
         tagged = [p for cell in row for p in _tagged(cell)]
-        quoted = any(q is not None and (_CITE_TAG.fullmatch(t) or t.startswith("chat ~")) for t, q in tagged)
+        quoted = _quoted(tagged, lambda t: _CITE_TAG.fullmatch(t) or t == "file" or t.startswith("chat ~"))
         from_decision = title == "action items" and any(
             [t for t, _q in _tagged(cell)] == ["inferred"] and _DECISION_REF.search(cell) for cell in row
         )
         if not quoted and not from_decision:
             self._add("CITE-MISSING", f"{where}: no evidence tag with a quote")
-        if title != "numbers shown" or "picture not kept" in " ".join(row).casefold():
+        if title != "numbers shown":
             return
         frames = [t for t, _q in tagged if (m := _CITE_TAG.fullmatch(t)) and m[1] == "seen+frame"]
-        if not frames:
+        if not frames and "picture not kept" not in " ".join(row).casefold():
             self._add("CITE-FRAME", f"{where}: no `seen+frame` tag and the row does not say picture not kept")
         for tag in frames:
             if problem := self._frame(tag):
@@ -749,14 +778,13 @@ class _MeetingLint:
         for i, row in enumerate(sec.rows, 1):
             person = row[person_at] if person_at < len(row) else ""
             basis = row[basis_at] if basis_at < len(row) else ""
-            plain = basis.replace("`", "")
-            heard = any(
-                q is not None and t.startswith("heard") and _CITE_TAG.fullmatch(t) for t, q in _tagged(basis)
-            )
+            plain = _squash(basis.replace("`", ""))
+            tagged = _tagged(basis)  # a heard tag with its quote first, any words after it
+            heard = basis.startswith("`heard") and _quoted(tagged[:1], lambda t: t.startswith("heard "))
             where = f"People row {i} ({_clip(person, 30)})"
-            if not heard and not _BASIS_FORMS.search(plain):
+            if not heard and not _BASIS_FORMS.fullmatch(plain):
                 self._add("CITE-BASIS", f"{where}: basis {_clip(basis)!r} is none of the C11 forms")
-            if (shared := _SHARED_BASIS.search(plain)) and _fold(person) == _fold(shared[1]):
+            if (shared := _SHARED_BASIS.fullmatch(plain)) and _fold(person) == _fold(shared[1]):
                 self._add(
                     "CITE-SHARED", f"{where}: a person's name beside someone else's words (shared audio)"
                 )
@@ -778,8 +806,8 @@ def lint_meeting_citations(layout: DocsLayout) -> list[LintFinding]:
             _fm, body = split_frontmatter(text)
         except (CurateError, FrontmatterError):
             continue  # generate_depends reports CURATE-PARSE
-        if page.kind == "meeting":
-            findings.extend(_MeetingLint(layout, page, body).run())
+        if page.kind == "meeting":  # a curly “quote” is a quote
+            findings.extend(_MeetingLint(layout, page, body.replace("“", '"').replace("”", '"')).run())
     return sorted(set(findings), key=lambda f: (f.path, f.code, f.message))
 
 
