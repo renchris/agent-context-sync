@@ -2435,11 +2435,12 @@ class _Cycle:
         return True
 
     def _converting(self) -> Registry:
-        """The registry the next file is converted with. Once the cycle has used its OCR time
-        (``_OCR_BUDGET_S``) it is the one without an engine (``Registry.without_ocr``): a document that
-        converts without OCR does not wait for the next cycle as an image does, and does not hold this one
-        for its own share of helper time. It gets the page, the version and the action key of a Mac without
-        an engine, which is how a later re-read can tell OCR has not read it."""
+        """The registry the next file is converted with. Once the cycle reads nothing more with its engine
+        (``_ocr_over``: its OCR time is used, or the helper stopped working) it is the one without an engine
+        (``Registry.without_ocr``): a document on this Mac that converts without OCR does not wait for the
+        next cycle as an image does, and does not hold this one for its own share of helper time. It gets
+        the page, the version and the action key of a Mac without an engine, which is how a later re-read
+        can tell OCR has not read it. (A Graph document is not converted then: ``_ocr_waits``.)"""
         plain = self.registry.without_ocr
         return plain if plain is not None and self._ocr_over() else self.registry
 
