@@ -46,7 +46,9 @@
 # config, or with one that holds no such source, --list-folders prints what it always did. A config the
 # installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked. A run
 # with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
-# (steps 4 to 6); --source-local adds to them.
+# (steps 4 to 6); --source-local adds to them. Step 4 says which it was, in counts: one line, "folders: kept
+# the N already synced (none added)", "folders: M added to the N already synced" or "folders: M added (none
+# was synced before)", and its log line ends with kept=N added=M.
 #
 # Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077), which
@@ -157,8 +159,10 @@
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
 # exit status, done / skipped / failed: uv, agentsync, launcher, config, status, first-sync, agent, wait; or
 # list-folders alone, whose line ends with synced=N when it read the config: the folders already synced, 0
-# included), then the report step's line, then one "end" line (exit status, total seconds, the report
-# included). The report is written while a provisional end line is the log's last line, so it reads a
+# included; the config line ends with kept=N added=M when agentsync could count them: the folders synced
+# before the step and the ones it added), then the report step's line, then one "end" line (exit status,
+# total seconds, the report included). The report is written while a provisional end line is the log's last
+# line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
 # and redacts it. git runs read-only (GIT_OPTIONAL_LOCKS=0: not even the index's stat
@@ -1580,6 +1584,20 @@ if [ -f "$CONFIG" ]; then
 else
 	CONFIG_STATE="created"
 fi
+# How many folders the config syncs (see "Folders already synced" in the header), by the agentsync step 2
+# installed: the count --list-folders gives. Empty when it cannot say (a dry run, or a config it does not load).
+synced_count() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(synced_folders "$TOOL_PY" /dev/null 2>/dev/null | head -n 1 || true)"
+	fi
+	case "$n" in
+	*[!0-9]*) n="" ;;
+	esac
+	printf '%s' "$n"
+}
+KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
+[ "$CONFIG_STATE" = "created" ] || KEPT="$(synced_count)"
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	for f in "${FOLDERS[@]}"; do
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null ||
@@ -1589,12 +1607,28 @@ else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || fail "agentsync init failed (see the error above)"
 	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
 fi
+# What became of the folder choice, as counts: a re-run with no --source-local keeps what the person chose
+# before, and one with it adds only the folders not yet there. One line for the reader, and two fields on
+# the step's log line for the setup report.
+FOLDER_COUNTS=""
+NOW="$(synced_count)"
+if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -ge "$KEPT" ]; then
+	ADDED=$((NOW - KEPT))
+	FOLDER_COUNTS=" kept=$KEPT added=$ADDED"
+	if [ "$KEPT" -gt 0 ] && [ "$ADDED" -eq 0 ]; then
+		say "folders: kept the $KEPT already synced (none added)"
+	elif [ "$KEPT" -gt 0 ]; then
+		say "folders: $ADDED added to the $KEPT already synced"
+	elif [ "$ADDED" -gt 0 ]; then
+		say "folders: $ADDED added (none was synced before)"
+	fi
+fi
 if [ "$CONFIG_STATE" = "created" ]; then
-	step_end "done" 0 created
+	step_end "done" 0 "created$FOLDER_COUNTS"
 elif [ "${#FOLDERS[@]}" -gt 0 ]; then
-	step_end "done" 0 add-source
+	step_end "done" 0 "add-source$FOLDER_COUNTS"
 else
-	step_end skipped 0 exists
+	step_end skipped 0 "exists$FOLDER_COUNTS"
 fi
 # Sources other than the inbox: init and add-source always add the inbox (KISS K05), so a config holding only
 # the inbox still has no folder to sync and gets "choose a folder to sync".

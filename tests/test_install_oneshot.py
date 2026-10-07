@@ -1298,6 +1298,121 @@ def test_list_folders_marks_nothing_while_a_provider_is_denied(env: dict[str, st
     assert steps(install_log(env)) == [("list-folders", "failed", "4", "denied")]
 
 
+# ---- a re-run on a Mac that is already set up, with the real agentsync (field report 2026-10-07) ----------
+
+STUB_UV_REAL = """#!/bin/bash
+echo "uv $*" >> "$STUB_LOG"
+if [ "$1 $2" = "tool install" ]; then
+  mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
+  printf '#!/bin/sh\\nexec "%s" "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/share/uv/tools/agentsync/bin/python"
+  printf '#!/bin/sh\\nexec "%s" -m agentsync "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/bin/agentsync"
+  chmod 755 "$HOME/.local/share/uv/tools/agentsync/bin/python" "$HOME/.local/bin/agentsync"
+elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
+  echo "$HOME/.local/bin"
+elif [ "$1 $2" = "tool dir" ]; then
+  echo "$HOME/.local/share/uv/tools"
+fi
+"""
+"""uv for a run with the real agentsync: its ``tool install`` puts, where uv would, launchers for the Python
+running these tests (which has agentsync) as the tool's interpreter and as ``agentsync``."""
+
+
+@pytest.fixture
+def real_env(env: dict[str, str], tmp_path: Path) -> dict[str, str]:
+    """``env`` with the real agentsync behind the uv stub: its init, add-source, status, sync and
+    setup-report run in the tmp HOME, with no OCR helper, no tmutil and a git identity of its own."""
+    _write_exe(Path(env["PATH"].split(":")[0]) / "uv", STUB_UV_REAL)
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text(
+        "[user]\n\tname = agentsync-test\n\temail = test@localhost\n[init]\n\tdefaultBranch = main\n"
+    )
+    return {
+        **env,
+        "REAL_PYTHON": sys.executable,
+        "AGENTSYNC_OCR": "0",
+        "AGENTSYNC_TM_EXCLUDE": "0",
+        "GIT_CONFIG_GLOBAL": str(gitconfig),
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
+
+
+def _config_line(env: dict[str, str]) -> str:
+    """The config step's line of the last run in the setup log."""
+    return [ln for ln in install_log(env) if " step=config " in ln][-1]
+
+
+def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """What install.sh does with no --source-local on a Mac that is already set up, checked against the
+    real agentsync because a re-run now ends there: it updates the tool, leaves sources.toml byte for byte
+    as it was, runs status and a sync, writes the report and exits 0 on the loop's NEXT. The config step
+    says what became of the folders, in counts: one line for the reader, two fields in the setup log. A
+    folder named again is not added twice."""
+    env = real_env
+    alpha, beta = (_cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / name for name in ("Alpha", "Beta"))
+    for d in (alpha, beta):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text(f"a made-up plan for {d.name}\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(alpha))
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "folders: 1 added (none was synced before)" in first.stdout.splitlines()
+    assert "first sync: converted 1, deferred 0 online-only" in first.stdout.splitlines()
+    assert _config_line(env).endswith(" result=done note=created kept=0 added=1")
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    before = cfg.read_bytes()
+
+    listing = install_sh(env, "--list-folders")
+    assert listing.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        str(alpha.parent),
+        f"[synced] {alpha}",
+        str(beta),
+    ]
+    Path(env["STUB_LOG"]).unlink()
+    report_path(env).unlink()
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert cfg.read_bytes() == before, "every source is kept and none is added"
+    out = again.stdout.splitlines()
+    assert f"config: {cfg} exists (inbox ensured)" in out
+    assert "folders: kept the 1 already synced (none added)" in out
+    assert "sync: converted 0, deferred 0 online-only" in out, "a sync ran; the one file was converted before"
+    assert calls(env)[2].startswith("uv tool install --force --reinstall-package agentsync "), calls(env)
+    assert last_line(again).startswith("NEXT: ") and one_next(again)
+    assert last_line(again).endswith(f" [setup report: {report_path(env)}]")
+    assert report_path(env).read_text(encoding="utf-8").startswith(setup_report.REPORT_TITLE)
+    assert steps(install_log(env))[-9:] == [
+        ("uv", "skipped", "0", "present"),
+        ("agentsync", "done", "0", ""),
+        ("launcher", "skipped", "0", "not-requested"),
+        ("config", "skipped", "0", "exists"),
+        ("status", "done", "0", ""),
+        ("first-sync", "done", "0", "converted-0-deferred-0"),
+        ("agent", "skipped", "0", "not-requested"),
+        ("wait", "skipped", "0", "not-requested"),
+        ("report", "done", "0", "agentsync"),
+    ]
+    assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
+
+    more = install_sh(env, str(wheel), "--source-local", str(beta), "--source-local", str(alpha))
+    assert more.returncode == 0, more.stdout + more.stderr
+    assert "folders: 1 added to the 1 already synced" in more.stdout.splitlines()
+    assert _config_line(env).endswith(" result=done note=add-source kept=1 added=1")
+    after = cfg.read_bytes()
+    assert after.startswith(before) and after.count(b'kind = "local"') == 2, "Beta added, Alpha not twice"
+
+
+def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """The counts are the installed agentsync's. With no interpreter to ask (the stub uv installs none) the
+    step's line is what it was, and no folders: line is printed."""
+    for args in ((str(wheel), "--source-local", str(folder)), (str(wheel),)):
+        cp = install_sh(env, *args)
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        assert "folders:" not in cp.stdout
+        assert re.search(r" result=\w+ note=(created|exists)$", _config_line(env)), _config_line(env)
+
+
 # ---- nothing competes with NEXT: (J8) ----------------------------------------------------------------------
 
 
@@ -2220,7 +2335,8 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         cp, got = run(**stub)
         assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
         assert one_next(cp)
-        ran = [c for c in calls(env) if c.startswith("python ")]
+        # -m: the build. The config step also asks this interpreter how many folders are synced (-c).
+        ran = [c for c in calls(env) if c.startswith("python -I -m ")]
         if line == no_tools or not _have_git():  # nothing is tried, and the one line says why
             assert ran == [] and said(cp) == [no_tools]
             continue

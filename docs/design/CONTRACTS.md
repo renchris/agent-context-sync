@@ -8068,3 +8068,38 @@ them configured through the home folder's link, a paused source and the inbox no
 than the list; a synced folder past the cap; no installed agentsync and a config that does not load, each
 with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and two
 marked folders in install.out: the count and the marks kept, every folder a placeholder).
+
+#### A run with no folder keeps them (amends §16.13 and §16.14; `scripts/install.sh`)
+
+`install.sh` with no `--source-local` is the command for a Mac where nothing is added. What it does over an
+existing config was checked against the real agentsync before the prompt was pointed at it, and needed no
+change:
+
+| Step | With no `--source-local`, over a config that syncs folders |
+|---|---|
+| 1 uv, 2 agentsync | as in any run: the tool is installed again from this checkout unless the last install was this same clean commit |
+| 3 launcher | skipped (`not-requested`); the OCR helper is built when developer tools exist, as in any run |
+| 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `skipped`, note `exists` |
+| 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:` |
+| 9 report, `NEXT:` | the report is written, the run ends on the loop's `NEXT:` and exits 0 |
+
+One thing was added. Step 4 now says what became of the folder choice, in counts and no names:
+
+- One line, after the step's own output: `folders: kept the N already synced (none added)`, `folders: M added
+  to the N already synced`, or `folders: M added (none was synced before)`. A run that synced none and added
+  none prints no such line; its `NEXT:` says there is no folder to sync yet.
+- Two fields at the end of the step's line in the setup log: `kept=N added=M` (`step=config ... result=skipped
+  note=exists kept=2 added=0`). N is the folders synced before the step, 0 when the step created the config.
+  M is how many more are synced after it. The note is unchanged: `created`, `add-source` or `exists`.
+- Both counts are the installed agentsync's, taken before and after the step with the interpreter step 2
+  just installed (`synced_count`, the `synced_folders` of `--list-folders` with nothing to mark). So N is
+  the number step 1's list gave, and M counts what was added, not what was named: a folder passed with
+  `--source-local` that the config already syncs is left as it is (§16.13) and adds 0.
+- When agentsync cannot count (a config it does not load, a dry run), the line is not printed and the
+  fields are left out. Nothing else in the run depends on them.
+
+Tests: `tests/test_install_oneshot.py` (with the real agentsync behind a stub uv: a first setup with one
+folder, the marked list, then the run with no folder: the tool installed again, `sources.toml` unchanged byte
+for byte, the two lines, a sync, the report, the loop's `NEXT:`, exit 0 and every step's log line; then one
+folder added and one named again; with no interpreter to ask, the step's line as it was and no `folders:`
+line).
