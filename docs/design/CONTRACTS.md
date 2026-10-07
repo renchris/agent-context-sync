@@ -9100,3 +9100,43 @@ temporary one, and a home that only starts like `/tmp`; a sync under the tests' 
 write" warning, the INFO line, `loop.skill_state` current, and a temporary config folder still listed),
 `tests/test_setup_report.py` and `tests/test_deploy_pack.py` (the run type's rule and its four folders,
 unchanged).
+
+### 16.31 Meeting pages: the reading skill, rubrics and citation lint (2026-10-07, wave P2)
+
+A meeting recording reaches the docs repo as a folder of evidence units (`mirror/.../<name>.mp4.d/`). This
+wave adds what an agent needs to read one and to curate it into a page (meeting-video spec §7, §8).
+
+```python
+# agentsync.skill
+MEETINGS: str                      # step 7 of procedure(): reading a recording, writing its meeting page
+# agentsync.publish
+RUBRICS: dict[str, str]            # docs-repo path -> text: _rubrics/meeting-page.md and four sweeps
+# agentsync.curate
+CITE_CODES: frozenset[str]         # CITE-UNRESOLVED, CITE-QUOTE, CITE-MISSING, CITE-FRAME, CITE-INFERRED,
+                                   # CITE-BASIS, CITE-SHARED
+def lint_meeting_citations(layout: DocsLayout) -> list[LintFinding]: ...
+```
+
+- **The skill.** `procedure()` carries `MEETINGS` as step 7, so the skill, the root CLAUDE.md and AGENTS.md
+  all hold it. It names every line tag of the recording grammar and no other: `SAID vN`, `SCREEN`,
+  `SCREEN+`, `SCREEN-`, `TILE`, `SPEAKING`, `KEYFRAME`, `NOTE`, and the index-only `VOICE` and `TERM` (a
+  word shown but never spoken; never evidence). It gives the look-up order, the page path
+  `topics/meetings/<yyyy-mm-dd>-<slug>.md` with `kind: meeting`, the `sources:` rule (index and every
+  window unit, `role: primary`), the closed list of evidence tags and the People basis forms. Step 6 gains
+  one row: `CITE-*` is a warning that never holds the checkpoint.
+- **The rubrics.** `ensure_scaffold` writes the five `RUBRICS` files as fixed files, rewritten when
+  different, as it does README.md: the page template of spec §7.1 and the decision, action-item,
+  open-question and number-shown sweeps of §7.3, verbatim. `_rubrics/` is outside `topics/`, so it holds
+  no curated page, and no land-gate or curate lint reports it. `gitops.COMMIT_PATHSPECS` gains `_rubrics`,
+  so the sync commits them.
+- **The citation lint.** `lint_meeting_citations` checks each `kind: meeting` page's evidence tags against
+  the units it cites (spec §7.4) and returns `CITE_CODES` findings. Only `agentsync curate` runs it
+  (`cli._curate_findings`), printing each as a `warn` line. It is never part of `generate_depends`,
+  `checkpoint_blockers` or the sync, so it cannot block a checkpoint or a land. The findings become ERRORs
+  only after R20 measures how often the lint fails a correct citation.
+
+Tests: `tests/test_skill.py` (`test_the_skill_names_every_tag_the_converter_emits_and_no_other`, against
+the pinned grammar in `tests/test_recording_grammar.py` until the converter lands; the procedure carries
+`MEETINGS` and the `CITE-*` row), `tests/test_publish.py` (the rubrics are written once, an edited or
+deleted one is restored, the text is the spec's verbatim, and a scaffolded repo's lints report nothing
+under `_rubrics/`), `tests/test_curate.py` (the citation lint and its codes).
