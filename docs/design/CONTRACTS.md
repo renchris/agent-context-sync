@@ -5949,6 +5949,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   policy error), not that line and its warning twin. With a live Graph source the ERROR and the WARN both stay.
 - `add-source` and `init`: the docs repo line ends `N scaffold file(s) written)` or `scaffold up to date)`.
   install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
+  **Amended (2026-10-07, §16.30 "Several folders print the summary once"):** install.sh still calls it once
+  per folder, but prints the docs repo line of the first call only and the `sources:` line of the last.
 - `status`'s loop line says `to curate N` where it said `queue N`.
 
 **Root guides: the inbox line names the kept inbox.** `Publisher.root_guide` named the first live inbox source
@@ -8824,3 +8826,47 @@ report, sent on both reports of its attempt; an old and a new patch together; no
 an end line with no time and an attempt that never ended, each sent; a stopped copy's end line; and the
 limit above with real `--log-start` and `--report-only` runs), `tests/test_deploy_pack.py` (the private
 route's sentences).
+
+#### Several folders print the summary once (amends §16.22; `scripts/install.sh`)
+
+`install.sh` runs `agentsync add-source` once per `--source-local` folder and passed its output straight
+through. Every call ends in `cli._ensure_setup`, which prints a `docs repo <path> (...)` line and a
+`sources: <ids>` line. Two folders therefore gave that block twice: 16 source ids each time on the field
+Mac. §16.22 changed the first line's wording only ("2 scaffold file(s) written", then "scaffold up to
+date"). The repeat was its unbuilt second half, and the second bring-back asked for it again.
+
+In the config step, each call's stdout now passes through `add_source_filter I N`, one `awk` line:
+
+- call 1 of N keeps its `docs repo` line and every later call drops it. Only the first call can say
+  `created` and count the first files written;
+- call N of N keeps its `sources:` line and every earlier call drops it. Only the last call lists every
+  folder;
+- with one folder nothing is dropped, so one folder and several share the same pipeline;
+- every other line passes: `added source ...` and its table, `already configured: ...`, `wrote ...`,
+  `tightened ...`, `time machine: ...`, a dry run's `[dry-run] ...` line. No other line of `add-source`
+  starts with either prefix.
+
+What does not change:
+
+- `agentsync add-source` by hand prints both lines on every call (`tests/test_cli.py` holds that). The
+  filter is the installer's.
+- stderr is not read, so a governance or inbox error is printed as it was.
+- The call's exit status is still the step's. The script runs under `set -o pipefail` and `awk` exits 0,
+  so a failed call still ends the run with `error: agentsync add-source <folder> failed` and the config
+  step's log line carries that call's exit code.
+- `LC_ALL=C` on the filter: a byte that is no character in the locale must not make the filter fail a call
+  that worked.
+- Nothing reads these two lines: not `agentsync.setup_report`, not the installer, not a test of either.
+
+The kept `docs repo` line is the first call's, not a summary of the step. When the first folder named is
+already configured and a later one is new, it reads `scaffold up to date` although the later call rewrote
+the source table in the docs repo's README. v9's step 2 names only new folders, so that is rare, and the
+`folders: M added ...` line under it says what the step did.
+
+Not done: a multi-path `add-source`, a quiet flag or an environment variable. Each is new surface.
+
+Tests: `tests/test_install_oneshot.py` (the real agentsync behind a stub uv: three new folders in one
+command, one `docs repo` line that says `created` and counts the files written, one `sources:` line with
+all four ids, the three `added source` lines still there and in order; the field's command, two folders
+both already configured: one block; one folder: both lines; and with the stub, a call that exits 78 on the
+first of two folders: exit 1, the tool's own error, no second call, `rc=78` in the setup log).

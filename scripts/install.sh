@@ -106,7 +106,9 @@
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes
 #      agentsync's own paths owner-only, as every sync does (what a coding agent wrote into the docs repo
 #      under its own umask, the cache, the logs), so step 5 does not stop on a docs_repo.permissions [FAIL]
-#      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run)
+#      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
+#      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
+#      from the first call and "sources: ..." from the last
 #   5. status: agentsync status (its TCC probe may raise the one-time "wants to access files managed by"
 #      prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's own TCC_PENDING (a
 #      "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8) asks the Allow for. A
@@ -1695,9 +1697,20 @@ synced_count() {
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
 [ "$CONFIG_STATE" = "created" ] || KEPT="$(synced_count)"
+# add-source ends every call on two summary lines, "docs repo ..." and "sources: ..." (cli._ensure_setup).
+# With several folders that block came once per folder (field reports 2026-10-06 and 2026-10-07: 16 source
+# ids, twice). Call I of N keeps the "docs repo" line only as the first call, the one that can say "created"
+# and count the first files written, and the "sources:" line only as the last, the one that lists every
+# folder. With one folder nothing is dropped. Every other line passes, stderr is not read, and the call's
+# exit status is the pipeline's (pipefail). LC_ALL=C: a byte that is no character must not fail the filter.
+add_source_filter() { # I N
+	LC_ALL=C awk -v i="$1" -v n="$2" '(/^docs repo / && i > 1) || (/^sources: / && i < n) { next } { print }'
+}
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
+	nth=0
 	for f in "${FOLDERS[@]}"; do
-		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null ||
+		nth=$((nth + 1))
+		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" ||
 			fail "agentsync add-source $f failed (see the error above)"
 	done
 else

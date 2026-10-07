@@ -33,7 +33,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import setup_report
-from agentsync.config import default_config_text, inbox_source_table, local_source_table
+from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -102,7 +102,9 @@ setup() { [ -f "$cfg" ] || { mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg
 inbox() { grep -q "^kind = .inbox." "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
   init) setup; inbox; hint "agentsync doctor" ;;
-  add-source) setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
+  add-source)
+    [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
+    setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
   doctor|status)
     if [ "$sub" = status ] && [ "${AGENTSYNC_NO_NEXT_HINT:-}" != 1 ]; then  # install.sh's closing status
       printf '%s\\n' "${STUB_STATUS_OUT:-NEXT: draft the baseline questions (stub)}"
@@ -1803,6 +1805,95 @@ def test_a_set_up_mac_with_nothing_to_list_is_kept_by_the_run_its_list_names(
     assert "folders: kept the 1 already synced (none added)" in again.stdout.splitlines()
     assert "sync: converted 0, deferred 0 online-only" in again.stdout.splitlines()
     assert _config_line(env).endswith(" result=skipped note=exists kept=1 added=0")
+
+
+def _summary_lines(cp: subprocess.CompletedProcess[str]) -> tuple[list[str], list[str]]:
+    """The two lines add-source ends every call on, as a run printed them: ``docs repo ...`` and
+    ``sources: ...``."""
+    out = cp.stdout.splitlines()
+    return (
+        [ln for ln in out if ln.startswith("docs repo ")],
+        [ln for ln in out if ln.startswith("sources: ")],
+    )
+
+
+def test_several_folders_print_the_docs_repo_and_sources_lines_once(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """Field reports 2026-10-06 and 2026-10-07: install.sh calls add-source once per --source-local, and
+    every call ends on a ``docs repo ...`` line and a ``sources: ...`` line, so two folders printed the block
+    twice (16 source ids each time on the field Mac). With several folders the run now prints it once: the
+    first call's ``docs repo`` line, the one that can say "created", and the last call's ``sources:`` line,
+    the one that lists every folder. Checked against the real agentsync: a stub's lines would still pass if
+    the tool's own words changed and the filter stopped matching them."""
+    env = real_env
+    cloud = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects"
+    alpha, beta, gamma = (cloud / name for name in ("Alpha", "Beta", "Gamma"))
+    for d in (alpha, beta, gamma):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text(f"a made-up plan for {d.name}\n", encoding="utf-8")
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+
+    fresh = install_sh(
+        env,
+        str(wheel),
+        "--source-local",
+        str(alpha),
+        "--source-local",
+        str(beta),
+        "--source-local",
+        str(gamma),
+    )
+    assert fresh.returncode == 0, fresh.stdout + fresh.stderr
+    out = fresh.stdout.splitlines()
+    [repo], [sources] = _summary_lines(fresh)
+    assert re.search(r" \(created, no remote; [1-9]\d* scaffold file\(s\) written\)$", repo), repo
+    ids = [s.id for s in load_config(cfg).sources]
+    assert len(ids) == 4, "three folders and the inbox"
+    assert sources == f"sources: {', '.join(ids)}", "the last call's line: every folder is in it"
+    added = [i for i, ln in enumerate(out) if ln.startswith("added source ")]
+    assert len(added) == 3, "every other line of every call is still printed"
+    assert added[0] < out.index(repo) < added[1] and added[2] < out.index(sources)
+    assert "folders: 3 added (none was synced before)" in out
+
+    # The field's command: two folders, both already in the config. One block, where there were two.
+    again = install_sh(env, str(wheel), "--source-local", str(alpha), "--source-local", str(beta))
+    assert again.returncode == 0, again.stdout + again.stderr
+    [repo], [sources] = _summary_lines(again)
+    assert repo.endswith(" (exists, no remote; scaffold up to date)"), repo
+    assert sources == f"sources: {', '.join(ids)}"
+    assert sum(ln.startswith("already configured: source ") for ln in again.stdout.splitlines()) == 2
+
+    # One folder: nothing is dropped, so the run prints both lines as add-source does by hand.
+    one = install_sh(env, str(wheel), "--source-local", str(gamma))
+    assert one.returncode == 0, one.stdout + one.stderr
+    assert [len(lines) for lines in _summary_lines(one)] == [1, 1]
+
+
+def test_a_failed_add_source_still_fails_the_run_through_the_filter(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The summary filter reads add-source's output through a pipe. The call's exit status is still the
+    step's: a failed add-source on the first of two folders stops the run with its error, and the setup log
+    has the call's own exit code, not the filter's 0."""
+    other = folder.parent / "Other"
+    other.mkdir()
+    cp = install_sh(
+        {**env, "STUB_ADD_SOURCE_RC": "78"},
+        str(wheel),
+        "--source-local",
+        str(folder),
+        "--source-local",
+        str(other),
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert f"error: agentsync add-source {folder} failed (see the error above)" in cp.stderr
+    assert "add-source failed (stub)" in cp.stderr, "the tool's own error is not filtered"
+    assert sum(c.startswith("agentsync add-source ") for c in calls(env)) == 1, (
+        "the second folder is not tried"
+    )
+    assert ("config", "failed", "78", "") in steps(install_log(env))
+    assert one_next(cp) and last_line(cp).startswith("NEXT: fix the error above, then re-run: ")
 
 
 def _mode(path: Path) -> int:
