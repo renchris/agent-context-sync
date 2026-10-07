@@ -24,6 +24,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -31,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import setup_report
+from agentsync.config import default_config_text, inbox_source_table, local_source_table
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -1127,6 +1129,173 @@ def test_list_folders_takes_no_other_option(env: dict[str, str], folder: Path) -
     cp = install_sh(env, "--list-folders", "--source-local", str(folder))
     assert cp.returncode == 2 and "--list-folders takes no other option" in cp.stderr
     assert calls(env) == [] and not report_path(env).exists()
+
+
+# ---- --list-folders on a Mac that already syncs folders (field report 2026-10-07) --------------------------
+
+
+def _tool_python(env: dict[str, str]) -> Path:
+    """The installed agentsync's interpreter, where install.sh looks for it (uv's tool folder): a wrapper
+    that starts the Python running these tests, which has agentsync."""
+    py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    py.parent.mkdir(parents=True, exist_ok=True)
+    return _write_exe(py, f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+
+
+def _write_config(env: dict[str, str], *tables: str) -> Path:
+    """sources.toml as ``agentsync add-source`` writes it: the template, then one table per source."""
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(default_config_text() + "".join(tables), encoding="utf-8")
+    return cfg
+
+
+def _inbox(env: dict[str, str]) -> str:
+    return inbox_source_table("inbox", Path(env["HOME"]) / "agent-context" / "inbox")
+
+
+LIST_NEXT = (
+    "NEXT: choose the folders to sync from the list above (project folders rather than a whole library), "
+    f'then run: {INSTALL_SH} --source-local "<folder>" (one --source-local per folder)'
+)
+"""--list-folders' NEXT: on a Mac that syncs no folder yet."""
+
+
+def test_list_folders_without_a_synced_folder_prints_what_it_always_did(env: dict[str, str]) -> None:
+    """A new Mac is asked which folders to sync, so its list is byte for byte what it was before a set-up
+    Mac's folders were marked: with no config (the installed agentsync is not even asked), and with a
+    config that holds the inbox alone."""
+    cs = _cloud(env)
+    for d in ("OneDrive-Contoso/FY26 Projects/Alpha", "OneDrive-Contoso/Documents"):
+        (cs / d).mkdir(parents=True)
+    listed = [
+        f"{cs}/OneDrive-Contoso/Documents",
+        f"{cs}/OneDrive-Contoso/FY26 Projects",
+        f"{cs}/OneDrive-Contoso/FY26 Projects/Alpha",
+    ]
+    before = "\n".join([*listed, LIST_NEXT]) + "\n"
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stdout, cp.stderr) == (0, before, "")
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stdout, cp.stderr) == (0, before, "")
+    assert calls(env) == [], "no config: uv is not asked where the installed agentsync is"
+    assert steps(install_log(env))[-1] == ("list-folders", "done", "0", "listed-3")
+    assert " synced=" not in install_log(env)[-2]
+    _write_config(env, _inbox(env))
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stdout, cp.stderr) == (0, before, "")
+    assert install_log(env)[-2].endswith(" result=done note=listed-3 synced=0"), "the config was read"
+
+
+def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, str]) -> None:
+    """Field report 2026-10-07: a Mac that already ran setup was asked for its folders again, and an
+    unattended agent stopped there. The folders are in the config, so the list says which they are: one
+    line first, and a mark before each. A folder counts by the path agentsync syncs it under (a source
+    written through OneDrive's own link in the home folder is the folder under CloudStorage). A paused
+    source and the inbox are not folders it syncs, and a source deeper than the list goes is counted and
+    said to be outside it."""
+    cs = _cloud(env)
+    for d in (
+        "OneDrive-Contoso/FY26 Projects/Alpha/Deep",
+        "OneDrive-Contoso/FY26 Projects/Beta",
+        "OneDrive-Contoso/Documents",
+        "SharedLibraries-Contoso/Team Site - Docs",
+    ):
+        (cs / d).mkdir(parents=True)
+    link = Path(env["HOME"]) / "OneDrive - Contoso"
+    link.symlink_to(cs / "OneDrive-Contoso")
+    projects = cs / "OneDrive-Contoso" / "FY26 Projects"
+    paused = local_source_table("beta", projects / "Beta").replace(
+        'kind = "local"\n', 'kind = "local"\nstate = "paused"\n'
+    )
+    _write_config(
+        env,
+        local_source_table("alpha", projects / "Alpha"),
+        local_source_table("documents", link / "Documents"),
+        paused,
+        _inbox(env),
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    keep = (
+        f"NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run {INSTALL_SH}, with one "
+        '--source-local "<folder>" for each folder to add from the list above (none is needed)'
+    )
+    assert cp.stdout.splitlines() == [
+        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        f"[synced] {cs}/OneDrive-Contoso/Documents",
+        f"{cs}/OneDrive-Contoso/FY26 Projects",
+        f"[synced] {cs}/OneDrive-Contoso/FY26 Projects/Alpha",
+        f"{cs}/OneDrive-Contoso/FY26 Projects/Beta",
+        f"{cs}/SharedLibraries-Contoso/Team Site - Docs",
+        keep,
+    ]
+    assert calls(env) == ["uv tool dir"], "uv says where the installed agentsync is; nothing is installed"
+    assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-5")]
+    assert install_log(env)[-2].endswith(" result=done note=listed-5 synced=2")
+    assert not report_path(env).exists()
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8") + local_source_table("deep", projects / "Alpha" / "Deep"),
+        encoding="utf-8",
+    )
+    cp = install_sh(env, "--list-folders")
+    assert cp.stdout.splitlines()[0] == (
+        "already synced on this Mac: 3 folder(s) (2 marked [synced] below; 1 not in this list)"
+    )
+    assert cp.stdout.splitlines()[1:-1].count(f"[synced] {cs}/OneDrive-Contoso/Documents") == 1
+    assert last_line(cp) == keep.replace("syncs 2 folder(s)", "syncs 3 folder(s)")
+
+
+def test_list_folders_counts_a_synced_folder_past_its_cap_as_not_listed(env: dict[str, str]) -> None:
+    lib = _cloud(env) / "OneDrive-Contoso"
+    for i in range(205):
+        (lib / f"P{i:03d}").mkdir(parents=True)
+    _write_config(env, local_source_table("p001", lib / "P001"), local_source_table("p203", lib / "P203"))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stderr
+    lines = cp.stdout.splitlines()
+    assert lines[0] == "already synced on this Mac: 2 folder(s) (1 marked [synced] below; 1 not in this list)"
+    assert lines[2] == f"[synced] {lib}/P001" and lines[200] == f"{lib}/P199" and lines[201] == "(5 more)"
+    assert len(lines) == 203 and sum(ln.startswith("[synced] ") for ln in lines) == 1
+
+
+@pytest.mark.parametrize("broken", ["no installed agentsync", "a config that does not load"])
+def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str, str], broken: str) -> None:
+    """A config nobody can read is not a reason to guess: the list is the new Mac's, where the person is
+    asked, and one warning says why no folder is marked."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
+    cfg = _write_config(env, local_source_table("fy26", cs / "OneDrive-Contoso" / "FY26 Projects"))
+    if broken == "a config that does not load":
+        _tool_python(env)
+        cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{LIST_NEXT}\n"
+    assert cp.stderr == (
+        f"warning: could not read which folders {cfg} already syncs (no installed agentsync loads it), so "
+        "none is marked below\n"
+    )
+    assert install_log(env)[-2].endswith(" result=done note=listed-1"), "no synced= count: it was not read"
+
+
+def test_list_folders_marks_nothing_while_a_provider_is_denied(env: dict[str, str]) -> None:
+    """A list that ends on a click for the person is not the folder question yet: it is printed as it
+    always was, and the marks come with the complete list after the click."""
+    (_cloud(env) / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
+    shared = _cloud(env) / "Dropbox" / "Shared"
+    shared.mkdir(parents=True)
+    _write_config(env, local_source_table("shared", shared))
+    _tool_python(env)
+    _write_exe(Path(env["PATH"].split(":")[0]) / "find", STUB_FIND_EPERM)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 4, cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [str(shared)] and "already synced" not in cp.stdout
+    assert steps(install_log(env)) == [("list-folders", "failed", "4", "denied")]
 
 
 # ---- nothing competes with NEXT: (J8) ----------------------------------------------------------------------

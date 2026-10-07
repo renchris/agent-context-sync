@@ -53,6 +53,10 @@ runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the lo
 `NEXT:` names `--list-folders`) and 1 on a `[FAIL]` line. It builds no launcher and installs no LaunchAgent. Every
 work session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
 
+On a Mac that is already set up nothing has to be chosen again. `--list-folders` starts with
+`already synced on this Mac: N folder(s)` and writes `[synced]` before each folder `sources.toml` already syncs,
+and `install.sh` with no `--source-local` keeps every source, updates agentsync and runs status and a sync.
+
 ### Optional: background sync (the operator's choice)
 
 Background sync is never part of setup, and the one-prompt setup never turns it on: you decide, on your own Mac,

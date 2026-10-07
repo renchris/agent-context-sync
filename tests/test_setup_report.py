@@ -1477,6 +1477,44 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     }
 
 
+def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """``install.sh --list-folders`` on a Mac that already syncs folders prints one line that counts them and
+    a mark before each (field report 2026-10-07). Both reach install.out, whose tail the report embeds: the
+    count and the marks are kept, and a marked folder is a placeholder like every other listed one."""
+    write_install_log(fake_mac)
+    write_friction(fake_mac)
+    other = fake_mac["one"].parent / "Harbor Works"
+    other.mkdir()
+    keep = (
+        "NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run "
+        f'{fake_mac["home"]}/src/agent-context-sync/scripts/install.sh, with one --source-local "<folder>" '
+        "for each folder to add from the list above (none is needed)"
+    )
+    lines = [
+        "# run=20260929T095805Z-11 2026-09-29T09:58:05Z install.sh --list-folders",
+        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        str(fake_mac["one"].parent),
+        f"[synced] {fake_mac['one']}",
+        str(other),
+        f"[synced] {fake_mac['two']}",
+        keep,
+    ]
+    (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    shown = section(text, "Installer").split("(what the agent saw)</summary>", 1)[1]
+    assert "already synced on this Mac: 2 folder(s) (marked [synced] below)\n" in shown
+    cloud = "~/Library/CloudStorage"
+    assert f"\n[synced] {cloud}/OneDrive-<org-1>/<folder-1>/<folder-2>\n" in shown
+    assert f"\n[synced] {cloud}/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>\n" in shown
+    unmarked = re.findall(rf"(?m)^{cloud}/OneDrive-<org-1>/<folder-\d>(?:/<folder-\d>)?$", shown)
+    assert len(unmarked) == 2, "the two folders this Mac does not sync, as placeholders too"
+    assert "NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run ~/src/" in shown
+    for raw in (*RAW, "Harbor", "Works"):
+        assert raw not in text, raw
+
+
 # ---- field report 2026-10-06: leaks in the redacted section, one test per leak class ----------------------
 
 PROJECT = "quay-ledger"

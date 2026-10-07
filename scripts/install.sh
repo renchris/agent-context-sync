@@ -27,7 +27,10 @@
 #                           "(N more)"; installs nothing and writes no report, only a list-folders step in the
 #                           setup log. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet);
 #                           4 this terminal app was denied access (macOS "Operation not permitted"), or macOS
-#                           is still asking; its NEXT: line says which and names the click
+#                           is still asking; its NEXT: line says which and names the click. On a Mac whose
+#                           config already syncs folders (see "Folders already synced" below) the list starts
+#                           with "already synced on this Mac: N folder(s) ..." and each of them it lists has
+#                           "[synced] " before its path; its NEXT: names the command that keeps them
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -35,6 +38,15 @@
 #                           append one event to it; KIND is question, click, approval, deviation, error or prompt
 #
 # The config is $AGENTSYNC_CONFIG, else ~/agent-context/sources.toml.
+#
+# Folders already synced: a re-run on a Mac that is set up asks for no folder. The person chose them once, and
+# they are in the config: the folder of each live local source (the inbox is agentsync's own folder and is
+# not one of them). The installed agentsync reads them, with its own rule for a folder reached through a
+# link (config.canonical_source_root), so --list-folders marks exactly the folders a sync reads. Without a
+# config, or with one that holds no such source, --list-folders prints what it always did. A config the
+# installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked. A run
+# with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
+# (steps 4 to 6); --source-local adds to them.
 #
 # Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
 # ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077), which
@@ -144,7 +156,8 @@
 # fingerprint being the first 12 hex digits of the SHA-256 of `git diff HEAD` in the source, which reproduces
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
 # exit status, done / skipped / failed: uv, agentsync, launcher, config, status, first-sync, agent, wait; or
-# list-folders alone), then the report step's line, then one "end" line (exit status, total seconds, the report
+# list-folders alone, whose line ends with synced=N when it read the config: the folders already synced, 0
+# included), then the report step's line, then one "end" line (exit status, total seconds, the report
 # included). The report is written while a provisional end line is the log's last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
@@ -1125,12 +1138,46 @@ terminal_app() {
 	*) printf '%s' "${TERM_PROGRAM:-}" ;;
 	esac
 }
+# The installed agentsync's own interpreter (uv's tool environment: the path step 2 names TOOL_PY), when
+# there is one. `uv tool dir` only prints a path.
+tool_python() {
+	local uv="" dir="$HOME/.local/share/uv/tools"
+	if command -v uv >/dev/null 2>&1; then
+		uv="$(command -v uv)"
+	elif [ -x "$HOME/.local/bin/uv" ]; then
+		uv="$HOME/.local/bin/uv"
+	fi
+	[ -z "$uv" ] || dir="$("$uv" tool dir 2>/dev/null || printf '%s' "$dir")"
+	[ ! -x "$dir/agentsync/bin/python" ] || printf '%s' "$dir/agentsync/bin/python"
+}
+SYNCED_MARK="[synced]" # what --list-folders writes before a folder the config already syncs
+# The folders the config already syncs (see "Folders already synced" in the header), read by the interpreter
+# $1: prints their number, then each line of the file $2 (one folder path per line), with "$SYNCED_MARK "
+# before a folder that is one of them. Both sides go through agentsync's own rule, so a folder the config
+# names through a link is still that folder. Fails when that agentsync cannot load the config, and stops
+# after 10 s. It uses only names every agentsync since 2026-09-29 has: step 1 of the setup prompt runs this
+# before step 2 updates the tool. -I: nothing from the folder this runs in is imported.
+synced_folders() { # PYTHON LIST
+	with_timeout 10 "$1" -I -c '
+import os, sys
+from pathlib import Path
+from agentsync.config import canonical_source_root, load_config
+
+sources = load_config(Path(sys.argv[1])).sources
+synced = {s.path for s in sources if s.kind.value == "local" and s.state.value == "live" and s.path is not None}
+with open(sys.argv[3], "rb") as fh:
+    listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
+mark = sys.argv[2] + " "
+out = [str(len(synced))] + [(mark if canonical_source_root(Path(p)) in synced else "") + p for p in listed]
+sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
+' "$CONFIG" "$SYNCED_MARK" "$2"
+}
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t
+	local deadline=$((SECONDS + LIST_TOTAL)) t py synced="" marked=0
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -1162,7 +1209,33 @@ list_folders() {
 		fi
 	done
 	total="$(wc -l <"$tmp/list" | tr -d ' ')"
-	sort "$tmp/list" | awk -v m="$max" 'NR <= m' # awk reads it all: no SIGPIPE for sort under pipefail
+	sort "$tmp/list" | awk -v m="$max" 'NR <= m' >"$tmp/shown" # awk reads it all: no SIGPIPE for sort under pipefail
+	# A Mac that already runs agentsync (field report 2026-10-07): the person chose its folders once, so the
+	# list says which they are and nobody is asked again. Only for a complete list (a denied or pending
+	# provider ends on its click), and only with a config: without one the output is what it always was.
+	if [ -f "$CONFIG" ] && [ -z "$denied$asking" ] && [ "$total" -gt 0 ]; then
+		py="$(tool_python)"
+		if [ -n "$py" ] && synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>/dev/null; then
+			synced="$(head -n 1 "$tmp/marked")"
+		fi
+		case "$synced" in
+		'' | *[!0-9]*)
+			synced=""
+			warn "could not read which folders $CONFIG already syncs (no installed agentsync loads it), so none is marked below"
+			;;
+		esac
+	fi
+	if [ "${synced:-0}" -gt 0 ]; then
+		marked="$(grep -c "^\\$SYNCED_MARK " "$tmp/marked" || true)"
+		if [ "$marked" -eq "$synced" ]; then
+			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below)"
+		else
+			say "already synced on this Mac: $synced folder(s) ($marked marked $SYNCED_MARK below; $((synced - marked)) not in this list)"
+		fi
+		tail -n +2 "$tmp/marked"
+	else
+		cat "$tmp/shown"
+	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
 	rm -rf "$tmp"
 	term="$(terminal_app)"
@@ -1184,9 +1257,12 @@ list_folders() {
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
 		step_end failed "$rc" no-folders
+	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
+		NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each folder to add from the list above (none is needed)"
+		step_end "done" 0 "listed-$total synced=$synced"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
-		step_end "done" 0 "listed-$total"
+		step_end "done" 0 "listed-$total${synced:+ synced=$synced}"
 	fi
 	return "$rc"
 }

@@ -695,7 +695,8 @@ The installer is safe to re-run and never prompts. `--list-folders` prints
 one full path per line; it exits 3 when OneDrive is not signed in or syncs no folder yet and 4 when macOS denied
 this terminal access, and its `NEXT:` line says which. Repeat `--source-local` for each folder. On a Mac that
 already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
-one folder). It ends with the loop's `NEXT:` line: do what it says. Every work session then starts with
+one folder), `--list-folders` writes `[synced]` before each folder already synced, and `install.sh` with no
+`--source-local` keeps them all. It ends with the loop's `NEXT:` line: do what it says. Every work session then starts with
 `~/.local/bin/agentsync sync` and does what its `NEXT:` line says. Background sync is optional and yours to turn on, never part of setup:
 `install.sh --confirm-install-agent` builds the signed launcher, syncs once and installs two LaunchAgents (a poll
 every 5 minutes and an hourly reconcile). On their first run, macOS asks once for permission for the launcher to read

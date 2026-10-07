@@ -8000,3 +8000,71 @@ read over 33 runs as files waiting and as waits; the re-read table against what 
 with a record another build left, a run without an engine and a label rule; a Graph source's image; the
 note under a run with a failed conversion). Each test seeds made-up folder and file names and asserts none
 reaches the report.
+
+### 16.29 A Mac already set up is not asked for its folders again (2026-10-07)
+
+Setup prompt v8 was run on a corporate Mac that already runs agentsync, with two project folders in its
+`sources.toml` from an earlier setup. Step 1 passed its version check and `install.sh --list-folders` listed 25
+folders. The tool ran unattended, so the folder question came back unanswered, and v8's step 1 says what to do
+then: log a deviation, stop and wait. Nothing was done, and the round was lost.
+
+Stopping is right on a new Mac: what is synced is the person's decision. On a Mac where the person already
+chose, the choice is in the config, and asking again was the defect. This section makes a re-run need no
+folder answer, while a new Mac still stops. It adds no command, flag, installer option, config key or
+environment variable.
+
+**The folders already synced** are the folders of the live local sources in the config: `kind = "local"`,
+`state = "live"`. The inbox is agentsync's own folder and is not one of them. Neither is a paused or retired
+source, or a Graph source, which has no folder on this Mac. A Mac whose config holds none of them is a new
+Mac for everything below.
+
+#### `install.sh --list-folders` marks them (amends §16.13 and §16.14; `scripts/install.sh`)
+
+With a config that syncs N folders, N at least 1, the list starts with one line and each listed folder that is
+one of them has `[synced] ` before its path (`SYNCED_MARK`). A made-up example:
+
+```text
+already synced on this Mac: 2 folder(s) (marked [synced] below)
+[synced] ~/Library/CloudStorage/OneDrive-Contoso/Documents
+~/Library/CloudStorage/OneDrive-Contoso/Projects
+[synced] ~/Library/CloudStorage/OneDrive-Contoso/Projects/Alpha
+~/Library/CloudStorage/OneDrive-Contoso/Projects/Beta
+NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.sh, with one --source-local
+"<folder>" for each folder to add from the list above (none is needed)
+```
+
+(Real output has full paths and one `NEXT:` line.)
+
+- The list is what it was: sorted, at most 200, then `(N more)`. A mark goes before the path, so the path
+  still ends the line and an unmarked line still starts with `/`.
+- A synced folder the list does not show is counted and said to be outside it: `already synced on this Mac: 3
+  folder(s) (2 marked [synced] below; 1 not in this list)`. That is a source deeper than the list goes (it
+  shows 1 or 2 levels inside each provider), one outside `~/Library/CloudStorage`, or one past the cap of 200.
+- The `NEXT:` line names the command that keeps them, since nothing has to be chosen: `install.sh` alone, with
+  `--source-local` only for a folder to add. With no synced folder it is the line it was.
+- **Without a config the output is byte for byte what it was**, and the installed agentsync is not asked. The
+  same holds for a config with no synced folder (the inbox alone), and for a list that ends on a click for the
+  person (a denied or pending provider, exit 4): the marks come with the complete list after the click.
+- **Who reads the config.** The installed agentsync does, through its own interpreter
+  (`<uv tool dir>/agentsync/bin/python -I`, the path step 2 names `TOOL_PY`; `tool_python`): `load_config`,
+  then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
+  That is the rule the tool syncs by, so a source written through OneDrive's own link in the home folder
+  (`~/OneDrive - Contoso/Documents`) marks the folder under `~/Library/CloudStorage`, and a home folder
+  reached through a link still matches. The call has 10 s. It uses only names every build since 2026-09-29
+  has (`load_config`, `canonical_source_root`, a source's `kind`, `state` and `path`): step 1 runs it before
+  step 2 updates the tool, so it must work with the build an earlier setup left.
+- **A config that cannot be read is never a guess.** No installed agentsync, or a config it does not load:
+  one line on stderr, `warning: could not read which folders <config> already syncs (no installed agentsync
+  loads it), so none is marked below`, and the unmarked list. The person is then asked, as on a new Mac.
+- The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
+  (`note=listed-25 synced=2`). The note itself is unchanged, and so is a line written without a config.
+- Nothing new reaches a report unredacted. The first line holds a count. A marked line holds a path the
+  report already redacts: every folder name under `~/Library/CloudStorage` at the depths the list shows is a
+  placeholder (§16.14), whatever comes before it on the line.
+
+Tests: `tests/test_install_oneshot.py` (the output with no config, with an installed agentsync and no
+config, and with the inbox alone, each byte for byte the list of before; two synced folders marked, one of
+them configured through the home folder's link, a paused source and the inbox not marked, and a third deeper
+than the list; a synced folder past the cap; no installed agentsync and a config that does not load, each
+with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and two
+marked folders in install.out: the count and the marks kept, every folder a placeholder).
