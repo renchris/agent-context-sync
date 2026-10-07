@@ -2777,8 +2777,13 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     _text, parts = status_parts(fake_mac)
     part = parts["Repeat conversions"]
     assert (
-        "- of the last 3 run(s), 2 recorded what they converted; 2 of those converted at least one file from "
-        "bytes the run just before had converted too (the sign of a loop)\n" in part
+        "- of the last 3 run(s), 2 recorded what they converted; 2 of those converted at least one file "
+        "again from the bytes its page was made from, which the run just before had converted too (the sign "
+        "of a loop; a copy of a file is a new file and is not counted)\n" in part
+    )
+    assert (
+        "| files converted | of them failed | the same file from the same bytes as an earlier run | of "
+        "those, as the run just before |\n" in part
     )
     assert [ln for ln in part.splitlines() if re.match(r"\| \d", ln)] == [
         "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 6 | 1 | 6 | 6 |",
@@ -2787,7 +2792,8 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     ]
     assert (
         "- converter cache: 4 conversion(s) were used again by a later run than the one that made them (the "
-        "same bytes converted again); 2 of them last by the newest run (5), 1 by the run before it" in part
+        "same bytes converted again, by the same file or by a copy of it); 2 of them last by the newest run "
+        "(5), 1 by the run before it" in part
     )
 
 

@@ -7498,8 +7498,8 @@ other key that would be 0 is left out. No reader depended on the old content.
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
 | `converted_failed` | of those, conversions that failed; the next cycle tries them again |
-| `converted_seen` | of those, bytes an earlier run had converted already: the cache row of the action key existed |
-| `converted_again` | of those, bytes the run just before had converted: that row's `last_used_run` is this run's id less 1 |
+| `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
+| `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
 | `ocr_ms`, `ocr_budget_s` | milliseconds the OCR helper ran (`_CycleOcr.spent_s`) and the cycle's OCR time (`_OCR_BUDGET_S`) |
 | `ocr_over`, `ocr_down` | 1 when that time was used up; 1 when the helper stopped working in the cycle |
@@ -7508,22 +7508,29 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `ocr_failed` | files the engine was tried on and failed: a helper failure, or the file's own time limit (§16.26). An image then has the `no converter` refusal, a document its page without OCR |
 | `ocr_page_cap`, `ocr_picture_cap` | conversions whose summary or stub reason says a count limit of OCR left pages or pictures unread (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`: the converters' fixed wording) |
 
-- `converted_again` is the sign of a loop: the same bytes converted in two runs running. It goes by the
-  action key, so a second file with the bytes of one the last run converted counts once too. A conversion
-  that failed has no cache row and is counted by `converted_failed` instead.
+- `converted_again` is the sign of a loop: the same file converted from the same bytes in two runs
+  running. The cache row is of the action key, which is the bytes and the converter and not the file, so it
+  is asked only for a file whose own output rows already carry that key. Asked for every file, it counted a
+  second file with the bytes of one the run before had converted (a copy, a re-export, one attachment saved
+  twice) as converted again, and the report read a loop where no file was converted twice. The corporate
+  Mac has 14 inbox sources and one source folder inside another, where copies of one file are likely. What
+  is left inexact: a file converted before, converted again right after a run that converted a copy of it, is
+  counted in `converted_again` although the run just before converted the copy. A conversion that failed
+  has no cache row and is counted by `converted_failed` instead.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `Manifest.cache_last_used(action_key) -> int | None` returns the run that last used a cache index row, None
-  when there is none. The cycle asks before `record_cache` moves it.
+  when there is none. The cycle asks before `record_cache` moves it, and only through `_converted_before`.
 - The record of a run from before this build holds change counts only and no `converted` key. The report
   says "not recorded" for it.
 
 Every new name in `agentsync.cycle` is private (`_PAGE_CAP_MARK`, `_PICTURE_CAP_MARK`, and on `_Cycle`:
-`_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`).
+`_tally`, `_run_tally`, `_tally_ocr`, `_tally_converted`, `_converted_before`).
 
 Tests: `tests/test_cycle.py` (a cycle without an engine records no OCR key; five images at 100 s each against
 the 180 s budget: milliseconds, budget, over, three deferred, and an idle cycle with an engine; a scan past the
 page limit, a PDF converted past the budget and its re-read, a helper that fails on everything; a file
-converted again from the same bytes in two runs running; the limit marks are the converters' wording) and
+converted again from the same bytes in two runs running; a copy of a file the run before converted, and a
+second copy in the run after, neither a repeat; the limit marks are the converters' wording) and
 `tests/test_manifest.py` (`cache_last_used`).
 
 #### The evidence parts of the report (amends §16.14; `agentsync.setup_report`)
@@ -7662,11 +7669,12 @@ it took 44 s for 5,000 names against 506 globs, past the report's limit and the 
 stopped the line keeps the folders' own facts and says `excluded in sources.toml now: not measured (time
 limit)`.
 
-**Repeat conversions.** One row for each of the last five runs: files converted, of them failed, from bytes
-an earlier run converted, from bytes the run just before converted (`not recorded` for a run from before
-the run record). Then the converter cache: how many rows a later run used again than the one that made
-them, and how many of those the newest run and the one before it used last. That count needs no run record,
-so it also speaks for the runs of an earlier build.
+**Repeat conversions.** One row for each of the last five runs: files converted, of them failed, of them
+the same file from the same bytes as an earlier run, and of those as the run just before (`not recorded`
+for a run from before the run record). Then the converter cache: how many rows a later run used again than
+the one that made them, and how many of those the newest run and the one before it used last. That count
+needs no run record, so it also speaks for the runs of an earlier build; it is by the bytes alone, so a
+copy of a file counts there and the line says so.
 
 **Background runs.** After the two job lines, for each job with a plist in this home folder: whether it is
 what this build would write (`launchd.render_plist` of `poll_spec` or `reconcile_spec`; doctor's line says

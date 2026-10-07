@@ -1445,16 +1445,17 @@ class _Cycle:
         other key that would be 0 is left out.
 
         ``converted``: files converted (the sum of ``SourceReport.converted``); ``converted_failed``: of
-        those, conversions that failed (retried by the next cycle); ``converted_seen``: of those, bytes an
-        earlier run had converted already (``Manifest.cache_last_used``); ``converted_again``: of those,
-        in the run just before.  ``reread`` and ``reread_kept``: files read again for what their converter
-        has gained, and those of them that kept their page.  ``ocr_ms``: milliseconds the helper ran;
-        ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1 when it was used up; ``ocr_down``: 1 when
-        the helper stopped working; ``ocr_deferred``: files left for a later cycle's OCR (``_ocr_waits``);
-        ``ocr_without_budget`` and ``ocr_without_down``: files converted without the engine for either
-        reason; ``ocr_failed``: files the engine failed on (a helper failure, or the file's own time
-        limit); ``ocr_page_cap`` and ``ocr_picture_cap``: conversions that say a count limit left pages
-        or pictures unread."""
+        those, conversions that failed (retried by the next cycle); ``converted_seen``: of those, files
+        whose own pages were made from the same bytes by an earlier run (``_converted_before``; a copy of
+        a file is not one); ``converted_again``: of those, when the bytes were last converted in the run
+        just before.  ``reread`` and ``reread_kept``: files read again for what their converter has
+        gained, and those of them that kept their page.
+        ``ocr_ms``: milliseconds the helper ran; ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1
+        when it was used up; ``ocr_down``: 1 when the helper stopped working; ``ocr_deferred``: files left
+        for a later cycle's OCR (``_ocr_waits``); ``ocr_without_budget`` and ``ocr_without_down``: files
+        converted without the engine for either reason; ``ocr_failed``: files the engine failed on (a
+        helper failure, or the file's own time limit); ``ocr_page_cap`` and ``ocr_picture_cap``:
+        conversions that say a count limit left pages or pictures unread."""
         tally = Counter({key: count for key, count in self._tally.items() if count})
         tally["converted"] = self._tally["converted"]
         if self._reread_n:
@@ -1488,9 +1489,21 @@ class _Cycle:
         else:
             self._tally["ocr_without_down" if self.ocr.down else "ocr_without_budget"] += 1
 
+    def _converted_before(self, outs: Sequence[OutputRow], key: str) -> int | None:
+        """The run that last converted under ``key`` (the bytes and the converter), for a file whose own
+        pages were made under it; None for any other file.  ``outs``: the file's output rows from before
+        this conversion.
+
+        ``Manifest.cache_last_used`` goes by the key alone.  Asked for every file, it called a second file
+        with the bytes of one the run before had converted (a copy, a re-export, one attachment saved
+        twice) a file converted again, and the setup report read that as a loop."""
+        if not key or all(o.action_key != key for o in outs):
+            return None
+        return self.manifest.cache_last_used(key)
+
     def _tally_converted(self, result: ConversionResult, prior: int | None) -> None:
-        """Count one conversion (``_run_tally``).  ``prior``: the run that last used the cache row of its
-        action key before this one did, None when it had no row."""
+        """Count one conversion (``_run_tally``).  ``prior``: the run that last converted the file's bytes
+        when its own pages were made from them (``_converted_before``), None otherwise."""
         self._tally["converted"] += 1
         if result.status is ConversionStatus.FAILED:
             self._tally["converted_failed"] += 1
@@ -2693,8 +2706,9 @@ class _Cycle:
             registry=registry,
             cache=self.cache,
         )
-        # the run that last converted these bytes, read before this one is recorded (the run record)
-        prior = self.manifest.cache_last_used(result.action_key) if result.action_key else None
+        # the run that last converted this file from these bytes, asked before this one is recorded (the
+        # run record): a copy of a file another run converted is no file converted again
+        prior = self._converted_before(outs, result.action_key)
         if result.action_key and result.status in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             self.manifest.record_cache(
                 result.action_key,

@@ -1870,12 +1870,13 @@ def test_the_run_record_counts_a_file_converted_again_from_the_same_bytes(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Whether the same files are converted run after run is a question the setup report answers from the
-    run record: ``converted_again`` is a conversion whose bytes the run just before had converted too.
-    The loop here is a file the walk calls maybe-changed whose pages are never found intact."""
+    run record: ``converted_again`` is a file converted from the bytes its own pages were made from, when
+    the run just before had converted them too.  The loop here is a file the walk calls maybe-changed
+    whose pages are never found intact."""
     assert run(sample_config).exit_code == 0
     first = _run_record(sample_config)
     assert first["converted"] > 1 and "converted_again" not in first
-    assert first.get("converted_seen", 0) < first["converted"], "new bytes are no repeat"
+    assert "converted_seen" not in first, "a first run has seen no bytes before"
     assert run(sample_config).commit_sha is None and _run_record(sample_config) == {"converted": 0}
     monkeypatch.setattr(cycle_mod, "_pages_intact", lambda _repo, _outs: False)
     source = local_source_dir / "projects" / "sample.md"
@@ -1893,6 +1894,33 @@ def test_the_run_record_counts_a_file_converted_again_from_the_same_bytes(
     assert run(sample_config).exit_code == 0
     record = _run_record(sample_config)
     assert (record["converted"], record["converted_seen"], record["converted_again"]) == (1, 1, 1)
+
+
+def test_a_copy_of_a_file_the_run_before_converted_is_no_file_converted_again(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """The cache row the run record went by is of the bytes and the converter, not of the file.  A second
+    file with the bytes of one the run before had converted (a copy, a re-export, one attachment saved
+    twice) was counted as converted again, which the setup report calls the sign of a loop.  A repeat is
+    a file whose own pages were made from those bytes."""
+    assert run(sample_config).exit_code == 0
+    source = local_source_dir / "projects" / "sample.md"
+    shutil.copyfile(source, source.with_name("Contoso sample copy.md"))
+    assert run(sample_config).commit_sha is not None
+    record = _run_record(sample_config)
+    assert record["converted"] == 1 and not [key for key in record if key.startswith("converted_")]
+    with Manifest(sample_config.state_paths.db) as m:
+        twins = m._db.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT o.action_key) FROM outputs o JOIN items i "
+            "ON i.source_id = o.source_id AND i.stable_id = o.stable_id WHERE i.name LIKE '%sample%.md'"
+        ).fetchone()
+    assert tuple(twins) == (2, 1), "the two files do share one action key"
+    # A third file with those bytes in the run after: the key was used by the run just before, and it is
+    # still no repeat.
+    shutil.copyfile(source, source.with_name("Contoso sample copy 2.md"))
+    assert run(sample_config).commit_sha is not None
+    record = _run_record(sample_config)
+    assert record["converted"] == 1 and not [key for key in record if key.startswith("converted_")]
 
 
 def test_the_limit_marks_are_the_converters_own_wording() -> None:

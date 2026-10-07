@@ -3335,8 +3335,10 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 
 def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Whether the same files are converted run after run: per run, the files converted and how many of them
-    from bytes an earlier run, or the run just before, had converted already (``runs.counts_json``), and what
-    the converter cache says for the runs of an earlier build."""
+    were files whose own page an earlier run had made from the same bytes, and how many of those when the
+    run just before converted them (``runs.counts_json``: ``cycle._Cycle._converted_before``). A copy of a
+    file is not such a file. Then what the converter cache says, which is by the bytes alone (a copy
+    counts there) and also speaks for the runs of an earlier build."""
     runs = _run_rows(m)
     if not runs:
         return ["- no run is recorded"]
@@ -3359,14 +3361,15 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "started (UTC)",
         "files converted",
         "of them failed",
-        "from bytes an earlier run converted",
-        "from bytes the run just before converted",
+        "the same file from the same bytes as an earlier run",
+        "of those, as the run just before",
     )
     recorded = [x for x in runs if "converted" in x.counts]
     looping = sum(1 for x in recorded if x.n("converted_again"))
     out = [
         f"- of the last {len(runs)} run(s), {len(recorded)} recorded what they converted; {looping} of those "
-        "converted at least one file from bytes the run just before had converted too (the sign of a loop)",
+        "converted at least one file again from the bytes its page was made from, which the run just before "
+        "had converted too (the sign of a loop; a copy of a file is a new file and is not counted)",
         "",
         "the last runs, newest first:",
         "",
@@ -3384,9 +3387,9 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     out += [
         "",
         f"- converter cache: {total} conversion(s) were used again by a later run than the one that made "
-        f"them (the same bytes converted again); {again[newest]} of them last by the newest run "
-        f"({newest}), {again[newest - 1]} by the run before it (a count that also holds for runs of an "
-        "earlier build)",
+        f"them (the same bytes converted again, by the same file or by a copy of it); {again[newest]} of "
+        f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it (a count that "
+        "also holds for runs of an earlier build)",
     ]
     return out
 

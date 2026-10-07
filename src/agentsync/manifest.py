@@ -2428,8 +2428,9 @@ class Manifest:
 
     def cache_last_used(self, action_key: str) -> int | None:
         """The run that last used the cache index row of ``action_key`` (``record_cache``); None when it has
-        no row.  The cycle asks before it records a conversion: a row last used by the run just before is
-        a file converted in two runs running from the same bytes (CONTRACTS.md 16.28)."""
+        no row.  The cycle asks before it records a conversion, for a file whose own pages carry the key:
+        a row last used by the run just before is then a file converted in two runs running from the same
+        bytes (CONTRACTS.md 16.28).  The row is of the bytes and the converter, not of the file."""
         row = self._db.execute(
             "SELECT last_used_run FROM cache WHERE action_key = ?", (action_key,)
         ).fetchone()
