@@ -959,6 +959,28 @@ def test_a_recordings_keyframes_are_sidecars_that_follow_a_rename_and_go_with_a_
     assert_pages_valid(env)
 
 
+def test_governance_archive_keeps_a_recordings_keyframes_past_its_deletion(env: Env) -> None:
+    """``[governance] archive = true``: a recording deleted upstream keeps its last pages and keyframes under
+    ``archive/`` (spec section 6, Retention)."""
+    item = env.observe("vol:1", "Recordings/Weekly sync.mp4")
+    env.publish(item, recording(("01-t000000", ("t000148.jpg",)), ("02-t000500", ("t000538.jpg",))))
+    d = "mirror/src/recordings/weekly-sync.mp4.d"
+    env.pub.tombstone(
+        "src",
+        "vol:1",
+        reason="deleted-upstream",
+        run_id=env.run_id,
+        today=TODAY,
+        last_commit=None,
+        archive=True,
+    )
+    for side in (f"{d}/01-t000000.files/t000148.jpg", f"{d}/02-t000500.files/t000538.jpg"):
+        name = side.rsplit("/", 1)[-1].encode()
+        assert (env.repo / archive_path(side)).read_bytes() == JPEG + name
+        assert not (env.repo / side).exists()
+    assert "\nstatus: archived\n" in env.text(archive_path(f"{d}/01-t000000.md"))
+
+
 def test_the_index_title_is_empty_and_its_source_title_is_the_items_name(env: Env) -> None:
     item = env.observe("vol:1", "Recordings/Weekly sync.mp4")
     index, window = env.pub.plan_pages(

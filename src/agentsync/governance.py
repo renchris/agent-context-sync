@@ -3,11 +3,12 @@
 C15 section 7 and requirements 36-42.  The docs repo is a plaintext copy of tenant data OUTSIDE Purview
 retention, hold, eDiscovery and DLP, so this module owns every way that copy is bounded or destroyed:
 
-* :func:`purge` removes the selected items' pages, sidecars, manifest rows, converter-cache entries, tombstone
-  data and log lines that name them, then rewrites docs-repo history with git plumbing only (``cat-file``,
-  ``hash-object``, ``update-ref``), expires every reflog, runs ``gc --prune=now`` and verifies with
-  ``cat-file --batch-check`` that no targeted blob survives.  Index-like generated files
-  (``_manifest/*.jsonl``, ``CHANGELOG``, ``INDEX.md``, ``DEPENDS.tsv``, ``_sync/*``) are rewritten in every
+* :func:`purge` removes the selected items' pages, sidecars, manifest rows, converter-cache entries, the
+  piece store folder of a purged recording, tombstone data and log lines that name them, then rewrites
+  docs-repo history with git plumbing only (``cat-file``, ``hash-object``, ``update-ref``), expires every
+  reflog, runs ``gc --prune=now`` and verifies with ``cat-file --batch-check`` that no targeted blob
+  survives.  Index-like generated files (``_manifest/*.jsonl``, ``CHANGELOG``, ``INDEX.md``,
+  ``DEPENDS.tsv``, ``_sync/*``) are rewritten in every
   commit with the lines that name a purged item removed.  Surviving tombstones of OTHER items have their
   ``git show <sha>`` hints remapped to the rewritten commits so their recovery still works.
 * :func:`compact_history` squashes history older than ``[governance] history_days`` into one root snapshot,
@@ -53,6 +54,7 @@ from typing import Any
 from agentsync import gitops
 from agentsync.config import SOURCE_ID_RE as _SOURCE_ID_RE
 from agentsync.config import Config
+from agentsync.convert.pieces import PieceStore
 from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest, migration_backups
 from agentsync.model import SourceKind
@@ -1747,12 +1749,14 @@ def _manifest_apply(
 
 
 def _cache_entries(cache_root: Path, keys: set[str], rendered: set[str]) -> list[Path]:
-    """Cache entry dirs to delete: by action key, or holding a unit whose body hash is a purged H2."""
+    """Cache entry dirs to delete: by action key, or holding a unit whose body hash is a purged H2.  The
+    piece store (``recordings/``) is not a shard: :func:`_piece_victims` covers it."""
     out: set[Path] = set()
     if not cache_root.is_dir():
         return []
+    pieces = PieceStore.under(cache_root).root
     for shard in sorted(cache_root.iterdir()):
-        if not shard.is_dir() or shard.is_symlink():
+        if not shard.is_dir() or shard.is_symlink() or shard == pieces:
             continue
         if shard.name.startswith("tmp-"):
             out.add(shard)
@@ -1771,6 +1775,11 @@ def _cache_entries(cache_root: Path, keys: set[str], rendered: set[str]) -> list
             if any(isinstance(u, dict) and u.get("body_sha256") in rendered for u in units):
                 out.add(entry)
     return sorted(out)
+
+
+def _piece_victims(cache_root: Path, canonical: set[str]) -> list[str]:
+    """The recordings in the piece store (spec 4.1) whose canonical hash is a purged item's."""
+    return sorted(set(PieceStore.under(cache_root).pending()) & canonical)
 
 
 def _scrub_file(path: Path, scrubber: _Scrubber) -> bool:
@@ -1928,6 +1937,7 @@ def _purge_locked(
         scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=False)
         log_scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=True)
         cache_victims = _cache_entries(expand(config.cache_dir), mt.action_keys, mt.rendered | plan.rendered)
+        piece_victims = _piece_victims(expand(config.cache_dir), mt.canonical | plan.canonical)
         citing = _topics_citing(repo, sp.db, set(docs_paths))
         items = tuple(sorted(plan.ids))
         if dry_run:
@@ -1938,7 +1948,7 @@ def _purge_locked(
                 items=items,
                 docs_paths=tuple(docs_paths),
                 blobs_targeted=len(plan.target_blobs),
-                cache_entries_removed=len(cache_victims),
+                cache_entries_removed=len(cache_victims) + len(piece_victims),
                 citing_pages=tuple(citing),
                 remote="dry-run",
                 notes=(f"{len(graph)} commit(s) would be rewritten",),
@@ -1998,6 +2008,9 @@ def _purge_locked(
         )
         for entry in cache_victims:
             _rmtree(entry)
+        store = PieceStore.under(expand(config.cache_dir))
+        for canonical_sha in piece_victims:
+            store.remove(canonical_sha)
         for backup in migration_backups(sp.db):  # a pre-migration copy still holds the purged rows
             backup.unlink(missing_ok=True)
             notes.append(f"deleted the pre-migration manifest copy {backup.name}")
@@ -2041,7 +2054,7 @@ def _purge_locked(
             survivors=tuple(survivors),
             unreachable_left=len(unreachable),
             paths_left=tuple(paths_left),
-            cache_entries_removed=len(cache_victims),
+            cache_entries_removed=len(cache_victims) + len(piece_victims),
             manifest_rows_removed=rows,
             files_scrubbed=tuple(scrubbed),
             citing_pages=tuple(citing),

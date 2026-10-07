@@ -21,6 +21,7 @@ import pytest
 from agentsync import gitops
 from agentsync import governance as gv
 from agentsync.config import Config
+from agentsync.convert.pieces import PieceStore
 from agentsync.errors import ConfigError
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.graph import auth
@@ -473,6 +474,52 @@ def test_purge_after_an_auto_migration_leaves_no_trace_under_the_state_dir(world
             data = path.read_bytes()
             assert b"SECRET-ALPHA" not in data, path
             assert path == suppressions or b"renamed-secret" not in data, path
+
+
+def test_purge_of_a_recording_removes_its_keyframes_cache_entry_and_stored_pieces(world: World) -> None:
+    """spec section 4, "Purge of the item": the piece store folder of the recording's canonical hash goes
+    with its pages, keyframe sidecars and cache entry; another recording's pieces stay."""
+    repo, rec, other, key = world.repo, sha("recording bytes"), sha("other recording"), "d" * 64
+    d = "mirror/src/weekly-sync.mp4.d"
+    write(repo / f"{d}/00-index.md", page("src", "R1", "Weekly sync.mp4", "RECORDING-INDEX"))
+    write(repo / f"{d}/01-t000000.md", page("src", "R1", "Weekly sync.mp4", "RECORDING-WINDOW"))
+    write(repo / f"{d}/01-t000000.files/t000148.jpg", b"\xff\xd8\xff\xe0KEYFRAME")
+    commit_all(repo, "sync: 1a 0m 0r 0d src", "2026-06-22T10:00:00Z")
+    frame_blobs = {s for s, p in all_blobs(repo).items() if p.endswith(".jpg")}
+    conn = sqlite3.connect(world.config.state_paths.db)
+    conn.execute(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, last_seen_run, "
+        "canonical_sha256) VALUES ('src', 'R1', 'Weekly sync.mp4', 'Weekly sync.mp4', 'live', 1, 1, ?)",
+        (rec,),
+    )
+    for unit_id, path in (("index", f"{d}/00-index.md"), ("window:1", f"{d}/01-t000000.md")):
+        conn.execute(
+            "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, action_key, rendered_sha256, "
+            "status, built_run) VALUES (?, 'src', 'R1', ?, ?, ?, 'ok', 1)",
+            (path, unit_id, key, sha(unit_id)),
+        )
+    conn.execute(
+        "INSERT INTO cache VALUES (?, 'recording-av', '1', 'sha256:0', ?, 'ok', 1, 10, 1, 1)", (key, rec)
+    )
+    conn.commit()
+    conn.close()
+    entry = cache_entry(world.config.cache_dir, key, sha("RECORDING-WINDOW"))
+    store = PieceStore.under(world.config.cache_dir)
+    store.save(rec, 0, "k", b"piece")
+    store.set_progress(rec, done_ms=300_000, total_ms=600_000)
+    store.save(other, 0, "k", b"piece")
+
+    dry = gv.purge(
+        world.config, gv.PurgeSelector(stable_id="R1"), reason=gv.PurgeReason.OPERATOR, dry_run=True
+    )
+    assert dry.cache_entries_removed == 2 and store.pending() == [rec, other]
+    rep = gv.purge(world.config, gv.PurgeSelector(stable_id="R1"), reason=gv.PurgeReason.OPERATOR, now=NOW)
+    assert rep.verified, rep
+    assert rep.cache_entries_removed == 2  # the cache entry and the recording's piece folder
+    assert frame_blobs and not any(exists(repo, b) for b in frame_blobs)
+    assert not (repo / d).exists() and not entry.exists()
+    assert store.pending() == [other]
+    assert world.entry_k.exists()
 
 
 def test_purge_by_docs_glob(world: World) -> None:
