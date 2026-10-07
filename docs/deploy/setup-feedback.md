@@ -317,6 +317,23 @@ Triage: a `[FAIL] docs_repo.permissions` whose fix names the sync was written be
 the next sync, and is gone after it. One whose fix is the `chmod` is a path agentsync does not change, named
 in its detail: the person's step.
 
+The setup folder is closed the same way, by the installer (K25). The agent writes `fix-request.md` with its
+file tool and `local-work/` with step 1's git command, both under its own umask, so they were readable by
+group and other inside `~/agent-context/setup`, and no check looks in that folder
+([CONTRACTS §16.30](../design/CONTRACTS.md), "The setup folder is owner-only after every run"):
+
+- Every `install.sh` run now ends by clearing group and other access on every file and folder in
+  `~/agent-context/setup`: an install run, `--list-folders`, `--report-only`, and `--log-start` and `--log`
+  too. `--report-only` is the one that counts: it is the prompt's last command and follows the agent's last
+  write.
+- It changes only regular files and folders the person owns, follows no symlink, and prints nothing. A dry
+  run changes nothing.
+- `status` still does not check that folder. A `[FAIL]` there would stop step 2 on something the prompt's
+  own steps cause, which is K21 again.
+
+Triage: a report whose fix request says files in `setup/` are readable by others, from a build with this
+fix, means a file there belongs to another user or the folder is a symlink: the walk leaves both alone.
+
 ### The evidence parts
 
 One bring-back file should be enough. The parts below are what a maintainer would otherwise have to ask the
@@ -447,6 +464,7 @@ named as "v5b review, its L<n>").
 | K22 | the report read "fully one command" for an attempt whose first install run had exited 1 on a doctor `[FAIL]` and whose second run came after a fix made by hand: only the last install run was judged, and the issue link said the same (field, 2026-10-07) | agentsync code | since prompt v7 an install run that failed before the attempt's first run that exited 0 makes the outcome "worked with help"; the Summary names it and lists it first under the items that were not one command; a run the agent's tool stopped and a run after the first success do not count; `tests/test_setup_report.py` for the field's log, each order of exits, the earlier attempts and the link |
 | K23 | `fix-request.md` outlives a session and the prompt forbids deleting, so a v8 session appended its request to the v7 one, and after a second report it rewrote its own `## Not used`; neither was in the prompt, and the bring-back carried the earlier round's request again (field, 2026-10-07) | prompt wording | v9's rules say the file is kept from session to session: an earlier session's text stays, each session writes under its own heading (the prompt's version and the date) and rewrites only its own part; step 3's `## Not used` is one per session. The bring-back still carries the whole file, and triage reads from the last heading; `test_prompt_routes_changes_to_the_source_not_the_checkout` |
 | K24 | step 2 with two `--source-local` printed the `docs repo ...` and `sources: ...` lines once per folder, 16 source ids each time: noise, and an agent could not tell what the second block meant (fix requests, 2026-10-06 and 2026-10-07) | installer automation | `install.sh` prints the first call's `docs repo` line and the last call's `sources:` line; every other line, the error stream and the call's exit status are as they were, and `agentsync add-source` by hand still prints both; `tests/test_install_oneshot.py` for three folders against the real agentsync and for a call that fails |
+| K25 | `fix-request.md` and `local-work/` in `~/agent-context/setup` were readable by group and other: the agent writes them under its own umask, the installer closed only its own three files, `--report-only` changed no mode, and doctor's printed `chmod -R` was the only thing that ever closed them (fix request, 2026-10-07) | installer automation | every `install.sh` run that reaches the setup folder ends by clearing group and other access on all of it, `--report-only` and the two `--log` options included; only the default folder, only the person's own regular files and folders, no symlink followed; `tests/test_install_oneshot.py` for each command, the symlinks, a setup log somewhere else and the dry run |
 
 ## 5. Unavoidable steps so far
 

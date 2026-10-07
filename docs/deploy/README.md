@@ -25,7 +25,7 @@ reads. It runs as you, needs **no admin rights**, and keeps everything on the Ma
 | `~/Library/Caches/agentsync/`, `~/Library/Logs/agentsync/` | converter cache (rebuildable), job logs | `agentsync offboard` |
 | `~/Library/LaunchAgents/com.agentsync.{poll,reconcile}.plist` | every 5 min (poll) and hourly (reconcile), only with `--confirm-install-agent` | `agentsync uninstall-agent` / `offboard` |
 | login Keychain, service `agentsync` | the Graph token cache (only after `agentsync graph login`) | `agentsync graph logout` / `offboard` |
-| `~/agent-context/setup/`, `setup-report.md`, `it-request-draft.md` | the setup log and friction log, the setup report, the IT request draft (all 0600) | you |
+| `~/agent-context/setup/`, `setup-report.md`, `bring-back.md`, `it-request-draft.md` | the setup log and friction log, the coding agent's `fix-request.md` and the `local-work/` patch of step 1, the setup report, the one file to bring back, the IT request draft (all 0600, folders 0700: every `install.sh` run closes what the agent wrote in `setup/`) | you |
 
 `init` and `install-agent` exclude `mirror/`, the docs repo's `.git`, the cache and the manifest from Time Machine (all re-derivable from their sources; curated `topics/` is backed up).
 

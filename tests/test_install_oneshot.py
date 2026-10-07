@@ -27,6 +27,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -2230,18 +2231,137 @@ def test_list_folders_total_must_be_a_number(env: dict[str, str]) -> None:
 # ---- setup files are owner-only (K13) ----------------------------------------------------------------------
 
 
+def _agent_writes(env: dict[str, str]) -> dict[Path, int]:
+    """What a coding agent leaves in the setup folder under its own umask (022): the fix request its file
+    tool wrote, the folder and patch of step 1's keep command, a folder below that, and a file with a name
+    nobody planned. Each path with the mode it has to end at; the setup folder itself is left at 0755."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    folders = [setup / "local-work", setup / "local-work" / "notes"]
+    files = [
+        setup / "fix-request.md",
+        setup / "scratch notes.txt",
+        setup / "local-work" / PATCH_NAME,
+        setup / "local-work" / "notes" / "deep.md",
+    ]
+    folders[-1].mkdir(parents=True, exist_ok=True)
+    for f in files:
+        f.write_text("- a made-up request\n", encoding="utf-8")
+        f.chmod(0o644)
+    for d in (setup, *folders):
+        d.chmod(0o755)
+    return {setup: 0o700, **dict.fromkeys(folders, 0o700), **dict.fromkeys(files, 0o600)}
+
+
+def _modes(paths: Iterable[Path]) -> dict[Path, int]:
+    return {p: _mode(p) for p in paths}
+
+
 def test_setup_dir_and_files_are_made_owner_only(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """The installer's own three files, and since the second bring-back (2026-10-07) everything else in the
+    setup folder: what the agent wrote there was readable by group and other."""
     setup = Path(env["HOME"]) / "agent-context" / "setup"
     setup.mkdir(parents=True)
     setup.chmod(0o755)
     for name in ("install.log", "friction.md", "install.out"):
         (setup / name).write_text("earlier\n")
         (setup / name).chmod(0o644)
+    want = _agent_writes(env)
     cp = install_sh(env, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert (setup.stat().st_mode & 0o777) == 0o700
     for name in ("install.log", "friction.md", "install.out"):
         assert ((setup / name).stat().st_mode & 0o777) == 0o600, name
+    assert _modes(want) == want
+    assert f"# run={install_log(env)[-1].split(' run=')[1].split()[0]} " in install_out(env).read_text(), (
+        "the run's output is still copied to install.out"
+    )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--report-only"],
+        ["--list-folders"],
+        ["--log-start", "prompt v{n}, Test Agent"],
+        ["--log", "3", "deviation", "wrote the fix request", "-"],
+        ["--source-local", "/no/such/folder/for/this/test"],
+    ],
+    ids=["report-only", "list-folders", "log-start", "log", "usage-error"],
+)
+def test_every_run_leaves_what_the_agent_wrote_in_the_setup_folder_owner_only(
+    env: dict[str, str], argv: list[str]
+) -> None:
+    """Field report 2026-10-07: fix-request.md and local-work/ were readable by group and other. The agent
+    writes them under its own umask, and no installer command looked at them. ``--report-only`` matters
+    most: it is the prompt's last command, right after the agent's last write to the fix request, and it
+    logs nothing, so it used to change no mode at all. Now every command that gets as far as the setup
+    folder leaves all of it owner-only, whatever its exit status."""
+    want = _agent_writes(env)
+    cp = install_sh(env, *(a.format(n=COMPAT) for a in argv))
+    assert _modes(want) == want, cp.stdout + cp.stderr
+    if argv == ["--report-only"]:
+        text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+        assert "- a made-up request\n" in text.split("## 2. Fix request", 1)[1].split("## 3. Local work")[0]
+        assert "~~~~~~~~~~diff\n- a made-up request\n~~~~~~~~~~" in text.split("## 3. Local work", 1)[1]
+
+
+def test_the_setup_folder_walk_follows_no_symlink_out_of_it(env: dict[str, str], tmp_path: Path) -> None:
+    """Only regular files and folders inside the setup folder change: a link in it to a file or a folder
+    somewhere else leaves that file, that folder and what is in it as they were."""
+    want = _agent_writes(env)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "shared.txt").write_text("not agentsync's\n", encoding="utf-8")
+    for p, mode in ((outside / "shared.txt", 0o644), (outside, 0o755)):
+        p.chmod(mode)
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    (setup / "link-to-file").symlink_to(outside / "shared.txt")
+    (setup / "local-work" / "link-to-folder").symlink_to(outside, target_is_directory=True)
+    assert install_sh(env, "--report-only").returncode == 0
+    assert _modes(want) == want
+    assert _modes([outside, outside / "shared.txt"]) == {outside: 0o755, outside / "shared.txt": 0o644}
+
+    # The setup folder itself a link to a folder somewhere else: nothing there is changed either.
+    elsewhere = tmp_path / "elsewhere"
+    setup.rename(elsewhere)
+    setup.symlink_to(elsewhere, target_is_directory=True)
+    loose = _agent_writes(env)  # written through the link, so these are the files in ``elsewhere``
+    assert install_sh(env, "--report-only").returncode == 0
+    assert all(_mode(p) in (0o644, 0o755) for p in loose if p != setup), _modes(loose)
+
+
+def test_a_setup_log_somewhere_else_is_not_walked(
+    env: dict[str, str], folder: Path, wheel: Path, tmp_path: Path
+) -> None:
+    """``AGENTSYNC_SETUP_LOG`` may name a folder agentsync did not make. The installer still closes that
+    folder and its own files in it, as before, but walks nothing else there."""
+    elsewhere = tmp_path / "a shared folder"
+    (elsewhere / "sub").mkdir(parents=True)
+    (elsewhere / "theirs.txt").write_text("not agentsync's\n", encoding="utf-8")
+    for p, mode in ((elsewhere / "theirs.txt", 0o644), (elsewhere / "sub", 0o755)):
+        p.chmod(mode)
+    cp = install_sh(
+        {**env, "AGENTSYNC_SETUP_LOG": str(elsewhere / "install.log")},
+        str(wheel),
+        "--source-local",
+        str(folder),
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert _mode(elsewhere / "install.log") == 0o600
+    assert _modes([elsewhere / "theirs.txt", elsewhere / "sub"]) == {
+        elsewhere / "theirs.txt": 0o644,
+        elsewhere / "sub": 0o755,
+    }
+
+
+@pytest.mark.parametrize(
+    "argv", [["--report-only"], ["--log", "3", "deviation", "x", "-"]], ids=["report", "log"]
+)
+def test_a_dry_run_changes_no_mode_in_the_setup_folder(env: dict[str, str], argv: list[str]) -> None:
+    want = _agent_writes(env)
+    cp = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, *argv)
+    assert cp.returncode == 0, cp.stderr
+    assert all(_mode(p) in (0o644, 0o755) for p in want), _modes(want)
 
 
 # ---- install.out: what the agent saw (K17) -----------------------------------------------------------------

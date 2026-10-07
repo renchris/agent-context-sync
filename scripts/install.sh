@@ -15,9 +15,10 @@
 #                           instead of building one
 #   --report-only           only write the setup report (step 9), then exit; installs and logs nothing, except
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
-#                           that attempt has no end line yet. When --log-start stopped that attempt (a copy of
-#                           the prompt that is not this installer's), its NEXT: says to copy the prompt again
-#                           and not to bring this report back
+#                           that attempt has no end line yet, and that it leaves the setup folder's contents
+#                           owner-only, as every run does (see "Setup log"). When --log-start stopped that
+#                           attempt (a copy of the prompt that is not this installer's), its NEXT: says to
+#                           copy the prompt again and not to bring this report back
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
 #                           (the line step 1 of the setup prompt checks)
@@ -61,7 +62,8 @@
 # was synced before)", and its log line ends with kept=N added=M.
 #
 # Friction log: --log-start and --log only append to $AGENTSYNC_FRICTION_LOG (default
-# ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077), which
+# ~/agent-context/setup/friction.md; the directory is made 0700 and the file 0600, under umask 077, and
+# whatever else is in that default directory is made owner-only: see "Setup log"), which
 # `agentsync setup-report` reads. Each must be the first argument and takes no other option; they need no uv
 # and no agentsync, write no install.log line, no install.out and no report, and print one confirmation line.
 #   --log-start AGENT  AGENT is 'prompt vN, TOOL': N is the version in the first line of the prompt the
@@ -182,7 +184,12 @@
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
 # and redacts it. git runs read-only (GIT_OPTIONAL_LOCKS=0: not even the index's stat
 # cache is rewritten). Every log write also sets the setup directory to 0700 and install.log, friction.md
-# and install.out in it to 0600 (files made earlier with a looser mode included).
+# and install.out in it to 0600 (files made earlier with a looser mode included). The coding agent writes
+# into that directory too, under its own umask: fix-request.md, and local-work/ with the patch of step 1's
+# keep command. So as its last act every run but a dry run, --list-folders and --report-only included,
+# clears group and other access on every file and folder in the default ~/agent-context/setup, and so do
+# --log-start and --log (tighten_setup_tree: this user's regular files and folders only, no symlink
+# followed; a directory $AGENTSYNC_SETUP_LOG names elsewhere is not walked).
 #
 # Output copy: the same runs also copy everything they print (stdout and stderr, as the agent saw it) to
 # install.out next to install.log (0600): one "# run=<id> <UTC> install.sh <arguments>" line, then the output.
@@ -231,8 +238,22 @@ FRICTION_KINDS="question, click, approval, deviation, error or prompt"
 PROMPT_UNSTATED=7 # the last setup prompt whose --log-start named no version: a copy that names none is that or older
 PROMPT_SOURCE="README.md on the main branch of https://github.com/renchris/agent-context-sync"
 PROMPT_STOPPED="install.sh --log-start: the pasted setup prompt is" # how the error line of a stopped attempt starts
+# The default setup folder 0700 and everything in it owner-only: DIR is touched only when it is
+# ~/agent-context/setup, a real folder (not a symlink) that this user owns. The coding agent writes there
+# under its own umask (fix-request.md with its file tool, local-work/ and its patch with step 1's git
+# command), so those were readable by group and other inside a folder that was not (field 2026-10-07). Only
+# group and other bits are cleared, on regular files and folders this user owns: no mode is widened, and a
+# symlink is neither changed nor followed, so nothing outside the folder is reached. A setup log somewhere
+# else ($AGENTSYNC_SETUP_LOG) is in a folder agentsync did not make: that one is not walked.
+tighten_setup_tree() { # DIR
+	[ "$1" = "$HOME/agent-context/setup" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] || return 0
+	chmod 700 "$1" 2>/dev/null || true
+	/usr/bin/find "$1" -mindepth 1 \( -type f -o -type d \) -user "$EUID" -perm +077 \
+		-exec chmod go-rwx {} + 2>/dev/null || true
+}
 # Append TEXT (whole lines) to the friction log: its directory 0700 when this creates it (or it is the default
-# ~/agent-context/setup), the file 0600; a file that does not end in a newline gets one first.
+# ~/agent-context/setup, whose contents are then made owner-only too), the file 0600; a file that does not
+# end in a newline gets one first.
 friction_append() {
 	local f d
 	f="$(friction_file)"
@@ -241,8 +262,8 @@ friction_append() {
 	umask 077
 	if [ ! -d "$d" ]; then
 		mkdir -p "$d" || return 1
-	elif [ "$d" = "$HOME/agent-context/setup" ] && [ ! -L "$d" ] && [ -O "$d" ]; then
-		chmod 700 "$d" 2>/dev/null || true
+	else
+		tighten_setup_tree "$d"
 	fi
 	if [ -s "$f" ] && [ -n "$(tail -c 1 "$f" 2>/dev/null)" ]; then
 		printf '\n' >>"$f" || return 1
@@ -1157,6 +1178,9 @@ on_exit() {
 		esac
 	fi
 	finish_setup_log "$rc"
+	# Last, so it also covers what this run wrote and what the agent wrote before it: --report-only is the
+	# prompt's last command and comes right after the agent's last write to fix-request.md.
+	[ "$DRY_RUN" -eq 1 ] || tighten_setup_tree "$SETUP_DIR"
 	[ -z "$DOCTOR_LOG" ] || rm -f "$DOCTOR_LOG"
 	[ -z "$SYNC_OUT" ] || rm -f "$SYNC_OUT"
 	[ -z "$LOOP_OUT" ] || rm -f "$LOOP_OUT"

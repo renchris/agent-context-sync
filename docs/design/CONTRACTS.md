@@ -4790,7 +4790,9 @@ finished` to friction.md and then runs the same command, which prints the prefil
 paragraphs supersede the v4 ones where they differ).
 
 **install.sh setup log.** Every real run (never `--dry-run`) appends to `$AGENTSYNC_SETUP_LOG` (default
-`~/agent-context/setup/install.log`; directories it creates are 0700 and the file 0600, under `umask 077`). Every line
+`~/agent-context/setup/install.log`; directories it creates are 0700 and the file 0600, under `umask 077`;
+**amended 2026-10-07, §16.30 "The setup folder is owner-only after every run":** and everything else in the
+default setup folder is made owner-only at the end of every run). Every line
 is `<UTC ISO-8601> run=<YYYYmmddTHHMMSSZ>-<pid> <rest>`, with three kinds of `<rest>`:
 `start install.sh commit=<12-hex[-dirty]|-> kind=checkout|wheel source=<%q path> args=<every argument, %q>` (the
 commit only for a checkout with a `.git` and the Command Line Tools present, so `/usr/bin/git` never raises the
@@ -8870,3 +8872,52 @@ command, one `docs repo` line that says `created` and counts the files written, 
 all four ids, the three `added source` lines still there and in order; the field's command, two folders
 both already configured: one block; one folder: both lines; and with the stub, a call that exits 78 on the
 first of two folders: exit 1, the tool's own error, no second call, `rc=78` in the setup log).
+
+#### The setup folder is owner-only after every run (amends §16.14; `scripts/install.sh`)
+
+The prompt has the agent write two things into `~/agent-context/setup`: `fix-request.md`, with its file
+tool, and `local-work/` with a patch, by step 1's `git format-patch`. Both are written under the agent's
+umask, not agentsync's 077, so they were 0644 and 0755. `tighten_setup_modes` set the folder to 0700 and
+exactly three files to 0600 (`install.log`, `friction.md`, `install.out`), and never ran under
+`--report-only`, the prompt's last command, which comes right after the agent's last write. Doctor tests
+`~/agent-context` for its own mode and does not look inside `setup/`. The files were not reachable (two 0700
+folders stand in front of them), but both hold real names.
+
+Not covered by §16.29's heal: `cycle._tighten_own_paths` is Python that a sync, `init` and `add-source` run.
+It closes the agent-context folder itself, the docs repo, the cache and the logs, and does not walk
+`setup/`. No sync runs after the last write to `fix-request.md`, so the walk is the installer's.
+
+```sh
+tighten_setup_tree DIR   # scripts/install.sh
+```
+
+- **What it does.** `chmod 700 DIR`, then `/usr/bin/find DIR -mindepth 1 \( -type f -o -type d \) -user
+  <uid> -perm +077 -exec chmod go-rwx {} +`. Only group and other bits are cleared, so no mode is widened,
+  and an entry that is already owner-only is not touched.
+- **Only the default folder.** DIR must be exactly `$HOME/agent-context/setup`, a real folder (not a
+  symlink) that the user owns. `AGENTSYNC_SETUP_LOG` may name a folder agentsync did not make: there the
+  installer still closes the folder and its own three files, as before, and walks nothing.
+- **No symlink.** `find` does not follow one, and `-type f` and `-type d` skip the link itself, so a link in
+  the folder changes nothing where it points.
+- **When.** As the last act of every run that got past its arguments and is not a dry run (`on_exit`, after
+  the report, the bring-back file and the setup log): an install run, `--list-folders`, `--report-only`, a
+  usage error, a run stopped by a signal. And in `--log-start` and `--log` (`friction_append`, where the
+  folder was already set to 0700). `--help`, `--version` and a command line that does not parse touch
+  nothing, as before.
+- **Quiet.** It prints nothing and cannot fail a run: every error is ignored.
+- `tighten_setup_modes` is unchanged and still runs at every log write. The walk is not in it: a run writes
+  about ten log lines, and the walk is needed once, at the end.
+
+Doctor is left as it is. Adding `setup/` to `docs_repo.permissions` would turn something the prompt's own
+steps cause into a `[FAIL]` that stops `install.sh` before its sync, which is the fault §16.29 removed.
+
+`docs/deploy/README.md`'s table of what is left on the Mac now names `fix-request.md`, `local-work/` and
+`bring-back.md` in the setup row.
+
+Tests: `tests/test_install_oneshot.py` (a fix request, a patch, a folder below `local-work/` and a file
+with an unplanned name, all written 0644 and 0755: owner-only after an install run, which still copies its
+output to `install.out`; the same after `--report-only`, whose bring-back file still holds sections 2 and 3,
+after `--list-folders`, `--log-start`, `--log` and a usage error; a link in the folder to a file and to a
+folder outside it, and the setup folder itself as a link: nothing changed where they point; a setup log
+somewhere else: a file and a folder beside it keep their modes; a dry run of `--report-only` and of `--log`:
+no mode changed).
