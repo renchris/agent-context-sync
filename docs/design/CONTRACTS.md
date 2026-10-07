@@ -4691,7 +4691,8 @@ development only; DYLD_*/PYTHON* never reach the child; refusals exit 64 `PROGRA
 non-dry cycle. `paths.CONFIG_ENV` (`AGENTSYNC_CONFIG`) is honoured by `default_config_path`. `cli.main` runs under
 umask 077 (restored on return); `gitops.ensure_repo` creates the repo (and missing parents) 0700 and sets
 `core.sharedRepository=0600`; pages and curate outputs are written 0600 (**amended 2026-10-06, §16.22:** every
-non-dry cycle also makes what an agent wrote owner-only); doctor adds `docs_repo.permissions`
+non-dry cycle also makes what an agent wrote owner-only; **amended 2026-10-07, §16.29:** and the cache, the
+logs and the agent-context folder, as `init` and `add-source` now do too); doctor adds `docs_repo.permissions`
 (after `docs_repo.symlinks`), a child-interpreter check inside `launchd.*`, and the CLI adds
 `network.proxy.job` (the LaunchAgent's own proxy resolution). `install-agent` refuses (78) a live Graph config
 whose proxy comes only from the shell environment. `offboard` also handles `launcher-app`, `tcc-grant`
@@ -4743,6 +4744,9 @@ matches a source whose `path` has the same `slug.collision_key` (NFC + casefold)
 confirms it. A path typed back in lower case, or with a composed é where the disk holds e and an accent, was
 appended as a second live source on the same folder. The file system has the last word: on a case-sensitive
 volume two folders that differ only in case stay two. The message names the path the source has.
+**Amended (2026-10-07, §16.29):** "owner-only modes" is more than the folders themselves. After them, setup
+makes owner-only what every sync does (`cycle._tighten_own_paths`), so `install.sh`'s status step, which
+comes next, has no `docs_repo.permissions` FAIL that a sync would have cleared.
 
 `scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
 passes them all to `agentsync init --source-local …` when the config does not exist, or runs
@@ -5966,6 +5970,10 @@ and `.git` are not walked (the publisher writes 0600, git writes under `core.sha
 mode there is still doctor's to report, as is a path the cycle could not change (one warning with a count, no
 path). Modes are not content, so this alone never makes a commit. A dry run changes nothing, and sync still
 runs no doctor check: the FAIL simply has no cause left when `status` next looks.
+**Amended (2026-10-07, §16.29):** the function is now `cycle._tighten_own_paths(config)`. It also covers the
+docs repo folder itself, the agent-context folder and the cache and log folders, looks at no more than 2000
+entries below each tree, and is called by `init` and `add-source` too. The check's fix names the sync when
+a sync clears what it found.
 
 **install.sh.**
 
@@ -8291,3 +8299,93 @@ line, the mark, and the `NEXT:`; both tools' pre-allow rules against every comma
 install command included), `tests/test_setup_report.py` (v8 and v9 read with v7's layout; the form's failed
 step labels for v7, v8 and v9), `tests/test_install_oneshot.py` and `tests/test_launcher.py` (the number the
 installer prints and logs).
+
+#### A re-run does not stop on a permission agentsync clears itself (amends §16.13 and §16.22; `agentsync.cycle`, `agentsync.cli`, `agentsync.ops.doctor`)
+
+A v8 run on a corporate Mac that already runs agentsync (field, 2026-10-07) got to step 2 and lost its round
+there. `install.sh --source-local ... --source-local ...` runs status before its sync. Status printed `[FAIL]
+docs_repo.permissions`: group and other could read the docs repo's `_eval` folder, which an earlier session's
+coding agent had written under its own umask. The sync was skipped (`status-failed`) and the run exited 1 on
+a `NEXT:` that led to `chmod -R go-rwx ...; git config core.sharedRepository 0600`. The prompt lets the agent
+run only `install.sh` and `agentsync` commands, so it stopped. §16.22 had made a sync clear that folder, but
+the check that stops the run comes before the sync.
+
+Three changes. `install.sh`'s steps, options and exit codes are what they were.
+
+**What is made owner-only** (`cycle._tighten_own_paths(config)`, private; it replaces §16.22's
+`_tighten_agent_writes(repo)`). The paths are agentsync's own, and each is one `docs_repo.permissions` looks
+at (`cycle._own_paths`):
+
+| Path | What is changed |
+|---|---|
+| the agent-context folder | the folder itself. It is the config's folder when the docs repo is inside it and it is not the home folder, which is the check's rule |
+| the docs repo | the folder itself (new) and each entry at its top: the entry, not its contents (§16.22) |
+| `_eval/` and `topics/` in the docs repo | every entry below (§16.22) |
+| the cache folder and the log folder (`cache_dir`, `log_dir`) | the folder itself and every entry below |
+
+- Only group and other bits are cleared, on regular files and folders, so no mode is widened: 0644 becomes
+  0600, 0755 becomes 0700, 0444 becomes 0400, and 0600 stays 0600.
+- No symlink is followed or changed. An entry that is a symlink is left alone, a tree that is a symlink is not
+  walked, and each mode is changed through a descriptor opened with `O_NOFOLLOW` (§16.22).
+- The walk is bounded: at most 2000 entries below each tree (`_OWN_WALK`), in the order the check walks them.
+  The check samples 500 a tree, so every entry it can name in these trees is one the walk reaches. A cache
+  holds a few entries per converted file, and no sync reads all of it for this.
+- `mirror/` and `.git` are still not walked: the publisher writes pages 0600, and git writes under
+  `core.sharedRepository`, which `gitops.ensure_repo` sets to `0600` in every non-dry cycle and in `init` and
+  `add-source`. A docs repo from before that setting gets it there, with no command of its own.
+- A cache or log folder that is the home folder, or holds it, is left out: a config may name any folder
+  there, and that one is not agentsync's alone. The check still reports it, with the chmod.
+- A path that does not exist yet is skipped. A path that cannot be changed is skipped with one warning, a
+  count and no path: `N path(s) could not be made owner-only (agentsync status names them)`.
+- A dry run changes nothing, and `status` changes nothing.
+
+**Who calls it.** Every non-dry cycle, right after `Publisher.ensure_scaffold`, as before. And now `init` and
+`add-source` (`cli._ensure_setup`), after the folders they already made 0700 with one `tightened <folder> to
+0700 (was 0755): it holds tenant data` line each (the agent-context folder, the docs repo, `.git`, the cache,
+the logs, the state dir). When it changes a path they print one more line, a count and no path:
+`tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`.
+
+`install.sh` runs one of the two in its config step (step 4), which comes before status (step 5). So on the
+field state step 5 has no permissions FAIL to stop on, step 6 syncs, and the run ends on the loop's `NEXT:`
+with exit 0. A person who never runs `install.sh` again is covered by the cycle: the FAIL is gone after the
+next sync, whether they run it or the background job does.
+
+Rejected: a second interpreter entry point for `install.sh` to call before status (step 4's command already
+runs there, and is where setup makes modes owner-only). Also rejected: `install.sh` syncing over this one
+FAIL and asking status again. That prints a `[FAIL]` line the run then withdraws, needs a third status call,
+and either starts the LaunchAgents on a state the check may still fail or adds a second place that decides
+whether they start.
+
+**The check's fix** (`ops.doctor._check_permissions`, read-only as before). The detail is what it was. The fix
+now depends on the paths the check found (`cycle._sync_leaves`, private):
+
+- Every one is a path a sync makes owner-only, a regular file or a folder, and this user's:
+  `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's `NEXT:`
+  already sends it to the fix on the `[FAIL]` line (§16.20).
+- Any other: the fix it had, `chmod -R go-rwx <the checked folders>; git -C '<docs repo>' config
+  core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
+  that is neither a file nor a folder, or one of another user's (only its owner may change a mode). No sync
+  clears it, so the FAIL stays, the fix is the person's, and a setup run still stops there (step 5, exit 1,
+  no sync).
+
+**Limits.**
+
+- "This user's" is the owner id. A path this user owns and still cannot change (an immutable flag, a volume
+  that keeps no modes) gets the sync as its fix and is still a FAIL after it; the sync's warning says a path
+  could not be changed.
+- Below a folder at the top of the docs repo other than `_eval/` and `topics/` nothing is changed, only the
+  folder itself. What is loose inside is the check's to report, with the chmod.
+
+Tests: `tests/test_cycle.py` (one cycle over an `_eval` folder, a topic folder, a cache folder, a log, the
+docs repo and the agent-context folder, each readable by group and other, and a docs repo without
+`core.sharedRepository`: the fix names the sync, a dry run changes nothing, then every mode is owner-only, the
+check is ok and the tree is not dirty; no symlink followed, a cache folder that is a symlink left alone,
+`mirror/` not walked, and the chmod as the fix for what is left; a log folder that is the home folder, or
+holds it, left as it is; no mode widened; the bound, with what the walk does not reach left to the chmod; a
+path of another user's left as it is, with the warning, the FAIL and the chmod; an entry swapped for a
+symlink), `tests/test_review_fixes.py` (a page inside `mirror/`: the chmod; the `mirror` folder itself: the
+sync), `tests/test_cli.py` (`init` and `add-source` each: the two lines, the modes, the check ok, and nothing
+printed the second time), `tests/test_install_oneshot.py` (with the real agentsync behind a stub uv: the
+field layout, then the field's command: no `[FAIL]` line, a sync, exit 0, the modes, `core.sharedRepository`
+and every step's log line; then a page inside `mirror/`: exit 1 at status with the chmod, no sync, and the
+`_eval` folder still cleared).

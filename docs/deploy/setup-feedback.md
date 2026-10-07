@@ -270,6 +270,25 @@ the install run's `kept`. A report with no `folders:` line comes from an install
 counts, or from a config the installed agentsync could not read; `install.sh --list-folders` then printed a
 `warning:` line, which the installer output's tail shows.
 
+A re-run also no longer stops on what an earlier session left readable by others (K21). A coding agent's
+file tool writes under the agent's own umask, so the docs repo's `_eval` folder was readable by group and
+other. Step 2's `install.sh` ran status before its sync, stopped on `[FAIL] docs_repo.permissions`, and its
+`NEXT:` led to a `chmod` the prompt does not let the agent run
+([CONTRACTS §16.29](../design/CONTRACTS.md), "A re-run does not stop on a permission agentsync clears itself"):
+
+- The installer's config step (`agentsync add-source`, or `agentsync init` with no folder) now makes
+  agentsync's own paths owner-only before status looks, as every sync does: the docs repo's top level, its
+  `_eval/` and `topics/` folders, the cache and the logs. It prints
+  `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`, a count and no path.
+- The check's fix names a command the agent may run when one clears it:
+  `(fix: agentsync sync (it makes these owner-only))`.
+- The `chmod` is still the fix for a path agentsync does not change: one inside `mirror/` or `.git`, or one
+  of another user's. A run still stops there, and that stop is the person's to clear.
+
+Triage: a `[FAIL] docs_repo.permissions` whose fix names the sync was written between an agent's write and
+the next sync, and is gone after it. One whose fix is the `chmod` is a path agentsync does not change, named
+in its detail: the person's step.
+
 ### The evidence parts
 
 One bring-back file should be enough. The parts below are what a maintainer would otherwise have to ask the
@@ -395,6 +414,7 @@ named as "v5b review, its L<n>").
 | K18 | a copy of the prompt saved before an edit was pasted again, twice, and nobody knew it was old: the edit had kept the version (still v7), the copy's check read "7 or higher", and the installer wrote its own number as the attempt's `Prompt:` line (field, 2026-10-06) | prompt wording and installer automation | since v8 the version moves with every change of the text, step 1 hands it to `install.sh --log-start`, which stops a copy that is not its own, and the report names the copy's version; `test_the_prompt_text_changes_only_with_its_version`, `test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1`, and `tests/test_install_oneshot.py` for each shape of the value |
 | K19 | the bring-back file was written right after the first sync, while the files from before the upgrade were still being read again, so the next question took another round (field, 2026-10-06) | prompt wording and agentsync code | `sync` prints a `sync again:` note while another sync reads more of them, and v8's step 3 runs a sync that downloads nothing (`sync --materialise-budget 0`) once the loop is done and again while the note says so, up to 12 times in all, before the report; `test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`, and `tests/test_loop.py` for the note |
 | K20 | a Mac that already synced two folders was asked which folders to sync again; the tool ran unattended, the question came back unanswered, and the agent stopped and waited as v8's step 1 says, with nothing done (field, 2026-10-07) | prompt wording and installer automation | `install.sh --list-folders` marks the folders the config already syncs; v9's step 1 then asks only whether to add one and goes on when it cannot ask, and step 2 names `install.sh` with no `--source-local`; the report expects no folder question there and says what was kept; `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`, and `tests/test_install_oneshot.py` for the list and the run with no folder |
+| K21 | on a Mac that already ran agentsync, step 2's `install.sh` stopped at status on `[FAIL] docs_repo.permissions` (an `_eval` folder an earlier session's agent had written under its own umask), skipped the sync and named a `chmod` the agent may not run, so the round ended before the loop (field, 2026-10-07) | agentsync code | `add-source` and `init`, which `install.sh` runs before status, make agentsync's own paths owner-only as every sync does (the docs repo's top level, `_eval/`, `topics/`, the cache, the logs); the check's fix names `agentsync sync` when a sync clears what it found and keeps the `chmod` for the rest; `tests/test_install_oneshot.py` for the field layout under the real installer run, `tests/test_cli.py` for the two commands, and `tests/test_cycle.py` for the paths, the bound and a path of another user's |
 
 ## 5. Unavoidable steps so far
 
