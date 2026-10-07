@@ -1025,6 +1025,7 @@ _OCR_PICTURE = "[text in an image on this page, read by on-device OCR (Apple Vis
 _NO_TEXT_FOUND = "[scanned page: no text layer; OCR found no text]"
 _OVER_LIMIT = "[scanned page: no text layer; over the OCR page limit]"
 _NO_TEXT_REASON = "no text layer (scanned or image-only PDF; OCR not run)"
+_NO_TEXT_FOUND_REASON = "no text layer (scanned or image-only PDF; on-device OCR found no text)"
 _TEXT = ["Contoso site survey, with a long first line", "and a second line of the text layer below"]
 _BESIDE = "96 0 0 64 150 20"  # where a picture is clear of the two lines of _TEXT
 
@@ -1093,12 +1094,13 @@ def test_a_pdf_of_page_images_is_a_page_when_ocr_reads_it_and_a_stub_when_it_fin
     )
     assert u.title == "Contoso lease agreement"
     assert u.summary == "PDF: 2 page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text)"
-    # Nothing on any page: the stub it has without an engine, and a settled result, not a failure.
+    # Nothing on any page: a settled result, not a failure, and its reason does not say OCR was not run.
     blank = shade_engine(tmp_path / "blank", {91: {"skipped": True}})
     with pytest.raises(UnreadableSourceError) as nothing:
         _ocr_one(src, blank)
-    assert str(nothing.value) == _NO_TEXT_REASON and not isinstance(nothing.value, ocr.OcrError)
+    assert str(nothing.value) == _NO_TEXT_FOUND_REASON and not isinstance(nothing.value, ocr.OcrError)
     assert [len(run) for run in reads(blank.helper)] == [2]
+    assert not PdfConverter(CFG, ocr=blank).outdated(PdfConverter(CFG).version(), _NO_TEXT_FOUND_REASON)
 
 
 def test_pdf_ocr_stops_at_the_page_limit_and_says_which_pages_it_did_not_read(
@@ -1554,7 +1556,7 @@ def test_a_pdf_of_page_images_the_helper_failed_on_keeps_the_stub_of_a_mac_witho
     # OCR that worked and found nothing is a settled result under the OCR version: it is not read again.
     blank = shade_engine(tmp_path / "blank", {})
     settled = _through_the_cache(src, Registry.default(CFG, ocr=blank), tmp_path / "cache")
-    assert settled.status is ConversionStatus.UNREADABLE and settled.reason == _NO_TEXT_REASON
+    assert settled.status is ConversionStatus.UNREADABLE and settled.reason == _NO_TEXT_FOUND_REASON
     assert settled.converter_version.endswith(_OCR_IDENTITY) and not settled.from_cache
     assert _through_the_cache(src, Registry.default(CFG, ocr=blank), tmp_path / "cache").from_cache
     assert len(reads(blank.helper)) == 1

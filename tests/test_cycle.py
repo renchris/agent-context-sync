@@ -1828,8 +1828,8 @@ def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
 ) -> None:
     """The files OCR exists for were mirrored before it: an image refused as ``no converter``, a scan
     quarantined as ``no text layer``, a PDF whose scanned page was a marker.  With an engine each is read
-    again, once.  A page the engine adds nothing to stays as it is, byte for byte, and so does the stub of a
-    scan it reads nothing in."""
+    again, once.  A page the engine adds nothing to stays as it is, byte for byte.  The stub of a scan it
+    reads nothing in no longer says OCR was not run."""
     scans = local_source_dir / "scans"
     scans.mkdir()
     note, agreement, blank = (
@@ -1850,7 +1850,7 @@ def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
     assert body.rstrip().endswith("[scanned page: no text layer]")
     assert run(sample_config).commit_sha is None and _reread_record(sample_config) == (True, [])
     documents = [PLAIN_PDF, "projects/sample.pptx", "projects/sample.docx", KICKOFF]
-    before = _mirror_bytes(sample_config, blank, *documents)
+    before = _mirror_bytes(sample_config, *documents)
 
     said = {70: ["Loading dock"], 90: ["Delivery note 7"], 91: ["Signed in Rotterdam"]}
     engine = shade_engine(tmp_path / "ocr-bin", said)
@@ -1869,9 +1869,12 @@ def test_files_mirrored_before_there_was_an_engine_are_read_by_it_once(
     assert body.rstrip().endswith("(Apple Vision)]\n\nDelivery note 7")
     fm, body = _mirror_page(sample_config, agreement)
     assert "+ocr-paper-vision-" in fm["converter"] and body.rstrip().endswith("Signed in Rotterdam")
-    assert _mirror_bytes(sample_config, blank, *documents) == before
+    assert _mirror_bytes(sample_config, *documents) == before
+    fm, _body = _mirror_page(sample_config, blank)
+    assert (fm["status"], fm["reason"]) == ("unreadable", pdf_mod._NO_TEXT_FOUND)
+    assert "+ocr-paper-vision-" in fm["converter"]
     assert sorted(c.path for c in second.changes) == sorted(
-        slug.mirror_rel_path(SID, rel) for rel in (SITE_PLAN, note, agreement)
+        slug.mirror_rel_path(SID, rel) for rel in (SITE_PLAN, note, agreement, blank)
     )
     rows = _file_rows(sample_config)
     assert [rows[rel].state for rel in (SITE_PLAN, note, blank)] == [

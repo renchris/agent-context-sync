@@ -6742,12 +6742,13 @@ Signed in Rotterdam
   page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text); text of 1 picture(s) read by
   on-device OCR; 1 comment(s) on 1 page(s)`. It never holds text OCR read.
 - **A PDF of page images** is a page as soon as OCR reads a line on any page. When OCR reads every page it
-  may and finds nothing, and no comment is listed, it is refused with the reason it has without an engine,
-  `no text layer (scanned or image-only PDF; OCR not run)`: a settled UNREADABLE result, cached under the
-  version with OCR. The reason keeps its wording from before OCR, although OCR did run here; the stub's
-  `converter:` line, which ends in the engine's identity, is what says so. When pages past the limit were
-  not read the reason says so: `no text layer (scanned or image-only PDF; OCR found no text on the first
-  100 pages, the rest are over the OCR page limit)`.
+  may and finds nothing, and no comment is listed, it is refused with a reason of its own, `no text layer
+  (scanned or image-only PDF; on-device OCR found no text)` (`_NO_TEXT_FOUND`): a settled UNREADABLE result,
+  cached under the version with OCR. Only a converter with an engine gives that reason, so no key of a Mac
+  without one moves, and `outdated` asks about the `OCR not run` stub only: a file OCR read and found
+  nothing in is not read again. A file none of whose pages PDFium could render keeps `OCR not run`, which
+  is true of it. When pages past the limit were not read the reason says so: `no text layer (scanned or
+  image-only PDF; OCR found no text on the first 100 pages, the rest are over the OCR page limit)`.
 - **Escaping.** Every line OCR read goes through `image._ocr_lines` (above): no heading, rule, setext
   underline, code fence, HTML block or `<!-- page: N -->` anchor can come out of a picture.
 - **Failure** (plan D10). Any failure of the OCR pass is one `OcrError("on-device OCR failed")`, raised
@@ -7302,8 +7303,8 @@ Every new name in `agentsync.cycle` is private (`_REREAD_META`, `_REREAD_BATCH`,
 
 Tests: `tests/test_cycle.py` (a PDF from before comments gains them, one without comments keeps its page byte
 for byte, a floor above the running emitter and a dry run read nothing, and once done none of the three
-queries runs; an image, a scan and a scanned page from before the engine are read by it once, a blank scan
-keeps its stub and four documents their pages; a label rule keeps a refused image unread, and without the
+queries runs; an image, a scan and a scanned page from before the engine are read by it once, a blank scan's
+stub says OCR found no text and four documents keep their pages; a label rule keeps a refused image unread, and without the
 rule it is read; a failed re-read: nothing committed, hashes and verdict in place, one alarm, no second read
 until the capabilities change; an online-only file, an excluded file and a `materialise PATH` run, then the
 file downloaded; a file evicted after the walk; a file that cannot be read: tried once, its page and

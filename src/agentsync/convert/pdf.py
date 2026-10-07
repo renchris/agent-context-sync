@@ -84,6 +84,8 @@ _ENGINE = "pypdfium2:text-range"
 # Reasons of the typed errors (the stub page's ``reason``); C15 section 9 item 25 names the quarantine code.
 _ENCRYPTED_PDF = "encrypted-pdf"
 _NO_TEXT = "no text layer (scanned or image-only PDF; OCR not run)"
+# The same file once OCR has read its pages and found nothing: only a converter with an engine says so.
+_NO_TEXT_FOUND = "no text layer (scanned or image-only PDF; on-device OCR found no text)"
 _NO_TEXT_PAST_LIMIT = (  # {}: the page limit
     "no text layer (scanned or image-only PDF; OCR found no text on the first {} pages, "
     "the rest are over the OCR page limit)"
@@ -882,8 +884,9 @@ class PdfConverter:
         again for.  ``reason`` is None for a page, else the reason of the stub the file got.
 
         Two things are: an emitter below ``_REREAD_BELOW`` (comments were not kept), and, with an engine, a
-        version without one (OCR has not read the file).  Of the stubs only the ``no text layer`` one is
-        asked about: OCR exists for that file, and a scan can carry comments.
+        version without one (OCR has not read the file).  Of the stubs only the ``no text layer (… OCR not
+        run)`` one is asked about: OCR exists for that file, and a scan can carry comments.  The stub of a
+        file OCR read and found nothing in has another reason, and is settled.
 
         Never when ``produced`` cannot be read as a version or names an emitter newer than the running one.
         A re-read writes under the running emitter, so for the floor the answer about what it wrote is
@@ -934,10 +937,11 @@ class PdfConverter:
                 log.warning("%s: on-device OCR failed: %s", name, detail)
                 raise OcrError(_OCR_FAILED) from None
         if not comments and not any("".join(p.split()) for p in pages) and not any(read.pages.values()):
-            # _NO_TEXT is also the reason of a file OCR read to its end and found no text in.
-            raise UnreadableSourceError(
-                _NO_TEXT_PAST_LIMIT.format(MAX_PAGES) if read.over_limit else _NO_TEXT
-            )
+            # The reason says what was done: OCR did not run (no engine, the fallback, no page PDFium could
+            # render), it read every page it may and found nothing, or it also left pages unread.
+            if read.over_limit:
+                raise UnreadableSourceError(_NO_TEXT_PAST_LIMIT.format(MAX_PAGES))
+            raise UnreadableSourceError(_NO_TEXT_FOUND if read.pages else _NO_TEXT)
         out: list[str] = []
         outcomes = dict.fromkeys(_SCANNED_OUTCOMES, 0)  # marker -> the pages without a text layer it is on
         without_text = set(scanned)
