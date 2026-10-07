@@ -1573,6 +1573,7 @@ class _Run:
         self.run_type: str | None = None
         self.loop_stage: str | None = None
         self.loop_line: str | None = None  # the Summary's Loop line, computed after Doctor (build_report)
+        self.agent_named: tuple[int | None, int] | None = None  # folders named with agent words only
         self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
 
@@ -1811,11 +1812,16 @@ def _build_redactor(r: _Run) -> Redactor:
         for c in comps[1:] if shared else comps:
             red.add("folder", c, fuzzy=True)
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
+    listing_ok = True
     try:
         listed = r.call(cloud_folder_names, timeout=3.0)
     except Exception as exc:
-        listed = []
+        listed, listing_ok = [], False
         r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
+    configured = sum(1 for _sid, _provider, comps in cloud_sources for c in comps if _agent_words(c))
+    configured += sum(1 for path in project_paths if _agent_words(path.name))
+    agent_listed = sum(1 for _provider, _depth, name in listed if _agent_words(name))
+    r.agent_named = (agent_listed if listing_ok else None, configured)
     for provider, depth, name in listed:
         if name in _GENERIC_FOLDERS or _agent_words(name):
             continue
@@ -2322,6 +2328,14 @@ def _configuration(r: _Run) -> list[str]:
     out.append(
         f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
     )
+    if r.agent_named is not None:
+        listed, configured = r.agent_named
+        out.append(
+            "- folders named only with a coding agent's product words: "
+            + ("not listed" if listed is None else f"{listed} listed under ~/Library/CloudStorage")
+            + f" (a listed one keeps its name, so the Agent: line stays readable), {configured} of the "
+            "configured source folders (a configured one is a placeholder like any other)"
+        )
     return out
 
 

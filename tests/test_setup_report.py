@@ -3223,6 +3223,25 @@ def test_installer_lists_every_run_and_the_ones_with_no_end_line(fake_mac: dict[
     assert "Wingtip" not in inst and "-777" not in inst
 
 
+def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: dict[str, Path]) -> None:
+    """Whether the folder named like the agent's product is only listed or also a source's folder decides
+    whether the Agent: line is readable. The count says which, with no name."""
+    line = "- folders named only with a coding agent's product words: "
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert line + "0 listed under ~/Library/CloudStorage (a listed one keeps" in section(
+        text, "Configuration"
+    )
+    assert ", 0 of the configured source folders (a configured one is" in section(text, "Configuration")
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    (cloud / "Copilot").mkdir()
+    (cloud / "GitHub Copilot").mkdir()
+    assert cli.main(["add-source", str(cloud / "GitHub Copilot"), "--config", str(fake_mac["config"])]) == 0
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    conf = section(text, "Configuration")
+    assert line + "2 listed under ~/Library/CloudStorage" in conf
+    assert ", 1 of the configured source folders" in conf
+
+
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:
     """The evidence parts print a source as the Redactor shows it. With a Redactor that knows nothing (its
     facts could not be gathered), a configured id is its place in sources.toml, but for agentsync's own
