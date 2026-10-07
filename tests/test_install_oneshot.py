@@ -26,6 +26,7 @@ import signal
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -1252,6 +1253,35 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     )
     assert cp.stdout.splitlines()[1:-1].count(f"[synced] {cs}/OneDrive-Contoso/Documents") == 1
     assert last_line(cp) == keep.replace("syncs 2 folder(s)", "syncs 3 folder(s)")
+
+
+def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_form(
+    env: dict[str, str],
+) -> None:
+    """macOS takes a name in any case, and in either Unicode form, for the same folder, and so does a sync.
+    A config that names a folder in lower case, or with the é an agent types (one code point) where the
+    disk holds an e and an accent, still syncs that folder: it is marked, not offered as one to add."""
+    cs = _cloud(env)
+    on_disk, typed = (unicodedata.normalize(form, "Présentations") for form in ("NFD", "NFC"))
+    assert on_disk != typed
+    for d in ("OneDrive-Contoso/Documents/Plans", f"OneDrive-Contoso/{on_disk}"):
+        (cs / d).mkdir(parents=True)
+    lower = Path(env["HOME"]) / "library" / "cloudstorage" / "onedrive-contoso" / "documents"
+    _write_config(
+        env,
+        local_source_table("documents", lower),
+        local_source_table("slides", cs / "OneDrive-Contoso" / typed),
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        f"[synced] {cs}/OneDrive-Contoso/Documents",
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Documents/Plans",
+        f"[synced] {cs}/OneDrive-Contoso/{on_disk}",
+    ]
+    assert install_log(env)[-2].endswith(" result=done note=listed-3 synced=2")
 
 
 def test_list_folders_counts_a_synced_folder_past_its_cap_as_not_listed(env: dict[str, str]) -> None:

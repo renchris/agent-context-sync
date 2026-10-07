@@ -4737,6 +4737,12 @@ owner-only modes, `Publisher.ensure_scaffold`, which opens and so migrates the m
 `init`. `init` stays hidden and idempotent with no options (`--docs-repo`, `--force` and `--source-local` are
 deleted): it writes the template only when sources.toml is missing. `sync` and every other command still exit
 78 on a missing sources.toml; the message names `agentsync add-source <folder>`.
+**Amended (2026-10-07, §16.29 review):** "already configured" is the same folder, not the same bytes
+(`cli._same_folder`). macOS takes a name in any case and in either Unicode form for one folder, so PATH also
+matches a source whose `path` has the same `slug.collision_key` (NFC + casefold) when `Path.samefile`
+confirms it. A path typed back in lower case, or with a composed é where the disk holds e and an accent, was
+appended as a second live source on the same folder. The file system has the last word: on a case-sensitive
+volume two folders that differ only in case stay two. The message names the path the source has.
 
 `scripts/install.sh --source-local FOLDER` (repeatable) checks every folder exists before any step (exit 2), then
 passes them all to `agentsync init --source-local …` when the config does not exist, or runs
@@ -8062,7 +8068,11 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
   That is the rule the tool syncs by, so a source written through OneDrive's own link in the home folder
   (`~/OneDrive - Contoso/Documents`) marks the folder under `~/Library/CloudStorage`, and a home folder
-  reached through a link still matches. The call has 10 s. It uses only names every build since 2026-09-29
+  reached through a link still matches. Both sides are then compared the way macOS names a folder, in any
+  case and in either Unicode form: NFC, then casefold, the key `slug.collision_key` and the manifest use for
+  "the same path" (review, 2026-10-07). A config path in lower case, or with a composed é where the disk
+  holds e and an accent, was the same folder to a sync and had no mark; `add-source` now takes it for the
+  same folder too (§16.13). The call has 10 s. It uses only names every build since 2026-09-29
   has (`load_config`, `canonical_source_root`, a source's `kind`, `state` and `path`): step 1 runs it before
   step 2 updates the tool, so it must work with the build an earlier setup left.
 - **A config that cannot be read is never a guess.** No installed agentsync, or a config it does not load:
@@ -8078,7 +8088,7 @@ Tests: `tests/test_install_oneshot.py` (the output with no config, with an insta
 config, and with the inbox alone, each byte for byte the list of before; two synced folders marked, one of
 them configured through the home folder's link, a paused source and the inbox not marked, a listed folder
 inside a synced one and one that holds one, each with its mark, and a third source deeper than the list; a
-synced folder past the cap; no installed agentsync and a config that does not load, each
+config path in lower case and one in the other Unicode form, each marked; a synced folder past the cap; no installed agentsync and a config that does not load, each
 with the warning and no mark; a denied provider), `tests/test_setup_report.py` (the first line and the
 three marks in install.out: the count and the marks kept, every folder a placeholder).
 
@@ -8218,6 +8228,8 @@ text above the block gains three sentences that say a re-run keeps the folders c
   still ends step 1 at `--list-folders`' exit 3 and its `NEXT:`: nothing is listed, so nothing is marked.
 - The final message is the agent's. Nothing checks that it says nobody was asked; the report's `expected
   turns` and `folders:` lines carry the same facts from the log.
+- The list compares names and asks the file system nothing. On a case-sensitive volume a listed folder that
+  differs from a synced one only in case is marked as that folder. `add-source` does ask (`Path.samefile`).
 
 Tests: `tests/test_deploy_pack.py` (the version in every place and the block's digest; step 1's exception
 after its rule, word for word, with the installer's line, its three marks and the word its `NEXT:` shares

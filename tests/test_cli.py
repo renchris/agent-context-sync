@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import unicodedata
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1724,6 +1725,39 @@ def test_add_source_appends_a_live_local_source_and_is_idempotent(
     assert cli.main(["add-source", str(initialised.sources[0].path), "--config", cfg]) == cli.EXIT_OK
     assert "already configured: source 'source'" in capsys.readouterr().out
     assert initialised.config_path.read_text(encoding="utf-8") == after
+
+
+def test_add_source_takes_another_case_or_unicode_form_for_the_same_folder(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """macOS takes a name in any case, and in either Unicode form, for the same folder. add-source compared
+    the bytes, so a path typed back in lower case, or with the é an agent types (one code point) where the
+    disk holds an e and an accent, was appended as a second live source on the same folder, and everything
+    in it was mirrored twice (review, 2026-10-07). The file system has the last word: on a case-sensitive
+    volume two folders that differ only in case are two folders, and each is added."""
+    cfg = str(initialised.config_path)
+    on_disk, typed = (unicodedata.normalize(form, "Présentations") for form in ("NFD", "NFC"))
+    folder = tmp_path / "Shared" / on_disk
+    folder.mkdir(parents=True)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    added = load_config(initialised.config_path).sources[-1]
+    assert added.path == folder.resolve()
+    after = initialised.config_path.read_text(encoding="utf-8")
+    others = [tmp_path / "Shared" / typed, tmp_path / "shared" / on_disk.upper()]
+    same = [p for p in others if p.is_dir()]  # the spellings this volume takes for that folder
+    for spelling in same:
+        assert cli.main(["add-source", str(spelling), "--config", cfg]) == cli.EXIT_OK, spelling
+        said = f"already configured: source {added.id!r} (local, live) has path {added.path} in "
+        assert said in capsys.readouterr().out, spelling
+    assert initialised.config_path.read_text(encoding="utf-8") == after, "no second source on that folder"
+    if sys.platform == "darwin":
+        assert others[0] in same, "APFS and HFS+ take either Unicode form"
+    for spelling in (p for p in others if p not in same):  # another folder on this volume: added as one
+        spelling.mkdir(parents=True)
+        assert cli.main(["add-source", str(spelling), "--config", cfg]) == cli.EXIT_OK, spelling
+        assert "added source " in capsys.readouterr().out, spelling
+        assert load_config(initialised.config_path).sources[-1].path == spelling.resolve()
 
 
 def test_init_and_add_source_keep_exactly_one_inbox(

@@ -83,6 +83,7 @@ from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout, default_config_path, expand, is_under
 from agentsync.publish import Publisher, archive_path
+from agentsync.slug import collision_key
 
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
@@ -556,9 +557,28 @@ def _ensure_inbox(config: Config) -> Config:
     return config
 
 
+def _same_folder(configured: Path, path: Path) -> bool:
+    """Whether ``path`` (an existing folder) is the folder a source already has as ``configured``. macOS
+    takes a name in any case and in either Unicode form for the same folder, so a path typed back in lower
+    case, or with a composed é where the disk holds e and an accent, is not a second folder. The key is the
+    one the manifest and the docs repo use for "the same path" (:func:`agentsync.slug.collision_key`); the
+    file system then confirms it, so on a case-sensitive volume two folders that differ only in case stay
+    two (and a configured folder that is gone is not the one that exists)."""
+    if configured == path:
+        return True
+    if collision_key(str(configured)) != collision_key(str(path)):
+        return False
+    try:
+        return configured.samefile(path)
+    except OSError:
+        return False
+
+
 def _cmd_add_source(args: argparse.Namespace) -> int:
     """KISS K14: the one setup verb. Validates PATH before writing anything; a missing sources.toml is
-    written from the template with the folder's table; then :func:`_ensure_setup` creates the rest."""
+    written from the template with the folder's table; then :func:`_ensure_setup` creates the rest. A
+    folder a source already has, in any spelling macOS takes for it (:func:`_same_folder`), is left as it
+    is."""
     cfg_path = expand(args.config or default_config_path())
     fresh = not cfg_path.exists()
     template = default_config_text()
@@ -587,11 +607,11 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             _write_config(cfg_path, template)
             fresh = False
         config = _ensure_inbox(config)
-    known = next((s for s in config.sources if s.path is not None and s.path == path), None)
+    known = next((s for s in config.sources if s.path is not None and _same_folder(s.path, path)), None)
     if known is not None:
         _out(
             f"already configured: source {known.id!r} ({known.kind.value}, {known.state.value}) has path "
-            f"{path} in {config.config_path}"
+            f"{known.path} in {config.config_path}"
         )
     else:
         sid = derive_source_id(path, {s.id for s in config.sources})

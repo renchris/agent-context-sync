@@ -1168,28 +1168,36 @@ CONTAINS_MARK="[contains a synced folder]"
 # $1: prints their number, then each line of the file $2 (one folder path per line), with "$SYNCED_MARK "
 # before a folder that is one of them, "$INSIDE_MARK " before one inside one of them and "$CONTAINS_MARK "
 # before one that holds one. Both sides go through agentsync's own rule, so a folder the config
-# names through a link is still that folder. Fails when that agentsync cannot load the config, and stops
-# after 10 s. It uses only names every agentsync since 2026-09-29 has: step 1 of the setup prompt runs this
-# before step 2 updates the tool. -I: nothing from the folder this runs in is imported.
+# names through a link is still that folder. Both are then compared the way macOS names a folder, in any
+# case and in either Unicode form (NFC + casefold, agentsync's own key for "the same path"): a config path
+# typed in lower case, or with a composed é where the disk holds e and an accent, is that folder. Fails when
+# that agentsync cannot load the config, and stops after 10 s. It uses only names every agentsync since
+# 2026-09-29 has: step 1 of the setup prompt runs this before step 2 updates the tool. -I: nothing from the
+# folder this runs in is imported.
 synced_folders() { # PYTHON LIST
 	with_timeout 10 "$1" -I -c '
-import os, sys
+import os, sys, unicodedata
 from pathlib import Path
 from agentsync.config import canonical_source_root, load_config
 
+
+def key(path):
+    return unicodedata.normalize("NFC", unicodedata.normalize("NFC", str(path)).casefold()).rstrip("/") + "/"
+
+
 sources = load_config(Path(sys.argv[1])).sources
-synced = {s.path for s in sources if s.kind.value == "local" and s.state.value == "live" and s.path is not None}
+synced = {key(s.path) for s in sources if s.kind.value == "local" and s.state.value == "live" and s.path is not None}
 with open(sys.argv[2], "rb") as fh:
     listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
 same, inside, contains = (mark + " " for mark in sys.argv[3:6])
 out = [str(len(synced))]
 for p in listed:
-    folder = canonical_source_root(Path(p))
+    folder = key(canonical_source_root(Path(p)))
     if folder in synced:
         out.append(same + p)
-    elif any(s in folder.parents for s in synced):
+    elif any(folder.startswith(s) for s in synced):
         out.append(inside + p)
-    elif any(folder in s.parents for s in synced):
+    elif any(s.startswith(folder) for s in synced):
         out.append(contains + p)
     else:
         out.append(p)
