@@ -4022,7 +4022,13 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         seed.item(inbox, "payroll.eml", state="tombstone", canonical="d" * 64),
         seed.item(inbox, "merger.eml"),  # queued, and listed again since
         "id-that-was-never-a-row",
+        # Queued, then back and saved again: the row moved to a new id and the queued one is its alias.
+        seed.item(inbox, "Fourth Coffee notes.eml"),
+        # The same, and then deleted again: the alias points at a tombstone, which is a real deletion.
+        seed.item(inbox, "ledger-2031.eml", state="tombstone", canonical="e" * 64, page="tombstone"),
     ]
+    seed.m.rekey(inbox, gone[-2], "id-after-the-save")
+    seed.m.rekey(inbox, gone[-1], "id-after-the-second-delete")
     seed.close()
     day = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
     upstream = governance.PurgeReason.UPSTREAM_DELETED
@@ -4046,17 +4052,43 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     text, parts = status_parts(fake_mac)
     part = parts["Purge queue"]
     assert (
-        "- 7 purge(s) queued. For a queued stable id the last six columns say what the manifest holds" in part
+        "- 9 purge(s) queued. For a queued stable id the last six columns say what the manifest holds" in part
     )
     header = "| source | reason | selector | queued (UTC day) | purges | same bytes live | same path live | "
     assert header + "still listed | no live twin | no row | not looked up |" in part
-    assert [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:] == [
+
+    def rows(part: str) -> list[str]:
+        return [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:]
+
+    assert rows(part) == [
         "| (not in the config, 1) | label-escalation | stable-id | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |",
         "| <folder-2> | erasure-request | path-glob | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |",
-        "| inbox | upstream-deleted | stable-id | 2026-10-02 | 5 | 1 | 1 | 1 | 1 | 1 | 0 |",
+        # an id that is now an alias is judged by the row it points at: listed again, and deleted again
+        "| inbox | upstream-deleted | stable-id | 2026-10-02 | 7 | 1 | 1 | 2 | 2 | 1 | 0 |",
     ]
-    for raw in ("tailspin-bridge", "id-that-was", "terms", "memo", "c" * 16, "merger/"):
+    assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
+        "- renamed or re-keyed: 2 queued id(s) are an earlier id of a file the manifest now holds under a "
+        "later one (it was saved again, or its volume's id changed). Each is counted by that file's row, "
+        "since a purge follows the alias to it",
+        "- still listed: 2 queued purge(s) name a file the manifest lists now (1 of them under a later id). "
+        "A run of the queue would erase that file's page and its history",
+        "- no trace: 2 queued id(s) have no row and are no alias. A re-key leaves an alias, so what took "
+        "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
+        "history still names for them and takes them off the queue",
+    ], "what the columns mean for a run of the queue, in counts and fixed words"
+    for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
         assert raw not in text, raw
+    # A manifest from before the alias table: read as it is (the report never migrates one), so an id with
+    # no row is `no row`, and no line says what it cannot know.
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DROP TABLE item_aliases")
+    seed.close()
+    part = status_parts(fake_mac)[1]["Purge queue"]
+    assert (
+        rows(part)[2] == "| inbox | upstream-deleted | stable-id | 2026-10-02 | 7 | 1 | 1 | 1 | 1 | 3 | 0 |"
+    )
+    assert "renamed or re-keyed" not in part and "- no trace: 4 queued id(s) have no row" in part
+    assert "- still listed: 1 queued purge(s) name a file the manifest lists now. A run of" in part
 
 
 def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: dict[str, Path]) -> None:

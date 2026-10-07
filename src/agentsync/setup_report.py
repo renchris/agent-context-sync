@@ -3471,17 +3471,50 @@ _PURGE_FATES = (
 )
 
 
-def _purge_fate(m: _Mirror, source_id: str, stable_id: str) -> str:
-    """What the manifest says of one queued stable id, as one of :data:`_PURGE_FATES`: the file is listed
-    again, a live file elsewhere has its bytes (a renamed or re-exported copy), a live file with another id
-    sits at its path (a safe-save or re-export), or nothing live takes its place."""
+def _alias_of(m: _Mirror, source_id: str, stable_id: str) -> str | None:
+    """The id the manifest now holds a file under, when ``stable_id`` is one it carried before it was
+    re-keyed (``item_aliases``: a save that gave the file a new inode, or a volume whose id changed). None
+    when it is no alias, and for a manifest from before that table."""
+    known = m.kept.get("aliases")
+    if not isinstance(known, bool):
+        known = bool(m.rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'item_aliases'"))
+        m.kept["aliases"] = known
+    if not known:
+        return None
     found = m.rows(
-        "SELECT state, canonical_sha256, rel_path FROM items WHERE source_id = ? AND stable_id = ?",
-        (source_id, stable_id),
+        "SELECT stable_id FROM item_aliases WHERE source_id = ? AND alias_id = ?", (source_id, stable_id)
     )
+    return str(found[0][0]) if found else None
+
+
+def _purge_fate(m: _Mirror, source_id: str, stable_id: str) -> tuple[str, bool]:
+    """What the manifest says of one queued stable id, as one of :data:`_PURGE_FATES`, and whether that is
+    said of a later id of the same file: the file is listed again, a live file elsewhere has its bytes (a
+    renamed or re-exported copy), a live file with another id sits at its path (a safe-save or re-export),
+    or nothing live takes its place.
+
+    An id with no row is looked up among the aliases (:func:`_alias_of`). A file that came back and was
+    saved again is re-keyed: its row moves to a new id and the queued one becomes an alias, which a purge
+    follows to the live file. Judged by its own id that purge read ``no row``, the same as an entry left
+    queued after its file was purged, and the two could not be told apart (field report 2026-10-07: 14
+    queued purges, all ``no row``). So an alias is judged by the row it points at, and ``no row`` is left
+    to mean neither a row nor an alias."""
+    select = "SELECT state, canonical_sha256, rel_path FROM items WHERE source_id = ? AND stable_id = ?"
+    found = m.rows(select, (source_id, stable_id))
+    aliased = False
     if not found:
-        return "no row"
-    state, canonical, rel_path = found[0]
+        current = _alias_of(m, source_id, stable_id)
+        if current is not None:
+            aliased, stable_id = True, current
+            found = m.rows(select, (source_id, stable_id))
+    if not found:
+        return "no row", False
+    return _row_fate(m, source_id, stable_id, found[0]), aliased
+
+
+def _row_fate(m: _Mirror, source_id: str, stable_id: str, row: Sequence[Any]) -> str:
+    """One of :data:`_PURGE_FATES` for the row ``stable_id`` has (state, canonical hash, path)."""
+    state, canonical, rel_path = row
     if state != "tombstone":
         return "still listed"
     if canonical and m.rows(
@@ -3501,7 +3534,8 @@ def _purge_fate(m: _Mirror, source_id: str, stable_id: str) -> str:
 
 def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """The queued purges by source, reason, selector kind and the UTC day they were queued, and for a queued
-    stable id what the manifest holds in its place. Counts only: no selector text is printed."""
+    stable id what the manifest holds in its place, then what that means for a run of the queue
+    (:func:`_purge_notes`). Counts and fixed words only: no selector text is printed."""
     from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     config = cast(Config, r.config)
@@ -3511,6 +3545,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     reasons = {reason.value for reason in governance.PurgeReason}
     grouped: dict[tuple[str, str, str, str], Counter[str]] = {}
     lookups = 0
+    aliased: Counter[str] = Counter()  # fate -> the queued ids judged by a later id of the same file
     for entry in queue[:_PURGES_READ]:
         selector = entry.selector
         day = entry.enqueued_at[:10] if _DAY_RE.fullmatch(entry.enqueued_at[:10]) else "unknown day"
@@ -3519,7 +3554,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         if selector.stable_id and selector.source_id and lookups < _PURGE_LOOKUPS:
             lookups += 1
             try:
-                fate = _purge_fate(m, selector.source_id, selector.stable_id)
+                fate, by_alias = _purge_fate(m, selector.source_id, selector.stable_id)
+                aliased[fate] += by_alias
             except (_OutOfTimeError, _NoManifestError):
                 lookups = _PURGE_LOOKUPS
         key = (labels.of(selector.source_id), reason, selector.kind(), day)
@@ -3529,6 +3565,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         for key, fates in sorted(grouped.items())
     ]
     header = ("source", "reason", "selector", "queued (UTC day)", "purges", *_PURGE_FATES)
+    totals = Counter({fate: sum(fates[fate] for fates in grouped.values()) for fate in _PURGE_FATES})
     more = f" (the first {_PURGES_READ} are counted)" if len(queue) > _PURGES_READ else ""
     return [
         f"- {len(queue)} purge(s) queued{more}. For a queued stable id the last six columns say what the "
@@ -3537,7 +3574,35 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "place, or no row at all.",
         "",
         *_table(header, rows),
+        *_purge_notes(totals, aliased),
     ]
+
+
+def _purge_notes(fates: Counter[str], aliased: Counter[str]) -> list[str]:
+    """What the fates under the table mean for a run of the queue, in fixed words and counts: the queued ids
+    that are now an alias, the ones that name a file listed now, and the ones the manifest holds no trace
+    of. A line is there only when its count is not 0."""
+    out: list[str] = []
+    renamed = sum(aliased.values())
+    if renamed:
+        out.append(
+            f"- renamed or re-keyed: {renamed} queued id(s) are an earlier id of a file the manifest now "
+            "holds under a later one (it was saved again, or its volume's id changed). Each is counted by "
+            "that file's row, since a purge follows the alias to it"
+        )
+    if fates["still listed"]:
+        via = f" ({aliased['still listed']} of them under a later id)" if aliased["still listed"] else ""
+        out.append(
+            f"- still listed: {fates['still listed']} queued purge(s) name a file the manifest lists "
+            f"now{via}. A run of the queue would erase that file's page and its history"
+        )
+    if fates["no row"]:
+        out.append(
+            f"- no trace: {fates['no row']} queued id(s) have no row and are no alias. A re-key leaves an "
+            "alias, so what took such a row away is a purge that already ran, or an erasure. A run of the "
+            "queue erases only what history still names for them and takes them off the queue"
+        )
+    return out
 
 
 # ---- overlapping sources, empty cloud folders -----------------------------------------------------------

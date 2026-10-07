@@ -7947,7 +7947,9 @@ looked up in `runs`). A stub built before a fix landed is one the fix has not re
 day they were queued. For a queued stable id the manifest is asked what took the file's place
 (`_purge_fate`): `same bytes live` (a live file elsewhere has its canonical hash: a renamed or re-exported
 copy), `same path live` (a live file with another id at its path), `still listed`, `no live twin`, `no row`.
-A glob selector is `not looked up`. No selector text is printed.
+A glob selector is `not looked up`. No selector text is printed. **Amended (2026-10-07, §16.30):** an id that
+is now an alias is judged by the row it points at, so `no row` means neither a row nor an alias, and lines
+under the table say what the columns mean for a run of the queue.
 
 **Overlapping sources.** Each pair of sources whose configured folder is the same, or one inside the other,
 by their configured paths: how many folder levels down, whether the outer source's exclude list prunes the
@@ -8663,3 +8665,56 @@ each adding up to its table rows, no tail in the report and no residue; fifteen 
 with the cap; thirteen reasons against `_refused_type` and `quarantine_class`; the list against every
 converter's suffixes, its shape and `convert.convert_file`'s own reasons; the statement in the 50,000-file
 bound and its query plan).
+
+#### A queued purge whose id is gone is looked up as an alias (amends §16.28; `agentsync.setup_report`)
+
+The field's queue held 14 purges of one inbox source, all `upstream-deleted` by stable id, and every one
+read `no row`. §16.28 read that as "an id that was never a row". That cannot be what happened: the entry is
+queued as the row is made a tombstone, and a tombstone keeps its row. A row goes in three places only: a
+purge, `Manifest.forget_item` for erased content, and `Manifest.rekey`, which moves the row to a new id and
+records the old one in `item_aliases`. So the code allows two causes, and they need opposite answers:
+
+- A purge already ran and its entry stayed queued. Running the queue again erases nothing in the mirror and
+  empties the queue.
+- The file came back, was saved again and was re-keyed. The queued id is now an alias, a purge follows an
+  alias to the current row, and running the queue erases a live file's page and its history.
+
+`_purge_fate` asked `items` only, so the report could not tell them apart. It now can.
+
+- `_alias_of(m, source_id, stable_id)`: when no row has the queued id, one lookup on the primary key of
+  `item_aliases`. The table's chain is flat (`Manifest._record_alias` moves every earlier alias to the newest
+  id), so one lookup gives the current id. A manifest from before that table is read as it is: the report
+  never migrates one, asks `sqlite_master` once, and then finds no alias.
+- On a hit the row the alias points at is judged with the fates there were: not a tombstone is `still
+  listed`; a tombstone is `same bytes live`, `same path live` or `no live twin`. An alias can point at a
+  tombstone (back, re-keyed, deleted again), and that is a real deletion, so no fate says "an alias" by
+  itself. `_PURGE_FATES`, the table's header and the part's first line are unchanged.
+- `no row` is left to mean neither a row nor an alias.
+- Under the table, `_purge_notes` says what the counts mean, a line only when its count is not 0:
+  - `- renamed or re-keyed: N queued id(s) are an earlier id of a file the manifest now holds under a later
+    one (...). Each is counted by that file's row, since a purge follows the alias to it`
+  - `- still listed: N queued purge(s) name a file the manifest lists now (K of them under a later id). A
+    run of the queue would erase that file's page and its history`
+  - `- no trace: N queued id(s) have no row and are no alias. A re-key leaves an alias, so what took such a
+    row away is a purge that already ran, or an erasure. A run of the queue erases only what history still
+    names for them and takes them off the queue`
+- The lookups stay inside `_PURGE_LOOKUPS` entries, each of them an index lookup, and no id is printed.
+
+The lines state facts and name no command: the prompt forbids the setup agent every purge, and the report is
+the last thing it reads. `docs/deploy/setup-feedback.md` has the operator's step, which is to preview the
+queue with `agentsync purge --queue --dry-run` before running it.
+
+Not done here, because they are not the report's:
+
+- The wait `N queued purge(s): run ... purge --queue` is built from the queue's length alone, in five texts
+  (`agentsync.loop`, two in `agentsync.cli`, two in `agentsync.cycle`). Adding the preview to it changes all
+  five and their pins together.
+- `run_purge_queue` runs an entry whose id resolves to a live file. A guard there must keep an entry whose
+  row is quarantined or refused: after a file comes back refused, the queued purge is the only thing that
+  erases its earlier text from history.
+- The dry run's note counts every commit as "would be rewritten" when an entry targets nothing.
+
+Tests: `tests/test_setup_report.py` (the queue of §16.28 with two more entries: an id re-keyed after its file
+came back, which is `still listed`, and one re-keyed and deleted again, which is `no live twin`, both
+written by `Manifest.rekey`; an id that was never a row, still `no row`; the three lines; no id in the
+report; the same queue on a manifest with no alias table).
