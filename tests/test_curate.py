@@ -1460,6 +1460,14 @@ def test_rule_7_an_inference_names_the_tags_it_rests_on(layout: DocsLayout) -> N
     assert cite_codes(layout, PAGE, entries) == []
     failing = PAGE.replace('from `heard 00:08:58` "if tier B holds"', "from the mood in the room")
     assert cite_codes(layout, failing, entries) == ["CITE-INFERRED"]
+    # The action-item rubric: an action nobody took on, `inferred` from a decision row, needs no quote.
+    rubric = '| Mei Tanaka | Book the cluster review | none | `chat ~00:41` "I\'ll book it" |'
+    assert rubric in PAGE
+    from_d1 = PAGE.replace(
+        rubric, rubric + "\n| (nobody) | Update the forecast | none | `inferred` from D1 |"
+    )
+    assert cite_codes(layout, from_d1, entries) == []
+    assert cite_codes(layout, from_d1.replace("from D1", "from D9"), entries) == ["CITE-INFERRED"]
 
 
 def test_rule_8_a_people_basis_is_a_c11_form(layout: DocsLayout) -> None:

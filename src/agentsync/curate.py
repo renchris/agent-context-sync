@@ -460,6 +460,7 @@ _UNIT_KINDS = ("window", "index")
 _WINDOW_SECONDS = 300
 _HINT_SECONDS = 10
 _QUOTED_SECTIONS = ("decisions", "action items", "numbers shown")
+_DECISION_REF = re.compile(r"\bD\d+\b")
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,6 +626,10 @@ class _MeetingLint:
         self.sections = _sections(body)
         log = [s for s in self.sections if _fold(s.title) == "verification log"]
         self.opened = {n for s in log for line in s.prose for n in _FRAME_NAME.findall(line)}
+        decided = [s for s in self.sections if _fold(s.title) == "decisions"]
+        self.decisions = {
+            r[at] for s in decided for r in s.rows if (at := _column(s.header, "#", 0)) < len(r)
+        }
         self.findings: list[LintFinding] = []
 
     def _add(self, code: str, message: str) -> None:
@@ -703,23 +708,31 @@ class _MeetingLint:
                 tags = [t for t, _q in tagged]
                 if "inferred" in tags and not any(
                     _CITE_TAG.fullmatch(t) or _FREE_TAG.fullmatch(t) for t in tags
-                ):
-                    self._add("CITE-INFERRED", f"`inferred` with no other tag beside it: {_clip(unit)}")
+                ):  # the action-item rubric's "`inferred` from D<n>" rests on a Decisions row of this page
+                    refs = set(_DECISION_REF.findall(unit))
+                    if not refs or not refs <= self.decisions:
+                        missing = ", ".join(sorted(refs - self.decisions)) or "no Decisions row"
+                        self._add("CITE-INFERRED", f"`inferred` with no other tag ({missing}): {_clip(unit)}")
             title = _fold(sec.title)
             for i, row in enumerate(sec.rows, 1):
                 where = f"{sec.title} row {i} ({_clip(row[0], 30)})"
                 if title in _QUOTED_SECTIONS:
-                    self._row(where, row, numbers=title == "numbers shown")
+                    self._row(where, row, title)
             if title == "people":
                 self._people(sec)
         return self.findings
 
-    def _row(self, where: str, row: list[str], *, numbers: bool) -> None:
-        """Rules 5 and 6 for one Decisions, Action items or Numbers shown row."""
+    def _row(self, where: str, row: list[str], title: str) -> None:
+        """Rules 5 and 6 for one Decisions, Action items or Numbers shown row.  An action item whose evidence
+        is `inferred` from a decision (``D<n>``) needs no quote: rule 7 checks that the row exists."""
         tagged = [p for cell in row for p in _tagged(cell)]
-        if not any(q is not None and (_CITE_TAG.fullmatch(t) or t.startswith("chat ~")) for t, q in tagged):
+        quoted = any(q is not None and (_CITE_TAG.fullmatch(t) or t.startswith("chat ~")) for t, q in tagged)
+        from_decision = title == "action items" and any(
+            [t for t, _q in _tagged(cell)] == ["inferred"] and _DECISION_REF.search(cell) for cell in row
+        )
+        if not quoted and not from_decision:
             self._add("CITE-MISSING", f"{where}: no evidence tag with a quote")
-        if not numbers or "picture not kept" in " ".join(row).casefold():
+        if title != "numbers shown" or "picture not kept" in " ".join(row).casefold():
             return
         frames = [t for t, _q in tagged if (m := _CITE_TAG.fullmatch(t)) and m[1] == "seen+frame"]
         if not frames:
