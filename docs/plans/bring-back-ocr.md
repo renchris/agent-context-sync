@@ -1,5 +1,5 @@
 ---
-status: done
+status: in-progress
 ---
 
 # Plan — the corporate Mac's bring-back file: field fixes, riders, PDF comments, on-device OCR
@@ -100,6 +100,30 @@ Runs `wf_f74fb161-ff0` and `wf_18e5a3df-d6c`. CONTRACTS §16.28.
   destructive step, before it writes the bring-back file.
 - Not measured: how many syncs a real mirror needs. A mirror heavy in scans can hit the cap of 12; the report's
   Loop line and per-run table then say how much is left.
+
+## B8 Prompt v9 and the second bring-back (2026-10-07) — IN FLIGHT
+
+The corporate Mac ran prompt v8 at `41cf618` and brought back a second file (saved outside the repo under
+`~/.cache/agentsync-bring-back/v8/`). OCR works there: every image, PDF, deck and Word file carries OCR text and
+the one-time re-read finished in five background runs with no budget hit. Two stops cost the operator a turn each
+and are being fixed on branch `bb/b8-configured-folders` (worktree `../.worktrees/bb-b8`), not yet landed:
+
+1. **Folder question on a Mac already set up** (built, reviewed, gate green, run `wf_b278f496-8dc`):
+   `--list-folders` marks folders already synced; an unattended re-run keeps them and adds none. Prompt v9.
+2. **Installer stops on a permissions FAIL the first sync would heal** (building, run `wf_ebb35cb1-57d`): the
+   installer tightens agentsync-owned folders before its health check.
+3. **Triage of the v8 file** (running, read-only, run `wf_6e7fa11d-13e`, 14 items with a skeptic each; result
+   lands in `~/.cache/agentsync-bring-back/wf7.json`). Known items to build after it, on the same branch, all
+   part of v9: the outcome must not read "fully one command" when an earlier install run of the attempt failed
+   and a manual fix was needed; the summary block prints once for several folders; `~/agent-context/setup` is
+   made owner-only; `fix-request.md` holds one session's request; the bring-back includes local work only when
+   it is new (the v8 file re-sent the first patch byte for byte); the quarantine part names file suffixes; a
+   queued purge whose row is gone is reported as such. Evidence for the empty-folder decision
+   (`71d3e66ef726`): 5 of 5 folders are materialised and empty, none dataless, no mirrored file below them.
+
+Order to finish: collect both workflows, build the triage's new items on the branch (build, fresh review, fix,
+gate), write `docs/research/corporate-bring-back-2026-10-07.md`, rebase onto `main`, full gate, push, read CI and
+the README back from `origin/main`, then tell the operator "prompt v9 at <sha>". Until then v8 is current.
 
 Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
 is not read; a picture drawn rotated is read as stored; image types outside the raster table are stubs; a long
