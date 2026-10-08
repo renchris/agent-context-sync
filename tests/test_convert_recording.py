@@ -11,7 +11,6 @@ from __future__ import annotations
 import itertools
 import json
 import re
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,7 @@ from agentsync.config import ConvertConfig
 from agentsync.convert import convert_file
 from agentsync.convert import recording as rec
 from agentsync.convert.cache import ConverterCache
-from agentsync.convert.media import Frame, MediaEngine, MediaError, MediaInfo, Rect, Scan
+from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.ocr import OcrLine
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.registry import Registry
@@ -39,86 +38,11 @@ from test_recording_grammar import index_errors, window_errors
 CFG = ConvertConfig()
 
 
-class KitMedia(MediaEngine):
-    """Runs the fake media helper until ``convert/media.py`` runs a helper itself (teammate "media"); the
-    protocol is the one ``tests/media_kit.py`` pins.  ``first_tick`` is cut from a scan from tick 0."""
-
-    def _run(self, args: Sequence[str], timeout: float) -> Any:
-        done = subprocess.run([str(self.helper), *args], capture_output=True, timeout=timeout, check=False)
-        if done.returncode:
-            raise MediaError("the media helper failed")
-        return json.loads(done.stdout)
-
-    def alive(self) -> bool:
-        return True
-
-    def info(self, src: Path, *, timeout: float) -> MediaInfo:
-        doc = self._run(["info", str(src)], timeout)
-        return MediaInfo(
-            doc["duration_ms"], doc["width"], doc["height"], doc["picture"], doc["audio"], doc["created"]
-        )
-
-    def scan(
-        self,
-        src: Path,
-        *,
-        out: Path,
-        timeout: float,
-        step_ms: int = 2000,
-        first_tick: int = 0,
-        max_ticks: int | None = None,
-    ) -> Scan:
-        args = ["scan", str(src), "--out", str(out), "--step-ms", str(step_ms)]
-        if max_ticks is not None:
-            args += ["--max-ticks", str(first_tick + max_ticks)]
-        doc = self._run(args, timeout)
-        grids = out / "grids.bin"
-        size = 320 * 180
-        grids.write_bytes(grids.read_bytes()[first_tick * size :])
-        return Scan(grids, step_ms, first_tick, len(doc["ticks"]) - first_tick)
-
-    def frames(
-        self,
-        src: Path,
-        *,
-        out: Path,
-        ticks: Sequence[int],
-        timeout: float,
-        crop: Rect | None = None,
-        crop_right: float | None = None,
-        step_ms: int = 2000,
-    ) -> list[Frame]:
-        args = ["frames", str(src), "--out", str(out), "--ticks", ",".join(str(t) for t in ticks)]
-        if crop is not None:
-            args += ["--crop", ",".join(str(v) for v in crop)]
-        if crop_right is not None:
-            args += ["--crop-right", str(crop_right)]
-        doc = self._run(args, timeout)
-        return [Frame(f["tick"], f["ms"], out / f["file"], f["width"], f["height"]) for f in doc["frames"]]
-
-    def diff(
-        self,
-        grids: Path,
-        *,
-        pairs: Sequence[tuple[int, int]],
-        timeout: float,
-        include: Sequence[Rect] = (),
-        exclude: Sequence[Rect] = (),
-        threshold: int = 12,
-    ) -> list[int]:
-        args = ["diff", str(grids), "--pairs", ",".join(f"{a}:{b}" for a, b in pairs)]
-        for flag, rects in (("--include", include), ("--exclude", exclude)):
-            for r in rects:
-                args += [flag, ",".join(str(v) for v in r)]
-        args += ["--threshold", str(threshold)]
-        return [p["changed"] for p in self._run(args, timeout)["pairs"]]
-
-
 def converter(
     tmp_path: Path, *, pieces: PieceStore | None = None, label_rule: bool = False, **media: Any
 ) -> rec.RecordingConverter:
     helper = fake_media(tmp_path / "helpers", **media)
-    engine = KitMedia(helper, name="paper-media", helper_version="0.1.0")
+    engine = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
     return rec.RecordingConverter(
         CFG, fake_engine(tmp_path / "helpers"), engine, pieces=pieces, label_rule=label_rule
     )
@@ -232,7 +156,7 @@ def pages(
 ) -> tuple[RenderedUnit, ...]:
     """The units of the guarded registry, as the cycle gets them."""
     helper = fake_media(tmp_path / "helpers")
-    media = KitMedia(helper, name="paper-media", helper_version="0.1.0")
+    media = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
     registry = Registry.default(CFG, ocr=fake_engine(tmp_path / "helpers"), media=media, **kw)
     conv = registry.for_name(name)
     assert conv is not None
@@ -559,7 +483,7 @@ def test_running_out_of_time_gives_no_page_and_the_refusal_a_reread_looks_for(
 
 def _registry(tmp_path: Path, **kw: Any) -> Registry:
     helper = fake_media(tmp_path / "helpers")
-    media = KitMedia(helper, name="paper-media", helper_version="0.1.0")
+    media = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
     return Registry.default(CFG, ocr=fake_engine(tmp_path / "helpers", **kw), media=media)
 
 
@@ -618,7 +542,7 @@ def test_the_registry_has_no_recording_converter_without_both_engines_and_keeps_
     tmp_path: Path,
 ) -> None:
     ocr = fake_engine(tmp_path / "helpers")
-    media = KitMedia(fake_media(tmp_path / "helpers"), name="paper-media", helper_version="0.1.0")
+    media = MediaEngine(fake_media(tmp_path / "helpers"), name="paper-media", helper_version="0.1.0")
     assert Registry.default(CFG).for_name("x.mp4") is None
     assert Registry.default(CFG, ocr=ocr).for_name("x.mp4") is None
     assert Registry.default(CFG, media=media).for_name("x.mp4") is None
