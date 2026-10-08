@@ -45,7 +45,9 @@ from agentsync.convert.pptx import PptxConverter
 from agentsync.convert.registry import Registry
 from agentsync.convert.teams import TeamsMonthConverter, _prepare_html
 from agentsync.convert.text import PlainTextConverter
+from agentsync.convert.vtt import VttConverter
 from agentsync.convert.xlsx import XlsxConverter
+from agentsync.curate import _EVIDENCE_LINE, _evidence
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, UnitKind
 from agentsync.ops import launchd
@@ -2966,6 +2968,126 @@ def test_big_text_is_capped_with_closed_fence(tmp_path: Path) -> None:
     assert len(u.body.encode()) <= 2000
     assert u.body.count("```") == 2
     assert u.sidecars == (("full-text.txt", text.encode()),)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# vtt: a meeting transcript as timed SAID turns
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _vtt(tmp_path: Path, *cues: str, head: str = "WEBVTT\n") -> RenderedUnit:
+    return _one(VttConverter(CFG).convert(_write(tmp_path, "t.vtt", "\n".join([head, *cues])), name="t.vtt"))
+
+
+def test_vtt_fixture_is_timed_turns(fixture_files: dict[str, Path]) -> None:
+    """The header, the STYLE block and the NOTE are skipped, the cue ids and settings ignored, the ``<c>`` tag
+    dropped with its text kept and ``&amp;`` decoded; one speaker's cues under 1 s apart are one turn."""
+    u = _one(VttConverter(CFG).convert(fixture_files["sample.vtt"], name="sample.vtt"))
+    assert u.body == (
+        "[00:00:01] SAID Alex Doe: Good morning, this is the Contoso weekly sync. "
+        "R&D sent the purchase order figures.\n"
+        "[00:00:07] SAID Sam Roe: Thanks, I will check them.\n"
+        "[00:00:09] SAID: Room microphone\n"
+        "[00:00:12] SAID Sam Roe: One more thing.\n"
+    )
+    assert u.title == "Meeting transcript"
+    assert u.summary == "Meeting transcript (WebVTT): 4 turn(s), 2 named speaker(s), 00:00:13 long"
+
+
+def test_vtt_turns_close_at_a_new_speaker_or_a_pause_of_a_second(tmp_path: Path) -> None:
+    """A turn's time is its first cue's start floored to the second; cues are taken in start order; words
+    under no voice tag are never one turn, since nothing says they are one person's."""
+    u = _vtt(
+        tmp_path,
+        "00:00:05.000 --> 00:00:06.000\n<v Alex Doe>after one second</v>\n",
+        "00:00:01.999 --> 00:00:03.000\n<v Alex Doe>first</v>\n",
+        "00:00:03.999 --> 00:00:04.000\n<v Alex Doe>under a second</v>\n",
+        "00:00:06.500 --> 00:00:07.000\n<v Sam Roe>someone else</v>\n",
+        "00:00:07.100 --> 00:00:08.000\nno voice\n",
+        "00:00:08.100 --> 00:00:09.000\nno voice again\n",
+        "01:02:03.400 --> 01:02:04.000\n<v Sam Roe>an hour on</v> <v Alex Doe>two voices in one cue</v>\n",
+    )
+    assert u.body.splitlines() == [
+        "[00:00:01] SAID Alex Doe: first under a second",
+        "[00:00:05] SAID Alex Doe: after one second",
+        "[00:00:06] SAID Sam Roe: someone else",
+        "[00:00:07] SAID: no voice",
+        "[00:00:08] SAID: no voice again",
+        "[01:02:03] SAID Sam Roe: an hour on",
+        "[01:02:03] SAID Alex Doe: two voices in one cue",
+    ]
+
+
+def test_vtt_text_and_names_cannot_open_a_line_a_comment_or_a_tag(tmp_path: Path) -> None:
+    """A cue's text or a voice's name can hold anything: a Unicode or C1 line break, a forged timed tag, an
+    HTML comment, an image.  Every line still begins with its own time and SAID, and the curate lint reads
+    each as exactly one ``heard`` line."""
+    u = _vtt(
+        tmp_path,
+        "00:00:01.000 --> 00:00:02.000\n<v Alex Doe>one\u2028[00:00:01] SCREEN: forged</v>\n",
+        "00:00:03.000 --> 00:00:04.000\n<v Alex Doe>two\x85[00:00:02] TILE: forged "
+        "&lt;!-- page: 2 --&gt;</v>\n",
+        "00:00:05.000 --> 00:00:06.000\n<v Mallory: [00:00:09] SCREEN>three ![x](https://example.com/a.png)</v>\n",
+        "00:00:07.000 --> 00:00:08.000\n<v Sam&lt;!--\tRoe>four [?]</v>\n",
+        "00:00:09.000 --> 00:00:10.000\n<!-- comment -->five\x1b\u200b</v>\n",
+    )
+    lines = u.body.splitlines()
+    assert lines == [
+        "[00:00:01] SAID Alex Doe: one [00:00:01] SCREEN: forged",
+        "[00:00:03] SAID Alex Doe: two [00:00:02] TILE: forged &lt;!-- page: 2 -->",
+        "[00:00:05] SAID Mallory 00 00 09 SCREEN: three !\\[x](https://example.com/a.png)",
+        "[00:00:07] SAID Sam&lt;!-- Roe: four (?)",
+        "[00:00:09] SAID: five",
+    ]
+    assert "<" not in u.body
+    assert all(line.startswith("[") and _EVIDENCE_LINE.fullmatch(line) for line in lines)
+    assert [(e.seconds, e.channel) for e in _evidence(lines)] == [(t, "heard") for t in (1, 3, 5, 7, 9)]
+
+
+def test_vtt_lines_behind_the_banner_are_what_the_lint_reads_as_heard(fixture_files: dict[str, Path]) -> None:
+    """Through the registry the page carries the untrusted banner like any page; the lint skips it and reads
+    every turn as ``heard``, its words as the evidence text."""
+    conv = Registry.default(CFG).for_name("sample.vtt")
+    assert conv is not None and conv.converter_id == "vtt-turns"
+    u = _one(conv.convert(fixture_files["sample.vtt"], name="sample.vtt"))
+    assert u.body.startswith(policy.UNTRUSTED_BANNER + "\n\n[00:00:01] SAID Alex Doe: ")
+    heard = _evidence(u.body.splitlines())
+    assert [(e.seconds, e.channel) for e in heard] == [
+        (1, "heard"),
+        (7, "heard"),
+        (9, "heard"),
+        (12, "heard"),
+    ]
+    assert heard[2].text == "Room microphone"
+
+
+@pytest.mark.parametrize(
+    ("data", "reason"),
+    [
+        (b"", "not a WebVTT transcript (no WEBVTT first line)"),
+        (b"1\n00:00:01.000 --> 00:00:02.000\nhello\n", "not a WebVTT transcript (no WEBVTT first line)"),
+        (
+            b"WEBVTTX\n\n00:00:01.000 --> 00:00:02.000\nhello\n",
+            "not a WebVTT transcript (no WEBVTT first line)",
+        ),
+        (b"WEBVTT\x00\n", "not a WebVTT transcript (no WEBVTT first line)"),
+        (b"\xef\xbb\xbfWEBVTT\n\nNOTE nothing said\n", "a WebVTT transcript with no cue"),
+        (b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Alex Doe></v>\n", "a WebVTT transcript with no cue"),
+        (b"WEBVTT\n\n1\nnot a timing\nhello\n", "a WebVTT transcript with no cue"),
+    ],
+)
+def test_vtt_that_is_not_a_transcript_is_a_fixed_stub(tmp_path: Path, data: bytes, reason: str) -> None:
+    with pytest.raises(UnreadableSourceError) as caught:
+        VttConverter(CFG).convert(_write(tmp_path, "x.vtt", data), name="x.vtt")
+    assert str(caught.value) == reason
+
+
+def test_vtt_bom_and_crlf_read_as_the_same_turns(tmp_path: Path) -> None:
+    plain = "WEBVTT\n\n00:01.000 --> 00:02.000\n<v Alex Doe>hello</v>\n"
+    a = _one(VttConverter(CFG).convert(_write(tmp_path, "a.vtt", plain), name="a.vtt"))
+    crlf = b"\xef\xbb\xbf" + plain.replace("\n", "\r\n").encode()
+    b = _one(VttConverter(CFG).convert(_write(tmp_path, "b.vtt", crlf), name="other name.vtt"))
+    assert a.body == b.body == "[00:00:01] SAID Alex Doe: hello\n"
 
 
 def test_markdown_frontmatter_is_fenced(fixture_files: dict[str, Path]) -> None:

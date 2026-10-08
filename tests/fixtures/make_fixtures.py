@@ -211,6 +211,36 @@ def build_teams_month(dest: Path) -> Path:
     return path
 
 
+VTT_SOURCE = """WEBVTT
+Kind: captions
+
+STYLE
+::cue(v[voice="Alex Doe"]) { color: teal }
+
+NOTE Contoso weekly sync: a made-up transcript
+
+1a2b3c/10-0
+00:00:01.000 --> 00:00:03.500
+<v Alex Doe>Good morning, this is the Contoso weekly sync.</v>
+
+1a2b3c/11-0
+00:00:03.800 --> 00:00:06.000 align:start
+<v Alex Doe>R&amp;D sent the <c.highlight>purchase order</c>
+figures.</v>
+
+00:07.000 --> 00:09.250
+<v.loud Sam Roe>Thanks, I will check them.</v>
+
+00:00:09.400 --> 00:00:10.000
+Room microphone
+
+00:00:12.000 --> 00:00:13.000
+<v Sam Roe>One more thing.</v>
+"""
+"""A meeting transcript as Teams writes one (cue ids, voice tags), with a STYLE block, a NOTE, a ``<c>`` tag,
+an entity, an ``MM:SS.mmm`` timing and a cue under no voice tag."""
+
+
 def make_fixtures(dest: Path) -> dict[str, Path]:
     """Build every sample into ``dest`` (created if needed); return {file name: path}."""
     dest.mkdir(parents=True, exist_ok=True)
@@ -232,7 +262,9 @@ def make_fixtures(dest: Path) -> dict[str, Path]:
     )
     csv = dest / "sample.csv"
     csv.write_text("region,spend\nNorth,100\nSouth,80\n", encoding="utf-8")
-    files += [md, txt, html, csv]
+    vtt = dest / "sample.vtt"
+    vtt.write_text(VTT_SOURCE, encoding="utf-8")
+    files += [md, txt, html, csv, vtt]
     return {p.name: p for p in sorted(files)}
 
 

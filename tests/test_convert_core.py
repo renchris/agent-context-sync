@@ -421,14 +421,15 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
         "pptx-python-pptx": (".pptx",),
         "pdf-pypdfium2": (".pdf",),
         "markdown-passthrough": (".md", ".markdown"),
-        "text-plain": (".txt", ".csv", ".tsv", ".log", ".vtt", ".json", ".xml", ".yaml", ".yml"),
+        "text-plain": (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml"),
+        "vtt-turns": (".vtt",),
         "eml-stdlib": (".eml",),
         "teams-month": (".teams.json",),
     }
     assert ids == {ext: cid for cid, exts in routes.items() for ext in exts}
     assert reg.extensions() == tuple(sorted(ids))
     assert [c.converter_id for c in reg.converters()] == sorted(c.converter_id for c in reg.converters())
-    assert len(reg.converters()) == 8
+    assert len(reg.converters()) == 9
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
@@ -460,9 +461,9 @@ def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() ->
     routes = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
     assert {ext for ext, cid in routes.items() if cid == "image-ocr"} == set(IMAGE_SUFFIXES)
     assert reg.for_name("Contoso diagram.PNG").converter_id == "image-ocr"  # type: ignore[union-attr]
-    # Ten: the eight, ``pandoc-gfm`` a second time for the suffixes it reads no picture in, and the image
+    # Eleven: the nine, ``pandoc-gfm`` a second time for the suffixes it reads no picture in, and the image
     # converter.
-    assert len(reg.converters()) == 10 and reg.extensions() == tuple(sorted(routes))
+    assert len(reg.converters()) == 11 and reg.extensions() == tuple(sorted(routes))
     for ext in plain.extensions():
         assert routes[ext] == plain.for_name(f"x{ext}").converter_id, ext  # type: ignore[union-attr]
     assert reg.for_name("clip.mp4") is None and reg.for_name("drawing.svg") is None
@@ -529,7 +530,7 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
     assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
     assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
-    assert len(reg.converters()) == 9, "the eight, and pandoc-gfm a second time: no image converter"
+    assert len(reg.converters()) == 10, "the nine, and pandoc-gfm a second time: no image converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 

@@ -375,7 +375,7 @@ def test_dry_run_classifies_without_writing(sample_config: Config) -> None:
     repo = sample_config.docs_repo
     report = run(sample_config, mode=CycleMode.DRY_RUN)
     assert report.exit_code == 0 and report.commit_sha is None and report.changes == ()
-    assert report.sources[0].counts.get(Verdict.CREATED) == 13
+    assert report.sources[0].counts.get(Verdict.CREATED) == 14
     assert gitops.head_sha(repo) is None and not (repo / "mirror").exists()
     with Manifest(sample_config.state_paths.db) as m:
         assert list(m.iter_items(SID)) == [] and m.last_runs(1) == []

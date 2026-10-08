@@ -9888,7 +9888,47 @@ page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35
 
 <!-- slot: vtt (agentsync.convert.vtt) -->
 
-- (vtt: fill this paragraph)
+- **The transcript converter** (`agentsync.convert.vtt`, `src/agentsync/convert/vtt.py`; spec P3, section 5
+  rule 5). `VttConverter` (`converter_id = "vtt-turns"`, `extensions = (".vtt",)`, version
+  `1.0.0+python-<v>+unicode-<v>`, options `decode`, `max_page_bytes`, `turn_pause_ms`) is in `Registry.default`
+  always (no OCR needed); `.vtt` leaves `PlainTextConverter.extensions`. It reads WebVTT as Teams, Zoom and Webex
+  write it: the `WEBVTT` header block and `NOTE`, `STYLE` and `REGION` blocks skipped, cue ids optional, timings
+  `HH:MM:SS.mmm` or `MM:SS.mmm` (a `,` accepted for the `.`) with cue settings ignored, `<v Name>` and
+  `<v.class Name>` spans to their `</v>` or the cue's end, every other tag dropped with its text kept, and
+  `&amp; &lt; &gt; &nbsp; &lrm; &rlm;` decoded once. One WHOLE unit, one line per turn:
+  `[HH:MM:SS] SAID <name>: <text>`. A turn is consecutive cues of one named speaker, closed at a change of speaker
+  or at a pause of 1 s or more between one cue's end and the next one's start (lead decision); cues are taken in
+  start order; its time is its first cue's start floored to the second. Words under no voice tag print `SAID:`
+  and are never merged. A name never holds `:`, `[`, `]` or a control character (each a space, runs collapsed);
+  text and names are cleaned as the recording page cleans its own (no control, format, tag or filler character,
+  lone surrogate or Unicode line break; `<` printed `&lt;`, `![` printed `!\[`, a trailing `[?]` printed `(?)`),
+  so every body line begins with `[` and is one `heard` line to the curate lint (`_EVIDENCE_LINE`). The id is the
+  lint's contract: a page whose `converter` starts with `vtt-turns@` is a transcript. Names are the file's,
+  checked by the curate rules before use. No `WEBVTT` first line (after an optional BOM, or bytes that are not
+  text) is `UnreadableSourceError("not a WebVTT transcript (no WEBVTT first line)")`; no cue with words is
+  `UnreadableSourceError("a WebVTT transcript with no cue")`. Output depends on the bytes only; over
+  `max_page_bytes` the body is cut at a line with the full text in `full-text.txt`.
+- **Read again once.** `VttConverter.replaces = ("text-plain",)`: a converter may name the converter ids whose
+  pages it makes anew. `cycle._reread_targets` adds a target for each `produced_by` record whose converter id is
+  in some current converter's `replaces`, for that converter's suffixes only (so a `.txt` page of `text-plain`
+  is never one: `Manifest.reread_candidates` matches the suffix), and `_lacks` answers True for a result such a
+  converter id made; both read `replaces` behind the registry guard (`cycle._replaced`, as `_outdated_rule`).
+  `VttConverter.outdated_key` (`"replaces text-plain"`) moves the re-read record's capability digest, so a
+  source whose re-reads said done looks once more.
+
+```python
+# agentsync.convert.vtt
+class VttConverter:
+    converter_id = "vtt-turns"
+    extensions: tuple[str, ...] = (".vtt",)
+    replaces: tuple[str, ...] = ("text-plain",)
+    def __init__(self, cfg: ConvertConfig) -> None: ...
+    def version(self) -> str: ...
+    def options(self) -> Mapping[str, OptionValue]: ...
+    @property
+    def outdated_key(self) -> str: ...
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
+```
 
 <!-- end slot: vtt -->
 

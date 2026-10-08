@@ -29,7 +29,6 @@ _TABLE_SIDECAR = "full-table.csv"
 _FENCE_LANG: dict[str, str] = {
     ".txt": "text",
     ".log": "text",
-    ".vtt": "text",
     ".json": "json",
     ".xml": "xml",
     ".yaml": "yaml",
@@ -64,7 +63,7 @@ class PlainTextConverter:
     """
 
     converter_id = "text-plain"
-    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".vtt", ".json", ".xml", ".yaml", ".yml")
+    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml")
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""

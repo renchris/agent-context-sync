@@ -186,8 +186,8 @@ class Registry:
         media: MediaEngine | None = None,
         pieces: PieceStore | None = None,
     ) -> Registry:
-        """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams), each
-        behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
+        """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, vtt, eml, teams),
+        each behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
 
         With ``ocr`` (the engine the cycle resolved) the pandoc, pptx and pdf converters read with it, and
         raster images get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image
@@ -209,6 +209,7 @@ class Registry:
         from agentsync.convert.pptx import PptxConverter  # noqa: PLC0415
         from agentsync.convert.teams import TeamsMonthConverter  # noqa: PLC0415
         from agentsync.convert.text import PlainTextConverter  # noqa: PLC0415
+        from agentsync.convert.vtt import VttConverter  # noqa: PLC0415
         from agentsync.convert.xlsx import XlsxConverter  # noqa: PLC0415
 
         content_policy = policy if policy is not None else PolicyConfig()
@@ -220,6 +221,7 @@ class Registry:
             PdfConverter(cfg, ocr=ocr),
             MarkdownConverter(cfg),
             PlainTextConverter(cfg),
+            VttConverter(cfg),
             EmlConverter(cfg),
             TeamsMonthConverter(cfg),
         ]

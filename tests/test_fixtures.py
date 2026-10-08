@@ -24,6 +24,7 @@ def test_every_fixture_exists(fixture_files: dict[str, Path]) -> None:
         "sample.pdf",
         "sample.pptx",
         "sample.txt",
+        "sample.vtt",
         "sample.xlsx",
     }
     assert all(p.stat().st_size > 0 for p in fixture_files.values())

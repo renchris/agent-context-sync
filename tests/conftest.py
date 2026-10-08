@@ -148,7 +148,7 @@ def copy_docs_repo(template: Path, repo: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def fixture_files(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
-    """Real sample files (docx, xlsx x2, pptx, pdf, eml, teams.json, md, txt, html, csv), built once."""
+    """Real sample files (docx, xlsx x2, pptx, pdf, eml, teams.json, md, txt, html, csv, vtt), built once."""
     return make_fixtures(tmp_path_factory.mktemp("fixtures"))
 
 
