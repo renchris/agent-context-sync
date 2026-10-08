@@ -1705,10 +1705,13 @@ def _cmd_uninstall(args: argparse.Namespace) -> int:
 
 def _print_purge(rep: governance.PurgeReport) -> None:
     state = "dry run" if rep.dry_run else ("VERIFIED" if rep.verified else "NOT VERIFIED")
+    # a dry run changed nothing: its commit count is in the note, its cache count is what would go
+    rewritten = "" if rep.dry_run else f"{rep.commits_rewritten} commit(s) rewritten · "
+    removed = "would be removed" if rep.dry_run else "removed"
     _out(
         f"purge {rep.selector} ({rep.reason.value}): {state} · {len(rep.items)} item(s) · "
-        f"{len(rep.docs_paths)} docs path(s) · {rep.commits_rewritten} commit(s) rewritten · "
-        f"{rep.blobs_targeted} blob(s) targeted · {rep.cache_entries_removed} cache entr(ies) removed"
+        f"{len(rep.docs_paths)} docs path(s) · {rewritten}{rep.blobs_targeted} blob(s) targeted · "
+        f"{rep.cache_entries_removed} cache entr(ies) {removed}"
     )
     for p in rep.docs_paths:
         _out(f"  path: {p}")

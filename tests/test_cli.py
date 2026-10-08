@@ -1187,13 +1187,19 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     sid = _stable_id(initialised, "projects/sample.txt")
     capsys.readouterr()
     assert cli.main(["purge", f"id={sid}", "--dry-run", "--config", cfg]) == cli.EXIT_OK
-    assert "dry run" in capsys.readouterr().out and (repo / page).is_file()
+    out = capsys.readouterr().out
+    assert "dry run" in out and (repo / page).is_file()
+    # A dry run changed nothing, so its headline says what would go and names no commit count
+    (head,) = [line for line in out.splitlines() if line.startswith("purge ")]
+    assert head.endswith("cache entr(ies) would be removed") and "rewritten" not in head
+    assert "note: up to " in out and " commit(s) would be rewritten" in out
     rc = cli.main(
         ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
     )
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK, out
     assert "VERIFIED" in out and page in out
+    assert " commit(s) rewritten · " in out and "cache entr(ies) removed" in out
     gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
     assert gone.returncode != 0  # the blob is unreadable afterwards
     audit = governance.read_audit(initialised.state_paths.root)
