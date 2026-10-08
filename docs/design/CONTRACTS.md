@@ -9642,7 +9642,7 @@ AVFoundation; nothing leaves the Mac.
   2 s tick; `frames FILE --out DIR --ticks a,b [--crop X0,Y0,X1,Y1 | --crop-right F]` writing `tHHMMSS.jpg`
   (ImageIO, quality 0.7, no metadata); `diff GRIDS --pairs a:b --include R --exclude R [--threshold]`. One JSON
   document on stdout; exit 3 with a message on stderr is a failure. P3 adds `pills` and `audio`.
-- **Probe states** as §16.25's: `ready` (detail `avfoundation, helper 1.0.0`, `MediaEngine.description`),
+- **Probe states** as §16.25's: `ready` (detail `avfoundation, helper 1.1.0`, `MediaEngine.description`),
   `off` (OCR's switches first, then `[convert] recordings = false`; off macOS `the media helper needs macOS`:
   then it starts nothing), `not-built` (`the media helper is not built`), `failed`. `engine` returns a
   `MediaEngine` only when `ready`, and renews the helper's modification time (its last use); neither compiles or

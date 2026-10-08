@@ -674,7 +674,11 @@ def test_the_real_media_helper_reads_the_pills_and_the_sound_of_a_clip_it_made(t
         values = eng.pills(clip, [(1, [blue, grey, ground]), (0, [grey, blue])], work=out, timeout=120)
         sound = eng.audio(clip, out, timeout=120)
         runs.append((values, sound.samples, sound.path.read_bytes()))
-    assert runs[0] == runs[1], "the same file gives the same values and the same bytes"
+    assert runs[0][:2] == runs[1][:2], "the same file gives the same pill values and the same length"
+    # Apple's AAC decoder may move a sample by one step between runs (spec R11; CONTRACTS §16.35): the sound
+    # is the same to within that, and audio.pcm is never a cache key.
+    once, again = (array.array("h", run[2]) for run in runs)
+    assert max(abs(a - b) for a, b in zip(once, again, strict=True)) <= 1
 
     values, samples, pcm = runs[0]
     assert values[1][0] >= cue.LIT_AT > values[1][1] and values[1][1:] == (0, 0), values
