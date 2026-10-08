@@ -4706,7 +4706,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
 def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     """The installer's first sync: its step from install.log, what it converted and left to background sync
     (the step's ``converted-N-deferred-M`` note, else the sync's own "converted N, deferred M online-only"
-    line in install.out), and how many sources status lists completely."""
+    line in install.out), and how many sources status says were listed completely at least once, read when the
+    report runs."""
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     parts: list[str] = []
     counts: tuple[int, int] | None = None
@@ -4732,7 +4733,10 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(f"converted {converted}, deferred {deferred} online-only ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
-        parts.append(f"{done} of {total} source(s) listed completely (status: baseline complete)")
+        parts.append(
+            f"{done} of {total} source(s) listed completely (status: baseline complete) at least once by "
+            "the time this report was written"
+        )
     return "- first sync: " + " · ".join(parts)
 
 

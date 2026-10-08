@@ -5028,7 +5028,9 @@ friction section embeds each line with its line number (the F<n> ids). A v6 atte
 times from install.log ("install.sh (install.log): step 1 --list-folders 4s · step 2 install 57s"). The first
 sync line adds "converted N, deferred M online-only" (install.log's first-sync `note=converted-N-deferred-M`,
 else the sync's own line in install.out) and says "N of M source(s) listed completely (status: baseline
-complete)". The generated-at, agentsync, install source and took bullets end the Summary under
+complete) at least once by the time this report was written" (status is read when the report runs, after any
+later sync; a source counts once one listing of it was complete since its scope last changed, and a later
+incomplete listing does not clear it). The generated-at, agentsync, install source and took bullets end the Summary under
 `RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
 source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
 · on origin/main: yes|no|unknown (as of the checkout's last fetch)`, every git call read-only

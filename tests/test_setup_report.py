@@ -760,6 +760,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str,
         "- first sync: done in 34s (install.log) · 1 of 2 source(s) listed completely (status: baseline "
         "complete)" in summary
     )
+    assert "(status: baseline complete) at least once by the time this report was written" in summary
     assert (
         "- doctor: 0 FAIL, 5 warn (6 checks) · expected 4: launcher.signature, launcher.requirement (ad hoc "
         "launcher); launchd.poll, launchd.reconcile (LaunchAgents not installed yet) · unexpected 1: "
