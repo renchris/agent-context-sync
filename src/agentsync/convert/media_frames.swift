@@ -122,8 +122,14 @@ struct Recording {
 func openRecording(_ url: URL) -> Recording {
     guard FileManager.default.isReadableFile(atPath: url.path) else { fail("cannot open the file") }
     let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-    let d = asset.duration
-    let ms = d.isNumeric ? max(0, Int(CMTimeConvertScale(d, timescale: 1000, method: .roundTowardZero).value)) : 0
+    // The latest end of any track, not asset.duration: that one follows the SDK the helper was linked with
+    // (3,253,207 or 3,253,254 ms for one recording whose sound ends last; the tracks say 3,253,254 either way).
+    var end = CMTime.zero
+    for track in asset.tracks {
+        let e = CMTimeRangeGetEnd(track.timeRange)
+        if e.isNumeric && CMTimeCompare(e, end) > 0 { end = e }
+    }
+    let ms = max(0, Int(CMTimeConvertScale(end, timescale: 1000, method: .roundTowardZero).value))
     return Recording(asset: asset, picture: asset.tracks(withMediaType: .video).first, durationMs: ms)
 }
 
