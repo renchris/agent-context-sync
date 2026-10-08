@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import random
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -19,18 +20,22 @@ import pytest
 
 from agentsync.config import ConvertConfig
 from agentsync.convert import convert_file
+from agentsync.convert import naming as naming_mod
 from agentsync.convert import recording as rec
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.ocr import OcrLine
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.registry import Registry
+from agentsync.convert.speech import SpeechEngine
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import ConversionStatus, RenderedUnit
 from agentsync.policy import PolicyConfig
 from media_kit import calls as media_calls
 from media_kit import fake_media, fake_recording, recording, row, screen
+from speech_kit import FAKE_PIN, fake_speech, place_models
+from speech_kit import calls as speech_calls
 from test_convert_core import LABEL_RULES
 from test_ocr import fake_engine
 from test_recording_grammar import index_errors, window_errors
@@ -39,13 +44,46 @@ CFG = ConvertConfig()
 
 
 def converter(
-    tmp_path: Path, *, pieces: PieceStore | None = None, label_rule: bool = False, **media: Any
+    tmp_path: Path,
+    *,
+    pieces: PieceStore | None = None,
+    label_rule: bool = False,
+    speech: SpeechEngine | None = None,
+    **media: Any,
 ) -> rec.RecordingConverter:
     helper = fake_media(tmp_path / "helpers", **media)
     engine = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
     return rec.RecordingConverter(
-        CFG, fake_engine(tmp_path / "helpers"), engine, pieces=pieces, label_rule=label_rule
+        CFG, fake_engine(tmp_path / "helpers"), engine, pieces=pieces, label_rule=label_rule, speech=speech
     )
+
+
+def hearing(tmp_path: Path, script: dict[str, Any] | None = None, **kw: Any) -> SpeechEngine:
+    """A speech engine over the fake speech helper of ``tests/speech_kit.py``: ``script`` is what the sound
+    holds."""
+    return SpeechEngine(
+        fake_speech(tmp_path / "helpers", script, **kw),
+        place_models(tmp_path / "speech"),
+        name="paper-speech",
+        helper_version="0.1.0",
+        fluidaudio=FAKE_PIN,
+        model_digest=DIGEST,
+    )
+
+
+DIGEST = "0123456789ab" + "c" * 52
+
+
+def talk(*turns: tuple[str, int, str]) -> dict[str, Any]:
+    """A speech script: per turn ``(speaker, start_ms, text)`` one word every 400 ms, and one diarizer segment
+    over the turn's words."""
+    words: list[list[Any]] = []
+    segments: list[list[Any]] = []
+    for speaker, start, text in turns:
+        said = text.split()
+        words += [[w, start + 400 * i, start + 400 * (i + 1)] for i, w in enumerate(said)]
+        segments.append([speaker, start, start + 400 * len(said)])
+    return {"words": words, "segments": segments}
 
 
 def staged(tmp_path: Path, script: dict[str, Any], name: str = "meeting.mp4") -> Path:
@@ -535,7 +573,24 @@ def test_a_vp9_or_av1_picture_is_a_stub_until_speech_and_then_a_speech_only_page
     reason = "recording's picture cannot be decoded on this Mac (VP9 or AV1)"
     with pytest.raises(UnreadableSourceError, match=f"^{re.escape(reason)}$"):
         conv._reading(src, name="meeting.mp4")
-    assert not conv.outdated(conv.version(), reason), "P1 has no speech engine: the stub stands"
+    assert not conv.outdated(conv.version(), reason), "no speech engine: the stub stands"
+    heard = converter(tmp_path, speech=hearing(tmp_path, talk(("spk-a", 3_000, "Contoso budget review"))))
+    assert heard.outdated(conv.version(), reason) and not heard.outdated(heard.version(), reason)
+    got = heard._reading(src, name="meeting.mp4")
+    assert got.picture_unread == reason and got.profile == "generic"
+    assert (got.states, got.rows, got.names, got.speaking) == ((), (), (), None)
+    assert got.speech is not None and [ln.text for ln in got.speech.reading.lines] == [
+        "Contoso budget review"
+    ]
+    assert not any(
+        c["args"][0] in {"scan", "frames"} for c in media_calls(tmp_path / "helpers" / "fake-media")
+    )
+    index, *windows = pages(tmp_path / "pages", recording(picture=codec), speech=heard._speech)
+    assert "picture not read: recording's picture cannot be decoded on this Mac (VP9 or AV1); " in index.body
+    assert "[00:00:03] SAID v1: Contoso budget review" in windows[0].body
+    _grammar(index, *windows)
+    with pytest.raises(UnreadableSourceError, match=f"^{re.escape(reason)}$"):
+        heard._reading(staged(tmp_path, recording(picture=codec, audio=False)), name="meeting.mp4")
 
 
 def test_the_registry_has_no_recording_converter_without_both_engines_and_keeps_it_under_a_label_rule(
@@ -822,10 +877,15 @@ def test_the_index_title_is_empty_and_its_source_title_is_the_items_name(tmp_pat
 
 def test_a_new_emitter_alone_reads_no_recording_again(tmp_path: Path) -> None:
     conv = converter(tmp_path)
-    for produced in ("1.0.0+ocr-a+media-b-s1", "1.0.1+ocr-a+media-b-s2", "2.0.0+x", "unavailable"):
+    for produced in (
+        "1.0.0+ocr-a+media-b-s1+cue-r1",
+        "1.0.1+ocr-a+media-b-s2+cue-r1",
+        "2.0.0+x",
+        "unavailable",
+    ):
         assert not conv.outdated(produced) and not conv.outdated(produced, "no text read on screen")
-    assert conv.outdated_key == "1.0.0<1.0.0|-|-"
-    assert conv.version() == "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2"
+    assert conv.outdated_key == "1.0.0<1.0.0|cue-r1|-"
+    assert conv.version() == "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2+cue-r1"
 
 
 def test_a_floor_above_a_pages_emitter_reads_it_again_once(
@@ -835,8 +895,10 @@ def test_a_floor_above_a_pages_emitter_reads_it_again_once(
     monkeypatch.setattr(rec, "_EMITTER_VERSION", "1.2.0")
     monkeypatch.setattr(rec, "_REREAD_BELOW", "1.1.0")
     assert conv.outdated("1.0.0+ocr-a+media-b-s1") and conv.outdated("1.0.9+x", "no text read on screen")
-    assert not conv.outdated("1.1.0+x") and not conv.outdated("1.2.0+x"), "what a re-read wrote is current"
-    assert conv.outdated_key == "1.2.0<1.1.0|-|-"
+    assert not conv.outdated("1.1.0+x+cue-r1") and not conv.outdated("1.2.0+x+cue-r1"), (
+        "what a re-read wrote is current"
+    )
+    assert conv.outdated_key == "1.2.0<1.1.0|cue-r1|-"
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -978,3 +1040,338 @@ def test_a_settle_that_times_out_says_the_last_pieces_media_is_not_read(
         converter(tmp_path, pieces=store)._reading(staged(tmp_path, _long_meeting()), name="meeting.mp4")
     assert (caught.value.done_ms, caught.value.total_ms, caught.value.timed_out) == (300_000, 600_000, True)
     assert len(stored(store)) == 3, "the pieces are kept"
+
+
+# ---------------------------------------------------------------------------------------------------------
+# P3: the speaker cue (S7), speech and voices (S8), voice naming (S8b)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _grammar(index: RenderedUnit, *windows: RenderedUnit) -> None:
+    assert index_errors(index.body) == []
+    for unit in windows:
+        assert window_errors(unit.body) == [], unit.unit_id
+
+
+def _lines(unit: RenderedUnit) -> list[str]:
+    return [line for line in unit.body.split("\n") if line.startswith("[")]
+
+
+def test_words_become_said_lines_in_their_window_and_voices_are_numbered_by_first_word(
+    tmp_path: Path,
+) -> None:
+    sound = talk(
+        ("spk-b", 2_000, "Good morning from Contoso."),
+        ("spk-a", 6_000, "Thanks, the forecast is ready."),
+        ("spk-b", 310_000, "Last item for today."),
+    )
+    script = teams(share(3, FIRST), duration_ms=400_000)
+    index, first, second = pages(tmp_path, script, speech=hearing(tmp_path, sound))
+    assert "[00:00:02] SAID v1: Good morning from Contoso." in _lines(first)
+    assert "[00:00:06] SAID v2: Thanks, the forecast is ready." in _lines(first)
+    assert "[00:05:10] SAID v1: Last item for today." in _lines(second)
+    assert "[00:00:02] VOICE: v1 · unidentified" in index.body
+    assert "[00:00:06] VOICE: v2 · unidentified" in index.body
+    _grammar(index, first, second)
+
+
+def test_a_hole_is_read_again_as_a_clip_and_one_left_empty_says_so(tmp_path: Path) -> None:
+    sound = talk(
+        ("spk-a", 1_000, "Opening words here."), ("spk-a", 20_000, "Back again."), ("spk-b", 50_000, "Done.")
+    )
+    sound["segments"] += [["spk-b", 3_000, 15_000], ["spk-b", 30_000, 45_000]]
+    sound["hidden"] = [["recovered", 8_000, 8_400], ["words", 8_400, 8_800]]
+    engine = hearing(tmp_path, sound)
+    got = reading(tmp_path, teams(share(3, FIRST)), speech=engine)
+    assert got.speech is not None
+    said = got.speech.reading
+    assert [ln.text for ln in said.lines] == [
+        "Opening words here.",
+        "recovered words",
+        "Back again.",
+        "Done.",
+    ]
+    assert said.unrecognised == ((20_800, 50_000),)
+    clips = [c["args"] for c in speech_calls(engine.helper) if "--from" in c["args"]]
+    assert [a[a.index("--from") + 1 : a.index("--from") + 4 : 2] for a in clips] == [
+        ["0", "25000"],
+        ["15800", "55000"],
+    ]
+    index, window = pages(tmp_path / "pages", teams(share(3, FIRST)), speech=engine)
+    assert "[00:00:20] NOTE: speech detected, no words recognised until 00:00:50" in _lines(window)
+    _grammar(index, window)
+
+
+def test_silence_says_where_sound_ends(tmp_path: Path) -> None:
+    script = teams(share(3, FIRST), sound=[(0, 20_000)])
+    engine = hearing(tmp_path, talk(("spk-a", 2_000, "Contoso review starts.")))
+    index, window = pages(tmp_path, script, speech=engine)
+    assert "[00:00:20] NOTE: no sound from here to the end of the recording" in _lines(window)
+    assert "- sound ends at 00:00:20" in index.body
+    _grammar(index, window)
+
+
+def test_the_cue_writes_speaking_only_where_one_label_is_lit(tmp_path: Path) -> None:
+    script = teams(
+        share(3, FIRST),
+        share(10, FIRST, lit=["Avery Chen"]),
+        share(14, FIRST, lit=["Avery Chen", "Blake Ortiz"]),
+        share(18, FIRST, lit=["Blake Ortiz"]),
+        share(22, FIRST),
+    )
+    got = reading(tmp_path, script)
+    assert got.speaking == ((20_000, "Avery Chen"), (36_000, "Blake Ortiz")) and got.cue_identity == "cue-r1"
+    assert got.speech is None and got.no_speech is None, "no speech engine: speech is not mentioned"
+    index, window = pages(tmp_path / "pages", script)
+    assert [ln for ln in _lines(window) if "SPEAKING" in ln] == [
+        "[00:00:20] SPEAKING: Avery Chen",
+        "[00:00:36] SPEAKING: Blake Ortiz",
+    ]
+    _grammar(index, window)
+    meet = reading(tmp_path / "generic", recording(screen(3, *FIRST, lit=["Status: approved by finance"])))
+    assert (meet.profile, meet.speaking, meet.cue_identity) == ("generic", None, None)
+
+
+def test_naming_names_nobody_under_the_gate_and_prints_shared_audio(tmp_path: Path) -> None:
+    """``Blake Ortiz`` carries one voice (v1 takes it, but no layout is checked yet: unidentified and the
+    gate's NOTE); ``Avery Chen`` carries two (shared audio, no name)."""
+    script = teams(
+        share(3, FIRST, lit=["Blake Ortiz"]), share(30, FIRST, lit=["Avery Chen"]), duration_ms=120_000
+    )
+    sound = talk(
+        ("spk-a", 1_000, "Contoso first."), ("spk-b", 61_000, "Second voice."), ("spk-c", 91_000, "Third.")
+    )
+    sound["segments"] = [["spk-a", 0, 60_000], ["spk-b", 60_000, 90_000], ["spk-c", 90_000, 120_000]]
+    engine = hearing(tmp_path, sound)
+    got = reading(tmp_path, script, speech=engine)
+    assert got.speech is not None
+    assert [(n.number, n.form, n.label, n.gated) for n in got.speech.namings] == [
+        (1, "unidentified", "Blake Ortiz", True),
+        (2, "shared", "Avery Chen", False),
+        (3, "shared", "Avery Chen", False),
+    ]
+    index, window = pages(tmp_path / "pages", script, speech=engine)
+    assert "[00:00:01] VOICE: v1 · unidentified" in index.body
+    assert "[00:01:01] VOICE: v2 · shared audio of Avery Chen, 2 voices" in index.body
+    assert "[00:00:00] NOTE: names held back: this layout's names are not yet checked against a listen" in (
+        index.body
+    )
+    assert "Blake Ortiz ·" not in index.body
+    _grammar(index, window)
+
+
+def test_a_line_whose_lit_samples_show_another_label_is_not_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(naming_mod, "CHECKED_PROFILES", frozenset({"teams"}))
+    script = teams(
+        share(3, FIRST, lit=["Blake Ortiz"]), share(50, FIRST, lit=["Avery Chen"]), duration_ms=240_000
+    )
+    sound = talk(
+        ("spk-a", 1_000, "Contoso budget is on track."),
+        ("spk-b", 101_000, "Racks arrive in November."),
+        ("spk-a", 180_000, "One more point."),
+    )
+    sound["segments"] = [["spk-a", 0, 100_000], ["spk-b", 100_000, 180_000], ["spk-a", 180_000, 184_000]]
+    engine = hearing(tmp_path, sound)
+    got = reading(tmp_path, script, speech=engine)
+    assert got.speech is not None
+    assert [(n.number, n.form, n.label) for n in got.speech.namings] == [
+        (1, "named", "Blake Ortiz"),
+        (2, "named", "Avery Chen"),
+    ]
+    assert got.speech.vetoed == ((1, 180_000),)
+    index, window = pages(tmp_path / "pages", script, speech=engine)
+    assert "[00:00:01] VOICE: v1 · Blake Ortiz · seen: 47 of 49 lit samples" in index.body
+    assert _lines(window)[-2:] == [
+        "[00:03:00] SAID v1: One more point.",
+        "[00:03:00] NOTE: v1 is not named on this line: its lit samples show another label",
+    ]
+    _grammar(index, window)
+
+
+def test_a_recording_without_picture_but_with_sound_is_a_speech_only_page(tmp_path: Path) -> None:
+    script = recording(picture=None, size=(0, 0), sound=[(0, 60_000)])
+    engine = hearing(tmp_path, talk(("spk-a", 4_000, "Contoso audio only call.")))
+    got = reading(tmp_path, script, speech=engine)
+    assert got.picture_unread == "recording has no picture; its speech is not read by this version"
+    assert got.states == () and got.speech is not None and got.no_speech is None
+    index, window = pages(tmp_path / "pages", script, speech=engine)
+    assert "[00:00:00] NOTE: picture not read: the recording has no picture track" in index.body
+    assert _lines(window) == ["[00:00:04] SAID v1: Contoso audio only call."]
+    _grammar(index, window)
+    with pytest.raises(
+        UnreadableSourceError, match=r"^no text read on screen and no speech in the recording$"
+    ):
+        reading(tmp_path / "silent", script, speech=hearing(tmp_path / "silent"))
+
+
+def test_text_or_speech_makes_a_page_and_neither_is_the_stub_of_a_speech_engine(tmp_path: Path) -> None:
+    blank = recording(screen(0), screen(5, paint=[(0.1, 0.1, 0.9, 0.9, 90)]))
+    with pytest.raises(
+        UnreadableSourceError, match=r"^no text read on screen; speech is not read by this version$"
+    ):
+        reading(tmp_path / "plain", blank)
+    with pytest.raises(
+        UnreadableSourceError, match=r"^no text read on screen and no speech in the recording$"
+    ):
+        reading(tmp_path / "quiet", blank, speech=hearing(tmp_path / "quiet"))
+    with pytest.raises(
+        UnreadableSourceError, match=r"^no text read on screen and no speech in the recording$"
+    ):
+        reading(tmp_path / "mute", {**blank, "audio": False}, speech=hearing(tmp_path / "mute"))
+    engine = hearing(tmp_path / "talk", talk(("spk-a", 3_000, "Contoso call with no slides.")))
+    got = reading(tmp_path / "talk", blank, speech=engine)
+    assert got.rows == () and got.states != () and got.speech is not None
+    index, window = pages(tmp_path / "pages", blank, speech=engine)
+    assert "[00:00:03] SAID v1: Contoso call with no slides." in _lines(window)
+    _grammar(index, window)
+    mute = reading(tmp_path / "text", {**teams(share(3, FIRST)), "audio": False}, speech=engine)
+    assert mute.speech is None and mute.no_speech == "the recording has no sound"
+    index, *windows = pages(
+        tmp_path / "text-pages", {**teams(share(3, FIRST)), "audio": False}, speech=engine
+    )
+    assert "- speech not read: the recording has no sound" in index.body
+    _grammar(index, *windows)
+
+
+def test_version_options_and_outdated_key_carry_the_cue_speech_and_naming(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plain = converter(tmp_path)
+    heard = converter(tmp_path, speech=hearing(tmp_path))
+    picture = "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2"
+    asr = f"asr-parakeet-0123456789ab-f{FAKE_PIN[:7]}-d1"
+    assert plain.version() == f"{picture}+cue-r1"
+    assert heard.version() == f"{picture}+cue-r1+{asr}-n1"
+    assert heard.outdated_key == f"1.0.0<1.0.0|cue-r1|{asr}"
+    assert plain._key() == heard._key(), "a picture piece is the same with or without speech"
+    mine, theirs = dict(heard.options()), dict(plain.options())
+    assert {"cue_lit_at", "cue_teams"} <= theirs.keys() <= mine.keys()
+    assert {"speech_hole_gap_ms", "naming_p_min", "naming_checked_profiles", "recording_speech_limit"} <= (
+        mine.keys() - theirs.keys()
+    )
+    monkeypatch.setattr(rec, "_SPEECH_S", 0.08)
+    assert dict(heard.options()) != mine
+
+
+def test_what_a_speech_engine_reads_again(tmp_path: Path) -> None:
+    plain = converter(tmp_path)
+    heard = converter(tmp_path, speech=hearing(tmp_path))
+    picture = "1.0.0+ocr-a+media-b-s2"
+    no_text = "no text read on screen; speech is not read by this version"
+    sound_only = "recording has no picture; its speech is not read by this version"
+    for conv in (plain, heard):
+        assert conv.outdated(picture), "made before the cue: read again once"
+        assert not conv.outdated(conv.version()) and not conv.outdated(conv.version(), no_text)
+    assert not plain.outdated(f"{picture}+cue-r1") and not plain.outdated(f"{picture}+cue-r1", no_text)
+    assert heard.outdated(f"{picture}+cue-r1"), "made without speech"
+    assert heard.outdated(f"{picture}+cue-r1+asr-parakeet-x-f1-d1"), "made before naming"
+    assert not heard.outdated(f"{picture}+cue-r1+asr-parakeet-x-f1-d1-n1"), (
+        "another model reads nothing again"
+    )
+    for reason in (no_text, sound_only, "recording's picture cannot be decoded on this Mac (VP9 or AV1)"):
+        assert heard.outdated(f"{picture}+cue-r1+asr-parakeet-x-f1-d1-n1", reason), reason
+    assert not heard.outdated(
+        heard.version(), "recording's picture cannot be decoded on this Mac (VP9 or AV1)"
+    )
+    assert not heard.outdated(f"{picture}+cue-r1+asr-x-n1", "recording has no picture and no sound")
+
+
+def test_a_speech_failure_keeps_the_screens_and_is_read_again_once_speech_works(tmp_path: Path) -> None:
+    store = PieceStore(tmp_path / "recordings")
+    helper = fake_media(tmp_path / "helpers")
+    media = MediaEngine(helper, name="paper-media", helper_version="0.1.0")
+    failing = hearing(tmp_path, talk(("spk-a", 2_000, "Contoso.")), fail={"voices": "the diarizer failed"})
+    registry = Registry.default(
+        CFG, ocr=fake_engine(tmp_path / "helpers"), media=media, pieces=store, speech=failing
+    )
+    assert registry.without_speech is not None and Registry.default(CFG).without_speech is None
+    src = staged(tmp_path, teams(share(3, FIRST)))
+    got = convert_file(
+        src,
+        name="meeting.mp4",
+        content_sha256="2" * 64,
+        canonical_sha256="2" * 64,
+        registry=registry,
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+    assert got.status is ConversionStatus.OK and "+cue-r1" in got.converter_version
+    assert "+asr-" not in got.converter_version and not any("] SAID v" in u.body for u in got.units)
+    assert any("Status: approved by finance" in u.body for u in got.units), "the screens stand"
+    conv = registry.for_name("meeting.mp4")
+    assert conv is not None and conv.inner.outdated(got.converter_version)  # type: ignore[attr-defined]
+    scans = [c for c in media_calls(helper) if c["args"][0] == "scan"]
+    assert len(scans) == 1, "the picture pieces the failed read stored are read back, not read again"
+
+
+def test_a_speech_piece_past_its_deadline_waits_and_stores_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rec, "_SPEECH_S", -1.0)
+    store = PieceStore(tmp_path / "recordings")
+    conv = converter(tmp_path, pieces=store, speech=hearing(tmp_path, talk(("spk-a", 2_000, "Contoso."))))
+    with pytest.raises(rec.RecordingNotFinished) as caught:
+        conv._reading(staged(tmp_path, teams(share(3, FIRST), duration_ms=400_000)), name="meeting.mp4")
+    assert (caught.value.done_ms, caught.value.total_ms, caught.value.timed_out) == (300_000, 400_000, True)
+    assert len(stored(store)) == 2, "the picture pieces are kept, the speech piece is not stored"
+
+
+def fixed_pcm(path: Path, seconds: int) -> Path:
+    """A fixed 16 kHz mono s16le sound made by code: seeded noise, a run of exact zeros every 7th second (as
+    Teams writes them), and 30 s of silence at the end."""
+    rng = random.Random(20261008)
+    chunks = [
+        bytes(32_000) if second % 7 == 6 or second >= seconds - 30 else rng.randbytes(32_000)
+        for second in range(seconds)
+    ]
+    path.write_bytes(b"".join(chunks))
+    return path
+
+
+def test_speech_is_deterministic_on_a_fixed_wav(tmp_path: Path) -> None:
+    """The goal test (spec S8 Determinism): one fixed sound and one fixed engine script give byte-identical
+    units and sidecars in two cold conversions, and the same bytes when the recording is worked over several
+    cycles of pieces; the speech piece is stored and heard once."""
+    pcm = fixed_pcm(tmp_path / "fixed.pcm", 400)
+    script = teams(
+        share(3, FIRST, lit=["Avery Chen"]),
+        share(160, SECOND, lit=["Blake Ortiz"]),
+        duration_ms=400_000,
+        pcm=pcm,
+    )
+    sound = talk(
+        ("spk-a", 2_000, "Good morning, this is the Contoso review."),
+        ("spk-b", 9_000, "Thanks. The forecast is ready."),
+        ("spk-a", 200_000, "Racks arrive in November."),
+        ("spk-b", 330_000, "That closes the review."),
+    )
+    sound["segments"].append(["spk-b", 30_000, 40_000])
+    sound["hidden"] = [["Contoso", 31_000, 31_400]]
+
+    def cold(tree: Path) -> tuple[RenderedUnit, ...]:
+        return converter(tree, speech=hearing(tree, sound)).convert(staged(tree, script), name="meeting.mp4")
+
+    one = cold(tmp_path / "one")
+    assert one == cold(tmp_path / "two")
+    assert any("SAID v1: Good morning" in u.body for u in one) and any(u.sidecars for u in one)
+    assert any("SAID v2: Contoso" in u.body for u in one), "the hole was read again"
+    assert any("NOTE: no sound from here to the end of the recording" in u.body for u in one)
+    tree = tmp_path / "three"
+    engine = hearing(tree, sound)
+    conv = converter(tree, pieces=PieceStore(tree / "recordings"), speech=engine)
+    src = staged(tree, script)
+    cycles = 0
+    while True:
+        cycles += 1
+        with rec.work_allowance(1e-9):
+            try:
+                parts = conv.convert(src, name="meeting.mp4")
+                break
+            except rec.RecordingNotFinished:
+                continue
+    assert cycles == 3 and parts == one
+    heard = len(speech_calls(engine.helper))
+    with rec.work_allowance(0.0):
+        assert conv.convert(src, name="meeting.mp4") == one
+    assert len(speech_calls(engine.helper)) == heard, "the speech piece is stored: nothing is heard again"

@@ -22,7 +22,8 @@ What the helper answers (one JSON document on stdout; exit 3 with a message on s
   under the mask (the included rectangles, whole grid when none, less the excluded ones), counted for real.
 - ``pills FILE --request REQ.json``: ``REQ`` is ``[{"tick": k, "boxes": [[x, y, w, h], ...]}]``; each box gets
   70 when its centre lies in the box of a row the tick lists as lit, else 20 (the ``teams`` cue lights at 50).
-- ``audio FILE --out DIR``: ``DIR/audio.pcm``, 16 kHz mono 16-bit, silent except the script's ``sound`` spans.
+- ``audio FILE --out DIR``: ``DIR/audio.pcm``, 16 kHz mono 16-bit, silent except the script's ``sound`` spans;
+  or, when the script names a ``pcm`` file, a copy of that file.
 
 Rows are ``[text, x, y, w, h]`` or ``[text, x, y, w, h, confidence]``, fractions of the frame, origin
 top-left, as ``OcrLine`` boxes are.  A row paints its box into the grid with a luma taken from its text, so a
@@ -206,6 +207,12 @@ elif command == "audio":
     s = script_of(plain[0])
     if not s.get("audio", True):
         die("the recording has no sound")
+    if s.get("pcm"):
+        data = Path(s["pcm"]).read_bytes()
+        (Path(found["--out"][0]) / "audio.pcm").write_bytes(data)
+        samples = len(data) // 2
+        print(json.dumps({"file": "audio.pcm", "sample_rate": 16000, "channels": 1, "samples": samples}))
+        sys.exit(0)
     samples = s["duration_ms"] * 16
     pcm = bytearray(samples * 2)
     for start, end in s.get("sound", []):
@@ -279,10 +286,11 @@ def recording(
     audio: bool = True,
     created: str | None = "2026-10-02T14:03:12Z",
     sound: Sequence[tuple[int, int]] = (),
+    pcm: Path | None = None,
 ) -> dict[str, Any]:
     """A script: the screens in tick order, the length, the picture's size and codec (None: no picture),
     whether there is sound, the container's creation time, and the spans ``(from_ms, to_ms)`` that are not
-    silent."""
+    silent, or a ``pcm`` file whose bytes ``audio`` hands out instead."""
     return {
         "duration_ms": duration_ms,
         "size": list(size),
@@ -291,6 +299,7 @@ def recording(
         "created": created,
         "ticks": list(screens) or [screen(0)],
         "sound": [list(s) for s in sound],
+        "pcm": None if pcm is None else str(pcm),
     }
 
 

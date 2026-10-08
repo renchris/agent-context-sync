@@ -3,14 +3,17 @@ media helper (``tests/media_kit.py``).
 
 ``fake_speech(folder, script)`` writes a Python script that speaks the speech helper's protocol and logs each
 call.  ``script`` says what the recording's sound "holds": ``{"words": [[text, start_ms, end_ms], ...],
-"segments": [[speaker, start_ms, end_ms], ...]}``.
+"segments": [[speaker, start_ms, end_ms], ...], "hidden": [[text, start_ms, end_ms], ...]}``.  ``hidden``
+words are missed by a whole-file run and found by a clip run, as a hole of the real engine is (spec S8 rule
+5).
 
 What the helper answers (one JSON document on stdout, keys sorted; exit 3 with a message on stderr on
 failure):
 
 - ``--version``: ``{"engine": ..., "fluidaudio": <40 hex>, "helper": ...}``.
 - ``words PCM --models DIR [--from MS --to MS]``: ``{"words": [...]}``, the script's words; with a clip only
-  the words that lie wholly inside it, their times still absolute.  ``--from`` and ``--to`` go together.
+  the words that lie wholly inside it, ``hidden`` ones included, their times still absolute.  ``--from``
+  and ``--to`` go together.
 - ``voices PCM --models DIR --threshold T``: ``{"segments": [...]}``, the script's segments.
 
 Each needs a PCM file that exists and a ``--models`` folder holding ``parakeet-tdt-0.6b-v3/`` (words) or
@@ -70,7 +73,8 @@ if command == "words":
     words = script.get("words", [])
     if "--from" in options:
         lo, hi = int(options["--from"]), int(options["--to"])
-        words = [w for w in words if lo <= w[1] and w[2] <= hi]
+        words = [w for w in words + script.get("hidden", []) if lo <= w[1] and w[2] <= hi]
+        words.sort(key=lambda w: (w[1], w[2], w[0]))
     print(json.dumps({"words": words}, sort_keys=True))
 else:
     if "--threshold" not in options:

@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 from agentsync.config import ConvertConfig
+from agentsync.convert import cue, naming, speech_lines
 from agentsync.convert._common import _emitter
 from agentsync.convert.base import OptionValue, options_hash
 from agentsync.convert.image import _OCR_OPTIONS
@@ -54,12 +55,13 @@ from agentsync.convert.media import (
     Frame,
     MediaEngine,
     MediaError,
+    MediaInfo,
     Rect,
 )
-from agentsync.convert.naming import Naming
+from agentsync.convert.naming import Naming, Voice
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage, OcrLine, text_rows
 from agentsync.convert.pieces import PieceStore
-from agentsync.convert.speech import SpeechEngine
+from agentsync.convert.speech import Segment, SpeechEngine, Word
 from agentsync.convert.speech_lines import SpeechReading
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
@@ -88,6 +90,8 @@ _READ_S = 0.8
 _OCR_RUNS = 3  # concurrent OCR runs, candidates split by index modulo 3 (S5 rule 2)
 _ROUND = 12  # candidates asked of the helpers at once; only those the one-at-a-time rule reaches are used
 _DIFF_PAIRS = 2_000  # grid pairs per ``diff`` call
+_PILL_TICKS = 1_000  # ticks per ``pills`` call
+_SPEECH_S = 0.07  # the speech piece's limit per second of sound: 3x the measured 0.021 s (spec 2.1)
 
 _CELL = 12  # a cell changed: luma difference over 12
 _GATE_RECOGNISED = 5  # in 10,000ths of the mask: a recognised profile's gate is over 0.05 %
@@ -128,6 +132,10 @@ _NOTHING = "recording has no picture and no sound"
 _SOUND_ONLY = "recording has no picture; its speech is not read by this version"
 _UNDECODABLE = "recording's picture cannot be decoded on this Mac (VP9 or AV1)"
 _NO_TEXT = "no text read on screen; speech is not read by this version"
+_NO_TEXT_OR_SPEECH = "no text read on screen and no speech in the recording"  # with a speech engine
+_NO_SOUND = "the recording has no sound"  # ``Reading.no_speech`` with a speech engine
+_SPEECH_STUBS = frozenset({_SOUND_ONLY, _UNDECODABLE, _NO_TEXT})  # stubs a speech engine can make a page of
+_NAMING_RE = re.compile(r"-n\d+(?:\+|$)")
 _UNDECODABLE_CODECS = frozenset({"vp9", "av1"})
 _FRAME_FAILED = "a frame of the recording could not be read by on-device OCR"
 _HELPER_ANSWER = "the media helper's answer does not match what it was asked"
@@ -1201,15 +1209,40 @@ def _label(rows: Sequence[_Seen]) -> str | None:
     return min(found)[3] if found else None
 
 
+@dataclass(frozen=True, slots=True)
+class _Screens:
+    """What the last pass settled: S6's rows, states and names, and S7's lit sets and ``SPEAKING`` lines
+    (``speaking`` None when the profile has no speaker cue)."""
+
+    title: tuple[Row, ...]
+    states: tuple[State, ...]
+    rows: tuple[Row, ...]
+    names: tuple[tuple[int, str, int], ...]
+    unprinted: int
+    lit: dict[int, tuple[str, ...]]
+    speaking: tuple[tuple[int, str], ...] | None
+
+
 class _Settle:
-    """S6 over every candidate of a recording, then the keyframes (S4's last call): the :class:`Reading`."""
+    """S6 over every candidate of a recording, then the keyframes (S4's last call) and the speaker cue (S7).
+    ``ticks``: the ticks read; ``stub``: the stub wording when no row is printed, or None when the page
+    stands without rows (it has speech lines)."""
 
     def __init__(
-        self, work: _Work, profile: _Profile, pieces: Sequence[dict[str, Any]], read_ms: int
+        self,
+        work: _Work,
+        profile: _Profile,
+        pieces: Sequence[dict[str, Any]],
+        read_ms: int,
+        *,
+        ticks: int,
+        stub: str | None,
     ) -> None:
         self.work = work
         self.profile = profile
         self.read_ms = read_ms
+        self.ticks = ticks
+        self.stub = stub
         self.cands = _candidates(profile, pieces)
         self.gated = {int(t) for piece in pieces for t in piece["gated"]}
         self.spans = _spans(profile.include, profile.exclude)
@@ -1261,14 +1294,15 @@ class _Settle:
                     break
         return out
 
-    def run(
-        self, info_size: tuple[int, int]
-    ) -> tuple[tuple[Row, ...], tuple[State, ...], tuple[Row, ...], tuple[tuple[int, str, int], ...], int]:
+    def run(self, info_size: tuple[int, int]) -> _Screens:
         width, height = info_size
         cands, profile = self.cands, self.profile
         tracks = _tracks(cands, profile)
         states = _states(cands, self.gated, self.read_ms)
-        self.work.deadline = _clock() + _BASE_S + _READ_S * 2 * len(states)
+        cued = cue.has_cue(profile.name)
+        self.work.deadline = (
+            _clock() + _BASE_S + _READ_S * 2 * len(states) + (_TICK_S * self.ticks if cued else 0.0)
+        )
         revisit = self.revisits(states)
 
         settled: list[tuple[_Track, Tag, _Seen, int, int]] = []  # track, tag, reading, start, end
@@ -1304,8 +1338,9 @@ class _Settle:
             rows.append(
                 Row(reading.text, tag, t0, t1, reading.x, reading.y, reading.w, reading.h, reading.confidence)
             )
-        if not rows:
-            raise UnreadableSourceError(_NO_TEXT)
+        if not rows and self.stub is not None:
+            raise UnreadableSourceError(self.stub)
+        lit, speaking = self.speaker_cue() if cued else ({}, None)
         pictures = self.pictures(states, keyframes)
         built: list[State] = []
         for k, (s, start, end) in enumerate(states):
@@ -1349,7 +1384,37 @@ class _Settle:
                 names[text] = (min(first, cands[track.reads[0][0]].ms), reads + len(track.reads))
         roster = tuple(sorted((first, text, reads) for text, (first, reads) in names.items() if reads >= 3))
         rows.sort(key=lambda r: (r.start_ms, r.y, r.x, r.text))
-        return title, tuple(built), tuple(rows), roster, unprinted
+        return _Screens(title, tuple(built), tuple(rows), roster, unprinted, lit, speaking)
+
+    def speaker_cue(self) -> tuple[dict[int, tuple[str, ...]], tuple[tuple[int, str], ...]]:
+        """S7 over every tick read: the label rows (``strip`` and ``label``) of each read candidate, their
+        fill through the helper's ``pills`` in chunks, the lit set per tick (kept for S8b) and the
+        ``SPEAKING`` lines as ``(ms, label as read)``."""
+        labels = {
+            c.tick: [
+                cue.Label(r.text, (r.x, r.y, r.w, r.h)) for r in c.rows if r.region in {"strip", "label"}
+            ]
+            for c in self.cands
+        }
+        asked = cue.requests(self.profile.name, labels, range(self.ticks))
+        values: dict[int, tuple[int, ...]] = {}
+        for at in range(0, len(asked), _PILL_TICKS):
+            chunk = asked[at : at + _PILL_TICKS]
+            folder = self.work.folder("pills")
+
+            def pills(
+                left: float, chunk: list[tuple[int, tuple[cue.Label, ...]]] = chunk, folder: Path = folder
+            ) -> dict[int, tuple[int, ...]]:
+                request = [(tick, [label.box for label in found]) for tick, found in chunk]
+                return self.work.media.pills(self.work.src, request, work=folder, timeout=left)
+
+            got = self.work.call(pills)
+            if sorted(got) != [tick for tick, _found in chunk]:
+                raise MediaError(_HELPER_ANSWER)
+            values.update(got)
+            shutil.rmtree(folder, ignore_errors=True)
+        lit = cue.lit_sets(asked, values)
+        return lit, tuple((tick * STEP_MS, label) for tick, label in cue.speaking(lit))
 
     def pictures(
         self, states: Sequence[tuple[int, int, int]], keyframes: Mapping[int, list[int]]
@@ -1434,12 +1499,30 @@ class RecordingConverter:
         self._label_rule = label_rule
         self._speech = speech
 
-    def version(self) -> str:
-        """``<emitter>+<ocr identity>+<media identity>-s<selection revision>`` (spec section 4)."""
+    def _picture_version(self) -> str:
+        """``<emitter>+<ocr identity>+<media identity>-s<selection revision>``: what made a picture piece."""
         return f"{_EMITTER_VERSION}+{self._ocr.identity}+{self._media.identity}-s{_SELECTION_REVISION}"
 
+    def version(self) -> str:
+        """``<picture version>+cue-r<n>``, plus ``+<speech identity>-n<naming revision>`` with a speech
+        engine (spec section 4)."""
+        heard = f"+{self._speech.identity}-{naming.identity()}" if self._speech is not None else ""
+        return f"{self._picture_version()}+{cue.identity()}{heard}"
+
     def options(self) -> Mapping[str, OptionValue]:
-        """Every constant of spec 2.2 that can change a page, the OCR options and ``max_page_bytes``."""
+        """Every constant of spec 2.2 that can change a page, the OCR options and ``max_page_bytes``; the
+        speaker cue's; with a speech engine, S8's and S8b's and the speech piece's limit."""
+        heard: dict[str, OptionValue] = {}
+        if self._speech is not None:
+            heard = {
+                **speech_lines.options(),
+                **naming.options(),
+                "recording_speech_limit": f"{_BASE_S}+{_SPEECH_S}/second of sound",
+            }
+        return {**self._picture_options(), **cue.options(), **heard}
+
+    def _picture_options(self) -> dict[str, OptionValue]:
+        """The constants a picture piece or S6 goes by."""
         return {
             "max_page_bytes": self._cfg.max_page_bytes,
             **_OCR_OPTIONS,
@@ -1476,30 +1559,48 @@ class RecordingConverter:
 
     @property
     def outdated_key(self) -> str:
-        """``<emitter><<floor>|<cue identity or ->|<speech identity or ->`` (spec section 4)."""
-        return f"{_EMITTER_VERSION}<{_REREAD_BELOW}|-|-"
+        """``<emitter><<floor>|<cue identity>|<speech identity or ->`` (spec section 4): a speech engine that
+        appears or changes reopens each source's record."""
+        heard = self._speech.identity if self._speech is not None else "-"
+        return f"{_EMITTER_VERSION}<{_REREAD_BELOW}|{cue.identity()}|{heard}"
 
     def outdated(self, produced: str, reason: str | None = None) -> bool:
         """True when a page or stub made under ``produced`` is worth reading the file again for: an emitter
-        below ``_REREAD_BELOW``.  P1 has no speaker cue and no speech engine, so nothing else is; never for a
-        version that cannot be read or an emitter at or above the running one."""
+        below ``_REREAD_BELOW``; a version without the speaker cue (``+cue-``); with a speech engine, a
+        version without ``+asr-`` or without ``-n``, and the stubs speech can make a page of (no picture, VP9
+        or AV1, no text read on screen).  Never for the running version, a version that cannot be read or an
+        emitter above the running one."""
         emitter, running, floor = _emitter(produced), _emitter(_EMITTER_VERSION), _emitter(_REREAD_BELOW)
-        if emitter is None or running is None or floor is None:
+        if emitter is None or running is None or floor is None or produced == self.version():
             return False
-        return emitter < min(floor, running)
+        if emitter < min(floor, running):
+            return True
+        if emitter > running:
+            return False
+        if "+cue-" not in produced:
+            return True
+        if self._speech is None:
+            return False
+        return "+asr-" not in produced or not _NAMING_RE.search(produced) or reason in _SPEECH_STUBS
 
     def _key(self) -> str:
-        return f"{_PIECE_TICKS}|{self.version()}|{options_hash(self.options())}"
+        """A picture piece's key: the stages that made it, never the speech engine's or the cue's."""
+        return f"{_PIECE_TICKS}|{self._picture_version()}|{options_hash(self._picture_options())}"
+
+    def _speech_key(self, engine: SpeechEngine) -> str:
+        """The speech piece's key: the engine's identity and S8's constants (spec 4.1)."""
+        return f"speech|{engine.identity}|{options_hash(speech_lines.options())}"
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """The units of section 3, or UnreadableSourceError with a fixed stub wording, MediaError (a helper
-        failure, a frame Vision gave up on) or :class:`RecordingNotFinished`."""
+        failure, a frame Vision gave up on), SpeechError (the speech engine failed: ``convert_file`` reads the
+        file again without speech) or :class:`RecordingNotFinished`."""
         from agentsync.convert.recording_page import render  # noqa: PLC0415 - it imports this module
 
         return render(self._reading(src, name=name), max_page_bytes=self._cfg.max_page_bytes)
 
     def _reading(self, src: Path, *, name: str) -> Reading:
-        """What S1 to S6 settle about the staged recording ``src``; ``convert`` renders it.  ``name`` is read
+        """What S1 to S8b settle about the staged recording ``src``; ``convert`` renders it.  ``name`` is read
         for its suffix only (a ``.mov`` may open with another QuickTime atom); it reaches no output."""
         with src.open("rb") as fh:
             head = fh.read(12)
@@ -1513,29 +1614,56 @@ class RecordingConverter:
                 info = self._media.info(src, timeout=_BASE_S)
             finally:
                 _charge(started)
+            unread: str | None = None  # why the picture is not read (C15)
             if info.picture is None:
-                raise UnreadableSourceError(_SOUND_ONLY if info.audio else _NOTHING)
-            if info.picture.lower() in _UNDECODABLE_CODECS:
-                raise UnreadableSourceError(_UNDECODABLE)
+                if not info.audio:
+                    raise UnreadableSourceError(_NOTHING)
+                unread = _SOUND_ONLY
+            elif info.picture.lower() in _UNDECODABLE_CODECS:
+                unread = _UNDECODABLE
+            heard = self._speech is not None and info.audio
+            if unread is not None and not heard:
+                raise UnreadableSourceError(unread)
             ticks = min(info.duration_ms // STEP_MS + 1, _MAX_TICKS)
             read_ms = (
                 info.duration_ms if info.duration_ms // STEP_MS + 1 <= _MAX_TICKS else _MAX_TICKS * STEP_MS
             )
             count = math.ceil(ticks / _PIECE_TICKS)
-            pieces = self._read_pieces(work, sha, ticks, count, read_ms)
+            pieces, worked = (
+                self._read_pieces(work, sha, ticks, count, read_ms) if unread is None else ([], False)
+            )
+            last = max(read_ms - 1, 0) // (_PIECE_TICKS * STEP_MS) * _PIECE_TICKS * STEP_MS if pieces else 0
+            said = (
+                self._heard(
+                    work,
+                    sha,
+                    number=count,
+                    duration_ms=info.duration_ms,
+                    read_ms=read_ms,
+                    worked=worked,
+                    done_ms=last,
+                )
+                if heard
+                else None
+            )
+            stub = _NO_TEXT_OR_SPEECH if self._speech is not None else _NO_TEXT
+            if unread is not None:
+                if said is None or not said.lines:
+                    raise UnreadableSourceError(_UNDECODABLE if unread == _UNDECODABLE else stub)
+                return self._speech_only(info, read_ms, unread, said)
             carry = _Carry.from_json(pieces[-1]["carry"])
             profile = _PROFILES[carry.profile]
             started = _clock()
             try:
-                title, states, rows, names, unprinted = _Settle(work, profile, pieces, read_ms).run(
-                    (info.width, info.height)
+                settle = _Settle(
+                    work, profile, pieces, read_ms, ticks=ticks, stub=None if said and said.lines else stub
                 )
+                screens = settle.run((info.width, info.height))
             except _TimedOut:  # every piece is stored, but the recording is not read: its last piece's media
-                last = max(read_ms - 1, 0) // (_PIECE_TICKS * STEP_MS) * _PIECE_TICKS * STEP_MS
                 raise RecordingNotFinished(done_ms=last, total_ms=read_ms, timed_out=True) from None
             finally:
                 _charge(started)
-            unread = sum(int(piece["unread"]) for piece in pieces)
+            left = sum(int(piece["unread"]) for piece in pieces)
             stopped = carry.stopped
             reading = Reading(
                 duration_ms=info.duration_ms,
@@ -1548,22 +1676,102 @@ class RecordingConverter:
                 label_rule=self._label_rule,
                 ocr_identity=self._ocr.identity,
                 media_identity=self._media.identity,
-                title_card=title,
-                states=states,
-                rows=rows,
-                names=names,
-                unprinted_rows=unprinted,
-                screen_read_to=None if not unread or stopped is None else (stopped * STEP_MS, unread),
+                title_card=screens.title,
+                states=screens.states,
+                rows=screens.rows,
+                names=screens.names,
+                unprinted_rows=screens.unprinted,
+                screen_read_to=None if not left or stopped is None else (stopped * STEP_MS, left),
+                speech=self._named(said, screens.lit, profile.name),
+                no_speech=_NO_SOUND if self._speech is not None and not info.audio else None,
+                speaking=screens.speaking,
+                cue_identity=cue.identity() if screens.speaking is not None else None,
             )
         return reading
 
+    def _speech_only(self, info: MediaInfo, read_ms: int, unread: str, said: SpeechReading) -> Reading:
+        """The speech-only page of a recording whose picture is not read (C15): no states, rows or
+        keyframes, profile ``generic``."""
+        return Reading(
+            duration_ms=info.duration_ms,
+            read_ms=read_ms,
+            width=info.width,
+            height=info.height,
+            created=info.created,
+            profile="generic",
+            profile_reason="",
+            label_rule=self._label_rule,
+            ocr_identity=self._ocr.identity,
+            media_identity=self._media.identity,
+            title_card=(),
+            states=(),
+            rows=(),
+            names=(),
+            unprinted_rows=0,
+            screen_read_to=None,
+            picture_unread=unread,
+            speech=self._named(said, {}, "generic"),
+        )
+
+    def _named(
+        self, said: SpeechReading | None, lit: Mapping[int, Sequence[str]], profile: str
+    ) -> Speech | None:
+        """S8b over S8's voices and S7's lit sets (empty without a cue): one naming per voice, and the
+        ``SAID`` lines of a named voice the turn veto leaves unnamed."""
+        if said is None or self._speech is None:
+            return None
+        voices = [Voice(v.voice, said.spans.get(v.voice, ())) for v in said.voices]
+        namings = naming.name_voices(voices, lit, profile=profile, step_ms=STEP_MS)
+        by_number = {n.number: n for n in namings}
+        vetoed = tuple(
+            (line.voice, line.start_ms)
+            for line in said.lines
+            if line.voice in by_number
+            and naming.vetoed(by_number[line.voice], line.start_ms, line.end_ms, lit, step_ms=STEP_MS)
+        )
+        return Speech(self._speech.identity, said, namings, vetoed)
+
+    def _heard(
+        self,
+        work: _Work,
+        sha: str,
+        *,
+        number: int,
+        duration_ms: int,
+        read_ms: int,
+        worked: bool,
+        done_ms: int,
+    ) -> SpeechReading:
+        """S8 as one stored piece, numbered ``number`` (past the picture pieces): from the store when it holds
+        it under the speech key, else heard now under its own deadline and charged to the allowance as a
+        piece is.  Words, segments and gaps at or after ``read_ms`` are dropped after the load, so the stored
+        piece is the whole file's."""
+        assert self._speech is not None
+        engine, key, allowance = self._speech, self._speech_key(self._speech), _ALLOWANCE.get()
+        doc = _speech_doc(self._pieces.load(sha, number, key)) if self._pieces is not None else None
+        if doc is None:
+            if self._pieces is not None and allowance is not None and allowance.used_up and worked:
+                raise RecordingNotFinished(done_ms=done_ms, total_ms=read_ms, timed_out=False)
+            started = _clock()
+            try:
+                data = _hear(work, engine, duration_ms)
+            except _TimedOut:
+                raise RecordingNotFinished(done_ms=done_ms, total_ms=read_ms, timed_out=True) from None
+            finally:
+                _charge(started)
+            doc = _speech_doc(data)
+            assert doc is not None
+            if self._pieces is not None:
+                self._pieces.save(sha, number, key, data)
+        return _said(doc, read_ms)
+
     def _read_pieces(
         self, work: _Work, sha: str, ticks: int, count: int, read_ms: int
-    ) -> list[dict[str, Any]]:
-        """Every piece, from the store when it holds it under this key, else read now.  Inside a
-        :func:`work_allowance` a used-up allowance stops before the next piece to read, once this call has
-        read one (the staging copy and the ``info`` call are charged too, and must not leave a recording
-        that never gains a piece); a piece past its deadline is discarded."""
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Every piece, from the store when it holds it under this key, else read now, and whether this call
+        read one.  Inside a :func:`work_allowance` a used-up allowance stops before the next piece to read,
+        once this call has read one (the staging copy and the ``info`` call are charged too, and must not
+        leave a recording that never gains a piece); a piece past its deadline is discarded."""
         key, allowance = self._key(), _ALLOWANCE.get()
         out: list[dict[str, Any]] = []
         carry: _Carry | None = None
@@ -1590,4 +1798,73 @@ class RecordingConverter:
                     )
             out.append(doc)
             carry = _Carry.from_json(doc["carry"])
-        return out
+        return out, worked
+
+
+# ---------------------------------------------------------------------------------------------------------
+# S8: the speech piece
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _hear(work: _Work, engine: SpeechEngine, duration_ms: int) -> bytes:
+    """S8 rules 1 to 5 over the whole file under one deadline fixed from its length: decode, the silence map,
+    words, voices, and each hole re-read as a clip and spliced (a hole that stays empty is listed as
+    unrecognised).  The decoded sound is never kept and never part of a key: two decodes of one file can
+    differ in a few samples."""
+    work.deadline = _clock() + _BASE_S + _SPEECH_S * duration_ms / 1000
+    folder = work.folder("audio")
+    audio = work.call(lambda left: work.media.audio(work.src, folder, timeout=left))
+    silent = speech_lines.silence(audio.path.read_bytes())
+    sound_ms = audio.samples * 1000 // 16_000
+    words = work.call(lambda left: engine.words(audio.path, timeout=left))
+    segments = work.call(lambda left: engine.voices(audio.path, timeout=left))
+    unrecognised: list[tuple[int, int]] = []
+    for hole in speech_lines.holes(words, segments):
+        clip = speech_lines.clip_of(hole, sound_ms)
+
+        def clip_words(left: float, clip: tuple[int, int] = clip) -> tuple[Word, ...]:
+            return engine.words(audio.path, timeout=left, clip=clip)
+
+        found = work.call(clip_words)
+        spliced = speech_lines.splice(words, hole, found)
+        if len(spliced) == len(words):
+            unrecognised.append(hole)
+        words = spliced
+    shutil.rmtree(folder, ignore_errors=True)
+    return _dumps(
+        {
+            "sound_ms": sound_ms,
+            "silent": [list(run) for run in silent],
+            "words": [[w.text, w.start_ms, w.end_ms] for w in words],
+            "segments": [[g.speaker, g.start_ms, g.end_ms] for g in segments],
+            "unrecognised": [list(hole) for hole in unrecognised],
+        }
+    )
+
+
+def _speech_doc(data: bytes | None) -> dict[str, Any] | None:
+    """A stored speech piece, or None when it cannot be read back (it is then heard again)."""
+    if data is None:
+        return None
+    try:
+        doc = json.loads(data)
+        int(doc["sound_ms"])
+        for item in (*doc["words"], *doc["segments"]):
+            _text, start, end = item
+            int(start), int(end)
+        for start, end in (*doc["silent"], *doc["unrecognised"]):
+            int(start), int(end)
+    except (ValueError, KeyError, TypeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _said(doc: Mapping[str, Any], read_ms: int) -> SpeechReading:
+    """S8 rules 6 and 7 over a speech piece, cut at ``read_ms``: what starts at or after it is dropped, and
+    the sound's end is the earlier of the read end and the decoded sound's."""
+    end = min(read_ms, int(doc["sound_ms"]))
+    words = [Word(str(t), int(a), int(b)) for t, a, b in doc["words"] if int(a) < read_ms]
+    segments = [Segment(str(sp), int(a), int(b)) for sp, a, b in doc["segments"] if int(a) < read_ms]
+    silent = [(int(a), min(int(b), end)) for a, b in doc["silent"] if int(a) < end]
+    unrecognised = [(int(a), int(b)) for a, b in doc["unrecognised"] if int(a) < read_ms]
+    return speech_lines.reading(words, segments, silent, end, unrecognised)
