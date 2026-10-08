@@ -6,14 +6,19 @@ tests build a made-up Contoso fixture of the same shape in ``tmp_path``.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
+
+from agentsync.policy import UNTRUSTED_BANNER
+from test_recording_grammar import window_errors
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +36,7 @@ def _script(name: str) -> ModuleType:
 score = _script("score")
 layout = _script("layout")
 runner = _script("run")
+splicer = _script("splice")
 
 CATEGORIES = ["SPEECH"] * 6 + ["SCREEN"] * 6 + ["CROSS"] * 6
 SPEECH_LINE = "[00:{m:02d}:10] SAID: Dana said the west budget is {n} thousand"
@@ -389,3 +395,130 @@ def test_a_run_folder_is_scored_against_the_package_its_readers_were_given(tmp_p
         and checks(result)["Quoted pieces found in the sources, B"][1]
     )
     assert result["times_from_verification"] == [q["id"] for q in gold()]
+
+
+# ---- splice.py: a transcript's speech into the package (spec section 10) -----------------------------------
+
+FRAME = b"\xff\xd8\xff\xe0 Contoso keyframe"
+FRAME_SHA = hashlib.sha256(FRAME).hexdigest()
+
+WINDOW_1 = f"""{UNTRUSTED_BANNER}
+
+# Recording 00:00:00-00:05:00 · window 1 of 2
+
+## 00:00:00-00:02:00 · s001 · share · "Contoso storage review"
+[00:00:00] KEYFRAME: t000000.jpg
+[00:00:00] SCREEN: Contoso storage review
+[00:00:00] SCREEN: Q3 budget 1,240,000
+[00:00:00] NOTE: layout not recognised; keyframes are full frames
+[00:01:20] SCREEN+: Q3 budget 1,310,000
+
+## 00:02:00-00:05:12 · s002 · camera
+[00:02:00] KEYFRAME: t000200.jpg
+[00:02:00] TILE: Dana Okafor
+
+Sidecar file `t000000.jpg` sha256 {FRAME_SHA}
+Sidecar file `t000200.jpg` sha256 {FRAME_SHA}
+"""
+
+WINDOW_2 = f"""{UNTRUSTED_BANNER}
+
+# Recording 00:05:00-00:05:12 · window 2 of 2
+
+## 00:02:00-00:05:12 · s002 · camera
+[00:05:00] NOTE: s002 began at 00:02:00; its on-screen lines and keyframe are in window 1, 00:00:00
+"""
+
+TRANSCRIPT = """# Transcript
+
+[00:00:00] good morning everyone
+[00:01:20] so the west number moved
+[00:01:10] we start with the budget
+
+[00:02:00] over to me then
+[00:05:00] that is all from me
+[00:05:03] see\x07 you <!-- next --> week
+[00:05:04] \x1b
+"""
+
+
+def _package(root: Path, *, window_2: str = WINDOW_2) -> Path:
+    package = root / "contoso-review.mp4.d"
+    (package / "01-t000000.files").mkdir(parents=True)
+    (package / "00-index.md").write_text(
+        f"{UNTRUSTED_BANNER}\n\n# Meeting recording · 00:05:12 · 2 windows\n"
+    )
+    (package / "01-t000000.md").write_text(WINDOW_1)
+    (package / "02-t000500.md").write_text(window_2)
+    for name in ("t000000.jpg", "t000200.jpg"):
+        (package / "01-t000000.files" / name).write_bytes(FRAME)
+    (root / "transcript-only.md").write_text(TRANSCRIPT)
+    return package
+
+
+def test_splice_puts_each_line_in_its_window_and_state_in_rule_1_order(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    assert window_errors(WINDOW_1) == [] and window_errors(WINDOW_2) == []
+    out = tmp_path / "spliced"
+    assert splicer.splice(package, tmp_path / "transcript-only.md", out) == (6, 2)
+    first, second = (out / "01-t000000.md").read_text(), (out / "02-t000500.md").read_text()
+    assert first == WINDOW_1.replace(
+        "[00:00:00] NOTE:", "[00:00:00] SAID v1: good morning everyone\n[00:00:00] NOTE:"
+    ).replace(
+        "[00:01:20] SCREEN+: Q3 budget 1,310,000\n",
+        "[00:01:10] SAID v1: we start with the budget\n"
+        "[00:01:20] SCREEN+: Q3 budget 1,310,000\n[00:01:20] SAID v1: so the west number moved\n",
+    ).replace(
+        "[00:02:00] TILE: Dana Okafor\n",
+        "[00:02:00] TILE: Dana Okafor\n[00:02:00] SAID v1: over to me then\n",
+    )
+    assert (
+        second
+        == WINDOW_2.replace("[00:05:00] NOTE:", "[00:05:00] SAID v1: that is all from me\n[00:05:00] NOTE:")
+        + "[00:05:03] SAID v1: see you &lt;!-- next --> week\n"
+    )
+    assert window_errors(first) == [] and window_errors(second) == []
+    assert (out / "00-index.md").read_text() == (package / "00-index.md").read_text()
+    assert (out / "01-t000000.files" / "t000200.jpg").read_bytes() == FRAME
+    assert sorted(p.relative_to(out) for p in out.rglob("*")) == sorted(
+        p.relative_to(package) for p in package.rglob("*")
+    )
+
+
+@pytest.mark.parametrize(
+    ("transcript", "window_2", "error"),
+    [
+        ("[00:05:12] after the end\n", WINDOW_2, "no window holds 00:05:12"),
+        ("Dana: [00:01:00] hello\n", WINDOW_2, "transcript line 1: not '[HH:MM:SS] text'"),
+        (
+            "[00:05:01] hello\n",
+            WINDOW_2.replace("00:02:00-00:05:12 · s002", "00:02:00-00:05:00 · s002"),
+            "02-t000500.md: no state on screen at 00:05:01",
+        ),
+        (
+            "[00:01:00] hello\n",
+            WINDOW_2 + "\n[truncated: 90 of 100 bytes shown; the whole window is in full-text.txt]\n",
+            "02-t000500.md: a cut window",
+        ),
+    ],
+)
+def test_splice_refuses_what_it_cannot_place_and_writes_nothing(
+    tmp_path: Path, transcript: str, window_2: str, error: str
+) -> None:
+    package = _package(tmp_path, window_2=window_2)
+    (tmp_path / "transcript-only.md").write_text(transcript)
+    out = tmp_path / "spliced"
+    with pytest.raises(splicer.SpliceError, match=re.escape(error)):
+        splicer.splice(package, tmp_path / "transcript-only.md", out)
+    assert not out.exists()
+
+
+def test_splice_main_prints_a_count_and_refuses_a_folder_that_is_not_empty(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    package = _package(tmp_path)
+    out = tmp_path / "spliced"
+    assert splicer.main([str(package), str(tmp_path / "transcript-only.md"), str(out)]) == 0
+    assert capsys.readouterr().out.startswith("spliced 6 speech line(s) into 2 window(s) under ")
+    assert splicer.main([str(package), str(tmp_path / "transcript-only.md"), str(out)]) == 1
+    assert "OUT exists and is not an empty folder" in capsys.readouterr().err
