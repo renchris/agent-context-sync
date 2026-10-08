@@ -18,7 +18,8 @@
 #                           that attempt has no end line yet, and that it leaves the setup folder's contents
 #                           owner-only, as every run does (see "Setup log"). When --log-start stopped that
 #                           attempt (a copy of the prompt that is not this installer's), its NEXT: says to
-#                           copy the prompt again and not to bring this report back
+#                           copy the prompt again and not to bring this report back, and the run writes no
+#                           bring-back.md and prints no "bring back:" or issue link line
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
 #                           (the line step 1 of the setup prompt checks)
@@ -159,7 +160,8 @@
 #      same headings (machine facts, install.log, this run's doctor output, friction.md; the home path,
 #      login name, full name, OneDrive-<org> and the --source-local folder names redacted); when the report
 #      ends with its issue link (https://github.com/renchris/agent-context-sync/issues/new?template=...), one
-#      line "issue link (review the report first): <link>" follows, the last line before NEXT:
+#      line "issue link (review the report first): <link>" follows, the last line before NEXT: (not for
+#      the --report-only of an attempt --log-start stopped, see --report-only)
 # and finally one line starting "NEXT:" with the single next step and, in brackets, the report path. A run
 # that ends with a folder to sync and nothing failed ends on the loop's NEXT (KISS K02): install.sh runs
 # `agentsync status` once more with its NEXT line on, prints none of its output and lifts its first "NEXT:"
@@ -1194,17 +1196,20 @@ on_exit() {
 		case $? in
 		0)
 			suffix=" [setup report: $REPORT_PATH]"
-			write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
-			link="$(report_issue_link)"
-			if [ -n "$link" ]; then
-				[ "$REPORT_ONLY" -eq 0 ] ||
-					NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
-				say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
-			fi
 			# A copy of the prompt that is not this installer's started the attempt (--log-start said so and
-			# stopped it). Its own text still ends at this report: the NEXT says what to do instead.
+			# stopped it). Its own text still ends at this report: the NEXT says what to do instead, and
+			# nothing invites sending it: no bring-back file is written (the one of the last real session
+			# stays as it is), and no "bring back:" or issue link line is printed.
 			if [ "$REPORT_ONLY" -eq 1 ] && friction_attempt_stopped; then
 				NEXT_MSG="this report is of an attempt that an out-of-date copy of the setup prompt started, so do not bring it back: copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session"
+			else
+				write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
+				link="$(report_issue_link)"
+				if [ -n "$link" ]; then
+					[ "$REPORT_ONLY" -eq 0 ] ||
+						NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
+					say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
+				fi
 			fi
 			;;
 		2) ;; # a dry run: printed, not written

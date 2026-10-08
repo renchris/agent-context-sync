@@ -2818,6 +2818,38 @@ def test_report_only_says_copy_again_only_for_an_attempt_log_start_stopped(env: 
     assert not _stopped_in_the_report(env)
 
 
+def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str]) -> None:
+    """The v10 rehearsal (2026-10-08): the ``--report-only`` of an attempt ``--log-start`` stopped printed
+    "bring back:" and an issue link above "NEXT: ... do not bring it back", and wrote bring-back.md over the
+    one of the last real session. That run prints neither line and writes no bring-back file: one that
+    exists keeps its bytes, and none is made where there was none. The report itself is still written."""
+    back = report_path(env).parent / "bring-back.md"
+
+    def invites(cp: subprocess.CompletedProcess[str]) -> list[str]:
+        return [
+            ln.split(":", 1)[0]
+            for ln in cp.stdout.splitlines()
+            if ln.startswith(("bring back:", "issue link"))
+        ]
+
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stopped = install_sh(env, "--report-only")
+    assert stopped.returncode == 0 and last_line(stopped).startswith(STOPPED_NEXT), stopped.stdout
+    assert invites(stopped) == [] and report_path(env).is_file() and not back.exists()
+    _backdate(env, 11)
+    assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
+    real = install_sh(env, "--report-only")
+    assert last_line(real).startswith("NEXT: review ") and invites(real) == [
+        "bring back",
+        "issue link (review the report first)",
+    ]
+    kept = back.read_bytes()
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stopped = install_sh(env, "--report-only")
+    assert last_line(stopped).startswith(STOPPED_NEXT) and invites(stopped) == [], stopped.stdout
+    assert back.read_bytes() == kept
+
+
 def test_a_session_after_a_stopped_copy_that_wrote_no_report_is_not_called_out_of_date(
     env: dict[str, str],
 ) -> None:

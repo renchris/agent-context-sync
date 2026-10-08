@@ -260,7 +260,9 @@ version, and the installer wrote its own number into the log.
 - An older copy's own text still goes on to its report. That report's Summary says
   `prompt: v7 or older (older than the installer's v10: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
-  report back and to copy the prompt again. Triage such a report as `known K18`, not as a failed setup.
+  report back and to copy the prompt again. That run writes no `bring-back.md` (one from the last real session
+  stays as it is) and prints no `bring back:` or issue link line. Triage such a report as `known K18`, not as a
+  failed setup.
 - That report counts no folder question. The copy was stopped before the folder list, so nobody was asked
   and no Allow click was announced: the Summary says `human turns: 0 (0 questions; ...)` and `expected turns:
   none (the installer stopped this copy of the prompt in step 1, before the folder list: no folder question

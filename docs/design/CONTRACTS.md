@@ -5931,11 +5931,11 @@ or empty for this case (a source sat incomplete for 900 passes):
   them as manifest meta `empty_cloud_dirs:<source id>` (`cycle._EMPTY_DIRS_META`): a JSON list, `""` when the
   walk found none or could not run, written only when it changes, in the transaction that records the pass. A
   dry run stores nothing. The manifest already holds every mirrored file's path; heartbeat.json gains nothing.
-- `arm_local.exclude_advice(cfg, empty) -> str`: `set exclude = [...] in [[source]] id = '<id>' in
-  sources.toml[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
-  later gains files`. The list is the globs in force (the configured or default `exclude`, without the
-  always-excluded ones, so pasting it drops nothing) plus the first five folders as `/<path>/`: anchored at the
-  root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
+- `arm_local.exclude_advice(cfg, empty, where) -> str`: `set exclude = [...] in [[source]] id = "<id>" in
+  <where>[ (+N more: status names them once these are excluded)]; an excluded folder is not mirrored if it
+  later gains files` (`where` is the config file as `loop._shown` writes it, §16.36). The list is the globs in
+  force (the configured or default `exclude`, without the always-excluded ones, so pasting it drops nothing)
+  plus the first five folders as `/<path>/`: anchored at the root, `*` and `?` as `[*]` and `[?]`, `[` as `?`.
 - `loop.next_step` stays disk-only (it reads that meta; `Publisher.write_state` calls it in every cycle, under
   the writer lock, and the setup report gives it 4 s). For a local source whose newest FULL pass was incomplete
   it takes the stored folders that today's `exclude` does not prune (at the folder or a folder above it) and
@@ -8839,7 +8839,8 @@ rename a request that an existing `bring-back.md` is newer than. It was rejected
 shortcut:
 
 - The Mac cannot know what was copied back. "bring-back.md is newer" proves the text was written into that
-  file, not that anyone took it. Every reporting exit of `install.sh` rewrites `bring-back.md` in place, so
+  file, not that anyone took it. Every reporting exit of `install.sh` rewrites `bring-back.md` in place
+  (**amended 2026-10-08, §16.36:** but for the `--report-only` of an attempt `--log-start` stopped), so
   the guard turns true in the middle of a session, as soon as step 2 exits.
 - A request written in one session and never copied back would then be set aside by the next session's
   step 1, and the file that finally comes back would not hold it. That costs a request, where the wording
@@ -9509,8 +9510,10 @@ WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eva
   of a docs repo on `/Volumes/Work Disk`: part of a path in a line documented to hold none. `_loop_line`
   therefore replaces that one folder first, as the loop wrote it
   (`setup_report._eval_by_name`: `loop._shown(expand(config.docs_repo) / "_eval")` becomes `_eval`), in
-  every line the loop hook returns. It is the only folder the config puts into these lines. The Config
-  section shows the docs repo's path, as before.
+  every line the loop hook returns. It was the only path the config put into these lines (**amended
+  2026-10-08, §16.36:** the wait for empty cloud folders names the config file by its path, and
+  `_eval_by_name` replaces that one the same way: `loop._shown(config.config_path)` becomes `sources.toml`,
+  the file's name). The Config section shows both paths, as before.
 - **STATE.md** carries the loop's lines (§14, item 13) and is not committed, so no committed file gains a
   path.
 
@@ -10245,11 +10248,31 @@ copy is stopped at step 1 like every older copy (§16.28).
   rehearsal, 2026-10-08). The report still follows every other stop (no Xcode tools, a git failure): those are
   failures, and their reports matter most. Rejected: a Rules sentence "where a step says to stop, run nothing
   after it", which switches the report off at those two stops as well.
+- **The report of a stopped copy invites no bring-back** (`scripts/install.sh` `on_exit`; amends §16.28 and
+  §16.30). An older copy's own text still runs `--report-only` after `--log-start` stopped it. When
+  `friction_attempt_stopped` holds, the test that already picks that run's `NEXT:` ("do not bring it back"), the
+  run calls no `write_bring_back` and prints no `bring back:` and no issue link line: an existing `bring-back.md`
+  keeps its bytes, the one of the last real session. It printed both lines above that `NEXT:` and wrote the file
+  over the good one (the v10 rehearsal). `setup-report.md` is still written, and an install run in such an
+  attempt is unchanged.
+- **The exclude line names the table and the file as they are** (`arm_local.exclude_advice`, `loop.next_step`;
+  amends §16.22). The wait for empty cloud folders ends `in [[source]] id = "<id>" in
+  ~/agent-context/sources.toml`: the id in double quotes, as `config.local_source_table` writes it, and the
+  config file's path as `loop._shown` writes it (`~/...` under the home folder, else in full). It said
+  `id = '<id>' in sources.toml`: a search for the printed text found nothing in the file, and the file's folder
+  was not given (the v10 rehearsal). `exclude_advice` takes that path as its third argument. In the
+  setup report's Loop line the file is `sources.toml` whatever its path (§16.32, `setup_report._eval_by_name`). The
+  `exclude = [...]` value is unchanged and is valid TOML as pasted. doctor's fixes for a source's path or
+  sentinel still write `id = '<id>'`: they name no line to search for.
 - **The Not used list glosses hold**: "hold (a legal or records hold, not a pause)".
 - Not changed: the fix-request heading's time carries no zone (§16.30: it marks one session, and nothing parses
   it).
 
 Tests: `tests/test_deploy_pack.py` (`test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps`, the step 3
 sentence, the gloss, the README and deploy-guide wording, the digest), `tests/test_ops_doctor.py`
-(`test_only_the_kept_inbox_is_called_the_drop_folder`), `tests/test_setup_report.py` (v10 read with v7's layout),
-`tests/test_install_oneshot.py` (an old copy is refused: 9 against 10).
+(`test_only_the_kept_inbox_is_called_the_drop_folder`), `tests/test_setup_report.py`
+(v10 read with v7's layout; the Loop line names `sources.toml` for a config under `Client Alpha/ctx`),
+`tests/test_install_oneshot.py` (an old copy is refused: 9 against 10;
+`test_the_report_of_a_stopped_copy_invites_no_bring_back`), `tests/test_loop.py`
+(`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`) and `tests/test_arm_local.py`
+(`test_exclude_advice_is_a_line_that_clears_the_folders_it_names`).
