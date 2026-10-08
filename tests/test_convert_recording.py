@@ -482,10 +482,10 @@ def test_a_screen_shown_again_points_to_the_first_keyframe_and_prints_no_rows(tm
 def test_a_camera_gallery_or_generic_state_stores_the_full_frame(tmp_path: Path) -> None:
     got = reading(tmp_path / "teams", teams(share(3, FIRST)))
     assert got.states[0].kind == "camera" and picture_size(got.states[0].keyframes[0].data) == [1920, 1080]
-    assert [n.text for n in got.states[0].notes] == [rec.NOTE_FULL_FRAME]
+    assert [n.text for n in got.states[0].notes] == [rec._NOTE_FULL_FRAME]
     plain = reading(tmp_path / "generic", recording(screen(0, *FIRST)))
     assert [(s.kind, picture_size(s.keyframes[0].data)) for s in plain.states] == [("share", [1920, 1080])]
-    assert [n.text for n in plain.states[0].notes] == [rec.NOTE_GENERIC]
+    assert [n.text for n in plain.states[0].notes] == [rec._NOTE_GENERIC]
 
 
 def test_a_teams_share_keyframe_is_the_content_column(tmp_path: Path) -> None:
@@ -891,8 +891,8 @@ def test_a_video_in_a_share_is_read_every_ten_seconds_and_noted(tmp_path: Path) 
     assert reads_of(store)[:8] == [0, 3, 4, 5, 6, 7, 8, 13]
     later = reads_of(store)[6:]
     assert all(b - a >= 5 for a, b in itertools.pairwise(later))
-    assert [(n.ms, n.text) for s in got.states for n in s.notes if n.text == rec.NOTE_MOTION] == [
-        (16_000, rec.NOTE_MOTION)
+    assert [(n.ms, n.text) for s in got.states for n in s.notes if n.text == rec._NOTE_MOTION] == [
+        (16_000, rec._NOTE_MOTION)
     ]
 
 

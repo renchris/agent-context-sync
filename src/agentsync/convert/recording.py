@@ -128,9 +128,9 @@ _NO_TEXT = "no text read on screen; speech is not read by this version"
 _UNDECODABLE_CODECS = frozenset({"vp9", "av1"})
 _FRAME_FAILED = "a frame of the recording could not be read by on-device OCR"
 _HELPER_ANSWER = "the media helper's answer does not match what it was asked"
-NOTE_FULL_FRAME = "fewer than 5 lines read in the content area; the keyframe is the full frame"
-NOTE_GENERIC = "layout not recognised; keyframes are full frames"
-NOTE_MOTION = (
+_NOTE_FULL_FRAME = "fewer than 5 lines read in the content area; the keyframe is the full frame"
+_NOTE_GENERIC = "layout not recognised; keyframes are full frames"
+_NOTE_MOTION = (
     "the picture changes at every sample without new text (a video or an animation); "
     "read every 10 s from here"
 )
@@ -1217,12 +1217,12 @@ class _Settle:
         built: list[State] = []
         for k, (s, start, end) in enumerate(states):
             kind, seen = cands[s].kind, revisit[k]
-            notes = [Note(c.ms, NOTE_MOTION) for c in cands if c.motion and start <= c.ms < end]
+            notes = [Note(c.ms, _NOTE_MOTION) for c in cands if c.motion and start <= c.ms < end]
             if revisit[k] is None:
                 if profile.name == "generic":
-                    notes.append(Note(cands[s].ms, NOTE_GENERIC))
+                    notes.append(Note(cands[s].ms, _NOTE_GENERIC))
                 elif profile.name == "teams" and kind == "camera":
-                    notes.append(Note(cands[s].ms, NOTE_FULL_FRAME))
+                    notes.append(Note(cands[s].ms, _NOTE_FULL_FRAME))
             own = [
                 reading for track, tag, reading, t0, _t1 in settled if tag == "SCREEN" and start <= t0 < end
             ]
