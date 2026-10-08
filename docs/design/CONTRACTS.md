@@ -5069,8 +5069,9 @@ v6, 7 -> v7; not stated or newer -> `PROMPT_VERSION`, now 7), so a v6 log still 
 Summary, or one with no friction log (read as `PROMPT_VERSION`'s layout), has no IT draft line unless the draft
 exists (v7 has no IT request step). **Amended (2026-10-07, §16.28 "Setup prompt v8"):** `PROMPT_VERSION` is 8,
 and the layout is the newest entry at or below the version, so v8 and later read as v7. **Amended (2026-10-07,
-§16.29 "Setup prompt v9"):** `PROMPT_VERSION` is 9; v9 moved no step either. **Redaction.** `build_report`
-has no `redact` argument: the report is always redacted.
+§16.29 "Setup prompt v9"):** `PROMPT_VERSION` is 9; v9 moved no step either. **Amended (2026-10-08, setup
+prompt v10):** `PROMPT_VERSION` is 10; v10 reworded three sentences and moved no step. **Redaction.**
+`build_report` has no `redact` argument: the report is always redacted.
 
 ```python
 REPORT_TITLE = "# agentsync setup report"
@@ -5082,7 +5083,7 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 9  # §16.29 (8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
+PROMPT_VERSION = 10  # v10 (9 in §16.29; 8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
@@ -8282,7 +8283,8 @@ real run with no folder wrote).
 v9 changes two places of the prompt's text and nothing else (**amended 2026-10-07, §16.30 "The fix request
 marks each session's part":** and two more, in the rules and in step 3; v9 was still unpublished, so the
 version did not move, only the block's digest). `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 9,
-and the issue form's placeholder is `v9`. v9 moves no step, so it has no entry in `PROMPT_LAYOUTS` and
+and the issue form's placeholder is `v9` (**amended 2026-10-08, setup prompt v10:** 10 and `v10`; a saved v9
+copy is stopped at step 1 like every older copy). v9 moves no step, so it has no entry in `PROMPT_LAYOUTS` and
 `prompt_layout(9)` is v7's layout, as v8's is. A saved v8 copy is stopped at step 1 like every older copy
 (§16.28).
 

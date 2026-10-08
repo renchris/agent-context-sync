@@ -295,7 +295,7 @@ list marks them, the agent asks only whether to add one, and when it cannot ask 
 It stops and waits for your answer only on a Mac that syncs no folder yet.
 
 ```text
-Set up agentsync on this Mac (setup prompt v9). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v10). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -320,7 +320,7 @@ say, or worked around a problem); error (a command failed; include its exit code
 unclear; include better wording). Do not log the steps themselves; the installer times them.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
-   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v9, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v10, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -330,8 +330,8 @@ unclear; include better wording). Do not log the steps themselves; the installer
    then tell me the branch name (my changes are safe on it, and copied as a patch to
    ~/agent-context/setup/local-work) and run step 1's command again. If git failed any
    other way, show me its error (a corporate proxy may need HTTPS_PROXY set) and stop. If --version does not end
-   with "setup-prompt-compat 9", or the command says the pasted prompt is not the installer's, stop: this prompt
-   is v9, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
+   with "setup-prompt-compat 10", or the command says the pasted prompt is not the installer's, stop: this prompt
+   is v10, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
    of the Source above. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
@@ -355,11 +355,12 @@ unclear; include better wording). Do not log the steps themselves; the installer
    them to me and do not run their commands. If your tool cannot wait that long in the foreground, run it
    in the background and read its output until the NEXT: line appears; that is expected, not a deviation. If it
    exits non-zero, do what NEXT: says only if it is an install.sh or agentsync command or a click for me; otherwise
-   log it and go to step 3's report. Then tell me about my inbox: it is the folder of each kind = "inbox" source in
-   ~/agent-context/sources.toml. I drop files there by hand: Outlook mail dragged out as .eml, a meeting transcript
-   as .docx or .vtt. Only .eml, .pdf and Office files such as .docx carry a sensitivity label, so .eml and .docx are
-   better than .vtt or pasted text. Files stay in the inbox: never empty it by hand, because removing a file
-   removes its page and queues a purge.
+   log it and go to step 3's report. Then tell me about my inbox: it is the folder named inbox beside the docs
+   repo, one of the kind = "inbox" sources in ~/agent-context/sources.toml; any other kind = "inbox" source there
+   is a folder I added myself, not my inbox. I drop files there by hand: Outlook mail dragged out as .eml, a meeting
+   transcript as .docx or .vtt. Only .eml, .pdf and Office files such as .docx carry a sensitivity label, so .eml
+   and .docx are better than .vtt or pasted text. Files stay in the inbox: never empty it by hand, because removing
+   a file removes its page and queues a purge.
 3. Sync loop and report. Run `~/.local/bin/agentsync sync` and do what its NEXT: line says (it comes before any
    WAITING ON YOU: and note: lines): another command, such as `~/.local/bin/agentsync curate`, or pages or
    questions to write, usually followed by `~/.local/bin/agentsync sync` again. `~/.local/bin/agentsync status`
@@ -382,11 +383,12 @@ unclear; include better wording). Do not log the steps themselves; the installer
    names. Before the report, add a "## Not used" section to the end of
    ~/agent-context/setup/fix-request.md (one per session: if this session already added one, rewrite that
    one): one line for each part of agentsync this session never used or barely
-   used (each visible command: sync, curate, status, add-source, accept-deletions, adopt, purge, hold, offboard;
-   the inbox; the baseline questions; background sync), saying why. Then the report, always,
-   even after a failure; this is the last command you run:
+   used (each visible command: sync, curate, status, add-source, accept-deletions, adopt, purge, hold (a legal or
+   records hold, not a pause), offboard; the inbox; the baseline questions; background sync), saying why. Then the
+   report, always, even after a failure; this is the last command you run:
    `~/src/agent-context-sync/scripts/install.sh --report-only`
    (if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code was downloaded).
+   One case has no report yet: while you wait for my folder answer in step 1.
    The report works out the outcome, times and run type itself, redacts names, and its last lines are an issue link
    and a NEXT: line. Do not send or upload anything. Finish with three lines: the folders synced (full paths); the
    last NEXT: or WAITING ON YOU: line of the loop; and ~/agent-context/bring-back.md, the one file I review

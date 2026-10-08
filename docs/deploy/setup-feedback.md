@@ -39,8 +39,10 @@ agentsync (prompt v6 ran it after `agentsync it-request`, whose failure a `;` le
 Without agentsync, `--report-only` writes
 `~/agent-context/setup-report.md` from what exists (install.log, `friction.md`, the macOS facts). Review it as in
 section 2. If the checkout is missing too (step 1 stopped before the clone), there is no installer and no friction
-log, and the agent tells you setup stopped before the code was downloaded. Without an agent, run step 3's command
-yourself, and log what happened with `install.sh --log` first (or write `friction.md` in your own words).
+log, and the agent tells you setup stopped before the code was downloaded. One stop has no report yet: a new Mac
+whose agent is waiting for the folder answer of step 1 (since v10 the prompt says so). Without an agent, run
+step 3's command yourself, and log what happened with `install.sh --log` first (or write `friction.md` in your
+own words).
 
 ## 2. Review (the person who ran the setup)
 
@@ -105,7 +107,7 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v9` (an attempt an older copy started reports that copy's: `v8`, `v7`, `v6`, `v5`) |
+| `prompt_version` | input | the prompt version, `v10` (an attempt an older copy started reports that copy's: `v9`, `v8`, `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
@@ -202,9 +204,9 @@ question in its step 2, its Allow clicks the first click in its steps 2 and 3, a
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
 1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
 three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
-A `Prompt: v8` or `Prompt: v9` attempt is judged by the same rules: neither moved a step. So is every later
-version until one moves a step, since the version changes with every edit of the prompt's text (below) and the
-rules only with its steps.
+A `Prompt: v8`, `Prompt: v9` or `Prompt: v10` attempt is judged by the same rules: none moved a step. So is every
+later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
+the rules only with its steps.
 
 The outcome judges only the install. How far the loop got after it is the Summary's `Loop:` line (KISS K16b):
 `Loop: <stage>; NEXT: <the loop's current NEXT line>`. The stage is `installed` (no sync ran), `synced`,
@@ -244,18 +246,18 @@ sentence included. A saved copy is therefore always known by its number. Twice a
 pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
 version, and the installer wrote its own number into the log.
 
-- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v9, <agent>'`. The
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v10, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
   with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
   error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
   from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
-- The version leads the value, and is read in the shape the agent gave it (`Prompt v9: <agent>` and `prompt v9 -
-  <agent>` are v9). The stop message shows no value that passes; its last sentence tells a current copy whose
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v10: <agent>` and `prompt v10 -
+  <agent>` are v10). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
-  `prompt: v7 or older (older than the installer's v9: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v10: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. Triage such a report as `known K18`, not as a failed setup.
 - That report counts no folder question. The copy was stopped before the folder list, so nobody was asked
@@ -264,7 +266,7 @@ version, and the installer wrote its own number into the log.
   and no Allow click)`. Before 2026-10-07 it said `1 question` and `the folder question (step 1; not logged)`
   there (K28). A question the agent logged is still counted, and an attempt with an `install.sh` run in it
   (the agent listed the folders all the same) is read by the usual rules.
-- A copy newer than the installer (`newer than the installer's v9`) means the checkout on that Mac did not
+- A copy newer than the installer (`newer than the installer's v10`) means the checkout on that Mac did not
   update: look at step 1's `git pull` in the friction log.
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
   the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
@@ -553,6 +555,7 @@ named as "v5b review, its L<n>").
 | K28 | the report of an attempt that an out-of-date copy of the prompt started said `human turns: 1 (1 question; ...)` and `expected turns: the folder question (step 1; not logged)`, though the installer had stopped that copy before the folder list and nobody was asked (v9 rehearsal, 2026-10-07) | agentsync code | an attempt the installer stopped, with no `install.sh` run in it, counts no folder question and expects no turn; a logged question still counts; `tests/test_setup_report.py` for the rehearsal's log, a copy that named no version and an attempt that reached a list after all |
 | K29 | a first install printed one raw log line, `WARNING agentsync.curate: .../DEPENDS.tsv: missing or empty`, from the status that runs before the first sync; harmless, but a line the prompt does not explain, which an agent may log as friction (v9 rehearsal, 2026-10-07) | agentsync code | while no page is curated a missing or empty `DEPENDS.tsv` is the normal state before the first sync and is logged at debug level; with a curated page it is still a warning; `tests/test_curate.py`, and `tests/test_install_oneshot.py` for a first install's output with the real agentsync |
 | K30 | the last line of a new Mac's setup, `WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md, ...`, named its two files without their folder, and the person who confirms them is not the one who wrote them (v9 rehearsal, 2026-10-07) | agentsync code | the wait names the folder once, `in ~/agent-context/docs/_eval, keep about 10 in questions.md, correct the answers in answers.md, ...` (the docs repo's path from the config, with `~` under the home folder); it still carries no document's name, and the report's Loop line shows `in _eval`, whatever the docs repo's path (one with a space in it left `in Client Alpha/kb docs/_eval` there until the folder was replaced as the loop wrote it); `tests/test_loop.py` and `tests/test_setup_report.py` |
+| K31 | on a Mac with thirteen inbox sources the person had added, step 2's "the folder of each kind = "inbox" source" made the agent announce fourteen inboxes; step 1's "stop and wait for my answer" and step 3's "Then the report, always" disagreed at the folder stop; and the Not used line for `hold` read it as a pause (field, v9, 2026-10-08) | prompt wording | v10 step 2 names the inbox as the folder named inbox beside the docs repo, one of the `kind = "inbox"` sources, any other being a folder the person added; step 3 names the one case with no report yet, the wait for the folder answer in step 1; the Not used list says `hold (a legal or records hold, not a pause)`; doctor's "drop files you save by hand here" is said of that one folder only; `test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps`, `test_readme_report_step_after_any_failure` |
 
 ## 5. Unavoidable steps so far
 

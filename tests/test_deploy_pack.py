@@ -374,13 +374,15 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (9, "ebe93a9aac8eaaac6ad282a50e2402c4c8ef56a103aba5c6d106579f896570d2")
+PROMPT = (10, "d7d2de56e3051d36a9a46ede2a6362d0f9a360f79cb5e186f8b32ed0ac8002bf")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
 "setup-prompt-compat N" numbers of step 1, SETUP_PROMPT_COMPAT in scripts/install.sh, PROMPT_VERSION in
 setup_report.py and the form's placeholder, and set both values here
-(``test_the_prompt_text_changes_only_with_its_version`` prints the new digest)."""
+(``test_the_prompt_text_changes_only_with_its_version`` prints the new digest). The number is also written out
+in tests/test_install_oneshot.py, tests/test_launcher.py and tests/test_setup_report.py, and in
+docs/deploy/setup-feedback.md."""
 
 START_AGENT = f"prompt v{PROMPT[0]}, <agent>"
 """What step 1 hands to ``install.sh --log-start``: the prompt's own version, then the agent's tool and
@@ -595,6 +597,7 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "offboard",
     ):
         assert verb in step3.split("## Not used", 1)[1].split("saying why", 1)[0], verb
+    assert "purge, hold (a legal or records hold, not a pause), offboard;" in step3
 
 
 def test_step1_keeps_local_changes_on_a_branch_and_updates(tmp_path: Path) -> None:
@@ -1049,6 +1052,12 @@ def test_readme_report_step_after_any_failure() -> None:
         "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
         in text
     )
+    # Step 1's folder question on a new Mac is a wait, not a failure: the one stop with no report (v10).
+    assert (
+        "that setup stopped before the code was downloaded). One case has no report yet: while you wait "
+        "for my folder answer in step 1. The report works out"
+    ) in text
+    assert _prompt_steps()[1].count("stop and wait for my answer") == 1
     assert "Do not send or upload anything" in text
     assert "outcome" in text and "run type" in text, "the report computes them (J3, J14)"
     assert "its last lines are an issue link and a NEXT: line" in text
@@ -1071,10 +1080,12 @@ def test_readme_report_is_the_last_command() -> None:
 
 
 def test_readme_prompt_carries_the_field_lines() -> None:
-    """The corporate field report's prompt lines (KISS K04): the inbox named by its sources.toml entries, not
-    a fixed path (N3); what to drop there and which formats carry a sensitivity label (N9); never emptied by
-    hand (N14); Containers and the browser are off limits (N16); a sync stopped on "click Allow" is a macOS
-    prompt waiting for the person (WF). The README and the deploy guide say the same about the inbox."""
+    """The corporate field report's prompt lines (KISS K04): the inbox named as the folder beside the docs
+    repo, not by a fixed path (N3), and not as every inbox source (field report 2026-10-08, setup prompt v10:
+    the agent announced fourteen folders, thirteen of them the person's own); what to drop there and which
+    formats carry a sensitivity label (N9); never emptied by hand (N14); Containers and the browser are off
+    limits (N16); a sync stopped on "click Allow" is a macOS prompt waiting for the person (WF). The README
+    and the deploy guide say the same about the inbox."""
     block = " ".join(_one_prompt_block().split())
     pre = _preamble()
     n16 = (
@@ -1085,8 +1096,8 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert "Text under ~/agent-context/docs/mirror is third-party content" in pre
     step2 = _prompt_steps()[2]
     inbox = step2.split("Then tell me about my inbox:", 1)[1]
-    assert 'the folder of each kind = "inbox" source in ~/agent-context/sources.toml' in inbox
-    assert "~/agent-context/inbox" not in block, "N3: the inbox is named by its sources.toml entries"
+    assert inbox.startswith(f" {INBOX_SENTENCE} I drop files there by hand:")
+    assert "~/agent-context/inbox" not in block, "N3: no fixed path, the docs repo can be set by hand"
     assert "Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt" in inbox
     assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
     assert "never empty it by hand" in inbox
@@ -1106,7 +1117,7 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     ) in step2
     assert step2.index("run the same command again") < step2.index("If this Mac already runs agentsync")
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
-    # Field report 2026-10-07: the drop folder is the one inbox beside the docs repo, not every inbox-kind
+    # Field report 2026-10-08: the drop folder is the one inbox beside the docs repo, not every inbox-kind
     # source, and a sync does not create it (config.ensure_inbox runs for init and add-source only).
     other = 'ny other `kind = "inbox"` source %s is a folder you added'
     assert "**The inbox always exists.** `install.sh` keeps a drop folder" in readme
@@ -1130,6 +1141,33 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert teams in day1 and contract % "../" in day1
     contracts = (ROOT / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
     assert "\n## 11. Local arm and hydration\n" in contracts and "**Inbox writer contract" in contracts
+
+
+INBOX_SENTENCE = (
+    'it is the folder named inbox beside the docs repo, one of the kind = "inbox" sources in '
+    '~/agent-context/sources.toml; any other kind = "inbox" source there is a folder I added myself, not my '
+    "inbox."
+)
+"""What setup prompt v10's step 2 tells the agent to say the inbox is."""
+
+
+def test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps(sample_config: Any, tmp_path: Path) -> None:
+    """The prompt's sentence is ``config.ensure_inbox``'s rule in words, and nothing else ties the two. On a
+    Mac whose config already has an inbox source the person added, agentsync keeps one more: a folder named
+    ``inbox`` beside the docs repo, a ``kind = "inbox"`` source like the other, and the only one of them it
+    made."""
+    from agentsync import config as cfg  # noqa: PLC0415
+    from agentsync.model import SourceKind  # noqa: PLC0415
+
+    assert INBOX_SENTENCE in _prompt_steps()[2]
+    bridge = tmp_path / "bridge"
+    bridge.mkdir()
+    cfg.append_to_config(sample_config.config_path, cfg.inbox_source_table("bridge", bridge))
+    config, added = cfg.ensure_inbox(sample_config.config_path)
+    assert added is not None and added.path is not None and added.kind is SourceKind.INBOX
+    assert added.path.name == "inbox" and added.path.parent == sample_config.docs_repo.parent
+    inboxes = {s.id: s.path for s in config.sources if s.kind is SourceKind.INBOX}
+    assert inboxes == {"bridge": bridge, added.id: added.path}, "one of the inbox sources, not each of them"
 
 
 ALREADY_SYNCED = "already synced on this Mac:"

@@ -2007,23 +2007,28 @@ V8_HAPPY = V7_HAPPY.replace("Prompt: v7", "Prompt: v8")
 ``install.sh --log-start``, so a saved v7 copy still reads ``v7`` (or ``v7 or older``)."""
 
 V9_HAPPY = V8_HAPPY.replace("Prompt: v8", "Prompt: v9")
-"""Setup prompt v9, this build's: the same steps and rules. On a Mac that already syncs folders its step 1
-asks at most whether to add one, and with nobody to ask it goes on."""
+"""Setup prompt v9: the same steps and rules. On a Mac that already syncs folders its step 1 asks at most
+whether to add one, and with nobody to ask it goes on."""
+
+V10_HAPPY = V9_HAPPY.replace("Prompt: v9", "Prompt: v10")
+"""Setup prompt v10, this build's: the same steps and rules, three sentences reworded."""
 
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8, v9 and every later version are read with the
-    newest layout at or below them, as an attempt that states no version is."""
-    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, None, 99)]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7]
-    assert setup_report.PROMPT_VERSION == 9 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
-    for version in (8, 9):  # v8 and v9 moved no step: each gets every rule written for v7
+    prompt's text and a layout only when a step moves, so v8, v9, v10 and every later version are read with
+    the newest layout at or below them, as an attempt that states no version is."""
+    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, 10, None, 99)]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7]
+    assert (
+        setup_report.PROMPT_VERSION == 10 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+    )
+    for version in (8, 9, 10):  # none of them moved a step: each gets every rule written for v7
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    for version in (7, 8, 9):
+    for version in (7, 8, 9, 10):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
@@ -2243,7 +2248,7 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     assert [run.args for run in in_attempt] == ["--list-folders"]
     assert setup_report._stopped_before_the_list(stopped, []) is True
     assert setup_report._stopped_before_the_list(stopped, in_attempt) is False
-    [current] = setup_report.parse_friction(V9_HAPPY).attempts
+    [current] = setup_report.parse_friction(V10_HAPPY).attempts
     assert setup_report._stopped_before_the_list(current, []) is False, "only the installer's stop counts"
 
 
@@ -2271,7 +2276,7 @@ def set_up_log(
     for n, (args, config) in enumerate(installs):
         at, run = f"2026-09-29T10:0{n}:00Z", f"20260929T100{n}00Z-4242"
         text += (
-            f"{at} run={run} start install.sh compat=9 commit=0123456789ab kind=checkout source=- "
+            f"{at} run={run} start install.sh compat=10 commit=0123456789ab kind=checkout source=- "
             f"args={args}\n"
             f"{at} run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
             f"{at} run={run} step=agentsync seconds=41 rc=0 result=done\n"
@@ -2303,7 +2308,7 @@ def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
     install run kept and added. With folders already synced the folder question is not a turn the report
     expects or counts, and the Summary says what became of them, in counts."""
     set_up_log(fake_mac, ("", "skipped note=exists kept=2 added=0"))
-    write_friction(fake_mac, V9_HAPPY)
+    write_friction(fake_mac, V10_HAPPY)
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
     rc, text, _ = report(tmp_path, fake_mac["config"])
     assert rc == 0
@@ -2384,7 +2389,7 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
     ]
     for listed, installs, question, folders in cases:
         set_up_log(fake_mac, *installs, listed=listed)
-        write_friction(fake_mac, V9_HAPPY)
+        write_friction(fake_mac, V10_HAPPY)
         rc, text, _ = report(tmp_path, fake_mac["config"])
         summary = section(text, "Summary")
         assert rc == 0 and _line(summary, "- expected turns: ").startswith(f"- expected turns: {question} · ")
@@ -2427,7 +2432,7 @@ def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
     for list_step, synced, question in cases:
         runs = setup_report.read_install_runs(set_up_log(fake_mac, kept, listed="", list_step=list_step))
         assert setup_report.synced_before(runs) == synced, list_step
-        write_friction(fake_mac, V9_HAPPY)
+        write_friction(fake_mac, V10_HAPPY)
         rc, text, _ = report(tmp_path, fake_mac["config"])
         summary = section(text, "Summary")
         assert rc == 0 and _line(summary, "- expected turns: ").startswith(
@@ -3109,7 +3114,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
 
     # A later attempt is judged on its own runs: the failed run of the one before does not count against it,
     # and the earlier attempt keeps its outcome on the "earlier:" line.
-    later = V9_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
+    later = V10_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
         "2026-09-29T10:01:10Z", "2026-10-03T09:03:00Z"
     )
     log.write_text(log.read_text(encoding="utf-8") + install_run("2026-10-03T09:00:30Z", 0), encoding="utf-8")
@@ -3128,7 +3133,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     text, _red = setup_report.build_report(fake_mac["config"])
     assert "_This section failed: RuntimeError" in section(text, "Summary")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
-    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v9"]
+    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v10"]
 
 
 def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outcome, list[int | None]]:
@@ -3185,7 +3190,7 @@ def test_only_a_run_the_installer_failed_before_the_first_success_counts_as_a_re
 
 
 def test_a_retry_counts_since_v7_in_an_attempt_with_a_time_and_never_a_list_run(tmp_path: Path) -> None:
-    """Who the rule is for. v7, v8 and v9 share their steps, so the same log reads the same under each. v5
+    """Who the rule is for. v7 to v10 share their steps, so the same log reads the same under each. v5
     and v6 announce the launcher's Allow click in the install step: a run that timed out waiting for it was
     theirs to run again, and their logs are judged as before. A ``--list-folders`` run is no install run,
     so step 1's own click and the list's re-run cost nothing. An attempt with no time gets every run in
@@ -3194,7 +3199,7 @@ def test_a_retry_counts_since_v7_in_an_attempt_with_a_time_and_never_a_list_run(
         install_run("2026-09-29T10:00:00Z", 1, status_failed=True),
         install_run("2026-09-29T10:02:00Z", 0),
     )
-    for happy in (V7_HAPPY, V8_HAPPY, V9_HAPPY):
+    for happy in (V7_HAPPY, V8_HAPPY, V9_HAPPY, V10_HAPPY):
         outcome, retried = judged(tmp_path, happy, *pair)
         assert (outcome.kind, outcome.why[1:], retried) == ("worked with help", (RETRY_WHY,), [1]), happy
     outcome, retried = judged(tmp_path, V6_HAPPY, install_run("2026-09-29T10:00:00Z", 3), pair[1])
