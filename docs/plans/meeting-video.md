@@ -42,8 +42,8 @@ one Mac; its counts may be cited, never its content.
 - **Worktrees and branches:** `mv/h-harness`, `mv/p1-screens`, `mv/p2-meeting-page`, `mv/p3-speech-names`,
   `mv/p4-platforms`, each under `../.worktrees/`. Land smallest diff first; rebase the other.
 - **Shared files, one owner per wave:** `docs/design/CONTRACTS.md` sections are numbered here so appends do not
-  collide: P1 §16.34 (§16.29 and §16.30 went to the bring-back waves before P1 landed), P2 §16.31, P3 §16.32,
-  P4 §16.33.
+  collide: P1 §16.34 (§16.29 and §16.30 went to the bring-back waves before P1 landed), P2 §16.31, P3 §16.35
+  (§16.32 went to the v9 rehearsal before P3 landed), P4 §16.33.
   `cycle.py`: P1 owns the recording pass; P3 touches only the speech identity in `_capabilities`. `README.md`: each
   wave owns its own subsection. `config.py`: P1 only.
 - **Spawn order:** H → (P1 ∥ P2) → P3 → P4 → F.
@@ -248,26 +248,53 @@ Commits: `ebf21b0`, `555d5ca` (skill, rubrics, §16.31); `a99a017`, `6d8175a`, `
     the `VOICE` wording (H learning 3) in the skill too.
   - F / R20: measure how often the lint fails a correct citation before any `CITE-*` becomes an ERROR.
 
-### P3 — Speech plus voice naming S8b (upcoming)
+### P3 — Speech plus voice naming S8b (done, 2026-10-08)
 
-Spec S7, S8, S8b, section 5, the `.vtt` turns, C15's speech-only page.
+Spec S7, S8, S8b, section 5, the `.vtt` turns, C15's speech-only page. A lead skeleton (`3745cb7`: slots in
+CONTRACTS §16.35 and the test file), then wave A of five teammates (*speech*, *cue*, *naming*, *lines*, *vtt*), the
+`Reading` interface (`d4bdd5b`), wave B (*render*, then *wire* once *cue* landed), three fresh-context reviews
+(privacy of the modules, privacy of the wiring, determinism) and lead fixes. Commits `3745cb7` to `52a5007`
+(32, `git log --oneline c7bfdb8..52a5007`).
 
-- Speech helper from a FluidAudio checkout at `04e363c` or later; installer and doctor refuse an older pin. Owner-only
-  `<cache_dir>/speech/` and build tree (`docs_repo.permissions`). Model digests pinned; agentsync downloads nothing.
-- `convert/naming.py` (S8b): thresholds in `options()`, `-n<revision>` in the version, `outdated()` for pages without
-  it. `recording.py`: speech identity in `outdated_key`; `_capabilities` `cycle.py:2002-2019` reopens records when
-  the model folder appears.
-- `convert/vtt.py` (`vtt-turns`); remove `.vtt` from `src/agentsync/convert/text.py:67`; decide how existing `.vtt`
-  pages are re-read (`_reread_targets` matches by converter id, `cycle.py:2053-2056`).
-- `media_frames.swift` gains `pills` and `audio`; the cue per profile (C18).
-- CONTRACTS §16.32. README: placing the model folders.
-- **Naming gate:** `VOICE` lines name nobody on a platform until B.3 item 1 and 2 (Teams) have been checked: 0 names
-  the listen contradicts. The build lands without it; the gate holds the names.
-- Review before landing: a privacy review (no voice vector written; no name outside S8b and the closed set) and a
-  determinism review on a fixed WAV.
-- Done when (goal): `uv run --locked pytest -q tests/test_voice_naming.py tests/test_convert_recording.py
-  tests/test_convert_formats.py` prints 0 failed and the speech determinism test passes on a fixed WAV; do not store
-  a voice vector or download a model.
+- **What landed.** `convert/speech.py` + `convert/speech_helper/` (SwiftPM, FluidAudio pinned at `04e363c29d9a`; words
+  and voices; offline mode; models only from `<cache_dir>/speech/`, digests pinned; build, probe, doctor `speech:`
+  line, installer line); `convert/speech_lines.py` (S8: silence map, holes and splice, voice of a word, `SAID`
+  lines); `convert/cue.py` + `media_frames.swift` 1.1.0 `pills` and `audio` (S7, `teams` only); `convert/naming.py`
+  (S8b, gate `CHECKED_PROFILES` empty); `convert/vtt.py` (`vtt-turns`, `.vtt` out of `text-plain`); the wiring in
+  `recording.py` (speech is one stored piece; S7 in the last pass; speech-only pages for no picture and VP9/AV1;
+  `without_speech` so a SpeechError keeps the screens); the renderer's `SAID`, `SPEAKING`, Voices block and notes;
+  README "Placing the speech models"; CONTRACTS §16.35.
+- **Proof.** The goal command (`pytest tests/test_voice_naming.py tests/test_convert_recording.py
+  tests/test_convert_formats.py`): 305 passed, 0 failed; `test_speech_is_deterministic_on_a_fixed_wav` passes (seeded
+  PCM, two cold trees and three allowance cycles byte-identical; the reviewer repeated it under three hash seeds).
+  A real helper build (offline, against the local `04e363c` checkout) gave byte-identical `words` and `voices` twice
+  on a two-voice clip, each turn on the right voice, and exit 3 with no download when a model folder was missing.
+- **Choices and corrections (CONTRACTS §16.35 lists them).**
+  - VOICE wording settled (H learning 3): the 3.3 forms stay (`vN · shared audio of <label>, k voices`); the curated
+    basis stays `voice N, on shared audio of <label>`. New fixed NOTEs: the naming gate, the turn veto (a window
+    NOTE after the vetoed `SAID` line, since `SAID vN` lines never change) and the two `picture not read` wordings.
+  - S8b: only the voice that holds `s(L)` can take `L` (a literal rule 2 let a minor voice take a one-voice label);
+    shares compared as exact fractions. Speech-only windows have no `## ` heading (grammar and spec 3.3 changed).
+  - Existing `.vtt` pages are read again once: `VttConverter.replaces = ("text-plain",)` and an `outdated_key` that
+    moves the re-read record's capability digest (the version alone never would).
+  - A pills failure is the S2 path (no page without the cue); spec S7 Failure asked for a page under a version
+    without the cue mark. `_EMITTER_VERSION` 1.1.0, floor 1.0.0; every P1 page is read again once for `+cue-`.
+  - Apple's AAC decode is not byte-stable (8 runs of a 10-minute file all differed, ±1 LSB): the helper resamples
+    itself, nothing hashes `audio.pcm`, and the speech piece is the one result (R11 row added to spec section 4).
+  - Reviews: FluidAudio's `[Profiling]` stderr lines silenced (they could reach a SpeechError text); the speech
+    identity gained `-h<helper version>`, the speech piece key the media identity and the diarizer threshold; a
+    test clip maker that deadlocked AVAssetWriter under load now feeds each input on its own queue.
+- **Items for later waves.**
+  - **Naming gate:** add `teams` to `naming.CHECKED_PROFILES` only after B.3 items 1 and 2 show 0 names the listen
+    contradicts; each P4 platform the same way with its recording.
+  - P4: `meet`'s cue lands with the Meet example (B.3 item 6); Zoom/Webex `Name: text` transcript lines without
+    `<v>` tags are not read as names (R14); the index byte budget is tight with many voices (an hour with 12
+    named voices and 30 quiet stretches is 8,679 of 9,000 bytes).
+  - F: build the speech helper on the corporate Mac (R8; the SwiftPM fetch passes no proxy variables and relies on
+    `~/.gitconfig`); check the placed model folders match the pinned digests; R11 on a real recording (does the
+    decode noise change a transcript); the Core ML cache in `~/Library/Caches/agentsync-speech/` (57 MB) sits
+    outside `cache_dir`, so purge and gc never see it; holes before the first word or after the last are not
+    flagged; `test_status_shows_the_policy_and_a_broken_policy_fails` fails under heavy load only (pre-existing).
 
 ### P4 — Hard cases and platforms (upcoming)
 
