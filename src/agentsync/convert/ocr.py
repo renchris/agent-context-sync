@@ -602,10 +602,16 @@ def _tidy(helper: Path, kind: Helper = _OCR) -> None:
             _prune(helper, kind)
 
 
-def _build(cache_dir: Path, kind: Helper, open_: Callable[[Path], object]) -> Path:
+def _build(
+    cache_dir: Path,
+    kind: Helper,
+    open_: Callable[[Path], object],
+    compile_: Callable[[Path, Helper], None] | None = None,
+) -> Path:
     """Build ``kind``'s helper under ``<cache_dir>/<kind.folder>`` unless one that ``open_`` accepts is
     already there; return its path.  Raises ``kind.error`` with the reason, which is also left in
-    ``<helper>.failed`` until a build works.  Whether or not it works, the folder is tidied."""
+    ``<helper>.failed`` until a build works.  Whether or not it works, the folder is tidied.  ``compile_``
+    makes the helper: :func:`_compile` (one swiftc run) unless the helper is a SwiftPM package."""
     helper: Path | None = None
     try:
         if sys.platform != "darwin":
@@ -615,7 +621,7 @@ def _build(cache_dir: Path, kind: Helper, open_: Callable[[Path], object]) -> Pa
         try:
             open_(helper)
         except OcrError:  # none yet, or one that no longer runs
-            _compile(helper, kind)
+            (compile_ or _compile)(helper, kind)
             open_(helper)
     except (OSError, OcrError) as exc:
         reason = (
@@ -650,33 +656,37 @@ def _entry(
     switched_off: Callable[[ConvertConfig], str],
     build_: Callable[[Path], Path],
     probe_: Callable[[ConvertConfig, Path], tuple[str, str]],
+    *,
+    label: str | None = None,
 ) -> int:
     """What ``python -m`` of a helper's module runs: read the config, build unless switched off, and print
-    one ``<kind.name>: <state> (<detail>)`` line.  Exit 0 when ready or switched off, 1 when not built.
-    Switched off, it builds nothing and still tidies the folder an earlier build left."""
+    one ``<label>: <state> (<detail>)`` line (``label`` defaults to ``kind.name``).  Exit 0 when ready or
+    off, 1 when not built.  Switched off, it builds nothing and still tidies the folder an earlier build
+    left."""
     os.umask(0o077)
+    label = label or kind.name
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
     try:
         if default_config_path().exists():  # before the first add-source there is no config: the defaults
             config = load_config()
             cfg, cache_dir = config.convert, config.cache_dir
     except (ConfigError, OSError):
-        sys.stdout.write(f"{kind.name}: not built (the config cannot be read)\n")
+        sys.stdout.write(f"{label}: not built (the config cannot be read)\n")
         return 1
     off = switched_off(cfg)
     if off:
         with contextlib.suppress(OSError):  # the packaged source, which names the helper, cannot be read
             _tidy(_helper_path(cache_dir, kind), kind)
-        sys.stdout.write(f"{kind.name}: off ({off})\n")
+        sys.stdout.write(f"{label}: off ({off})\n")
         return 0
     try:
         build_(cache_dir)
     except OcrError as exc:
-        sys.stdout.write(f"{kind.name}: not built ({exc})\n")
+        sys.stdout.write(f"{label}: not built ({exc})\n")
         return 1
     state, detail = probe_(cfg, cache_dir)
-    sys.stdout.write(f"{kind.name}: {state} ({detail})\n")
-    return 0 if state == "ready" else 1
+    sys.stdout.write(f"{label}: {state} ({detail})\n")
+    return 0 if state in ("ready", "off") else 1
 
 
 def _main() -> int:

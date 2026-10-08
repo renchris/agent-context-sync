@@ -9845,7 +9845,63 @@ page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35
 
 <!-- slot: speech (agentsync.convert.speech) -->
 
-- (speech: fill this paragraph)
+**The speech engine** (`agentsync.convert.speech`, `src/agentsync/convert/speech.py`, helper source the SwiftPM
+package `src/agentsync/convert/speech_helper/` (`Package.swift`, `Sources/agentsync-speech/main.swift`), helper
+version 0.1.0; spec S8, C3). Built, trusted, probed and pruned as the media helper is (§16.25), by the same
+functions of `convert/ocr.py`, which take its `SPEECH` description (an `ocr.Helper`); `ocr._build` takes the
+package build as its `compile_` and `ocr._entry` its `speech` label. It lives in `<cache_dir>/speech/` as
+`agentsync-speech-<digest of the package source>`, beside the SwiftPM build tree `build/`, both owner-only (the
+build clears group and other bits on the whole tree). FluidAudio is pinned by commit: `FLUIDAUDIO_FLOOR`
+(`04e363c29d9a754022d602d6fe1468ab80a0f705`, the first build with the silence-aware FBank) and `FLUIDAUDIO_PIN`,
+the commit `Package.swift` builds (today the floor). Only `scripts/install.sh` builds it, right after the media
+helper, by running `python -I -m agentsync.convert.speech`, which prints one line, exit 0 when ready or off, 1
+when not built: `speech: ready (fluidaudio, helper 0.1.0, FluidAudio 04e363c)`, `speech: off (<reason>)`,
+`speech: not built (<reason>)`; without developer tools the installer prints `speech: not built (no Xcode or
+Command Line Tools)`. The build has a limit of its own, 1,200 s (OCR's is 300 s): `swift package resolve`, then
+`git merge-base --is-ancestor FLUIDAUDIO_FLOOR <resolved>` in SwiftPM's checkout, refusing a checkout that does
+not descend from the floor (`FluidAudio <7 hex> does not descend from the build floor 04e363c; the speech helper
+is not built`, left beside the helper for `probe`), then `Pin.swift` with the resolved commit, then `swift build
+-c release`. The build fetches FluidAudio from github.com; nothing ever downloads a model.
+
+- **Models.** The operator places `parakeet-tdt-0.6b-v3/` (`ASR_MODELS`, 483 MB) and `speaker-diarization/`
+  (`DIARIZER_MODELS`, 22 MB) in `<cache_dir>/speech/`, FluidAudio's own folder names. `MODEL_FILES` lists what
+  the helper loads from each (the ASR folder's `CtcHead.mlmodelc` included: FluidAudio loads it when present);
+  `folder_digest(folder, files)` is the SHA-256 over the sorted lines `<relative path> <sha256 of file>\n` of the
+  files in and under those entries, None on a symlink or an unreadable file; `MODEL_DIGESTS` pins both. The helper
+  loads each model from that folder (`AsrModels.loadLocal`, the diarizer's models one by one) with
+  `ModelHub.offlineMode` set, so a missing file is exit 3, never a download.
+- **Protocol** (pinned by `tests/speech_kit.py`; one JSON document on stdout, keys sorted; exit 3 with one
+  `error:` line on stderr; integer ms; no timings, confidences or embeddings). `--version` -> `{"engine",
+  "fluidaudio" (40 hex, compiled in), "helper"}`; `words PCM --models DIR [--from MS --to MS]` -> `{"words":
+  [[text, start_ms, end_ms]]}`, Parakeet TDT 0.6b v3 at FluidAudio's defaults, tokens joined into words at a
+  leading space, a clip's times absolute; `voices PCM --models DIR --threshold 0.6` -> `{"segments": [[speaker,
+  start_ms, end_ms]]}`, the offline diarizer (community-1, WeSpeaker, VBx) at `THRESHOLD`, never a speaker count,
+  `speaker` an opaque token (`S1`). PCM is raw 16 kHz mono s16le, the media helper's `audio` output. The helper
+  writes no file; embeddings stay in its process.
+- **`SpeechEngine`** (`helper`, `models`, `name`, `helper_version`, `fluidaudio`, `model_digest`): `identity` is
+  `asr-parakeet-<12 hex of the model digest>-f<7 hex of the commit>-d<DIARIZER_REVISION>` (the model digest is
+  the SHA-256 over `<folder> <pinned digest>\n` of both folders); `description`; `alive()` (`--version`, 5 s, the
+  same build); `words(pcm, *, timeout, clip=None) -> tuple[Word, ...]`; `voices(pcm, *, timeout) ->
+  tuple[Segment, ...]`. `Word(text, start_ms, end_ms)` and `Segment(speaker, start_ms, end_ms)` are frozen,
+  slotted dataclasses. Answers are checked strictly: exactly the one key, three fields an item, non-negative
+  integer times, start at or before end, a word of a clip not before the clip, a speaker a token. Anything else,
+  an embedding among it, is a `SpeechError` (an `OcrError`) whose text holds no path.
+- **Probe states** (`probe(cfg, cache_dir) -> (state, detail)`, never compiles, never raises, takes no digest):
+  `off` whenever the media helper is switched off (its reasons) and `off` with `the speech models are not placed:
+  <folder>/ and <folder>/` when the helper is ready but a folder is missing; `not-built` (`the speech helper is not
+  built`); `failed` (a build's reason, the helper's trust, or a `--version` whose commit is not `FLUIDAUDIO_PIN`:
+  `the speech helper is not built from FluidAudio 04e363c or later; scripts/install.sh rebuilds it`); `ready`
+  (`fluidaudio, helper 0.1.0, FluidAudio 04e363c`). `engine(cfg, cache_dir)` is the one place the digests are
+  taken: a `SpeechEngine` when `ready` and both folders match `MODEL_DIGESTS`, else None (a mismatch is logged as a
+  WARNING naming the folder, never a path); it renews the helper's modification time.
+- **Doctor** (`ops.doctor`, check `speech`, right after `media`, through the private `doctor._speech_status`;
+  never a FAIL): `ready`, `off` ok `speech: <state> (<detail>)`; `not-built` not-ok INFO `speech: not-built
+  (<detail>; scripts/install.sh builds it[ once the Command Line Tools are installed (xcode-select --install)])`;
+  `failed` WARN `speech: failed (<detail>)`, with the developer-tools fix only when they are missing; a probe that
+  raised WARN `speech: could not be checked (<exception type>)`.
+- **Wiring.** `cycle._cycle_speech(config, media_engine)` asks `speech.engine` once a cycle, only beside a media
+  engine, and `cycle._cycle_registry(..., *, speech=None)` passes it to `Registry.default(..., speech=None)`, which
+  hands it to `RecordingConverter(..., speech=None)` (stored as `_speech`; wave B reads it).
 
 <!-- end slot: speech -->
 
