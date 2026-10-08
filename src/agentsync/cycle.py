@@ -480,7 +480,8 @@ class _Recordings:
 _RecordingRun = Literal["none", "background", "named"]
 """Who reads recordings in a cycle (spec S0 rule 5): ``background``, a LaunchAgent's poll or reconcile job,
 under ``_RECORDING_BUDGET_S``; ``named``, ``agentsync materialise PATH``, every recording it names to the end;
-``none``, an interactive ``sync`` (a tool's timeout may end it) or a dry run."""
+``none``, an interactive ``sync``, the operator verbs ``reconcile`` and ``accept-deletions`` (a tool's timeout
+may end any of them) or a dry run."""
 
 
 class _HelperDown(Exception):  # noqa: N818 - a signal: the media or OCR helper stopped working
@@ -2898,7 +2899,11 @@ class _Cycle:
                 self.manifest.set_state(sid, stable, row.state, None)
         with self.manifest.transaction():
             try:
-                result = self._after_fetch(src, row, fetched, acc, reread=stub)
+                # A Graph recording is read to the end in the run that downloaded it: nothing keeps its bytes
+                # for a later cycle, which would download it again (one recording is under 900 s of work)
+                whole = recording_mod.work_allowance(None) if src.kind.is_graph else contextlib.nullcontext()
+                with whole:
+                    result = self._after_fetch(src, row, fetched, acc, reread=stub)
             except RecordingNotFinished as signal:
                 self._recording_waits(src, row, acc, signal)
             except _HelperDown:  # no file's failure: the recording waits as it was, its read not counted
@@ -3983,6 +3988,7 @@ def run_cycle(
     accept_deletions: Sequence[str] = (),
     lock_wait_s: float = INTERACTIVE_LOCK_WAIT_S,
     wait_for_lock: bool | None = None,
+    recordings: _RecordingRun | None = None,
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
 
@@ -4002,7 +4008,10 @@ def run_cycle(
     ``budget_bytes`` overrides every source's per-cycle materialise budget (download bytes: only online-only
     files and Graph items are charged, so 0 still converts every local file); ``materialise_paths`` restricts
     the work queue to those files (``agentsync materialise``); ``accept_deletions`` lists sources whose
-    breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion).
+    breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion);
+    ``recordings`` says who reads recordings (spec S0 rule 5): None derives it, ``named`` for
+    ``materialise_paths``, ``none`` for an interactive run, else ``background``.  An operator verb with a mode
+    of its own (``reconcile``, ``accept-deletions``) passes ``none``: a tool's timeout can end it.
     """
     clock = now or (lambda: datetime.now(UTC))
     stale_backups = migration_backups(config.state_paths.db)  # before any open: one taken now waits a cycle
@@ -4018,7 +4027,8 @@ def run_cycle(
     settle_inbox = mode is None  # an atomic re-export converts within the same sync (field N4)
     # Who reads recordings (spec S0 rule 5): a run no tool timeout ends.  ``materialise PATH`` reads the ones
     # it names; a run with a mode of its own that does not wait for the lock is a LaunchAgent's job.
-    recordings: _RecordingRun = "named" if forced else "none" if interactive else "background"
+    if recordings is None:
+        recordings = "named" if forced else "none" if interactive else "background"
     if mode is None:
         mode = _interactive_mode(config, clock())
     lock = SingleWriterLock(config.state_paths.lock, mode.value)

@@ -667,7 +667,13 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
         _err("--accept-deletions needs a source: run agentsync accept-deletions SOURCE")
         return EXIT_USAGE
     accept = tuple(args.source) if args.accept_deletions else ()
-    return _run(config, mode=CycleMode.RECONCILE, only=tuple(args.source), accept_deletions=accept)
+    return _run(
+        config,
+        mode=CycleMode.RECONCILE,
+        only=tuple(args.source),
+        accept_deletions=accept,
+        recordings="none",  # an operator's run, which a tool's timeout can end: it reads no recording
+    )
 
 
 def _cmd_accept_deletions(args: argparse.Namespace) -> int:
@@ -681,6 +687,7 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
         only=(args.source,),
         accept_deletions=(args.source,),
         wait_for_lock=True,
+        recordings="none",
     )
 
 

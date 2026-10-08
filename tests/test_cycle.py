@@ -4181,3 +4181,55 @@ def test_a_recording_read_while_local_keeps_its_pages_once_online_only(
     assert MEETING not in fetched and rec.converts == ["Contoso weekly sync.mp4"]
     assert (config.docs_repo / slug.mirror_rel_path(SID, MEETING)).read_bytes() == before
     assert _row(config, MEETING).dataless and _row(config, MEETING).state_reason is None
+
+
+def test_the_operator_verbs_reconcile_and_accept_deletions_read_and_download_no_recording(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec S0 rule 5: ``agentsync reconcile`` and ``accept-deletions`` run in RECONCILE mode but are an
+    operator's runs, which a tool's timeout can end: they read no recording and download none.  Only the
+    LaunchAgent's ``sync --mode`` is a background run."""
+    from agentsync import cli  # noqa: PLC0415
+
+    config = config_with(tmp_path, meetings)
+    local = stub_recording(meetings / "meetings/local.mp4", 10, piece_s=10.0)
+    online = stub_recording(meetings / "meetings/online.mp4", 10, piece_s=10.0)
+    _online_only(monkeypatch, online)
+    fetched = _fetches(monkeypatch)
+    cfg = str(config.config_path)
+    assert cli.main(["reconcile", "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["accept-deletions", SID, "--config", cfg]) == cli.EXIT_OK
+    assert rec.converts == [] and rec.opened == [] and not [f for f in fetched if f.endswith(".mp4")]
+    assert _row(config, "meetings/local.mp4").state_reason == cycle_mod.RECORDING_WAITS
+    assert cli.main(["sync", "--mode", "reconcile", "--config", cfg]) == cli.EXIT_OK
+    assert sorted(rec.converts) == ["local.mp4", "online.mp4"] and local.is_file()
+
+
+def test_a_graph_recording_is_read_to_the_end_in_the_run_that_downloaded_it(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing keeps a Graph recording's bytes for a later cycle, so the reconcile job that downloads one
+    reads it to the end (one recording is under 900 s of work, the job's watchdog 14,400 s): one download,
+    no second one to finish it, and the 180 s allowance does not cut it short."""
+    monkeypatch.setattr(cycle_mod, "_free_bytes", lambda _path: 10**15)
+    config = config_with(tmp_path, meetings, GRAPH_SOURCE)
+    name = "Contoso all hands.mp4"
+    body = stub_recording(tmp_path / "upload" / name, 60, piece_s=70.0).read_bytes()
+    drive = FakeDrive({"I1": (name, body)})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    fetched = _fetches(monkeypatch, DriveArm)
+    try:
+        assert run(config, client=client, mode=CycleMode.RECONCILE).exit_code == 0
+        assert run(config, client=client, mode=CycleMode.RECONCILE).exit_code == 0
+    finally:
+        client.close()
+    assert fetched == [f"Projects/{name}"] and rec.converts == [name]
+    assert rec.worked == [(name, n) for n in range(12)], "twelve pieces, 840 s of work, in one run"
+    assert rec.opened[:2] == [cycle_mod._RECORDING_BUDGET_S, None]
+    (row,) = _file_rows(config, "drive").values()
+    assert row.state is RowState.LIVE and row.state_reason is None and row.last_verdict is Verdict.UNCHANGED
