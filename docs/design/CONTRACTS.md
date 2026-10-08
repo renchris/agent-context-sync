@@ -5692,6 +5692,8 @@ errors are retried by every sync and are not rule 3 (they would make it loop). *
 §16.28):** a source whose one-time re-read (§16.27) is not finished is one more `note:`, which starts
 `sync again:` while another sync reads more of it. The text is fixed wording plus
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
+**Amended (2026-10-07, §16.31):** the draft baseline's wait names the docs repo's `_eval` folder by its path
+and the tool's own two file names in it.
 
 Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
 `status` prints them after its status lines (since KISS K08a, first: §16.21). `next_lines` never raises (an unreadable state is a logged warning
@@ -8588,6 +8590,8 @@ loop's wording and order are unchanged, and the line still holds no path.
 Not done: the draft wait still names `_eval/questions.md` relative to the docs repo without saying where the
 docs repo is. Rewording it is `agentsync.loop`'s, with no field evidence yet, and a config path in a wait
 would break §16.20's rule that loop text names no path.
+**Amended (2026-10-07, §16.31):** done. The rehearsal of v9 was the evidence, and §16.20's rule is about
+mirror paths and document names, which the wait still does not carry.
 
 Tests: `tests/test_setup_report.py` (the real loop after a sync with one purge queued: that wait alone; then
 a held listing, which the loop prints second and the line shows with `(+1 more)`; then a draft baseline,
@@ -9369,3 +9373,35 @@ Tests: `tests/test_curate.py` (no file, an empty file and the scaffold's two pag
 with an empty file and with none: the warning; the file a sync writes: nothing logged),
 `tests/test_install_oneshot.py` (a first install with the real agentsync prints no WARNING or ERROR line of
 agentsync's; without the fix that test shows the rehearsal's line).
+
+#### The draft baseline's wait says where its files are (amends §16.19, §16.20 and §16.30 "The Loop line shows the wait the loop stopped on"; `agentsync.loop`)
+
+A setup on a new Mac ends on `WAITING ON YOU: the baseline questions are a draft: keep about 10 in
+_eval/questions.md, correct the answers in _eval/answers.md, and change both files to status: confirmed`.
+The agent wrote those files, and the person is the one who has to open them. The line named a relative
+path and left the folder to be worked out. §16.30 recorded this as not done, for want of evidence.
+
+The wait now reads:
+
+```text
+WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10 in questions.md, correct the answers in answers.md, and change both files to status: confirmed
+```
+
+- **The folder, once.** `<docs repo>/_eval`, from the config. `loop._shown` writes a folder under the home
+  folder with `~`, as every command in the loop's lines is written (`~/.local/bin/agentsync`), so the
+  default line holds no user name. A `docs_repo` set outside the home folder is named as it is.
+- **No document's name.** §16.20's rule stands for what it protects: no mirror path, and no name of a
+  synced file or a page, in any line. `_eval`, `questions.md` and `answers.md` are the tool's own fixed
+  names, and the docs repo is the config's folder. The module's docstring says so.
+- **It still starts the same.** `the baseline questions are a draft` is what `setup_report._WAIT_DRAFT`
+  goes by (§16.30), and nothing in `scripts/install.sh` reads this wait.
+- **In the setup report** the Summary's Loop line passes through `loop_next_text`, which keeps a path's
+  last part: `... are a draft: in _eval, keep about 10 in questions.md, ...`. The installer output's tail
+  shows the line as printed, with the report's redaction.
+- **STATE.md** carries the loop's lines (§14, item 13) and is not committed, so no committed file gains a
+  path.
+
+Tests: `tests/test_loop.py` (the exact wait for the three draft states, with `~/agent-context/docs/_eval`;
+a docs repo outside the home folder: its full path), `tests/test_setup_report.py` (the Loop line after a
+real sync with a draft: `in _eval`; the same with two more waits before it; `loop_next_text` on the wait
+with a home path and with another), `tests/test_install_oneshot.py` (the stub's wait in the new words).

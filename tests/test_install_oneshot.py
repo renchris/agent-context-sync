@@ -696,7 +696,8 @@ def test_the_closing_statuss_waits_are_printed_above_its_next(
     """Rule 5's NEXT names the WAITING lines: they are printed (above it, so it says so), with one NEXT."""
     rule5 = "stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
     waits = [
-        "WAITING ON YOU: the baseline questions are a draft: change both files to status: confirmed",
+        "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10 in "
+        "questions.md, correct the answers in answers.md, and change both files to status: confirmed",
         "WAITING ON YOU: 2 queued purge(s): run `~/.local/bin/agentsync purge --queue`",
     ]
     out = "\n".join([f"NEXT: {rule5}", *waits, "note: a later sync lists it"])

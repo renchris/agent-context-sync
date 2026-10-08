@@ -2435,6 +2435,10 @@ def test_loop_stage_and_next_text() -> None:
         'lists them), then run `agentsync add-source "<folder>"` for each, then `agentsync sync`'
     )
     assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
+    # The draft baseline's wait names the docs repo's _eval folder by path: the report keeps its last part.
+    wait = "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md"
+    for folder in ("~/agent-context/docs/_eval", "/Volumes/Work/kb/docs/_eval"):
+        assert text(wait.format(folder)) == wait.format("_eval")
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -2574,9 +2578,8 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert loop == (
         "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU "
-        "below); session done; WAITING ON YOU: the baseline questions are a draft: keep about 10 in "
-        "_eval/questions.md, correct the answers in _eval/answers.md, and change both files to status: "
-        "confirmed"
+        "below); session done; WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 "
+        "in questions.md, correct the answers in answers.md, and change both files to status: confirmed"
     ), loop
 
 
@@ -2644,8 +2647,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     assert setup_report._WAIT_BELOW in loop.next_lines(config, count_queue=False)[0]
     assert loop_line().endswith(
         "; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done; "
-        "WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md, correct "
-        "the answers in _eval/answers.md, and change both files to status: confirmed (+2 more)"
+        "WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions.md, "
+        "correct the answers in answers.md, and change both files to status: confirmed (+2 more)"
     )
 
 
@@ -2656,7 +2659,7 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
     purge = "WAITING ON YOU: 14 queued purge(s): run `~/.local/bin/agentsync purge --queue`"
     breaker = "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone)"
     held = "WAITING ON YOU: macOS held the listing of work for a privacy prompt: click Allow"
-    draft = "WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md"
+    draft = "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10"
     rule5 = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
     other = "NEXT: run `~/.local/bin/agentsync curate` and follow its NEXT line"
     pick = setup_report._stopped_wait

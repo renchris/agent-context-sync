@@ -25,9 +25,10 @@ from agentsync.model import CycleMode, PassKind, Verdict
 BIN = "~/.local/bin/agentsync"
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
 DRAFT_WAIT = (
-    "WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md, correct the "
-    "answers in _eval/answers.md, and change both files to status: confirmed"
+    "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md, correct the "
+    "answers in answers.md, and change both files to status: confirmed"
 )
+"""The draft baseline's wait; ``{}`` is the docs repo's ``_eval`` folder as the line shows it."""
 NOTE_NAME = "Quarterly Note.txt"
 
 
@@ -428,14 +429,32 @@ def test_rule_4_draft_the_baseline_questions(tmp_path: Path, folder: Path) -> No
 
 
 def test_rule_5_the_operator_confirms_a_draft(tmp_path: Path, folder: Path) -> None:
-    """One synced repo for the three states: ``_eval`` rewrites both files and ``next_step`` only reads."""
+    """One synced repo for the three states: ``_eval`` rewrites both files and ``next_step`` only reads.
+    The wait says where the two files are (v9 rehearsal, 2026-10-07: it named ``_eval/questions.md`` and
+    left whoever confirms them to work out the folder): the docs repo's ``_eval`` folder. Setup puts the
+    docs repo under the home folder, and there it is written with ``~``, as every command in these lines
+    is, so the line holds no user name."""
     config = _synced(tmp_path, folder)
+    assert config.docs_repo == Path.home() / "agent-context" / "docs"
     for questions, answers in (("draft", "draft"), ("confirmed", "draft"), ("", "")):
         _eval(config, questions, answers)
         assert _lines(config) == [
             "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done",
-            DRAFT_WAIT,
+            DRAFT_WAIT.format("~/agent-context/docs/_eval"),
         ], (questions, answers)
+
+
+def test_the_draft_wait_names_a_docs_repo_outside_the_home_folder_by_its_full_path(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``docs_repo`` may be set to a folder outside the home folder: the wait then names it as it is. The
+    file names in the line are the tool's own two, never a document's."""
+    config = _synced(tmp_path, folder)
+    _eval(config, "draft", "draft")
+    monkeypatch.setenv("HOME", str(tmp_path / "another-home"))  # the docs repo is not under this one
+    [wait] = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: the baseline questions")]
+    assert wait == DRAFT_WAIT.format(config.docs_repo / "_eval")
+    assert "~" not in wait and "_eval/" not in wait
 
 
 def test_rule_5_holds_curation_even_with_pages(tmp_path: Path, folder: Path) -> None:

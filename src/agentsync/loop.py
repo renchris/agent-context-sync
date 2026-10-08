@@ -27,6 +27,9 @@ sync reads more of them, and other words once the last sync read none or did not
 The text is fixed wording plus counts and source ids, never a mirror path or file name (a page name is
 third-party content). One wait is the exception: the ``exclude = [...]`` line for a source's empty cloud
 folders names them, since the operator has to paste it; the setup report shows that list as ``<path>``.
+The draft baseline's wait says where its two files are: the docs repo's ``_eval`` folder, by its path
+(:func:`_shown`). That is the config's own folder and the tool's own file names, as a command line here
+names ``~/.local/bin/agentsync``: no mirror path and no document's name.
 ``sync`` (without ``--mode``) and ``status`` print :meth:`NextStep.lines`.
 """
 
@@ -117,6 +120,15 @@ class _Files:
 
 def _ids(counts: dict[str, int]) -> str:
     return ", ".join(sorted(counts))
+
+
+def _shown(path: Path) -> str:
+    """``path`` as a line names it: ``~/...`` under the home folder, as the commands in these lines are
+    written, else as it is."""
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _eval_status(path: Path) -> str | None:
@@ -493,9 +505,11 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     answers = _eval_status(eval_dir / "answers.md")
     confirmed = questions == "confirmed" and answers == "confirmed"
     if questions is not None and not confirmed:
+        # Where the two files are, not only their names: whoever confirms them did not write them (v9
+        # rehearsal, 2026-10-07).
         waits.append(
-            "the baseline questions are a draft: keep about 10 in _eval/questions.md, correct the answers in "
-            "_eval/answers.md, and change both files to status: confirmed"
+            f"the baseline questions are a draft: in {_shown(eval_dir)}, keep about 10 in questions.md, "
+            "correct the answers in answers.md, and change both files to status: confirmed"
         )
     if skill_state(docs) != "current":
         return done(
