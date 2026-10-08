@@ -47,7 +47,7 @@ from agentsync.convert.pieces import PieceStore
 from agentsync.convert.recording import Allowance, RecordingConverter, RecordingNotFinished
 from agentsync.convert.registry import Registry
 from agentsync.cycle import RecoveryAction, recover, run_cycle
-from agentsync.errors import ConversionError, LockHeldError
+from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
@@ -3981,3 +3981,203 @@ def test_a_policy_change_marks_no_recording(tmp_path: Path, meetings: Path, rec:
     assert run(config).exit_code == 0 and len(rec.converts) == 1
     row = _row(config, MEETING)
     assert row.last_verdict is Verdict.UNCHANGED and row.state is RowState.LIVE
+
+
+def _online_only(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> set[int]:
+    """Mock SF_DATALESS on these files (a test has no File Provider).  A file ``materialise`` reads is on this
+    Mac from then on, as after a download; the returned set holds the inodes still online-only."""
+    online = {p.stat().st_ino for p in paths}
+    real_dataless, real_materialise = materialise.is_dataless, al.materialise
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in online or real_dataless(st)
+
+    def download(src: Path, dest: Path, budget: Any, **kwargs: Any) -> Any:
+        result = real_materialise(src, dest, budget, **kwargs)
+        online.discard(src.stat().st_ino)
+        return result
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "materialise", download)
+    return online
+
+
+def test_an_online_only_recording_is_downloaded_by_reconcile_outside_the_document_budget(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling 1: a reconcile job downloads an online-only recording under an allowance of its own.  A run
+    with no document download budget still reads it, charges nothing to the source's budget, and leaves the
+    online-only document beside it for a run whose budget allows it."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    brief = meetings / "brief.md"
+    brief.write_text("# Brief\n\nContoso launch plan\n", encoding="utf-8")
+    online = _online_only(monkeypatch, path, brief)
+    report = run(config, mode=CycleMode.RECONCILE, budget_bytes=0)
+    assert report.exit_code == 0 and rec.converts == ["Contoso weekly sync.mp4"]
+    assert _recording_page(config, MEETING)[0]["status"] == "current"
+    assert source_report(report).materialised_bytes == 0, "the recording is not charged to the budget"
+    assert online == {brief.stat().st_ino} and _row(config, "brief.md").last_verdict is Verdict.DEFERRED
+
+
+def test_a_poll_cycle_and_an_interactive_sync_download_no_recording(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rule 3 and L9: a poll job's watchdog is too short for a download, and a tool's timeout may end an
+    interactive sync, so neither downloads a recording; the reconcile job does."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    online = _online_only(monkeypatch, path)
+    fetched = _fetches(monkeypatch)
+    assert run(config).exit_code == 0 and run(config, mode=None).exit_code == 0
+    assert MEETING not in fetched and rec.converts == [] and online == {path.stat().st_ino}
+    row = _row(config, MEETING)
+    assert row.dataless and row.state_reason == cycle_mod.RECORDING_WAITS
+    assert row.last_verdict is Verdict.DEFERRED
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert fetched.count(MEETING) == 1 and _recording_page(config, MEETING)[0]["status"] == "current"
+
+
+def test_one_recording_download_per_cycle_newest_first_and_none_past_four_gib(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At most one recording is downloaded per cycle, the newest first; one over the size limit is never
+    downloaded and is counted as one that could not be (``HYDRATION_REFUSED``)."""
+    monkeypatch.setattr(cycle_mod, "_RECORDING_MAX_BYTES", 2000)
+    config = config_with(tmp_path, meetings)
+    now = time.time()
+    paths = {
+        "old": stub_recording(meetings / "meetings/old.mp4", 10, piece_s=10.0),
+        "new": stub_recording(meetings / "meetings/new.mp4", 10, piece_s=10.0),
+        "huge": stub_recording(meetings / "meetings/huge.mp4", 10, piece_s=10.0, pad="x" * 3000),
+    }
+    for age, key in ((3000, "old"), (1000, "new"), (0, "huge")):
+        os.utime(paths[key], (now - age, now - age))
+    _online_only(monkeypatch, *paths.values())
+    fetched = _fetches(monkeypatch)
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert [f for f in fetched if f.endswith(".mp4")] == ["meetings/new.mp4"]
+    assert _row(config, "meetings/huge.mp4").state_reason == cycle_mod.HYDRATION_REFUSED
+    assert _row(config, "meetings/old.mp4").state_reason == cycle_mod.RECORDING_WAITS
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert [f for f in fetched if f.endswith(".mp4")] == ["meetings/new.mp4", "meetings/old.mp4"]
+    assert _row(config, "meetings/huge.mp4").state_reason == cycle_mod.HYDRATION_REFUSED
+
+
+def test_a_recording_download_waits_for_twice_its_size_and_five_gib_free(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A download starts only while the volume keeps twice the recording's size and 5 GiB free."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    _online_only(monkeypatch, path)
+    fetched = _fetches(monkeypatch)
+    need = 2 * path.stat().st_size + 5 * 1024**3
+    monkeypatch.setattr(cycle_mod, "_free_bytes", lambda _path: need - 1)
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0 and MEETING not in fetched
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    monkeypatch.setattr(cycle_mod, "_free_bytes", lambda _path: need)
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0 and fetched.count(MEETING) == 1
+
+
+def test_a_download_that_fails_with_errno_89_or_passes_its_deadline_is_a_counted_finder_note_never_rule_three(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A download that passes its deadline or that the OS refuses (``errno 89``) sets ``HYDRATION_REFUSED``
+    (the counted Finder note), never an error or a stub.  It is tried once more in a later reconcile, then
+    only when the file's stat changes; a ``materialise PATH`` run that names it says what to do in Finder."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    _online_only(monkeypatch, path)
+    copy, downloads = al.materialise, list[str]()
+
+    def slow(src: Path, dest: Path, budget: Any, **kwargs: Any) -> Any:
+        if src.suffix != ".mp4":
+            return copy(src, dest, budget, **kwargs)
+        downloads.append(src.name)
+        time.sleep(0.5)
+        raise AssertionError("past the deadline: nobody waits for this")
+
+    def canceled(src: Path, dest: Path, budget: Any, **kwargs: Any) -> Any:
+        if src.suffix != ".mp4":
+            return copy(src, dest, budget, **kwargs)
+        downloads.append(src.name)
+        raise DatalessRefusedError(str(src), 89, "File Provider canceled the read (ECANCELED)")
+
+    monkeypatch.setattr(cycle_mod, "_RECORDING_DEADLINE_S", 0.05)
+    monkeypatch.setattr(cycle_mod, "_RECORDING_FLOOR_BPS", 10**12)
+    monkeypatch.setattr(al, "materialise", slow)
+    report = run(config, mode=CycleMode.RECONCILE)
+    row = _row(config, MEETING)
+    assert report.exit_code == 0 and source_report(report).errors == () and downloads == [path.name]
+    assert row.state is RowState.DATALESS and row.state_reason == cycle_mod.HYDRATION_REFUSED
+    assert row.last_verdict is Verdict.DEFERRED and rec.converts == []
+    monkeypatch.setattr(al, "materialise", canceled)
+    for _ in range(2):
+        assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert len(downloads) == 2, "tried once more, then not while its stat is the same"
+    assert _row(config, MEETING).state_reason == cycle_mod.HYDRATION_REFUSED
+    later = time.time() + 60
+    os.utime(path, (later, later))
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0 and len(downloads) == 3
+    named = run(config, materialise_paths=[path])
+    assert len(downloads) == 4 and cycle_mod._RECORDING_NOT_DOWNLOADED.format(path=MEETING) in (
+        source_report(named).alarms
+    )
+    assert _row(config, MEETING).state is RowState.DATALESS, "never quarantined, never a stub"
+
+
+def test_a_document_beside_an_online_only_recording_is_never_held_back(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An online-only recording never takes the source's document download budget: an online-only
+    document beside it downloads in the same cycle, whatever the order of their rows."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    brief = meetings / "brief.md"
+    brief.write_text("# Brief\n\nContoso launch plan\n", encoding="utf-8")
+    _online_only(monkeypatch, path, brief)
+    assert run(config, budget_bytes=brief.stat().st_size).exit_code == 0
+    assert "Contoso launch plan" in page(config.docs_repo, slug.mirror_rel_path(SID, "brief.md"))[1]
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS and rec.converts == []
+
+
+def test_a_recording_downloaded_with_its_stat_unchanged_is_read_by_the_cycle_that_sees_it(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Downloaded in Finder (only its online-only flag changes), a recording that waited, or a ``no
+    converter`` stub made before recordings were read, is read by the next cycle that lists it on this Mac."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: None)
+    old = stub_recording(meetings / "meetings/old.mp4", 10, piece_s=10.0)
+    online = _online_only(monkeypatch, old)
+    assert run(config).exit_code == 0
+    assert _row(config, "meetings/old.mp4").state_reason == "no converter for .mp4"
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: rec.media)
+    new = stub_recording(meetings / "meetings/new.mp4", 10, piece_s=10.0)
+    online.add(new.stat().st_ino)
+    assert run(config).exit_code == 0 and rec.converts == []
+    assert _row(config, "meetings/new.mp4").state_reason == cycle_mod.RECORDING_WAITS
+    online.clear()  # Download Now in Finder: same size, same modification time
+    assert run(config).exit_code == 0 and sorted(rec.converts) == ["new.mp4", "old.mp4"]
+    for rel in ("meetings/old.mp4", "meetings/new.mp4"):
+        assert _recording_page(config, rel)[0]["status"] == "current"
+
+
+def test_a_recording_read_while_local_keeps_its_pages_once_online_only(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recording read while it was on this Mac keeps its page once OneDrive evicts it: no reconcile and
+    no ``materialise PATH`` downloads it again to read the same bytes."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    assert run(config).exit_code == 0 and rec.converts == ["Contoso weekly sync.mp4"]
+    before = (config.docs_repo / slug.mirror_rel_path(SID, MEETING)).read_bytes()
+    _online_only(monkeypatch, path)
+    fetched = _fetches(monkeypatch)
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert run(config, materialise_paths=[path]).exit_code == 0
+    assert MEETING not in fetched and rec.converts == ["Contoso weekly sync.mp4"]
+    assert (config.docs_repo / slug.mirror_rel_path(SID, MEETING)).read_bytes() == before
+    assert _row(config, MEETING).dataless and _row(config, MEETING).state_reason is None

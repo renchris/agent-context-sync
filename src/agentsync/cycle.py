@@ -35,6 +35,7 @@ import shutil
 import socket
 import stat
 import struct
+import threading
 import time
 import unicodedata
 import zlib
@@ -77,6 +78,7 @@ from agentsync.errors import (
     DatalessRefusedError,
     GraphThrottled,
     LockHeldError,
+    ProviderTimeoutError,
     PublishError,
     SidecarPathError,
 )
@@ -234,6 +236,22 @@ them."""
 _MEDIA_DOWN = (
     "the media helper stopped working in this sync (it does not answer --version); recordings wait and are "
     "read once it works: run scripts/install.sh again"
+)
+_RECORDING_FETCHES = 1
+"""Recordings downloaded per cycle (spec S0 rule 3, ruling 1): newest modification time first, only in the
+recording pass of a reconcile job or ``agentsync materialise PATH``, so no document is held behind one."""
+_RECORDING_MAX_BYTES = 4 * 1024**3
+"""A larger online-only recording is not downloaded (about 9 hours at 466.6 MB an hour); it is counted with
+the ones the OS refused (``HYDRATION_REFUSED``)."""
+_RECORDING_SPARE_BYTES = 5 * 1024**3
+"""A download starts only while the volume has twice the recording's size and this much more free: staging
+copies the file once more (spec S0 rule 9)."""
+_RECORDING_DEADLINE_S = 60.0
+_RECORDING_FLOOR_BPS = 500_000
+"""A download's deadline is ``_RECORDING_DEADLINE_S + size / _RECORDING_FLOOR_BPS`` seconds (a 4 Mbit/s
+floor): past it the download is given up as a refusal.  The reconcile job's watchdog is far longer."""
+_RECORDING_NOT_DOWNLOADED = (
+    "{path}: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
 )
 _TEXT_SIDECARS = (".txt", ".md", ".csv")
 """The sidecars the secret scan reads (spec S10 rule 2): a keyframe's bytes are never scanned as text."""
@@ -823,6 +841,45 @@ def _discard_staged(fetched: FetchResult, staging: Path) -> None:
     if parent != staging and staging in parent.parents:
         with contextlib.suppress(OSError):
             parent.rmdir()
+
+
+class _DownloadDeadline(Exception):  # noqa: N818 - a signal: the download passed its deadline
+    """A recording's download did not finish by its deadline (spec S0 rule 3)."""
+
+
+def _free_bytes(path: Path) -> int:
+    """Free bytes of the volume that holds ``path`` (or its nearest existing parent)."""
+    while not path.exists() and path.parent != path:
+        path = path.parent
+    return shutil.disk_usage(path).free
+
+
+def _fetch_by(deadline_s: float, fetch: Callable[[], FetchResult]) -> FetchResult:
+    """Run ``fetch`` and wait at most ``deadline_s`` for it; past that raise :class:`_DownloadDeadline`.  The
+    copy left running ends with the process (a daemon thread) or finishes into the staging folder, which the
+    next cycle clears before it starts."""
+    done: list[FetchResult | BaseException] = []
+
+    def work() -> None:
+        try:
+            done.append(fetch())
+        except BaseException as exc:  # handed to the waiting cycle
+            done.append(exc)
+
+    worker = threading.Thread(target=work, name="agentsync-recording-download", daemon=True)
+    worker.start()
+    worker.join(deadline_s)
+    if not done:
+        raise _DownloadDeadline
+    if isinstance(done[0], BaseException):
+        raise done[0]
+    return done[0]
+
+
+def _stat_key(row: ItemRow) -> str:
+    """What a failed download of ``row`` is remembered against: its size, modification time and online-only
+    flag.  A change to any of them makes it worth trying again."""
+    return f"{row.size or 0}:{row.mtime_ns or 0}:{int(row.dataless)}"
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -2696,11 +2753,16 @@ class _Cycle:
             with recording_mod.work_allowance(
                 None if self.recordings == "named" else _RECORDING_BUDGET_S
             ) as allowance:
+                fetches = 0
                 for src, arm, row, stub in candidates:
                     if allowance.used_up or self._recordings_down():
                         break
+                    online = row.dataless or src.kind.is_graph
+                    if online and not self._may_download(src, row, fetches):
+                        continue
+                    fetches += online
                     try:
-                        self._read_recording(src, arm, row, stub=stub)
+                        self._read_recording(src, arm, row, stub=stub, online=online)
                     except Exception as exc:  # one recording's trouble: reported, never the source's failure
                         log.exception("%s: reading a recording stopped", src.id)
                         self._acc(src).errors.append(f"reading a recording stopped: {type(exc).__name__}")
@@ -2748,15 +2810,58 @@ class _Cycle:
     def _recording_downloads(self) -> bool:
         """True when this cycle's recording pass may download a recording (spec S0 rule 3, ruling 1): only a
         reconcile job or ``agentsync materialise PATH``; never a poll cycle or an interactive sync."""
-        return False
+        return self.recordings == "named" or (
+            self.recordings == "background" and self.mode is CycleMode.RECONCILE
+        )
 
-    def _read_recording(self, src: SourceConfig, arm: SourceArm, row: ItemRow, *, stub: bool) -> None:
+    def _may_download(self, src: SourceConfig, row: ItemRow, fetches: int) -> bool:
+        """True when the pass downloads ``row`` now (spec S0 rule 3).  Not past ``_RECORDING_FETCHES`` in a
+        background cycle; never one over ``_RECORDING_MAX_BYTES`` (it is counted as one that could not be
+        downloaded); not one whose download failed in ``_REREAD_ATTEMPTS`` cycles while its stat and
+        online-only flag are as they were then, unless ``materialise PATH`` names it; and only while the
+        volume keeps twice its size and ``_RECORDING_SPARE_BYTES`` free."""
+        size = max(row.size or 0, 0)
+        if size > _RECORDING_MAX_BYTES:
+            self._download_refused(src, row, count=False)
+            return False
+        if self.recordings == "background" and fetches >= _RECORDING_FETCHES:
+            return False
+        tries, key = self._recording_load(src.id).fetch.get(row.stable_id, (0, ""))
+        if not self.forced_paths and tries >= _REREAD_ATTEMPTS and key == _stat_key(row):
+            return False
+        if _free_bytes(self.staging) < 2 * size + _RECORDING_SPARE_BYTES:
+            log.info("%s: a recording waits for free disk space before it is downloaded", src.id)
+            return False
+        return True
+
+    def _download_refused(self, src: SourceConfig, row: ItemRow, *, count: bool = True) -> None:
+        """The OS refused a recording's download (``errno 89``, a policy), it passed its deadline, or it is
+        too large: ``HYDRATION_REFUSED``, never rule 3.  ``count``: one more failed download at this stat, so
+        it is tried once more in a later reconcile, then only when the stat changes.  A ``materialise PATH``
+        run that names it says what to do in Finder."""
+        sid, stable = src.id, row.stable_id
+        if count:
+            record = self._recording_load(sid)
+            tries, key = record.fetch.get(stable, (0, ""))
+            record.fetch[stable] = (tries + 1 if key == _stat_key(row) else 1, _stat_key(row))
+            self._save_recording(sid)
+        fresh = self.manifest.get_item(sid, stable) or row
+        if fresh.state in (RowState.LIVE, RowState.DATALESS) and fresh.state_reason != HYDRATION_REFUSED:
+            self.manifest.set_state(sid, stable, fresh.state, HYDRATION_REFUSED)
+        if self.forced_paths:
+            self._acc(src).alarms.append(_RECORDING_NOT_DOWNLOADED.format(path=row.rel_path))
+
+    def _read_recording(
+        self, src: SourceConfig, arm: SourceArm, row: ItemRow, *, stub: bool, online: bool = False
+    ) -> None:
         """Read one recording in a manifest transaction of its own (spec S0 rule 7).
 
         Before it is read the source's record says so in a write committed on its own (``reading``); the
         recording's transaction clears it and stores what the read came to.  So a read that raises is
         counted, and so is one the process died in (``_recording_load``).  ``stub``: the stub path, where a
-        read that fails keeps the page or stub the recording has (``_after_fetch`` with ``reread``)."""
+        read that fails keeps the page or stub the recording has (``_after_fetch`` with ``reread``).
+        ``online``: reading it is a download, under an allowance of its own (never the source's
+        ``ByteBudget``) and a deadline; a refusal or the deadline makes it ``HYDRATION_REFUSED``."""
         sid, stable, acc = src.id, row.stable_id, self._acc(src)
         record = self._recording_load(sid)
         if self.forced_paths:
@@ -2768,14 +2873,29 @@ class _Cycle:
                 self._save_recording(sid)
             return
         self._save_recording(sid, reading=stable)
+        item = _item_from_row(row)
         try:
-            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
+            if online:
+                deadline = _RECORDING_DEADLINE_S + max(row.size or 0, 0) / _RECORDING_FLOOR_BPS
+                budget = ByteBudget(_RECORDING_MAX_BYTES, 1)
+                fetched = _fetch_by(deadline, lambda: arm.fetch(item, self.staging, budget))
+            else:
+                fetched = arm.fetch(item, self.staging, ByteBudget(0, 1))
         except Exception as exc:  # gone, evicted or unreadable since the walk: the next pass says what it is
             self._save_recording(sid)
             if isinstance(exc, AuthRequiredError):
                 raise
-            log.debug("a recording could not be read (%s); it waits", type(exc).__name__)
+            refused = (DatalessRefusedError, ProviderTimeoutError, PermissionError, _DownloadDeadline)
+            if online and isinstance(exc, refused):
+                log.info("%s: an online-only recording could not be downloaded (%s)", sid, type(exc).__name__)
+                self._download_refused(src, row)
+            else:
+                log.debug("a recording could not be read (%s); it waits", type(exc).__name__)
             return
+        if online:  # on this Mac now: what a refused download left on the row is void
+            self._recording_load(sid).fetch.pop(stable, None)
+            if row.state_reason == HYDRATION_REFUSED:
+                self.manifest.set_state(sid, stable, row.state, None)
         with self.manifest.transaction():
             try:
                 result = self._after_fetch(src, row, fetched, acc, reread=stub)
