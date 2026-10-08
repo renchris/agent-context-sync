@@ -9923,7 +9923,8 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   a second byte stream in 2 of about 260 runs of a 2 s clip under load. Apple's AAC decoder itself is not
   bit-exact on long files (a 10-minute 44.1 kHz file: about 1 ulp in 1.3 % of float samples, so 41 of 9.6 M
   16-bit samples off by one, and every run different), so `audio.pcm` may differ by +-1 in a few samples per
-  million and is never a cache key. `MediaEngine.pills(src, request, *, work, timeout, step_ms=STEP_MS) ->
+  million: nothing hashes it (no cache key, no fingerprint, no piece key); the speech result stored once as a piece
+  is what pages use. `MediaEngine.pills(src, request, *, work, timeout, step_ms=STEP_MS) ->
   dict[int, tuple[int, ...]]` takes `request` as `(tick, boxes)` pairs, `Box = tuple[float, float, float,
   float]` (x, y, w, h), writes `work/pills.json`, and returns the values per tick in box order; `{}` for an
   empty request without a call, ValueError for a tick asked twice. `MediaEngine.audio(src, out, *, timeout) ->
