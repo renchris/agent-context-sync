@@ -10065,8 +10065,39 @@ class VttConverter:
 
 <!-- slot: recording (agentsync.convert.recording, agentsync.convert.recording_page) -->
 
-- (wave B: fill this paragraph.) `agentsync.convert.recording` gains `Speech` and the `Reading` fields
-  `picture_unread`, `speech`, `no_speech`, `speaking` and `cue_identity` (P3 interface; defaults keep P1 pages).
+- `agentsync.convert.recording` gains `Speech` and the `Reading` fields `picture_unread`, `speech`,
+  `no_speech`, `speaking` and `cue_identity` (defaults keep P1 pages), and `RecordingConverter` fills them
+  (spec S7, S8, S8b). **Version:** `<emitter>+<ocr>+<media>-s<n>+cue-r<n>`, plus `+<SpeechEngine.identity>-n<n>`
+  with a speech engine; `options()` adds `cue.options()` always and `speech_lines.options()`,
+  `naming.options()` and `recording_speech_limit` with one. `outdated_key` is
+  `<emitter><<floor>|<cue identity>|<speech identity or ->`. `outdated(produced, reason)` is also True for a
+  version without `+cue-`, and with a speech engine for one without `+asr-` or without `-n<digits>` and for the
+  stubs `recording has no picture; its speech is not read by this version`, `recording's picture cannot be
+  decoded on this Mac (VP9 or AV1)` and `no text read on screen; speech is not read by this version`; never for
+  the running version or an emitter above it. `_EMITTER_VERSION` stays `1.0.0`: every page that changes does so
+  under a new version. **Pieces:** a picture piece's key is `<piece ticks>|<picture version>|<picture options
+  hash>`, without the cue or speech parts, so the picture pieces of a recording stay valid when a speech engine
+  appears or fails. S8 is one more piece, numbered past the picture pieces, keyed `speech|<speech
+  identity>|<speech_lines options hash>`, holding the whole file's words (hole repair spliced), segments,
+  silent runs, unrecognised gaps and decoded length; `audio.pcm` is decoded into the scratch folder, never kept
+  and never a key. It is charged to the allowance like a piece, stops before it when the allowance is used up
+  and this call read a piece, and has its own deadline, `60 + 0.07 x seconds of sound` (`_SPEECH_S`, from the
+  container's length); past it `RecordingNotFinished(timed_out=True)` with `done_ms` the last picture piece's
+  start (0 on a speech-only page). After the load, words, segments and gaps starting at or after `read_ms` are
+  dropped and silence is cut at the earlier of `read_ms` and the decoded length. **Cue (S7)**, in the last pass
+  when `cue.has_cue(profile)`: the `strip` and `label` rows of each read candidate are its `cue.Label`s,
+  `cue.requests` over every tick read, `MediaEngine.pills` in chunks of 1,000 ticks, `lit_sets` and `speaking`
+  (ticks to ms); the last pass's deadline gains `_TICK_S x ticks`; a `pills` failure is a MediaError (S2).
+  **Naming (S8b):** `naming.name_voices` over each voice's merged spans and the lit sets (empty without a cue or
+  picture), `vetoed` per `SAID` line of a voice. **Stubs:** with a speech engine and sound, a file with no
+  picture or a VP9 / AV1 picture is a speech-only page (`picture_unread` the stub wording above, profile
+  `generic`, no states, rows or keyframes); with no speech line it stays a stub (`recording's picture cannot be
+  decoded ...` for VP9 / AV1, else the next wording). A page with no printed row is the stub `no text read on
+  screen and no speech in the recording` with a speech engine (the P1 wording without one) only when it has no
+  speech line either. `no_speech` is `the recording has no sound` with a speech engine and no sound track, else
+  None. **Failure:** `Registry.without_speech` is the same registry built without the speech engine (None for
+  a registry without one); `convert_file` routes a `SpeechError` there before the OcrError branch, so the page
+  keeps its screens and is cached under a version without `+asr-`, which `outdated` reads again.
 - `agentsync.convert.recording_page.render` prints them (spec 3.3 to 3.5, S9). Windows: `SPEAKING: <label>` at
   its tick's even second, `SAID vN: <text>` once, at its first word floored to the second, in the state on screen
   then (the states tile `[0, read end)`: the first from 00:00:00, each to the next one's start), the veto `NOTE`
