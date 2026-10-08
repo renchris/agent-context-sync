@@ -554,8 +554,10 @@ let blueRGB: (UInt8, UInt8, UInt8) = (60, 70, 200), greyRGB: (UInt8, UInt8, UInt
 let groundRGB: (UInt8, UInt8, UInt8) = (40, 40, 40)
 writer.startWriting()
 writer.startSession(atSourceTime: .zero)
-for i in 0..<32 {
-    while !picture.isReadyForMoreMediaData { usleep(1000) }
+// The writer interleaves its inputs and holds one not ready until the other has caught up, so feeding both
+// from one thread can wait forever (it did, under load, in 4 of 12 concurrent runs).  Each input is fed on a
+// queue of its own when the writer asks for it, the pattern AVAssetWriter documents.
+func appendFrame(_ i: Int) {
     var made: CVPixelBuffer?
     CVPixelBufferCreate(nil, w, h, kCVPixelFormatType_32BGRA, nil, &made)
     let buffer = made!
@@ -573,8 +575,9 @@ for i in 0..<32 {
     }
     CVPixelBufferUnlockBaseAddress(buffer, [])
     adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: 16))
+}
 
-    while !sound.isReadyForMoreMediaData { usleep(1000) }
+func appendSound(_ i: Int) {
     var samples = [Int16](repeating: 0, count: chunk * 2)
     for n in 0..<chunk {
         let v = Int16(8000 * sin(2 * Double.pi * 440 * Double(i * chunk + n) / Double(rate)))
@@ -595,8 +598,24 @@ for i in 0..<32 {
         packetDescriptions: nil, sampleBufferOut: &sample)
     sound.append(sample!)
 }
-picture.markAsFinished()
-sound.markAsFinished()
+
+let fed = DispatchGroup()
+for (input, append) in [(picture, appendFrame), (sound, appendSound)] {
+    var next = 0
+    fed.enter()
+    input.requestMediaDataWhenReady(on: DispatchQueue(label: "feed")) {
+        while input.isReadyForMoreMediaData && next < 32 {
+            append(next)
+            next += 1
+        }
+        if next == 32 {
+            input.markAsFinished()
+            next += 1
+            fed.leave()
+        }
+    }
+}
+fed.wait()
 writer.endSession(atSourceTime: CMTime(value: 2, timescale: 1))
 let done = DispatchSemaphore(value: 0)
 writer.finishWriting { done.signal() }
