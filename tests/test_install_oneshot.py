@@ -3499,8 +3499,10 @@ def test_helpers_step_prints_progress_lines_while_the_builds_run(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
     """The speech helper's first build took about 100 s in the 2026-10-08 rehearsal and printed nothing.  A
-    ticker beside the builds prints ``helpers: still running, <N>s`` at each interval, above the speech line,
-    and stops with the builds."""
+    ticker beside each build prints ``helpers: building the <helper>, still running, <N>s`` at each interval:
+    the ticks between the media line and the speech line name the speech helper (the 2026-10-08 v10
+    rehearsals read three minutes of "helpers" after both lines said ready), none starts with ``speech:``, and
+    the ticker stops before the helper's line."""
     tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
     tool_py.parent.mkdir(parents=True, exist_ok=True)
     _write_exe(tool_py, STUB_TOOL_PYTHON)
@@ -3509,8 +3511,12 @@ def test_helpers_step_prints_progress_lines_while_the_builds_run(
     cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
     out = cp.stdout.splitlines()
-    ticks = [i for i, ln in enumerate(out) if re.fullmatch(r"helpers: still running, \d+s", ln)]
-    assert ticks and ticks[-1] < out.index(placed), cp.stdout
+    ticks = [i for i, ln in enumerate(out) if ln.startswith("helpers: ")]
+    media = next(i for i, ln in enumerate(out) if ln.startswith("media helper: "))
+    assert ticks and all(media < i < out.index(placed) for i in ticks), cp.stdout
+    for i in ticks:
+        assert re.fullmatch(r"helpers: building the speech helper, still running, \d+s", out[i]), out[i]
+    assert sum(ln.startswith("speech:") for ln in out) == 1
     assert last_line(cp).startswith("NEXT: ") and one_next(cp)
     assert ("helpers", "done", "0", "") in steps(install_log(env))
 

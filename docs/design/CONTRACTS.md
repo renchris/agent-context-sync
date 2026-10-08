@@ -6409,9 +6409,10 @@ stops the run during it. So the run's exit status is still that of a run without
 `launcher` line times the launcher alone. Still no option. Why: in the 2026-10-08 rehearsal the speech
 helper's first build took about 100 s, and it was logged on a `launcher` line that said `skipped
 note=not-requested`. While the helpers build, the step prints `helpers: still running, <N>s` at least every
-15 s from a ticker beside the builds. The builds stay in the foreground, so a run stopped by a signal to its
-own process lets the build under way finish before it exits, and the re-run its NEXT line names never meets a
-second build in the same SwiftPM tree.
+15 s from a ticker beside the builds (**amended, end of §16.37:** a ticker beside each build, `helpers:
+building the <OCR|media|speech> helper, still running, <N>s`). The builds stay in the foreground, so a run
+stopped by a signal to its own process lets the build under way finish before it exits, and the re-run its
+NEXT line names never meets a second build in the same SwiftPM tree.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -10365,11 +10366,12 @@ order of registration), and the stopped copy's `setup-report.md` (an old copy's 
   stops the run during it, so the exit status is unchanged, and `launcher` times the launcher alone. The speech
   helper's first build took about 100 s in the rehearsal, logged on a `launcher` line that said `skipped
   note=not-requested`. The report reads step names generically, so an older log parses as before.
-- **The helper builds print a progress line.** A ticker beside the builds prints `helpers: still running, <N>s`
-  every `PROGRESS_EVERY` seconds; it is killed after the builds and in `on_exit`. The builds stay in the
-  foreground, so a signal to the installer's own pid lets the build under way finish before the run exits, and
-  the re-run its `NEXT:` names never meets a second build in the same SwiftPM tree (a backgrounded build was
-  measured to outlive the installer).
+- **The helper builds print a progress line.** A ticker beside each build prints `helpers: building the
+  <OCR|media|speech> helper, still running, <N>s` every `PROGRESS_EVERY` seconds; it is killed after that
+  build and in `on_exit` (see the last part of this section). The builds stay in the foreground, so a signal
+  to the installer's own pid lets the build under way finish before the run exits, and the re-run its `NEXT:`
+  names never meets a second build in the same SwiftPM tree (a backgrounded build was measured to outlive the
+  installer).
 
 #### Sync and status around deletions and re-reads (`agentsync.cycle`, `agentsync.cli`, `agentsync.manifest`)
 
@@ -10414,3 +10416,13 @@ again R` (R > 0), and as `converted-N-deferred-M` otherwise, so an older install
 The Summary's first-sync clause reads `converted N, deferred M online-only, read again R (<source>...)` when the
 note, or with no note the sync's own line in install.out, carries R. Why: the second v10 rehearsal's installer
 printed `read again 2` and the report's clause dropped it.
+
+#### The helpers ticker names the helper it waits for (`scripts/install.sh`)
+
+The ticker runs beside each build, not beside all three, and prints `helpers: building the <OCR|media|speech>
+helper, still running, <N>s`, its seconds counted from that build's start; it is killed after the build,
+before the helper's line, and in `on_exit`. The builds stay in the foreground and a line still comes at least
+every 15 s. Why: both v10 rehearsals printed 12 and 13 `helpers: still running` lines (about 3 minutes) after
+the OCR and media lines said ready, then `speech: off (the speech models are not placed: ...)`; the time was
+the speech helper's first build, and nothing said so. The speech line is the module's probe and is unchanged,
+still one line: no tick starts with `speech:`.
