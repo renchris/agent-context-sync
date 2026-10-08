@@ -310,7 +310,7 @@ The Summary shows which case a report is:
 
 | Summary line | What it says |
 |---|---|
-| `expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; not logged) · ...` | The Mac already synced folders when the attempt began, so the folder question is not a turn the report expects, and `human turns` does not count it. On a new Mac the line starts `the folder question (step 1; not logged)`, as before. |
+| `expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; not logged) · ...` | The Mac already synced folders when the attempt began, so the folder question is not a turn the report expects, and `human turns` does not count it. On a new Mac the line starts `the folder question (step 1; not logged as a question)`. |
 | `folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)` | What the install run did with the folders, from the counts it logged: kept, or `1 added to the 2 already synced`, or `2 added (none was synced before)`. The second part is how many `--source-local` options the command had. A run that named a folder the config already had reads `kept the 1 already synced (none added) · 1 named with --source-local`: it was left as it was. |
 
 Both lines are counts and fixed words. Triage: a `deviation` line that says the agent stopped at the folder

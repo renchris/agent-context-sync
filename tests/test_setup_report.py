@@ -1974,8 +1974,8 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
         "the folder question is a turn although v6 does not log it (L9)"
     )
     assert (
-        "- expected turns: the folder question (step 1; not logged) · Allow clicks: none possible (launchd "
-        "simulated)" in summary
+        "- expected turns: the folder question (step 1; not logged as a question) · Allow clicks: none "
+        "possible (launchd simulated)" in summary
     )
     assert "- friction (attempt 1): 1 event line(s): 1 finished" in summary
     assert f"- IT draft: {setup_report.IT_DRAFT} not written (prompt step 3:" in summary, "v6's step 3"
@@ -2098,7 +2098,7 @@ def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_t
     assert same[0] == same[1] == same[2] and len(same[0]) > 10
     said = "\n".join(same[1])
     assert "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond" in said
-    assert "- expected turns: the folder question (step 1; not logged) · " in said
+    assert "- expected turns: the folder question (step 1; not logged as a question) · " in said
     assert "- agent friction: 1 deviation, 1 prompt, 1 error (F6, F7, F8); none of these changes" in said
     assert "IT draft" not in said, "since v7 there is no IT request step"
     assert links[8]["prompt_version"] == ["v8"] and links[7]["prompt_version"] == ["v7"]
@@ -2252,9 +2252,25 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     assert setup_report._stopped_before_the_list(current, []) is False, "only the installer's stop counts"
 
 
+def test_an_unanswered_folder_question_is_a_deviation_not_a_question(fake_mac: dict[str, Path]) -> None:
+    """The v10 rehearsal: step 1 orders "log a deviation, stop and wait for my answer" when the folder
+    question comes back unanswered, and the expected-turns line said "(step 1; not logged)" two lines above
+    that deviation. It is never logged as a ``question``, which is what the line says."""
+    v6_install_log(fake_mac)
+    unanswered = (
+        "2026-09-29T09:58:30Z | step 1 | deviation | the folder question came back unanswered; no folder "
+        "chosen, stopped to wait for the answer | -\n"
+    )
+    end = "2026-09-29T10:01:10Z | end | finished\n"
+    write_friction(fake_mac, V10_HAPPY.replace(end, unanswered + end))
+    _text, summary = summary_of(fake_mac)
+    assert "- expected turns: the folder question (step 1; not logged as a question) · " in summary
+    assert "- agent friction: 1 deviation, 0 prompt, 0 error (F4); none of these changes" in summary
+
+
 # ---- a Mac that is already set up is not asked for its folders again (field report 2026-10-07) -----------
 
-ASKED = "the folder question (step 1; not logged)"
+ASKED = "the folder question (step 1; not logged as a question)"
 NOT_ASKED = "no folder question ({} already synced: step 1 asks at most whether to add one; not logged)"
 
 
@@ -2835,8 +2851,8 @@ def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
         in summary
     )
     assert (
-        "- expected turns: the folder question (step 1; not logged) · the announced Allow clicks (steps 1 "
-        "and 2; not logged)" in summary
+        "- expected turns: the folder question (step 1; not logged as a question) · the announced Allow "
+        "clicks (steps 1 and 2; not logged)" in summary
     )
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("### Run", 1)[0]
     assert re.findall(r"^- F(\d+) · step (\d) · (\w+) · ", items, flags=re.MULTILINE) == [
@@ -2863,8 +2879,8 @@ def test_v7_announces_one_allow_click_in_step_1(
     _text, summary = summary_of(fake_mac)
     assert "1 click beyond the announced Allow click (not logged)" in summary
     assert (
-        "- expected turns: the folder question (step 1; not logged) · the announced Allow click (step 1; not "
-        "logged)" in summary
+        "- expected turns: the folder question (step 1; not logged as a question) · the announced Allow "
+        "click (step 1; not logged)" in summary
     )
     assert "steps 1 and 2" not in summary
 

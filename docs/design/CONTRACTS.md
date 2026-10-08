@@ -5020,7 +5020,9 @@ question(s); <clicks>; <approvals>)`, e.g. "human turns: 1 (1 question; clicks: 
 observable)": v6 adds the unlogged folder question; clicks are "clicks: none possible" in a sandbox, "c click(s)
 logged, though none is possible" when some were logged there, and on a real Mac "c click(s)" (v6: "beyond the
 announced Allow clicks (not logged)"); approvals "not observable" or "a approval(s)"; the total counts only what
-is known. `expected turns:` for v6 names the folder question and the Allow clicks as "not logged". Event kinds
+is known. `expected turns:` for v6 names the folder question and the Allow clicks as "not logged".
+**Amended (2026-10-08, §16.37):** the folder question reads `(step 1; not logged as a question)`: since v7's
+wording of 2026-10-06 an unanswered one is logged as a deviation, which the friction line counts. Event kinds
 are counted with the closing line ("... 1 question, 1 finished"), so they add up to the event line count; the
 friction section embeds each line with its line number (the F<n> ids). A v6 attempt's time line adds the step
 times from install.log ("install.sh (install.log): step 1 --list-folders 4s · step 2 install 57s"). The first

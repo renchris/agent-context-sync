@@ -4640,7 +4640,7 @@ def _expected_turns_line(
         steps = " and ".join(str(s) for s in layout.allow_click_steps)
         steps = f"step{'s' if len(layout.allow_click_steps) > 1 else ''} {steps}"
         step = layout.folder_question_step
-        parts = [f"the folder question (step {step}; not logged)"]
+        parts = [f"the folder question (step {step}; not logged as a question)"]
         if synced:
             parts = [
                 f"no folder question ({_plural(synced, 'folder')} already synced: step {step} asks at most "
