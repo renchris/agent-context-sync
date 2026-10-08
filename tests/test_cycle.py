@@ -1618,6 +1618,51 @@ def test_files_new_in_the_pass_of_a_scope_change_do_not_raise_the_breaker_limit(
     assert governance.pending_purges(excluded.state_paths.root) == []
 
 
+@pytest.mark.parametrize("gone", [1, 6], ids=["two-pass", "breaker"])
+@pytest.mark.parametrize("never_completed", [False, True], ids=["completed", "never-completed"])
+def test_an_exclude_that_covers_no_mirrored_file_retires_nothing(
+    tmp_path: Path, local_source_dir: Path, gone: int, never_completed: bool
+) -> None:
+    """The exclude names a folder with no mirrored file below it, so no file left with the config. Every
+    absent file is an ordinary deletion candidate, on a source whose walks never completed before as well:
+    a few wait for a second complete pass, many trip the breaker and stay."""
+    config = config_with(tmp_path, local_source_dir, _LOW_BREAKER)
+    victims = [f"minutes/Contoso minutes {n}.md" for n in range(gone)]
+    (local_source_dir / "minutes").mkdir()
+    for n, rel in enumerate(victims):
+        (local_source_dir / rel).write_text(f"# Minutes {n}\n\nagreed\n", encoding="utf-8")
+    if never_completed:
+        for _ in range(2):
+            assert not source_report(run(_incomplete(config))).enumeration_complete
+    else:
+        assert run(config).exit_code == 0
+    assert all(r.state is RowState.LIVE for r in _file_rows(config).values())
+    for rel in victims:
+        (local_source_dir / rel).unlink()
+    (local_source_dir / "Empty Team Folder").mkdir()
+    excluded = _excluding(config, SID, "Empty Team Folder")
+    report = run(excluded)
+    rep = source_report(report)
+    assert report.exit_code == 0 and rep.enumeration_complete
+    assert not any("now outside it retired" in a for a in rep.alarms), rep.alarms
+    rows = _file_rows(excluded)
+    assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == []
+    with Manifest(excluded.state_paths.db) as m:
+        assert m.get_meta(f"scope_change:{SID}") == ""
+    second = run(excluded)
+    rows = _file_rows(excluded)
+    if gone == 1:
+        assert not rep.breaker_tripped
+        assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
+        assert len(governance.pending_purges(excluded.state_paths.root)) == 1
+    else:
+        assert rep.breaker_tripped
+        assert any(f"breaker TRIPPED: {gone} absent file(s) held" in a for a in rep.alarms), rep.alarms
+        assert source_report(second).breaker_tripped and second.changes == ()
+        assert all(rows[rel].state is RowState.LIVE for rel in victims)
+        assert governance.pending_purges(excluded.state_paths.root) == []
+
+
 def test_an_exclude_with_no_other_absence_retires_its_files_past_the_breaker(
     tmp_path: Path, local_source_dir: Path
 ) -> None:
