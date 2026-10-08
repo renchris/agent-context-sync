@@ -245,6 +245,15 @@ nothing to request and the fix-request heading; "removing a file removes its pag
 notice); an indented `alarm:` line is explained by a WAITING ON YOU line. Still the operator's choice, not built:
 a `.url` converter.
 
+Rehearsal on the landed `a086c2f` (run `wf_0dd2de06-dc0`, reports in `~/.cache/agentsync-bring-back/rehearsal-b11/`):
+new Mac and field-state Mac both PASS, the old v9 copy refused with `bring-back.md` unchanged; every B11 change read
+right on real output (`read again 2`, `absent 1` then the removal alarm, both waits on the Loop line, the new alarm
+text). No finding cost a turn or was wrong. Two small ones were built after it (run `wf_d921990c-2f0`, fresh
+review): the report's first-sync clause carries the installer's read-again count (install.log note
+`-reread-R`), and the helpers ticker names the helper it waits for (the speech build was about 3 minutes of
+`helpers: still running` ending in `speech: off`). Both scenarios were played again on that landed commit before
+the go-ahead.
+
 ## B1 Field fixes from the bring-back report
 
 Items I1–I19 in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
