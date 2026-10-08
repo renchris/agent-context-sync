@@ -185,6 +185,41 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
     assert "(item paths and document names shown as <path>)" in errors
 
 
+def test_recent_errors_merge_a_line_repeated_in_a_row(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """Field report 2026-10-07: one warning per empty folder, 5 a poll, filled the 40-line window. Lines of
+    one file that read the same after their time, once item paths are ``<path>``, are one line with a count
+    and the last time. The launcher's line between two polls does not split them, and another source's line
+    of the same shape stays apart."""
+    warning = "WARNING agentsync.arm_local: src-a: directory 'Mooring Ledger' has no children"
+    other = warning.replace("Mooring Ledger", "Harbor Notes")
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + f"2026-10-05 09:00:00,000 {warning}\n"
+        + f"2026-10-05 09:00:00,100 {other}\n"
+        + "2026-10-05T14:05:00Z agentsync-launcher[42]: CANARY_OK path=/tmp/canary\n"
+        + f"2026-10-05 09:05:00,000 {warning}\n"
+        + f"2026-10-05 09:05:00,100 {other}\n"
+        + f"2026-10-05 09:15:00,000 {warning.replace('src-a', 'src-b')}\n"
+        + f"2026-10-05 09:20:00,000 {warning}\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    errors = section(text, "Recent errors")
+    assert (
+        "2026-10-05 09:00:00,000 WARNING agentsync.arm_local: src-a: directory '<path>' has no children "
+        "(4 times in a row, the last at 2026-10-05 09:05:00,100)\n" in errors
+    )
+    assert "09:05:00,000" not in errors and "Mooring" not in text and "Harbor" not in text
+    assert "09:15:00,000 WARNING agentsync.arm_local: src-b: directory '<path>' has no children\n" in errors
+    assert "09:20:00,000 WARNING agentsync.arm_local: src-a: directory '<path>' has no children\n" in errors
+    assert "The last 5 of 5 WARNING/ERROR line(s) in " in errors
+    assert (
+        "(8 as logged: lines in a row that read the same here are shown once, with their count and last time)"
+        in errors
+    )
+
+
 CONVERTED_SUFFIXES = sorted({*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions})
 """Every suffix a converter claims: the default registry's, and the image converter's, which the registry
 holds only on a Mac with an OCR engine."""

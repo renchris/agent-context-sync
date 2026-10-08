@@ -4314,6 +4314,32 @@ def _scrub_segment(part: str) -> str:
     return "<path>" if _PATH_IN_LOG_RE.search(out.replace("agentsync.", "").replace("<path>", "")) else out
 
 
+_LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[,.]\d+)?Z?) (.*)")
+"""A log line's leading time (a Python log line's local one, the launcher's UTC one) and the text after it."""
+
+
+def _merge_repeats(lines: list[str]) -> list[tuple[str, str]]:
+    """One log file's lines as ``(line, note)``: lines in a row that are identical once the leading time is
+    removed become the first of them, and its note says how many they were and when the last one was. Any
+    other line has an empty note; a line with no leading time is never merged."""
+    runs: list[tuple[str | None, list[str]]] = []
+    for ln in lines:
+        m = _LOG_TIME_RE.fullmatch(ln)
+        text = m[2] if m else None
+        if runs and text is not None and runs[-1][0] == text:
+            runs[-1][1].append(ln)
+        else:
+            runs.append((text, [ln]))
+    out: list[tuple[str, str]] = []
+    for text, same in runs:
+        last = _LOG_TIME_RE.fullmatch(same[-1])
+        if text is None or last is None or len(same) == 1:
+            out += [(ln, "") for ln in same]
+        else:
+            out.append((same[0], f" ({len(same)} times in a row, the last at {last[1]})"))
+    return out
+
+
 def _recent_errors(r: _Run) -> list[str]:
     log_dir = r.log_dir()
     if not log_dir.exists():
@@ -4321,14 +4347,30 @@ def _recent_errors(r: _Run) -> list[str]:
     files = sorted((p for p in log_dir.iterdir() if p.is_file()), key=lambda p: (p.stat().st_mtime, p.name))
     hits: list[str] = []
     problems: list[str] = []
+    lines = 0
     for path in files:
         try:
-            hits += [_scrub_item_paths(f"{path.name}: {ln}") for ln in _tail(path) if _LEVEL_RE.search(ln)]
+            own = [ln for ln in _tail(path) if _LEVEL_RE.search(ln)]
         except OSError as exc:
             problems.append(f"- {path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
+            continue
+        lines += len(own)
+        # Merged per file, over the matching lines only, after the scrub and before redaction: a launcher
+        # line between two repeats does not split them, lines that differ only in an item's path or quoted
+        # name are one entry, and two sources' lines stay apart. Scrubbed with the file name in front, as
+        # shown, so a path in a line's first segment is covered.
+        cut = len(path.name) + 2
+        shown = [_scrub_item_paths(f"{path.name}: {ln}")[cut:] for ln in own]
+        hits += [f"{path.name}: {ln}{note}" for ln, note in _merge_repeats(shown)]
+    merged = (
+        f" ({lines} as logged: lines in a row that read the same here are shown once, with their count"
+        " and last time)"
+        if lines != len(hits)
+        else ""
+    )
     head = (
         f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s) in {log_dir}"
-        " (item paths and document names shown as <path>):"
+        f"{merged} (item paths and document names shown as <path>):"
     )
     return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
 
