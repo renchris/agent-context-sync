@@ -886,3 +886,18 @@ def test_outside_an_allowance_or_without_a_store_a_recording_is_read_to_the_end(
     assert got.read_ms == 600_000 and len(got.states) > 3
     with rec.work_allowance(None) as allowance:
         assert not allowance.used_up
+
+
+def test_a_row_printed_the_same_way_carries_across_a_change_of_kind() -> None:
+    """A moving desktop under ``generic`` flips between share and camera; a content row prints SCREEN in
+    both, so it stays one row and a short state folded into the next does not remove and re-add it at one
+    tick.  Under ``teams`` it is SCREEN in a share and TILE in a camera state, so it starts again."""
+    seen = rec._Seen("content", "Contoso storage budget, FY27", 1.0, 0.1, 0.2, 0.5, 0.03)
+    grid = bytes(rec.GRID_W * rec.GRID_H)
+    cands = [
+        rec._Cand(0, "share", [seen], grid, False),
+        rec._Cand(1, "camera", [seen], grid, False),
+        rec._Cand(2, "share", [seen], grid, False),
+    ]
+    assert len(rec._tracks(cands, rec._PROFILES["generic"])) == 1
+    assert len(rec._tracks(cands, rec._PROFILES["teams"])) == 3

@@ -1012,16 +1012,28 @@ def _candidates(profile: _Profile, pieces: Sequence[dict[str, Any]]) -> list[_Ca
     return [out[t] for t in sorted(out)]
 
 
-def _tracks(cands: Sequence[_Cand]) -> list[_Track]:
+def _tracks(cands: Sequence[_Cand], profile: _Profile) -> list[_Track]:
+    """Rows followed across consecutive candidates.  A row never spans a change of how it prints (S6 rule 3):
+    under ``teams`` a content row is SCREEN in a share and TILE in a camera state, so a change of kind starts
+    it again; under every other profile a content row prints SCREEN in both, so it carries across the change
+    and a state folded into the next (rule 7) does not remove and re-add the same row at one tick."""
     tracks: list[_Track] = []
     live: list[_Track] = []  # the track of each row of the previous candidate
     for i, cand in enumerate(cands):
         prev = cands[i - 1] if i else None
         found: list[int | None]
-        if prev is None or prev.kind != cand.kind:  # a row never spans a change of kind
+        if prev is None:
             found = [None] * len(cand.rows)
         else:
             found = _matches(prev.rows, cand.rows, (prev.grid, cand.grid))
+            if prev.kind != cand.kind:
+                found = [
+                    at
+                    if at is not None
+                    and _tag(profile, prev.kind, row.region) == _tag(profile, cand.kind, row.region)
+                    else None
+                    for row, at in zip(cand.rows, found, strict=True)
+                ]
         now: list[_Track] = []
         for row, at in zip(cand.rows, found, strict=True):
             if at is None:
@@ -1173,7 +1185,7 @@ class _Settle:
     ) -> tuple[tuple[Row, ...], tuple[State, ...], tuple[Row, ...], tuple[tuple[int, str, int], ...], int]:
         width, height = info_size
         cands, profile = self.cands, self.profile
-        tracks = _tracks(cands)
+        tracks = _tracks(cands, profile)
         states = _states(cands, self.gated, self.read_ms)
         self.work.deadline = _clock() + _BASE_S + _READ_S * 2 * len(states)
         revisit = self.revisits(states)
