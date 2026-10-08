@@ -122,7 +122,7 @@
 #      own TCC_PENDING (a "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8)
 #      asks the Allow for. A listing macOS holds for an Allow click in this terminal is a
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
-#      of time the fix is this same command again
+#      of time the fix is this same command again, then what to do if the same line comes back
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,

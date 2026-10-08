@@ -82,6 +82,12 @@ _PANDOC_SLOW_START = (
 )
 _EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an Intel program and no Rosetta
 
+# A check that ran out of time has no answer: a slow program and one that never answers read the same from
+# here, so the line does not say which it was.  _STILL_NO_ANSWER is what the fix names for a second such
+# line when the check has no fix of its own for a program that does not work.
+_OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
+_STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
+
 # A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
 _CRASH_FIX = (
     "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
@@ -382,15 +388,17 @@ def _bad(name: str, detail: str, severity: Severity = Severity.ERROR, fix: str |
     return CheckResult(name=name, ok=False, detail=detail, severity=severity, fix=fix)
 
 
-def _again_fix() -> str:
-    """The fix for a check that only has to run again: under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`)
-    the command its ``NEXT:`` line names, which a setup agent may run; else ``agentsync status``."""
+def _again_fix(fallback: str | None = None) -> str:
+    """The fix for a check that ran out of time: run again as it is, and what to do when the same line
+    comes back.  Under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) the run is the command its ``NEXT:``
+    line names, which a setup agent may run; else ``agentsync status``.  A program that was only slow
+    answers the next time.  One that never answers gives the same line at every run, so the fix does not
+    end at "again": it names ``fallback`` (the check's own fix), else says to report the line."""
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
-        return (
-            "run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing "
-            "first)"
-        )
-    return "agentsync status (run it again: nothing needs changing first)"
+        again = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
+    else:
+        again = "agentsync status (run it again as it is)"
+    return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
 
 
 def _timed_out(
@@ -400,16 +408,18 @@ def _timed_out(
     *,
     what: str | None = None,
     why: str | None = None,
+    fallback: str | None = None,
 ) -> CheckResult:
-    """A check whose program did not answer within its limit. That is not a crash and not a finding: the
-    line says the check ran out of time, and its fix is to run the checks again (:func:`_again_fix`).
-    ``what`` is the command as the line names it (default: the program's file name), ``why`` what is known
-    about the wait."""
+    """A check whose program did not answer within its limit. That is not a crash and not a finding either
+    way: the line says the check ran out of time, and its fix is to run the checks again and what to do if
+    that changes nothing (:func:`_again_fix`).  ``what`` is the command as the line names it (default: the
+    program's file name), ``why`` what is known about the wait, ``fallback`` the check's own fix for a
+    program that does not work."""
     if what is None:
         argv = exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd]
         what = Path(str(argv[0])).name if argv else "the program"
-    detail = f"{what} did not answer within {exc.timeout:.0f}s: the check ran out of time, it found no fault"
-    return _bad(name, f"{detail} ({why})" if why else detail, severity, fix=_again_fix())
+    detail = f"{what} did not answer within {exc.timeout:.0f}s: {_OUT_OF_TIME}"
+    return _bad(name, f"{detail} ({why})" if why else detail, severity, fix=_again_fix(fallback))
 
 
 def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -> CheckResult:
@@ -464,8 +474,9 @@ def _check_git(config: Config) -> list[CheckResult]:
 def _check_pandoc(config: Config) -> list[CheckResult]:
     """pandoc (configured or bundled) runs and reports a version.  One that does not answer within
     ``_PANDOC_TIMEOUT_S`` is most often starting for the first time (see that constant): the line says so
-    and its fix is to run again.  One macOS will not start is a FAIL with this check's fix, and says when
-    the reason is an Intel program on a Mac without Rosetta."""
+    and its fix is to run again, then this check's own fix if the line comes back (a pandoc that never
+    answers reads the same, and running again does not clear that one).  One macOS will not start is a
+    FAIL with this check's fix, and says when the reason is an Intel program on a Mac without Rosetta."""
     own = "set [convert] pandoc_path to an absolute pandoc"
     fix = f"uv sync (reinstalls pypandoc_binary) or {own}"
     try:
@@ -481,7 +492,7 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     try:
         cp = _run([str(pandoc), "--version"], timeout=_PANDOC_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
-        return [_timed_out("pandoc", exc, what=f"{pandoc} --version", why=_PANDOC_SLOW_START)]
+        return [_timed_out("pandoc", exc, what=f"{pandoc} --version", why=_PANDOC_SLOW_START, fallback=fix)]
     except OSError as exc:
         detail = f"{pandoc} could not be started: {exc.strerror or exc}"
         if exc.errno == _EBADARCH:

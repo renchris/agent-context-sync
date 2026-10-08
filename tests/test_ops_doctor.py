@@ -240,11 +240,13 @@ def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
 
 # --------------------------------------------------------------------- a check that does not finish
 
-AGAIN = "agentsync status (run it again: nothing needs changing first)"
-AGAIN_INSTALL = (
-    "run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing first)"
-)
-OUT_OF_TIME = "the check ran out of time, it found no fault"
+RUN_AGAIN = "agentsync status (run it again as it is)"
+RUN_AGAIN_INSTALL = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
+COMES_BACK = "; if this line comes back: "
+STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
+AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
+PANDOC_FIX = "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
+OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (
     "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
     "and no setup step clears it)"
@@ -269,7 +271,7 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
     """The v9 rehearsal (2026-10-07): the first start of a newly installed pandoc took longer than the
     check's 60 s, and the line read ``check crashed: TimeoutExpired: Command '[...]' timed out after 60
     seconds`` with no fix, under an install.sh NEXT that said each FAIL names one. A check that runs out of
-    time now says so, says what is known about the wait, and names the one thing to do: run again. Under
+    time now says so, says what is known about the wait, and names the first thing to do: run again. Under
     install.sh that is its own command, which the setup prompt lets an agent run."""
     pandoc = doctor._pandoc_path(sample_config)
     monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(pandoc)))
@@ -281,7 +283,7 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
         "pandoc can take a minute, and later ones take under a second)"
     )
     assert "crashed" not in r.detail and "TimeoutExpired" not in r.detail
-    assert r.fix == AGAIN
+    assert r.fix == RUN_AGAIN + COMES_BACK + PANDOC_FIX
     assert_fix_parses(r.fix)
     assert [x.name for x in results if x.name != "materialise.policy"] == [
         n for n in EXPECTED_ORDER if n != "materialise.policy"
@@ -289,8 +291,31 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
 
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # as scripts/install.sh runs status
     r = by_name(run_checks(sample_config))["pandoc"]
-    assert r.fix == AGAIN_INSTALL
-    assert format_results([r]).endswith(f"later ones take under a second) (fix: {AGAIN_INSTALL})")
+    assert r.fix == RUN_AGAIN_INSTALL + COMES_BACK + PANDOC_FIX
+    assert format_results([r]).endswith(
+        f"later ones take under a second) (fix: {RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX})"
+    )
+
+
+def test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_back(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of the v9 rehearsal fixes (2026-10-07): a pandoc that never answers gave the same line at
+    every install.sh run, and that line's whole fix was to run again, with "it found no fault" and "nothing
+    needs changing first". A slow start and a stuck program read the same to the check, so the line claims
+    neither, and its fix goes on past "again": pandoc's names the check's own two ways out, and a check
+    with no fix of its own says to report the line. Run after run, the line is the same and still says so."""
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # as scripts/install.sh runs status
+    monkeypatch.setattr(doctor, "_run", _silent(lambda argv: list(argv[1:]) == ["--version"]))
+    first, second = (by_name(run_checks(sample_config)) for _ in range(2))
+    assert first["pandoc"] == second["pandoc"] and first["git"] == second["git"]
+    # The run an agent may make comes first, then the two ways out of a pandoc that is stuck.
+    assert first["pandoc"].fix == f"{RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX}"
+    assert first["git"].fix == f"{RUN_AGAIN_INSTALL}{COMES_BACK}{STILL_NO_ANSWER}"
+    for line in (first["pandoc"], first["git"]):
+        said = f"{line.detail} (fix: {line.fix})"
+        assert "found no fault" not in said and "nothing needs changing" not in said, said
+        assert said.count(COMES_BACK) == 1, said
 
 
 def test_the_pandoc_check_waits_60_seconds(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -438,9 +463,7 @@ def test_a_git_or_pandoc_that_cannot_be_started_keeps_its_own_fix(
     assert (r["git"].ok, r["git"].fix) == (False, "xcode-select --install")
     assert r["git"].detail == f"{GIT} could not be started: Exec format error"
     assert r["pandoc"].detail == f"{pandoc} could not be started: Exec format error"
-    assert r["pandoc"].fix == (
-        "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
-    )
+    assert r["pandoc"].fix == PANDOC_FIX, "the fix a pandoc that ran out of time names second"
 
     error = OSError(doctor._EBADARCH, "Bad CPU type in executable")
     r = by_name(run_checks(sample_config))

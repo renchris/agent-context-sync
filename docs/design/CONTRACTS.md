@@ -9245,18 +9245,33 @@ def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -
 per-job guards inside it and `cli._extra_checks` all build their line with it.
 
 **Out of time** (`subprocess.TimeoutExpired`). The line reads
-`<command> did not answer within <N>s: the check ran out of time, it found no fault`, and for pandoc it
-adds `(the first start of a newly installed pandoc can take a minute, and later ones take under a second)`.
-It is never "check crashed". Its fix is to run again:
+`<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
+wrong`, and for pandoc it adds `(the first start of a newly installed pandoc can take a minute, and later
+ones take under a second)`. It is never "check crashed". Its fix has two parts, `<run again>; if this line
+comes back: <then>`:
 
-| Where | The fix |
+| Where | `<run again>` |
 |---|---|
-| `agentsync status` by hand, and install.sh's closing status | `agentsync status (run it again: nothing needs changing first)` |
-| under install.sh's status step (`AGENTSYNC_NO_NEXT_HINT=1`) | `run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing first)` |
+| `agentsync status` by hand, and install.sh's closing status | `agentsync status (run it again as it is)` |
+| under install.sh's status step (`AGENTSYNC_NO_NEXT_HINT=1`) | `run the same scripts/install.sh command again as it is (its NEXT line names it)` |
 
-The second is the one the setup prompt lets an agent follow: its `NEXT:` is an `install.sh` command. The
-severity is the check's own: a FAIL for a program a sync needs, a warn where the check's other faults are
-warns.
+| Check | `<then>` |
+|---|---|
+| `pandoc` | the check's own fix: `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc` |
+| every other one | `report it (the program does not answer on this Mac, and no setup step clears that)` |
+
+The install.sh form of `<run again>` is the one the setup prompt lets an agent follow: its `NEXT:` is an
+`install.sh` command. The severity is the check's own: a FAIL for a program a sync needs, a warn where the
+check's other faults are warns.
+
+The second part is there because the check cannot tell a slow program from one that never answers. The
+first wording said `it found no fault` and that the whole fix was to run again, `nothing needs changing
+first`. With a pandoc that never answers (a stub that sleeps, and the installer's 300 s wait cut to 2 s),
+two install.sh runs in a row ended on that identical line: an agent following it runs the command again for
+as long as it is allowed to, six minutes a round, and is never told the two ways out. So the line no longer
+says which case it is, and `_timed_out(..., fallback=<the check's own fix>)` carries what to do the second
+time. `<then>` is neither an `install.sh` nor an `agentsync` command, so for an unattended agent it is the
+point where the prompt has it log the line and go to the report.
 
 Every check that starts a program was looked at for the same shape:
 
@@ -9307,7 +9322,9 @@ The rule is held by the suite, not by a default. `tests/conftest.py` wraps `doct
 `[FAIL]` line an install run prints. A new FAIL without a fix therefore fails its own test.
 
 Tests: `tests/test_ops_doctor.py` (pandoc out of time: the line, both fixes, no "crashed", every other check
-still ran; the check's 60 s; git, `git ls-files`, codesign and launchctl out of time; a timeout behind a
+still ran; a pandoc and a git that never answer, twice under install.sh: the same line each time, pandoc's
+names the check's own fix and git's says to report it, and neither says "no fault" or "nothing needs
+changing"; the check's 60 s; git, `git ls-files`, codesign and launchctl out of time; a timeout behind a
 probe in one source, in a group and in the integrator's checks; a crash's fix, which parses, and
 `status -v` printing both tracebacks; git and pandoc that cannot be started, and errno 86; the four lines
 that named no fix; a `launchd.*` FAIL with the agent step pending; the guard itself, on a made-up check with

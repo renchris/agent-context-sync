@@ -365,9 +365,16 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   `pandoc: started after <N>s`; the time is part of the status step in install.log, as it was.
 - The status step prints `status: still running, <N>s` lines while status works, as the first sync does.
 - A check whose program does not answer in time says so:
-  `<command> did not answer within <N>s: the check ran out of time, it found no fault`. Under `install.sh`
-  its fix is `run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing
-  first)`, a step the prompt lets the agent take. Run by hand, it is `agentsync status` again.
+  `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
+  wrong`. Under `install.sh` its fix starts `run the same scripts/install.sh command again as it is (its
+  NEXT line names it)`, a step the prompt lets the agent take. Run by hand, it starts `agentsync status (run
+  it again as it is)`.
+- That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
+  line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
+  `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc`. For any other
+  check it says `report it (the program does not answer on this Mac, and no setup step clears that)`.
+  Neither is a command the prompt lets an agent run, so an agent that meets the line twice logs it and goes
+  to the report.
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
   `agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.
@@ -382,6 +389,10 @@ Triage:
   run (no interpreter or no config to read the path from) or ran out of its 300 s. For another check, the
   line names the program that did not answer; a Mac that slow at `git --version` or `codesign` is the thing
   to ask about.
+- The same `ran out of time` line in two install runs in a row, both exited 1, is a program that does not
+  answer at all, not a slow start. For `pandoc`, a `pandoc: no answer after 300s` line in the installer
+  output's tail says the same, and the way out is the second half of the fix: reinstall the bundled pandoc
+  or set `[convert] pandoc_path`.
 - `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac without Rosetta. Its
   fix line names both ways out, and installing Rosetta is IT's step on a managed Mac.
 - A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
