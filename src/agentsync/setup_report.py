@@ -5138,7 +5138,9 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
 def _redact_lines(red: Redactor, lines: list[str]) -> str:
     """Redact every line but the report's own headings (a folder named like a section must not break it).
     An exclude line's globs become ``<path>`` first: they are folder names from inside a source. Each
-    ``--source-local`` argument is then settled by structure (:func:`_source_local_shown`)."""
+    ``--source-local`` argument is then settled by structure (:func:`_source_local_shown`). A doctor line
+    loses the padding after its check's name: doctor pads every name to the longest real one, so the
+    padding left beside a placeholder gave the length of the id it replaced."""
     keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
     if not red.enabled:
         return "\n".join(lines)
@@ -5146,6 +5148,8 @@ def _redact_lines(red: Redactor, lines: list[str]) -> str:
 
     def one(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
+        if _DOCTOR_TAG_RE.match(line):
+            line = re.sub(r" {2,}— ", " — ", line, count=1)
         return _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line else line
 
     return "\n".join(ln if ln in keep else one(ln) for ln in lines)

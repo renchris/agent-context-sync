@@ -1780,7 +1780,7 @@ def test_installer_output_log_lines_never_carry_a_nested_name(
         "    error: OSError: [Errno 13] Permission denied: 'Breakwater'\n"
         "fatal: unable to access 'https://example.com/agent-context-sync.git/': Could not resolve host\n"
         "error: the sync step failed; see ~/agent-context/setup/install.out\n"
-        "[ok  ] disk.docs — 120 GiB free at ~/agent-context/docs\n"
+        "[ok  ] disk.docs            — 120 GiB free at ~/agent-context/docs\n"
         "NEXT: review ~/agent-context/setup-report.md\n",
         encoding="utf-8",
     )
@@ -1810,9 +1810,10 @@ def test_every_configured_source_id_is_a_placeholder(fake_mac: dict[str, Path]) 
 
     def doctor(config: object) -> list[str]:
         return [
-            f"[warn] heartbeat.{PROJECT_ID} — no completed pass recorded yet",
-            "[warn] source.mail.sentinel — no sentinel; graph_mail needs none; the docs repo is fine",
-        ]
+            f"[warn] heartbeat.{PROJECT_ID}    — no completed pass recorded yet",
+            f"[warn] {'source.mail.sentinel':<{len(PROJECT_ID) + 13}} — no sentinel; graph_mail needs none; "
+            "the docs repo is fine",
+        ]  # padded as doctor pads: every name to the longest
 
     def status(config: object) -> list[str]:
         return [f"  {PROJECT_ID} (inbox): baseline complete", "  mail (inbox): baseline complete"]
@@ -1820,7 +1821,7 @@ def test_every_configured_source_id_is_a_placeholder(fake_mac: dict[str, Path]) 
     text, _summary = summary_of(fake_mac, doctor=doctor, status=status)
     assert PROJECT_ID not in text and "nw-" not in text and "-mail" not in text
     source = re.search(r"heartbeat\.(<source-\d+>) — no completed pass", section(text, "Doctor"))
-    assert source, "the whole id is one placeholder, not a folder placeholder inside it"
+    assert source, "the whole id is one placeholder, not a folder placeholder inside it; no padding is left"
     assert f"  {source.group(1)} (inbox): baseline complete" in section(text, "Status")
     assert "source.mail.sentinel — no sentinel; graph_mail needs none; the docs repo is fine" in text
     assert "  mail (inbox): baseline complete" in section(text, "Status")
