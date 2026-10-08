@@ -26,7 +26,7 @@ from pathlib import Path
 
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
-from agentsync.config import Config, SourceConfig
+from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _sync_leaves
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV
@@ -820,8 +820,11 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         first = call_with_timeout(lambda: _first_entry(root), _LISTING_TIMEOUT_S, name="doctor-listing")
         listed = True
         if first is None and src.kind is SourceKind.INBOX and not cloud:
-            # every config has an inbox since KISS K05; empty is its normal state, not a finding
-            out.append(_ok(f"{base}.listable", f"{root} is empty (drop files you save by hand here)"))
+            # every config has an inbox since KISS K05; empty is its normal state, not a finding. The hint
+            # is for the folder config.ensure_inbox keeps: any other inbox source is one the person added.
+            kept = canonical_source_root(expand(config.docs_repo).parent / "inbox")
+            hint = " (drop files you save by hand here)" if src.path == kept else ""
+            out.append(_ok(f"{base}.listable", f"{root} is empty{hint}"))
         elif first is None:
             why = (
                 "a File Provider folder that has not been enumerated, or a TCC denial reading as empty"

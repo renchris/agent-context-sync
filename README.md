@@ -51,11 +51,12 @@ sessions. agentsync tells the agent which pages are new or out of date but does 
 | **Every session** | Every change upstream as a markdown page, with the record of what changed; pages by client, project or decision, each tied to the exact version of the sources it cites and flagged when those sources change | Your coding agent, at the start of each work session | `~/.local/bin/agentsync sync`, then whatever its `NEXT:` line says, usually `~/.local/bin/agentsync curate` and pages to write, then `sync` again; `~/.local/bin/agentsync status` prints the same `NEXT:` line without syncing | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md`; `INDEX.md`; `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
 | **Operator** | A say over what feeds the knowledge folder and how it is kept: more folders, a guard against mass deletion, erasure, legal hold, leaving; optionally a point-in-time archive and background sync | You, by hand | `agentsync add-source FOLDER` (`install.sh --list-folders` lists the folders this Mac syncs), `agentsync accept-deletions SOURCE`, `agentsync adopt DIR` (import pages you already have), `agentsync purge`, `agentsync hold`, `agentsync offboard`; `archive = true` under `[governance]` in `sources.toml` ([Point-in-time archive](#point-in-time-archive-off-by-default)); background sync with `install.sh --confirm-install-agent` ([Install](#install)). Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac need IT approval first ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)) | `sources.toml`; `docs/_sync/STATE.md` (is every source complete?); `~/Library/Logs/agentsync`; with the archive on, `docs/archive/` and one `snapshot/<date>` tag per build session |
 
-**The inbox always exists.** `install.sh` and every sync keep a drop folder for files you save by hand, beside the
-docs repo (`~/agent-context/inbox` by default); the inbox folders are the `kind = "inbox"` sources in
-`sources.toml`. Drop Outlook mail there by dragging a message out as `.eml`, and a meeting transcript as `.docx` or
-`.vtt`. Teams messages go in as `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA`
-in `src/agentsync/model.py`), one file per channel or chat and month, written by your own export script under the
+**The inbox always exists.** `install.sh` keeps a drop folder for files you save by hand: the `inbox` folder beside
+the docs repo (`~/agent-context/inbox` by default), one of the `kind = "inbox"` sources in `sources.toml`. Any other
+`kind = "inbox"` source there is a folder you added, not the drop folder. Drop Outlook mail in the inbox by dragging
+a message out as `.eml`, and a meeting transcript as `.docx` or `.vtt`. Teams messages go in as `.teams.json`
+files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`), one file per
+channel or chat and month, written by your own export script under the
 [inbox writer contract](docs/design/CONTRACTS.md#11-local-arm-and-hydration).
 Only `.eml`, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`) carry a sensitivity label, so a `.vtt`, a
 `.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. A screenshot or a

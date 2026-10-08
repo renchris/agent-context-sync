@@ -92,13 +92,13 @@ so set `[network] proxy`. `agentsync status` checks the whole path whenever a Gr
   `~/Library/CloudStorage/OneDrive-<Org>/`, for example a synced SharePoint library or a "shortcut to My files". It
   sees what the sync client syncs. Online-only files are downloaded within `max_materialise_bytes` per cycle, and
   the rest stay `pending` and are never read as deleted.
-- **Manual inbox.** The inbox always exists: `install.sh`, `agentsync add-source` and every sync keep a
-  `kind = "inbox"` source beside the docs repo (`~/agent-context/inbox` by default) and create the folder; the inbox
-  folders are the `kind = "inbox"` sources in `sources.toml`. Drag in exports, attachments, PDFs or emails (drag a
-  message out of Outlook to save it as `.eml`; save a meeting transcript as `.docx` or `.vtt`), and they are
-  converted once they stop changing (`quiescence_s`). Teams messages go in as `.teams.json` files in the
-  `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`), one file per channel or chat
-  and month, written by your own export script under the
+- **Manual inbox.** The inbox always exists: `install.sh` and `agentsync add-source` keep a `kind = "inbox"` source
+  on the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default) and create the folder. That folder
+  is the drop folder; any other `kind = "inbox"` source in `sources.toml` is a folder you added. Drag in exports,
+  attachments, PDFs or emails (drag a message out of Outlook to save it as `.eml`; save a meeting transcript as
+  `.docx` or `.vtt`), and they are converted once they stop changing (`quiescence_s`). Teams messages go in as
+  `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`),
+  one file per channel or chat and month, written by your own export script under the
   [inbox writer contract](../design/CONTRACTS.md#11-local-arm-and-hydration). Only `.eml`, `.pdf` and the Office
   formats carry a sensitivity label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
   `.docx`. An image carries no label agentsync can read either, so while a label rule is set no image file is

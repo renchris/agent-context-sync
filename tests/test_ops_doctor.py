@@ -742,7 +742,7 @@ def test_source_empty_dir_warns(sample_config: Config, tmp_path: Path) -> None:
 def test_empty_inbox_is_ok_unless_it_is_a_cloud_folder(sample_config: Config, tmp_path: Path) -> None:
     """KISS K05: every config has an inbox and it is empty until a file is dropped in, so an empty local
     inbox is OK; an empty inbox inside CloudStorage still warns (it may be an unenumerated folder)."""
-    local = tmp_path / "inbox"
+    local = sample_config.docs_repo.parent / "inbox"
     local.mkdir()
     cloud = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Inbox"
     cloud.mkdir(parents=True)
@@ -753,6 +753,26 @@ def test_empty_inbox_is_ok_unless_it_is_a_cloud_folder(sample_config: Config, tm
         ]
         assert listable.ok is ok, root
         assert ("drop files you save by hand here" in listable.detail) is ok, listable.detail
+
+
+def test_only_the_kept_inbox_is_called_the_drop_folder(sample_config: Config, tmp_path: Path) -> None:
+    """Field report 2026-10-08: a Mac with inbox sources the person added (a bridge folder another tool
+    writes) beside the inbox agentsync keeps. Both are empty and both are OK, but only the kept one, the
+    folder ``inbox`` beside the docs repo whatever its id, is where files saved by hand go: the folder the
+    guides name (``publish``'s inbox line)."""
+    bridge = tmp_path / "bridge"
+    bridge.mkdir()
+    kept = sample_config.docs_repo.parent / "inbox"
+    kept.mkdir()
+    first = sample_config.sources[0]
+    sources = (
+        dataclasses.replace(first, id="bridge", kind=SourceKind.INBOX, path=bridge, sentinel=None),
+        dataclasses.replace(first, id="inbox-2", kind=SourceKind.INBOX, path=kept, sentinel=None),
+    )
+    r = by_name(run_checks(dataclasses.replace(sample_config, sources=sources)))
+    assert r["source.bridge.listable"].ok and r["source.inbox-2.listable"].ok
+    assert r["source.bridge.listable"].detail == f"{bridge} is empty"
+    assert r["source.inbox-2.listable"].detail == f"{kept} is empty (drop files you save by hand here)"
 
 
 def test_source_sentinel_missing(sample_config: Config) -> None:

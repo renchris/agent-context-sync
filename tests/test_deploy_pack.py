@@ -1106,16 +1106,22 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     ) in step2
     assert step2.index("run the same command again") < step2.index("If this Mac already runs agentsync")
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
-    assert (
-        "**The inbox always exists.**" in readme
-        and 'the `kind = "inbox"` sources in `sources.toml`' in readme
-    )
+    # Field report 2026-10-07: the drop folder is the one inbox beside the docs repo, not every inbox-kind
+    # source, and a sync does not create it (config.ensure_inbox runs for init and add-source only).
+    other = 'ny other `kind = "inbox"` source %s is a folder you added'
+    assert "**The inbox always exists.** `install.sh` keeps a drop folder" in readme
+    assert "the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default)" in readme
+    assert other % "there" in readme
+    assert "the inbox folders are" not in readme and "every sync keep" not in readme
     assert "never empty it by hand" in readme and "carry a sensitivity label" in readme
     assert readme.count("install-skill") == 1, "every sync writes the skill; only a 2026-10-01 note names it"
     deploy = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     day1 = deploy.split("**Manual inbox.**", 1)[1].split("- **Check it:**", 1)[0]
     for phrase in (".vtt", ".teams.json", "carry a sensitivity label", "never empty it by hand"):
         assert phrase in day1, phrase
+    assert "on the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default)" in day1
+    assert "That folder is the drop folder; a" + other % "in `sources.toml`" in day1
+    assert "the inbox folders are" not in day1 and "every sync keep" not in day1
     from agentsync.model import TEAMS_MONTH_SCHEMA  # noqa: PLC0415
 
     teams = f"Teams messages go in as `.teams.json` files in the `{TEAMS_MONTH_SCHEMA}` shape"
