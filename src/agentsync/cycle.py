@@ -1836,6 +1836,7 @@ class _Cycle:
             checkpoint_detail=self.checkpoint_detail,
             checkpoint_blockers=self.checkpoint_blockers,
             snapshot_tag=self.snapshot_tag,
+            read_again=self._reread_n,
         )
 
     def _after(self, report: CycleReport, status: str, *, ok_cycle: bool) -> None:

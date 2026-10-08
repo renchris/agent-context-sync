@@ -269,6 +269,18 @@ def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest
     )
 
 
+def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A re-read of the same bytes for what its converter has gained is never in ``converted``; the summary
+    line says ``, read again R`` after it when R > 0, and nothing when no file was read again."""
+    report = CycleReport(run_id=3, mode=CycleMode.POLL, sources=(), changes=(), commit_sha=None, read_again=2)
+    cli._print_report(report)
+    assert capsys.readouterr().out.splitlines()[-1] == "converted 0, deferred 0 online-only, read again 2"
+    cli._print_report(dataclasses.replace(report, read_again=0))
+    assert capsys.readouterr().out.splitlines()[-1] == "converted 0, deferred 0 online-only"
+
+
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -973,6 +973,7 @@ class CycleReport:
     checkpoint_detail: str = ""  # advanced: the curated sha; failed: why
     checkpoint_blockers: tuple[LintFinding, ...] = ()  # held: curate.checkpoint_blockers
     snapshot_tag: str | None = None  # [governance] archive: the tag cut at the new commit
+    read_again: int = 0  # §16.37: files read again for what their converter has gained (tally reread); same bytes: not in converted
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -5278,7 +5279,10 @@ the byte budget (it still counts against `max_files`), so `sync --once --materia
 file and downloads nothing: only online-only files are DEFERRED (`SourceReport.deferred_online_only`), with their
 "exceeds the per-cycle budget" alarm. `materialised_bytes` is the bytes downloaded. Every `sync`, `reconcile` and
 `materialise` run prints, as its last report line, `converted N, deferred M online-only` (N = the selected sources'
-`SourceReport.converted`, the files read and converted this run; M = their `deferred_online_only`);
+`SourceReport.converted`, the files read and converted this run; M = their `deferred_online_only`;
+**amended 2026-10-08, §16.37:** followed by `, read again R` when R > 0, R = `CycleReport.read_again`, the run
+tally's `reread`: files read again for what their converter has gained; a re-read of the same bytes is never in
+N, §16.27);
 scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`.
 **Amended (2026-10-04, KISS K01):** a `sync` without `--mode` (and without `AGENTSYNC_NO_NEXT_HINT=1`) prints the
 summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING ON YOU:` lines, any `note:` lines.

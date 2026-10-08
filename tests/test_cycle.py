@@ -2002,6 +2002,9 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
     assert again.commit_sha is not None and "+ocr-paper-vision-" in fm["converter"]
     assert body.rstrip().endswith(f"(Apple Vision)]\n\nDelivery note {late}")
     assert again.sources[0].converted == 0, "read again: the same bytes are no new conversion"
+    assert again.read_again == _run_record(sample_config)["reread"] >= 1, (
+        "the run tally's count, for the summary"
+    )
     assert len(calls(engine.helper)) == 3 and all(
         Path(c["cwd"]).parent.parent == staging for c in calls(engine.helper)
     )
