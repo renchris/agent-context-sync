@@ -4593,7 +4593,8 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
     total then counts only what is known. Why no click is possible is on the expected-turns line. On a Mac
     that already synced ``synced`` folders (:func:`synced_before`) nobody had to be asked for them, so the
     unlogged folder question is not counted. Nor is it for an attempt the installer ``stopped`` before the
-    folder list (:func:`_stopped_before_the_list`): nobody was asked anything."""
+    folder list (:func:`_stopped_before_the_list`), or one whose step 1 command stopped before
+    ``install.sh --log-start`` (a header-less attempt with no install.sh run): nobody was asked anything."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
     # v6: the folder question is not logged
@@ -4605,7 +4606,7 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
     no_clicks = _no_clicks_why(run_type)
     if no_clicks is None:
         clicks = _plural(c, "click")
-        if not att.layout.logs_expected_turns:
+        if not att.layout.logs_expected_turns and not stopped:  # stopped: no Allow click was announced
             clicks += f" beyond the announced {_allow_clicks(att.layout)} (not logged)"
     elif c == 0:
         clicks = "clicks: none possible"
@@ -4615,13 +4616,20 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
 
 
 def _expected_turns_line(
-    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False
+    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False, unstarted: bool = False
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
     them: the person chose before, and the prompt asks at most whether to add a folder. An attempt the
-    installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all."""
+    installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all, and
+    nor has one ``unstarted``: a header-less attempt with no install.sh run, whose step 1 command stopped
+    before ``install.sh --log-start``."""
     layout = att.layout
+    if unstarted:
+        return (
+            f"- expected turns: none (step {layout.folder_question_step}'s command stopped before install.sh "
+            "--log-start, before the folder list: no folder question and no Allow click)"
+        )
     if stopped:
         return (
             f"- expected turns: none (the installer stopped this copy of the prompt in step "
@@ -4975,9 +4983,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     stop = stopping_error(att, runs) if att is not None else None
     if att is not None:
         synced = synced_before(runs)
-        stopped = _stopped_before_the_list(att, runs)
+        unstarted = fr is not None and _headerless(fr, len(fr.attempts) - 1) and not runs
+        stopped = _stopped_before_the_list(att, runs) or unstarted
         out.append(_turns_line(att, run_type, synced, stopped=stopped))
-        out.append(_expected_turns_line(att, run_type, synced, stopped=stopped))
+        out.append(_expected_turns_line(att, run_type, synced, stopped=stopped, unstarted=unstarted))
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
         out.append(

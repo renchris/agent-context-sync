@@ -2942,7 +2942,7 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
 
 
 def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt(
-    fake_mac: dict[str, Path],
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A session whose step 1 stopped before ``install.sh --log-start``, and whose agent logged the error,
     writes its own report: it has no ``Attempt:`` header, and none follows. That
@@ -2950,6 +2950,7 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     v6_install_log(fake_mac)
     late = "2026-10-06T02:16:01Z | step 1 | error | install.sh --version exited 127 | -\n"
     write_friction(fake_mac, V7_HAPPY + late)
+    monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
     text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
         "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)"
@@ -2961,6 +2962,11 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     )
     assert "WARNING" not in summary, "install.sh --report-only cannot close an attempt that has no header"
     assert "- F5 · step 1 · error · install.sh --version exited 127" in summary
+    assert "- human turns: 0 (0 questions; 0 clicks; " in summary, "stopped before the list: no click"
+    assert (
+        "- expected turns: none (step 1's command stopped before install.sh --log-start, before the folder "
+        "list: no folder question and no Allow click)" in summary
+    )
     assert (
         "- attempt 2 (lines 5-5; no Attempt: line (logged after the previous attempt finished), prompt not "
         'stated, agent not stated): failed at step 1; 1 event line(s): 1 error; no "end | finished" line'
