@@ -17,6 +17,7 @@ from agentsync.convert._common import _cap_body, _emitter, _escape_line
 from agentsync.convert.base import estimate_tokens, make_unit, options_hash, rendered_sha256
 from agentsync.convert.cache import KEY_SCHEMA_VERSION, ConverterCache, action_key
 from agentsync.convert.canonical import OOXML_SUFFIXES, canonical_hash, differing_parts
+from agentsync.convert.media import MediaEngine
 from agentsync.convert.ocr import OcrEngine
 from agentsync.convert.registry import Registry
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, UnitKind
@@ -531,6 +532,23 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert len(reg.converters()) == 9, "the eight, and pandoc-gfm a second time: no image converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
+
+
+def test_with_a_media_engine_every_other_converter_keeps_its_version_and_options() -> None:
+    """``media=`` adds the recording converter and changes nothing else; the registry without an engine,
+    which a recording the engines failed on is converted through, holds no recording converter."""
+    media = MediaEngine(Path("/nowhere/fake-media"), name="paper-media", helper_version="0.1.0")
+    reg = Registry.default(ConvertConfig(), ocr=_engine())
+    with_media = Registry.default(ConvertConfig(), ocr=_engine(), media=media)
+    ids = _identity(with_media)
+    assert ids.pop("recording-av")[2] == (".m4v", ".mov", ".mp4")
+    assert ids == _identity(reg)
+    twin, plain = with_media.without_ocr, reg.without_ocr
+    assert twin is not None and plain is not None and _identity(twin) == _identity(plain)
+    assert (
+        twin.for_name("clip.mp4") is None
+        and Registry.default(ConvertConfig(), media=media).for_name("a.mov") is None
+    )
 
 
 def _outdated(reg: Registry, name: str, produced: str, reason: str | None = None) -> bool:

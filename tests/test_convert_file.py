@@ -19,7 +19,9 @@ from agentsync.convert import (
 )
 from agentsync.convert.base import make_unit, options_hash
 from agentsync.convert.cache import action_key
+from agentsync.convert.media import MediaError
 from agentsync.convert.ocr import OcrError
+from agentsync.convert.recording import RecordingNotFinished
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import ConversionStatus, RenderedUnit, UnitKind
 
@@ -348,3 +350,47 @@ def test_sidecar_difference_counts_as_nondeterminism(src: Path) -> None:
         )
 
     assert double_conversion_differs(src, name="a.fk", registry=Registry([Fake(conv)])) is True
+
+
+def test_a_media_error_gives_the_no_converter_refusal_and_caches_nothing(
+    src: Path, cache: ConverterCache, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A recording the media helper failed on is what a Mac without the helper has: the ``no converter``
+    refusal a later read looks for.  The log line says it was a recording; nothing is cached."""
+
+    def helper_failed(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise MediaError("the media helper failed")
+
+    reading = Fake(helper_failed, exts=(".mp4",), version=lambda: WITH_OCR)
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _run(src, _reading(reading, None), cache, name="Contoso review.mp4")
+    assert (got.status, got.reason, got.from_cache) == (
+        ConversionStatus.REFUSED,
+        "no converter for .mp4",
+        False,
+    )
+    assert caplog.messages == [
+        "Contoso review.mp4: the recording could not be read on this Mac (the media helper failed); "
+        "left for a later read"
+    ]
+    assert not any(cache.root.rglob("*.json"))
+    _run(src, _reading(reading, None), cache, name="Contoso review.mp4")
+    assert reading.calls == 2, "read again next time"
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_a_recording_that_is_not_finished_is_raised_never_failed_or_cached(
+    src: Path, cache: ConverterCache, timed_out: bool
+) -> None:
+    def waits(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise RecordingNotFinished(done_ms=300_000, total_ms=900_000, timed_out=timed_out)
+
+    reading = Fake(waits, exts=(".mp4",), version=lambda: WITH_OCR)
+    with pytest.raises(RecordingNotFinished) as caught:
+        _run(src, _reading(reading, None), cache, name="review.mp4")
+    assert (caught.value.done_ms, caught.value.total_ms, caught.value.timed_out) == (
+        300_000,
+        900_000,
+        timed_out,
+    )
+    assert not any(cache.root.rglob("*.json"))

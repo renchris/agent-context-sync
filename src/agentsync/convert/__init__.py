@@ -111,6 +111,9 @@ def convert_file(
     (``from_cache=True``). Converter raises UnreadableSourceError -> UNREADABLE; any other exception -> FAILED
     with the reason; OK results are stored write-once. Units never empty for OK.
 
+    A recording that is not finished (``RecordingNotFinished``: its work allowance ran out, or a piece passed
+    its deadline) is re-raised: it is never a FAILED or cached result, and the cycle lets it wait.
+
     OCR never fails a file: an OCR failure gives the file what it has without OCR. When a converter of a
     registry built with an OCR engine raises OcrError, the file is converted again through
     ``registry.without_ocr`` and that result is the one returned. For a document it is the page, the version
@@ -200,14 +203,23 @@ def convert_file(
     except UnreadableSourceError as exc:
         result = make(ConversionStatus.UNREADABLE, reason=_reason(exc))
     except Exception as exc:
-        # Imported here: ``python -m agentsync.convert.ocr`` (scripts/install.sh) imports this package first,
-        # and must not find the module it is about to run already imported.
+        # Imported here: ``python -m agentsync.convert.ocr`` and ``python -m agentsync.convert.media``
+        # (scripts/install.sh) import this package first, and must not find the module they are about to run
+        # already imported.
+        from agentsync.convert.media import MediaError  # noqa: PLC0415
         from agentsync.convert.ocr import OcrError  # noqa: PLC0415
+        from agentsync.convert.recording import RecordingNotFinished  # noqa: PLC0415
 
+        if isinstance(exc, RecordingNotFinished):  # never FAILED, never cached: the cycle lets it wait
+            raise
         plain = registry.without_ocr if isinstance(exc, OcrError) else None
         twin = plain.for_name(name) if plain is not None else None
         if plain is not None and (twin is None or twin.converter_id == conv.converter_id):
-            if twin is None:
+            if twin is None and isinstance(exc, MediaError):
+                log.info(
+                    "%s: the recording could not be read on this Mac (%s); left for a later read", name, exc
+                )
+            elif twin is None:
                 log.info("%s: on-device OCR failed; nothing else converts it", name)
             else:
                 log.info("%s: on-device OCR failed; converted by %s without it", name, conv.converter_id)

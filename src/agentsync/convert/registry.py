@@ -31,7 +31,9 @@ from agentsync.model import RenderedUnit
 from agentsync.policy import PolicyConfig, Screening
 
 if TYPE_CHECKING:
+    from agentsync.convert.media import MediaEngine
     from agentsync.convert.ocr import OcrEngine
+    from agentsync.convert.pieces import PieceStore
 
 _PDF_ENCRYPTION_ERRORS = frozenset({"PDFPasswordIncorrect", "PDFEncryptionError"})
 
@@ -176,7 +178,13 @@ class Registry:
 
     @classmethod
     def default(
-        cls, cfg: ConvertConfig, *, policy: PolicyConfig | None = None, ocr: OcrEngine | None = None
+        cls,
+        cfg: ConvertConfig,
+        *,
+        policy: PolicyConfig | None = None,
+        ocr: OcrEngine | None = None,
+        media: MediaEngine | None = None,
+        pieces: PieceStore | None = None,
     ) -> Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams), each
         behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
@@ -186,7 +194,14 @@ class Registry:
         can carry a sensitivity label the screen cannot read, so it then stays the ``no converter`` stub it is
         without an engine.  The pandoc converter with an engine claims ``.docx`` and ``.odt`` only; ``.rtf``
         and ``.html`` go to a second ``pandoc-gfm`` converter without one, so nothing about them changes.
-        Such a registry keeps the one without an engine as ``without_ocr``."""
+        Such a registry keeps the one without an engine as ``without_ocr``.
+
+        With ``ocr``, ``media`` (the media helper the cycle resolved) and ``[convert] recordings`` on, meeting
+        recordings (``.mp4``, ``.m4v``, ``.mov``) get ``recording-av``, which reads its pieces from and into
+        ``pieces`` (None: one pass, nothing kept).  Unlike an image it stays registered under a label rule
+        (ruling 2): processing stays on this Mac, and each index it writes then says the label was not
+        checked.  ``without_ocr`` never holds it, so a recording the engines failed on gets the ``no
+        converter`` refusal a later read looks for."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter, _PandocWithoutOcr  # noqa: PLC0415
@@ -212,6 +227,12 @@ class Registry:
             from agentsync.convert.image import ImageConverter  # noqa: PLC0415
 
             converters.append(ImageConverter(cfg, ocr))
+        if ocr is not None and media is not None and cfg.recordings:
+            from agentsync.convert.recording import RecordingConverter  # noqa: PLC0415
+
+            converters.append(
+                RecordingConverter(cfg, ocr, media, pieces=pieces, label_rule=content_policy.labels_active)
+            )
         registry = cls(converters, policy=content_policy, banner=True)
         if ocr is not None:
             registry._without_ocr = cls.default(cfg, policy=policy)
