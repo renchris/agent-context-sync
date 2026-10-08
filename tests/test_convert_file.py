@@ -22,6 +22,7 @@ from agentsync.convert.cache import action_key
 from agentsync.convert.media import MediaError
 from agentsync.convert.ocr import OcrError
 from agentsync.convert.recording import RecordingNotFinished
+from agentsync.convert.speech import SpeechError
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import ConversionStatus, RenderedUnit, UnitKind
 
@@ -394,3 +395,35 @@ def test_a_recording_that_is_not_finished_is_raised_never_failed_or_cached(
         timed_out,
     )
     assert not any(cache.root.rglob("*.json"))
+
+
+def test_a_speech_failure_keeps_the_screens_under_a_version_without_speech(
+    src: Path, cache: ConverterCache, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Spec S8 Failure: a SpeechError (an OcrError) goes to ``without_speech`` before ``without_ocr``, so the
+    page keeps its screens; it is cached under the version without ``+asr-``, which a later read finds."""
+
+    def deaf(s: Path, n: str) -> tuple[RenderedUnit, ...]:
+        raise SpeechError("the speech helper exited 3")
+
+    heard = Fake(deaf, exts=(".mp4",), version=lambda: "1.0.0+media-h1+cue-r1+asr-parakeet-x-f1-d1-n1")
+    screens = Fake(
+        lambda s, n: (_unit("the screens\n"),), exts=(".mp4",), version=lambda: "1.0.0+media-h1+cue-r1"
+    )
+    reg = _reading(heard, None)
+    reg._without_speech = Registry([screens])
+    with caplog.at_level(logging.INFO, logger="agentsync.convert"):
+        got = _run(src, reg, cache, name="Contoso review.mp4")
+    assert (got.status, got.converter_version, got.units[0].body) == (
+        ConversionStatus.OK,
+        "1.0.0+media-h1+cue-r1",
+        "the screens\n",
+    )
+    assert caplog.messages == [
+        "Contoso review.mp4: the speech engine failed (the speech helper exited 3); read without speech"
+    ]
+    assert _run(src, reg, cache, name="Contoso review.mp4").from_cache and heard.calls == 2
+    reg._without_speech = None
+    assert _run(src, reg, cache, name="Contoso review.mp4").reason == "no converter for .mp4", (
+        "without a twin a SpeechError is an OcrError"
+    )

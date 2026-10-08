@@ -148,7 +148,7 @@ class _GuardedConverter:
 class Registry:
     """An immutable extension -> converter map."""
 
-    __slots__ = ("_by_ext", "_converters", "_longest_first", "_policy", "_without_ocr")
+    __slots__ = ("_by_ext", "_converters", "_longest_first", "_policy", "_without_ocr", "_without_speech")
 
     def __init__(
         self, converters: Sequence[Converter], *, policy: PolicyConfig | None = None, banner: bool = False
@@ -176,6 +176,7 @@ class Registry:
         self._converters = tuple(sorted(converters, key=lambda c: c.converter_id))
         self._longest_first = tuple(sorted(by_ext, key=lambda e: (-len(e), e)))
         self._without_ocr: Registry | None = None
+        self._without_speech: Registry | None = None
 
     @classmethod
     def default(
@@ -204,7 +205,8 @@ class Registry:
         cycle resolved; None: screens only).  Unlike an image it stays registered under a label rule
         (ruling 2): processing stays on this Mac, and each index it writes then says the label was not
         checked.  ``without_ocr`` never holds it, so a recording the engines failed on gets the ``no
-        converter`` refusal a later read looks for."""
+        converter`` refusal a later read looks for.  With ``speech`` such a registry keeps the one without it
+        as ``without_speech``, so a recording the speech engine failed on keeps its screens."""
         from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter, _PandocWithoutOcr  # noqa: PLC0415
@@ -243,6 +245,8 @@ class Registry:
         registry = cls(converters, policy=content_policy, banner=True)
         if ocr is not None:
             registry._without_ocr = cls.default(cfg, policy=policy)
+        if speech is not None:
+            registry._without_speech = cls.default(cfg, policy=policy, ocr=ocr, media=media, pieces=pieces)
         return registry
 
     @property
@@ -260,6 +264,15 @@ class Registry:
         (plan D10): ``convert_file`` uses it for a file the engine failed on, and the cycle for every file
         once its OCR time is used up."""
         return self._without_ocr
+
+    @property
+    def without_speech(self) -> Registry | None:
+        """The same registry built without the speech engine, when this one was built with one; else None.
+
+        ``convert_file`` reads a recording the speech engine failed on through it (spec S8 Failure): the page
+        keeps its screens, under a version without ``+asr-`` that ``RecordingConverter.outdated`` reads
+        again once speech works."""
+        return self._without_speech
 
     def screen(self, src: Path, *, name: str) -> Screening | None:
         """Pre-conversion screen of a staged file (call BEFORE the cache lookup; ``policy.screen_file``)."""

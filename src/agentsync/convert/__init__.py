@@ -122,6 +122,10 @@ def convert_file(
     said reaches the result, and the result is one a later re-read picks up: a failed conversion would be
     settled and never read again. A registry with no ``without_ocr``, or one that routes the name to
     another converter, fails as any other does.
+
+    The speech engine never costs a recording its screens: a SpeechError (an OcrError) is converted again
+    through ``registry.without_speech`` first, when there is one, and the page is cached under a version
+    without ``+asr-``, which ``RecordingConverter.outdated`` reads again later.
     """
     conv = registry.for_name(name)
     if conv is None:
@@ -209,9 +213,21 @@ def convert_file(
         from agentsync.convert.media import MediaError  # noqa: PLC0415
         from agentsync.convert.ocr import OcrError  # noqa: PLC0415
         from agentsync.convert.recording import RecordingNotFinished  # noqa: PLC0415
+        from agentsync.convert.speech import SpeechError  # noqa: PLC0415
 
         if isinstance(exc, RecordingNotFinished):  # never FAILED, never cached: the cycle lets it wait
             raise
+        deaf = registry.without_speech if isinstance(exc, SpeechError) else None
+        if deaf is not None:  # an OcrError too, but the screens stand: read again without speech
+            log.info("%s: the speech engine failed (%s); read without speech", name, exc)
+            return convert_file(
+                src,
+                name=name,
+                content_sha256=content_sha256,
+                canonical_sha256=canonical_sha256,
+                registry=deaf,
+                cache=cache,
+            )
         plain = registry.without_ocr if isinstance(exc, OcrError) else None
         twin = plain.for_name(name) if plain is not None else None
         if plain is not None and (twin is None or twin.converter_id == conv.converter_id):
