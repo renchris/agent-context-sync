@@ -525,7 +525,7 @@ def test_picture_text_cannot_open_html_or_an_image() -> None:
             "!\\[pixel](https://contoso.example/p.png)",
         ]
     )
-    assert "<" not in units[1].body and "![" not in units[1].body
+    assert all("<" not in u.body and "![" not in u.body for u in units)  # the index's fixed lines too
 
 
 def test_text_is_nfc_before_a_label_is_cut_or_a_page_is_cut() -> None:

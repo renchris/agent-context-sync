@@ -653,7 +653,7 @@ INDEX = f"""{UNTRUSTED_BANNER}
 - `SAID vN:` speech of voice N; `SCREEN:` a row on screen when the state began
 - `SCREEN+:` / `SCREEN-:` a row came or went
 - `TILE:` and `SPEAKING:` on-screen labels, not proof of who spoke; `KEYFRAME:` the state's picture
-- rg -n '^## ' <folder> lists every screen state
+- `rg -n '^## '` in the recording's .d folder lists every screen state
 
 ## Windows
 | Window | From | To | States | Share s | Keyframes | Bytes |
