@@ -936,3 +936,28 @@ def test_a_row_that_scrolled_is_the_same_row_when_its_text_is_unique() -> None:
     assert rec._matches(twice, moved, (grid, grid)) == [None, None]
     near = [rec._Seen("content", "Traceback (most recent call first)", 1.0, 0.05, 0.30, 0.40, 0.03)]
     assert rec._matches([*before], near, (grid, grid)) == [None]
+
+
+def test_the_allowance_is_charged_for_the_info_call_and_the_settle_as_well_as_the_pieces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec S0 rule 5: the allowance is recording work of every kind, not only the pieces: the helper's
+    ``info`` call and S6's settle over every piece are charged too."""
+    now = [1_000.0]
+    monkeypatch.setattr(rec, "_clock", lambda: now[0])
+    conv = converter(tmp_path, pieces=PieceStore(tmp_path / "recordings"))
+    real_info, real_settle = conv._media.info, rec._Settle.run
+
+    def info(src: Path, *, timeout: float) -> Any:
+        now[0] += 7.0
+        return real_info(src, timeout=timeout)
+
+    def settle(self: rec._Settle, info_size: tuple[int, int]) -> Any:
+        now[0] += 50.0
+        return real_settle(self, info_size)
+
+    monkeypatch.setattr(conv._media, "info", info)
+    monkeypatch.setattr(rec._Settle, "run", settle)
+    with rec.work_allowance(1_000.0) as allowance:
+        conv._reading(staged(tmp_path, _long_meeting()), name="meeting.mp4")
+    assert allowance.spent_s == 57.0, "the pieces took no time on this clock"

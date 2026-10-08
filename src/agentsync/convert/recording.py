@@ -191,6 +191,14 @@ _ALLOWANCE: contextvars.ContextVar[Allowance | None] = contextvars.ContextVar(
 )
 
 
+def _charge(started: float) -> None:
+    """Add the recording work since ``started`` (on ``_clock``) to the open allowance, if one is open: the
+    pieces, the helper's ``info`` call and S6's settle alike (spec S0 rule 5)."""
+    allowance = _ALLOWANCE.get()
+    if allowance is not None:
+        allowance.spent_s += _clock() - started
+
+
 @dataclass(frozen=True, slots=True)
 class Row:
     """One on-screen row as S6 settled it.  A row never spans a change of kind: S6 splits it there.
@@ -1466,7 +1474,11 @@ class RecordingConverter:
         sha = sha256_file(src)
         with tempfile.TemporaryDirectory(dir=src.parent, prefix=".media-") as tmp:
             work = _Work(src, Path(tmp), self._ocr, self._media)
-            info = self._media.info(src, timeout=_BASE_S)
+            started = _clock()
+            try:
+                info = self._media.info(src, timeout=_BASE_S)
+            finally:
+                _charge(started)
             if info.picture is None:
                 raise UnreadableSourceError(_SOUND_ONLY if info.audio else _NOTHING)
             if info.picture.lower() in _UNDECODABLE_CODECS:
@@ -1479,12 +1491,15 @@ class RecordingConverter:
             pieces = self._read_pieces(work, sha, ticks, count, read_ms)
             carry = _Carry.from_json(pieces[-1]["carry"])
             profile = _PROFILES[carry.profile]
+            started = _clock()
             try:
                 title, states, rows, names, unprinted = _Settle(work, profile, pieces, read_ms).run(
                     (info.width, info.height)
                 )
             except _TimedOut:
                 raise RecordingNotFinished(done_ms=read_ms, total_ms=read_ms, timed_out=True) from None
+            finally:
+                _charge(started)
             unread = sum(int(piece["unread"]) for piece in pieces)
             stopped = carry.stopped
             reading = Reading(
@@ -1511,25 +1526,27 @@ class RecordingConverter:
         self, work: _Work, sha: str, ticks: int, count: int, read_ms: int
     ) -> list[dict[str, Any]]:
         """Every piece, from the store when it holds it under this key, else read now.  Inside a
-        :func:`work_allowance` a used-up allowance stops before the next piece to read; a piece past its
-        deadline is discarded."""
+        :func:`work_allowance` a used-up allowance stops before the next piece to read, once this call has
+        read one (the staging copy and the ``info`` call are charged too, and must not leave a recording
+        that never gains a piece); a piece past its deadline is discarded."""
         key, allowance = self._key(), _ALLOWANCE.get()
         out: list[dict[str, Any]] = []
         carry: _Carry | None = None
+        worked = False
         for n in range(count):
             done_ms = min(n * _PIECE_TICKS * STEP_MS, read_ms)
             doc = _piece_doc(self._pieces.load(sha, n, key)) if self._pieces is not None else None
             if doc is None:
-                if self._pieces is not None and allowance is not None and allowance.used_up:
+                if self._pieces is not None and allowance is not None and allowance.used_up and worked:
                     raise RecordingNotFinished(done_ms=done_ms, total_ms=read_ms, timed_out=False)
+                worked = True
                 started = _clock()
                 try:
                     data = _Piece(work, n, ticks, carry).run()
                 except _TimedOut:
                     raise RecordingNotFinished(done_ms=done_ms, total_ms=read_ms, timed_out=True) from None
                 finally:
-                    if allowance is not None:
-                        allowance.spent_s += _clock() - started
+                    _charge(started)
                 doc = json.loads(data)  # the same round trip a stored piece takes
                 if self._pieces is not None:
                     self._pieces.save(sha, n, key, data)
