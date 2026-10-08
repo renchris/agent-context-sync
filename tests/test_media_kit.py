@@ -88,6 +88,24 @@ def test_scan_writes_one_grid_per_two_second_tick_and_is_byte_identical_twice(
     assert len(capped["ticks"]) == 3 and len(grids(work / "grids.bin")) == 3
 
 
+def test_a_scan_from_a_later_tick_writes_only_that_piece_and_keeps_absolute_ticks(
+    tmp_path: Path, work: Path
+) -> None:
+    """The recording converter reads a recording in 5-minute pieces and never rescans from tick 0."""
+    helper = fake_media(tmp_path / "bin")
+    script = recording(screen(0, TITLE, TOTAL), screen(3, TITLE, NEW_TOTAL), duration_ms=10_000)
+    clip = fake_recording(tmp_path / "a.mp4", script)
+    answer(helper, "scan", clip, "--out", work)
+    whole = grids(work / "grids.bin")
+    piece = answer(helper, "scan", clip, "--out", work, "--first-tick", "2", "--max-ticks", "3")
+    assert piece["ticks"] == [{"index": k, "ms": k * 2000} for k in (2, 3, 4)]
+    assert grids(work / "grids.bin") == whole[2:5]
+    last = answer(helper, "scan", clip, "--out", work, "--first-tick", "4", "--max-ticks", "3")
+    assert [t["index"] for t in last["ticks"]] == [4, 5] and grids(work / "grids.bin") == whole[4:]
+    past = run(helper, "scan", clip, "--out", work, "--first-tick", "6")
+    assert past.returncode == 3 and "past the end" in past.stderr
+
+
 def test_a_changed_row_changes_pixels_and_an_unchanged_screen_does_not(tmp_path: Path, work: Path) -> None:
     helper = fake_media(tmp_path / "bin")
     script = recording(screen(0, TITLE, TOTAL), screen(3, TITLE, NEW_TOTAL), duration_ms=10_000)

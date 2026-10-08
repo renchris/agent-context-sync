@@ -10,9 +10,10 @@ What the helper answers (one JSON document on stdout; exit 3 with a message on s
 - ``--version``: ``{"engine": ..., "helper": ...}``.
 - ``info FILE``: ``duration_ms``, ``width``, ``height``, ``picture`` (``h264``, ``vp9``, ``av1`` or null when
   the file has no picture), ``audio``, ``created`` (UTC or null).
-- ``scan FILE --out DIR [--step-ms 2000] [--max-ticks N]``: writes ``DIR/grids.bin``, one 320x180 luma grid
-  per tick, and prints the tick list.  Tick ``k`` is media time ``k x step``; there are ``floor(duration /
-  step) + 1``.
+- ``scan FILE --out DIR [--step-ms 2000] [--first-tick K] [--max-ticks N]``: writes ``DIR/grids.bin``, one
+  320x180 luma grid per tick from tick ``K`` (default 0), at most ``N`` of them, and prints the tick list,
+  whose indexes and times stay absolute.  Tick ``k`` is media time ``k x step``; there are ``floor(duration
+  / step) + 1``.  A ``K`` past the end fails.  The recording converter reads a recording in pieces this way.
 - ``frames FILE --out DIR --ticks 0,3,9 [--crop X0,Y0,X1,Y1 | --crop-right F]``: one ``tHHMMSS.jpg`` per tick,
   named by media time.  Each holds ``\\xff\\xd8\\xff\\xe0`` + ``FAKE-OCR:`` + the rows of that tick inside the
   crop, in the crop's own fractions, so the fake OCR helper of ``tests/test_ocr.py`` reads exactly what this
@@ -121,20 +122,23 @@ if command == "info":
                       "picture": s.get("picture", "h264"), "audio": bool(s.get("audio", True)),
                       "created": s.get("created")}))
 elif command == "scan":
-    found, plain = options({"--out", "--step-ms", "--max-ticks"})
+    found, plain = options({"--out", "--step-ms", "--first-tick", "--max-ticks"})
     s = script_of(plain[0])
     if s.get("picture", "h264") not in ("h264", "hevc"):
         die("the picture cannot be decoded")
     step = int(found.get("--step-ms", ["2000"])[0])
     count = tick_count(s, step)
+    first = int(found.get("--first-tick", ["0"])[0])
+    if not 0 <= first < count:
+        die("tick %d is past the end" % first)
     if "--max-ticks" in found:
-        count = min(count, int(found["--max-ticks"][0]))
+        count = min(count, first + int(found["--max-ticks"][0]))
     out = Path(found["--out"][0])
     with open(out / "grids.bin", "wb") as f:
-        for screen in screens(s, count):
+        for screen in screens(s, count)[first:]:
             f.write(grid(screen))
     print(json.dumps({"grid": [GW, GH], "step_ms": step, "file": "grids.bin",
-                      "ticks": [{"index": k, "ms": k * step} for k in range(count)]}))
+                      "ticks": [{"index": k, "ms": k * step} for k in range(first, count)]}))
 elif command == "frames":
     found, plain = options({"--out", "--ticks", "--crop", "--crop-right", "--step-ms"})
     s = script_of(plain[0])
