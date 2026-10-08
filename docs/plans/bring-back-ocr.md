@@ -180,8 +180,9 @@ turns, "fully one command". Triage:
   residue check sees a word joined to a placeholder and skips a generic home folder; no padding from a redacted
   id; the folder legend; purge counts from the audit trail; a media-helper line.
 - **Prompt v10:** step 2 names one inbox (the folder beside the docs repo, not every `kind = "inbox"` source),
-  step 3 names the one stop with no report (the folder wait), and `hold` is glossed. README, the deploy guide and
-  doctor's drop-here line follow the same rule. v9 ran clean, so v10 needs no run of its own.
+  step 3 names the two stops with no report (the folder wait and a copy that is not the installer's), and `hold`
+  is glossed. README, the deploy guide and doctor's drop-here line follow the same rule. v9 ran clean, so v10
+  needs no run of its own.
 - Not built, on purpose: counting an empty materialised cloud folder as listed (the operator's decision; narrow
   design in the triage), a `.url` converter (small value), the report's "unexpected 5" and "(status: baseline
   complete)" labels (contract text, left).

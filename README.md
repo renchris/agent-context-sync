@@ -388,7 +388,8 @@ unclear; include better wording). Do not log the steps themselves; the installer
    report, always, even after a failure; this is the last command you run:
    `~/src/agent-context-sync/scripts/install.sh --report-only`
    (if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code was downloaded).
-   One case has no report yet: while you wait for my folder answer in step 1.
+   Two cases have no report: while you wait for my folder answer in step 1, and when step 1 stops because this
+   prompt is not the installer's. Every other stop still ends with the report.
    The report works out the outcome, times and run type itself, redacts names, and its last lines are an issue link
    and a NEXT: line. Do not send or upload anything. Finish with three lines: the folders synced (full paths); the
    last NEXT: or WAITING ON YOU: line of the loop; and ~/agent-context/bring-back.md, the one file I review

@@ -374,7 +374,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (10, "d7d2de56e3051d36a9a46ede2a6362d0f9a360f79cb5e186f8b32ed0ac8002bf")
+PROMPT = (10, "063a9b506683a4c5d4d431e2116a3bb31b5bd8629eb727dad35e4c5348efd2a8")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1052,11 +1052,16 @@ def test_readme_report_step_after_any_failure() -> None:
         "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
         in text
     )
-    # Step 1's folder question on a new Mac is a wait, not a failure: the one stop with no report (v10).
+    # Two stops have no report (v10): step 1's folder question on a new Mac is a wait, not a failure, and a
+    # copy that is not the installer's runs no other step. Every other stop of step 1 is a failure.
     assert (
-        "that setup stopped before the code was downloaded). One case has no report yet: while you wait "
-        "for my folder answer in step 1. The report works out"
+        "that setup stopped before the code was downloaded). Two cases have no report: while you wait "
+        "for my folder answer in step 1, and when step 1 stops because this prompt is not the installer's. "
+        "Every other stop still ends with the report. The report works out"
     ) in text
+    assert (
+        "or the command says the pasted prompt is not the installer's, stop: this prompt is v10" in steps[1]
+    )
     assert _prompt_steps()[1].count("stop and wait for my answer") == 1
     assert "Do not send or upload anything" in text
     assert "outcome" in text and "run type" in text, "the report computes them (J3, J14)"

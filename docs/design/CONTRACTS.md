@@ -10236,10 +10236,15 @@ copy is stopped at step 1 like every older copy (§16.28).
   inbox source outside CloudStorage adds "(drop files you save by hand here)" only when the source's path is that
   folder; any other reads "`<root>` is empty", still ok. `status`'s `inbox on|missing|off` part is unchanged: it
   is about every live inbox source.
-- **Step 3 names the one stop with no report.** "One case has no report yet: while you wait for my folder answer
-  in step 1." Step 1's rule stays word for word. The report still follows every other stop (no Xcode tools, a git
-  failure, a version mismatch): those are failures, and their reports matter most. Rejected: a Rules sentence
-  "where a step says to stop, run nothing after it", which switches the report off at those three stops.
+- **Step 3 names the two stops with no report.** "Two cases have no report: while you wait for my folder answer
+  in step 1, and when step 1 stops because this prompt is not the installer's. Every other stop still ends with
+  the report." Step 1's rule stays word for word. The second case is step 1's whole version stop (the `--version`
+  line does not end with the prompt's number, or the command says the pasted prompt is not the installer's):
+  there the installer says "run no other step of that prompt", and a report of that attempt would replace the
+  last real session's. The first build named only the folder wait, which left that stop with two orders (the v10
+  rehearsal, 2026-10-08). The report still follows every other stop (no Xcode tools, a git failure): those are
+  failures, and their reports matter most. Rejected: a Rules sentence "where a step says to stop, run nothing
+  after it", which switches the report off at those two stops as well.
 - **The Not used list glosses hold**: "hold (a legal or records hold, not a pause)".
 - Not changed: the fix-request heading's time carries no zone (§16.30: it marks one session, and nothing parses
   it).
