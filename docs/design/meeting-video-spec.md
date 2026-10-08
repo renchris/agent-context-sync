@@ -606,7 +606,7 @@ One action key per recording: `sha256(schema | converter_id | version | options_
 | Media helper (S1, S2, S4, `diff`) | `+media-avfoundation-h<helper version>` | tick step, grid, JPEG quality, crop fraction, `_MAX_TICKS` |
 | Profile and gate (S3) | `-s<selection revision>` | profiles shipped, their detection and regions, cell threshold, both gate fractions, the T3 and R4 share rules, both back-offs, `_BASE_S`, `_TICK_S`, `_READ_S`, `_MAX_READS`, piece length |
 | Speaker cue (S7) | `+cue-r<revision>` when run | lit threshold, the cue per profile |
-| Speech, voices (S8) | `+asr-parakeet-<12 hex of model digest>-f<FluidAudio commit>-d<diarizer revision>` when run; the commit is `04e363c` or later (C3) | diarizer threshold, hole and line constants |
+| Speech, voices (S8) | `+asr-parakeet-<12 hex of model digest>-f<FluidAudio commit>-h<speech helper version>-d<diarizer revision>` when run; the commit is `04e363c` or later (C3) | diarizer threshold, hole and line constants |
 | Voice naming (S8b) | `-n<naming revision>` when run (C7) | P 0.90, NMIN 10, SS 0.90, stream minimum 20, margin band 0.05 |
 | Guard | | banner version, sidecar-digest version, label-policy fingerprint, input suffix (`repo:src/agentsync/convert/registry.py:116-125`, `repo:src/agentsync/convert/__init__.py:89-96`) |
 

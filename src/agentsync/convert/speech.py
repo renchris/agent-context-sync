@@ -210,8 +210,13 @@ class SpeechEngine:
     @property
     def identity(self) -> str:
         """Producer identity for the recording converter's version (spec section 4):
-        ``asr-parakeet-<12 hex of model digest>-f<7 hex commit>-d<diarizer revision>``."""
-        return f"asr-parakeet-{self.model_digest[:12]}-f{self.fluidaudio[:7]}-d{DIARIZER_REVISION}"
+        ``asr-parakeet-<12 hex of model digest>-f<7 hex commit>-h<helper version>-d<diarizer revision>``.
+        The helper's own version is in it: the helper joins tokens into words and rounds times, so a rebuilt
+        helper may change a page."""
+        return (
+            f"asr-parakeet-{self.model_digest[:12]}-f{self.fluidaudio[:7]}-h{self.helper_version}"
+            f"-d{DIARIZER_REVISION}"
+        )
 
     @property
     def description(self) -> str:

@@ -9879,7 +9879,8 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   `speaker` an opaque token (`S1`). PCM is raw 16 kHz mono s16le, the media helper's `audio` output. The helper
   writes no file; embeddings stay in its process.
 - **`SpeechEngine`** (`helper`, `models`, `name`, `helper_version`, `fluidaudio`, `model_digest`): `identity` is
-  `asr-parakeet-<12 hex of the model digest>-f<7 hex of the commit>-d<DIARIZER_REVISION>` (the model digest is
+  `asr-parakeet-<12 hex of the model digest>-f<7 hex of the commit>-h<helper version>-d<DIARIZER_REVISION>`
+  (the helper joins tokens into words and rounds times, so its version is part of it; the model digest is
   the SHA-256 over `<folder> <pinned digest>\n` of both folders); `description`; `alive()` (`--version`, 5 s, the
   same build); `words(pcm, *, timeout, clip=None) -> tuple[Word, ...]`; `voices(pcm, *, timeout) ->
   tuple[Segment, ...]`. `Word(text, start_ms, end_ms)` and `Segment(speaker, start_ms, end_ms)` are frozen,
@@ -10074,11 +10075,11 @@ class VttConverter:
   version without `+cue-`, and with a speech engine for one without `+asr-` or without `-n<digits>` and for the
   stubs `recording has no picture; its speech is not read by this version`, `recording's picture cannot be
   decoded on this Mac (VP9 or AV1)` and `no text read on screen; speech is not read by this version`; never for
-  the running version or an emitter above it. `_EMITTER_VERSION` stays `1.0.0`: every page that changes does so
-  under a new version. **Pieces:** a picture piece's key is `<piece ticks>|<picture version>|<picture options
+  the running version or an emitter above it. `_EMITTER_VERSION` is `1.1.0` (the page gained speech, the cue and
+  voices) with `_REREAD_BELOW` left at `1.0.0`, so the bump alone reads nothing again. **Pieces:** a picture piece's key is `<piece ticks>|<picture version>|<picture options
   hash>`, without the cue or speech parts, so the picture pieces of a recording stay valid when a speech engine
-  appears or fails. S8 is one more piece, numbered past the picture pieces, keyed `speech|<speech
-  identity>|<speech_lines options hash>`, holding the whole file's words (hole repair spliced), segments,
+  appears or fails. S8 is one more piece, numbered past the picture pieces, keyed `speech|<media identity>|<speech
+  identity>|<hash of the speech_lines options and the diarizer threshold>` (the media helper decodes the sound), holding the whole file's words (hole repair spliced), segments,
   silent runs, unrecognised gaps and decoded length; `audio.pcm` is decoded into the scratch folder, never kept
   and never a key. It is charged to the allowance like a piece, stops before it when the allowance is used up
   and this call read a piece, and has its own deadline, `60 + 0.07 x seconds of sound` (`_SPEECH_S`, from the

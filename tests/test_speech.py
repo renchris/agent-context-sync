@@ -282,8 +282,8 @@ def test_the_engine_takes_the_digests_once_and_names_them_in_its_identity(
     os.utime(helper, (time.time() - 30 * DAY, time.time() - 30 * DAY))
     found = speech.engine(CFG, cache)
     assert found is not None and found.helper == helper and found.models == models
-    assert re.fullmatch(r"asr-parakeet-[0-9a-f]{12}-f04e363c-d1", found.identity), found.identity
-    assert found.identity == f"asr-parakeet-{speech._model_digest()[:12]}-f04e363c-d1"
+    assert re.fullmatch(r"asr-parakeet-[0-9a-f]{12}-f04e363c-h0\.1\.0-d1", found.identity), found.identity
+    assert found.identity == f"asr-parakeet-{speech._model_digest()[:12]}-f04e363c-h0.1.0-d1"
     assert helper.stat().st_mtime > time.time() - DAY, "a helper handed to a cycle is stamped as used"
     assert found.alive()
 

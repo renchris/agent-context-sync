@@ -912,8 +912,8 @@ def test_a_new_emitter_alone_reads_no_recording_again(tmp_path: Path) -> None:
         "unavailable",
     ):
         assert not conv.outdated(produced) and not conv.outdated(produced, "no text read on screen")
-    assert conv.outdated_key == "1.0.0<1.0.0|cue-r1|-"
-    assert conv.version() == "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2+cue-r1"
+    assert conv.outdated_key == "1.1.0<1.0.0|cue-r1|-"
+    assert conv.version() == "1.1.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2+cue-r1"
 
 
 def test_a_floor_above_a_pages_emitter_reads_it_again_once(
@@ -1268,17 +1268,21 @@ def test_version_options_and_outdated_key_carry_the_cue_speech_and_naming(
 ) -> None:
     plain = converter(tmp_path)
     heard = converter(tmp_path, speech=hearing(tmp_path))
-    picture = "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2"
-    asr = f"asr-parakeet-0123456789ab-f{FAKE_PIN[:7]}-d1"
+    picture = "1.1.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2"
+    asr = f"asr-parakeet-0123456789ab-f{FAKE_PIN[:7]}-h0.1.0-d1"
     assert plain.version() == f"{picture}+cue-r1"
     assert heard.version() == f"{picture}+cue-r1+{asr}-n1"
-    assert heard.outdated_key == f"1.0.0<1.0.0|cue-r1|{asr}"
+    assert heard.outdated_key == f"1.1.0<1.0.0|cue-r1|{asr}"
     assert plain._key() == heard._key(), "a picture piece is the same with or without speech"
     mine, theirs = dict(heard.options()), dict(plain.options())
     assert {"cue_lit_at", "cue_teams"} <= theirs.keys() <= mine.keys()
-    assert {"speech_hole_gap_ms", "naming_p_min", "naming_checked_profiles", "recording_speech_limit"} <= (
-        mine.keys() - theirs.keys()
-    )
+    assert {
+        "speech_hole_gap_ms",
+        "speech_diarizer_threshold",
+        "naming_p_min",
+        "naming_checked_profiles",
+        "recording_speech_limit",
+    } <= (mine.keys() - theirs.keys())
     monkeypatch.setattr(rec, "_SPEECH_S", 0.08)
     assert dict(heard.options()) != mine
 

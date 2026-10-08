@@ -61,7 +61,7 @@ from agentsync.convert.media import (
 from agentsync.convert.naming import Naming, Voice
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage, OcrLine, text_rows
 from agentsync.convert.pieces import PieceStore
-from agentsync.convert.speech import Segment, SpeechEngine, Word
+from agentsync.convert.speech import THRESHOLD, Segment, SpeechEngine, Word
 from agentsync.convert.speech_lines import SpeechReading
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
@@ -70,7 +70,7 @@ from agentsync.model import RenderedUnit
 Kind = Literal["share", "camera", "other"]
 Tag = Literal["SCREEN", "TILE"]
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.1.0"
 _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""
@@ -1518,6 +1518,7 @@ class RecordingConverter:
                 **speech_lines.options(),
                 **naming.options(),
                 "recording_speech_limit": f"{_BASE_S}+{_SPEECH_S}/second of sound",
+                "speech_diarizer_threshold": THRESHOLD,
             }
         return {**self._picture_options(), **cue.options(), **heard}
 
@@ -1588,8 +1589,10 @@ class RecordingConverter:
         return f"{_PIECE_TICKS}|{self._picture_version()}|{options_hash(self._picture_options())}"
 
     def _speech_key(self, engine: SpeechEngine) -> str:
-        """The speech piece's key: the engine's identity and S8's constants (spec 4.1)."""
-        return f"speech|{engine.identity}|{options_hash(speech_lines.options())}"
+        """The speech piece's key: the media helper that decodes the sound, the engine's identity, the
+        diarizer's threshold and S8's constants (spec 4.1)."""
+        constants = {**speech_lines.options(), "speech_diarizer_threshold": THRESHOLD}
+        return f"speech|{self._media.identity}|{engine.identity}|{options_hash(constants)}"
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """The units of section 3, or UnreadableSourceError with a fixed stub wording, MediaError (a helper
