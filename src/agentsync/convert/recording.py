@@ -554,6 +554,25 @@ def _matches(prev: Sequence[_Seen], cur: Sequence[_Seen], grids: tuple[bytes, by
         else:
             taken.add(-best[3])
             out.append(-best[3])
+    return _moved(prev, cur, out, taken)
+
+
+def _moved(
+    prev: Sequence[_Seen], cur: Sequence[_Seen], out: list[int | None], taken: set[int]
+) -> list[int | None]:
+    """A row that scrolled is still the same row: an unmatched row of ``cur`` whose normalised text is held by
+    exactly one row of its region in ``cur`` and by exactly one unmatched row of that region in ``prev``
+    continues that row wherever it moved.  Rule 4's place condition alone made every row of a scrolled page
+    a new row of 2 s, which the 4 s rule then dropped (a traceback on the demo-heavy Zoom fixture)."""
+    seen_cur = Counter((r.region, _normal(r.text)) for r in cur)
+    seen_prev = Counter((r.region, _normal(r.text)) for i, r in enumerate(prev) if i not in taken)
+    for k, row in enumerate(cur):
+        key = (row.region, _normal(row.text))
+        if out[k] is not None or not key[1] or seen_cur[key] != 1 or seen_prev[key] != 1:
+            continue
+        i = next(i for i, r in enumerate(prev) if i not in taken and (r.region, _normal(r.text)) == key)
+        taken.add(i)
+        out[k] = i
     return out
 
 

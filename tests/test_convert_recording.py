@@ -920,3 +920,19 @@ def test_a_moving_desktop_full_of_text_is_read_on_while_new_rows_appear(tmp_path
     got = reading(tmp_path, recording(screen(0), *frames, duration_ms=40_000), pieces=store)
     assert "NameError: name 'quarterly_total' is not defined" in texts(got)
     assert {7, 8} <= set(reads_of(store))
+
+
+def test_a_row_that_scrolled_is_the_same_row_when_its_text_is_unique() -> None:
+    """S6 rule 4 as built: an equal text held once in its region at both reads continues the row wherever it
+    moved, so a scrolled traceback is one row of 4 s, not two rows of 2 s the 4 s rule drops.  A text held
+    twice, or a merely similar text, still needs the same place."""
+    grid = bytes(rec.GRID_W * rec.GRID_H)
+    error = "Traceback (most recent call last)"
+    before = [rec._Seen("content", error, 1.0, 0.05, 0.60, 0.40, 0.03)]
+    scrolled = [rec._Seen("content", error, 1.0, 0.05, 0.30, 0.40, 0.03)]
+    assert rec._matches(before, scrolled, (grid, grid)) == [0]
+    twice = [rec._Seen("content", "import json", 1.0, 0.05, y, 0.20, 0.03) for y in (0.60, 0.70)]
+    moved = [rec._Seen("content", "import json", 1.0, 0.05, y, 0.20, 0.03) for y in (0.20, 0.30)]
+    assert rec._matches(twice, moved, (grid, grid)) == [None, None]
+    near = [rec._Seen("content", "Traceback (most recent call first)", 1.0, 0.05, 0.30, 0.40, 0.03)]
+    assert rec._matches([*before], near, (grid, grid)) == [None]
