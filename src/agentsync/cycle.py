@@ -59,7 +59,7 @@ from agentsync.arm_local import (
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
-from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr
+from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr, speech
 from agentsync.convert import recording as recording_mod
 from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
@@ -70,6 +70,7 @@ from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.recording import RecordingConverter, RecordingNotFinished
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
+from agentsync.convert.speech import SpeechEngine
 from agentsync.errors import (
     AgentSyncError,
     AuthRequiredError,
@@ -1271,18 +1272,30 @@ def _cycle_media(config: Config, engine: OcrEngine | None) -> MediaEngine | None
     return media.engine(config.convert, config.cache_dir)
 
 
+def _cycle_speech(config: Config, engine: MediaEngine | None) -> SpeechEngine | None:
+    """The speech engine one cycle reads a recording's sound with, or None.  Looked for only beside a media
+    ``engine`` (speech is off whenever the media helper is), through ``speech.engine``, which never compiles,
+    never raises and is where the model folders' digests are taken, once a cycle."""
+    if engine is None:
+        return None
+    return speech.engine(config.convert, config.cache_dir)
+
+
 def _cycle_registry(
     config: Config,
     policy: PolicyConfig,
     engine: OcrEngine | None,
     found: MediaEngine | None,
     pieces: PieceStore,
+    *,
+    speech: SpeechEngine | None = None,
 ) -> Registry:
-    """``Registry.default`` with the cycle's engines.  The media helper and the piece store go in only beside
-    a media helper: without one the registry is the one a Mac without recordings has."""
+    """``Registry.default`` with the cycle's engines.  The media helper, the piece store and the speech
+    engine go in only beside a media helper: without one the registry is the one a Mac without recordings
+    has."""
     if found is None:
         return Registry.default(config.convert, policy=policy, ocr=engine)
-    extra: dict[str, Any] = {"media": found, "pieces": pieces}
+    extra: dict[str, Any] = {"media": found, "pieces": pieces, "speech": speech}
     return Registry.default(config.convert, policy=policy, ocr=engine, **extra)
 
 
@@ -1377,9 +1390,11 @@ class _Cycle:
         # The media helper likewise (its --version runs), beside an OCR engine only; the piece store is a
         # folder of the cache, created when a piece is first stored.
         self.media = _cycle_media(config, self.ocr)
+        # The speech engine likewise, beside the media helper only; its model digests are taken here.
+        self.speech = _cycle_speech(config, self.media)
         self.pieces = PieceStore.under(config.cache_dir)
         self.registry = _cycle_registry(
-            config, self.publisher.content_policy, self.ocr, self.media, self.pieces
+            config, self.publisher.content_policy, self.ocr, self.media, self.pieces, speech=self.speech
         )
         self.cache = ConverterCache(config.cache_dir)
         self.gov = governance.load_governance(config.config_path)

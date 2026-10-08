@@ -3562,7 +3562,9 @@ def rec(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Rec:
         PieceStore, "under", classmethod(lambda cls, cache_dir: FakePieces(cache_dir / "recordings"))
     )
 
-    def registry(config: Config, policy: Any, engine: Any, media: Any, pieces: Any) -> Registry:
+    def registry(
+        config: Config, policy: Any, engine: Any, media: Any, pieces: Any, *, speech: Any = None
+    ) -> Registry:
         plain = Registry.default(config.convert, policy=policy, ocr=engine)
         if media is None:
             return plain

@@ -59,6 +59,7 @@ from agentsync.convert.media import (
 from agentsync.convert.naming import Naming
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage, OcrLine, text_rows
 from agentsync.convert.pieces import PieceStore
+from agentsync.convert.speech import SpeechEngine
 from agentsync.convert.speech_lines import SpeechReading
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
@@ -1421,14 +1422,17 @@ class RecordingConverter:
         *,
         pieces: PieceStore | None = None,
         label_rule: bool = False,
+        speech: SpeechEngine | None = None,
     ) -> None:
         """Bind the cycle's engines; ``pieces`` None reads every recording in one pass and stores nothing;
-        ``label_rule``: a ``[policy]`` label rule is active (ruling 2: the index carries its NOTE)."""
+        ``label_rule``: a ``[policy]`` label rule is active (ruling 2: the index carries its NOTE);
+        ``speech``: the speech engine, None when speech is off."""
         self._cfg = cfg
         self._ocr = ocr
         self._media = media
         self._pieces = pieces
         self._label_rule = label_rule
+        self._speech = speech
 
     def version(self) -> str:
         """``<emitter>+<ocr identity>+<media identity>-s<selection revision>`` (spec section 4)."""

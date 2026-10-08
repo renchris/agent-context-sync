@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from agentsync.convert.media import MediaEngine
     from agentsync.convert.ocr import OcrEngine
     from agentsync.convert.pieces import PieceStore
+    from agentsync.convert.speech import SpeechEngine
 
 _PDF_ENCRYPTION_ERRORS = frozenset({"PDFPasswordIncorrect", "PDFEncryptionError"})
 
@@ -185,6 +186,7 @@ class Registry:
         ocr: OcrEngine | None = None,
         media: MediaEngine | None = None,
         pieces: PieceStore | None = None,
+        speech: SpeechEngine | None = None,
     ) -> Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, vtt, eml, teams),
         each behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
@@ -198,7 +200,8 @@ class Registry:
 
         With ``ocr``, ``media`` (the media helper the cycle resolved) and ``[convert] recordings`` on, meeting
         recordings (``.mp4``, ``.m4v``, ``.mov``) get ``recording-av``, which reads its pieces from and into
-        ``pieces`` (None: one pass, nothing kept).  Unlike an image it stays registered under a label rule
+        ``pieces`` (None: one pass, nothing kept), and hears it through ``speech`` (the speech engine the
+        cycle resolved; None: screens only).  Unlike an image it stays registered under a label rule
         (ruling 2): processing stays on this Mac, and each index it writes then says the label was not
         checked.  ``without_ocr`` never holds it, so a recording the engines failed on gets the ``no
         converter`` refusal a later read looks for."""
@@ -233,7 +236,9 @@ class Registry:
             from agentsync.convert.recording import RecordingConverter  # noqa: PLC0415
 
             converters.append(
-                RecordingConverter(cfg, ocr, media, pieces=pieces, label_rule=content_policy.labels_active)
+                RecordingConverter(
+                    cfg, ocr, media, pieces=pieces, label_rule=content_policy.labels_active, speech=speech
+                )
             )
         registry = cls(converters, policy=content_policy, banner=True)
         if ocr is not None:
