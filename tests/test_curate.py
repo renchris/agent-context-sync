@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import stat
@@ -1051,6 +1052,40 @@ def test_week3_loop_generate_write_queue_banner(layout: DocsLayout) -> None:
     assert rows2 == rows
     assert not write_depends(layout, rows2) and not write_by_entity(layout, entities2)
     assert apply_stale_banners(layout, refresh_queue(layout)[1], "2026-09-30") == []
+
+
+def test_a_missing_depends_file_is_a_warning_only_once_a_page_is_curated(
+    layout: DocsLayout, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The v9 rehearsal (2026-10-07): ``WARNING agentsync.curate: .../DEPENDS.tsv: missing or empty`` reached
+    a first install's output, from the status that runs before the first sync. Every sync writes that file,
+    so a docs repo no sync has reached has none, and with nothing curated there is no row it could hold: a
+    debug line. Once a curated page exists the file should be there, and the warning stands. The queue's
+    answer is the same either way."""
+    said = f"{layout.depends_tsv}: missing or empty"
+
+    def logged() -> list[tuple[int, str]]:
+        caplog.clear()
+        assert refresh_queue(layout) == (2, [])
+        return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "agentsync.curate"]
+
+    caplog.set_level(logging.DEBUG, logger="agentsync.curate")
+    assert logged() == [(logging.DEBUG, said)], "a new docs repo: no file yet"
+    layout.depends_tsv.write_bytes(b"")
+    assert logged() == [(logging.DEBUG, said)], "an empty file"
+    for seed in ("CLAUDE.md", "INDEX.md"):  # what the scaffold writes into topics/ is no curated page
+        (layout.topics / seed).write_text("# seed\n", encoding="utf-8")
+    assert iter_topic_pages(layout) == [] and logged() == [(logging.DEBUG, said)]
+
+    pin = mirror_page(layout, "mirror/s/a.md")
+    topic_page(layout, "topics/p.md", "entity: e\n" + sources_yaml(("../mirror/s/a.md", pin, "primary")))
+    assert logged() == [(logging.WARNING, said)], "a curated page and an empty file"
+    layout.depends_tsv.unlink()
+    assert logged() == [(logging.WARNING, said)], "a curated page and no file"
+
+    assert write_depends(layout, generate_depends(layout)[0])
+    caplog.clear()
+    assert refresh_queue(layout) == (0, []) and not caplog.records, "the file a sync writes: nothing to say"
 
 
 def test_uncovered_mirror_pages_lists_current_pages_no_topic_cites(layout: DocsLayout) -> None:

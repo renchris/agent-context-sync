@@ -9344,3 +9344,28 @@ Tests: `tests/test_setup_report.py` (the rehearsal's log on a Mac with an earlie
 and `no run during this attempt (1 earlier in the install log)`; the same with a logged question; a copy
 from before v8 with the header alone; a list run inside the attempt: one question and the folder question
 again; the rule on a stopped and on a current attempt).
+
+#### No warning for a docs repo no sync has reached (amends §13 and the `agentsync.curate` section; `agentsync.curate`)
+
+A first install printed one raw log line: `2026-10-07 19:16:02,912 WARNING agentsync.curate:
+<docs repo>/DEPENDS.tsv: missing or empty`. It came from `agentsync status`, which install.sh runs before
+its first sync: the loop line's `to curate N` asks `curate.refresh_queue`, and that warned whenever
+`DEPENDS.tsv` was missing or empty. Every sync writes the file, its header included, so before the first
+one there is none. The line was harmless, and "something not in this prompt" that an agent may log.
+
+`curate.refresh_queue(layout)` still answers `(2, [])` there. What it logs now depends on whether anything
+is curated:
+
+| `DEPENDS.tsv` missing or empty, and | Logged as |
+|---|---|
+| no curated page (`iter_topic_pages(layout)` is empty; the scaffold's `CLAUDE.md` and `INDEX.md` are none) | debug: the normal state before the first sync, and no row the file could hold |
+| a curated page exists | warning, as before: the file should exist, and a sync writes it |
+
+The pages are looked for only when the file is missing or empty, so a normal call reads nothing more. A
+file with a bad header still warns either way. `agentsync curate` is unchanged: it says on stderr that the
+file is missing and to run a sync first, and only once curation is no longer held.
+
+Tests: `tests/test_curate.py` (no file, an empty file and the scaffold's two pages: debug; a curated page
+with an empty file and with none: the warning; the file a sync writes: nothing logged),
+`tests/test_install_oneshot.py` (a first install with the real agentsync prints no WARNING or ERROR line of
+agentsync's; without the fix that test shows the rehearsal's line).

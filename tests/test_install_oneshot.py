@@ -1753,6 +1753,9 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
         (d / "plan.txt").write_text(f"a made-up plan for {d.name}\n", encoding="utf-8")
     first = install_sh(env, str(wheel), "--source-local", str(alpha))
     assert first.returncode == 0, first.stdout + first.stderr
+    # A first install's status runs before any sync, on a docs repo with no DEPENDS.tsv yet: that is the
+    # normal state, and no log line of agentsync's reaches the output for it (v9 rehearsal, 2026-10-07).
+    assert not re.search(r"\b(WARNING|ERROR) agentsync\.", first.stdout + first.stderr), first.stderr
     assert "folders: 1 added (none was synced before)" in first.stdout.splitlines()
     assert "first sync: converted 1, deferred 0 online-only" in first.stdout.splitlines()
     assert _config_line(env).endswith(" result=done note=created kept=0 added=1")

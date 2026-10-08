@@ -1039,14 +1039,22 @@ def _queue_row(root: Path, record: bytes) -> RefreshVerdict | None:
     return None
 
 
-def _refresh_queue_file(tsv: Path, root: Path) -> tuple[int, list[RefreshVerdict]]:
-    """Run the queue over ``tsv`` with source paths resolved from ``root`` (the script's cwd)."""
+def _refresh_queue_file(
+    tsv: Path, root: Path, *, curated: Callable[[], bool] | None = None
+) -> tuple[int, list[RefreshVerdict]]:
+    """Run the queue over ``tsv`` with source paths resolved from ``root`` (the script's cwd).
+
+    Every sync writes ``tsv``, its header included, so a docs repo no sync has reached yet has none. While
+    nothing is curated (``curated`` says so; asked only for a missing or empty file) that is the normal
+    state, and there is no row the file could hold: a debug line, where a warning reached a first install's
+    output through ``status``. With a curated page the file should exist, and the warning stands."""
     try:
         data = tsv.read_bytes()
     except OSError:
         data = b""
     if not data:
-        _log.warning("%s: missing or empty", tsv)
+        expected = curated is None or curated()
+        _log.log(logging.WARNING if expected else logging.DEBUG, "%s: missing or empty", tsv)
         return 2, []
     if not _depends_usable(tsv):
         _log.warning("%s: missing header (page/source/pinned_sha/role)", tsv)
@@ -1064,8 +1072,12 @@ def _refresh_queue_file(tsv: Path, root: Path) -> tuple[int, list[RefreshVerdict
 
 
 def refresh_queue(layout: DocsLayout) -> tuple[int, list[RefreshVerdict]]:
-    """The design 4.5 refresh queue: (rc, verdicts); rc 0 = fresh, 1 = rows need action, 2 = unusable."""
-    return _refresh_queue_file(layout.depends_tsv, layout.root)
+    """The design 4.5 refresh queue: (rc, verdicts); rc 0 = fresh, 1 = rows need action, 2 = unusable.
+    A missing or empty DEPENDS.tsv is rc 2 either way, and logged as a warning only when a curated page
+    exists (:func:`_refresh_queue_file`)."""
+    return _refresh_queue_file(
+        layout.depends_tsv, layout.root, curated=lambda: bool(iter_topic_pages(layout))
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------
