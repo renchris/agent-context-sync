@@ -3551,7 +3551,7 @@ so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix
 fix is `agentsync install-agent` or `launchctl bootstrap ...`, the `governance.purge_queue` warn and a local
 source's incomplete `heartbeat.<id>` warn carry a note and no `fix:` either.
 
-**Amended (2026-10-07, §16.31):** every FAIL names a fix. A check that raised is `doctor.unfinished`: out of
+**Amended (2026-10-07, §16.32):** every FAIL names a fix. A check that raised is `doctor.unfinished`: out of
 time (`subprocess.TimeoutExpired`) reads "did not answer within N s" and its fix is to run again, and a crash
 keeps "check crashed" and names `agentsync status -v`. Under `AGENTSYNC_AGENT_STEP_PENDING=1` only a
 `launchd.*` warn carries `AGENT_STEP_NOTE`; a FAIL keeps its fix.
@@ -5692,7 +5692,7 @@ errors are retried by every sync and are not rule 3 (they would make it loop). *
 §16.28):** a source whose one-time re-read (§16.27) is not finished is one more `note:`, which starts
 `sync again:` while another sync reads more of it. The text is fixed wording plus
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
-**Amended (2026-10-07, §16.31):** the draft baseline's wait names the docs repo's `_eval` folder by its path
+**Amended (2026-10-07, §16.32):** the draft baseline's wait names the docs repo's `_eval` folder by its path
 and the tool's own two file names in it.
 
 Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
@@ -8590,7 +8590,7 @@ loop's wording and order are unchanged, and the line still holds no path.
 Not done: the draft wait still names `_eval/questions.md` relative to the docs repo without saying where the
 docs repo is. Rewording it is `agentsync.loop`'s, with no field evidence yet, and a config path in a wait
 would break §16.20's rule that loop text names no path.
-**Amended (2026-10-07, §16.31):** done. The rehearsal of v9 was the evidence, and §16.20's rule is about
+**Amended (2026-10-07, §16.32):** done. The rehearsal of v9 was the evidence, and §16.20's rule is about
 mirror paths and document names, which the wait still does not carry.
 
 Tests: `tests/test_setup_report.py` (the real loop after a sync with one purge queued: that wait alone; then
@@ -9161,6 +9161,8 @@ deleted one is restored, the text is the spec's verbatim, and a scaffolded repo'
 under `_rubrics/`), `tests/test_curate.py` (the citation lint and its codes).
 
 ### 16.31 Fixes from the v9 rehearsal (2026-10-07)
+
+### 16.32 Fixes from the v9 rehearsal (2026-10-07)
 
 Before setup prompt v9 went back to the field, an agent played the unattended setup agent in three sandbox
 homes with the real installer: a new Mac, a Mac already set up, and a v8 copy of the prompt against the v9

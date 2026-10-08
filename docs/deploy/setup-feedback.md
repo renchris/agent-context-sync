@@ -358,7 +358,7 @@ have cost a round (K27). Step 2's `install.sh` printed `[FAIL] pandoc — check 
 skipped the sync and exited 1, and its `NEXT:` said each `[FAIL]` names its fix, which that line did not.
 The same command run again passed. The bundled pandoc is an Intel program, and on Apple silicon macOS
 prepares each new copy at its first start: 10 to 67 s measured, against the 60 s the check gives it, and
-every update installs a new copy ([CONTRACTS §16.31](../design/CONTRACTS.md)):
+every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
 
 - `install.sh` now starts that pandoc once itself, right before status. A quick start prints nothing. A slow
   one prints `pandoc: still running, <N>s (...)` at each progress interval and then
