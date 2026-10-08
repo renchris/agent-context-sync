@@ -134,9 +134,10 @@
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
 #      no online-only file is downloaded here and this step's time does not grow with the folders' size; each
 #      later sync downloads and converts the online-only files it deferred, within its per-run budget. Its
-#      output is shown as its "converted N, deferred M online-only" line(s), each prefixed
-#      "first sync: " (and logged as the step's note converted-N-deferred-M), else as all it printed. The
-#      flag is passed unconditionally: sync --help hides it, and the agentsync installed here always has it
+#      output is shown as its "converted N, deferred M online-only[, read again R]" line(s), each prefixed
+#      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0), else
+#      as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
+#      installed here always has it
 #   With --confirm-install-agent and a first sync that ran:
 #   7. agent: agentsync install-agent
 #   8. wait: launchctl kickstart gui/<uid>/com.agentsync.poll, then launchctl print every 3 s for up to
@@ -2035,8 +2036,9 @@ show_first_sync() { # RC
 	if [ "$1" -eq 0 ] && [ -n "$summary" ]; then
 		printf '%s\n' "$summary" | sed "s/^[[:space:]]*/$SYNC_LABEL: /"
 		[ -n "$FIRST_SYNC_NOTE" ] || FIRST_SYNC_NOTE="$(printf '%s\n' "$summary" | awk '
-			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1) } }
-			END { printf "converted-%d-deferred-%d", c, d }')"
+			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1)
+				if ($i == "again" && $(i - 1) == "read") r += $(i + 1) } }
+			END { printf "converted-%d-deferred-%d", c, d; if (r > 0) printf "-reread-%d", r }')"
 	else
 		cat "$SYNC_OUT" 2>/dev/null || true
 	fi

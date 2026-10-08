@@ -5026,10 +5026,11 @@ wording of 2026-10-06 an unanswered one is logged as a deviation, which the fric
 are counted with the closing line ("... 1 question, 1 finished"), so they add up to the event line count; the
 friction section embeds each line with its line number (the F<n> ids). A v6 attempt's time line adds the step
 times from install.log ("install.sh (install.log): step 1 --list-folders 4s · step 2 install 57s"). The first
-sync line adds "converted N, deferred M online-only" (install.log's first-sync `note=converted-N-deferred-M`,
-else the sync's own line in install.out) and says "N of M source(s) listed completely (status: baseline
-complete) at least once by the time this report was written" (status is read when the report runs, after any
-later sync; a source counts once one listing of it was complete since its scope last changed, and a later
+sync line adds "converted N, deferred M online-only" and, when R > 0, ", read again R" (install.log's
+first-sync `note=converted-N-deferred-M[-reread-R]`, else the sync's own line in install.out) and says
+"N of M source(s) listed completely (status: baseline complete) at least once by the time this report
+was written" (status is read when the report runs, after any later sync; a source counts once one
+listing of it was complete since its scope last changed, and a later
 incomplete listing does not clear it). The generated-at, agentsync, install source and took bullets end the Summary under
 `RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
 source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
@@ -5290,7 +5291,8 @@ file and downloads nothing: only online-only files are DEFERRED (`SourceReport.d
 **amended 2026-10-08, §16.37:** followed by `, read again R` when R > 0, R = `CycleReport.read_again`, the run
 tally's `reread`: files read again for what their converter has gained; a re-read of the same bytes is never in
 N, §16.27);
-scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`.
+scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`
+(**amended §16.37:** `-reread-R` appended when R > 0).
 **Amended (2026-10-04, KISS K01):** a `sync` without `--mode` (and without `AGENTSYNC_NO_NEXT_HINT=1`) prints the
 summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING ON YOU:` lines, any `note:` lines.
 `--mode`, `reconcile`, `materialise` and `accept-deletions` still end on the summary line.
@@ -10404,3 +10406,11 @@ the note below it carries the commit count (§16.36). A real run's headline is u
 Tests: `tests/test_setup_report.py`, `tests/test_install_oneshot.py`, `tests/test_launcher.py`,
 `tests/test_cli.py` (status, the sync header and summary, the purge dry run), `tests/test_cycle.py` and
 `tests/test_arm_local.py`.
+
+#### The first sync's read-again count reaches the report (`scripts/install.sh`, `agentsync.setup_report`)
+
+The installer logs its first-sync note as `converted-N-deferred-M-reread-R` when the sync's line ends `, read
+again R` (R > 0), and as `converted-N-deferred-M` otherwise, so an older install.log and R = 0 parse as before.
+The Summary's first-sync clause reads `converted N, deferred M online-only, read again R (<source>...)` when the
+note, or with no note the sync's own line in install.out, carries R. Why: the second v10 rehearsal's installer
+printed `read again 2` and the report's clause dropped it.

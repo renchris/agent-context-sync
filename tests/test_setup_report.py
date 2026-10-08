@@ -2000,6 +2000,30 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert fail.text == "failed at step 2" and fail.form_label == "Failed at step 2 (install and start)"
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """The installer's first-sync note ends ``-reread-R`` when its sync read R files again (R > 0), and the
+    clause shows ``, read again R``; a note without it (R = 0, or an older install.log) reads as before.  With
+    no note, the sync's own line in install.out gives the counts, its ``read again R`` too."""
+    write_friction(fake_mac, V6_HAPPY)
+    for note, out, want in (
+        (
+            "note=converted-0-deferred-0-reread-2",
+            "",
+            "converted 0, deferred 0 online-only, read again 2 (install.log)",
+        ),
+        ("note=converted-3-deferred-0", "", "converted 3, deferred 0 online-only (install.log)"),
+        ("", "first sync: converted 1, deferred 0 online-only, read again 4", "read again 4 (install.out)"),
+    ):
+        v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done {note}".rstrip())
+        (fake_mac["setup"] / "install.out").write_text(
+            f"# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\n{out}\n", encoding="utf-8"
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+        assert line.startswith("- first sync: done in 9s (install.log) · converted ") and want in line, line
+
+
 V7_HAPPY = V6_HAPPY.replace("Prompt: v6", "Prompt: v7")
 """Setup prompt v7 run through with nothing to log (KISS K04/K16b): the same header and closing line as v6."""
 

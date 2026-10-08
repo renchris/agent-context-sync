@@ -509,8 +509,10 @@ _INSTRUCTION_RES = (
     ("run:", re.compile(r"(?:^\s*|\()run:")),
 )
 _OUT_RUN_RE = re.compile(r"^# run=\S+ ")  # install.out's header line of each run
-_CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)")  # install.log's first-sync note
-_CONVERTED_LINE_RE = re.compile(r"\bconverted (\d+), deferred (\d+) online-only\b")  # sync's last line
+_CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?")  # install.log's note
+_CONVERTED_LINE_RE = re.compile(  # sync's last line
+    r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b)?"
+)
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -1639,7 +1641,8 @@ class _Facts:
     shadow: str | None = None
     # (per kind, lines counted, runs among them, lines read before the first run header: not counted)
     instructions: tuple[Counter[str], int, int, int] | None = None
-    first_sync: tuple[int, int] | None = None  # the last "converted N, deferred M online-only" in install.out
+    # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
+    first_sync: tuple[int, int, int] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
 
@@ -2290,7 +2293,11 @@ def _installer_output(r: _Run) -> list[str]:
     r.facts.instructions = (counts, len(counted), runs, first)
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:
-        r.facts.first_sync = (int(synced[-1].group(1)), int(synced[-1].group(2)))
+        r.facts.first_sync = (
+            int(synced[-1].group(1)),
+            int(synced[-1].group(2)),
+            int(synced[-1].group(3) or 0),
+        )
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     return [
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
@@ -4705,12 +4712,12 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
 
 def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     """The installer's first sync: its step from install.log, what it converted and left to background sync
-    (the step's ``converted-N-deferred-M`` note, else the sync's own "converted N, deferred M online-only"
-    line in install.out), and how many sources status says were listed completely at least once, read when the
-    report runs."""
+    (the step's ``converted-N-deferred-M[-reread-R]`` note, else the sync's own "converted N, deferred M
+    online-only[, read again R]" line in install.out), and how many sources status says were listed completely
+    at least once, read when the report runs."""
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     parts: list[str] = []
-    counts: tuple[int, int] | None = None
+    counts: tuple[int, int, int] | None = None
     if pool:
         v = pool[-1].step("first-sync") or {}
         text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
@@ -4718,7 +4725,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             text += f", rc {v['rc']}"
         note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
         if note is not None:
-            counts = (int(note.group(1)), int(note.group(2)))
+            counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
         elif v.get("note"):
             text += f" ({v['note']})"
         parts.append(text + " (install.log)")
@@ -4728,9 +4735,10 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if counts is None and r.facts.first_sync is not None:
         counts, source = r.facts.first_sync, "install.out"
     if counts is not None:
-        converted, deferred = counts
+        converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
-        parts.append(f"converted {converted}, deferred {deferred} online-only ({source}{later})")
+        reread = f", read again {again}" if again else ""
+        parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
         parts.append(

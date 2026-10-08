@@ -3235,6 +3235,16 @@ def test_first_sync_prints_its_converted_and_deferred_line(
     assert ("first-sync", "done", "0", "converted-4-deferred-2") in steps(install_log(env))
 
 
+def test_first_sync_note_carries_the_read_again_count(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """A sync that read files again prints ``, read again R``; the step's note then ends ``-reread-R``, so the
+    setup report's first-sync clause carries it.  R = 0 leaves the note as it was (the test above)."""
+    e = {**env, "STUB_SYNC_OUT": "converted 0, deferred 1 online-only, read again 2"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "first sync: converted 0, deferred 1 online-only, read again 2" in cp.stdout.splitlines()
+    assert ("first-sync", "done", "0", "converted-0-deferred-1-reread-2") in steps(install_log(env))
+
+
 # ---- the on-device OCR helper is built in the helpers step -------------------------------------------------
 
 STUB_TOOL_PYTHON = """#!/bin/bash
