@@ -97,6 +97,19 @@ Each runs on its recommendation as the working default until the operator rules.
 | D4 (O21) | Will the operator ask organizers for the `.vtt` and attendance `.csv` of meetings that matter, starting with the test recording, and do a 10-minute listen? | Yes | 80 % |
 | D5 (O22) | Keep the 27 public YouTube and Loom excerpts as local test fixtures? | Local only, never committed, deleted after the build | 70 % |
 
+#### Research pass, 2026-10-08 (researcher plus skeptic per decision)
+
+Still pending the operator; these replace the working defaults above. Reports (local, outside the repo):
+`~/.claude/research-artifacts/meeting-video-2026-10-06/decisions-v3/d1..d5-*.md` and their `-skeptic.md` files.
+
+| # | Working default now | Conviction | What would flip it |
+|---|---|---|---|
+| D1 | No enrollment and no voice vector. "You" is named by a non-biometric `voice N is me` basis the operator confirms per recording, and on Teams by the operator's own Teams voice profile. A local owner template is at most a P4 fallback, off by default, needing a fixed cosine threshold of 0.62 or more plus a runner-up margin, a self-test on 10+ of the operator's recordings with 0 wrong-"you" clusters, and the employer privacy owner's yes. Colleagues are never enrolled | 78 % | The operator will not confirm `voice N is me` and a third or more of their speaking time stays unnamed |
+| D2 | Keep the label. A 3-run-per-arm blind-reader test gave 0 of 18 owner attributions with the label and 0 of 18 without, and readers without it still took the owner's name from the SPEAKING lines. P3's index "How to read" line carries "never means X spoke"; lint rule 8 becomes label-independent: no person named on a shared, mixed or unidentified basis, and every action-item Owner needs a People row with a naming basis | 80 % | A 30-run-per-arm curation test showing the label raises owner attribution by 10 points or more |
+| D3 | Neither option as posed: the media helper registers VideoToolbox's supplemental VP9 and AV1 decoders (VP9 then decoded 4 of 4 files on the M1 Max, frame-identical to a software decode; AV1 0 of 2 there) and stubs a recording only when one trial frame fails to decode (`isDecodable` lies for 4:4:4 VP9). What still fails gets the speech-only page with H.264-copy advice. Time a 4K VP9 file in R3 | 85 % | The corporate M4 Max cannot decode a 1080p VP9 MP4 frame after registration from the background job |
+| D4 | Yes, cheapest first: check the recording's Stream page for a transcript (2 min); listen to a machine-cut clip kit aimed at the risky V1 segments, with 5 known-Presenter control clips and a longer re-play for every "different" vote; ask the organizer "who spoke from your laptop?", adding the `.vtt` only if Stream had none. If no transcript exists, measure R14 and R28 in a Teams meeting the operator organizes | 82 % | The operator calls 2 or more control clips "different" after the re-play: drop the listen and hold names until B.3 item 3 |
+| D5 | Keep, local only, never on the corporate Mac or anywhere synced or pushed, deleted after P4. Done 2026-10-08: the research scratch (fixtures, `gt.py`, the v2 Teams probe inputs) moved out of `/tmp` (deleted there after about 96 h) to `~/.cache/agentsync-meeting-video/research-2026-10-06/`, linked from the old path and excluded from Time Machine. F's R30 uses open-licensed VP9 and AV1 files | 75 % | A need to carry fixtures off this Mac, or a rights-holder notice: then replace with the open-licensed matches plus the operator's recordings |
+
 ### Recordings the operator supplies (`v3` B.3)
 
 All stay local and are never committed. For each, the operator writes down the order in which people spoke.
