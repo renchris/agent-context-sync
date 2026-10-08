@@ -1496,8 +1496,9 @@ class RecordingConverter:
                 title, states, rows, names, unprinted = _Settle(work, profile, pieces, read_ms).run(
                     (info.width, info.height)
                 )
-            except _TimedOut:
-                raise RecordingNotFinished(done_ms=read_ms, total_ms=read_ms, timed_out=True) from None
+            except _TimedOut:  # every piece is stored, but the recording is not read: its last piece's media
+                last = max(read_ms - 1, 0) // (_PIECE_TICKS * STEP_MS) * _PIECE_TICKS * STEP_MS
+                raise RecordingNotFinished(done_ms=last, total_ms=read_ms, timed_out=True) from None
             finally:
                 _charge(started)
             unread = sum(int(piece["unread"]) for piece in pieces)

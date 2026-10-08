@@ -961,3 +961,20 @@ def test_the_allowance_is_charged_for_the_info_call_and_the_settle_as_well_as_th
     with rec.work_allowance(1_000.0) as allowance:
         conv._reading(staged(tmp_path, _long_meeting()), name="meeting.mp4")
     assert allowance.spent_s == 57.0, "the pieces took no time on this clock"
+
+
+def test_a_settle_that_times_out_says_the_last_pieces_media_is_not_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec S0 rule 6: a recording whose settle passed its deadline waits with every piece stored, but it is
+    not read: the signal stops at the start of the last piece of media time, never "N of N minutes"."""
+
+    def timed_out(self: rec._Settle, info_size: tuple[int, int]) -> Any:
+        raise rec._TimedOut
+
+    monkeypatch.setattr(rec._Settle, "run", timed_out)
+    store = PieceStore(tmp_path / "recordings")
+    with pytest.raises(rec.RecordingNotFinished) as caught:
+        converter(tmp_path, pieces=store)._reading(staged(tmp_path, _long_meeting()), name="meeting.mp4")
+    assert (caught.value.done_ms, caught.value.total_ms, caught.value.timed_out) == (300_000, 600_000, True)
+    assert len(stored(store)) == 3, "the pieces are kept"
