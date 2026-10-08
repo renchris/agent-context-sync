@@ -10024,6 +10024,22 @@ class VttConverter:
 
 - (wave B: fill this paragraph.) `agentsync.convert.recording` gains `Speech` and the `Reading` fields
   `picture_unread`, `speech`, `no_speech`, `speaking` and `cue_identity` (P3 interface; defaults keep P1 pages).
+- `agentsync.convert.recording_page.render` prints them (spec 3.3 to 3.5, S9). Windows: `SPEAKING: <label>` at
+  its tick's even second, `SAID vN: <text>` once, at its first word floored to the second, in the state on screen
+  then (the states tile `[0, read end)`: the first from 00:00:00, each to the next one's start), the veto `NOTE`
+  after its line, `speech detected, no words recognised until HH:MM:SS` at each unrecognised gap and `no sound
+  from here to the end of the recording` at `sound_ends_ms`; at one time `SPEAKING` (rank 4), `SAID` (5), `NOTE`
+  (6). Speech and labels are cleaned as picture text is. A speech-only page (`picture_unread` set) has no
+  heading: each window is its title, then its lines; the index's Facts carry `picture not read: the recording
+  has no picture track` when `picture_unread` holds "no picture", else `picture not read: <picture_unread>; an
+  H.264 copy reads it (for example yt-dlp -S vcodec:h264)`. Index: What ran rows `speaker cue` (`cue_identity`,
+  SPEAKING lines printed; `not run` when `speaking` is None), `speech` and `voices` (`speech.identity`, SAID lines
+  printed / voices; `not run` when `speech` is None), each `none found` at 0; a Voices block after Names read on
+  screen when a voice was found (table, blank line, one `VOICE` line per voice at its first word in voice order,
+  the margin-band `NOTE` after a held-back voice, the gate `NOTE` once at 00:00:00); Gaps and bounds opens with
+  `sound ends at`, the 20 longest quiet stretches in time order with `showing a of b`, and `speech not read:
+  <no_speech>`. Summaries: the index's `speech not read` becomes `N speech lines, k voices`, and a window's gains
+  `, N speech lines`, when speech ran.
 
 <!-- end slot: recording -->
 

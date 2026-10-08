@@ -7,12 +7,20 @@ their tick (3.6); the registry guard adds the banner and the ``Sidecar file`` fo
 read from the picture is cleaned (S9 rule 5) and printed only after a time and a tag, never in a table cell
 and never at the start of a line.
 
-Times are seconds.  Screen times (a state's start and end, a row's start and end, a keyframe's tick) are
-floored to the even second of the 2 s tick grid; a state or row that lasts to the read end runs to it.
+Times are seconds.  Screen times (a state's start and end, a row's start and end, a keyframe's tick and
+a ``SPEAKING`` line) are floored to the even second of the 2 s tick grid; a row that lasts to the read end
+runs to it.  The states tile the time read, as S6 makes them: the first from 00:00:00, each to the next
+one's start, the last to the read end, so every line stands in the state on screen at its time.  Speech
+times (a ``SAID`` line and the speech ``NOTE`` lines) are floored to the second.
+
+A speech-only page (``picture_unread``: no picture track, or VP9 / AV1) has no state: each window is its title
+and then its lines, with no heading, and the index's Facts say why the picture was not read.
 """
 
 from __future__ import annotations
 
+import bisect
+import dataclasses
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -22,6 +30,7 @@ from datetime import datetime
 
 from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body
 from agentsync.convert.base import make_unit
+from agentsync.convert.naming import GATED_NOTE, HELD_BACK_NOTE, Naming, veto_note, voice_text
 from agentsync.convert.recording import MARK_BELOW as _MARK_BELOW
 from agentsync.convert.recording import WINDOW_MS as _WINDOW_MS
 from agentsync.convert.recording import Reading, Row, State
@@ -34,9 +43,19 @@ _MAX_LABEL = 60  # 3.3 rule 3
 _MIN_LABEL_LETTERS = 6
 _MAX_NAMES = 40  # 3.5, Names read on screen
 _LEFT_LISTED = 6  # S9 rule 3: when this many rows or fewer left the screen, each is a SCREEN- line too
+_MAX_QUIET = 20  # 3.5, Gaps and bounds: the stretches without speech listed
 
 # S9 rule 1: the order of lines at one time.
-_RANK = {"KEYFRAME": 0, "TILE": 1, "SCREEN": 2, "SCREEN-": 3, "SCREEN+": 3, "NOTE": 6}
+_RANK = {
+    "KEYFRAME": 0,
+    "TILE": 1,
+    "SCREEN": 2,
+    "SCREEN-": 3,
+    "SCREEN+": 3,
+    "SPEAKING": 4,
+    "SAID": 5,
+    "NOTE": 6,
+}
 _ROW_TAGS = frozenset({"SCREEN", "SCREEN+", "SCREEN-", "TILE"})
 
 # The fixed NOTE wordings the renderer adds itself (3.3 rule 5).
@@ -46,6 +65,10 @@ _CONTINUATION_NOTE = (
 _CARRY_OVER_NOTE = "{left} on-screen lines of s{state:03d} left the screen; {stayed} stayed"
 _SCREEN_LIMIT_NOTE = "screen text read to {at}; {later} later changes not read (limit)"
 _READ_LIMIT_NOTE = "recording read to {read} of {duration} (limit)"
+_UNRECOGNISED_NOTE = "speech detected, no words recognised until {until}"
+_SOUND_ENDS_NOTE = "no sound from here to the end of the recording"
+_UNDECODED_NOTE = "picture not read: {reason}; an H.264 copy reads it (for example yt-dlp -S vcodec:h264)"
+_NO_PICTURE_NOTE = "picture not read: the recording has no picture track"
 _LABEL_RULE_NOTE = (
     "a [policy] label rule is set; this recording's own label cannot be read on a Mac and was not checked"
 )
@@ -155,7 +178,7 @@ class _Line:
     key: tuple[object, ...]
 
     def order(self) -> tuple[int, int, tuple[object, ...]]:
-        return (self.at, _RANK[self.tag], self.key)
+        return (self.at, _RANK[self.tag.partition(" ")[0]], self.key)
 
     def render(self) -> str:
         return f"[{_clock(self.at)}] {self.tag}: {self.text}"
@@ -182,15 +205,18 @@ class _Window:
     keyframes: tuple[tuple[str, bytes], ...]
     body: str
     row_lines: int
+    said_lines: int
+    speaking_lines: int
 
 
 def _spans(reading: Reading, read_end: int) -> list[_Span]:
-    out = []
-    for state in sorted(reading.states, key=lambda s: (s.start_ms, s.number)):
-        start = _even(state.start_ms)
-        end = read_end if state.end_ms >= reading.read_ms else _even(state.end_ms)
-        out.append(_Span(state, start, max(end, start + 1)))
-    return out
+    """The states in time order, tiling ``[0, read_end)``: the first from 0, each to the next one's start."""
+    states = sorted(reading.states, key=lambda s: (s.start_ms, s.number))
+    if not states:
+        return []
+    starts = [0, *(_even(s.start_ms) for s in states[1:])]
+    ends = [*starts[1:], read_end]
+    return [_Span(s, a, max(b, a + 1)) for s, a, b in zip(states, starts, ends, strict=True)]
 
 
 def _screen_rows(reading: Reading) -> list[_ScreenRow]:
@@ -282,6 +308,34 @@ def _state_lines(
     return lines
 
 
+def _sound_lines(reading: Reading) -> list[_Line]:
+    """The ``SPEAKING``, ``SAID`` and speech ``NOTE`` lines of the whole recording, each at its own time; a
+    speech line is one line, at its first word (S9 rule 2).  Speech and labels are cleaned as picture text
+    is."""
+    out = [
+        _Line(_even(ms), "SPEAKING", text, (text,))
+        for ms, label in reading.speaking or ()
+        if (text := _clean(label))
+    ]
+    if reading.speech is None:
+        return out
+    said, vetoed = reading.speech.reading, set(reading.speech.vetoed)
+    noted: set[tuple[int, int]] = set()
+    for line in said.lines:
+        if text := _clean(line.text):
+            at = line.start_ms // 1000
+            out.append(_Line(at, f"SAID v{line.voice}", text, (line.start_ms, line.voice, text)))
+            if (line.voice, line.start_ms) in vetoed - noted:
+                noted.add((line.voice, line.start_ms))
+                out.append(_Line(at, "NOTE", veto_note(line.voice), (3, line.start_ms, line.voice)))
+    for gap_from, gap_to in said.unrecognised:
+        text = _UNRECOGNISED_NOTE.format(until=_clock(gap_to // 1000))
+        out.append(_Line(gap_from // 1000, "NOTE", text, (4, gap_from)))
+    if said.sound_ends_ms is not None:
+        out.append(_Line(said.sound_ends_ms // 1000, "NOTE", _SOUND_ENDS_NOTE, (5,)))
+    return out
+
+
 def _limit_lines(reading: Reading, last: bool, start: int, end: int) -> list[_Line]:
     """A window's limit NOTEs: the screen-text limit in the window that holds it and in every one after
     (at the window's start), the read limit in the last window (at its last second).  Each stands in the
@@ -323,6 +377,11 @@ def _windows(reading: Reading) -> list[_Window]:
         span.state.number: _state_lines(span, spans[i - 1] if i else None, rows, k1)
         for i, span in enumerate(spans)
     }
+    sound = _sound_lines(reading)
+    if spans:  # each line stands in the state on screen at its time (S9 rule 2)
+        starts = [s.start for s in spans]
+        for ln in sound:
+            lines_of[spans[max(bisect.bisect_right(starts, ln.at) - 1, 0)].state.number].append(ln)
     total = max(1, -(-reading.read_ms // (_WINDOW_S * 1000)))
     out = []
     for n in range(1, total + 1):
@@ -330,7 +389,10 @@ def _windows(reading: Reading) -> list[_Window]:
         on = tuple(s for s in spans if s.start < end and s.end > start)
         limits = _limit_lines(reading, n == total, start, end)
         blocks = [f"# Recording {_clock(start)}-{_clock(end)} · window {n} of {total}"]
-        row_lines = 0
+        shown: list[_Line] = []
+        if not spans:  # a speech-only page: the window's lines stand under its title, with no heading
+            shown = sorted((ln for ln in [*sound, *limits] if start <= ln.at < end), key=_Line.order)
+            blocks += ["\n".join(ln.render() for ln in shown)] if shown else []
         for span in on:
             own = [ln for ln in limits if span.start <= ln.at < span.end]
             lines = [ln for ln in [*lines_of[span.state.number], *own] if start <= ln.at < end]
@@ -344,7 +406,7 @@ def _windows(reading: Reading) -> list[_Window]:
                 )
                 lines.append(_Line(start, "NOTE", text, (0,)))
             lines.sort(key=_Line.order)
-            row_lines += sum(1 for ln in lines if ln.tag in _ROW_TAGS)
+            shown += lines
             blocks.append("\n".join([_heading(span), *(ln.render() for ln in lines)]))
         keyframes: dict[str, bytes] = {}
         for span in spans:
@@ -362,7 +424,9 @@ def _windows(reading: Reading) -> list[_Window]:
                 share_s=share,
                 keyframes=tuple(sorted(keyframes.items())),
                 body="\n\n".join(blocks) + "\n",
-                row_lines=row_lines,
+                row_lines=sum(1 for ln in shown if ln.tag in _ROW_TAGS),
+                said_lines=sum(1 for ln in shown if ln.tag.startswith("SAID ")),
+                speaking_lines=sum(1 for ln in shown if ln.tag == "SPEAKING"),
             )
         )
     return out
@@ -392,10 +456,79 @@ def _table(head: tuple[str, ...], rows: Iterable[tuple[object, ...]]) -> list[st
     return lines + ["| " + " | ".join(str(c) for c in row) + " |" for row in rows]
 
 
+def _picture_note(reason: str) -> str:
+    """The Facts ``NOTE`` of a speech-only page: no picture track, or a picture this Mac cannot decode."""
+    if "no picture" in reason.lower():
+        return _NO_PICTURE_NOTE
+    return _UNDECODED_NOTE.format(reason=_clean(reason) or "VP9 or AV1")
+
+
+def _ran(channel: str, identity: str | None, count: int) -> tuple[str, str, str, int]:
+    """A What ran row of a P3 channel: ``not run`` without an engine, else ``ran`` or ``none found``."""
+    if identity is None:
+        return (channel, "-", "not run", 0)
+    return (channel, _engine(identity), "ran" if count else "none found", count)
+
+
+def _voice_lines(reading: Reading) -> list[str]:
+    """The Voices block (3.5): the arithmetic table, a blank line (GFM ends a table there), then one ``VOICE``
+    line per voice at its first word, in voice order, the margin-band ``NOTE`` after a held-back voice and the
+    gate's ``NOTE`` once at the end.  A label is picture text, cleaned; one left empty names nothing."""
+    speech = reading.speech
+    if speech is None or not speech.reading.voices:
+        return []
+    voices = sorted(speech.reading.voices, key=lambda v: v.voice)
+    table = _table(
+        ("Voice", "Speaking time", "Lines", "First", "Last"),
+        [
+            (
+                f"v{v.voice}",
+                _clock(v.speaking_ms // 1000),
+                v.lines,
+                _clock(v.first_ms // 1000),
+                _clock(v.last_ms // 1000),
+            )
+            for v in voices
+        ],
+    )
+    namings = {n.number: n for n in speech.namings}
+    lines: list[str] = []
+    for v in voices:
+        naming = namings.get(v.voice) or Naming(v.voice, "unidentified", None, 0, 0, "0", 0, False, False)
+        label = _clean(naming.label) if naming.label is not None else None
+        if naming.form in {"named", "shared"} and not label:
+            naming = dataclasses.replace(naming, form="unidentified")
+        at = _clock(v.first_ms // 1000)
+        lines.append(f"[{at}] VOICE: {voice_text(dataclasses.replace(naming, label=label))}")
+        if naming.held_back:
+            lines.append(f"[{at}] NOTE: {HELD_BACK_NOTE}")
+    if any(n.gated for n in speech.namings):
+        lines.append(f"[00:00:00] NOTE: {GATED_NOTE}")
+    return [*table, "", *lines]
+
+
+def _speech_gaps(reading: Reading) -> list[str]:
+    """The speech lines of Gaps and bounds: where sound ends, the longest stretches without speech (at most
+    20, in time order, with ``showing a of b``) and why speech was not read."""
+    out = []
+    if reading.speech is not None:
+        said = reading.speech.reading
+        if said.sound_ends_ms is not None:
+            out.append(f"- sound ends at {_clock(said.sound_ends_ms // 1000)}")
+        quiet = sorted(sorted(said.quiet, key=lambda q: (q[0] - q[1], q[0]))[:_MAX_QUIET])
+        out += [f"- no speech from {_clock(a // 1000)} to {_clock(b // 1000)}" for a, b in quiet]
+        out += [f"showing {len(quiet)} of {len(said.quiet)}"] if quiet else []
+    if reading.no_speech is not None and (why := _clean(reading.no_speech)):
+        out.append(f"- speech not read: {why}")
+    return out
+
+
 def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -> str:
     duration = _clock(reading.duration_ms // 1000)
     states = list({s.state.number: s for w in windows for s in w.spans}.values())
     keyframes = sum(len(w.keyframes) for w in windows)
+    said = sum(w.said_lines for w in windows)
+    speaking = sum(w.speaking_lines for w in windows)
     blocks: list[list[str]] = [[f"# Meeting recording · {duration} · {len(windows)} windows"]]
 
     reason = _clean(reading.profile_reason)
@@ -405,6 +538,8 @@ def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -
         f"- container created: {_created(reading.created)}",
         f"- layout profile: {_clean(reading.profile) or 'generic'}{', ' + reason if reason else ''}",
     ]
+    if reading.picture_unread is not None:
+        facts.append(f"[00:00:00] NOTE: {_picture_note(reading.picture_unread)}")
     if reading.label_rule:
         facts.append(f"[00:00:00] NOTE: {_LABEL_RULE_NOTE}")
     blocks.append(["## Facts", *facts, "- languages read: en-US", f"- times: {_TIMES_FACT}"])
@@ -414,12 +549,14 @@ def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -
         blocks.append(["## Read from the first frame", *(f"[00:00:00] SCREEN: {_row_text(r)}" for r in card)])
 
     rows = len(reading.rows)
+    speech = reading.speech
+    voices = speech.reading.voices if speech is not None else ()
     ran = [
         ("screen text", _engine(reading.ocr_identity), "ran" if rows else "none found", rows),
         ("keyframes", _engine(reading.media_identity), "ran" if keyframes else "none found", keyframes),
-        ("speaker cue", "-", "not run", 0),
-        ("speech", "-", "not run", 0),
-        ("voices", "-", "not run", 0),
+        _ran("speaker cue", reading.cue_identity if reading.speaking is not None else None, speaking),
+        _ran("speech", speech.identity if speech is not None else None, said),
+        _ran("voices", speech.identity if speech is not None else None, len(voices)),
     ]
     blocks.append(["## What ran", *_table(("Channel", "Engine", "Status", "Count"), ran)])
     blocks.append(["## How to read", *_HOW_TO_READ])
@@ -451,10 +588,13 @@ def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -
     if names:
         shown = [f"[{_clock(_even(first))}] TILE: {text}" for first, text, _ in names[:_MAX_NAMES]]
         blocks.append(["## Names read on screen", *shown, f"showing {len(shown)} of {len(names)}"])
+    if voice_lines := _voice_lines(reading):
+        blocks.append(["## Voices", *voice_lines])
 
     marked = sum(1 for r in reading.rows if r.confidence < _LOW_CONFIDENCE)
     revisits = sum(1 for s in states if s.state.revisit_of is not None)
     gaps = [
+        *_speech_gaps(reading),
         f"- rows read at one tick only, not printed: {reading.unprinted_rows}",
         f"- rows marked [?]: {marked} of {rows}",
         f"- states without an image of their own (revisits): {revisits}",
@@ -495,6 +635,7 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
                 summary=(
                     f"Recording {span}; {len(w.spans)} screen states, {len(w.keyframes)} keyframes, "
                     f"{w.row_lines} on-screen lines"
+                    + (f", {w.said_lines} speech lines" if reading.speech is not None else "")
                 ),
                 body=body,
                 sidecars=tuple(sorted((*w.keyframes, *full))),
@@ -502,9 +643,13 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
         )
     states = len({s.state.number for w in windows for s in w.spans})
     keyframes = sum(len(w.keyframes) for w in windows)
+    speech = "speech not read"
+    if reading.speech is not None:
+        said = sum(w.said_lines for w in windows)
+        speech = f"{said} speech lines, {len(reading.speech.reading.voices)} voices"
     summary = (
         f"Meeting recording {_clock(reading.duration_ms // 1000)}, {reading.width}x{reading.height}; "
-        f"{len(windows)} five-minute windows; {states} screen states, {keyframes} keyframes; speech not read"
+        f"{len(windows)} five-minute windows; {states} screen states, {keyframes} keyframes; {speech}"
     )
     index = make_unit(
         unit_id="index",
