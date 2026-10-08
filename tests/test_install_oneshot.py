@@ -1056,10 +1056,13 @@ def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> 
     <path>, as agentsync setup-report shows it, also when the line was cut inside the list."""
     setup = Path(env["HOME"]) / "agent-context" / "setup"
     setup.mkdir(parents=True)
-    said = 'set exclude = ["~$*", "/Fabrikam Bids/", "/Plans/Tailspin [[]old]/"] in [[source]] id = \'one\''
+    said = (
+        'set exclude = ["~$*", "/Fabrikam Bids/", "/Plans/Tailspin [[]old]/"] in [[source]] id = "one" in '
+        "~/agent-context/sources.toml"
+    )
     (setup / "friction.md").write_text(
         f"Attempt: 2026-09-29T09:58:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
-        f"2026-09-29T10:00:00Z | step 2 | deviation | status said: {said} in sources.toml | -\n"
+        f"2026-09-29T10:00:00Z | step 2 | deviation | status said: {said} | -\n"
         '2026-09-29T10:00:01Z | step 2 | deviation | and then: set exclude = ["~$*", "/Fabrikam Bi\n',
         encoding="utf-8",
     )
@@ -1067,7 +1070,10 @@ def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> 
     assert cp.returncode == 0, cp.stderr
     assert f"report: {report_path(env)} (shell fallback: agentsync is not installed)" in cp.stdout
     text = report_path(env).read_text(encoding="utf-8")
-    assert "status said: set exclude = [<path>] in [[source]] id = 'one' in sources.toml | -\n" in text
+    assert (
+        'status said: set exclude = [<path>] in [[source]] id = "one" in ~/agent-context/sources.toml | -\n'
+        in text
+    )
     assert "and then: set exclude = [<path>]\n" in text
     assert "Fabrikam" not in text and "Tailspin" not in text
 

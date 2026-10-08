@@ -556,7 +556,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             waits.append(
                 f"{len(clear)} empty cloud folder(s) keep the listing of {src.id} incomplete (deletions "
                 "held; another sync does not clear it): if they are meant to be empty, "
-                f"{exclude_advice(src, clear)}"
+                f"{exclude_advice(src, clear, _shown(config.config_path))}"
             )
         if gone:
             waits.append(

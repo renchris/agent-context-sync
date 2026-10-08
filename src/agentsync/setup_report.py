@@ -4772,10 +4772,12 @@ def _eval_by_name(line: str, config: Config) -> str:
     makes of a path without spaces.  The draft baseline's wait names that folder by its path, and for
     :data:`_NEXT_PATH_RE` a path ends at its first space: of ``~/Client Alpha/kb docs/_eval`` it left
     ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
-    (``loop._shown``), before the paths without spaces are shortened."""
+    (``loop._shown``), before the paths without spaces are shortened.  The wait for empty cloud folders
+    names the config file by its path, and that one is replaced by its file name the same way."""
     from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-    return line.replace(loop._shown(expand(config.docs_repo) / loop._EVAL_DIR), loop._EVAL_DIR)
+    line = line.replace(loop._shown(expand(config.docs_repo) / loop._EVAL_DIR), loop._EVAL_DIR)
+    return line.replace(loop._shown(config.config_path), config.config_path.name)
 
 
 def _loop_line(r: _Run) -> str:
@@ -4784,9 +4786,10 @@ def _loop_line(r: _Run) -> str:
     ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and how many more there are,
     then the loop's ``note:`` lines about files still to be read again, when it has any (a second
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
-    was written before the one-time re-read finished. The one folder the config names in these lines, the
-    docs repo's ``_eval``, is shown by its name whatever its path (:func:`_eval_by_name`). Sets
-    ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before ``took``."""
+    was written before the one-time re-read finished. The two paths the config puts into these lines, the
+    docs repo's ``_eval`` and the config file, are shown by name whatever the path
+    (:func:`_eval_by_name`). Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once,
+    before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"

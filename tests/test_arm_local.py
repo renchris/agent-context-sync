@@ -423,16 +423,17 @@ def test_exclude_advice_is_a_line_that_clears_the_folders_it_names() -> None:
     cfg = _cfg(root, exclude=("Archive/", ".DS_Store"))
     empty = _walk(root, exclude=cfg.exclude)[1].empty_cloud_dirs
     assert len(empty) == 8
-    advice = al.exclude_advice(cfg, empty)
+    where = "~/agent-context/sources.toml"
+    advice = al.exclude_advice(cfg, empty, where)
     assert advice == (
         'set exclude = ["Archive/", "/Bids/", "/Empty 1/", "/Empty 2/", "/Empty 3/", "/Empty 4/"] in '
-        "[[source]] id = 'local-test' in sources.toml (+3 more: status names them once these are "
-        "excluded); an excluded folder is not mirrored if it later gains files"
+        '[[source]] id = "local-test" in ~/agent-context/sources.toml (+3 more: status names them once these '
+        "are excluded); an excluded folder is not mirrored if it later gains files"
     )
     # Pasted, round after round, the line empties the list: the stored folders the new exclude prunes drop
     # out before any walk (status names the next ones at once), and the walk has no unknown folder left.
     for _ in range(2):
-        advice = al.exclude_advice(cfg, al._unexcluded(cfg, empty))
+        advice = al.exclude_advice(cfg, al._unexcluded(cfg, empty), where)
         line = advice.removeprefix("set ").split(" in [[source]]")[0]
         cfg = _cfg(root, exclude=tuple(tomllib.loads(line)["exclude"]))
     assert al._unexcluded(cfg, empty) == []

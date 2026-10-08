@@ -2593,8 +2593,8 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     wait = (
         "WAITING ON YOU: 2 empty cloud folder(s) keep the listing of one incomplete (deletions held; another "
         'sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "/Fabrikam Bids/", '
-        "\"/Plans/Tailspin [[]old]/\"] in [[source]] id = 'one' in sources.toml; an excluded folder is not "
-        "mirrored if it later gains files"
+        '"/Plans/Tailspin [[]old]/"] in [[source]] id = "one" in ~/agent-context/sources.toml; an excluded '
+        "folder is not mirrored if it later gains files"
     )
     hooks = setup_report.ReportHooks(loop_next=lambda config: ["NEXT: session done", wait])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
@@ -2659,6 +2659,23 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
         "confirmed"
     ), line
     assert "Client" not in line and "kb docs" not in line and "/" not in line.split("; WAITING ON YOU: ")[1]
+
+    # The wait for empty cloud folders names the config file by its path (§16.36): its name, the same way.
+    spaced = docs.parent / "ctx" / "sources.toml"
+    spaced.parent.mkdir()
+    spaced.write_text(cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    where = loop._shown(load_config(spaced).config_path)
+    assert where == ("~/Client Alpha/ctx/sources.toml" if under_home else str(spaced))
+    hooks = setup_report.ReportHooks(
+        loop_next=lambda config: [
+            "NEXT: none",
+            f"WAITING ON YOU: {arm_local.exclude_advice(config.sources[0], ['Empty'], where)}",
+        ]
+    )
+    text, _red = setup_report.build_report(spaced, hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert " in sources.toml; an excluded folder is not mirrored" in line, line
+    assert "Client" not in line and "ctx" not in line
 
 
 @pytest.mark.usefixtures("clean_doctor")

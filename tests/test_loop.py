@@ -262,11 +262,15 @@ def test_an_os_refused_download_is_a_wait_until_a_later_sync_reads_it(
 
 def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path) -> None:
     """An empty folder in a OneDrive tree leaves every local walk incomplete, and no sync clears it: the
-    operator's wait, never rule 3 (it would loop)."""
+    operator's wait, never rule 3 (it would loop). The wait names the table as sources.toml writes it
+    (``id = "work"``, so a search for the printed text finds it) and the file by its path, with ``~`` under
+    the home folder (v10 rehearsal, 2026-10-08: it said ``id = 'work' in sources.toml``)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     (root / "Empty").mkdir(parents=True)
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
-    config = _setup(tmp_path, local_source_table("work", root))
+    config = _setup(Path.home() / "agent-context", local_source_table("work", root))
+    assert config.config_path == Path.home() / "agent-context" / "ctx" / "sources.toml"
+    assert 'id = "work"\n' in config.config_path.read_text(encoding="utf-8")
     paste = 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]'
     for _ in range(2):
         run_cycle(config, mode=None)
@@ -274,7 +278,8 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
             f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
             "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
             f"another sync does not clear it): if they are meant to be empty, set {paste} in [[source]] "
-            "id = 'work' in sources.toml; an excluded folder is not mirrored if it later gains files",
+            'id = "work" in ~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later '
+            "gains files",
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
@@ -283,7 +288,7 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
     assert _lines(config)[1] in state.splitlines(), "STATE.md and status give the same wait"
     # The names come from that walk: status lists no folder of the source, here not even a missing one.
     shutil.move(root, root.with_name("Work moved"))
-    assert f'"/Empty/"] in [[source]] id = {"work"!r}' in _lines(config)[1]
+    assert '"/Empty/"] in [[source]] id = "work" in ~/' in _lines(config)[1]
     shutil.move(root.with_name("Work moved"), root)
     # The line is ready to paste. With it in the source's table the wait is gone and the step is to sync;
     # that pass is complete.
@@ -321,8 +326,8 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
     assert waits == [
         "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
         'another sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "*.tmp", '
-        '".~lock.*#", "/Empty/"] in [[source]] id = \'work\' in sources.toml; an excluded folder is not '
-        "mirrored if it later gains files",
+        f'".~lock.*#", "/Empty/"] in [[source]] id = "work" in {config.config_path}; an excluded folder is '
+        "not mirrored if it later gains files",
         "WAITING ON YOU: 1 empty cloud folder(s) in work held 2 file(s) the mirror still has (the listing "
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder(s) from the cloud drive too, and later syncs take the "

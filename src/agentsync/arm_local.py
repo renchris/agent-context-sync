@@ -625,9 +625,11 @@ def _unexcluded(cfg: SourceConfig, dirs: Sequence[str]) -> list[str]:
     return [d for d in dirs if not pruned(d)]
 
 
-def exclude_advice(cfg: SourceConfig, empty: Sequence[str]) -> str:
+def exclude_advice(cfg: SourceConfig, empty: Sequence[str], where: str) -> str:
     """What to do about ``empty`` (zero-child cloud folders of the source, ``WalkStats.empty_cloud_dirs``):
-    a ready-to-paste ``exclude = [...]`` line for the source's table in sources.toml. The caller passes only
+    a ready-to-paste ``exclude = [...]`` line for the source's table in sources.toml. ``where`` is that file
+    as the line names it (``~/agent-context/sources.toml``), and the id is quoted as the file writes it, so a
+    search for the printed text finds the table. The caller passes only
     folders with no mirrored file below them: excluding a folder retires its pages. The line keeps the globs
     in force (the configured or default ``exclude``, without the always-excluded ones, which a hand-written
     list cannot drop) and adds the first five folders, each anchored at the root (``/<path>/``) with its glob
@@ -638,7 +640,7 @@ def exclude_advice(cfg: SourceConfig, empty: Sequence[str]) -> str:
     more = len(empty) - len(globs)
     rest = f" (+{more} more: status names them once these are excluded)" if more > 0 else ""
     return (
-        f"set exclude = [{listed}] in [[source]] id = {cfg.id!r} in sources.toml{rest}; an excluded folder "
+        f'set exclude = [{listed}] in [[source]] id = "{cfg.id}" in {where}{rest}; an excluded folder '
         "is not mirrored if it later gains files"
     )
 
