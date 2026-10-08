@@ -4973,9 +4973,10 @@ not change the outcome by itself):" list follows with the other deviation, promp
 prefix of `git diff HEAD` in that checkout; the older `commit=<sha>-dirty dirty <fp>` form is still read) are shown
 as `last install.sh run: commit <sha>-dirty tree <fp> (...)`. **Redaction (K9).** The login name is registered
 before the fuzzy full name, so a login that is the name run together (`janedoe` for "Jane Doe") is `<user>`; the
-residue check runs over the whole redacted report (`residue_by_section`) and lists its hits by section
-("Residue check: N capitalised word(s) next to a placeholder in this report (<section>: <words>; ...)"). **Installer
-output (K17).** The Installer section ends with install.sh's output copy, `install_out_path()` = `INSTALL_OUT_NAME`
+residue check runs over the whole redacted report (`residue_by_section`) and lists its hits by section ("Residue
+check: N capitalised or joined word(s) next to a placeholder in this report (<section>: <words>; ...)").
+**Installer output (K17).** The Installer section ends with install.sh's output copy,
+`install_out_path()` = `INSTALL_OUT_NAME`
 next to install.log (`~/agent-context/setup/install.out`): its last `INSTALL_OUT_TAIL` (60) lines, redacted, in a
 collapsed `<details>` block, and `instruction_counts` of the lines read (its last 64 KiB): `INSTRUCTION_KINDS`, each
 line counted once, `NEXT:` and `next:` at a line start, `fix:` anywhere, `run:` at a line start or after `(`. The
@@ -5035,7 +5036,10 @@ folder)". **Redaction (L6, L7).** `$TMPDIR` and its realpath are registered (aft
 inside it stays `~`) and any `/(private/)?var/folders/<x>/<y>` becomes `<tmp>` (legend "<tmp> this account's
 temporary folder"). The residue check ignores the fixed macOS path components (Users, Library, Application,
 Support, CloudStorage, Volumes, Applications), and `/Users/<user>/` (the login is `<user>`) is read as a home
-prefix like `~/`, so a SHADOW path such as `/Users/<user>/.local/bin/agentsync` is no hit.
+prefix like `~/`, so a SHADOW path such as `/Users/<user>/.local/bin/agentsync` is no hit. A word of any case
+joined to a placeholder by `-` or `_` with no space is a hit too (`abc-<folder-1>`: the leftover piece of a
+longer name; of `alpha-beta-<folder-1>` only `beta` is listed), hence "capitalised or joined" in the line; the
+`my` of `<org-N>-my.sharepoint.com` is ignored.
 **Doctor (L8, V3).** An expected warn (`expected_warn`) is shown without its `(fix: ...)` or install.sh note and
 ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs keep their fix. **Installer
 (V4).** A run whose `step=report` line follows its `end` line says the report step is logged after the run's end
@@ -5907,9 +5911,9 @@ before any friction line is read; a v7 step-1 error still needs a run started af
 started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
 printed link and the Summary's outcome are the same value.
 
-**setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised word(s)" counts the
-words as listed (a word found in two sections is listed and counted twice; it counted distinct words, so the
-number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
+**setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised or joined word(s)"
+counts the words as listed (a word found in two sections is listed and counted twice; it counted distinct words,
+so the number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
 before the `…`, never inside a word.
 
 **Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under

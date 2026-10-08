@@ -464,7 +464,10 @@ _PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
 _RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+)>"
 _RESIDUE_RE = re.compile(
     rf"{_RESIDUE_PLACEHOLDER}[ /_-]+([A-Z][\w&]*)|([A-Z][\w&]*)[ /_-]+(?={_RESIDUE_PLACEHOLDER})"
+    rf"|{_RESIDUE_PLACEHOLDER}[-_]([A-Za-z][\w&]*)|([A-Za-z][\w&]*)[-_](?={_RESIDUE_PLACEHOLDER})"
 )
+"""A capitalised word next to a placeholder, or a word of any case joined to one by ``-`` or ``_`` with no
+space (``abc-<folder-1>``: a leftover piece of a longer name; of ``alpha-beta-<folder-1>`` only ``beta``)."""
 _USER_HOME_RE = re.compile(r"(?<![\w.-])/Users/<user>/")  # a login's home in a redacted path: like ~/
 _PATH_COMPONENTS = frozenset(
     {"Users", "Library", "Application", "Support", "CloudStorage", "Volumes", "Applications"}
@@ -483,6 +486,7 @@ _RESIDUE_IGNORED = frozenset(
         "I",
         "In",
         "My",
+        "my",  # <org-N>-my.sharepoint.com
         "Of",
         "On",
         "OneDrive",
@@ -4984,13 +4988,14 @@ def _section(title: str, fn: Callable[[], list[str]]) -> list[str]:
 
 def residue(text: str) -> list[str]:
     """Capitalised words right next to a name, organisation, library, folder or source placeholder in
-    ``text`` (redacted text): what redaction may have missed (a project's second word, say). A login's home
+    ``text`` (redacted text), and words of any case joined to one by ``-`` or ``_``: what redaction may have
+    missed (a project's second word, an abbreviation in front of a folder's name). A login's home
     ``/Users/<user>/`` is a path prefix like ``~/`` (the folder after it is a path component, not a name's
     second word), and the fixed macOS path components (Users, Library, Application Support, ...) are no
     hit."""
     found: list[str] = []
     for m in _RESIDUE_RE.finditer(_USER_HOME_RE.sub("~/", text)):
-        word = m.group(1) or m.group(2)
+        word = m.group(1) or m.group(2) or m.group(3) or m.group(4)
         if word and word not in _RESIDUE_IGNORED and word not in _GENERIC_FOLDERS and word not in found:
             found.append(word)
     return found
@@ -5017,11 +5022,11 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
     legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     check = (
-        f"Residue check: {listed} capitalised word(s) next to a placeholder in this report ("
+        f"Residue check: {listed} capitalised or joined word(s) next to a placeholder in this report ("
         + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
         + "); check them."
         if hits
-        else "Residue check: no capitalised word next to a placeholder in this report."
+        else "Residue check: no capitalised or joined word next to a placeholder in this report."
     )
     return [
         "",

@@ -871,8 +871,8 @@ def test_redaction_variants_residue_and_pid(fake_mac: dict[str, Path], tmp_path:
         assert raw.lower() not in lower, f"{raw!r} leaked"
     red = section(text, "Redaction")
     assert (
-        "Residue check: 1 capitalised word(s) next to a placeholder in this report (Agent friction log: "
-        "Board); check them." in red
+        "Residue check: 1 capitalised or joined word(s) next to a placeholder in this report (Agent friction "
+        "log: Board); check them." in red
     ), "the whole report is checked, hits listed by section (K9)"
     assert "are template placeholders, not redactions" in red
     inst = section(text, "Installer")
@@ -1457,8 +1457,8 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "<folder-2> Roadmap failed" in section(text, "Recent errors")
     assert (
-        "Residue check: 1 capitalised word(s) next to a placeholder in this report (Recent errors: Roadmap); "
-        "check them." in section(text, "Redaction")
+        "Residue check: 1 capitalised or joined word(s) next to a placeholder in this report (Recent errors: "
+        "Roadmap); check them." in section(text, "Redaction")
     )
     assert setup_report.residue_by_section(
         "# t\n## A\n<folder-1> Alpha\n## B\nnone\n## C\nBeta <org-1>\n"
@@ -1470,8 +1470,8 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
         setup_report.Redactor(), [("A", ["Alpha", "Beta"]), ("C", ["Beta"])]
     )
     assert (
-        "Residue check: 3 capitalised word(s) next to a placeholder in this report (A: Alpha, Beta; C: Beta)"
-        in ("\n".join(twice))
+        "Residue check: 3 capitalised or joined word(s) next to a placeholder in this report (A: Alpha, "
+        "Beta; C: Beta)" in ("\n".join(twice))
     ), "the count is the number of words listed (field report 2026-10-06: 5 counted, 7 listed)"
     assert setup_report._shorten("word " * 60, 22) == "word word word word…", "never cut inside a word"
     assert setup_report._shorten("abcdefghij klmnopqrst uvwxyz", 12) == "abcdefghij…"
@@ -3308,7 +3308,7 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert "codesign wrote <tmp>/build.x and <tmp>/C/cache" in fr
     assert "abcdEFGH1234" not in text and "OtherAccount99" not in text
     red = section(text, "Redaction")
-    assert "Residue check: no capitalised word next to a placeholder in this report." in red
+    assert "Residue check: no capitalised or joined word next to a placeholder in this report." in red
     assert "<tmp> this account's temporary folder" in red
     assert setup_report.residue("/Users/<user>/Library/Application Support/<folder-1> Board <org-1>") == [
         "Board"
@@ -3316,6 +3316,12 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert setup_report.residue("/Users/<user>/Development/x and /Volumes/<folder-1>/Roadmap") == [
         "Roadmap"
     ], "a folder in the login's home is a path component; a folder below a redacted one is still checked"
+    assert setup_report.residue("abc-<folder-1> comms and <source-2>_xyz, alpha-beta-<org-1>") == [
+        "abc",
+        "xyz",
+        "beta",
+    ], "a word of any case joined by - or _ (field report 2026-10-07); of a compound, its last piece"
+    assert setup_report.residue("OneDrive-<org-1> at https://<org-1>-my.sharepoint.com, see <folder-1>") == []
 
 
 def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:
