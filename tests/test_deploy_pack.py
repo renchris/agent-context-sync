@@ -1124,6 +1124,7 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert "the `inbox` folder beside the docs repo (`~/agent-context/inbox` by default)" in readme
     assert other % "there" in readme
     assert "the inbox folders are" not in readme and "every sync keep" not in readme
+    assert "keeps the inbox" not in readme, "a sync does not recreate an inbox folder removed by hand"
     assert "never empty it by hand" in readme and "carry a sensitivity label" in readme
     assert readme.count("install-skill") == 1, "every sync writes the skill; only a 2026-10-01 note names it"
     deploy = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())

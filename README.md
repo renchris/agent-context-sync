@@ -78,9 +78,9 @@ or chat is read back to the newest message already seen.
    gap that one run does a lot of work, which is the point: everything that changed since the last session lands at
    once. It downloads at most 1 GiB or 5,000 online-only files per source per run, so on a Mac with mostly
    online-only files the mirror fills in over several runs. Each run rewrites the changed pages in `docs/mirror/`,
-   updates `INDEX.md` and `CHANGELOG/`, refreshes the citation map, marks stale subject pages, keeps the inbox,
-   writes the agentsync-docs skill (so an agent started in any folder knows the knowledge folder exists) and makes
-   one git commit.
+   updates `INDEX.md` and `CHANGELOG/`, refreshes the citation map, marks stale subject pages, writes the
+   agentsync-docs skill (so an agent started in any folder knows the knowledge folder exists) and makes one git
+   commit.
 3. The run ends with one `NEXT:` line, worked out from the docs repo's state: sync again, draft the baseline
    questions, run `~/.local/bin/agentsync curate` and write the pages it lists under `topics/<area>/`, or "session
    done". The agent does what it says and syncs again, until the `NEXT:` line itself says "session done". A
