@@ -3199,9 +3199,13 @@ def test_first_sync_prints_its_converted_and_deferred_line(
 
 STUB_TOOL_PYTHON = """#!/bin/bash
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
-[ -z "${STUB_OCR_ERR:-}" ] || printf '%s\\n' "$STUB_OCR_ERR" >&2
-[ -z "${STUB_OCR_OUT:-}" ] || printf '%s\\n' "$STUB_OCR_OUT"
-exit "${STUB_OCR_RC:-0}"
+case "$*" in
+*agentsync.convert.media*) err="${STUB_MEDIA_ERR:-}" out="${STUB_MEDIA_OUT:-}" rc="${STUB_MEDIA_RC:-0}" ;;
+*) err="${STUB_OCR_ERR:-}" out="${STUB_OCR_OUT:-}" rc="${STUB_OCR_RC:-0}" ;;
+esac
+[ -z "$err" ] || printf '%s\\n' "$err" >&2
+[ -z "$out" ] || printf '%s\\n' "$out"
+exit "$rc"
 """
 
 
@@ -3247,7 +3251,7 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
         assert one_next(cp)
         # -m: the build. The config step also asks this interpreter how many folders are synced (-c).
-        ran = [c for c in calls(env) if c.startswith("python -I -m ")]
+        ran = [c for c in calls(env) if c.startswith("python -I -m agentsync.convert.ocr")]
         if line == no_tools or not _have_git():  # nothing is tried, and the one line says why
             assert ran == [] and said(cp) == [no_tools]
             continue
@@ -3267,6 +3271,69 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     assert planned == ([f"[dry-run] {tool_py} -I -m agentsync.convert.ocr"] if _have_git() else []), (
         dry.stdout
     )
+    assert said(dry) == ([] if _have_git() else [no_tools])
+    assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
+
+
+def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a_line(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The media helper is built where the OCR helper is, right after it, by the same interpreter, on its own
+    line.  Whatever either build does, the run's exit status and its install.log steps are those of a run
+    without them.  Without developer tools nothing is tried and one line says so."""
+    home = Path(env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    no_tools = "media helper: not built (no Xcode or Command Line Tools)"
+
+    def run(**stub: str) -> tuple[subprocess.CompletedProcess[str], list[tuple[str, str, str, str]]]:
+        for leftover in (Path(env["STUB_LOG"]), cfg, home / "agent-context" / "setup" / "install.log"):
+            leftover.unlink(missing_ok=True)  # every run is a first run
+        cp = install_sh({**env, **stub}, str(wheel), "--source-local", str(folder))
+        return cp, steps(install_log(env))
+
+    def said(cp: subprocess.CompletedProcess[str]) -> list[str]:
+        assert "media helper" not in cp.stderr
+        return [ln for ln in cp.stdout.splitlines() if "media helper" in ln]
+
+    plain, plain_steps = run()  # the tool environment has no interpreter yet: nothing to run
+    assert said(plain) == ([] if _have_git() else [no_tools])
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+
+    ready = "media helper: ready (avfoundation, helper 1.0.0)"
+    off = "media helper: off ([convert] recordings = false)"
+    failed = "media helper: not built (swiftc did not build the media helper (exit 1): error: stub)"
+    ocr_failed = {"STUB_OCR_OUT": "OCR helper: not built (stub)", "STUB_OCR_RC": "1"}
+    crash = {"STUB_MEDIA_RC": "1", "STUB_MEDIA_ERR": "Traceback (most recent call last): stub"}
+    for stub, line in (
+        ({"STUB_MEDIA_OUT": ready, **ocr_failed}, ready),
+        ({"STUB_MEDIA_OUT": off}, off),
+        ({"STUB_MEDIA_OUT": failed + "\nsecond line", "STUB_MEDIA_RC": "1"}, failed),
+        (crash, "media helper: not built (the build did not run)"),
+        ({"STUB_MEDIA_OUT": ready, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
+    ):
+        cp, got = run(**stub)
+        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        assert one_next(cp)
+        ran = [c for c in calls(env) if c.startswith("python -I -m ")]
+        if line == no_tools or not _have_git():
+            assert ran == [] and said(cp) == [no_tools]
+            continue
+        assert ran == [
+            f"python -I -m agentsync.convert.ocr config={cfg}",
+            f"python -I -m agentsync.convert.media config={cfg}",
+        ], ran
+        assert said(cp) == [line]
+        assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
+        out = cp.stdout.splitlines()
+        assert out.index(line) == next(i for i, ln in enumerate(out) if "OCR helper" in ln) + 1
+    Path(env["STUB_LOG"]).unlink()
+    dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
+    planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert." in ln]
+    assert planned == (
+        [f"[dry-run] {tool_py} -I -m agentsync.convert.{m}" for m in ("ocr", "media")] if _have_git() else []
+    ), dry.stdout
     assert said(dry) == ([] if _have_git() else [no_tools])
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
 

@@ -102,7 +102,9 @@
 #      In the same step, with or without that option, when developer tools exist: the on-device OCR helper
 #      (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it). It
 #      prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
-#      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so
+#      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
+#      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
+#      "media helper: ..." line; [convert] recordings = false builds nothing)
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes
@@ -1714,18 +1716,24 @@ fi
 # is compiled, so status, a sync and the LaunchAgent never start a compiler. The module reads [convert] ocr
 # itself (off builds nothing) and prints one line. OCR is optional: a helper that does not build is that
 # line, never a failed step. Without developer tools nothing is tried, and the line says so: status sends the
-# reader here for the helper, and a run that said nothing would send them round again.
+# reader here for the helper, and a run that said nothing would send them round again. The media helper
+# (agentsync.convert.media, which reads recordings) is built the same way right after it, with its own line;
+# [convert] recordings = false builds nothing.
 # -I: with -m alone Python puts the folder this script is run from first on its import path, so a random.py
 # or types.py lying there would be imported in place of the standard library's.
 if have_devtools; then
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$TOOL_PY" -I -m agentsync.convert.ocr
+		run "$TOOL_PY" -I -m agentsync.convert.media
 	elif [ -x "$TOOL_PY" ]; then
 		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
+		media_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.media </dev/null 2>/dev/null | head -n 1)" || true
+		say "${media_line:-media helper: not built (the build did not run)}"
 	fi
 else
 	say "OCR helper: not built (no Xcode or Command Line Tools)"
+	say "media helper: not built (no Xcode or Command Line Tools)"
 fi
 step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
 if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then
