@@ -9841,9 +9841,18 @@ page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35
 
 **Rules.**
 
-- (lead: filled after the waves merge)
-
-<!-- slot: speech (agentsync.convert.speech) -->
+- **What is new.** Speech (S8: Parakeet words and community-1 voices through a pinned FluidAudio helper), the
+  speaker cue (S7: `SPEAKING` lines, `teams` only), voice naming (S8b: `VOICE` lines) and the `.vtt` transcript
+  converter `vtt-turns`. No command, flag, config key or environment variable is added; the installer builds one
+  more helper and doctor prints one more line (`speech: ...`, never a FAIL).
+- **Off until placed.** Speech stays off until the operator places both model folders in `<cache_dir>/speech/`
+  and they match the pinned digests; agentsync downloads no model. Speech is off whenever recordings are.
+- **Names.** A `VOICE` line names an account only through S8b's stream rule, and only for a layout in
+  `naming.CHECKED_PROFILES`, which is empty until the operator's listen (plan B.3 items 1 and 2): until then
+  every voice prints as shared audio, mixed or unidentified, with the gate `NOTE`. No voice vector is stored
+  anywhere.
+- **Wording settled.** A `VOICE` line keeps the 3.3 forms (`vN · shared audio of <label>, k voices`); the curated
+  People-table basis stays `voice N, on shared audio of <label>` (section 5 rule 4).
 
 **The speech engine** (`agentsync.convert.speech`, `src/agentsync/convert/speech.py`, helper source the SwiftPM
 package `src/agentsync/convert/speech_helper/` (`Package.swift`, `Sources/agentsync-speech/main.swift`), helper
@@ -9902,11 +9911,7 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   raised WARN `speech: could not be checked (<exception type>)`.
 - **Wiring.** `cycle._cycle_speech(config, media_engine)` asks `speech.engine` once a cycle, only beside a media
   engine, and `cycle._cycle_registry(..., *, speech=None)` passes it to `Registry.default(..., speech=None)`, which
-  hands it to `RecordingConverter(..., speech=None)` (stored as `_speech`; wave B reads it).
-
-<!-- end slot: speech -->
-
-<!-- slot: cue (agentsync.convert.cue; agentsync.convert.media additions) -->
+  hands it to `RecordingConverter(..., speech=None)` (stored as `_speech`).
 
 - **Media helper 1.1.0** (`agentsync.convert.media`, `media_frames.swift`; spec S7, S8 rule 1). Two verbs, as
   the fake of `tests/media_kit.py` answers them. `pills FILE --request REQ.json [--step-ms 2000]`: REQ is
@@ -9953,10 +9958,6 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   none, `A` is one line. `options()` carries `cue_revision`, `cue_lit_at`, `cue_widen_px` (`4,2`),
   `cue_dark_below` (600) and `cue_<profile>` per profile with a cue. Tests: `tests/test_cue.py`.
 
-<!-- end slot: cue -->
-
-<!-- slot: naming (agentsync.convert.naming) -->
-
 - `agentsync.convert.naming` (new, pure; spec S8b). `name_voices(voices, lit, *, profile, step_ms=2000)` takes the
   S8 voices as `Voice(number, spans)` (spans in ms, `start <= t < end`) and, per tick `k` at `k x step_ms`, the label
   texts S7 drew as speaking, and returns one frozen `Naming` per voice in number order: `number`, `form` (`named`,
@@ -9977,10 +9978,6 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   `identity()` is `n<NAMING_REVISION>` (`n1`); `options()` holds `P_MIN`, `N_MIN`, `S_MIN`, `STREAM_MIN`, `BAND`
   and `CHECKED_PROFILES` (comma-joined, sorted) under `naming_*` keys. The floors are never tuned down (rule 7).
   No voice vector reaches this module: it sees spans and label text only.
-
-<!-- end slot: naming -->
-
-<!-- slot: lines (agentsync.convert.speech_lines) -->
 
 - `agentsync.convert.speech_lines` is S8's arithmetic after the engine has run (spec S8 rules 2 and 5 to 7,
   3.5 Voices and Gaps and bounds): pure functions, no helper, no I/O. Inputs are typed by the protocols
@@ -10015,10 +10012,6 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   `unrecognised` is the caller's flagged gaps still empty after repair, sorted (the `speech detected, no
   words recognised until HH:MM:SS` NOTE); `quiet` is the gaps of 20 s or more in the union of segments and
   words inside `[0, sound_ends_ms)`, or the whole recording when sound never ends; `words` is the word count.
-
-<!-- end slot: lines -->
-
-<!-- slot: vtt (agentsync.convert.vtt) -->
 
 - **The transcript converter** (`agentsync.convert.vtt`, `src/agentsync/convert/vtt.py`; spec P3, section 5
   rule 5). `VttConverter` (`converter_id = "vtt-turns"`, `extensions = (".vtt",)`, version
@@ -10061,10 +10054,6 @@ class VttConverter:
     def outdated_key(self) -> str: ...
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
 ```
-
-<!-- end slot: vtt -->
-
-<!-- slot: recording (agentsync.convert.recording, agentsync.convert.recording_page) -->
 
 - `agentsync.convert.recording` gains `Speech` and the `Reading` fields `picture_unread`, `speech`,
   `no_speech`, `speaking` and `cue_identity` (defaults keep P1 pages), and `RecordingConverter` fills them
@@ -10116,6 +10105,10 @@ class VttConverter:
   <no_speech>`. Summaries: the index's `speech not read` becomes `N speech lines, k voices`, and a window's gains
   `, N speech lines`, when speech ran.
 
-<!-- end slot: recording -->
-
-**Tests.** (lead: filled after the waves merge)
+**Tests.** `tests/test_speech.py`, `tests/test_speech_lines.py`, `tests/test_cue.py`, `tests/test_voice_naming.py`
+(the S8b rules, the FluidAudio floor, no voice vector), `tests/test_convert_recording.py` (the wiring, the
+speech-only pages, `test_speech_is_deterministic_on_a_fixed_wav`), `tests/test_recording_page.py`,
+`tests/test_recording_grammar.py`, `tests/test_convert_formats.py` (the `.vtt` fixture), `tests/test_media.py`
+(`pills` and `audio`, with the real helper where developer tools exist), `tests/test_convert_file.py` (a speech
+failure keeps the screens), `tests/test_cycle.py` (a speech engine that appears reopens the record; a `.vtt` page
+of `text-plain` is read again once), `tests/test_ops_doctor.py`, `tests/test_install_oneshot.py`.
