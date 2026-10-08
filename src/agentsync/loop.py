@@ -57,6 +57,7 @@ from agentsync.cycle import (
     HYDRATION_REFUSED,
     LISTING_HELD,
     NETWORK_POLICY_FAILED,
+    RECORDING_PROGRESS_META,
     RECORDING_WAITS,
     _reread_records,
 )
@@ -92,9 +93,6 @@ _BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
 _STATUS_LINE = re.compile(r"^\s*status:\s*(\S+)\s*$")
 _STATUS_LINES_READ = 10  # the skill puts ``status:`` on the first line; a frontmatter fence may precede it
 _UNCONVERTED = frozenset({Verdict.CREATED, Verdict.MAYBE_CHANGED, Verdict.CHANGED, Verdict.DEFERRED})
-RECORDING_PROGRESS_META = "recording_progress:"
-"""Manifest meta ``recording_progress:<source id>:<stable id>``: ``"<done_ms> <total_ms>"`` of a recording the
-recording pass has started, "" (or no key) once its page is published or before any piece is read."""
 _MS_PER_MINUTE = 60_000
 _RECORDING_SUFFIXES = frozenset(RecordingConverter.extensions)
 
