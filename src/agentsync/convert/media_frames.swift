@@ -14,6 +14,10 @@
 //       {"frames":[{"tick","ms","file","width","height"}]}
 //   agentsync-media diff GRIDS --pairs A:B,... [--include R]... [--exclude R]... [--threshold 12]
 //       {"pairs":[{"a","b","changed","cells"}]}
+//   agentsync-media pills FILE --request REQ.json [--step-ms 2000]
+//       {"pills":[{"tick","values"}]}
+//   agentsync-media audio FILE --out DIR
+//       {"file":"audio.pcm","sample_rate":16000,"channels":1,"samples"}
 //
 // Tick k is media time k x step from the picture track's first frame; a recording has floor(duration / step)
 // + 1 ticks.  The frame of a tick is the one on display at that time (both tolerances zero; past the last
@@ -28,17 +32,29 @@
 // and rows likewise.  diff compares grids at their positions in the grid file: a cell counts as changed when
 // its luma differs by more than the threshold, under the mask (the included rectangles, the whole grid when
 // none, less the excluded ones; a cell is in a rectangle when any part of it is).
+//
+// pills (spec S7) reads REQ, [{"tick": k, "boxes": [[x, y, w, h], ...]}] in fractions of the frame, origin
+// top-left, and answers in its order with one value per box: the median of B - R over the box's pixels with
+// R + G + B < 600 (the lower one of an even count; 0 when none is that dark).  A box covers pixel columns
+// floor(x w) - 4 to ceil((x + w) w) + 3 and rows floor(y h) - 2 to ceil((y + h) h) + 1, clamped to the frame.
+// audio (spec S8 rule 1) decodes the first sound track to DIR/audio.pcm, 16 kHz mono 16-bit little-endian
+// PCM, read from the start and never by seeking; "samples" counts what it wrote.  It decodes to float at the
+// track's own rate and resamples itself (Resampler), which adds no difference between runs; Apple's AAC decoder
+// can still differ in the last bit on a long file, so audio.pcm may differ by 1 in a few samples per million.
 
 import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
 
-let helperVersion = "1.0.0"
+let helperVersion = "1.1.0"
 let engineName = "avfoundation"
 let gridW = 320
 let gridH = 180
 let jpegQuality = 0.7
+let pillWiden = (4, 2)  // pixels added left and right, above and below
+let pillDark = 600  // a pixel counts when R + G + B is below this
+let sampleRate = 16000
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("error: \(message)\n".utf8))
@@ -63,7 +79,7 @@ if arguments.contains("--version") {
 }
 let valued: Set<String> = [
     "--out", "--step-ms", "--first-tick", "--max-ticks", "--ticks", "--crop", "--crop-right", "--pairs",
-    "--include", "--exclude", "--threshold",
+    "--include", "--exclude", "--threshold", "--request",
 ]
 var found: [String: [String]] = [:]
 var plain: [String] = []
@@ -210,7 +226,8 @@ struct Frames {
 
 let batch = 16  // frames asked for at once: 16 decoded 1080p frames are about 130 MB
 
-func grid(_ image: CGImage) -> Data {
+/// ``body`` over ``image`` drawn as 8-bit RGBX in its own RGB colour space, the top row first.
+func withPixels<T>(_ image: CGImage, _ body: (UnsafePointer<UInt8>, Int, Int) -> T) -> T {
     let w = image.width
     let h = image.height
     let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpaceCreateDeviceRGB()
@@ -221,7 +238,12 @@ func grid(_ image: CGImage) -> Data {
         let base = context.data
     else { fail("the picture cannot be decoded") }
     context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-    let pixels = base.bindMemory(to: UInt8.self, capacity: w * h * 4)  // the top row first
+    return body(UnsafePointer(base.bindMemory(to: UInt8.self, capacity: w * h * 4)), w, h)
+}
+
+func grid(_ image: CGImage) -> Data { withPixels(image) { pixels, w, h in grid(pixels, w, h) } }
+
+func grid(_ pixels: UnsafePointer<UInt8>, _ w: Int, _ h: Int) -> Data {
     var out = Data(count: gridW * gridH)
     out.withUnsafeMutableBytes { raw in
         let cells = raw.bindMemory(to: UInt8.self)
@@ -244,6 +266,36 @@ func grid(_ image: CGImage) -> Data {
         }
     }
     return out
+}
+
+/// The median of B - R over the dark enough pixels of ``box`` (x, y, w, h fractions), widened and clamped.
+func pill(_ pixels: UnsafePointer<UInt8>, _ w: Int, _ h: Int, _ box: (Double, Double, Double, Double)) -> Int {
+    func clamp(_ v: Double, _ top: Int) -> Int { Int(max(0, min(Double(top), v))) }
+    let x0 = clamp((box.0 * Double(w)).rounded(.down) - Double(pillWiden.0), w)
+    let x1 = clamp(((box.0 + box.2) * Double(w)).rounded(.up) + Double(pillWiden.0), w)
+    let y0 = clamp((box.1 * Double(h)).rounded(.down) - Double(pillWiden.1), h)
+    let y1 = clamp(((box.1 + box.3) * Double(h)).rounded(.up) + Double(pillWiden.1), h)
+    var counts = [Int](repeating: 0, count: 511)  // B - R + 255
+    var n = 0
+    for y in y0..<max(y0, y1) {
+        var p = pixels + (y * w + x0) * 4
+        for _ in x0..<max(x0, x1) {
+            let r = Int(p[0])
+            let b = Int(p[2])
+            if r + Int(p[1]) + b < pillDark {
+                counts[b - r + 255] += 1
+                n += 1
+            }
+            p += 4
+        }
+    }
+    guard n > 0 else { return 0 }
+    var seen = 0
+    for (i, c) in counts.enumerated() {
+        seen += c
+        if seen > (n - 1) / 2 { return i - 255 }
+    }
+    return 0
 }
 
 func writeJPEG(_ image: CGImage, to url: URL) {
@@ -411,11 +463,180 @@ func diff() {
     emit(["pairs": pairs])
 }
 
+func pills() {
+    let r = openRecording(onlyFile())
+    let step = whole("--step-ms", 2000, atLeast: 1)
+    let count = tickCount(r, step)
+    guard let path = found["--request"]?.last, let data = FileManager.default.contents(atPath: path),
+        let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+    else { fail("--request needs a JSON list") }
+    var ticks: [Int] = []
+    var boxes: [[(Double, Double, Double, Double)]] = []
+    for item in items {
+        guard let k = item["tick"] as? Int, let list = item["boxes"] as? [[Double]],
+            list.allSatisfy({ $0.count == 4 && $0.allSatisfy(\.isFinite) })
+        else { fail("--request needs a tick and boxes of four numbers per item") }
+        guard 0 <= k && k < count else { fail("tick \(k) is past the end") }
+        ticks.append(k)
+        boxes.append(list.map { ($0[0], $0[1], $0[2], $0[3]) })
+    }
+    let source = Frames(r)
+    var answer: [[String: Any]] = []
+    for at in stride(from: 0, to: ticks.count, by: batch) {
+        let some = Array(at..<min(ticks.count, at + batch))
+        autoreleasepool {
+            for (i, image) in zip(some, source.at(some.map { ticks[$0] * step })) {
+                let values = withPixels(image) { pixels, w, h in boxes[i].map { pill(pixels, w, h, $0) } }
+                answer.append(["tick": ticks[i], "values": values])
+            }
+        }
+    }
+    emit(["pills": answer])
+}
+
+/// Mono samples at ``rate`` in, 16 kHz 16-bit samples out: a windowed-sinc low-pass (Blackman window, 16 zero
+/// crossings a side, cut at 0.47 of the lower rate) evaluated at each output time in Double, in a fixed order,
+/// so the chunks the samples arrive in change nothing.  AVFoundation's own converter is not used: under load it
+/// gave a second byte stream in 1 of 200 runs (float) and 2 of about 260 (16-bit), where its float decode at
+/// the track's own rate and channel count gave one in 232 of 232.
+final class Resampler {
+    let up: Int
+    let down: Int
+    let half: Int
+    let taps: [Double]  // up phases of 2 half + 1 taps, each phase summing to 1
+    var input: [Double] = []
+    var base = 0  // the index of input[0] in the whole track
+    var total = 0
+    var next = 0
+
+    init(rate: Int) {
+        func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+        let g = gcd(rate, sampleRate)
+        let up = sampleRate / g
+        let fc = 0.47 * Double(min(rate, sampleRate)) / Double(rate)  // cycles per input sample
+        let half = Int((8 / fc).rounded(.up))
+        let reach = Double(half + 1)
+        var table: [Double] = []
+        table.reserveCapacity(up * (2 * half + 1))
+        for phase in 0..<up {
+            let row = (-half...half).map { j -> Double in
+                let t = Double(j) - Double(phase) / Double(up)
+                let sinc = t == 0 ? 1 : sin(2 * Double.pi * fc * t) / (2 * Double.pi * fc * t)
+                return sinc * (0.42 + 0.5 * cos(Double.pi * t / reach) + 0.08 * cos(2 * Double.pi * t / reach))
+            }
+            let sum = row.reduce(0, +)
+            table.append(contentsOf: row.map { $0 / sum })
+        }
+        self.up = up
+        self.down = rate / g
+        self.half = half
+        self.taps = table
+    }
+
+    /// The output samples ``samples`` completes; with ``final``, the rest, the track's end padded with silence.
+    func push(_ samples: [Double], final: Bool = false) -> [Int16] {
+        input.append(contentsOf: samples)
+        total += samples.count
+        var out: [Int16] = []
+        let width = 2 * half + 1
+        input.withUnsafeBufferPointer { x in
+            taps.withUnsafeBufferPointer { h in
+                while true {
+                    let at = next * down
+                    let i = at / up
+                    if final ? at >= total * up : i + half >= base + x.count { break }
+                    let row = (at % up) * width
+                    let first = i - half - base
+                    var sum = 0.0
+                    for j in 0..<width where first + j >= 0 && first + j < x.count {
+                        sum += h[row + j] * x[first + j]
+                    }
+                    out.append(Int16(max(-32768, min(32767, (sum * 32768).rounded()))))
+                    next += 1
+                }
+            }
+        }
+        let keep = next * down / up - half  // no later output reaches before this sample
+        if keep - base > 1 << 16 {
+            input.removeFirst(keep - base)
+            base = keep
+        }
+        return out
+    }
+}
+
+func audio() {
+    let r = openRecording(onlyFile())
+    let out = outFolder()
+    guard let track = r.asset.tracks(withMediaType: .audio).first else { fail("the recording has no sound") }
+    guard let reader = try? AVAssetReader(asset: r.asset) else { fail("the sound cannot be decoded") }
+    let output = AVAssetReaderTrackOutput(
+        track: track,
+        outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
+        ])
+    output.alwaysCopiesSampleData = false
+    guard reader.canAdd(output) else { fail("the sound cannot be decoded") }
+    reader.add(output)
+    let file = out.appendingPathComponent("audio.pcm")
+    guard FileManager.default.createFile(atPath: file.path, contents: nil),
+        let handle = try? FileHandle(forWritingTo: file)
+    else { fail("cannot write the sound") }
+    func write(_ samples: [Int16]) {
+        let data = samples.map { $0.littleEndian }.withUnsafeBytes { Data($0) }
+        do { try handle.write(contentsOf: data) } catch { fail("cannot write the sound") }
+    }
+    guard reader.startReading() else { fail("the sound cannot be decoded") }
+    var resampler: Resampler?
+    var shape: (Int, Int)?  // rate, channels
+    var written = 0
+    while let buffer = output.copyNextSampleBuffer() {
+        guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+        guard let format = CMSampleBufferGetFormatDescription(buffer),
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
+            asbd.mSampleRate >= 1, asbd.mSampleRate == asbd.mSampleRate.rounded(), asbd.mChannelsPerFrame > 0
+        else { fail("the sound cannot be decoded") }
+        let now = (Int(asbd.mSampleRate), Int(asbd.mChannelsPerFrame))
+        if shape == nil {
+            shape = now
+            resampler = Resampler(rate: now.0)
+        }
+        guard let (_, channels) = shape, now == shape!, let resampler = resampler else {
+            fail("the sound changes its rate or channels")
+        }
+        let length = CMBlockBufferGetDataLength(block)
+        var floats = [Float](repeating: 0, count: length / 4)
+        let status = floats.withUnsafeMutableBytes { raw in
+            CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length / 4 * 4, destination: raw.baseAddress!)
+        }
+        guard status == kCMBlockBufferNoErr, length % (4 * channels) == 0 else { fail("the sound cannot be decoded") }
+        let mono = stride(from: 0, to: floats.count, by: channels).map { at -> Double in
+            var sum = 0.0
+            for c in 0..<channels { sum += Double(floats[at + c]) }
+            return sum / Double(channels)
+        }
+        let made = resampler.push(mono)
+        write(made)
+        written += made.count
+    }
+    guard reader.status == .completed else { fail("the sound cannot be decoded") }
+    if let resampler = resampler {
+        let made = resampler.push([], final: true)
+        write(made)
+        written += made.count
+    }
+    guard (try? handle.close()) != nil else { fail("cannot write the sound") }
+    emit(["file": "audio.pcm", "sample_rate": sampleRate, "channels": 1, "samples": written])
+}
+
 switch arguments.first ?? "" {
 case "info": info()
 case "scan": scan()
 case "frames": frames()
 case "diff": diff()
+case "pills": pills()
+case "audio": audio()
 default: fail("unknown command")
 }
 exit(0)
