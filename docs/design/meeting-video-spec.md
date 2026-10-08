@@ -441,7 +441,8 @@ These are in the experiment's grammar, with Whisper speech. In this spec's gramm
 ### 3.3 Line grammar of a window unit
 
 ```
-unit     = banner LF LF title LF LF 1*state [truncated LF] [footer]
+unit     = banner LF LF title LF LF (1*state / [speech]) [truncated LF] [footer]
+speech   = 1*(line LF) LF   ; a speech-only page (P3, C15): no heading anywhere, no picture tag
 banner   = the untrusted-content line (policy.UNTRUSTED_BANNER)
 title    = "# Recording " hms "-" hms " · window " 1*DIGIT " of " 1*DIGIT
 state    = heading LF *(line LF) LF
@@ -473,11 +474,11 @@ footer   = 1*("Sidecar file `" name "` sha256 " 64HEXDIG LF)
 
 Rules.
 
-1. Every non-blank line of a window unit is the banner, the title, a heading, a `line`, a footer line, or the one `[truncated: ...]` line of S9 rule 6. Nothing else. A test enforces it, and holds the index unit to the same rule with its own headings and count tables named (3.5).
+1. Every non-blank line of a window unit is the banner, the title, a heading, a `line`, a footer line, or the one `[truncated: ...]` line of S9 rule 6. Nothing else. A speech-only page (from P3, a recording whose picture is not read) has no heading anywhere: each window is its title, then its lines in one block with none of the picture tags (`KEYFRAME`, `TILE`, `SCREEN`, `SCREEN+`, `SCREEN-`, `SPEAKING`); a window in which nothing was said is its title alone. A test enforces it, and holds the index unit to the same rule with its own headings and count tables named (3.5).
 2. Times are media time from the first frame, zero-padded. Screen times are even seconds.
 3. `label` is the tallest content row of the state read at confidence 1.0 with six or more letters, top-most on a tie, cut at 60 characters; omitted when there is none. The top-most row was browser or app chrome in 67 of 88 states `[R bj:76-79]`. A `"` read on screen is printed `'`, so a label cannot close its own quotes.
 4. Text never starts a line, so nothing shown on a screen can form a heading, a speech line or another tag. A search anchored at `^\[` cannot match forged text.
-5. Fixed `NOTE` wordings: the continuation line and the carry-over count of S9; `fewer than 5 lines read in the content area; the keyframe is the full frame`; `layout not recognised; keyframes are full frames`; `a [policy] label rule is set; this recording's own label cannot be read on a Mac and was not checked` (index only, ruling 2); `name held back: a share inside the margin band` (index only, S8b); `names held back: this layout's names are not yet checked against a listen` (index only, S8b gate); `vN is not named on this line: its lit samples show another label` (S8b turn veto); `screen text read to HH:MM:SS; N later changes not read (limit)`; `recording read to 03:00:00 of HH:MM:SS (limit)`; `the picture changes at every sample without new text (a video or an animation); read every 10 s from here`; `speech detected, no words recognised until HH:MM:SS`; `no sound from here to the end of the recording`.
+5. Fixed `NOTE` wordings: the continuation line and the carry-over count of S9; `fewer than 5 lines read in the content area; the keyframe is the full frame`; `layout not recognised; keyframes are full frames`; `a [policy] label rule is set; this recording's own label cannot be read on a Mac and was not checked` (index only, ruling 2); `name held back: a share inside the margin band` (index only, S8b); `names held back: this layout's names are not yet checked against a listen` (index only, S8b gate); `picture not read: <reason>; an H.264 copy reads it (for example yt-dlp -S vcodec:h264)` and `picture not read: the recording has no picture track` (index only, under Facts at 00:00:00 of a speech-only page, C15); `vN is not named on this line: its lit samples show another label` (S8b turn veto); `screen text read to HH:MM:SS; N later changes not read (limit)`; `recording read to 03:00:00 of HH:MM:SS (limit)`; `the picture changes at every sample without new text (a video or an animation); read every 10 s from here`; `speech detected, no words recognised until HH:MM:SS`; `no sound from here to the end of the recording`.
 
 ### 3.4 Example: `02-t000500.md` of an invented Contoso meeting (40 lines)
 

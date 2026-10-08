@@ -10,7 +10,10 @@ What a window unit is held to:
 
 - 3.3 rule 1: every non-blank line is the banner, the title, a heading, a tagged line, a footer line or the
   one ``[truncated: ...]`` line, in that order; a state is its heading and the lines under it, with no blank
-  line inside it.  ``TERM`` and ``VOICE`` are index-only.
+  line inside it.  ``TERM`` and ``VOICE`` are index-only.  A speech-only page (P3, no picture read) has no
+  heading anywhere: its body is the title and then its lines in one block, none of them a picture line
+  (``KEYFRAME``, ``TILE``, ``SCREEN``, ``SCREEN+``, ``SCREEN-``, ``SPEAKING``); a window in which nothing
+  was said is its title alone.
 - 3.3 rule 2: times are ``HH:MM:SS``; the times of screen lines (``SCREEN``, ``SCREEN+``, ``SCREEN-``,
   ``TILE``, ``SPEAKING``, ``KEYFRAME``, ``TERM``) and of a state's start are even seconds.
 - 3.3 rule 3: a heading label is quoted, 1 to 60 characters with six or more letters, and holds no ``"``.
@@ -70,6 +73,7 @@ FOOTER_RE = re.compile(r"Sidecar file `([^`/\x00-\x1f\x7f]+)` sha256 [0-9a-f]{64
 KEYFRAME_RE = re.compile(rf"t(\d{{6}})\.jpg(?: of s(\d{{3}}) in window (\d+), ({HMS}))?")
 
 INDEX_ONLY_TAGS = frozenset({"TERM", "VOICE"})
+PICTURE_TAGS = frozenset({"KEYFRAME", "TILE", "SCREEN", "SCREEN+", "SCREEN-", "SPEAKING"})
 SCREEN_TIME_TAGS = frozenset({"SCREEN", "SCREEN+", "SCREEN-", "TILE", "SPEAKING", "KEYFRAME", "TERM"})
 RANK = {
     "KEYFRAME": 0,
@@ -107,6 +111,8 @@ INDEX_ONLY_NOTES = (
     ),
     re.compile(r"name held back: a share inside the margin band"),
     re.compile(r"names held back: this layout's names are not yet checked against a listen"),
+    re.compile(rf"picture not read: {TEXT}; an H\.264 copy reads it \(for example yt-dlp -S vcodec:h264\)"),
+    re.compile(r"picture not read: the recording has no picture track"),
 )
 VOICE_FORMS = (
     re.compile(
@@ -173,7 +179,8 @@ def window_errors(page: str) -> list[str]:
     errors: list[str] = []
     lines = page.split("\n")
     numbered = [(n, line) for n, line in enumerate(lines, 1) if line.strip()]
-    if len(numbered) < 3:
+    headless = not any(line.startswith("## ") for line in lines)  # a speech-only page
+    if len(numbered) < (2 if headless else 3):
         return ["a window unit is a banner, a title and at least one state"]
     (_, banner), (title_no, title) = numbered[0], numbered[1]
     if banner != UNTRUSTED_BANNER:
@@ -196,6 +203,7 @@ def window_errors(page: str) -> list[str]:
     keyframes: set[str] = set()
     footer: list[tuple[int, str]] = []
     truncated = 0
+    opened = False  # a speech-only page's one block of lines has begun
     last: tuple[int, int] = (-1, -1)
     for number, line in [(n_, x) for n_, x in enumerate(lines, 1)][title_no:]:
         where = f"line {number}"
@@ -206,7 +214,7 @@ def window_errors(page: str) -> list[str]:
             footer.append((number, line))
             continue
         if truncated or TRUNCATED_RE.fullmatch(line):
-            if not states:
+            if not states and not headless:
                 errors.append(f"{where}: [truncated: ...] comes after the states")
             if not TRUNCATED_RE.fullmatch(line):
                 errors.append(f"{where}: only a footer may follow the [truncated: ...] line: {line!r}")
@@ -246,9 +254,16 @@ def window_errors(page: str) -> list[str]:
             )
             continue
         if state is None:
-            errors.append(f"{where}: a tagged line belongs to the state above it, with no blank line between")
-            continue
+            if not headless or opened:
+                errors.append(
+                    f"{where}: a tagged line belongs to the state above it, with no blank line between"
+                )
+                continue
+            state = {"start": win_from, "end": win_to, "id": 0, "revisit": None, "line": number, "notes": 0}
+            opened = True
         at, tag, text = tagged[1], _tag(tagged[2]), tagged[3]
+        if headless and tag in PICTURE_TAGS:
+            errors.append(f"{where}: a speech-only window holds no {tag} line")
         t = seconds(at)
         errors += _line_errors(where, at, tag, text, index=False)
         if not win_from <= t < win_to:
@@ -268,9 +283,9 @@ def window_errors(page: str) -> list[str]:
             errors += _continuation_errors(where, t, cont, state, win_from)
             state["notes"] = int(state["notes"] or 0) + 1
 
-    if not states:
+    if not states and not headless:
         errors.append("a window unit holds at least one state")
-    elif int(states[0]["start"] or 0) < win_from and not states[0]["notes"]:
+    elif states and int(states[0]["start"] or 0) < win_from and not states[0]["notes"]:
         errors.append(f"line {states[0]['line']}: a state that began earlier carries the continuation NOTE")
     if truncated > 1:
         errors.append("a window has at most one [truncated: ...] line")
@@ -726,8 +741,86 @@ def test_the_hand_written_index_with_every_block_and_every_voice_form_is_grammat
 
 
 def test_a_page_rendered_with_the_banner_alone_still_needs_a_state() -> None:
+    assert window_errors(f"{UNTRUSTED_BANNER}\n") == [
+        "a window unit is a banner, a title and at least one state"
+    ]
+    # Its title alone is a speech-only window in which nothing was said: no heading anywhere on the page.
     page = f"{UNTRUSTED_BANNER}\n\n# Recording 00:00:00-00:05:00 · window 1 of 2\n"
-    assert window_errors(page) == ["a window unit is a banner, a title and at least one state"]
+    assert window_errors(page) == []
+
+
+# A speech-only page's window (P3): a VP9 or sound-only recording, its lines under the title, no heading.
+SPEECH_ONLY = f"""{UNTRUSTED_BANNER}
+
+# Recording 00:05:00-00:10:00 · window 2 of 3
+
+[00:05:06] SAID v2: {SAID_0506}
+[00:05:52] SAID v2: this is the sheet finance has, same one I mailed on Tuesday
+[00:05:52] NOTE: v2 is not named on this line: its lit samples show another label
+[00:08:21] SAID v1: finance has one point two four for Q3, is that what you are showing
+[00:08:40] NOTE: speech detected, no words recognised until 00:08:57
+[00:09:41] NOTE: no sound from here to the end of the recording
+"""
+
+
+def test_a_speech_only_window_is_its_title_and_its_lines() -> None:
+    assert window_errors(SPEECH_ONLY) == []
+
+
+SPEECH_ONLY_BREAKS = [
+    ("a picture line", "[00:08:21] SAID v1", "[00:08:20] SCREEN: Q3\n[00:08:21] SAID v1", "no SCREEN line"),
+    (
+        "a speaker cue line",
+        "[00:08:21] SAID v1",
+        "[00:08:20] SPEAKING: Luis Fe...\n[00:08:21] SAID v1",
+        "no SPEAKING",
+    ),
+    ("a blank line inside the block", "[00:08:21] SAID v1", "\n[00:08:21] SAID v1", "no blank line"),
+    ("a line outside the window", "[00:09:41] NOTE", "[00:10:01] NOTE", "outside the window"),
+    ("a line out of time order", "[00:08:21] SAID v1", "[00:05:01] SAID v1", "time order"),
+    (
+        "an index-only NOTE",
+        "[00:08:40] NOTE: speech detected, no words recognised until 00:08:57",
+        "[00:08:40] NOTE: picture not read: the recording has no picture track",
+        "index-only",
+    ),
+    (
+        "a heading among the lines",
+        "[00:08:21] SAID v1",
+        "\n## 00:08:20-00:09:00 · s001 · other\n[00:08:21] SAID v1",
+        "a tagged line belongs to the state above it",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "error"), [b[1:] for b in SPEECH_ONLY_BREAKS], ids=[b[0] for b in SPEECH_ONLY_BREAKS]
+)
+def test_a_speech_only_window_that_breaks_the_grammar_is_refused(old: str, new: str, error: str) -> None:
+    errors = window_errors(replace(SPEECH_ONLY, old, new))
+    assert any(error in e for e in errors), errors
+
+
+def test_a_line_above_the_first_heading_of_a_page_with_states_is_refused() -> None:
+    page = replace(EXAMPLE, "## 00:04:12", "[00:05:00] SAID v2: hm\n\n## 00:04:12")
+    assert any("belongs to the state above it" in e for e in window_errors(page))
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        "picture not read: recording's picture cannot be decoded on this Mac (VP9 or AV1); "
+        "an H.264 copy reads it (for example yt-dlp -S vcodec:h264)",
+        "picture not read: the recording has no picture track",
+    ],
+)
+def test_the_picture_not_read_notes_stand_in_the_index_only(note: str) -> None:
+    fact = "[00:00:00] NOTE: " + note
+    assert index_errors(replace(INDEX, f"[00:00:00] NOTE: {LABEL_NOTE}", fact)) == []
+    page = replace(
+        SPEECH_ONLY, "[00:09:41] NOTE: no sound", f"[00:09:41] NOTE: {note}\n[00:09:41] NOTE: no sound"
+    )
+    assert any("index-only" in e for e in window_errors(page))
 
 
 WINDOW_BREAKS = [
