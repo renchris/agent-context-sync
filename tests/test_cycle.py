@@ -41,6 +41,8 @@ from agentsync.convert import ocr
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import recording as recording_mod
+from agentsync.convert import text as text_mod
+from agentsync.convert import vtt as vtt_mod
 from agentsync.convert.base import estimate_tokens, rendered_sha256
 from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.pieces import PieceStore
@@ -2518,6 +2520,38 @@ def test_pages_the_field_build_of_ocr_wrote_are_read_again_once(
     assert len(reads(engine.helper)) == 2, "the image is read by the helper under this build's version"
     assert _reread_record(sample_config) == (True, [])
     assert run(sample_config).commit_sha is None and len(fetched) == 2
+
+
+def test_a_transcript_mirrored_as_plain_text_is_read_again_once_as_turns(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.vtt`` mirrored before ``vtt-turns`` existed is a ``text-plain`` page.  This build reads it again,
+    once, as timed turns, and its re-read record looks again though it said done.  ``text-plain``'s other
+    pages (the ``.txt``, the ``.csv``) are not read: ``replaces`` covers the suffixes of the converter that
+    replaces, only."""
+    vtt = "projects/sample.vtt"
+    with monkeypatch.context() as old:
+        old.setattr(
+            text_mod.PlainTextConverter, "extensions", (*text_mod.PlainTextConverter.extensions, ".vtt")
+        )
+        old.setattr(vtt_mod.VttConverter, "extensions", ())
+        old.setattr(vtt_mod.VttConverter, "replaces", ())
+        old.setattr(vtt_mod.VttConverter, "outdated_key", "")
+        assert run(sample_config).exit_code == 0
+        fm, body = _mirror_page(sample_config, vtt)
+        assert fm["converter"].startswith("text-plain@") and "```text\nWEBVTT" in body
+        assert run(sample_config).commit_sha is None and _reread_record(sample_config) == (True, [])
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.commit_sha is not None and fetched == [vtt]
+    assert again.sources[0].converted == 0, "the same bytes are no new conversion"
+    assert [c.path for c in again.changes] == [slug.mirror_rel_path(SID, vtt)]
+    fm, body = _mirror_page(sample_config, vtt)
+    assert fm["converter"].startswith("vtt-turns@1.0.0+")
+    assert "\n[00:00:07] SAID Sam Roe: Thanks, I will check them.\n" in body
+    assert _mirror_page(sample_config, "projects/sample.txt")[0]["converter"].startswith("text-plain@")
+    assert _reread_record(sample_config) == (True, [])
+    assert run(sample_config).commit_sha is None and fetched == [vtt], "no file is read a second time"
 
 
 @pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])

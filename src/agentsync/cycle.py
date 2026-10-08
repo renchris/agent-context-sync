@@ -364,6 +364,13 @@ def _outdated_rule(conv: Converter) -> Callable[[str, str | None], bool] | None:
     return rule if callable(rule) else None
 
 
+def _replaced(conv: Converter) -> tuple[str, ...]:
+    """The converter ids whose pages ``conv`` makes anew (its ``replaces``, looked for behind the registry's
+    guard): a page one of them made of a file ``conv`` now claims is read again once."""
+    replaces = getattr(getattr(conv, "inner", conv), "replaces", ())
+    return tuple(replaces) if isinstance(replaces, tuple) else ()
+
+
 @dataclass(slots=True)
 class _Rereads:
     """One source's re-read record for what this cycle looks for, in memory (``_REREAD_META``)."""
@@ -2416,8 +2423,9 @@ class _Cycle:
 
     def _lacks(self, name: str, result: ConversionResult) -> bool:
         """True when ``result`` is one this cycle's registry would read ``name`` again for: the file was
-        converted without something its converter has (past the OCR time, or after the engine failed).  For
-        a file only the engine reads, that result is the ``no converter`` refusal."""
+        converted without something its converter has (past the OCR time, or after the engine failed), or by
+        a converter the one claiming ``name`` now replaces.  For a file only the engine reads, that result is
+        the ``no converter`` refusal."""
         conv = self.registry.for_name(name)
         if conv is None:
             return False
@@ -2425,6 +2433,8 @@ class _Cycle:
             return (result.reason or "").startswith(NO_CONVERTER_PREFIX)
         if result.status not in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             return False
+        if result.converter_id in _replaced(conv):
+            return True
         if conv.converter_id != result.converter_id:
             return False
         rule = _outdated_rule(conv)
@@ -2435,8 +2445,9 @@ class _Cycle:
         self, source_id: str, *, recordings: bool = False
     ) -> list[tuple[str, str, str | None, str]]:
         """What to look for among ``source_id``'s files (``Manifest.reread_candidates``): each (converter
-        id, version, stub reason or None, suffix) a converter of this cycle's registry calls outdated, and
-        each ``no converter`` refusal of a suffix that has a converter now.
+        id, version, stub reason or None, suffix) a converter of this cycle's registry calls outdated or
+        replaces (for that converter's suffixes only), and each ``no converter`` refusal of a suffix that has
+        a converter now.
 
         The suffixes of the recording converter are left to the recording pass (spec S0 rule 4), which asks
         for them alone with ``recordings``."""
@@ -2453,7 +2464,8 @@ class _Cycle:
                 continue
             for conv in converters:
                 rule = _outdated_rule(conv)
-                if conv.converter_id == converter_id and rule is not None and rule(version, reason):
+                outdated = conv.converter_id == converter_id and rule is not None and rule(version, reason)
+                if outdated or converter_id in _replaced(conv):
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
         mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
         return sorted(mine, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
