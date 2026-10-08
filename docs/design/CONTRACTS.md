@@ -9320,13 +9320,34 @@ has not been seen on a Mac without Rosetta.
 | FAIL | Its fix now |
 |---|---|
 | `<group> — check crashed: <type>: <message>` (doctor's checks, one source's, and the integrator's in `cli._extra_checks`) | `agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, and no setup step clears it)`. `-v` does print it: `unfinished` logs the traceback at info level (doctor's guards logged it at debug level, the integrator's not at all) |
+| `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again (if the line stays, report it: agentsync status -v prints where the check stopped)`; with no path it starts `run again (...` |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
+| `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
 | `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = '<id>', or sign in to the sync client` |
 | `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
 | a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
 
 A crash still reads `check crashed: <type>: <message>`. Nothing on the Mac fixes a fault in agentsync, so
 its fix is the command that shows where it is, and the words say to report it.
+
+**An operating-system error is not a crash.** As first written, every exception but a timeout got the crash
+line, whose fix says "a fault in agentsync to report, and no setup step clears it". That is false of an
+`OSError`: the Mac's state causes it, and the person or a later run often clears it. Under install.sh the
+line stopped the run and told the agent nothing could be done. Two changes:
+
+- `unfinished` gives an `OSError` the two lines in the table above (`_os_error`). The path is the error's
+  own (`exc.filename`); `-v` prints the traceback for it as for a crash. The fix allows one more run and
+  then says to report, so it does not loop either.
+- The route such an error took in the review is closed where it was. `_check_local_source` read the
+  sentinel with `lstat` and caught only `FileNotFoundError` and `PermissionError`. With `sentinel = ".keep"`
+  on a source whose path is a file (`NotADirectoryError`), or on a cloud folder whose sync app stopped
+  answering (`EIO`, `ETIMEDOUT`), the error left the check, and the per-source guard replaced the source's
+  lines with one `source.<id> — check crashed: ...`. The `.listable` line, whose fix does clear the first
+  case (`point [[source]] id = '<id>' path at a folder`), was lost with them. The sentinel read now ends in
+  `except OSError`, with the listable line's Finder fix. The read after it, which decides whether the volume
+  line says the folder `is missing`, had the same hole: `Path.exists` raises an I/O error on Python 3.11 to
+  3.13 and reads it as "missing" from 3.14. `_is_missing` answers yes only for "no such file" and "not a
+  directory", so a folder that cannot be read goes on to the volume read, which reports what it finds.
 
 **A `launchd.*` FAIL keeps its fix while the agent step is pending** (amends the 2026-09-30 amendment in the
 `agentsync.ops.doctor` section). `_agent_step_pending` replaced the fix of every failed `launchd.*` line with
@@ -9347,7 +9368,11 @@ still ran; a pandoc and a git that never answer, twice under install.sh: the sam
 names the check's own fix and git's says to report it, and neither says "no fault" or "nothing needs
 changing"; the check's 60 s; git, `git ls-files`, codesign and launchctl out of time; a timeout behind a
 probe in one source, in a group and in the integrator's checks; a crash's fix, which parses, and
-`status -v` printing both tracebacks; git and pandoc that cannot be started, and errno 86; the four lines
+`status -v` printing both tracebacks; an I/O error with a path and a network error without one that get
+past their checks: both lines, their fixes, no "crashed", and both tracebacks under `-v`; a source whose
+path is a file and a cloud folder where every read times out, each with a sentinel: a listable, a sentinel
+and a volume line with their fixes and no line for the whole source; git and pandoc that cannot be started,
+and errno 86; the four lines
 that named no fix; a `launchd.*` FAIL with the agent step pending; the guard itself, on a made-up check with
 no fix), `tests/test_install_oneshot.py` (the stub's `[FAIL]` lines carry a fix as the real ones do).
 

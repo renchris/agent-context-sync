@@ -443,6 +443,44 @@ def test_a_check_that_crashes_names_the_command_that_prints_its_traceback(
         assert "Traceback (most recent call last)" in said.err and f"raise {error}" in said.err, said.err
 
 
+def test_an_operating_system_error_is_no_crash_and_its_fix_names_the_path(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review of the v9 rehearsal fixes (2026-10-07): the crash fix says "a fault in agentsync to report,
+    and no setup step clears it", and every exception got it, an operating-system error too, which the
+    person or a later run often does clear. One that gets past its check now reads ``could not read
+    <path>: <reason>``; its fix names the path and says to run again, then to report a line that stays.
+    ``-v`` still prints where the check stopped. An error with no path keeps its type and the same fix."""
+    seen: list[Path] = []
+
+    def no_disk(p: Path) -> int:
+        seen.append(p)
+        raise OSError(errno.EIO, "Input/output error", str(p))
+
+    def no_network(config: Config) -> list[CheckResult]:
+        raise ConnectionResetError(errno.ECONNRESET, "Connection reset by peer")
+
+    monkeypatch.setattr(doctor, "_disk_free", no_disk)
+    monkeypatch.setattr(cli, "_policy_check", no_network)
+    stays = "if the line stays, report it: agentsync status -v prints where the check stopped"
+    disk = by_name(run_checks(sample_config))["disk"]
+    assert (disk.ok, disk.severity) == (False, Severity.ERROR)
+    assert disk.detail == f"could not read {seen[0]}: Input/output error"
+    assert disk.fix == f"check that {seen[0]} is there and can be opened, then run again ({stays})"
+    policy = by_name(cli._extra_checks(sample_config, offline=True))["policy"]
+    assert policy.detail == "stopped on a system error: ConnectionResetError: Connection reset by peer"
+    assert policy.fix == f"run again ({stays})"
+    for line in (disk, policy):
+        assert "crashed" not in line.detail and "no setup step" not in (line.fix or "")
+
+    capsys.readouterr()
+    rc = cli.main(["status", "-v", "--config", str(sample_config.config_path)])
+    said = capsys.readouterr()
+    assert rc == cli.EXIT_FAILED and f"(fix: {disk.fix})" in said.out
+    for error in ("OSError(errno.EIO", "ConnectionResetError(errno.ECONNRESET"):
+        assert "Traceback (most recent call last)" in said.err and f"raise {error}" in said.err, said.err
+
+
 def test_a_git_or_pandoc_that_cannot_be_started_keeps_its_own_fix(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -708,6 +746,66 @@ def test_source_sentinel_missing(sample_config: Config) -> None:
         "source.local-fixture.sentinel"
     ]
     assert not r.ok and r.severity is Severity.ERROR and "incomplete" in r.detail
+
+
+def test_a_sentinel_the_system_will_not_read_is_its_own_line(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Review of the v9 rehearsal fixes (2026-10-07): the sentinel read knew two answers, "missing" and
+    "not permitted". Any other one left the check, and the source's lines became a single ``check crashed``
+    whose fix said no setup step clears it; the listable line, with the fix that does, went with them. A
+    source whose path is a file, and a cloud folder whose sync app stopped answering, now get a line per
+    part, each with a fix that names the folder."""
+    afile = tmp_path / "afile"
+    afile.write_text("not a folder\n", encoding="utf-8")
+    src = dataclasses.replace(sample_config.sources[0], path=afile, sentinel=".keep")
+    r = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))
+    assert "source.local-fixture" not in r, "no one line for the whole source: each part answered"
+    listable = r["source.local-fixture.listable"]
+    assert listable.detail == f"{afile} is not a directory"
+    assert listable.fix == "point [[source]] id = 'local-fixture' path at a folder"
+    sentinel = r["source.local-fixture.sentinel"]
+    assert (sentinel.ok, sentinel.severity) == (False, Severity.ERROR)
+    assert sentinel.detail == f"{afile / '.keep'}: Not a directory"
+    assert sentinel.fix == f"check that {afile} opens in Finder"
+    assert r["source.local-fixture.volume"].ok, "the file is there: its volume is read"
+
+    cfg, cloud = _cloud(sample_config)
+    cfg = dataclasses.replace(
+        cfg, sources=(cfg.sources[0], dataclasses.replace(cfg.sources[1], sentinel=".keep"))
+    )
+
+    def dead(real: Callable[..., os.stat_result]) -> Callable[..., os.stat_result]:
+        def read(self: Path, **kwargs: bool) -> os.stat_result:
+            if self == cloud or cloud in self.parents:
+                raise OSError(errno.ETIMEDOUT, "Operation timed out", str(self))
+            return real(self, **kwargs)
+
+        return read
+
+    def no_answer(p: Path) -> str:
+        raise OSError(errno.ETIMEDOUT, "Operation timed out", str(p))
+
+    real_first_entry = doctor._first_entry
+    monkeypatch.setattr(Path, "stat", dead(Path.stat))
+    monkeypatch.setattr(Path, "lstat", dead(Path.lstat))
+    monkeypatch.setattr(doctor, "_first_entry", lambda p: no_answer(p) if p == cloud else real_first_entry(p))
+    monkeypatch.setattr(doctor, "_volume_uuid", no_answer)
+    r = by_name(run_checks(cfg))
+    assert "source.onedrive" not in r
+    look = f"check that {cloud} opens in Finder and that its sync app is running and signed in"
+    assert (r["source.onedrive.listable"].detail, r["source.onedrive.listable"].fix) == (
+        f"{cloud}: Operation timed out",
+        look,
+    )
+    assert (r["source.onedrive.sentinel"].detail, r["source.onedrive.sentinel"].fix) == (
+        f"{cloud / '.keep'}: Operation timed out",
+        look,
+    )
+    volume = r["source.onedrive.volume"]
+    assert "is missing" not in volume.detail, "a folder that cannot be read is not one that is gone"
+    assert volume.detail.startswith(f"File Provider root UUID unreadable for {cloud}: ")
+    assert volume.fix == "check the volume is mounted (diskutil info <mount>)"
 
 
 def test_cloud_source_without_sentinel_and_tcc_note(sample_config: Config) -> None:

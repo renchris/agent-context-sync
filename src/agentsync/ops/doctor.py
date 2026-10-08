@@ -89,6 +89,7 @@ _OUT_OF_TIME = "the check ran out of time, so it could not say whether anything 
 _STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
 
 # A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
+# An operating-system error is not that: the Mac's state causes it and can clear it (see _os_error).
 _CRASH_FIX = (
     "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
     "and no setup step clears it)"
@@ -233,6 +234,18 @@ def _first_entry(path: Path) -> str | None:
     with os.scandir(path) as it:
         entry = next(it, None)
     return None if entry is None else entry.name
+
+
+def _is_missing(path: Path) -> bool:
+    """Whether ``path`` is known to be gone.  A read that fails any other way (an I/O error, a timeout) is
+    not that answer: ``Path.exists`` raises it on Python 3.11 to 3.13 and reads it as "missing" from 3.14."""
+    try:
+        path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except OSError:
+        return False
+    return False
 
 
 def _disk_free(path: Path) -> int:
@@ -422,13 +435,33 @@ def _timed_out(
     return _bad(name, f"{detail} ({why})" if why else detail, severity, fix=_again_fix(fallback))
 
 
+def _os_error(name: str, exc: OSError, severity: Severity) -> CheckResult:
+    """A check that stopped on an operating-system error none of its own rules caught: a folder that is a
+    file, an I/O error, a sync app or a network that stopped answering.  That is the system's answer, and
+    the person or a later run often clears it, so it is not called a crash: the line names the path the
+    error is about, when it has one, and its fix says to look there and run again, then to report a line
+    that stays."""
+    reason = exc.strerror or str(exc) or type(exc).__name__
+    stays = "if the line stays, report it: agentsync status -v prints where the check stopped"
+    if isinstance(exc.filename, str | bytes | os.PathLike):
+        path = os.fsdecode(exc.filename)
+        fix = f"check that {path} is there and can be opened, then run again ({stays})"
+        return _bad(name, f"could not read {path}: {reason}", severity, fix=fix)
+    detail = f"stopped on a system error: {type(exc).__name__}: {reason}"
+    return _bad(name, detail, severity, fix=f"run again ({stays})")
+
+
 def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -> CheckResult:
     """The result of a check that raised instead of answering, so no line of ``status`` lacks what to do
-    next: a ``subprocess.TimeoutExpired`` is :func:`_timed_out`; anything else is ``check crashed: <type>:
-    <message>`` with the fix that prints its traceback and says to report it.  The traceback is logged here,
-    at info level (``-v``), so that fix holds for every caller."""
+    next: a ``subprocess.TimeoutExpired`` is :func:`_timed_out`; an ``OSError`` is :func:`_os_error`
+    (``could not read <path>: <reason>``); anything else is ``check crashed: <type>: <message>`` with the
+    fix that prints its traceback and says to report it.  The traceback is logged here, at info level
+    (``-v``), so that both of those fixes hold for every caller."""
     if isinstance(exc, subprocess.TimeoutExpired):
         return _timed_out(name, exc, severity)
+    if isinstance(exc, OSError):
+        log.info("doctor: check %s stopped on a system error", name, exc_info=exc)
+        return _os_error(name, exc, severity)
     log.info("doctor: check %s crashed", name, exc_info=exc)
     return _bad(name, f"check crashed: {type(exc).__name__}: {exc}", severity, fix=_CRASH_FIX)
 
@@ -717,6 +750,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     root = expand(src.path)
     cloud = is_cloud_path(root)
     missing_fix = f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client"
+    # An error with no rule of its own (an I/O error, a sync app that stopped answering) is the person's to
+    # look at, so its fix says where: for the listing, and for the sentinel read below.
+    sync_app = " and that its sync app is running and signed in" if cloud else ""
+    look_fix = f"check that {root} opens in Finder{sync_app}"
     out: list[CheckResult] = []
     listed = False
     try:
@@ -775,11 +812,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         else:
             out.append(_bad(f"{base}.listable", f"{root}: permission denied", fix=f"chmod u+rx '{root}'"))
     except OSError as exc:
-        # An error with no rule of its own (an I/O error, a sync app that stopped answering): the person's
-        # to look at, so the fix says where.
-        sync_app = " and that its sync app is running and signed in" if cloud else ""
-        fix = f"check that {root} opens in Finder{sync_app}"
-        out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}", fix=fix))
+        out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}", fix=look_fix))
 
     if src.sentinel:
         target = root / src.sentinel
@@ -796,6 +829,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             )
         except PermissionError:
             out.append(_bad(f"{base}.sentinel", f"{target}: not permitted (TCC)", fix=_fda_fix(image)))
+        except OSError as exc:
+            # Any other answer (the path is a file, an I/O error, a sync app that stopped answering) is this
+            # line's own: leaving the check with it cost the source its other lines and their fixes.
+            out.append(_bad(f"{base}.sentinel", f"{target}: {exc.strerror or exc}", fix=look_fix))
     elif cloud:
         # add-source writes the sentinel as a commented recommendation, and the walk already holds deletions
         # for a cloud folder it cannot list or finds empty: optional, so not a warn to chase.
@@ -810,7 +847,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         out.append(_ok(f"{base}.sentinel", "no sentinel configured"))
 
     kind = "File Provider root" if cloud else "volume"
-    if not listed and not root.exists():
+    if not listed and _is_missing(root):
         out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {root} is missing", fix=missing_fix))
         return out
     try:

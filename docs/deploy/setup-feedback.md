@@ -381,6 +381,15 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
   `agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.
+- An operating-system error is not a crash. One that gets past its check reads
+  `could not read <path>: <reason>` (or `stopped on a system error: <type>: <reason>` when it names no
+  path), and its fix is `check that <path> is there and can be opened, then run again (if the line stays,
+  report it: agentsync status -v prints where the check stopped)`. A folder's sentinel that cannot be read
+  for a reason other than "missing" or "not permitted" is its own `source.<id>.sentinel` line, with the
+  fix of the listable line (`check that <folder> opens in Finder`, and for a cloud folder `and that its
+  sync app is running and signed in`). Before, a source whose path is a file, or a cloud folder whose sync
+  app stopped answering, was one `source.<id> — check crashed` line that said no setup step clears it, and
+  the listable line with the real fix was not printed.
 
 Triage:
 
@@ -399,6 +408,9 @@ Triage:
 - `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac without Rosetta. Its
   fix line names both ways out, and installing Rosetta is IT's step on a managed Mac.
 - A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
+- A `could not read <path>` line is the Mac's state first: a path that is not what the config says it is, a
+  disk or a sync app that stopped answering. The same line in a second run is a check with a rule missing:
+  an agentsync code fix too, and the traceback says which read.
 
 ### The evidence parts
 
