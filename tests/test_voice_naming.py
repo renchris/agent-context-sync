@@ -1,17 +1,31 @@
-"""Voice naming S8b (spec S8b, section 5, C3 to C7): the stream rule, the turn veto, the margin band, the floors,
-and what the speech engine may never store or use (a voice vector, a FluidAudio build older than 04e363c)."""
+"""Voice naming S8b (spec S8b, section 5, C3 to C7): the stream rule, the turn veto, the margin band and the
+floors; and what the speech engine may never store or use (a voice vector, a FluidAudio build older than
+04e363c)."""
 
 from __future__ import annotations
 
-# --- S8b rules: agentsync.convert.naming (teammate: naming) -----------------------------------------------------
+import json
+import logging
 import random
+import re
+import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 import pytest
 
-from agentsync.convert import naming
+from agentsync.config import Config, ConvertConfig
+from agentsync.convert import naming, ocr, speech
 from agentsync.convert.naming import Naming, Voice, name_voices, vetoed, voice_text
+from agentsync.convert.speech import SpeechError
+from agentsync.ops import doctor
+from agentsync.ops.doctor import Severity
+from speech_kit import fake_speech, pcm, place_models
+from test_ocr import script
 from test_recording_grammar import INDEX_ONLY_NOTES, VOICE_FORMS, WINDOW_NOTES
+from test_speech import SWIFT_OK, git_answering
+
+# --- S8b rules: agentsync.convert.naming
 
 STEP = 2000
 ROOM = "Contoso Room 4"
@@ -193,18 +207,107 @@ def test_every_voice_line_is_one_of_the_grammars_four_forms(checked: str) -> Non
         assert any(p.fullmatch(text) for p in VOICE_FORMS), text
 
 
-# --- end S8b rules ---------------------------------------------------------------------------------------------
+# --- the pin and the privacy rule: agentsync.convert.speech
+
+_OLD_COMMIT = "1111111111111111111111111111111111111111"
+_VECTOR = [0.0362737, -0.0928828, 0.0461224]  # what a WeSpeaker embedding looks like, made up
 
 
+def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sample_config: Config
+) -> None:
+    """C3: the build refuses a FluidAudio checkout that does not descend from 04e363c and leaves the reason
+    for probe; a helper built from any commit but the verified one is ``failed`` in doctor, a WARN naming
+    04e363c, never a FAIL."""
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    tools = tmp_path / "tools"
+    (tools / "Developer").mkdir(parents=True)
+    script(tools / "xcode-select", f'echo "{tools}/Developer"')
+    script(tools / "xcrun", f'echo "{tools}/$2"')
+    script(tools / "swift", SWIFT_OK)
+    git_answering(tools, resolved=_OLD_COMMIT, ancestor=1)
+    monkeypatch.setattr(ocr, "_XCODE_SELECT", str(tools / "xcode-select"))
+    monkeypatch.setattr(ocr, "_XCRUN", str(tools / "xcrun"))
+
+    cache = sample_config.cache_dir
+    reason = (
+        "FluidAudio 1111111 does not descend from the build floor 04e363c; the speech helper is not built"
+    )
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == reason
+    helper = ocr._helper_path(cache, speech.SPEECH)
+    assert not helper.exists()
+    assert (tools / "swift.calls").read_text() == "package resolve\n", "nothing is built past the refusal"
+    assert speech.probe(sample_config.convert, cache) == ("failed", reason)
+
+    old = json.dumps({"engine": "fluidaudio", "fluidaudio": _OLD_COMMIT, "helper": "0.1.0"})
+    fake_speech(helper.parent, version=old).replace(helper)
+    place_models(helper.parent)
+    ocr._marker(helper).unlink()
+    refusal = (
+        "the speech helper is not built from FluidAudio 04e363c or later; scripts/install.sh rebuilds it"
+    )
+    assert speech.probe(sample_config.convert, cache) == ("failed", refusal)
+    assert speech.engine(sample_config.convert, cache) is None
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    (r,) = doctor._check_speech(sample_config)
+    assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({refusal})")
 
 
+def test_no_voice_vector_is_written_anywhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An answer that carries an embedding, beside the segments or in one, is refused without echoing it; a
+    run through the engine leaves no vector under the cache or the tmp tree; and the helper's source writes
+    no file and reads no embedding."""
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    cache = tmp_path / "cache"
+    helper = ocr._helper_path(cache, speech.SPEECH)
+    models = place_models(fake_speech(helper.parent).parent)
+    helper.parent.joinpath("fake-speech").replace(helper)
+    for name, files in speech.MODEL_FILES.items():
+        monkeypatch.setitem(speech.MODEL_DIGESTS, name, speech.folder_digest(models / name, files) or "")
+    found = speech.engine(ConvertConfig(), cache)
+    assert found is not None
+    audio = pcm(tmp_path / "work" / "audio.pcm")
+    assert found.voices(audio, timeout=60) == ()
 
+    replies = (
+        {"segments": [["S1", 0, 900]], "embeddings": [_VECTOR]},
+        {"segments": [["S1", 0, 900, _VECTOR]]},
+        {"segments": [["S1", 0, 900]], "speakerDatabase": {"S1": _VECTOR}},
+    )
+    with caplog.at_level(logging.DEBUG):
+        for reply in replies:
+            fake_speech(tmp_path / "bin", reply={"voices": json.dumps(reply)}).replace(helper)
+            with pytest.raises(SpeechError) as error:
+                found.voices(audio, timeout=60)
+            assert str(error.value) == "the speech helper's answer is not the expected JSON"
+    marker = str(_VECTOR[0])
+    assert marker not in caplog.text
+    holding = [
+        p for p in tmp_path.rglob("*") if p.is_file() and p != helper and marker.encode() in p.read_bytes()
+    ]
+    assert holding == [], "only the fake helper's own script may hold the made-up vector"
 
-# --- the pin and the privacy rule: agentsync.convert.speech (teammate: speech) ---------------------------------
-
-
-
-
-
-
-# --- end the pin and the privacy rule --------------------------------------------------------------------------
+    source = speech._sources()["Sources/agentsync-speech/main.swift"].decode()
+    for writes in (
+        "write(to",
+        "write(toFile",
+        "createFile",
+        "createDirectory",
+        "forWritingAtPath",
+        "forWritingTo",
+        "OutputStream",
+        "fopen(",
+        "embeddingExportPath",
+        "speakerDatabase",
+        "chunkEmbeddings",
+    ):
+        assert writes not in source, writes
+    assert not re.search(r"\.embedding\b", source), "no segment's embedding is read"
+    assert source.count("FileHandle.standardOutput.write") == 2, "stdout is written by emit() only"
+    assert 'emit(["segments": out])' in source and 'emit(["words": out])' in source
