@@ -4477,16 +4477,27 @@ def _allow_clicks(layout: PromptLayout) -> str:
     return "Allow click" if len(layout.allow_click_steps) == 1 else "Allow clicks"
 
 
-def _turns_line(att: Attempt, run_type: str, synced: int | None = None) -> str:
+def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether the installer stopped this attempt's copy of the prompt (:func:`_prompt_copy_note`) and no
+    install.sh run followed in it. Step 1 is one command, ``... --log-start '<agent>' && ... --list-folders``,
+    and a ``--log-start`` that stops a copy exits 2: the list never ran, so there was no folder to ask about
+    and no folder for macOS to ask an Allow click for. A run in the attempt (a list or an install the agent
+    started all the same) puts it back under the usual rules."""
+    return bool(_prompt_copy_note(att)) and not runs
+
+
+def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
     observable" when none is logged and the agent's tool does not tell it (:data:`APPROVAL_HIDDEN_TOOLS`); the
     total then counts only what is known. Why no click is possible is on the expected-turns line. On a Mac
     that already synced ``synced`` folders (:func:`synced_before`) nobody had to be asked for them, so the
-    unlogged folder question is not counted."""
+    unlogged folder question is not counted. Nor is it for an attempt the installer ``stopped`` before the
+    folder list (:func:`_stopped_before_the_list`): nobody was asked anything."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
-    asked = 0 if att.layout.logs_expected_turns or synced else 1  # v6: the folder question is not logged
+    # v6: the folder question is not logged
+    asked = 0 if att.layout.logs_expected_turns or synced or stopped else 1
     q = logged_q + asked
     agent = att.header.get("Agent", "").lower()
     hidden = a == 0 and any(t in agent for t in APPROVAL_HIDDEN_TOOLS)
@@ -4503,11 +4514,19 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None) -> str:
     return f"- human turns: {q + c + a} ({_plural(q, 'question')}; {clicks}; {approvals})"
 
 
-def _expected_turns_line(att: Attempt, run_type: str, synced: int | None = None) -> str:
+def _expected_turns_line(
+    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False
+) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
-    them: the person chose before, and the prompt asks at most whether to add a folder."""
+    them: the person chose before, and the prompt asks at most whether to add a folder. An attempt the
+    installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all."""
     layout = att.layout
+    if stopped:
+        return (
+            f"- expected turns: none (the installer stopped this copy of the prompt in step "
+            f"{layout.folder_question_step}, before the folder list: no folder question and no Allow click)"
+        )
     no_clicks = _no_clicks_why(run_type)
     if not layout.logs_expected_turns:  # prompt v6 logs neither
         steps = " and ".join(str(s) for s in layout.allow_click_steps)
@@ -4828,8 +4847,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     stop = stopping_error(att, runs) if att is not None else None
     if att is not None:
         synced = synced_before(runs)
-        out.append(_turns_line(att, run_type, synced))
-        out.append(_expected_turns_line(att, run_type, synced))
+        stopped = _stopped_before_the_list(att, runs)
+        out.append(_turns_line(att, run_type, synced, stopped=stopped))
+        out.append(_expected_turns_line(att, run_type, synced, stopped=stopped))
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
         out.append(

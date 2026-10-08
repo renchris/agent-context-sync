@@ -9306,3 +9306,41 @@ probe in one source, in a group and in the integrator's checks; a crash's fix, w
 `status -v` printing both tracebacks; git and pandoc that cannot be started, and errno 86; the four lines
 that named no fix; a `launchd.*` FAIL with the agent step pending; the guard itself, on a made-up check with
 no fix), `tests/test_install_oneshot.py` (the stub's `[FAIL]` lines carry a fix as the real ones do).
+
+#### A copy stopped before the folder list was asked nothing (amends §16.14, §16.28 "Setup prompt v8" and §16.29; `agentsync.setup_report`)
+
+`install.sh --log-start` stops a copy of the prompt that is not its own (§16.28). Step 1 is one command,
+`... --log-start '<agent>' && ... --list-folders`, so the folder list never runs. The old copy's own text
+may still write its report, and that report's Summary said:
+
+```text
+- human turns: 1 (1 question; clicks: none possible; approvals: not observable)
+- expected turns: the folder question (step 1; not logged) · Allow clicks: none possible (sandbox)
+```
+
+No question was asked. Since v6 the prompt does not log the folder question, so the report adds one unless
+the Mac already synced folders (§16.29), and that rule reads the count from a run the attempt does not have.
+
+```python
+# agentsync.setup_report
+def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool: ...
+```
+
+- **The rule.** The installer stopped this attempt's copy (`_prompt_copy_note` is not empty: its stop line,
+  or the `vN or older` header only it writes) and the attempt has no `install.sh` run. A run in the attempt,
+  a list or an install the agent started all the same, puts it back under the usual rules: a list ran, so
+  the question may have been asked.
+- **`human turns`.** No folder question is added: `human turns: 0 (0 questions; ...)`. What the agent logged
+  still counts.
+- **`expected turns`.** One fixed line, for every prompt version: `expected turns: none (the installer
+  stopped this copy of the prompt in step 1, before the folder list: no folder question and no Allow
+  click)`. The Allow click is the list's too: macOS asks when `--list-folders` reads
+  `~/Library/CloudStorage`.
+
+The outcome is unchanged (`failed at step 1`), and so are the prompt line, the issue link and the `NEXT:` of
+`install.sh --report-only`, which says not to bring that report back.
+
+Tests: `tests/test_setup_report.py` (the rehearsal's log on a Mac with an earlier install run: both lines
+and `no run during this attempt (1 earlier in the install log)`; the same with a logged question; a copy
+from before v8 with the header alone; a list run inside the attempt: one question and the folder question
+again; the rule on a stopped and on a current attempt).

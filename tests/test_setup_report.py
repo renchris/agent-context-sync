@@ -2129,6 +2129,85 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     assert line.startswith("- prompt: v7 · run: ")
 
 
+STOPPED_V8 = (
+    "Attempt: 2026-09-29T11:00:00Z\nPrompt: v8\nAgent: Claude Code, claude-opus-5-5\n"
+    "2026-09-29T11:00:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is v8 and this "
+    "installer is for setup prompt v9: the pasted copy is not the current one; setup stopped | copy the "
+    "prompt again from README.md on the main branch\n"
+    "2026-09-29T11:00:00Z | end | finished\n"
+)
+"""The friction log of the v9 rehearsal's third scenario: a saved v8 copy pasted on a Mac that already ran an
+install an hour before. ``install.sh --log-start`` stopped it, so step 1's command never reached
+``--list-folders``."""
+NO_TURN = (
+    "- expected turns: none (the installer stopped this copy of the prompt in step 1, before the folder "
+    "list: no folder question and no Allow click)"
+)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """The v9 rehearsal (2026-10-07): the report of an attempt that an out-of-date copy of the prompt started
+    said ``human turns: 1 (1 question; ...)`` and ``expected turns: the folder question (step 1; not
+    logged)``. Nobody was asked: the installer stopped the copy before the folder list. The report now
+    counts no question for it and expects no turn. A question the agent logged is still counted, and an
+    attempt that reached a list after all is read by the usual rules."""
+
+    def turns() -> tuple[str, str, str]:
+        rc, text, _ = report(tmp_path, fake_mac["config"])
+        lines = section(text, "Summary").strip().splitlines()
+        assert rc == 0 and lines[0].startswith(
+            "- **outcome: failed at step 1** (computed: no install.sh run; "
+        )
+        [human] = [ln for ln in lines if ln.startswith("- human turns: ")]
+        [expected] = [ln for ln in lines if ln.startswith("- expected turns: ")]
+        [runs] = [ln for ln in lines if ln.startswith("- install.sh: ")]
+        return human, expected, runs
+
+    write_friction(fake_mac, STOPPED_V8)
+    human, expected, runs = turns()
+    assert human == "- human turns: 0 (0 questions; clicks: none possible; approvals: not observable)"
+    assert expected == NO_TURN
+    assert runs == "- install.sh: no run during this attempt (1 earlier in the install log)"
+
+    # What the agent logged still counts: here it asked the person something before it stopped.
+    asked = "2026-09-29T11:00:20Z | step 1 | question | asked whether to go on with the old copy | -\n"
+    write_friction(fake_mac, _insert_before("2026-09-29T11:00:00Z | end", asked, STOPPED_V8))
+    human, expected, _runs = turns()
+    assert human == "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)"
+    assert expected == NO_TURN
+
+    # A copy from before v8 named no version: the installer's header alone says it stopped it.
+    write_friction(fake_mac, "Attempt: 2026-09-29T11:00:00Z\nPrompt: v7 or older\nAgent: x\n")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0 and NO_TURN in section(text, "Summary").splitlines()
+
+    # The agent went on to the folder list all the same: a list ran, so the question may have been asked.
+    with (fake_mac["setup"] / "install.log").open("a", encoding="utf-8") as log:
+        log.write(
+            "2026-09-29T11:00:30Z run=20260929T110030Z-11 start install.sh compat=9 args=--list-folders\n"
+            "2026-09-29T11:00:30Z run=20260929T110030Z-11 step=list-folders seconds=2 rc=0 result=done "
+            "note=listed-6\n"
+            "2026-09-29T11:00:32Z run=20260929T110030Z-11 end rc=0 seconds=2\n"
+        )
+    write_friction(fake_mac, STOPPED_V8)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary").splitlines()
+    assert "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)" in summary
+    assert f"- expected turns: {ASKED} · Allow clicks: none possible (sandbox)" in summary
+
+    [stopped] = setup_report.parse_friction(STOPPED_V8).attempts
+    runs_read = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    in_attempt = setup_report.runs_for_attempt(setup_report.parse_friction(STOPPED_V8), 0, runs_read)
+    assert [run.args for run in in_attempt] == ["--list-folders"]
+    assert setup_report._stopped_before_the_list(stopped, []) is True
+    assert setup_report._stopped_before_the_list(stopped, in_attempt) is False
+    [current] = setup_report.parse_friction(V9_HAPPY).attempts
+    assert setup_report._stopped_before_the_list(current, []) is False, "only the installer's stop counts"
+
+
 # ---- a Mac that is already set up is not asked for its folders again (field report 2026-10-07) -----------
 
 ASKED = "the folder question (step 1; not logged)"
