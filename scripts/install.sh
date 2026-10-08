@@ -104,7 +104,9 @@
 #      prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
 #      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
-#      "media helper: ..." line; [convert] recordings = false builds nothing)
+#      "media helper: ..." line; [convert] recordings = false builds nothing), then the speech helper (python
+#      -I -m agentsync.convert.speech, one "speech: ..." line; it fetches FluidAudio from github.com and may
+#      take up to 20 minutes; the model folders are placed by hand, see the README)
 #   4. agentsync add-source for each --source-local folder, else the flagless agentsync init: each creates
 #      whatever is missing (sources.toml, the docs repo and its scaffold, the inbox, the state dir) and is
 #      idempotent; opening the manifest migrates it (an upgrade may bring a newer schema). Each also makes
@@ -1718,22 +1720,28 @@ fi
 # line, never a failed step. Without developer tools nothing is tried, and the line says so: status sends the
 # reader here for the helper, and a run that said nothing would send them round again. The media helper
 # (agentsync.convert.media, which reads recordings) is built the same way right after it, with its own line;
-# [convert] recordings = false builds nothing.
+# [convert] recordings = false builds nothing. The speech helper (agentsync.convert.speech, a SwiftPM package
+# over FluidAudio, which hears recordings) follows the media helper the same way: one "speech: ..." line, off
+# whenever the media helper is, and never a download of a model.
 # -I: with -m alone Python puts the folder this script is run from first on its import path, so a random.py
 # or types.py lying there would be imported in place of the standard library's.
 if have_devtools; then
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$TOOL_PY" -I -m agentsync.convert.ocr
 		run "$TOOL_PY" -I -m agentsync.convert.media
+		run "$TOOL_PY" -I -m agentsync.convert.speech
 	elif [ -x "$TOOL_PY" ]; then
 		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
 		media_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.media </dev/null 2>/dev/null | head -n 1)" || true
 		say "${media_line:-media helper: not built (the build did not run)}"
+		speech_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.speech </dev/null 2>/dev/null | head -n 1)" || true
+		say "${speech_line:-speech: not built (the build did not run)}"
 	fi
 else
 	say "OCR helper: not built (no Xcode or Command Line Tools)"
 	say "media helper: not built (no Xcode or Command Line Tools)"
+	say "speech: not built (no Xcode or Command Line Tools)"
 fi
 step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
 if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then

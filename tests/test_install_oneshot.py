@@ -3201,6 +3201,7 @@ STUB_TOOL_PYTHON = """#!/bin/bash
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
 case "$*" in
 *agentsync.convert.media*) err="${STUB_MEDIA_ERR:-}" out="${STUB_MEDIA_OUT:-}" rc="${STUB_MEDIA_RC:-0}" ;;
+*agentsync.convert.speech*) err="${STUB_SPEECH_ERR:-}" out="${STUB_SPEECH_OUT:-}" rc="${STUB_SPEECH_RC:-0}" ;;
 *) err="${STUB_OCR_ERR:-}" out="${STUB_OCR_OUT:-}" rc="${STUB_OCR_RC:-0}" ;;
 esac
 [ -z "$err" ] || printf '%s\\n' "$err" >&2
@@ -3323,6 +3324,7 @@ def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a
         assert ran == [
             f"python -I -m agentsync.convert.ocr config={cfg}",
             f"python -I -m agentsync.convert.media config={cfg}",
+            f"python -I -m agentsync.convert.speech config={cfg}",
         ], ran
         assert said(cp) == [line]
         assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
@@ -3332,10 +3334,73 @@ def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a
     dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
     planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert." in ln]
     assert planned == (
-        [f"[dry-run] {tool_py} -I -m agentsync.convert.{m}" for m in ("ocr", "media")] if _have_git() else []
+        [f"[dry-run] {tool_py} -I -m agentsync.convert.{m}" for m in ("ocr", "media", "speech")]
+        if _have_git()
+        else []
     ), dry.stdout
     assert said(dry) == ([] if _have_git() else [no_tools])
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
+
+
+def test_launcher_step_builds_the_speech_helper_after_media_and_a_failure_is_only_a_line(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The speech helper is built right after the media helper, by the same interpreter, on its own
+    ``speech: ...`` line.  Whatever its build does (an older FluidAudio refused, a crash), the run's exit
+    status and its install.log steps are those of a run without it.  Without developer tools nothing is tried
+    and one line says so."""
+    home = Path(env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    no_tools = "speech: not built (no Xcode or Command Line Tools)"
+
+    def run(**stub: str) -> tuple[subprocess.CompletedProcess[str], list[tuple[str, str, str, str]]]:
+        for leftover in (Path(env["STUB_LOG"]), cfg, home / "agent-context" / "setup" / "install.log"):
+            leftover.unlink(missing_ok=True)  # every run is a first run
+        cp = install_sh({**env, **stub}, str(wheel), "--source-local", str(folder))
+        return cp, steps(install_log(env))
+
+    def said(cp: subprocess.CompletedProcess[str]) -> list[str]:
+        assert "speech:" not in cp.stderr
+        return [ln for ln in cp.stdout.splitlines() if ln.startswith("speech:")]
+
+    plain, plain_steps = run()
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+
+    placed = "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)"
+    older = (
+        "speech: not built (FluidAudio 1111111 does not descend from the build floor 04e363c; the speech "
+        "helper is not built)"
+    )
+    for stub, line in (
+        (
+            {
+                "STUB_SPEECH_OUT": placed,
+                "STUB_MEDIA_OUT": "media helper: not built (stub)",
+                "STUB_MEDIA_RC": "1",
+            },
+            placed,
+        ),
+        ({"STUB_SPEECH_OUT": older + "\nsecond line", "STUB_SPEECH_RC": "1"}, older),
+        (
+            {"STUB_SPEECH_RC": "1", "STUB_SPEECH_ERR": "Traceback (most recent call last): stub"},
+            "speech: not built (the build did not run)",
+        ),
+        ({"STUB_SPEECH_OUT": placed, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
+    ):
+        cp, got = run(**stub)
+        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        if line == no_tools or not _have_git():
+            assert said(cp) == [no_tools]
+            continue
+        assert [c for c in calls(env) if c.startswith("python -I -m ")][-1] == (
+            f"python -I -m agentsync.convert.speech config={cfg}"
+        )
+        assert said(cp) == [line]
+        assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
+        out = cp.stdout.splitlines()
+        assert out.index(line) == next(i for i, ln in enumerate(out) if "media helper" in ln) + 1
 
 
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------
