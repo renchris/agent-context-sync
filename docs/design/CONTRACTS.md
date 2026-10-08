@@ -4686,8 +4686,9 @@ boundary); `parse_governance` rejects a prefix that is not a URL or carries a pa
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
 complete passes before it is tombstoned (`extra.absent_since_run`; **amended 2026-10-08, §16.37:** `status` ends
 that source's line with `· absent N (removed by a later complete pass if still missing)` while N present rows
-carry the mark); safe-save pairing runs in every FULL pass,
-complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
+carry the mark and the breaker is not tripped (a tripped breaker removes nothing and counts its held files
+itself), and the marking pass and the removing pass each say so in an alarm); safe-save pairing runs in every
+FULL pass, complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
 `retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge; **amended 2026-10-06:** a local or inbox row
 whose path fails `arm_local.in_scope` is retired the same way by an incomplete pass, §16.23; **amended
 2026-10-08:** on the first complete pass of a local or inbox source after the change, "outside it" is judged per

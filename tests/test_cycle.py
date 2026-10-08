@@ -1577,6 +1577,12 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
     if gone == 1:
         assert not rep.breaker_tripped
         assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+        assert not any("removed as deleted upstream" in a for a in rep.alarms), (
+            "the marking pass removes nothing"
+        )
+        assert "1 file(s) still absent from this complete pass: removed as deleted upstream" in (
+            source_report(second).alarms
+        )
         assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
         assert len(governance.pending_purges(excluded.state_paths.root)) == 1
     else:

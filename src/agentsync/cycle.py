@@ -3341,6 +3341,10 @@ class _Cycle:
             acc.alarms.append(
                 f"{len(first)} file(s) absent from this complete pass: removed only if still absent next pass"
             )
+        if confirmed:
+            acc.alarms.append(
+                f"{len(confirmed)} file(s) still absent from this complete pass: removed as deleted upstream"
+            )
         return confirmed
 
     def _retire(self, src: SourceConfig, acc: _SourceAcc) -> None:

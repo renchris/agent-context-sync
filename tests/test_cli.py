@@ -266,7 +266,8 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source (local, live): ")]
     assert line.endswith(held), line
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
-    capsys.readouterr()
+    out = capsys.readouterr().out
+    assert "    alarm: 1 file(s) still absent from this complete pass: removed as deleted upstream\n" in out
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     status = capsys.readouterr().out
     assert "source (local, live): baseline complete" in status and " · absent " not in status
