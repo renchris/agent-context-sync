@@ -48,6 +48,7 @@ from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.recording import Allowance, RecordingConverter, RecordingNotFinished
 from agentsync.convert.registry import Registry
+from agentsync.convert.speech import SpeechEngine
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError
 from agentsync.graph.client import GraphClient
@@ -3479,17 +3480,19 @@ class StubRecording(RecordingConverter):
         self.rec = rec
 
     def version(self) -> str:
-        return "1.0.0+stub-h0.1.0-s1"
+        heard = f"+{self._speech.identity}-n1" if self._speech is not None else ""
+        return f"1.0.0+stub-h0.1.0-s1{heard}"
 
     def options(self) -> dict[str, Any]:
         return {"piece_ms": PIECE_MS}
 
     @property
     def outdated_key(self) -> str:
-        return "1.0.0<1.0.0|-|-"
+        return f"1.0.0<1.0.0|-|{self._speech.identity if self._speech is not None else '-'}"
 
     def outdated(self, produced: str, reason: str | None = None) -> bool:
-        return False
+        """Only what speech changes: a page made without it, once there is a speech engine (spec 4)."""
+        return self._speech is not None and "+asr-" not in produced
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         self.rec.converts.append(name)
@@ -3519,6 +3522,8 @@ class StubRecording(RecordingConverter):
             if allowance is not None:
                 allowance.spent_s += spec.get("piece_s", 70.0)
         lines = [f"[{n * 5:02d}:00] SCREEN {spec.get('text', 'Contoso quarterly review')}" for n in range(3)]
+        if self._speech is not None:
+            lines.append("[15:00] SAID v1: Contoso speech")
         body = f"# {name}\n\n" + "\n".join(lines) + "\n"
         sidecars = tuple(
             (key, bytes.fromhex(value[4:]) if value.startswith("hex:") else value.encode())
@@ -3569,7 +3574,13 @@ def rec(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Rec:
         if media is None:
             return plain
         stub = StubRecording(
-            found, config.convert, engine, media, pieces=pieces, label_rule=policy.labels_active
+            found,
+            config.convert,
+            engine,
+            media,
+            pieces=pieces,
+            label_rule=policy.labels_active,
+            speech=speech,
         )
         built = Registry([*(c.inner for c in plain.converters()), stub], policy=policy, banner=True)  # type: ignore[attr-defined]
         built._without_ocr = plain.without_ocr
@@ -3885,6 +3896,37 @@ def test_a_no_converter_mp4_stub_is_read_in_the_recording_pass(
     row = _row(config, MEETING)
     assert row.state is RowState.LIVE and row.state_reason is None
     assert _recording_page(config, MEETING)[0]["status"] == "current"
+
+
+def test_a_speech_engine_that_appears_without_an_upgrade_reopens_the_record(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 4, "A speech engine appears": the operator places the models by hand, with no upgrade.  The speech
+    identity is in the recording converter's ``outdated_key``, so ``_capabilities`` changes and the source's
+    re-read record is opened again; the recording pass reads the recording once, and the page then carries
+    speech.  A later cycle reads nothing."""
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 10)
+    assert run(config).exit_code == 0 and rec.converts == ["Contoso weekly sync.mp4"]
+    assert "+asr-" not in _recording_page(config, MEETING)[0]["converter"]
+    with Manifest(config.state_paths.db) as m:
+        before = json.loads(m.get_meta(cycle_mod._REREAD_META + SID) or "[]")[0]["for"]
+    assert run(config).exit_code == 0 and len(rec.converts) == 1, "nothing changed: nothing is read"
+    heard = SpeechEngine(
+        Path("/nonexistent/speech"),
+        Path("/nonexistent/models"),
+        name="paper-speech",
+        helper_version="0.1.0",
+        fluidaudio="04e363c29d9a754022d602d6fe1468ab80a0f705",
+        model_digest="ab" * 32,
+    )
+    monkeypatch.setattr(cycle_mod.speech, "engine", lambda _convert, _cache_dir: heard)
+    assert run(config).exit_code == 0 and len(rec.converts) == 2, "read again once"
+    with Manifest(config.state_paths.db) as m:
+        after = json.loads(m.get_meta(cycle_mod._REREAD_META + SID) or "[]")[0]["for"]
+    assert after != before, "the record is reopened for what this cycle can do"
+    assert f"+{heard.identity}-n1" in _recording_page(config, MEETING)[0]["converter"]
+    assert run(config).exit_code == 0 and len(rec.converts) == 2, "once only"
 
 
 SHOTS_SOURCE = """
