@@ -54,9 +54,9 @@ _AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 _XCODE_SELECT = "/usr/bin/xcode-select"
 _DEVTOOLS_TIMEOUT_S = 5.0
-# Only scripts/install.sh builds the OCR and media helpers (convert/ocr.py, convert/media.py), so the ocr and
-# media texts name it and no agentsync command.  Without developer tools it builds nothing, so there the
-# not-built line says what it waits for.
+# Only scripts/install.sh builds the OCR, media and speech helpers (convert/ocr.py, convert/media.py,
+# convert/speech.py), so the ocr, media and speech texts name it and no agentsync command.  Without developer
+# tools it builds nothing, so there the not-built line says what it waits for.
 _OCR_NOT_BUILT = "scripts/install.sh builds it"
 _OCR_NOT_BUILT_NO_DEVTOOLS = (
     "scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)"
@@ -194,6 +194,14 @@ def _media_status(config: Config) -> tuple[str, str]:
     from agentsync.convert import media  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
 
     return media.probe(config.convert, config.cache_dir)
+
+
+def _speech_status(config: Config) -> tuple[str, str]:
+    """(state, detail) of the speech engine, from ``convert.speech.probe``: it looks, never compiles and
+    takes no model digest; the one program it may start is a built helper's ``--version``, given 5 s."""
+    from agentsync.convert import speech  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+
+    return speech.probe(config.convert, config.cache_dir)
 
 
 def _devtools_missing() -> bool:
@@ -599,6 +607,26 @@ def _check_media(config: Config) -> list[CheckResult]:
         return [_bad("media", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
     return [_bad("media", f"media helper: not working ({detail})", Severity.WARN, fix=fix)]
+
+
+def _check_speech(config: Config) -> list[CheckResult]:
+    """The speech engine (words and voices of a recording), optional as the media helper is and checked the
+    same way, one ``speech: <state> (<detail>)`` line: ok when ready or off (whatever switches the media
+    helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
+    built; WARN with the reason when it failed, a FluidAudio build older than 04e363c among them.  The probe
+    takes no model digest and never compiles.  Never a FAIL."""
+    try:
+        state, detail = _speech_status(config)
+    except Exception as exc:
+        log.debug("doctor: the speech probe crashed", exc_info=True)
+        return [_bad("speech", f"speech: could not be checked ({type(exc).__name__})", Severity.WARN)]
+    if state in ("ready", "off"):
+        return [_ok("speech", f"speech: {state} ({detail})")]
+    if state == "not-built":
+        how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
+        return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
 
 
 def _check_config(config: Config) -> list[CheckResult]:
@@ -1600,6 +1628,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("pandoc", _check_pandoc),
     ("ocr", _check_ocr),
     ("media", _check_media),
+    ("speech", _check_speech),
     ("config", _check_config),
     ("docs_repo", _check_docs_repo),
     ("permissions", _check_permissions),

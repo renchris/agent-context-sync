@@ -25,13 +25,14 @@ import pytest
 
 from agentsync import cli, gitops
 from agentsync.config import Config, parse_config
-from agentsync.convert import media, ocr
+from agentsync.convert import media, ocr, speech
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
 from conftest import fails_without_a_fix
 from media_kit import fake_media
+from speech_kit import fake_speech, place_models
 from test_ocr import write_fake
 
 GIT = shutil.which("git") or "/usr/bin/git"
@@ -41,9 +42,11 @@ REAL_CODESIGN_INFO = doctor._codesign_info
 REAL_LAUNCHER_CANARY = doctor._launcher_canary
 REAL_OCR_STATUS = doctor._ocr_status
 REAL_MEDIA_STATUS = doctor._media_status
+REAL_SPEECH_STATUS = doctor._speech_status
 REAL_DEVTOOLS_MISSING = doctor._devtools_missing
 OCR_READY = "paper-vision revision 2, helper 0.3.0"
 MEDIA_READY = "paper-media, helper 0.1.0"
+SPEECH_READY = "paper-speech, helper 0.1.0, FluidAudio 04e363c"
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +78,7 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(doctor, "_launcher_canary", no_canary)
     monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("ready", OCR_READY))
     monkeypatch.setattr(doctor, "_media_status", lambda cfg: ("ready", MEDIA_READY))
+    monkeypatch.setattr(doctor, "_speech_status", lambda cfg: ("ready", SPEECH_READY))
     monkeypatch.setattr(doctor, "_devtools_missing", no_xcode_select)
 
     def refuse(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -126,6 +130,7 @@ EXPECTED_ORDER = [
     "pandoc",
     "ocr",
     "media",
+    "speech",
     "docs_repo.location",
     "docs_repo.git",
     "docs_repo.symlinks",
@@ -1898,6 +1903,85 @@ def test_media_probe_crash_is_a_warn_without_the_exception_text(
     r = by_name(results)["media"]
     assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
     assert r.detail == "media helper: could not be checked (PermissionError)"
+    assert errors(results) == []
+
+
+# ------------------------------------------------------------------------------------------------ speech
+
+
+def _real_speech(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real speech probe on a Mac with the media helper's switches on (the suite switches them off)."""
+    monkeypatch.setattr(doctor, "_speech_status", REAL_SPEECH_STATUS)
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+
+def test_speech_off_is_ok_and_names_the_switch_or_the_missing_models(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _real_speech(monkeypatch)
+    off = dataclasses.replace(
+        sample_config, convert=dataclasses.replace(sample_config.convert, recordings=False)
+    )
+    r = by_name(run_checks(off))["speech"]
+    assert (r.ok, r.detail) == (True, "speech: off ([convert] recordings = false)")
+    monkeypatch.setenv("AGENTSYNC_OCR", "0")
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.detail) == (True, "speech: off (AGENTSYNC_OCR=0)")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    helper = ocr._helper_path(sample_config.cache_dir, speech.SPEECH)
+    fake_speech(helper.parent).replace(helper)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.detail) == (
+        True,
+        "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)",
+    )
+    place_models(helper.parent)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.detail) == (True, f"speech: ready ({SPEECH_READY})")
+    assert by_name(run_checks(sample_config))["docs_repo.permissions"].ok, "the speech folder is owner-only"
+
+
+def test_speech_not_built_is_an_info_line_and_doctor_never_builds_or_digests(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _real_speech(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+
+    def no_build(*args: object, **kwargs: object) -> None:
+        pytest.fail(f"doctor reached a speech build or digest: {args}")
+
+    for name in ("build", "_compile", "_step", "folder_digest"):
+        monkeypatch.setattr(speech, name, no_build)
+    for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
+        r = by_name(results)["speech"]
+        assert (r.ok, r.severity, r.fix) == (False, Severity.INFO, None)
+        assert r.detail == "speech: not-built (the speech helper is not built; scripts/install.sh builds it)"
+        assert errors([r]) == []
+    assert not (sample_config.cache_dir / "speech").exists()
+
+
+def test_speech_failed_is_a_warn_never_a_fail(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _real_speech(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    helper = ocr._helper_path(sample_config.cache_dir, speech.SPEECH)
+    fake_speech(helper.parent, version_exit=3).replace(helper)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.ok, r.severity) == (False, Severity.WARN)
+    assert r.detail == "speech: failed (the speech helper exited 3: no message)"
+    assert r.fix == "xcode-select --install, then run scripts/install.sh again"
+
+    def crash(cfg: Config) -> tuple[str, str]:
+        raise PermissionError(errno.EACCES, "Permission denied", str(cfg.cache_dir))
+
+    monkeypatch.setattr(doctor, "_speech_status", crash)
+    results = run_checks(sample_config)
+    r = by_name(results)["speech"]
+    assert (r.ok, r.severity, r.detail) == (
+        False,
+        Severity.WARN,
+        "speech: could not be checked (PermissionError)",
+    )
     assert errors(results) == []
 
 
