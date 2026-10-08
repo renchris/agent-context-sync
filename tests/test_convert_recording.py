@@ -8,6 +8,7 @@ screen is what OCR reads back.  Names are made up (Contoso).
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import json
 import random
@@ -27,7 +28,7 @@ from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.ocr import OcrLine
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.registry import Registry
-from agentsync.convert.speech import SpeechEngine
+from agentsync.convert.speech import SpeechEngine, SpeechError
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import ConversionStatus, RenderedUnit
@@ -773,6 +774,33 @@ def test_nothing_is_left_beside_the_staged_file_when_convert_returns_or_raises(
     try:
         conv._reading(src, name="meeting.mp4")
     except (UnreadableSourceError, MediaError, rec.RecordingNotFinished) as exc:
+        assert ending != "page", exc
+    else:
+        assert ending == "page"
+    assert sorted(p.name for p in src.parent.iterdir()) == ["meeting.mp4"]
+
+
+@pytest.mark.parametrize("ending", ["page", "speech failure", "time-out", "allowance stop"])
+def test_nothing_is_left_beside_the_staged_file_when_speech_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    """The sound is decoded into the recording's scratch folder (S2), so it goes with it however the read
+    ends: a page, a SpeechError, a time-out, or an allowance used up before the speech piece."""
+    src = staged(tmp_path, teams(share(3, FIRST), sound=[(0, 20_000)]))
+    engine = hearing(
+        tmp_path,
+        talk(("spk-a", 3_000, "Contoso budget review")),
+        fail={"voices": "voice separation failed"} if ending == "speech failure" else None,
+    )
+    conv = converter(tmp_path, speech=engine, pieces=PieceStore(tmp_path / "pieces"))
+    if ending == "time-out":
+        clock = itertools.count(0.0, 1_000.0)
+        monkeypatch.setattr(rec, "_clock", lambda: next(clock))
+    allowance = rec.work_allowance(1e-9) if ending == "allowance stop" else contextlib.nullcontext()
+    try:
+        with allowance:
+            conv._reading(src, name="meeting.mp4")
+    except (SpeechError, rec.RecordingNotFinished) as exc:
         assert ending != "page", exc
     else:
         assert ending == "page"
