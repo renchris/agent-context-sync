@@ -9857,7 +9857,26 @@ page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35
 
 <!-- slot: naming (agentsync.convert.naming) -->
 
-- (naming: fill this paragraph)
+- `agentsync.convert.naming` (new, pure; spec S8b). `name_voices(voices, lit, *, profile, step_ms=2000)` takes the
+  S8 voices as `Voice(number, spans)` (spans in ms, `start <= t < end`) and, per tick `k` at `k x step_ms`, the label
+  texts S7 drew as speaking, and returns one frozen `Naming` per voice in number order: `number`, `form` (`named`,
+  `shared`, `mixed`, `unidentified`), `label` (the most frequent, `None` without lit samples), `seen` of `lit` (`a`
+  of `n_v`), `percent` (the voice's share of the label's lit samples, floored), `voices_on_label` (`k`), `held_back`,
+  `gated`. A lit sample is a tick with speech of exactly one voice and exactly one label lit; a tick inside two
+  voices' speech counts nowhere. In order: fewer than `N_MIN` lit samples is unidentified; `p_v < P_MIN` is mixed;
+  a label under `STREAM_MIN` lit samples has no `s(L)` and is not taken; `s(L) < S_MIN` is shared (it names no
+  voice, so the gate does not hold it); a voice that is not the one holding `s(L)` is unidentified; `s(L)` or
+  `p_v` inside `BAND` above its floor holds the name back (unidentified, `held_back`, then `HELD_BACK_NOTE` under
+  its `VOICE` line); a profile outside `CHECKED_PROFILES` (empty until the operator's B.3 listen) prints
+  unidentified with `gated`, and the index's Voices block carries `GATED_NOTE` once when any voice is gated. Only a
+  voice past all of these is named. Ties go by count, then label text (the holder of `s(L)` by count, then lower
+  number); shares compare as exact fractions. `vetoed(naming, start_ms, end_ms, lit, *, step_ms=2000)` is the
+  turn veto for one speech line of a named voice: True when the line's lit samples point at another label most
+  often; the renderer then writes the window `NOTE` `veto_note(number)` at the line's time and leaves `SAID vN:`
+  as it is. `voice_text(naming)` is the text after `VOICE: ` in the 3.3 forms (the grammar's `VOICE_FORMS`).
+  `identity()` is `n<NAMING_REVISION>` (`n1`); `options()` holds `P_MIN`, `N_MIN`, `S_MIN`, `STREAM_MIN`, `BAND`
+  and `CHECKED_PROFILES` (comma-joined, sorted) under `naming_*` keys. The floors are never tuned down (rule 7).
+  No voice vector reaches this module: it sees spans and label text only.
 
 <!-- end slot: naming -->
 
