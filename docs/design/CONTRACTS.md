@@ -4690,7 +4690,7 @@ whose path fails `arm_local.in_scope` is retired the same way by an incomplete p
 2026-10-08:** on the first complete pass of a local or inbox source after the change, "outside it" is judged per
 file: an absent file is retired only if its path fails `in_scope` or it was last listed under an earlier `path`
 (`scope_root`, §16.23). Every other absent file is an ordinary deletion candidate: the breaker, judged without the
-retired rows among the candidates or the live rows, then the two-pass rule and the purge. A Graph source still
+retired rows among the candidates or the live rows the pass started with, then the two-pass rule and the purge. A Graph source still
 retires every file its complete listing lacks on that pass). A mirrored source
 missing from sources.toml raises ConfigError (exit 78). An empty local root with mirrored files is `unknown` (`.`). A graph drive whose
 baseline is incomplete runs FULL; a resumed FULL round never stages its deltaLink. DriveArm: a known item whose

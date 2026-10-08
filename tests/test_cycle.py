@@ -1587,6 +1587,37 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
         assert governance.pending_purges(excluded.state_paths.root) == []
 
 
+def test_files_new_in_the_pass_of_a_scope_change_do_not_raise_the_breaker_limit(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    """The absent files still in scope are judged against the live rows the pass started with. Forty files
+    that arrive in the same pass as the exclude do not make six absences look small: they stay held."""
+    config = config_with(tmp_path, local_source_dir, _LOW_BREAKER)
+    victims = [f"minutes/Contoso minutes {n}.md" for n in range(6)]
+    (local_source_dir / "minutes").mkdir()
+    for n, rel in enumerate(victims):
+        (local_source_dir / rel).write_text(f"# Minutes {n}\n\nagreed\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    started_with = len(_file_rows(config))
+    assert 0.2 * (started_with - 1) < 6 <= 0.2 * (started_with + 40 - 1)
+    for rel in victims:
+        (local_source_dir / rel).unlink()
+    (local_source_dir / "notes").mkdir()
+    for n in range(40):
+        (local_source_dir / f"notes/Contoso note {n}.md").write_text(
+            f"# Note {n}\n\nkept\n", encoding="utf-8"
+        )
+    excluded = _excluding(config, SID, "acme")
+    rep = source_report(run(excluded))
+    assert rep.enumeration_complete and rep.breaker_tripped
+    assert any("breaker TRIPPED: 6 absent file(s) held" in a for a in rep.alarms), rep.alarms
+    assert source_report(run(excluded)).breaker_tripped
+    rows = _file_rows(excluded)
+    assert all(rows[rel].state is RowState.LIVE for rel in victims)
+    assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [KICKOFF]
+    assert governance.pending_purges(excluded.state_paths.root) == []
+
+
 def test_an_exclude_with_no_other_absence_retires_its_files_past_the_breaker(
     tmp_path: Path, local_source_dir: Path
 ) -> None:

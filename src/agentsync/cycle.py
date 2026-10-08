@@ -1318,6 +1318,7 @@ class _SourceAcc:
     deferred_online_only: int = 0
     converted: int = 0
     breaker_tripped: bool = False
+    live_rows: int = 0
     staged_cursor: bool = False
     skipped_reason: str | None = None
     alarms: list[str] = field(default_factory=list)
@@ -2200,13 +2201,14 @@ class _Cycle:
         unseen = [rows[sid] for sid in missing if sid in rows]
         accepting = src.id in self.accept_deletions
         active = not accepting and self.manifest.breaker_active(src.id, _iso(self.now()))
+        acc.live_rows = self.manifest.live_count(src.id)
         pc = _classify_pass(
             slow,
             rows,
             unseen,
             ctx,
             enumeration_complete=scan.enumeration_complete,
-            live_rows=self.manifest.live_count(src.id),
+            live_rows=acc.live_rows,
             breaker=_NEVER_TRIPS if accepting else self.config.breaker,
             breaker_active=active,
             unchanged=fast,
@@ -3247,12 +3249,13 @@ class _Cycle:
         if judged and out_of_scope:
             # The rows retired above left with the config.  The other absent files are still in scope, so the
             # scope change does not explain them: they meet the breaker, judged again without the retired
-            # rows on either side, and the two-pass check, like any absence.
+            # rows on either side, and the two-pass check, like any absence.  The live count is the one the
+            # pass started with: the files it has just added must not raise the limit.
             retired = set(out_of_scope)
             absent = tuple(sid for sid in absent if sid not in retired)
             if tripped:
                 active = self.manifest.breaker_active(src.id, _iso(self.now()))
-                live = max(0, self.manifest.live_count(src.id) - len(retired))
+                live = max(0, acc.live_rows - len(retired))
                 tripped = active or breaker_trips(len(absent), live, self.config.breaker)
                 acc.breaker_tripped = tripped and bool(absent or active)
         if absent and scope_changed and not judged:
