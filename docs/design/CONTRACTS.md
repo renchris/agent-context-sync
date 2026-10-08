@@ -9882,7 +9882,39 @@ page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35
 
 <!-- slot: lines (agentsync.convert.speech_lines) -->
 
-- (lines: fill this paragraph)
+- `agentsync.convert.speech_lines` is S8's arithmetic after the engine has run (spec S8 rules 2 and 5 to 7,
+  3.5 Voices and Gaps and bounds): pure functions, no helper, no I/O. Inputs are typed by the protocols
+  `WordLike` (`text`, `start_ms`, `end_ms`) and `SegmentLike` (`speaker`, `start_ms`, `end_ms`), which
+  `agentsync.convert.speech.Word` and `Segment` satisfy; words are ordered by `(start_ms, end_ms, text)` and
+  segments by `(start_ms, end_ms, speaker)`, so no result depends on input order. Every time is an integer ms.
+  Constants: `SILENT_FRAME_MS` 20, `SILENT_DBFS` -60, `SILENT_RUN_MS` 500, `HOLE_GAP_MS` 8,000,
+  `HOLE_SPEECH_MS` 4,000, `HOLE_MARGIN_MS` 5,000, `PAUSE_MS` 1,000, `SENTENCE_MS` 5,000, `LONGEST_MS` 30,000,
+  `QUIET_MS` 20,000; `options()` returns each under a `speech_` key for the recording converter's options hash.
+  `silence(pcm, sample_rate=16_000)` maps 16-bit little-endian mono PCM to silent runs of 500 ms or more: a
+  20 ms frame is silent when every sample is 0 or `sum of squares * 10**6 < samples * 32768**2` (RMS under
+  -60 dBFS, integers only); a short last frame is judged on its own samples; an odd byte count raises
+  `ValueError`. `sound_ends(silent, duration_ms)` is the start of the run reaching the end, else None.
+  `holes(words, segments)` returns the gaps of 8 s or more between consecutive words (from the latest word end
+  so far to the next start) holding 4 s or more of all speakers' merged segments; the stretches before the
+  first word and after the last are not holes. `clip_of(hole, duration_ms)` adds 5 s each side, clamped.
+  `splice(words, hole, clip_words)` adds the clip words whose midpoint lies strictly inside the hole and
+  returns all words sorted; clip words carry recording time (the caller adds the clip's start).
+  `numbering(words, segments)` returns each word's voice (parallel to `words`) and the speaker-to-voice map:
+  a word's segment is the one holding its midpoint (ends included), else the nearest, ties to the earlier
+  segment then the speaker id; voices are numbered 1, 2, ... by first word, then speakers with segments but no
+  word by first segment start; with no segment every word is voice 1 and the map is empty.
+  `said_lines(words, voice_of)` builds `SaidLine(voice, start_ms, end_ms, text)`: a line closes at a change of
+  voice, before a word starting 1 s or more after the line's latest end, after the first word ending in `.`,
+  `?` or `!` whose end is 5 s or more after the line's start, and before a word that would end more than 30 s
+  after the line's start; text is the words joined by one space, whitespace inside a word collapsed, and
+  `end_ms` is the latest word end. `reading(words, segments, silent, duration_ms, unrecognised)` returns
+  `SpeechReading(lines, voices, spans, unrecognised, sound_ends_ms, quiet, words)`: `voices` is one
+  `VoiceStats(voice, speaking_ms, lines, first_ms, last_ms)` per voice, where speaking time is the sum of
+  the voice's merged segment spans and first and last are its first word's start and latest word end (its
+  segments' when it has no word); `spans` maps every voice to its merged segment spans (input to S8b);
+  `unrecognised` is the caller's flagged gaps still empty after repair, sorted (the `speech detected, no
+  words recognised until HH:MM:SS` NOTE); `quiet` is the gaps of 20 s or more in the union of segments and
+  words inside `[0, sound_ends_ms)`, or the whole recording when sound never ends; `words` is the word count.
 
 <!-- end slot: lines -->
 
