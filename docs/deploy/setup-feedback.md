@@ -406,7 +406,11 @@ Triage:
   output's tail says the same, and the way out is the second half of the fix: reinstall the bundled pandoc
   or set `[convert] pandoc_path`.
 - `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac without Rosetta. Its
-  fix line names both ways out, and installing Rosetta is IT's step on a managed Mac.
+  fix line names both ways out. Installing Rosetta is the person's step, IT's on a managed Mac, and never
+  the setup agent's: the line says `Rosetta is yours to install, not a setup step` and gives the command
+  whole, `softwareupdate --install-rosetta --agree-to-license` (without the last option it stops at a
+  license question). An agent that ran it went outside the prompt, which lets it follow a failed step 2's
+  `NEXT:` only into an `install.sh` or `agentsync` command or a click for the person.
 - A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
 - A `could not read <path>` line is the Mac's state first: a path that is not what the config says it is, a
   disk or a sync app that stopped answering. The same line in a second run is a check with a rule missing:

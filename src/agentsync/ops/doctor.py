@@ -529,9 +529,13 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     except OSError as exc:
         detail = f"{pandoc} could not be started: {exc.strerror or exc}"
         if exc.errno == _EBADARCH:
+            # Installing Rosetta changes the system, so the fix gives it to the person and not to a setup
+            # agent, in the words of _AGENT_YOURS_NOTE. The command is whole: without --agree-to-license it
+            # stops at a license question (`softwareupdate --help`: that flag is "without user interaction").
             detail += " (it is an Intel program, which an Apple silicon Mac runs only with Rosetta)"
             fix = (
-                f"softwareupdate --install-rosetta (IT's step on a managed Mac), or {own} built for this Mac"
+                "Rosetta is yours to install, not a setup step (IT's on a managed Mac): softwareupdate "
+                f"--install-rosetta --agree-to-license; or {own} built for this Mac"
             )
         return [_bad("pandoc", detail, fix=fix)]
     lines = cp.stdout.strip().splitlines()

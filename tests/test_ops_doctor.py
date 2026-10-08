@@ -509,9 +509,13 @@ def test_a_git_or_pandoc_that_cannot_be_started_keeps_its_own_fix(
         f"{pandoc} could not be started: Bad CPU type in executable (it is an Intel program, which an Apple "
         "silicon Mac runs only with Rosetta)"
     )
+    # Installing Rosetta changes the system: the line gives it to the person, and names the command whole.
+    # `softwareupdate --help`: --agree-to-license is what lets it run "without user interaction"; without
+    # it the command stops at a license question, which a shell with no keyboard cannot answer.
     assert r["pandoc"].fix == (
-        "softwareupdate --install-rosetta (IT's step on a managed Mac), or set [convert] pandoc_path to an "
-        "absolute pandoc built for this Mac"
+        "Rosetta is yours to install, not a setup step (IT's on a managed Mac): softwareupdate "
+        "--install-rosetta --agree-to-license; or set [convert] pandoc_path to an absolute pandoc built for "
+        "this Mac"
     )
     assert doctor._EBADARCH == 86
 

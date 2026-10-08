@@ -9311,9 +9311,19 @@ and reads the same way.
 **A program macOS will not start** (`OSError` from `git --version` or `pandoc --version`) raised out of
 the check too. It is now `<path> could not be started: <reason>` with the check's own fix. For pandoc and
 "Bad CPU type in executable" (errno 86) the line adds that it is an Intel program, which an Apple silicon
-Mac runs only with Rosetta, and the fix is `softwareupdate --install-rosetta (IT's step on a managed Mac),
-or set [convert] pandoc_path to an absolute pandoc built for this Mac`. That case is read from the errno and
-has not been seen on a Mac without Rosetta.
+Mac runs only with Rosetta, and the fix is `Rosetta is yours to install, not a setup step (IT's on a managed
+Mac): softwareupdate --install-rosetta --agree-to-license; or set [convert] pandoc_path to an absolute
+pandoc built for this Mac`. That case is read from the errno and has not been seen on a Mac without
+Rosetta.
+
+The fix first read `softwareupdate --install-rosetta (IT's step on a managed Mac), or ...`. Two things were
+wrong with it under an install.sh `NEXT:` that says to fix the `[FAIL]` lines and re-run. It read as a
+command for whoever follows the line, and installing Rosetta changes the system: the words now give it to
+the person, as the `launchd.*` note does (`background sync is yours to refresh, not a setup step`). And the
+command was not whole: `softwareupdate --help` lists `--agree-to-license` as "Agree to the software license
+agreement without user interaction", so without it the command stops at a license question, which a shell
+with no keyboard cannot answer. The command has not been run here: this Mac has Rosetta, and it changes the
+system.
 
 **Every FAIL names a fix.** install.sh's `NEXT:` says so, and until now these lines did not:
 
