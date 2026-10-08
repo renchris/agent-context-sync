@@ -1475,7 +1475,7 @@ class _Cycle:
         blocked = False
         try:
             fp_changed = set(self.manifest.sync_sources(self.config.sources))
-            for sid in sorted(fp_changed):  # until one complete pass: absence = the operator's scope change
+            for sid in sorted(fp_changed):  # until one complete pass, which judges each absent file
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
             self._note_roots(fp_changed)
             self._check_policy_change()
@@ -3239,10 +3239,10 @@ class _Cycle:
                     if d.state in _PRESENT and d.stable_id not in scan_items
                 ]
         if out_of_scope:
-            # An incomplete pass has no deletion candidates, and absence from it proves nothing.  These rows
-            # are retired on the config alone, as the complete pass below retires them: same reason, exempt
-            # from the breaker, no purge.  Left alone they would stay pending work for ever on a source whose
-            # walk never completes.
+            # These rows are retired on the config alone: exempt from the breaker, no purge.  An incomplete
+            # pass has no deletion candidates, and absence from it proves nothing; left alone they would stay
+            # pending work for ever on a source whose walk never completes.  A judged complete pass of a local
+            # or inbox source hands over the candidates that left scope, and the rest take the ordinary path.
             removals += [(sid, _SCOPE_CHANGE_REASON) for sid in out_of_scope]
             acc.alarms.append(_scope_change_alarm(len(out_of_scope)))
         absent, tripped = pc.deletion_candidates, pc.breaker_tripped

@@ -8283,7 +8283,7 @@ real run with no folder wrote).
 v9 changes two places of the prompt's text and nothing else (**amended 2026-10-07, §16.30 "The fix request
 marks each session's part":** and two more, in the rules and in step 3; v9 was still unpublished, so the
 version did not move, only the block's digest). `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 9,
-and the issue form's placeholder is `v9` (**amended 2026-10-08, setup prompt v10:** 10 and `v10`; a saved v9
+and the issue form's placeholder is `v9` (**amended 2026-10-08, setup prompt v10, §16.36:** 10 and `v10`; a saved v9
 copy is stopped at step 1 like every older copy). v9 moves no step, so it has no entry in `PROMPT_LAYOUTS` and
 `prompt_layout(9)` is v7's layout, as v8's is. A saved v8 copy is stopped at step 1 like every older copy
 (§16.28).
@@ -10129,3 +10129,122 @@ speech-only pages, `test_speech_is_deterministic_on_a_fixed_wav`), `tests/test_r
 (`pills` and `audio`, with the real helper where developer tools exist), `tests/test_convert_file.py` (a speech
 failure keeps the screens), `tests/test_cycle.py` (a speech engine that appears reopens the record; a `.vtt` page
 of `text-plain` is read again once), `tests/test_ops_doctor.py`, `tests/test_install_oneshot.py`.
+
+### 16.36 Fixes from the third bring-back (2026-10-08)
+
+The corporate Mac ran setup prompt v9 at `c7bfdb8` and finished with no stop. Triage:
+`docs/research/corporate-bring-back-2026-10-08.md`. This section holds what that round built. None adds a
+command, flag, installer option, config key or environment variable. The prompt's text changed, so it is v10.
+
+#### Scope change on a complete pass: only what left scope is retired (amends §9 step 7, §16.12, §16.23)
+
+A local or inbox source whose scope fingerprint changed carries meta `scope_change:<id>` until its first complete
+FULL pass. Before this change that pass retired every deletion candidate as `retired:scope-change`, ahead of the
+breaker and the two-pass rule. On a source that had never completed a pass, the `exclude` line the loop itself
+advises for empty cloud folders therefore released every held deletion at once. Now each candidate is judged: it
+is retired `retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge, the usual alarm line) only if its
+path fails the arm's `in_scope` or its `last_seen_run` is before the run recorded in `scope_root:<id>` (a row last
+listed under an earlier `path`). Every other candidate is an ordinary absence: the breaker, then the two-pass
+rule, then the purge. The absent files still in scope are judged against the live count the pass started with,
+minus the retired rows, so files first seen in that pass do not raise the limit, and the source's
+`breaker_tripped` reports that judgment: a plain exclude of a large folder neither trips nor reports the breaker.
+The flag clears on that pass as before. With `accept-deletions` the breaker is not judged, as before.
+
+Not changed: Graph kinds. After a fingerprint change a drive source still retires every file its complete listing
+lacks, in scope or not. Incomplete passes (§16.23) are unchanged.
+
+Known limit: a row last listed before the run recorded in `scope_root` is retired without the breaker or the
+two-pass check. That is every row not listed again after `path` moves (by design), and, with `path` unchanged,
+the rows absent since before the first run that recorded the root when that run also changed the fingerprint: an
+upgrade straight from a build whose fingerprint lacked the always-on excludes, or a config edit in the first run
+on a build that records the root.
+
+Tests: `tests/test_cycle.py` (`test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes`,
+`test_an_exclude_with_no_other_absence_retires_its_files_past_the_breaker`,
+`test_a_drive_scope_change_still_retires_every_file_its_full_listing_lacks`, the breaker limit with files new in
+the pass, and an exclude that covers no mirrored file).
+
+#### A `no converter` stub that stands is not published again
+
+An online-only file that no converter claims was published again in every pass: its row is pending work while it
+is online-only with no content hash. When the row already has the very page the refusal would plan (same path,
+same page hash, page intact on disk), `_process` sets the verdict to REFUSED and writes nothing, so
+`outputs.built_run` keeps the run that first built it and the pass makes no commit for it. The row is pending
+work again in each pass while it is online-only with no content hash. Test:
+`tests/test_cycle.py::test_the_stub_of_an_online_only_file_nothing_converts_is_published_once`.
+
+#### Purge: the dry run's note and the queue file (`agentsync.governance`)
+
+A dry run of an entry that targets nothing (no blob, no docs path, no item) says nothing is targeted and no
+commit would be rewritten; every other dry run says "up to N commit(s)". `run_purge_queue` writes the queue file
+after every purge that verified, holding the entries kept so far (held, failed, not verified) and those not yet
+tried, and once more after the last entry. A run that stops part-way on anything but a `GovernanceError`
+therefore leaves no entry whose purge verified; the entry in flight stays in the file, so a rerun tries it again.
+A dry run writes nothing. Tests: `tests/test_governance.py` (a dry run that names nothing; a queue run that stops
+part-way).
+
+#### setup-report: what the v9 report could not say (`agentsync.setup_report`)
+
+**Recent errors merges repeats.** Within one log file, over the lines `_LEVEL_RE` kept, lines in a row that read
+the same after their leading time are shown once: the first of them, followed by
+` (<n> times in a row, the last at <time>)`. The merge runs after `_scrub_item_paths` and before the Redactor, so
+lines that differ only in an item's path or quoted name are one entry, and two sources' lines stay apart. A
+launcher line between two repeats does not split them, and a line with no leading time is never merged. When
+anything merged, the heading adds
+` (<n> as logged: lines in a row that read the same here are shown once, with their count and last time)`;
+otherwise the heading is unchanged. The field case was one warning per empty folder, 5 a poll, which filled the
+40-line window. `RECENT_ERROR_LINES` (40) now bounds entries, not log lines.
+
+**A redacted doctor line keeps no padding.** `ops.doctor.format_results` pads every check name to the longest
+real one, and the report replaced the id inside the padded name afterwards, so the spaces left beside a
+placeholder gave the id's length. `_redact_lines` collapses the run of spaces before the first ` — ` on every
+line that matches `_DOCTOR_TAG_RE`, in the Doctor section and the install.out tail alike; on every such line, not
+only a changed one, because the unchanged lines' width gives the longest name's length as well. `--no-redact`
+keeps doctor's alignment.
+
+**Residue check.** It also lists a word of any case joined to a placeholder by `-` or `_`, and a generic home
+folder standing before a placeholder (`~/<dir>/<folder-N>`) is no hit (amended in place where the check is
+described).
+
+**Legend.** `<folder-N>` reads "folder (under ~/Library/CloudStorage, or a configured source's folder)": the class
+has always taken a configured project folder outside CloudStorage too.
+
+**Purge queue: one line from the audit trail.** After the lines under the table, when a purge is queued:
+`- audit trail since <day> (the oldest queued day): N purge-enqueued, N purge (one per item erased) and N
+purge-summary (one per purge that ran) line(s)`. `_purge_audit` reads `governance.audit_path` once (not above
+`_AUDIT_READ`, 32 MiB), skips a line that is not JSON, and counts the records whose `at` day is on or after the
+oldest valid queued day; with no valid day it counts the whole trail. Counts only: no id, no hash, no source,
+and, like the other lines there, no command.
+
+**Media helper.** The OCR part says whether the media helper is ready, off, or why not, from the probe doctor's
+`media` check calls (amended in place in the "Bounded." paragraph and the "OCR." bullet).
+
+#### Setup prompt v10 (amends §16.14, §16.22 and §16.29; README, `scripts/install.sh`, `agentsync.setup_report`, `agentsync.ops.doctor`)
+
+v10 rewords three sentences of the prompt and nothing else. `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 10
+and the issue form's placeholder is `v10`. v10 moves no step, so it has no entry in `PROMPT_LAYOUTS`. A saved v9
+copy is stopped at step 1 like every older copy (§16.28).
+
+- **Step 2 names one inbox.** The inbox the prompt names is the folder named inbox beside the docs repo, the one
+  `config.ensure_inbox` keeps; it is one of the `kind = "inbox"` sources in `sources.toml`, and any other source
+  of that kind is a folder the person added. On a Mac with fourteen such added sources the v9 sentence ("the
+  folder of each kind = "inbox" source"), read literally, named fifteen folders as the inbox; the agent announced
+  only the one beside the docs repo and logged the wording. Rejected: routing through the line AGENTS.md carries
+  (a file read at step 2, and false when the guide lists several folders).
+- **The same rule outside the prompt.** README.md and docs/deploy/README.md name the drop folder the same way and
+  no longer say a sync keeps it (`ensure_inbox` runs for init and add-source only). doctor's ok line for an empty
+  inbox source outside CloudStorage adds "(drop files you save by hand here)" only when the source's path is that
+  folder; any other reads "`<root>` is empty", still ok. `status`'s `inbox on|missing|off` part is unchanged: it
+  is about every live inbox source.
+- **Step 3 names the one stop with no report.** "One case has no report yet: while you wait for my folder answer
+  in step 1." Step 1's rule stays word for word. The report still follows every other stop (no Xcode tools, a git
+  failure, a version mismatch): those are failures, and their reports matter most. Rejected: a Rules sentence
+  "where a step says to stop, run nothing after it", which switches the report off at those three stops.
+- **The Not used list glosses hold**: "hold (a legal or records hold, not a pause)".
+- Not changed: the fix-request heading's time carries no zone (§16.30: it marks one session, and nothing parses
+  it).
+
+Tests: `tests/test_deploy_pack.py` (`test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps`, the step 3
+sentence, the gloss, the README and deploy-guide wording, the digest), `tests/test_ops_doctor.py`
+(`test_only_the_kept_inbox_is_called_the_drop_folder`), `tests/test_setup_report.py` (v10 read with v7's layout),
+`tests/test_install_oneshot.py` (an old copy is refused: 9 against 10).
