@@ -919,11 +919,20 @@ class LocalArm:
         if stats.unknown_dirs:
             shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
             more = f" (+{len(stats.unknown_dirs) - 5} more)" if len(stats.unknown_dirs) > 5 else ""
+            if self.cfg.kind is SourceKind.LOCAL and stats.unknown_dirs == stats.empty_cloud_dirs:
+                # Only empty cloud folders: the loop's WAITING ON YOU line names the cause and the step.
+                cause = "empty cloud folder(s), zero children in a cloud tree"
+                advice = (
+                    f"see the WAITING ON YOU line about {self.source_id}, which agentsync status also prints"
+                )
+            else:
+                cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
+                advice = (
+                    "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
+                )
             alarms.append(
-                f"{len(stats.unknown_dirs)} unknown dir(s) — permission denied (TCC), provider error, or "
-                f"zero children in a cloud tree: {shown}{more}; enumeration incomplete, no deletions "
-                "this pass (exclude a deliberately empty cloud folder, or grant the agent Files and "
-                "Folders access)"
+                f"{len(stats.unknown_dirs)} unknown dir(s) — {cause}: {shown}{more}; enumeration "
+                f"incomplete, no deletions this pass ({advice})"
             )
         return items, stats, alarms
 

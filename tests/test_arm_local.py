@@ -388,6 +388,39 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     assert res.unknown_dirs == ("One", "Two") and not res.enumeration_complete
     (alarm,) = res.alarms
     assert "2 unknown dir(s)" in alarm and "'One', 'Two'" in alarm
+    assert alarm == (
+        "2 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One', 'Two'; enumeration "
+        "incomplete, no deletions this pass (see the WAITING ON YOU line about local-test, which agentsync "
+        "status also prints)"
+    )
+
+
+_TODAY = (
+    "{n} unknown dir(s) — permission denied (TCC), provider error, or zero children in a cloud tree: "
+    "{names}; enumeration incomplete, no deletions this pass (exclude a deliberately empty cloud folder, or "
+    "grant the agent Files and Folders access)"
+)
+
+
+def test_an_unreadable_folder_beside_an_empty_cloud_folder_keeps_the_privacy_advice() -> None:
+    """The loop's wait names only the empty folders here, so the alarm alone names the other cause."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    (root / "One").mkdir(parents=True)
+    _write(root / "Locked" / "b.docx")
+    _write(root / "a.docx")
+    with _chmod(root / "Locked", 0):
+        res = al.LocalArm(_cfg(root)).scan(None, full=True)
+    (alarm,) = res.alarms
+    assert alarm == _TODAY.format(n=2, names="'Locked', 'One'")
+
+
+def test_an_inbox_empty_cloud_folder_keeps_the_alarm_text() -> None:
+    """An incomplete inbox gets a loop note, not a WAITING ON YOU line: its alarm is unchanged."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Inbox"
+    (root / "One").mkdir(parents=True)
+    res = al.InboxArm(_cfg(root, kind=SourceKind.INBOX)).scan(None, full=True)
+    (alarm,) = res.alarms
+    assert alarm == _TODAY.format(n=1, names="'One'")
 
 
 def test_the_walk_records_its_zero_child_cloud_folders(tmp_path: Path) -> None:
