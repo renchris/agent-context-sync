@@ -10308,3 +10308,99 @@ sentence, the gloss, the README and deploy-guide wording, the digest), `tests/te
 `test_the_report_of_a_stopped_copy_invites_no_bring_back`), `tests/test_loop.py`
 (`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`) and `tests/test_arm_local.py`
 (`test_exclude_advice_is_a_line_that_clears_the_folders_it_names`).
+
+### 16.37 The v10 rehearsal's leftovers (2026-10-08, wave B11)
+
+Two rehearsals of setup prompt v10 in sandbox homes (before and after `69694db` landed) left small findings that
+need no prompt text. Each was checked by a verifier and a skeptic; where the skeptic corrected the verifier, its
+version is the one built. The prompt is still v10. None adds a command, flag, installer option, config key or
+environment variable. Plan: `docs/plans/bring-back-ocr.md` section B11.
+
+#### setup-report (`agentsync.setup_report`)
+
+- **A report long after the last attempt says nothing was started since** (amends §16.22). When the friction
+  log's last attempt has its `end | finished` line, that line is more than `_NEW_SESSION_GAP` (10 minutes) older
+  than the report, and install.log has no run that started after it, the Summary adds, after the prompt line:
+  `- note: no attempt was started and no install.sh run began since attempt <N> finished at <end>, more than 10
+  minutes before this report, so this report is of attempt <N>. A later session whose step 1 command stopped
+  before `install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not in it.` The prompt's
+  Xcode and git stops have said "and stop" since v7 and order no line, and step 3 ends every such stop with the
+  report, which judged the attempt that had finished before it and said nothing else. The report cannot tell
+  such a session from a report written again by hand (its own evidence line asks for one on an idle Mac), so it
+  says what it read and claims neither. The outcome, the issue link, `bring-back.md` and the installer's output
+  are unchanged. Rejected: `install.sh --report-only` logging a step 1 error for such a session. A report
+  written again by hand would then read "failed at step 1", an installer line would count as agent friction, the
+  false line would stay in the append-only log, and the local-work patch an earlier report sent would be sent
+  again (§16.30). Held for the next prompt revision: the Xcode and git stops log their error before the report.
+- **A session that stopped before `--log-start` was asked nothing** (amends §16.22 and §16.32). A header-less
+  attempt with no install.sh run counts no folder question and no click beyond the announced ones (`human turns:
+  0 (0 questions; 0 clicks; ...)`), and its expected-turns line is `- expected turns: none (step 1's command
+  stopped before install.sh --log-start, before the folder list: no folder question and no Allow click)`. The
+  stopped-copy line is unchanged.
+- **The Loop line lists every wait** (amends K16b and §16.30): `[; WAITING ON YOU: <the wait the loop stopped
+  on>[; WAITING ON YOU: <each other wait, in the loop's order>]]`. `(+N more)` is gone: the report's reader
+  cannot run `agentsync status`, and doctor's `(yours: see WAITING ON YOU)` pointed at a wait the line hid. The
+  waits are few (8 global kinds, plus a breaker wait and 2 empty-folder waits per source), and an exclude list
+  still shows as `<path>`.
+- **The folder question is "not logged as a question"**: `expected turns:` reads `the folder question (step 1;
+  not logged as a question)`, since an unanswered folder question has been logged as a deviation since v7
+  (`f82083b`). The re-run and Allow-click texts keep "not logged".
+- **The first-sync count says when it was read**: the clause ends `N of M source(s) listed completely (status:
+  baseline complete) at least once by the time this report was written`. A scope change clears the baseline and
+  a later incomplete listing does not, so the count can be lower than what the first sync saw, and it never
+  claims a listing complete now. The pinned words are only appended to.
+
+Not changed, by design: `unexpected N` (§16.36 left it; a group keyed on doctor's check name would call a
+stopped background sync the person's, since `heartbeat.<id>` warns the same way for a stale heartbeat), `in
+_eval` on the Loop line (the Configuration part names the docs repo), the order of `<folder-N>` numbers (the
+order of registration), and the stopped copy's `setup-report.md` (an old copy's own finish line names it).
+
+#### Installer (`scripts/install.sh`)
+
+- **The helper builds have a step of their own.** The OCR, media and speech helper builds are the install.log
+  step `helpers`, right after `launcher`: `result=done` when the modules ran, `skipped note=no-devtools` without
+  developer tools, `skipped note=no-interpreter` without the tool's interpreter. Its rc is 0 unless a signal
+  stops the run during it, so the exit status is unchanged, and `launcher` times the launcher alone. The speech
+  helper's first build took about 100 s in the rehearsal, logged on a `launcher` line that said `skipped
+  note=not-requested`. The report reads step names generically, so an older log parses as before.
+- **The helper builds print a progress line.** A ticker beside the builds prints `helpers: still running, <N>s`
+  every `PROGRESS_EVERY` seconds; it is killed after the builds and in `on_exit`. The builds stay in the
+  foreground, so a signal to the installer's own pid lets the build under way finish before the run exits, and
+  the re-run its `NEXT:` names never meets a second build in the same SwiftPM tree (a backgrounded build was
+  measured to outlive the installer).
+
+#### Sync and status around deletions and re-reads (`agentsync.cycle`, `agentsync.cli`, `agentsync.manifest`)
+
+- Between the pass that marks a file absent and the pass that removes it, `status` ends that source's line with
+  `· absent N (removed by a later complete pass if still missing)`, from `Manifest.absent_counts()` (present,
+  non-directory rows carrying `extra.absent_since_run`), unless the source's deletion breaker is tripped: then
+  nothing is removed until `accept-deletions`, and the breaker field already counts the held files. The count
+  stays out of `SourceStatus`, which feeds the committed `_sync/STATE.snapshot.md`.
+- The pass that removes a local or inbox file still absent from a second complete pass adds the alarm `N file(s)
+  still absent from this complete pass: removed as deleted upstream`. Graph sources and `accept-deletions` are
+  unchanged.
+- When the sync header's `0 change(s)` (it counts `MirrorChange` rows) sits beside a commit, it adds ` (no
+  source changed a mirror page; the commit holds other docs-repo files)`: a baseline flip in INDEX.md and the
+  snapshot, or the agent's `_eval` drafts. Marking a file absent never commits.
+- `CycleReport.read_again` is the run's re-read tally; the summary line reads `converted N, deferred M
+  online-only, read again R` when R > 0, unchanged otherwise. A re-read of the same bytes is never in N
+  (§16.27); a file whose bytes changed under its re-read counts in both.
+
+#### The alarm of a source whose unknown folders are all empty cloud folders (`agentsync.arm_local`)
+
+When every unknown folder of a `kind = "local"` walk is a zero-child cloud folder below the root, the alarm
+reads `N unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: ...; enumeration incomplete, no
+deletions this pass (see the WAITING ON YOU line about <id>, which agentsync status also prints)`. It offered
+Files and Folders access and an exclude above a wait that names the cause, and that can warn against an exclude
+(a folder that held mirrored files). Any other unknown folder and any inbox keep the old text, which is then the
+only line naming the other causes.
+
+#### Purge dry run (`agentsync.governance`)
+
+A dry run's headline names no commit count and says the cache entries "would be removed" (`purge <kind>
+(<reason>): dry run · N item(s) · N docs path(s) · N blob(s) targeted · N cache entr(ies) would be removed`);
+the note below it carries the commit count (§16.36). A real run's headline is unchanged.
+
+Tests: `tests/test_setup_report.py`, `tests/test_install_oneshot.py`, `tests/test_launcher.py`,
+`tests/test_cli.py` (status, the sync header and summary, the purge dry run), `tests/test_cycle.py` and
+`tests/test_arm_local.py`.
