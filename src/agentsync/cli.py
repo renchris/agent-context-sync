@@ -65,11 +65,8 @@ from agentsync.config import (
     parse_config,
     parse_size,
 )
-from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
-    HYDRATION_REFUSED,
     _holds_home,
-    _map_paths,
     _tighten_own_paths,
     run_cycle,
     source_statuses,
@@ -691,46 +688,11 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     )
 
 
-_RECORDING_NOT_DOWNLOADED = (
-    "an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
-)
-"""What ``materialise PATH`` prints after ``<path>: `` for a path that names an online-only recording whose
-download failed (spec S0 rule 3); the next background sync reads it once it is on the Mac."""
-
-
-def _refused_recordings(config: Config, paths: Sequence[Path]) -> list[Path]:
-    """The ``paths`` (as given) that name an online-only recording, or a folder holding one, whose download
-    failed in this run (``state_reason`` :data:`HYDRATION_REFUSED` on a recording suffix)."""
-    db = config.state_paths.db
-    if not paths or not db.is_file():
-        return []
-    suffixes = frozenset(RecordingConverter.extensions)
-    out: list[Path] = []
-    with Manifest(db) as manifest:
-        for raw in paths:
-            try:
-                ((sid, (rel,)),) = _map_paths(config, [raw]).items()
-            except (ConfigError, ValueError):
-                continue
-            below = "" if rel == "." else rel + "/"
-            if any(
-                row.state_reason == HYDRATION_REFUSED
-                and Path(row.rel_path).suffix.lower() in suffixes
-                and (row.rel_path == rel or row.rel_path.startswith(below))
-                for row in manifest.iter_items(sid)
-                if not row.is_dir
-            ):
-                out.append(raw)
-    return out
-
-
 def _cmd_mat(args: argparse.Namespace) -> int:
     config = _config(args)
     budget = parse_size(args.budget, where="--budget") if args.budget is not None else None
-    rc = _run(config, mode=CycleMode.POLL, budget_bytes=budget, materialise_paths=tuple(args.paths))
-    for path in _refused_recordings(config, args.paths):
-        _out(f"{path}: {_RECORDING_NOT_DOWNLOADED}")
-    return rc
+    # an online-only recording whose download failed in this run is named once, by the cycle's alarm
+    return _run(config, mode=CycleMode.POLL, budget_bytes=budget, materialise_paths=tuple(args.paths))
 
 
 _LOG_TAIL_BYTES = 64 * 1024

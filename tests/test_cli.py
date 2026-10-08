@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import shlex
@@ -31,6 +32,7 @@ from agentsync import (
     policy,
     skill,
 )
+from agentsync import cycle as cycle_mod
 from agentsync.config import Config, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
@@ -2176,33 +2178,34 @@ def test_materialise_names_an_online_only_recording_that_could_not_be_downloaded
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spec S0 rule 3: a path naming an online-only recording whose download failed in the run (or a folder
-    holding one) gets one line sending the person to Finder; a refused document or a recording that was
-    read gets none."""
+    """Spec S0 rule 3: an online-only recording whose download failed in the run gets one line sending the
+    person to Finder.  A refusal mark an earlier run left (this run skipped the download, say for low disk)
+    gets none, and neither does a refused document."""
     cfg = str(initialised.config_path)
     folder = local_source_dir / "projects" / "meetings"
     folder.mkdir()
     for name in ("standup.mp4", "review.mov"):
         (folder / name).write_bytes(b"\x00\x00\x00\x18ftypmp42 not a real recording")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
-    refused = {"projects/meetings/standup.mp4", "projects/sample.docx"}
+    real = cli.run_cycle
 
-    def run(config: Config, **_kwargs: object) -> int:  # the cycle's part: these downloads failed
-        for rel in refused:
+    def run_cycle(config: Config, **kwargs: Any) -> Any:  # the cycle's part: this run refused standup.mp4
+        report = real(config, **kwargs)
+        for rel in ("projects/meetings/standup.mp4", "projects/meetings/review.mov", "projects/sample.docx"):
             _mark(config, rel, RowState.DATALESS, HYDRATION_REFUSED)
-        return cli.EXIT_OK
+        alarm = cycle_mod._RECORDING_NOT_DOWNLOADED.format(path="projects/meetings/standup.mp4")
+        first, *rest = report.sources
+        first = dataclasses.replace(first, alarms=(*first.alarms, alarm))
+        return dataclasses.replace(report, sources=(first, *rest))
 
-    monkeypatch.setattr(cli, "_run", run)
+    monkeypatch.setattr(cli, "run_cycle", run_cycle)
     capsys.readouterr()
-    paths = [
-        folder / "standup.mp4",
-        folder / "review.mov",
-        local_source_dir / "projects" / "sample.docx",
-        folder,
-    ]
-    assert cli.main(["materialise", "--config", cfg, *map(str, paths)]) == cli.EXIT_OK
+    paths = [folder / "standup.mp4", folder / "review.mov", local_source_dir / "projects" / "sample.docx"]
+    assert cli.main(["materialise", "--config", cfg, *map(str, paths), str(folder)]) == cli.EXIT_OK
     tail = "an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
-    assert capsys.readouterr().out.splitlines() == [f"{folder / 'standup.mp4'}: {tail}", f"{folder}: {tail}"]
+    assert [line for line in capsys.readouterr().out.splitlines() if tail in line] == [
+        f"    alarm: projects/meetings/standup.mp4: {tail}"
+    ]
 
 
 def test_status_prints_the_recording_lines_and_their_commands_parse(
