@@ -6389,7 +6389,10 @@ developer tools, `note=no-interpreter` when the tool's interpreter is missing. I
 stops the run during it. So the run's exit status is still that of a run without the helpers, and the
 `launcher` line times the launcher alone. Still no option. Why: in the 2026-10-08 rehearsal the speech
 helper's first build took about 100 s, and it was logged on a `launcher` line that said `skipped
-note=not-requested`.
+note=not-requested`. While the helpers build, the step prints `helpers: still running, <N>s` at least every
+15 s from a ticker beside the builds. The builds stay in the foreground, so a run stopped by a signal to its
+own process lets the build under way finish before it exits, and the re-run its NEXT line names never meets a
+second build in the same SwiftPM tree.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -9254,7 +9257,8 @@ lines only at its end: a minute of silence here, two for a folder macOS holds fo
 under `with_progress "status"`, as the first sync and the closing status do, so
 `status: still running, <N>s` appears at each interval, above status's own lines. The step's exit status is
 still status's (`status_run`, under `pipefail`). The header's sentence reads "Steps 5, 6 and 8 and the
-closing status ...".
+closing status ...". **Amended (§16.37):** it now begins "The helper builds (step 3: ...), steps 5, 6 and 8
+and the closing status ...".
 
 **The two waits of step 5 keep one clock.** As first written, each counted its own interval: a pandoc start
 shorter than the interval printed nothing, and `with_progress "status"` then began at zero. With the two

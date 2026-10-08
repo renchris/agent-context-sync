@@ -3241,7 +3241,10 @@ STUB_TOOL_PYTHON = """#!/bin/bash
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
 case "$*" in
 *agentsync.convert.media*) err="${STUB_MEDIA_ERR:-}" out="${STUB_MEDIA_OUT:-}" rc="${STUB_MEDIA_RC:-0}" ;;
-*agentsync.convert.speech*) err="${STUB_SPEECH_ERR:-}" out="${STUB_SPEECH_OUT:-}" rc="${STUB_SPEECH_RC:-0}" ;;
+*agentsync.convert.speech*)
+	err="${STUB_SPEECH_ERR:-}" out="${STUB_SPEECH_OUT:-}" rc="${STUB_SPEECH_RC:-0}"
+	[ -z "${STUB_SPEECH_SLEEP:-}" ] || { sleep "$STUB_SPEECH_SLEEP"; echo "speech finished" >>"$STUB_LOG"; }
+	;;
 *) err="${STUB_OCR_ERR:-}" out="${STUB_OCR_OUT:-}" rc="${STUB_OCR_RC:-0}" ;;
 esac
 [ -z "$err" ] || printf '%s\\n' "$err" >&2
@@ -3479,6 +3482,70 @@ def test_helpers_step_builds_the_speech_helper_after_media_and_a_failure_is_only
         assert "Traceback" not in cp.stderr and "second line" not in cp.stdout
         out = cp.stdout.splitlines()
         assert out.index(line) == next(i for i, ln in enumerate(out) if "media helper" in ln) + 1
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
+def test_helpers_step_prints_progress_lines_while_the_builds_run(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The speech helper's first build took about 100 s in the 2026-10-08 rehearsal and printed nothing.  A
+    ticker beside the builds prints ``helpers: still running, <N>s`` at each interval, above the speech line,
+    and stops with the builds."""
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    placed = "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)"
+    e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "2", "STUB_SPEECH_SLEEP": "3.5", "STUB_SPEECH_OUT": placed}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    ticks = [i for i, ln in enumerate(out) if re.fullmatch(r"helpers: still running, \d+s", ln)]
+    assert ticks and ticks[-1] < out.index(placed), cp.stdout
+    assert last_line(cp).startswith("NEXT: ") and one_next(cp)
+    assert ("helpers", "done", "0", "") in steps(install_log(env))
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
+def test_a_run_stopped_during_the_helper_builds_lets_the_build_end_first(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The builds run in the foreground: a SIGTERM to the installer's pid alone lets the build under way
+    finish before the run exits, so the re-run its NEXT line names never meets a second build in the same
+    tree.  The ticker beside the builds prints nothing after NEXT."""
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "2", "STUB_SPEECH_SLEEP": "3"}
+    proc = subprocess.Popen(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+        env=e,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not any(c.startswith("python -I -m agentsync.convert.speech") for c in calls(env)):
+            assert proc.poll() is None and time.monotonic() < deadline, "the speech build never started"
+            time.sleep(0.05)
+        time.sleep(1)
+        os.kill(proc.pid, signal.SIGTERM)  # the installer's pid alone
+        rc = proc.wait(timeout=30)
+        finished = "speech finished" in calls(env)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    assert proc.stdout is not None and proc.stderr is not None
+    stdout, stderr = proc.stdout.read(), proc.stderr.read()
+    assert rc == 143, stdout + stderr
+    assert finished, "the build under way ended before the installer exited"
+    assert stdout.rstrip("\n").splitlines()[-1].startswith("NEXT: this run was stopped before it finished"), (
+        stdout
+    )
+    assert sum(ln.startswith("NEXT:") for ln in stdout.splitlines()) == 1
+    assert ("helpers", "failed", "143", "") in steps(install_log(env))
 
 
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------

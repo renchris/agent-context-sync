@@ -147,12 +147,12 @@
 #      "background sync: running (...)" and leaves that run converting in the background. A job without
 #      canaries waits for an exit 0. While macOS waits for Allow (TCC_PENDING in the launcher log, or exit
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
-#   Steps 5, 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so
-#   a coding tool that stops a command which has
-#   printed nothing for a while does not stop this one. Step 5's two waits keep one clock for that: a start
-#   of pandoc too quick to print a line is counted in the first interval of status, which follows it (the
-#   one part with no line of its own is reading the config for the pandoc path, 0.1 s as a rule and stopped
-#   at 20 s). A whole run with --confirm-install-agent takes the
+#   The helper builds (step 3: "helpers: still running, <N>s"), steps 5, 6 and 8 and the closing status
+#   (see NEXT below) print a progress line at least every 15 s, so a coding tool that stops a command which
+#   has printed nothing for a while does not stop this one. Step 5's two waits keep one clock for that: a
+#   start of pandoc too quick to print a line is counted in the first interval of status, which follows it
+#   (the one part with no line of its own is reading the config for the pandoc path, 0.1 s as a rule and
+#   stopped at 20 s). A whole run with --confirm-install-agent takes the
 #   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
 #   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
 #   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
@@ -505,7 +505,8 @@ SIMULATE=0
 LAUNCHCTL="${AGENTSYNC_LAUNCHCTL:-/bin/launchctl}"
 WAIT_SECONDS="${AGENTSYNC_WAIT_SECONDS:-180}"
 WAIT_POLL="${AGENTSYNC_WAIT_POLL_SECONDS:-3}"
-PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}" # a progress line at least this often in steps 5, 6 and 8
+# a progress line at least this often in the helper builds and steps 5, 6 and 8
+PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}"
 LIST_TIMEOUT="${AGENTSYNC_LIST_TIMEOUT:-90}"
 LIST_TOTAL="${AGENTSYNC_LIST_TOTAL_SECONDS:-100}"
 POLL_LABEL="com.agentsync.poll"
@@ -662,6 +663,17 @@ with_progress() {
 	done
 	wait "$pid" || rc=$?
 	return "$rc"
+}
+# Print "LABEL: still running, <N>s" every $PROGRESS_EVERY s until killed, for a command the caller runs in
+# the foreground meanwhile (the helper builds: a stopped run still lets the one under way end before it
+# exits, so a re-run never meets a second build in the same tree). TICKER is its pid; on_exit kills it too.
+# The sleep holds no output open, so a killed ticker never keeps a reader of this run's output waiting.
+TICKER=""
+ticker() {
+	local t0=$SECONDS
+	while sleep "$PROGRESS_EVERY" >/dev/null 2>&1 && kill -0 "$$" 2>/dev/null; do
+		say "$1: still running, $((SECONDS - t0))s"
+	done
 }
 
 # Run a command, or only print it in a dry run.
@@ -1185,6 +1197,7 @@ on_exit() {
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
+	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
 	step_end failed "$rc"
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
@@ -1745,12 +1758,16 @@ if have_devtools; then
 		run "$TOOL_PY" -I -m agentsync.convert.speech
 		step_end "done"
 	elif [ -x "$TOOL_PY" ]; then
+		ticker helpers &
+		TICKER=$!
 		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
 		media_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.media </dev/null 2>/dev/null | head -n 1)" || true
 		say "${media_line:-media helper: not built (the build did not run)}"
 		speech_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.speech </dev/null 2>/dev/null | head -n 1)" || true
 		say "${speech_line:-speech: not built (the build did not run)}"
+		kill "$TICKER" 2>/dev/null || true
+		TICKER=""
 		step_end "done"
 	else
 		step_end skipped 0 no-interpreter
