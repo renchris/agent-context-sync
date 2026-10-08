@@ -439,7 +439,7 @@ _LEGEND = {
     "name": "<name> full name",
     "org": "<org-N> organisation",
     "library": "<library-N> SharePoint library",
-    "folder": "<folder-N> folder under ~/Library/CloudStorage",
+    "folder": "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder)",
     "source": "<source-N> source id",
     "email": "<email-N> email address",
     "guid": "<guid-N> GUID",

@@ -1850,6 +1850,9 @@ def test_a_project_path_under_the_home_folder_is_redacted(fake_mac: dict[str, Pa
     name = re.search(r"cannot list ~/Development/(<folder-\d+>)/notes; internal correspondence is", shown)
     assert whole and name and whole.group(1) != name.group(1)
     assert f"source.z.listable — cannot list ~/Development/{whole.group(1)}\n" in shown, "any case, ~/ form"
+    assert "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder)" in section(
+        text, "Redaction"
+    ), "the legend covers the folder it has just named outside CloudStorage"
     assert "~/agent-context/setup/friction.md" in text, "agentsync's own folder is not a project"
 
 
