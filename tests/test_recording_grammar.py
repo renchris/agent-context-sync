@@ -31,13 +31,16 @@ What a window unit is held to:
 The index unit is held to the same rule with its own blocks (3.5), in order, each opened by ``## <block>``.
 Its three count tables (``What ran``, ``Windows``, ``Voices``) have fixed columns, and every cell must be a
 count, a time, a window or voice number, a status word or an engine identity, so text read from the picture
-cannot sit in a cell.  Picture text appears only after a tag.  The names in every page here are made up
-(Contoso).
+cannot sit in a cell; a blank line follows each table, since a GFM table goes on to the next blank line and
+would take a tagged line under it as a row.  Picture text appears only after a tag.  The names in every page
+here are made up (Contoso).
 """
 
 from __future__ import annotations
 
 import re
+import sys
+import unicodedata
 from collections.abc import Callable
 
 import pytest
@@ -45,9 +48,15 @@ import pytest
 from agentsync.policy import UNTRUSTED_BANNER
 
 HMS = r"\d{2}:[0-5]\d:[0-5]\d"
-# C0, DEL, NEL and the two Unicode line breaks: str.splitlines() ends a line at each, so none stands in text.
-TEXT = r"[^\x00-\x1f\x7f\x85\u2028\u2029]+"
-LABEL = r'[^"\x00-\x1f\x7f\x85\u2028\u2029]{1,60}'
+# What cleaning removes never stands in text: C0, DEL, the C1 block (NEL among it; str.splitlines() ends a
+# line at it and at the two Unicode line breaks), lone surrogates, and every format character (Cf: zero
+# widths, the BOM, bidi overrides and isolates, the tag characters).
+_FORMAT = "".join(
+    re.escape(chr(c)) for c in range(0x80, sys.maxunicode + 1) if unicodedata.category(chr(c)) == "Cf"
+)
+_NOT_TEXT = rf"\x00-\x1f\x7f-\x9f\ud800-\udfff\u2028\u2029{_FORMAT}"
+TEXT = rf"[^{_NOT_TEXT}]+"
+LABEL = rf'[^"{_NOT_TEXT}]{{1,60}}'
 
 TITLE_RE = re.compile(rf"# Recording ({HMS})-({HMS}) · window (\d+) of (\d+)")
 HEADING_RE = re.compile(
@@ -492,6 +501,12 @@ def index_errors(page: str) -> list[str]:
         if name in showing and (showing[name][0] != printed or showing[name][1] < printed):
             errors.append(f"the {name} block's showing line counts the {printed} {tag} lines it prints")
     errors += _footer_errors(footer)[0]
+    raw = page.split("\n")
+    for number, (line, after) in enumerate(zip(raw, [*raw[1:], ""], strict=True), 1):
+        if line.startswith("|") and after.strip() and not after.startswith("|"):
+            errors.append(
+                f"line {number}: a blank line follows a table (GFM would take line {number + 1} as a row)"
+            )
     return errors
 
 
@@ -650,6 +665,7 @@ INDEX = f"""{UNTRUSTED_BANNER}
 | 5 | 00:20:00 | 00:25:00 | 2 | 290 | 2 | 7554 |
 | 6 | 00:25:00 | 00:30:00 | 1 | 300 | 0 | 3301 |
 | 7 | 00:30:00 | 00:31:40 | 1 | 0 | 0 | 902 |
+
 [00:04:12] SCREEN: Demand forecast by region
 [00:05:38] SCREEN: FY27 storage budget.xlsx - Excel
 
@@ -666,6 +682,7 @@ showing 3 of 3
 | v2 | 00:11:02 | 64 | 00:01:05 | 00:31:02 |
 | v3 | 00:02:40 | 12 | 00:09:40 | 00:28:44 |
 | v4 | 00:00:31 | 3 | 00:17:03 | 00:17:40 |
+
 [00:00:21] VOICE: v1 · Luis Fernandez (Contoso) · seen: 41 of 43 lit samples; 97 % of the label's lit speech
 [00:01:05] VOICE: v2 · shared audio of Contoso Room 4, 2 voices
 [00:09:40] VOICE: v3 · mixed
@@ -710,6 +727,12 @@ def test_a_page_rendered_with_the_banner_alone_still_needs_a_state() -> None:
 
 
 WINDOW_BREAKS = [
+    ("a bidi override in a row", "TILE: Dana Okafor", "TILE: Dana\u202eOkafor", "not the banner"),
+    ("a zero width in a row", "SCREEN: Q4 | B", "SCREEN: Q4\u200b | B", "not the banner"),
+    ("a C1 control in a row", "SCREEN: Q4 | B", "SCREEN: Q4\x9b | B", "not the banner"),
+    ("a lone surrogate in a row", "SCREEN: Q4 | B", "SCREEN: Q4\ud800 | B", "not the banner"),
+    ("a tag character in a row", "SCREEN: Q4 | B", "SCREEN: Q4\U000e0041 | B", "not the banner"),
+    ("a format character in a label", '"Demand forecast', '"Demand\u2066forecast', "not a heading"),
     (
         "an untagged row",
         "[00:05:38] SCREEN: Q2 | A | 104 | 1,105,000",
@@ -972,6 +995,18 @@ INDEX_BREAKS = [
     ("an odd TERM time", "[00:08:46] TERM", "[00:08:47] TERM", "even second"),
     ("a TERM that is two words", "TERM: Quarter", "TERM: Quarter plan", "one word"),
     ("a TERM that is a number", "TERM: Capacity", "TERM: 4,425,000", "4 or more letters"),
+    (
+        "a tagged line right under the Windows table",
+        "| 902 |\n\n[00:04:12] SCREEN:",
+        "| 902 |\n[00:04:12] SCREEN:",
+        "a blank line follows a table",
+    ),
+    (
+        "a tagged line right under the Voices table",
+        "| 00:17:40 |\n\n[00:00:21] VOICE:",
+        "| 00:17:40 |\n[00:00:21] VOICE:",
+        "a blank line follows a table",
+    ),
 ]
 
 

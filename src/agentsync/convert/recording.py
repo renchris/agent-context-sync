@@ -1256,10 +1256,14 @@ class _Settle:
             title = tuple(
                 Row(r.text, "SCREEN", 0, end0, r.x, r.y, r.w, r.h, r.confidence) for r in cands[0].rows
             )
-        names: dict[str, tuple[int, int]] = {}
+        from agentsync.convert.recording_page import _clean  # noqa: PLC0415 - it imports this module
+
+        names: dict[str, tuple[int, int]] = {}  # keyed on the printed text: names alike once cleaned are one
         for track in tracks:
             if track.region in {"strip", "label"}:
-                text, _reading = _reading_of(track)
+                text = _clean(_reading_of(track)[0])
+                if not text:
+                    continue
                 first, reads = names.get(text, (cands[track.reads[0][0]].ms, 0))
                 names[text] = (min(first, cands[track.reads[0][0]].ms), reads + len(track.reads))
         roster = tuple(sorted((first, text, reads) for text, (first, reads) in names.items() if reads >= 3))

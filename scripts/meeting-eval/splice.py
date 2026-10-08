@@ -10,8 +10,9 @@ package in which every transcript line is a ``[HH:MM:SS] SAID v1: text`` line of
 time, inside the state on screen at that time (S9 rule 2), at its place in S9 rule 1's order: by time, and at one
 time after KEYFRAME, TILE, SCREEN, SCREEN-, SCREEN+, SPEAKING and the SAID lines already there, before NOTE.
 
-Speech text is cleaned as picture text is (S9 rule 5): no control character, lone surrogate or Unicode line break,
-``<!--`` neutralised; a line left empty is dropped.  Headings, footer and sidecars are copied unchanged and the
+Speech text is cleaned by the renderer's own function, as picture text is (S9 rule 5): NFC; no control, format,
+tag or filler character, lone surrogate or Unicode line break; every ``<`` printed ``&lt;``, ``![`` printed ``!\\[``
+and a trailing ``[?]`` printed ``(?)``; a line left empty is dropped.  Headings, footer and sidecars are copied unchanged and the
 index gains no Voices block.  It refuses, writing nothing: a transcript line it cannot parse, a time no window or
 no state holds, and a cut window (its whole text is in ``full-text.txt``, which the footer's digest pins).
 
@@ -25,6 +26,8 @@ import re
 import shutil
 import sys
 from pathlib import Path
+
+from agentsync.convert.recording_page import _clean as clean
 
 HMS = r"\d{2}:[0-5]\d:[0-5]\d"
 WINDOW_NAME = re.compile(r"\d{2,}-t\d{6}\.md")
@@ -45,7 +48,6 @@ RANK = {
     "SAID": 5,
     "NOTE": 6,
 }
-UNPRINTABLE = re.compile(r"[\x00-\x1f\x7f-\x9f\ud800-\udfff  ]")
 
 
 class SpliceError(Exception):
@@ -55,11 +57,6 @@ class SpliceError(Exception):
 def seconds(hms: str) -> int:
     h, m, s = (int(part) for part in hms.split(":"))
     return h * 3600 + m * 60 + s
-
-
-def clean(text: str) -> str:
-    """Speech text as a page may print it (S9 rule 5)."""
-    return UNPRINTABLE.sub("", text).replace("<!--", "&lt;!--").strip()
 
 
 def read_transcript(text: str) -> list[tuple[int, str, str]]:

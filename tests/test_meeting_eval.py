@@ -522,3 +522,20 @@ def test_splice_main_prints_a_count_and_refuses_a_folder_that_is_not_empty(
     assert capsys.readouterr().out.startswith("spliced 6 speech line(s) into 2 window(s) under ")
     assert splicer.main([str(package), str(tmp_path / "transcript-only.md"), str(out)]) == 1
     assert "OUT exists and is not an empty folder" in capsys.readouterr().err
+
+
+def test_splice_cleans_speech_as_the_renderer_cleans_picture_text(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    (tmp_path / "transcript-only.md").write_text(
+        "[00:00:00] see <style>x</style> and ![p](https://contoso.example/p.png)\n"
+        "[00:01:00] cafe\u0301 \u202eok\u200b [?]\n"
+        "[00:01:30] \u3164\ufeff\n"
+    )
+    out = tmp_path / "spliced"
+    assert splicer.splice(package, tmp_path / "transcript-only.md", out) == (2, 1)
+    page = (out / "01-t000000.md").read_text()
+    assert (
+        "[00:00:00] SAID v1: see &lt;style>x&lt;/style> and !\\[p](https://contoso.example/p.png)\n" in page
+    )
+    assert "[00:01:00] SAID v1: caf\u00e9 ok (?)\n" in page
+    assert window_errors(page) == []

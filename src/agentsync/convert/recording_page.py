@@ -14,6 +14,7 @@ floored to the even second of the 2 s tick grid; a state or row that lasts to th
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC as _UTC
@@ -73,8 +74,13 @@ _HOW_TO_READ = (
     "- open a keyframe only for a line ending in [?], a number or name you will quote, or what is not text",
 )
 
-# S9 rule 5: C0, DEL, the C1 block (NEL among it), lone surrogates and the two Unicode line breaks.
-_UNPRINTABLE_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\ud800-\udfff\u2028\u2029]")
+# S9 rule 5: C0, DEL, the C1 block (NEL among it), lone surrogates, the two Unicode line breaks, the tag
+# characters and the blank fillers (Hangul fillers, the blank Braille pattern); format characters (Cf: zero
+# widths, the BOM, bidi overrides and isolates) go by category.
+_UNPRINTABLE_RE = re.compile(
+    r"[\x00-\x1f\x7f-\x9f\ud800-\udfff\u2028\u2029\U000e0000-\U000e007f\u115f\u1160\u3164\uffa0\u2800]"
+)
+_FORGED_MARK = "[?]"  # picture text ending so would read as the low-confidence mark: printed "(?)"
 _ENGINE_RE = re.compile(r"[^a-z0-9.+-]+")
 _CREATED_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC")
 _FOREVER = 1 << 62  # the end of a row that lasts to the read end: it never leaves inside the reading
@@ -95,9 +101,14 @@ def _stem_time(seconds: int) -> str:
 
 
 def _clean(text: str) -> str:
-    """Picture text as a page may print it (S9 rule 5): no control character, lone surrogate or Unicode
-    line break, ``<!--`` neutralised, no surrounding space.  It always follows a time and a tag."""
-    return _UNPRINTABLE_RE.sub("", text).replace("<!--", "&lt;!--").strip()
+    """Picture or speech text as a page may print it (S9 rule 5), in NFC (before any cut, so a cut length is
+    the printed one): no control, format, tag or filler character, lone surrogate or Unicode line break;
+    every ``<`` printed ``&lt;`` and ``![`` printed ``!\\[``, so no HTML or image opens; a trailing ``[?]``
+    printed ``(?)``, so only the renderer marks low confidence; no surrounding space.  It always follows a
+    time and a tag; text left empty is not printed."""
+    kept = "".join(c for c in _UNPRINTABLE_RE.sub("", text) if unicodedata.category(c) != "Cf")
+    out = unicodedata.normalize("NFC", kept).replace("<", "&lt;").replace("![", "!\\[").strip()
+    return out[: -len(_FORGED_MARK)] + "(?)" if out.endswith(_FORGED_MARK) else out
 
 
 def _heading_label(label: str | None) -> str | None:
@@ -425,10 +436,15 @@ def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -
         for s in [s for s in w.spans if s.start >= w.start][:2]
         if (label := _heading_label(s.state.label)) is not None
     ]
-    blocks.append(["## Windows", *table, *labels])
+    blocks.append(["## Windows", *table, *([""] if labels else []), *labels])  # GFM: a table ends at a blank
 
+    merged: dict[str, tuple[int, int]] = {}  # names alike once cleaned are one: reads summed, first read kept
+    for first, raw, reads in reading.names:
+        if text := _clean(raw):
+            was = merged.get(text)
+            merged[text] = (first, reads) if was is None else (min(was[0], first), was[1] + reads)
     names = sorted(
-        ((first, _clean(text), reads) for first, text, reads in reading.names if _clean(text)),
+        ((first, text, reads) for text, (first, reads) in merged.items()),
         key=lambda name: (-name[2], name[0], name[1]),
     )
     if names:
