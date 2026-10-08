@@ -32,7 +32,7 @@ from agentsync import (
     skill,
 )
 from agentsync.config import Config, inbox_source_table, load_config
-from agentsync.cycle import run_cycle
+from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
@@ -40,7 +40,7 @@ from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
-from agentsync.model import CycleMode, SourceKind
+from agentsync.model import CycleMode, RowState, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock
 
@@ -2126,3 +2126,109 @@ def test_no_next_hint_env_silences_init_add_source_and_setup_report(
     assert cli.main(report) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert not re.search(r"(?im)^\s*next:", out), "KISS K01: the static hints are gone (sync says NEXT)"
+
+
+# ---- recordings: the status clause, the materialise line, the lines that name commands -------------------
+
+
+def _local_id(config: Config) -> str:
+    return next(s.id for s in config.sources if s.kind is SourceKind.LOCAL)
+
+
+def _mark(config: Config, rel_path: str, state: RowState, reason: str | None) -> str:
+    """Set the row at ``rel_path`` (the local source) to an unconverted ``state`` with ``reason``, as the
+    cycle leaves it; its stable id."""
+    sid = _local_id(config)
+    with Manifest(config.state_paths.db) as manifest:
+        row = manifest.item_by_path(sid, rel_path)
+        assert row is not None, rel_path
+        manifest.set_verdict(sid, row.stable_id, Verdict.DEFERRED)
+        manifest.set_state(sid, row.stable_id, state, reason)
+        return row.stable_id
+
+
+def test_a_label_rule_converts_recordings_adds_the_index_note_and_the_status_clause(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 2 (spec S0 rule 1), the status half: while a [policy] label rule is active and [convert]
+    recordings is on, the line stating the label rule gains the fixed clause; with no rule, or recordings
+    off, it does not. (The index NOTE half is the recording converter's.)"""
+    cfg = str(initialised.config_path)
+    clause = "; recordings are converted on this Mac under it (a recording's label cannot be read)"
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "  labels_active: false\n" in out and clause not in out
+    with initialised.config_path.open("a", encoding="utf-8") as fh:
+        fh.write('\n[policy]\nexclude_label_names = ["Contoso Secret"]\n')
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert f"  labels_active: true{clause}\n" in out and out.count(clause) == 1
+    with initialised.config_path.open("a", encoding="utf-8") as fh:
+        fh.write("\n[convert]\nrecordings = false\n")
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "  labels_active: true\n" in out and clause not in out
+
+
+def test_materialise_names_an_online_only_recording_that_could_not_be_downloaded(
+    initialised: Config,
+    local_source_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spec S0 rule 3: a path naming an online-only recording whose download failed in the run (or a folder
+    holding one) gets one line sending the person to Finder; a refused document or a recording that was
+    read gets none."""
+    cfg = str(initialised.config_path)
+    folder = local_source_dir / "projects" / "meetings"
+    folder.mkdir()
+    for name in ("standup.mp4", "review.mov"):
+        (folder / name).write_bytes(b"\x00\x00\x00\x18ftypmp42 not a real recording")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    refused = {"projects/meetings/standup.mp4", "projects/sample.docx"}
+
+    def run(config: Config, **_kwargs: object) -> int:  # the cycle's part: these downloads failed
+        for rel in refused:
+            _mark(config, rel, RowState.DATALESS, HYDRATION_REFUSED)
+        return cli.EXIT_OK
+
+    monkeypatch.setattr(cli, "_run", run)
+    capsys.readouterr()
+    paths = [
+        folder / "standup.mp4",
+        folder / "review.mov",
+        local_source_dir / "projects" / "sample.docx",
+        folder,
+    ]
+    assert cli.main(["materialise", "--config", cfg, *map(str, paths)]) == cli.EXIT_OK
+    tail = "an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
+    assert capsys.readouterr().out.splitlines() == [f"{folder / 'standup.mp4'}: {tail}", f"{folder}: {tail}"]
+
+
+def test_status_prints_the_recording_lines_and_their_commands_parse(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``status`` prints the recording wait (no background job is installed in a test) and the Finder note
+    beside the other loop lines; every ``agentsync`` command they name is one the CLI parses."""
+    cfg = str(initialised.config_path)
+    for name in ("standup.mp4", "review.mov"):
+        (local_source_dir / "projects" / name).write_bytes(b"\x00\x00\x00\x18ftypmp42 not a real recording")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    waiting = _mark(initialised, "projects/standup.mp4", RowState.LIVE, RECORDING_WAITS)
+    _mark(initialised, "projects/review.mov", RowState.DATALESS, HYDRATION_REFUSED)
+    key = f"{loop.RECORDING_PROGRESS_META}{_local_id(initialised)}:{waiting}"
+    with Manifest(initialised.state_paths.db) as manifest:
+        manifest.set_meta(key, "300000 1800000")
+    capsys.readouterr()
+    cli.main(["status", "--config", cfg])
+    out = capsys.readouterr().out.splitlines()
+    sid = _local_id(initialised)
+    (wait,) = [line for line in out if line.startswith(f"WAITING ON YOU: 1 recording(s) in {sid} ")]
+    assert "(5 of 30 minutes)" in wait and "--confirm-install-agent" in wait
+    assert any(line.startswith(f"note: 1 online-only recording(s) in {sid} (0.0 GB)") for line in out)
+    named = [
+        span[span.index("agentsync ") :] for span in re.findall(r"`([^`]+)`", wait) if "agentsync " in span
+    ]
+    assert named == ["agentsync materialise <file>"]
+    for command in named:
+        _assert_fix_parses(command)
