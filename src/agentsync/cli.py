@@ -393,9 +393,10 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are one
     count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
-    _out(
-        f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {len(report.changes)} change(s)"
-    )
+    counted = f"{len(report.changes)} change(s)"
+    if report.commit_sha and not report.changes:
+        counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
+    _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(f"{k.value}={v}" for k, v in sorted(s.counts.items(), key=lambda kv: kv[0].value))
         state = s.pass_kind.value if s.pass_kind else f"skipped ({s.skipped_reason or '-'})"

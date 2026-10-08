@@ -42,7 +42,7 @@ from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
-from agentsync.model import CycleMode, RowState, SourceKind, Verdict
+from agentsync.model import CycleMode, CycleReport, RowState, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock
 
@@ -248,6 +248,25 @@ def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFix
     assert "mode dry_run" in capsys.readouterr().out
     assert cli.main(["reconcile", "--config", cfg]) == cli.EXIT_OK
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "1"
+
+
+def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest.CaptureFixture[str]) -> None:
+    """``N change(s)`` counts the mirror pages sources changed. A commit beside 0 holds other docs-repo files
+    (a baseline flip in INDEX.md, the agent's _eval drafts), and the header says so; with no commit it reads
+    as before."""
+    committed = CycleReport(
+        run_id=6, mode=CycleMode.POLL, sources=(), changes=(), commit_sha="0efe0129bbe4" * 3
+    )
+    cli._print_report(committed)
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "run 6 · mode poll · commit 0efe0129bbe4 · 0 change(s) (no source changed a mirror page; the commit "
+        "holds other docs-repo files)"
+    )
+    cli._print_report(dataclasses.replace(committed, commit_sha=None))
+    assert (
+        capsys.readouterr().out.splitlines()[0]
+        == "run 6 · mode poll · commit none (no content change) · 0 change(s)"
+    )
 
 
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(
