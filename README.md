@@ -249,6 +249,24 @@ source's expiry, like every archived page. Keyframes are about 27.5 MB per recor
 one recording); at five one-hour meetings a week that is about 2.3 GB in the docs repo at a 120-day expiry, and
 about three times that on disk counting the cache and git. The secret scan reads the pages' text, not the pictures.
 
+#### Placing the speech models
+
+Speech (the words said in a recording, and which voice said them) is read on the Mac by a third helper, built by
+`scripts/install.sh` right after the media helper (one `speech:` line). Its build fetches the FluidAudio library
+from github.com and can take up to 20 minutes the first time. agentsync never downloads the models: you place two
+folders, under FluidAudio's own names, in the `speech` folder of agentsync's cache
+(`~/Library/Caches/agentsync/speech/` unless `[agentsync] cache_dir` says otherwise):
+
+- `parakeet-tdt-0.6b-v3/`, the speech recogniser (483 MB);
+- `speaker-diarization/`, the voice separator (22 MB of model files).
+
+A Mac where FluidAudio itself downloaded them keeps copies in `~/Library/Application Support/FluidAudio/Models/`.
+Speech stays off until both folders are there; `status` then says `speech: off (the speech models are not placed:
+...)`. Each sync checks every model file against a pinned SHA-256 digest before it uses them; a folder that does
+not match is not used, and the log says which. The helper must be built from FluidAudio `04e363c` or later (the
+first build that keeps one speaker in one voice): the installer refuses an older one, and `status` reports a helper
+built from any other commit as `speech: failed`. Speech is off whenever recordings are (`recordings = false` above).
+
 ## Set up on a new Mac: one prompt
 
 Copy this block into Claude Code, GitHub Copilot CLI or any coding agent that can run shell commands on the Mac. The
