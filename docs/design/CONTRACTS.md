@@ -9907,7 +9907,49 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
 
 <!-- slot: cue (agentsync.convert.cue; agentsync.convert.media additions) -->
 
-- (cue: fill this paragraph)
+- **Media helper 1.1.0** (`agentsync.convert.media`, `media_frames.swift`; spec S7, S8 rule 1). Two verbs, as
+  the fake of `tests/media_kit.py` answers them. `pills FILE --request REQ.json [--step-ms 2000]`: REQ is
+  `[{"tick": k, "boxes": [[x, y, w, h], ...]}]` in fractions of the frame, origin top-left; per item the frame
+  on display at `k x step` (the exact-frame generator `scan` and `frames` use), and per box the median of
+  `B - R` over its pixels with `R + G + B < 600`, an integer (the lower median of an even count; 0 when no
+  pixel is that dark). The box covers pixel columns `floor(x W) - 4` to `ceil((x + w) W) + 3` and rows
+  `floor(y H) - 2` to `ceil((y + h) H) + 1`, clamped to the frame. Answer `{"pills": [{"tick", "values"}]}` in
+  request order. `audio FILE --out DIR`: the first sound track as `DIR/audio.pcm`, 16 kHz mono 16-bit
+  little-endian PCM, read from the start and never by seeking; answer `{"file": "audio.pcm", "sample_rate":
+  16000, "channels": 1, "samples": N}`; no sound track is exit 3 (`the recording has no sound`). The helper
+  decodes to float at the track's own rate and channel count and does the rest itself: the channels averaged,
+  a Blackman-windowed sinc low-pass (16 zero crossings a side, cut at 0.47 of the lower rate) evaluated in
+  Double in a fixed order, rounded to 16 bits. AVFoundation's own 16 kHz converter was dropped because it gave
+  a second byte stream in 2 of about 260 runs of a 2 s clip under load. Apple's AAC decoder itself is not
+  bit-exact on long files (a 10-minute 44.1 kHz file: about 1 ulp in 1.3 % of float samples, so 41 of 9.6 M
+  16-bit samples off by one, and every run different), so `audio.pcm` may differ by +-1 in a few samples per
+  million and is never a cache key. `MediaEngine.pills(src, request, *, work, timeout, step_ms=STEP_MS) ->
+  dict[int, tuple[int, ...]]` takes `request` as `(tick, boxes)` pairs, `Box = tuple[float, float, float,
+  float]` (x, y, w, h), writes `work/pills.json`, and returns the values per tick in box order; `{}` for an
+  empty request without a call, ValueError for a tick asked twice. `MediaEngine.audio(src, out, *, timeout) ->
+  Audio`, `@dataclass(frozen=True, slots=True) class Audio: path: Path; samples: int`. Both validate as the
+  other verbs do: the same ticks in request order, one value per box, each an int (not a bool) in -255..255;
+  `audio.pcm` named so, `sample_rate` 16000, `channels` 1, and a file of exactly 2 x `samples` bytes. Anything
+  else is `MediaError("the media helper's answer is not the expected JSON")`, which holds no path. The bump
+  changes `MediaEngine.identity` to `media-avfoundation-h1.1.0`. Tests: `tests/test_media.py` (the fake's
+  `pills` and `audio`, their bad answers, and
+  `test_the_real_media_helper_reads_the_pills_and_the_sound_of_a_clip_it_made`: a clip with a 440 Hz tone, a
+  blue box that reads lit and a grey one that reads 0, bytes compared over two runs).
+- **The speaker cue** (`agentsync.convert.cue`, `src/agentsync/convert/cue.py`; spec S7, C18). Pure: no I/O, no
+  helper call; the recording converter calls the helper and these. `CUE_REVISION = 1` (`identity()` is
+  `cue-r1`, the `+cue-r<n>` mark of the converter's version); `LIT_AT = 50`: a `teams` label is lit when its
+  value is 50 or more (49 is not). `@dataclass(frozen=True, slots=True) class Label: text: str; box:
+  tuple[float, float, float, float]` (x, y, w, h fractions). `has_cue(profile)` is True for `teams` only in P3:
+  `meet`'s cue (C18, its corner and right-tile labels) lands with P4's Meet example, as every P4 profile's cue
+  lands with its own example. `requests(profile, labels, ticks)`: per tick in the order given, the labels of the
+  last read candidate at or before it (`labels` keyed by candidate tick); a tick before every candidate, or
+  whose last candidate read no label, is left out (an older candidate's labels are not used); `[]` for a
+  profile without a cue. `lit_sets(asked, values)`: per asked tick, the texts of the labels whose value is
+  `LIT_AT` or more, in box order (`values` is `MediaEngine.pills`' answer; S8b keeps these sets).
+  `speaking(lit)`: `(tick, label text)` in tick order, a `SPEAKING` line where exactly one label is lit and its
+  text differs from the last line's; two lit or none write nothing and do not reset the last line, so `A`,
+  none, `A` is one line. `options()` carries `cue_revision`, `cue_lit_at`, `cue_widen_px` (`4,2`),
+  `cue_dark_below` (600) and `cue_<profile>` per profile with a cue. Tests: `tests/test_cue.py`.
 
 <!-- end slot: cue -->
 

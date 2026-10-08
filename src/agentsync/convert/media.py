@@ -5,8 +5,8 @@ Built, trusted, probed and pruned as the OCR helper is, by the same functions (`
 the :data:`MEDIA` description), by ``python -I -m agentsync.convert.media`` from ``scripts/install.sh`` and
 never by a sync, ``status`` or doctor.  It lives in ``<cache_dir>/media/``.  It reads a recording with
 AVFoundation and answers one JSON document per call; exit 3 with a message on stderr is a failure.  The
-protocol is pinned by ``tests/media_kit.py``: ``--version``, ``info``, ``scan``, ``frames``, ``diff``
-(``pills`` and ``audio`` arrive with P3).
+protocol is pinned by ``tests/media_kit.py``: ``--version``, ``info``, ``scan``, ``frames``, ``diff``, and
+P3's ``pills`` (the speaker cue's statistic, spec S7) and ``audio`` (spec S8 rule 1).
 
 :func:`probe` and :func:`engine` only look.  A helper error, a time-out or an answer that is not the expected
 JSON is a :class:`MediaError`, which is an ``OcrError``: ``convert_file`` then gives the recording the ``no
@@ -42,6 +42,9 @@ JPEG_QUALITY = 0.7
 _SOURCE = "media_frames.swift"
 _VERSION_TIMEOUT_S = 5.0
 _GRIDS = "grids.bin"
+_AUDIO = "audio.pcm"
+_SAMPLE_RATE = 16_000
+_PILLS_REQUEST = "pills.json"
 _CREATED_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 
 
@@ -96,7 +99,17 @@ class Frame:
     height: int
 
 
+@dataclass(frozen=True, slots=True)
+class Audio:
+    """What ``audio`` wrote: ``path`` is ``<out>/audio.pcm``, ``samples`` samples of 16 kHz mono 16-bit
+    little-endian PCM of the first sound track, decoded from its start."""
+
+    path: Path
+    samples: int
+
+
 Rect = tuple[float, float, float, float]  # x0, y0, x1, y1 in fractions of the frame, origin top-left
+Box = tuple[float, float, float, float]  # x, y, w, h in fractions of the frame, origin top-left
 
 
 def _bad() -> MediaError:
@@ -121,6 +134,12 @@ def _count(value: object, *, least: int = 0) -> int:
 
 def _list(value: object, length: int) -> list[dict[str, object]]:
     if not isinstance(value, list) or len(value) != length or not all(isinstance(v, dict) for v in value):
+        raise _bad()
+    return value
+
+
+def _pill(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not -255 <= value <= 255:
         raise _bad()
     return value
 
@@ -296,6 +315,59 @@ class MediaEngine:
                 raise _bad()
             changed.append(n)
         return changed
+
+    def pills(
+        self,
+        src: Path,
+        request: Sequence[tuple[int, Sequence[Box]]],
+        *,
+        work: Path,
+        timeout: float,
+        step_ms: int = STEP_MS,
+    ) -> dict[int, tuple[int, ...]]:
+        """``pills FILE --request REQ.json``: per tick, the median ``B - R`` of each box's dark pixels, the
+        box widened by 4 px left and right and 2 px above and below (spec S7), in box order; raises
+        MediaError.  ``REQ.json`` is written into ``work``.  A tick asked for twice is a ValueError."""
+        if not request:
+            return {}
+        if len({tick for tick, _ in request}) != len(request):
+            raise ValueError("a tick is asked for twice")
+        asked = work / _PILLS_REQUEST
+        asked.write_text(
+            json.dumps(
+                [{"tick": tick, "boxes": [[float(v) for v in b] for b in boxes]} for tick, boxes in request]
+            ),
+            encoding="utf-8",
+        )
+        args = ["pills", str(src.absolute()), "--request", str(asked.absolute()), "--step-ms", str(step_ms)]
+        doc = self._run(args, timeout=timeout, cwd=work)
+        values: dict[int, tuple[int, ...]] = {}
+        for (tick, boxes), item in zip(request, _list(doc.get("pills"), len(request)), strict=True):
+            got = item.get("values")
+            if item.get("tick") != tick or not isinstance(got, list) or len(got) != len(boxes):
+                raise _bad()
+            values[tick] = tuple(_pill(v) for v in got)
+        return values
+
+    def audio(self, src: Path, out: Path, *, timeout: float) -> Audio:
+        """``audio FILE --out DIR``: the first sound track as ``out/audio.pcm``, read from the start, never by
+        seeking (spec S8 rule 1); raises MediaError, also for a recording without sound."""
+        doc = self._run(
+            ["audio", str(src.absolute()), "--out", str(out.absolute())], timeout=timeout, cwd=out
+        )
+        if doc.get("file") != _AUDIO:
+            raise _bad()
+        if _count(doc.get("sample_rate")) != _SAMPLE_RATE or _count(doc.get("channels")) != 1:
+            raise _bad()
+        samples = _count(doc.get("samples"))
+        path = out / _AUDIO
+        try:
+            size = path.stat().st_size
+        except OSError:
+            raise _bad() from None
+        if size != 2 * samples:
+            raise _bad()
+        return Audio(path=path, samples=samples)
 
 
 def _open(helper: Path) -> MediaEngine:
