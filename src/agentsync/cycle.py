@@ -43,6 +43,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, Literal
 
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
@@ -57,12 +58,16 @@ from agentsync.arm_local import (
 from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
-from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, ocr
+from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr
+from agentsync.convert import recording as recording_mod
 from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.image import ImageConverter
+from agentsync.convert.media import MediaEngine
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage
+from agentsync.convert.pieces import PieceStore
+from agentsync.convert.recording import RecordingConverter, RecordingNotFinished
 from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
 from agentsync.errors import (
     AgentSyncError,
@@ -115,6 +120,7 @@ from agentsync.model import (
 from agentsync.ops.launchd import rotate_logs
 from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read_heartbeat, write_heartbeat
 from agentsync.paths import expand
+from agentsync.policy import PolicyConfig
 from agentsync.publish import (
     DELETED_UPSTREAM,
     Publisher,
@@ -203,6 +209,34 @@ RECORDING_WAITS = "recording-waits"
 """``state_reason`` of a local recording the recording pass has not finished reading: it waits for a
 background sync or ``agentsync materialise <file>`` (spec S0 rule 6, ruling 4).  ``loop`` counts it in a
 bucket of its own with the minutes read so far; it is never rule 3.  Cleared when its page is published."""
+RECORDING_PROGRESS_META = "recording_progress:"
+"""Manifest meta ``recording_progress:<source id>:<stable id>``: ``"<done_ms> <total_ms>"`` of a recording
+that waits with part of it read (``RecordingNotFinished``), ``""`` once it is published or given up.  ``loop``
+reads it for the "N of M minutes" note without running anything."""
+_RECORDING_BUDGET_S = 180.0
+"""The seconds of recording work one background cycle may spend (spec S0 rule 5): pieces of one recording at a
+time, the piece in flight finishing.  Kept apart from the cycle's OCR time (``_OCR_BUDGET_S``), so the images
+beside a recording keep theirs; recordings are read after every source, so nothing waits behind them."""
+_RECORDING_META = "recording:"
+"""``recording:<source_id>``: what the recording pass knows of the source's recordings across cycles.  A JSON
+object of ``reading`` (the stable id being read when it was stored, cleared when the read ends: a cycle
+that finds one was killed in that read, and counts it as a failed one), ``failed`` ({stable id: the cycles a
+read of it was killed, timed out or failed in}), ``started`` ({stable id: the run that stored its first
+piece}, which orders the recordings that have pieces) and ``fetch`` ({stable id: [failed downloads, the stat
+they failed at]})."""
+_RECORDING_STOPPED = (
+    "reading this recording stopped or failed in two syncs; run agentsync materialise on it from a terminal "
+    "to read it"
+)
+"""The stub of a recording whose read was killed, timed out or failed in two cycles (spec O13).  Fixed
+wording: it names no file.  Its stored pieces are kept, so ``agentsync materialise PATH`` resumes from
+them."""
+_MEDIA_DOWN = (
+    "the media helper stopped working in this sync (it does not answer --version); recordings wait and are "
+    "read once it works: run scripts/install.sh again"
+)
+_TEXT_SIDECARS = (".txt", ".md", ".csv")
+"""The sidecars the secret scan reads (spec S10 rule 2): a keyframe's bytes are never scanned as text."""
 
 
 class RecoveryAction(enum.StrEnum):
@@ -371,6 +405,69 @@ def _reread_value(records: Sequence[_RereadRecord]) -> str:
             doc["reading"] = reading
         out.append(doc)
     return json.dumps(out, sort_keys=True)
+
+
+@dataclass(slots=True)
+class _Recordings:
+    """One source's recording record (``_RECORDING_META``), in memory."""
+
+    reading: str | None = None
+    failed: dict[str, int] = field(default_factory=dict)
+    started: dict[str, int] = field(default_factory=dict)
+    fetch: dict[str, tuple[int, str]] = field(default_factory=dict)
+
+    @classmethod
+    def parse(cls, stored: str | None) -> _Recordings:
+        """The record of a ``_RECORDING_META`` value; an empty one for a value that is not there or cannot be
+        read."""
+        try:
+            doc = json.loads(stored) if stored else None
+        except ValueError:
+            doc = None
+        record = cls()
+        if not isinstance(doc, dict):
+            return record
+        reading = doc.get("reading")
+        record.reading = reading if isinstance(reading, str) else None
+        for name, target in (("failed", record.failed), ("started", record.started)):
+            values = doc.get(name)
+            for stable, count in values.items() if isinstance(values, dict) else ():
+                if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                    target[str(stable)] = count
+        fetch = doc.get("fetch")
+        for stable, entry in fetch.items() if isinstance(fetch, dict) else ():
+            if (
+                isinstance(entry, list)
+                and len(entry) == 2
+                and isinstance(entry[0], int)
+                and isinstance(entry[1], str)
+            ):
+                record.fetch[str(stable)] = (entry[0], entry[1])
+        return record
+
+    def value(self) -> str:
+        """The ``_RECORDING_META`` value; ``""`` for a record that holds nothing."""
+        doc: dict[str, object] = {}
+        if self.reading is not None:
+            doc["reading"] = self.reading
+        if self.failed:
+            doc["failed"] = dict(sorted(self.failed.items()))
+        if self.started:
+            doc["started"] = dict(sorted(self.started.items()))
+        if self.fetch:
+            doc["fetch"] = {stable: list(entry) for stable, entry in sorted(self.fetch.items())}
+        return json.dumps(doc, sort_keys=True) if doc else ""
+
+
+_RecordingRun = Literal["none", "background", "named"]
+"""Who reads recordings in a cycle (spec S0 rule 5): ``background``, a LaunchAgent's poll or reconcile job,
+under ``_RECORDING_BUDGET_S``; ``named``, ``agentsync materialise PATH``, every recording it names to the end;
+``none``, an interactive ``sync`` (a tool's timeout may end it) or a dry run."""
+
+
+class _HelperDown(Exception):  # noqa: N818 - a signal: the media or OCR helper stopped working
+    """Raised out of ``_after_fetch`` in the recording pass when a recording's read failed because a helper
+    stopped working, before anything is published: the row waits as it was and the read is not counted."""
 
 
 _STUB_STATES = {
@@ -1061,6 +1158,30 @@ def _cycle_ocr(config: Config) -> _CycleOcr | None:
     )
 
 
+def _cycle_media(config: Config, engine: OcrEngine | None) -> MediaEngine | None:
+    """The media helper one cycle reads recordings with, or None.  Looked for only beside an OCR ``engine``
+    (spec S0 rule 1: a recording is read by both), through ``media.engine``, which never compiles and never
+    raises; it answers None under ``[convert] recordings = false``."""
+    if engine is None or not config.convert.recordings:
+        return None
+    return media.engine(config.convert, config.cache_dir)
+
+
+def _cycle_registry(
+    config: Config,
+    policy: PolicyConfig,
+    engine: OcrEngine | None,
+    found: MediaEngine | None,
+    pieces: PieceStore,
+) -> Registry:
+    """``Registry.default`` with the cycle's engines.  The media helper and the piece store go in only beside
+    a media helper: without one the registry is the one a Mac without recordings has."""
+    if found is None:
+        return Registry.default(config.convert, policy=policy, ocr=engine)
+    extra: dict[str, Any] = {"media": found, "pieces": pieces}
+    return Registry.default(config.convert, policy=policy, ocr=engine, **extra)
+
+
 @dataclass(slots=True)
 class _SourceAcc:
     """Mutable per-source accumulator for one cycle (becomes a SourceReport)."""
@@ -1122,6 +1243,7 @@ class _Cycle:
         auth: MsalAuth | None = None,
         stale_backups: Sequence[Path] = (),
         settle_inbox: bool = False,
+        recordings: _RecordingRun = "none",
     ) -> None:
         self.config = config
         self.manifest = manifest
@@ -1148,7 +1270,13 @@ class _Cycle:
         # The OCR engine is looked for once per cycle, here, and never under a dry run: looking runs the
         # helper's --version. Without one every converter is what it was before OCR existed.
         self.ocr = None if self.dry else _cycle_ocr(config)
-        self.registry = Registry.default(config.convert, policy=self.publisher.content_policy, ocr=self.ocr)
+        # The media helper likewise (its --version runs), beside an OCR engine only; the piece store is a
+        # folder of the cache, created when a piece is first stored.
+        self.media = _cycle_media(config, self.ocr)
+        self.pieces = PieceStore.under(config.cache_dir)
+        self.registry = _cycle_registry(
+            config, self.publisher.content_policy, self.ocr, self.media, self.pieces
+        )
         self.cache = ConverterCache(config.cache_dir)
         self.gov = governance.load_governance(config.config_path)
         self.suppressions = governance.load_suppressions(config.state_paths.root)
@@ -1184,6 +1312,13 @@ class _Cycle:
         self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
+        # the recording pass (spec S0 rules 3 to 8): who reads, what the queues left it, what it knows
+        self.recordings: _RecordingRun = "none" if self.dry else recordings
+        self._recording_queue: dict[str, list[str]] = {}  # per source: the recordings its queue deferred
+        self._recording_arms: dict[str, SourceArm] = {}  # per source whose queue ran: its arm
+        self._recording_records: dict[str, _Recordings] = {}  # per source: its record, read once
+        self._in_recording_pass = False  # ``_after_fetch`` converts with the whole registry, never past OCR
+        self._media_down = False  # the media helper stopped answering --version in this cycle
 
     # ---- time ---------------------------------------------------------------------------------------------
     def now(self) -> datetime:
@@ -1231,6 +1366,8 @@ class _Cycle:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
                 self._flush_changes()
+            self._recording_pass()  # after every source's queue and re-reads: nothing waits behind it
+            self._flush_changes()
             if self._reread_n:  # one line a cycle, and a count: never a name
                 log.info(
                     "%d file(s) converted before a capability this install has were read again; %d of "
@@ -1280,6 +1417,7 @@ class _Cycle:
                     removed = self.cache.gc(self.manifest.live_action_keys())
                     if removed:
                         log.info("converter cache: %d dead key(s) removed", removed)
+                    self._prune_pieces()
                     self.lock.beat("retention")
                     commit_sha = self._retention(commit_sha)
         except Exception as exc:  # a cycle-level failure: nothing is promoted, the report says why
@@ -2068,6 +2206,7 @@ class _Cycle:
         # include/exclude no longer covers is never work, and an incomplete pass does not prune it)
         for start in range(0, len(work), _WORK_BATCH):
             self._process_batch(src, arm, work[start : start + _WORK_BATCH], budget, acc)
+        self._recording_arms[src.id] = arm  # the recording pass reads what the queue left it with this arm
         if isinstance(arm, LocalArm) and not self.forced_paths:
             # After the source's own work: new and changed files had the cycle's OCR time first.  Never for
             # a Graph source (every read there is a download) and never while ``materialise PATH`` names
@@ -2195,10 +2334,15 @@ class _Cycle:
         reason = result.reason if result.status is ConversionStatus.UNREADABLE else None
         return rule is not None and rule(result.converter_version, reason)
 
-    def _reread_targets(self, source_id: str) -> list[tuple[str, str, str | None, str]]:
+    def _reread_targets(
+        self, source_id: str, *, recordings: bool = False
+    ) -> list[tuple[str, str, str | None, str]]:
         """What to look for among ``source_id``'s files (``Manifest.reread_candidates``): each (converter
         id, version, stub reason or None, suffix) a converter of this cycle's registry calls outdated, and
-        each ``no converter`` refusal of a suffix that has a converter now."""
+        each ``no converter`` refusal of a suffix that has a converter now.
+
+        The suffixes of the recording converter are left to the recording pass (spec S0 rule 4), which asks
+        for them alone with ``recordings``."""
         targets: set[tuple[str, str, str | None, str]] = set()
         converters, extensions = self.registry.converters(), self.registry.extensions()
         for converter_id, version, reason in self.manifest.produced_by(source_id):
@@ -2214,7 +2358,8 @@ class _Cycle:
                 rule = _outdated_rule(conv)
                 if conv.converter_id == converter_id and rule is not None and rule(version, reason):
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
-        return sorted(targets, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
+        mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
+        return sorted(mine, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
 
     def _reread_over(self) -> bool:
         """True once this cycle starts no more re-reads: their time is used up, the cycle's OCR time is,
@@ -2449,6 +2594,297 @@ class _Cycle:
             return False
         conv = self.registry.for_name(row.name)  # asked last: whether it runs can start a process
         return conv is not None and self._runs(conv)
+
+    # ---- recordings: a pass of their own (spec S0 rules 3 to 8, 4.1) -------------------------------------
+    def _recording(self, name: str) -> bool:
+        """True when this cycle's registry gives ``name`` to the recording converter."""
+        conv = self.registry.for_name(name)
+        return conv is not None and conv.converter_id == RecordingConverter.converter_id
+
+    def _recording_suffixes(self) -> frozenset[str]:
+        """The suffixes this cycle's registry gives the recording converter: none without a media helper."""
+        return frozenset(
+            ext
+            for conv in self.registry.converters()
+            if conv.converter_id == RecordingConverter.converter_id
+            for ext in conv.extensions
+        )
+
+    def _recording_defer(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
+        """Leave a recording of a source's queue to the recording pass, unfetched (spec S0 rule 4).  It
+        waits (``RECORDING_WAITS``), or keeps ``HYDRATION_REFUSED`` until its download is tried again.  An
+        online-only recording that has the page it was given while it was on this Mac keeps it
+        (``_keeps_page``)."""
+        if row.dataless and self._keeps_page(row, acc):
+            return
+        self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
+        acc.deferred += 1
+        acc.counts[Verdict.DEFERRED] += 1
+        waits = row.state in (RowState.LIVE, RowState.DATALESS) and row.state_reason is None
+        if waits:  # never over a quarantine's or a refused download's own reason
+            self.manifest.set_state(row.source_id, row.stable_id, row.state, RECORDING_WAITS)
+        self._recording_queue.setdefault(src.id, []).append(row.stable_id)
+
+    def _recording_load(self, source_id: str) -> _Recordings:
+        """The source's recording record, read once a cycle and kept current here.  A ``reading`` mark in it
+        was left by a cycle that died in that read (a watchdog, a crash, a shutdown): one failed read of that
+        recording, stored at once (spec S0 rule 7)."""
+        record = self._recording_records.get(source_id)
+        if record is None:
+            record = _Recordings.parse(self.manifest.get_meta(_RECORDING_META + source_id))
+            self._recording_records[source_id] = record
+            if record.reading is not None:
+                record.failed[record.reading] = record.failed.get(record.reading, 0) + 1
+                self._save_recording(source_id)
+        return record
+
+    def _save_recording(self, source_id: str, *, reading: str | None = None) -> None:
+        """Store the source's ``_RECORDING_META`` value when it is not the one stored.  ``reading``: the
+        recording about to be read; outside a transaction the write is committed on its own."""
+        record = self._recording_load(source_id)
+        record.reading = reading
+        key, value = _RECORDING_META + source_id, record.value()
+        stored = self.manifest.get_meta(key)
+        if (stored or "") != value:
+            self.manifest.set_meta(key, value)
+
+    def _set_progress(self, source_id: str, stable: str, value: str) -> None:
+        """Store ``RECORDING_PROGRESS_META`` of one recording (``""``: nothing is read of it now)."""
+        key = f"{RECORDING_PROGRESS_META}{source_id}:{stable}"
+        stored = self.manifest.get_meta(key)
+        if stored != value and (stored is not None or value):
+            self.manifest.set_meta(key, value)
+
+    def _recordings_down(self) -> bool:
+        """True once no recording is staged in this cycle: the media helper stopped answering, or the OCR
+        helper stopped working (``_CycleOcr.down``).  A recording is read by both."""
+        return self._media_down or (self.ocr is not None and self.ocr.down)
+
+    def _helper_failed(self, name: str, result: ConversionResult) -> bool:
+        """True when ``result`` is the ``no converter`` refusal a recording gets after a MediaError (or an
+        OcrError) and the error was a helper's, not the file's (spec S0 rule 8): the OCR helper is down, or
+        the media helper does not answer ``--version`` (5 s), which marks it down for the cycle."""
+        refused = result.status is ConversionStatus.REFUSED and (result.reason or "").startswith(
+            NO_CONVERTER_PREFIX
+        )
+        if not refused or not self._recording(name):
+            return False
+        if not self._recordings_down() and self.media is not None and not self.media.alive():
+            self._media_down = True
+            log.warning("%s", _MEDIA_DOWN)
+        return self._recordings_down()
+
+    def _recording_pass(self) -> None:
+        """Read recordings, once every source has had its queue and its re-reads (spec S0 rule 4).
+
+        A recording with stored pieces first (the one started earliest first), then new and changed ones,
+        then online-only ones, then the stubs a re-read would pick (a ``no converter`` stub from before
+        recordings were read, a page the converter calls outdated), each group in source order, then stable
+        id.  Only a run no tool timeout ends reads one (rule 5): a background cycle works pieces of one
+        recording at a time until ``_RECORDING_BUDGET_S`` of recording work is used, the piece in flight
+        finishing, and ``agentsync materialise PATH`` reads each recording it names to the end, one after the
+        other.  An interactive ``sync`` reads none: its queues left them waiting.  No recording is staged
+        once a helper stopped working (rule 8)."""
+        if self.recordings == "none" or not self._recording_suffixes():
+            return
+        candidates = self._recording_candidates()
+        if not candidates:
+            return
+        self.lock.beat("recordings")
+        self._in_recording_pass = True
+        try:
+            with recording_mod.work_allowance(
+                None if self.recordings == "named" else _RECORDING_BUDGET_S
+            ) as allowance:
+                for src, arm, row, stub in candidates:
+                    if allowance.used_up or self._recordings_down():
+                        break
+                    try:
+                        self._read_recording(src, arm, row, stub=stub)
+                    except Exception as exc:  # one recording's trouble: reported, never the source's failure
+                        log.exception("%s: reading a recording stopped", src.id)
+                        self._acc(src).errors.append(f"reading a recording stopped: {type(exc).__name__}")
+        finally:
+            self._in_recording_pass = False
+
+    def _recording_candidates(self) -> list[tuple[SourceConfig, SourceArm, ItemRow, bool]]:
+        """(source, arm, row, stub path) of every recording the pass may read, in the order it reads them
+        (``_recording_pass``).  The stub path is taken only for a local or inbox file the pass listed
+        unchanged and in scope, on this Mac, and never in a ``materialise PATH`` run."""
+        order = {src.id: n for n, src in enumerate(self.selected)}
+        ranked: list[tuple[tuple[int, int, int, str], SourceConfig, SourceArm, ItemRow, bool]] = []
+        for src in self.selected:
+            arm = self._recording_arms.get(src.id)
+            if arm is None:
+                continue
+            record = self._recording_load(src.id)
+            queued = self.manifest.get_items(src.id, self._recording_queue.get(src.id, ()))
+            picked = [(row, False) for row in queued.values()]
+            targets = self._reread_targets(src.id, recordings=True) if not self.forced_paths else []
+            after = ""
+            while isinstance(arm, LocalArm) and targets:
+                rows = self.manifest.reread_candidates(
+                    src.id, targets, seen_run=self.run_id, after=after, limit=_WORK_BATCH
+                )
+                if not rows:
+                    break
+                after = rows[-1].stable_id
+                picked += [(r, True) for r in rows if r.stable_id not in queued and arm.in_scope(r.rel_path)]
+            for row, stub in picked:
+                online = row.dataless or src.kind.is_graph
+                if online and not self._recording_downloads():
+                    continue  # it waits for a run that may download it (rule 3)
+                sha = row.canonical_sha256
+                if not online and sha and self.pieces.progress(sha) is not None:
+                    key = (0, record.started.get(row.stable_id, self.run_id))
+                elif online:
+                    key = (2, -(row.mtime_ns or 0))  # newest first
+                else:
+                    key = (3 if stub else 1, 0)
+                ranked.append(((*key, order[src.id], row.stable_id), src, arm, row, stub))
+        ranked.sort(key=lambda r: r[0])
+        return [(src, arm, row, stub) for _key, src, arm, row, stub in ranked]
+
+    def _recording_downloads(self) -> bool:
+        """True when this cycle's recording pass may download a recording (spec S0 rule 3, ruling 1): only a
+        reconcile job or ``agentsync materialise PATH``; never a poll cycle or an interactive sync."""
+        return False
+
+    def _read_recording(self, src: SourceConfig, arm: SourceArm, row: ItemRow, *, stub: bool) -> None:
+        """Read one recording in a manifest transaction of its own (spec S0 rule 7).
+
+        Before it is read the source's record says so in a write committed on its own (``reading``); the
+        recording's transaction clears it and stores what the read came to.  So a read that raises is
+        counted, and so is one the process died in (``_recording_load``).  ``stub``: the stub path, where a
+        read that fails keeps the page or stub the recording has (``_after_fetch`` with ``reread``)."""
+        sid, stable, acc = src.id, row.stable_id, self._acc(src)
+        record = self._recording_load(sid)
+        if self.forced_paths:
+            record.failed.pop(stable, None)  # ``materialise PATH`` names it: its count starts again (O13)
+        elif record.failed.get(stable, 0) >= _REREAD_ATTEMPTS:
+            with self.manifest.transaction():
+                self._recording_given_up(src, row, acc)
+                self._flush_changes()
+                self._save_recording(sid)
+            return
+        self._save_recording(sid, reading=stable)
+        try:
+            fetched = arm.fetch(_item_from_row(row), self.staging, ByteBudget(0, 1))
+        except Exception as exc:  # gone, evicted or unreadable since the walk: the next pass says what it is
+            self._save_recording(sid)
+            if isinstance(exc, AuthRequiredError):
+                raise
+            log.debug("a recording could not be read (%s); it waits", type(exc).__name__)
+            return
+        with self.manifest.transaction():
+            try:
+                result = self._after_fetch(src, row, fetched, acc, reread=stub)
+            except RecordingNotFinished as signal:
+                self._recording_waits(src, row, acc, signal)
+            except _HelperDown:  # no file's failure: the recording waits as it was, its read not counted
+                if self._media_down and _MEDIA_DOWN not in acc.alarms:
+                    acc.alarms.append(_MEDIA_DOWN)
+            except Exception as exc:  # its pages may be half written: as pending work they are checked again
+                log.warning("%s: a recording's read failed (%s)", sid, type(exc).__name__)
+                acc.errors.append(_one_line(f"{row.rel_path}: {type(exc).__name__}: {exc}"))
+                self.manifest.set_verdict(sid, stable, Verdict.MAYBE_CHANGED)
+                self._recording_failed(src, row, acc)
+            else:
+                self._recording_read(src, row, acc, result, stub=stub)
+            finally:
+                _discard_staged(fetched, self.staging)
+            self._flush_changes()
+            self._save_recording(sid)
+
+    def _recording_waits(
+        self, src: SourceConfig, row: ItemRow, acc: _SourceAcc, signal: RecordingNotFinished
+    ) -> None:
+        """The read stopped with pieces left (spec 4.1): the recording waits, never failed (ruling 4), with
+        how much of it is read in ``RECORDING_PROGRESS_META``.  A piece that passed its deadline is one failed
+        read, and a second such cycle gives the recording up (O13)."""
+        sid, stable = src.id, row.stable_id
+        record = self._recording_load(sid)
+        record.started.setdefault(stable, self.run_id)
+        if signal.timed_out and self._recording_failed(src, row, acc):
+            return
+        fresh = self.manifest.get_item(sid, stable) or row
+        if fresh.state in (RowState.LIVE, RowState.DATALESS) and fresh.state_reason is None:
+            self.manifest.set_state(sid, stable, fresh.state, RECORDING_WAITS)
+        self._set_progress(sid, stable, f"{signal.done_ms} {signal.total_ms}")
+
+    def _recording_read(
+        self, src: SourceConfig, row: ItemRow, acc: _SourceAcc, result: ConversionResult | None, *, stub: bool
+    ) -> None:
+        """Settle what one finished read came to.  A failed read (the converter failed, or the media helper
+        failed on this file while it still answers) counts against the recording; any other read is done
+        with: it waits no more, and its pieces go now that its page is in the converter cache (4.1)."""
+        sid, stable = src.id, row.stable_id
+        if stub:  # None: the read failed and the page or stub it had is kept
+            failed = result is None or self._lacks(row.name, result)
+        else:
+            failed = result is not None and (
+                result.status is ConversionStatus.FAILED or self._lacks(row.name, result)
+            )
+        if failed:
+            self._recording_failed(src, row, acc)
+            return
+        record = self._recording_load(sid)
+        record.failed.pop(stable, None)
+        record.started.pop(stable, None)
+        fresh = self.manifest.get_item(sid, stable)
+        if fresh is not None and fresh.state_reason == RECORDING_WAITS:
+            self.manifest.set_state(sid, stable, fresh.state, None)
+        self._set_progress(sid, stable, "")
+        sha = (result.canonical_sha256 if result is not None else "") or (
+            fresh.canonical_sha256 if fresh is not None else None
+        )
+        if sha:
+            self.pieces.remove(sha)
+
+    def _recording_failed(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> bool:
+        """Count one failed read of a recording; True when that was its second cycle and it is given up."""
+        record = self._recording_load(src.id)
+        record.failed[row.stable_id] = record.failed.get(row.stable_id, 0) + 1
+        if record.failed[row.stable_id] < _REREAD_ATTEMPTS:
+            return False
+        self._recording_given_up(src, row, acc)
+        return True
+
+    def _recording_given_up(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
+        """Settle a recording whose read stopped or failed in two cycles as the O13 stub, on the first-read
+        path and the stub path alike.  Its stored pieces are kept, so ``agentsync materialise PATH`` resumes
+        from them; the count starts again with the stub."""
+        sid, stable = src.id, row.stable_id
+        fresh = self.manifest.get_item(sid, stable) or row
+        stub = self._stub(fresh, ConversionStatus.UNREADABLE, _RECORDING_STOPPED)
+        self._publish(src, fresh, stub, acc, quarantine_reason=_RECORDING_STOPPED)
+        record = self._recording_load(sid)
+        record.failed.pop(stable, None)
+        record.started.pop(stable, None)
+        self._set_progress(sid, stable, "")
+        log.warning("%s: a recording whose read stopped in two syncs was given up", sid)
+
+    def _prune_pieces(self) -> None:
+        """Reconcile's clean-up of the piece store (spec 4.1): a recording's folder goes once no row waits on
+        its hash.  A recording that waits, is read in part behind its stub, or was given up (O13) keeps its
+        pieces.  Never in a cycle without the recording converter, which cannot tell what is a recording."""
+        if not self._recording_suffixes() or not self.pieces.pending():
+            return
+        keep: set[str] = set()
+        for src in self.config.sources:
+            for row in self.manifest.iter_items(src.id, states=_PRESENT):
+                sha = row.canonical_sha256
+                if not sha or not self._recording(row.name):
+                    continue
+                if (
+                    row.state_reason in (RECORDING_WAITS, _RECORDING_STOPPED)
+                    or _no_converter_stub(row)
+                    or row.last_verdict is Verdict.DEFERRED
+                ):
+                    keep.add(sha)
+        removed = self.pieces.prune(keep)
+        if removed:
+            log.info("piece store: %d recording folder(s) no row waits on removed", removed)
 
     def _forced_ids(self, src: SourceConfig) -> set[str] | None:
         """Stable ids named by ``agentsync materialise PATH`` for this source (None = no restriction)."""
@@ -2696,7 +3132,7 @@ class _Cycle:
             return False
         settled = Verdict.DATALESS if row.dataless else _SETTLED_PUBLISHED
         self.manifest.set_verdict(row.source_id, row.stable_id, settled)
-        if self.forced_paths:
+        if self.forced_paths and not self._recording(row.name):
             acc.alarms.append(
                 f"{row.rel_path}: an online-only image is not downloaded for OCR; its page is kept as it was"
             )
@@ -2710,14 +3146,17 @@ class _Cycle:
         the page, the version and the action key of a Mac without an engine, which is how a later re-read
         can tell OCR has not read it. (A Graph document is not converted then: ``_ocr_waits``.)"""
         plain = self.registry.without_ocr
+        if self._in_recording_pass:  # recordings have time of their own (``_RECORDING_BUDGET_S``)
+            return self.registry
         return plain if plain is not None and self._ocr_over() else self.registry
 
     def _process(
         self, src: SourceConfig, arm: SourceArm, row: ItemRow, budget: ByteBudget, acc: _SourceAcc
     ) -> None:
         sid, stable = row.source_id, row.stable_id
-        if row.state_reason == HYDRATION_REFUSED:  # re-decided below: only a new refusal sets it again
-            self.manifest.set_state(sid, stable, row.state, None)
+        recording = self._recording(row.name)
+        if row.state_reason == HYDRATION_REFUSED and not recording:
+            self.manifest.set_state(sid, stable, row.state, None)  # re-decided below: only a new refusal
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
             if not self._keeps_page(row, acc):
@@ -2742,6 +3181,9 @@ class _Cycle:
             )
             log.info("%s: %s refused: %s", sid, row.rel_path, duplicate)
             self._publish(src, row, stub, acc, quarantine_reason=duplicate)
+            return
+        if recording:  # read in the recording pass, never in a source's queue (spec S0 rule 4)
+            self._recording_defer(src, row, acc)
             return
         if not budget.can_afford(_download_cost(src, row)):
             self._defer(src, row, budget, acc)
@@ -2891,6 +3333,8 @@ class _Cycle:
             registry=registry,
             cache=self.cache,
         )
+        if self._in_recording_pass and self._helper_failed(row.name, result):
+            raise _HelperDown
         # the run that last converted this file from these bytes, asked before this one is recorded (the
         # run record): a copy of a file another run converted is no file converted again
         prior = self._converted_before(outs, result.action_key)
@@ -3050,10 +3494,13 @@ class _Cycle:
         if result.status is ConversionStatus.OK:
             self.ok_pages.update(p.output_path for p in pages)
             for p in pages:  # sidecars carry the full text past the page cap: scan them too
-                for rel, _data in p.sidecars:
-                    self.ok_pages.add(rel)
-                    self.sidecar_page[rel] = p.output_path
-            if row.state is not RowState.LIVE and row.state is not RowState.DATALESS:
+                for rel, _data in p.sidecars:  # text only: a keyframe's bytes are never scanned (S10)
+                    if rel.lower().endswith(_TEXT_SIDECARS):
+                        self.ok_pages.add(rel)
+                        self.sidecar_page[rel] = p.output_path
+            if (
+                row.state is not RowState.LIVE and row.state is not RowState.DATALESS
+            ) or row.state_reason == RECORDING_WAITS:
                 self.manifest.set_state(
                     sid, stable, RowState.DATALESS if row.dataless else RowState.LIVE, None
                 )
@@ -3449,6 +3896,9 @@ def run_cycle(
         selected = [s for s in selected if s.id in forced]
     interactive = mode is None if wait_for_lock is None else wait_for_lock
     settle_inbox = mode is None  # an atomic re-export converts within the same sync (field N4)
+    # Who reads recordings (spec S0 rule 5): a run no tool timeout ends.  ``materialise PATH`` reads the ones
+    # it names; a run with a mode of its own that does not wait for the lock is a LaunchAgent's job.
+    recordings: _RecordingRun = "named" if forced else "none" if interactive else "background"
     if mode is None:
         mode = _interactive_mode(config, clock())
     lock = SingleWriterLock(config.state_paths.lock, mode.value)
@@ -3480,6 +3930,7 @@ def run_cycle(
                 auth=auth,
                 stale_backups=stale_backups,
                 settle_inbox=settle_inbox,
+                recordings=recordings,
             )
             return cycle.run()
     finally:
