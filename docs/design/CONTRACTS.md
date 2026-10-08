@@ -9463,10 +9463,19 @@ WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eva
 - **In the setup report** the Summary's Loop line passes through `loop_next_text`, which keeps a path's
   last part: `... are a draft: in _eval, keep about 10 in questions.md, ...`. The installer output's tail
   shows the line as printed, with the report's redaction.
+- **Whatever the docs repo's path.** `loop_next_text` reads a path up to its first space, so on its own it
+  made `in Client Alpha/kb docs/_eval` of `in ~/Client Alpha/kb docs/_eval`, and `in Work Disk/kb/docs/_eval`
+  of a docs repo on `/Volumes/Work Disk`: part of a path in a line documented to hold none. `_loop_line`
+  therefore replaces that one folder first, as the loop wrote it
+  (`setup_report._eval_by_name`: `loop._shown(expand(config.docs_repo) / "_eval")` becomes `_eval`), in
+  every line the loop hook returns. It is the only folder the config puts into these lines. The Config
+  section shows the docs repo's path, as before.
 - **STATE.md** carries the loop's lines (§14, item 13) and is not committed, so no committed file gains a
   path.
 
 Tests: `tests/test_loop.py` (the exact wait for the three draft states, with `~/agent-context/docs/_eval`;
 a docs repo outside the home folder: its full path), `tests/test_setup_report.py` (the Loop line after a
 real sync with a draft: `in _eval`; the same with two more waits before it; `loop_next_text` on the wait
-with a home path and with another), `tests/test_install_oneshot.py` (the stub's wait in the new words).
+with a home path and with another; the loop's own lines for a docs repo at `Client Alpha/kb docs`, under
+the home folder and outside it: `in _eval`, and nothing of the path),
+`tests/test_install_oneshot.py` (the stub's wait in the new words).

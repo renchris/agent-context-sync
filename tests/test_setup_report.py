@@ -2583,6 +2583,40 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
     ), loop
 
 
+@pytest.mark.parametrize("under_home", [True, False])
+def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
+    fake_mac: dict[str, Path], tmp_path: Path, under_home: bool
+) -> None:
+    """Review of the v9 rehearsal fixes (2026-10-07): the draft baseline's wait names the docs repo's
+    ``_eval`` folder by its path, and the Loop line shows a path as its last part, ``in _eval``. A path was
+    read up to its first space, so a docs repo at "~/Client Alpha/kb docs" left ``in Client Alpha/kb
+    docs/_eval`` in a line that holds no path. The folder is now taken out as the loop wrote it, with the
+    loop's own lines here: under the home folder (``~/...``) and outside it (the full path)."""
+    docs = (fake_mac["home"] if under_home else tmp_path) / "Client Alpha" / "kb docs"
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        f'[agentsync]\ndocs_repo = "{docs}"\n\n' + cfg.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    assert cli.main(["add-source", str(fake_mac["one"]), "--config", str(cfg)]) == 0  # makes the docs repo
+    evals = docs / "_eval"
+    evals.mkdir(parents=True, exist_ok=True)
+    (evals / "questions.md").write_text("status: draft\n\n1. Who approved it?\n", encoding="utf-8")
+    (evals / "answers.md").write_text("status: draft\n\n1. Finance.\n", encoding="utf-8")
+    written = loop.next_lines(load_config(cfg), count_queue=False)
+    shown = "~/Client Alpha/kb docs/_eval" if under_home else f"{docs}/_eval"
+    draft = "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md, "
+    assert [ln for ln in written if ln.startswith(draft.format(shown))], written
+
+    hooks = setup_report.ReportHooks(loop_next=lambda config: loop.next_lines(config, count_queue=False))
+    text, _red = setup_report.build_report(cfg, hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert line.endswith(
+        f"; {draft.format('_eval')}correct the answers in answers.md, and change both files to status: "
+        "confirmed"
+    ), line
+    assert "Client" not in line and "kb docs" not in line and "/" not in line.split("; WAITING ON YOU: ")[1]
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     fake_mac: dict[str, Path], tmp_path: Path

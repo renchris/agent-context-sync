@@ -4668,14 +4668,26 @@ def _stopped_wait(found: str | None, waits: Sequence[str]) -> str:
     return next((wait for wait in waits if wait.startswith(_WAIT_HELD)), waits[0])
 
 
+def _eval_by_name(line: str, config: Config) -> str:
+    """``line`` with the docs repo's ``_eval`` folder named ``_eval``, which is what :func:`loop_next_text`
+    makes of a path without spaces.  The draft baseline's wait names that folder by its path, and for
+    :data:`_NEXT_PATH_RE` a path ends at its first space: of ``~/Client Alpha/kb docs/_eval`` it left
+    ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
+    (``loop._shown``), before the paths without spaces are shortened."""
+    from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    return line.replace(loop._shown(expand(config.docs_repo) / loop._EVAL_DIR), loop._EVAL_DIR)
+
+
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
     ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and how many more there are,
     then the loop's ``note:`` lines about files still to be read again, when it has any (a second
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
-    was written before the one-time re-read finished. Sets ``r.loop_stage`` for the issue link;
-    :func:`build_report` runs it once, before ``took``."""
+    was written before the one-time re-read finished. The one folder the config names in these lines, the
+    docs repo's ``_eval``, is shown by its name whatever its path (:func:`_eval_by_name`). Sets
+    ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
@@ -4685,7 +4697,7 @@ def _loop_line(r: _Run) -> str:
         return f"- Loop: {stage}; NEXT: not read (no loop hook)"
     config, next_fn = r.config, r.hooks.loop_next
     try:
-        lines = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
+        lines = [_eval_by_name(ln, config) for ln in r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
         return f"- Loop: {stage}; NEXT: not read ({type(exc).__name__})"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
