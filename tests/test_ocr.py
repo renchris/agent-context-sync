@@ -276,6 +276,28 @@ def test_reading_order_a_staircase_deeper_than_the_cut_loses_no_text() -> None:
     assert [ln for ln in out if ln] == [f"step {i}" for i in range(count)]
 
 
+def test_rows_are_the_rows_text_lines_prints_with_their_boxes_and_lowest_confidence() -> None:
+    """The row builder a recording uses (spec S5 rule 3): cells joined as ``text_lines`` joins them, the
+    noise rule applied, each row the union of its lines' boxes at the lowest confidence of its parts."""
+    image = img(
+        ("Model", 0.06, 0.10, 0.15, 0.03, 1.0),
+        ("Year", 0.40, 0.10, 0.15, 0.03, 0.5),
+        ("Contoso Tourer", 0.06, 0.20, 0.15, 0.03),
+        ("2025", 0.40, 0.20, 0.15, 0.03, 0.3),
+        ("ab", 0.80, 0.50, 0.05, 0.03, 0.3),  # noise: two characters, low confidence
+        ("Closing paragraph", 0.05, 0.70, 0.3, 0.02),
+        ("goes on", 0.36, 0.70, 0.1, 0.02, 0.5),
+    )
+    rows = ocr.text_rows(image.lines, width=image.width, height=image.height)
+    assert [r.text for r in rows] == [ln for ln in ocr.text_lines(image) if ln]
+    assert [r.text for r in rows] == ["Model | Year", "Contoso Tourer | 2025", "Closing paragraph goes on"]
+    assert [r.confidence for r in rows] == [0.5, 0.3, 0.5]
+    first = rows[0]
+    assert (first.x, first.y, first.h) == (0.06, 0.10, 0.03) and abs(first.w - 0.49) < 1e-9
+    assert ocr.text_rows([], width=1920, height=1080) == []
+    assert ocr._LAYOUT_REVISION == 1, "text_lines prints what it printed: the layout revision stands"
+
+
 # ---------------------------------------------------------------------------------------------------------
 # reading with the helper
 # ---------------------------------------------------------------------------------------------------------

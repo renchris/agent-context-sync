@@ -747,31 +747,79 @@ def _cut(boxes: list[_Box], mh: float, depth: int = 0) -> list[list[_Box]]:
     return _cut(above, mh, depth + 1) + _cut(below, mh, depth + 1)
 
 
+def _kept(lines: Sequence[OcrLine], width: int, height: int) -> dict[int, tuple[_Box, OcrLine]]:
+    """The boxes of ``lines`` in pixels, whitespace made one space, less the noise of ``_NOISE_MAX_CHARS``,
+    each by the ``id`` of its box with the line it came from (``_cut`` and ``_rows`` move the boxes, never
+    copy them)."""
+    kept: dict[int, tuple[_Box, OcrLine]] = {}
+    for ln in lines:
+        text = " ".join(ln.text.split())
+        if text and not (len(text) <= _NOISE_MAX_CHARS and ln.confidence < _NOISE_CONFIDENCE):
+            box = _Box(text, ln.x * width, ln.y * height, (ln.x + ln.w) * width, (ln.y + ln.h) * height)
+            kept[id(box)] = (box, ln)
+    return kept
+
+
+def _joined(row: Sequence[_Box], mh: float) -> str:
+    """The cells of one row, left to right: one space between them, `` | `` across a gap wider than a line."""
+    parts = [row[0].text]
+    for prev, cur in itertools.pairwise(row):
+        parts.append((" | " if cur.left - prev.right > 1.0 * mh else " ") + cur.text)
+    return "".join(parts)
+
+
+def _blocks(boxes: list[_Box]) -> list[list[list[_Box]]]:
+    """``boxes`` cut into blocks in reading order, each block's rows top to bottom."""
+    mh = max(_median([b.height for b in boxes]), 1.0)
+    return [_rows(block) for block in _cut(boxes, mh)]
+
+
 def text_lines(image: OcrImage) -> list[str]:
     """Recognised text in reading order: one string per row, "" between blocks (no markdown escaping).
 
     A line of one or two characters read with confidence under 0.35 is dropped as noise."""
-    width = image.width or 1000
-    height = image.height or 1000
-    boxes = []
-    for ln in image.lines:
-        text = " ".join(ln.text.split())
-        if text and not (len(text) <= _NOISE_MAX_CHARS and ln.confidence < _NOISE_CONFIDENCE):
-            boxes.append(
-                _Box(text, ln.x * width, ln.y * height, (ln.x + ln.w) * width, (ln.y + ln.h) * height)
-            )
+    boxes = [box for box, _line in _kept(image.lines, image.width or 1000, image.height or 1000).values()]
     if not boxes:
         return []
     mh = max(_median([b.height for b in boxes]), 1.0)
     out: list[str] = []
-    for block in _cut(boxes, mh):
+    for rows in _blocks(boxes):
         if out:
             out.append("")
-        for row in _rows(block):
-            parts = [row[0].text]
-            for prev, cur in itertools.pairwise(row):
-                parts.append((" | " if cur.left - prev.right > 1.0 * mh else " ") + cur.text)
-            out.append("".join(parts))
+        out += [_joined(row, mh) for row in rows]
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class OcrRow:
+    """One row of lines as ``text_lines`` builds it, with the union of its lines' boxes (fractions of the
+    image, origin top-left) and the lowest confidence of its lines."""
+
+    text: str
+    confidence: float
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+def text_rows(lines: Sequence[OcrLine], *, width: int, height: int) -> list[OcrRow]:
+    """The rows ``text_lines`` would print for ``lines`` of a ``width`` x ``height`` image, in its reading
+    order, each with its box and confidence.  The noise rule applies.  A caller that must keep two parts of a
+    frame apart (a recording's content column and its strip) passes each part's lines on their own."""
+    kept = _kept(lines, width or 1000, height or 1000)
+    boxes = [box for box, _line in kept.values()]
+    if not boxes:
+        return []
+    mh = max(_median([b.height for b in boxes]), 1.0)
+    out: list[OcrRow] = []
+    for rows in _blocks(boxes):
+        for row in rows:
+            parts = [kept[id(b)][1] for b in row]
+            x0, y0 = min(p.x for p in parts), min(p.y for p in parts)
+            x1, y1 = max(p.x + p.w for p in parts), max(p.y + p.h for p in parts)
+            confidence = min(p.confidence for p in parts)
+            out.append(OcrRow(_joined(row, mh), confidence, x0, y0, x1 - x0, y1 - y0))
     return out
 
 
