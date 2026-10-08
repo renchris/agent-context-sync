@@ -143,7 +143,7 @@ rehearsal found one defect that could cost a turn and three small ones, fixed in
   the draft-baseline wait says where its files are.
 
 Held for the next prompt revision (it needs prompt wording, which would force v10): at the new-Mac folder stop the
-prompt says both "stop and wait" and "then the report, always".
+prompt says both "stop and wait" and "then the report, always". Built in v10 (B10).
 
 Not exercised by a sandbox: File Provider behavior, the macOS privacy prompt, launchd, real volumes, the
 corporate network. A third-round surprise would come from there.
@@ -154,6 +154,54 @@ scan past the time limit converts without OCR.
 
 Open operator decisions (filed, each with a default that keeps what is built): empty cloud folders
 (`71d3e66ef726`) and online-only images (`085fac870dd6`).
+
+## B10 The third bring-back and prompt v10 (2026-10-08)
+
+Scope (frozen): when the operator pastes the corporate Mac's v9 `~/agent-context/bring-back.md`, triage it against
+main, fix what is new, rehearse before any re-paste go-ahead; redact anything identifying.
+
+The corporate Mac ran prompt v9 at `c7bfdb8` and finished with no stop: attempt 5, install exit 0 in 20 s, 0 human
+turns, "fully one command". Triage:
+[docs/research/corporate-bring-back-2026-10-08.md](../research/corporate-bring-back-2026-10-08.md) (run
+`wf_a17b719b-547`: 12 items, a skeptic each, one critic). Locus: L, an in-process Workflow as in B1 to B9 (run
+`wf_e1be1605-1f3`: four builders in four worktrees, a fresh reviewer and a fix pass each). CONTRACTS §16.36.
+
+- **The advice the tool gave was unsafe, and is now guarded.** On a source that never completed a pass, pasting the
+  `exclude` line the WAITING ON YOU text advises made the next pass retire every held deletion at once, ahead of
+  the breaker and the two-pass rule. A scope change now retires only what left scope; the rest take the ordinary
+  path. This is the companion change the 2026-10-07 triage asked for before either answer to `71d3e66ef726`.
+  The reviewer found the first build let files new in that pass raise the breaker limit; fixed, with a test for
+  the field case (an exclude that covers no mirrored file).
+- **Sync:** the stub of an online-only file no converter claims is published once, not in every pass.
+- **Purge:** a dry run of an entry that targets nothing says so; the queue file is written after each verified
+  entry, so a run that stops part-way leaves no purged entry queued.
+- **Report:** Recent errors merges a line repeated in a row (the field window was 37 of 40 lines of one warning;
+  the first build merged before the path scrub and so merged nothing in the field case, caught in review); the
+  residue check sees a word joined to a placeholder and skips a generic home folder; no padding from a redacted
+  id; the folder legend; purge counts from the audit trail; a media-helper line.
+- **Prompt v10:** step 2 names one inbox (the folder beside the docs repo, not every `kind = "inbox"` source),
+  step 3 names the one stop with no report (the folder wait), and `hold` is glossed. README, the deploy guide and
+  doctor's drop-here line follow the same rule. v9 ran clean, so v10 needs no run of its own.
+- Not built, on purpose: counting an empty materialised cloud folder as listed (the operator's decision; narrow
+  design in the triage), a `.url` converter (small value), the report's "unexpected 5" and "(status: baseline
+  complete)" labels (contract text, left).
+
+Rehearsal of v10 before it landed (run `wf_988b2b0c-a88`, four sandbox homes with the real installer; reports kept
+outside the repo): a new Mac stopped at the folder question with no report, then ran to the end once answered; a Mac
+in the field state finished with no stop and named one inbox; v9 and v8 copies were refused in step 1; and the
+`exclude` line retired 4 absent in-scope files at once on `c7bfdb8` and none on this build, where they took the
+two-pass rule. No finding cost a turn. Three were fixed before landing (run `wf_8709384e-297`): step 3 names both
+stops with no report (the folder wait and a copy that is not the installer's), the report of a stopped copy no
+longer rewrites `bring-back.md` or prints an issue link, and the `exclude` advice prints the source id as
+`sources.toml` writes it, with the file's path. Left, all small: the report's "unexpected" label for a wait that
+is the operator's, the `alarm:` line the prompt does not name, and no status line between the pass that marks a
+file absent and the pass that removes it. Not exercised by a sandbox, as before: File Provider, the privacy
+prompt, launchd, real volumes, the corporate network.
+
+Learnings: both review catches were places where a builder's own note said the opposite of the code's effect
+("can only hold more", "merge before the scrub"); the reviewer measured instead of reading. The field agent did
+not follow the wrong inbox sentence, so a prompt defect can stay invisible in the outcome line: read the friction
+log, not only the outcome.
 
 ## B1 Field fixes from the bring-back report
 
