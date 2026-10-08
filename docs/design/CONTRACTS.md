@@ -9162,8 +9162,6 @@ the pinned grammar in `tests/test_recording_grammar.py` until the converter land
 deleted one is restored, the text is the spec's verbatim, and a scaffolded repo's lints report nothing
 under `_rubrics/`), `tests/test_curate.py` (the citation lint and its codes).
 
-### 16.31 Fixes from the v9 rehearsal (2026-10-07)
-
 ### 16.32 Fixes from the v9 rehearsal (2026-10-07)
 
 Before setup prompt v9 went back to the field, an agent played the unattended setup agent in three sandbox
