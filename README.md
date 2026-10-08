@@ -266,6 +266,9 @@ Speech stays off until both folders are there; `status` then says `speech: off (
 not match is not used, and the log says which. The helper must be built from FluidAudio `04e363c` or later (the
 first build that keeps one speaker in one voice): the installer refuses an older one, and `status` reports a helper
 built from any other commit as `speech: failed`. Speech is off whenever recordings are (`recordings = false` above).
+On its first run macOS compiles the models for this Mac and keeps the result in
+`~/Library/Caches/agentsync-speech/` (about 57 MB: model graphs only, no audio and no voice data); deleting that
+folder is safe and only makes the next first run slow again.
 
 ## Set up on a new Mac: one prompt
 
