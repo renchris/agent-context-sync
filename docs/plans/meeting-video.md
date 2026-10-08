@@ -42,7 +42,8 @@ one Mac; its counts may be cited, never its content.
 - **Worktrees and branches:** `mv/h-harness`, `mv/p1-screens`, `mv/p2-meeting-page`, `mv/p3-speech-names`,
   `mv/p4-platforms`, each under `../.worktrees/`. Land smallest diff first; rebase the other.
 - **Shared files, one owner per wave:** `docs/design/CONTRACTS.md` sections are numbered here so appends do not
-  collide: P1 §16.30, P2 §16.31, P3 §16.32, P4 §16.33; §16.29 is left to the bring-back B8 wave in flight.
+  collide: P1 §16.34 (§16.29 and §16.30 went to the bring-back waves before P1 landed), P2 §16.31, P3 §16.32,
+  P4 §16.33.
   `cycle.py`: P1 owns the recording pass; P3 touches only the speech identity in `_capabilities`. `README.md`: each
   wave owns its own subsection. `config.py`: P1 only.
 - **Spawn order:** H → (P1 ∥ P2) → P3 → P4 → F.
@@ -163,51 +164,58 @@ Shipped the checks before the code they check (spec section 10, row H). Commits:
   9.2 is used as a gate. (3) Spec S8b rule 4 (`voice N, on shared audio of <label>`) disagrees with the 3.3 tag
   table (`vN · shared audio of <label>, k voices`); the grammar follows the table, and P3 settles both.
 
-### P1 — Screens (upcoming)
+### P1 — Screens (done, 2026-10-08)
 
-Spec S0 to S6, S9, S10, 3.1 to 3.6, 4, 4.1, 6; tests 9.3. Profiles `teams`, `meet`, `generic`.
+Spec S0 to S6, S9, S10, 3.1 to 3.6, 4, 4.1, 6; tests 9.3. A lead-written interface skeleton (`MediaEngine`,
+`PieceStore`, `RecordingNotFinished`, `work_allowance`, the `Reading` model, `render`), then six teammates (*media*,
+*recording*, *render*, *cycle*, *loop*, *publish*), two fresh-context reviewers (the recording pass; the grammar
+against forged screen text), two fix teammates and two lead fixes found by the 9.2 run. Commits: `git log --oneline
+--grep '(recording)\|(media)\|(cycle)\|(loop)\|(pieces)\|(meeting-eval)'` over the P1 land.
 
-- **Intake and registry.** `Registry.default` `src/agentsync/convert/registry.py:178-219` (label gate at `:211`:
-  the recording converter is registered regardless, ruling 2); `for_name` `:240`, `extensions` `:254`,
-  `without_ocr` `:226`. Refusal text `src/agentsync/convert/__init__.py:123-141`; `MediaError` and the "not
-  finished" signal around `:207-221`. Suffix tuple pattern: `ImageConverter.extensions` `convert/image.py:382-383`.
-- **Cycle.** The recording pass after the source loop `src/agentsync/cycle.py:1070-1073`, before
-  `_quarantine_secrets` at `:1082`. `_process` `:2555-2565`; `_no_converter` `:2483-2502` (gains the recording
-  converter for pre-P1 stubs); `_keeps_page` `:2524-2543`; `_ocr_waits` `:2510-2522`; `_converting` `:2545-2553`.
-  Budgets: `_OCR_BUDGET_S` `:137` (add `_RECORDING_BUDGET_S` beside it, kept apart from `_CycleOcr.spent_s` at
-  `:857-876`); `_REREAD_ATTEMPTS` `:172`; `_WORK_BATCH` `:132`; the per-source `ByteBudget` `:1894-1896` (recordings
-  never spend it). `HYDRATION_REFUSED` `:197-200` (beside it, `RECORDING_WAITS`); `_reread_batch` `:2184-2217` (the
-  `reading` mark shape); `_reread_targets` `:2041-2057` (leaves recording suffixes to the pass); `_capabilities`
-  `:2002-2019`; `_publish` sidecars into `ok_pages` `:2890-2895` (text sidecars only); dry run `:986-988`;
-  `_LABEL_CAPABLE` `:133` (unchanged: recordings do not join it).
-- **Download allowance.** `SourceConfig.max_materialise_bytes` `src/agentsync/config.py:216`; `ByteBudget`
-  `src/agentsync/model.py:254`; `_download_cost` `cycle.py:261`; staging guard `src/agentsync/materialise.py:268-274`.
-  Watchdogs `src/agentsync/ops/launchd.py:56-57, :285-287`; intervals `config.py:256-257`.
-- **Piece store.** `<cache_dir>/recordings/<sha256>/`, outside `ConverterCache.gc`'s reach
-  (`src/agentsync/convert/cache.py:121-194`); purge via `_cache_entries` `src/agentsync/governance.py:1749-1771`.
-- **Loop.** `_unpublished` `src/agentsync/loop.py:172-196` (a `recording` bucket); notes beside `NOTE_PREFIX` `:70`;
-  `next_step` `:339`; rule 7 `:548-555` untouched.
-- **Helper.** `media_frames.swift` and `convert/media.py` on the model of `convert/ocr.py`: `_HELPER_SOURCE` `:78`,
-  `_compile` `:488-520`, `_BUILD_TIMEOUT_S` `:75`, `_untrusted` `:160`, `_run_helper` `:180`, `_switched_off`
-  `:389-398`, `probe` `:428`, `engine` `:441`, `__main__` `:778`. Installer build line beside
-  `scripts/install.sh:1475-1490`. Doctor `media` line on the model of `_check_ocr` `src/agentsync/ops/doctor.py:413-437`.
-- **OCR plumbing.** Rows per region: `_rows` `convert/ocr.py:697-715`, `text_lines` `:769-776` (output and
-  `_LAYOUT_REVISION` `:66` unchanged); `OcrEngine.read` `:299-332`; `identity` `:288-292`.
-- **Cache identity.** `action_key` `convert/cache.py:34-52`; `_identity` `convert/__init__.py:89-96`; guard options
-  `registry.py:116-125`; `outdated_key` model `convert/image.py:398-412`; `_OCR_OPTIONS` `:120-127`.
-- **Publish and lints.** `GITATTRIBUTES` `src/agentsync/publish.py:151` (`*.jpg binary`); multi-unit `:366-367`,
-  `:869-875`; `allocate_path` `:773-803`. `_read_text` `src/agentsync/lints.py:144-146`, `_builtin_secret_scan`
-  `:432-448`, `lint_no_tokens` `:379` (text files only). `policy` status clause in `src/agentsync/cli.py` (the
-  `_cmd_status` checks from `:886`).
-- **Contracts.** `UnitKind.WINDOW` in `src/agentsync/model.py`; `[convert] recordings` in `_CONVERT_KEYS`
-  `config.py:117-118` and the `ConvertConfig` docstring `:198`; CONTRACTS §16.30; `tests/test_contracts.py:37-47`
-  public names; CLI and install pins `:153-162, :231-242` unchanged.
-- **Review before landing:** fresh reviewers on the recording pass (kill, time-out, download refusal, a document
-  beside a recording) and on the grammar against forged screen text.
-- Done when (goal): the gate passes and `uv run --locked pytest -q tests/test_media.py
-  tests/test_convert_recording.py tests/test_cycle.py tests/test_loop.py` prints 0 failed, the 9.2 thresholds hold on
-  both Zoom fixtures through `scripts/meeting-eval/`, and `git ls-tree origin/main src/agentsync/convert/recording.py`
-  lists the file; do not name the tenant or commit a recording.
+- **What landed.** `convert/media_frames.swift` + `convert/media.py` (AVFoundation helper: `info`, `scan
+  --first-tick`, `frames`, `diff`; built, trusted, probed and pruned through the OCR plumbing, now shared as
+  `ocr.Helper`); `convert/recording.py` (`recording-av`, S1 to S6, 5-minute pieces, `work_allowance`);
+  `convert/recording_page.py` (S9 and the index); `convert/pieces.py` (`<cache_dir>/recordings/<sha>/`); `ocr.OcrRow`
+  and `ocr.text_rows`; the recording pass, downloads and `RECORDING_WAITS` / `RECORDING_PROGRESS_META` in
+  `cycle.py`; the waiting and Finder notes in `loop.py`; the `status` label clause; text-only secret and token
+  lints; `*.jpg binary`; purge of pieces; doctor `media` line; installer build line; `[convert] recordings`
+  (default on); `UnitKind.WINDOW`; `scripts/meeting-eval/splice.py`; CONTRACTS §16.34; README section.
+- **Proof.** The gate in `CLAUDE.md` § Gate green; 9.2 on both Zoom fixtures through `scripts/meeting-eval/`
+  (convert with the real helpers, `splice.py` with the experiment's transcript, three blind readers, a judge,
+  `score.py`), every mark held: k8s1080 B 16.5, B SCREEN plus CROSS 10.5, B minus A +8, C minus B +0.5, B citation
+  17, wrong and confident 0; jup1080 B 16, 10, +9, +0, 18, 0. Score sheets and reader runs:
+  `~/.cache/agentsync-meeting-video/eval-2026-10-07/` (outside the repo).
+- **Spec items from H, settled.** 9.2 quote units (pieces of 4 or more characters, every credited answer quotes)
+  and the gold `times` lists (added to both fixtures, distractors left out) are in the spec under 9.2.
+- **Choices the spec left open or got wrong (CONTRACTS §16.34).**
+  - The 9.2 run on the demo call failed first (B 15, wrong and confident 1). Two causes, both fixed with tests:
+    under `generic` a scrolled desktop fails R4's 5 % change test and reads as camera, so the camera back-off read
+    it every 10 s; a camera read that still holds 2 or more long rows now goes under the motion back-off (S3 rule
+    5; selection revision `-s2`). And S6 rule 4's place condition made every row of a scrolled page a new 2 s row
+    the 4 s rule dropped; a row whose normalised text is held once in its region at both reads now continues
+    wherever it moved. A row also carries across a change of kind when it prints the same way.
+  - Grammar, after the forged-text review: the index needs a blank line after each table (a label line under the
+    Windows table rendered as a table row in GFM); `TEXT` and `LABEL` exclude C1, lone surrogates and Unicode Cf.
+    The renderer escapes every `<` as `&lt;` and `![` as `!\[`, applies NFC before any cut, drops Cf, tag and
+    filler characters, rewrites a forged trailing `[?]` to `(?)`. P2's lint and skill pass unchanged.
+  - Recording-pass review: an unfinished read's hash is never taken as its page's; the stopped-twice count is per
+    piece; the staged hash is kept in the recording meta for prune and purge; the allowance is charged for the
+    info call, the settle and a Graph recording's whole read; `agentsync reconcile` and `accept-deletions` read and
+    download no recording (only `sync --mode` and `materialise PATH` do); a Graph recording is read to the end in
+    the run that downloads it.
+  - Undefined terms taken from `v3-platform-layouts` §5 (pane edge, static pane, long line); "name-like" is 1 to 4
+    capitalised words. A revisit also needs matching text. A gallery keeps a full frame (ruling 3), although the
+    9.3 test name says "stores no image".
+- **Items for later waves.**
+  - P3: the Voices table needs the blank line too (the grammar already requires it); settle the `VOICE` wording
+    (H learning 3).
+  - P4 / F: a new version of a recording that is already online-only when the walk first sees it keeps the old
+    page until it is downloaded in Finder (`classifier.py` settles online-only files as DATALESS; the manifest keeps
+    the old stat). Text volume on a scrolling demo is about 4 times the experiment's (593 KB against 146 KB of
+    screen text, R5); a row read at one tick only is still dropped by the 4 s rule (the demo call's `NameError`
+    line). Pieces passed their deadline at load averages near 100 and resumed; R3 re-sets the limit constants.
+  - P2's drift test reads the tag set from the grammar, which the converter is held to page by page
+    (`test_every_line_is_the_banner_the_title_a_heading_a_tagged_line_or_a_footer`), so it stays as it is.
 
 ### P2 — Meeting page skill, rubrics, citation lint (done, 2026-10-07)
 
