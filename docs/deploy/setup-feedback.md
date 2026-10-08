@@ -191,7 +191,10 @@ attempt's outcome. One kind of late line is another session: a step 1 `error` da
 the closing line. Its session's step 1 stopped before `install.sh --log-start` wrote a header, so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line (logged after the previous
 attempt finished)". When it is the last attempt it is the one the Summary judges: "failed at step 1". Any
-other late line stays in its attempt (run `install.sh --report-only` again to put it in the report).
+other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
+written more than 10 minutes after the last attempt's end line, with no install run since, says so in a note: a
+session whose step 1 stopped before `--log-start` and logged nothing is not in it, and the person who ran it says
+which stop it was.
 
 `deviation` and `prompt` lines, and `error` lines that did not stop the run, are agent friction: the Summary counts
 them on their own "agent friction" line with their F-ids, and they do not change the outcome. They are still

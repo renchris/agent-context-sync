@@ -1678,6 +1678,7 @@ class _Run:
         self.agent_named: tuple[int | None, int] | None = None  # folders named with agent words only
         self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
+        self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -4958,6 +4959,19 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"stale: it was written before prompt step {step}, or the agent stopped early. Run "
             f"`agentsync setup-report` again after step {step}."
         )
+    elif att is not None and att.finished:
+        end = max((e.at for e in att.events if e.kind == "finished" and e.at is not None), default=None)
+        if (
+            end is not None
+            and r.now - end > _NEW_SESSION_GAP
+            and not any(x.started is not None and x.started > end for x in r.install_runs)
+        ):
+            out.append(
+                f"- note: no attempt was started and no install.sh run began since attempt {att.number} "
+                f"finished at {_iso(end)}, more than 10 minutes before this report, so this report is of "
+                f"attempt {att.number}. A later session whose step 1 command stopped before "
+                "`install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not in it."
+            )
     stop = stopping_error(att, runs) if att is not None else None
     if att is not None:
         synced = synced_before(runs)
@@ -5241,6 +5255,7 @@ def build_report(
     line is the prefilled issue link (:func:`issue_link` returns it)."""
     moment = now or datetime.now(UTC)
     r = _Run(config_path, hooks or ReportHooks(), budget_s)
+    r.now = moment
     if friction_path is not None:
         r.friction_path = expand(friction_path)
     try:

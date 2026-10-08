@@ -5899,8 +5899,10 @@ log a line with no `Attempt:` header after an older attempt's `end | finished`. 
   agent friction line.
 - `parse_friction` starts a header-less attempt at a step 1 `error` event dated more than 10 minutes
   (`_NEW_SESSION_GAP`) after the current attempt's last `finished` event; the lines after it, up to the next
-  `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`, and the prompt's rule for it is "log
-  it and go to step 3's report", so this is the one line such a session writes. The friction section labels the
+  `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`. The prompt's own stops there (no
+  Xcode tools, a git failure) have said "and stop" since v7 and order no line, so such a session may log nothing;
+  when its agent does log the error, this is that line. A report with nothing started since the last attempt
+  finished says so instead (§16.37). The friction section labels the
   attempt "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
   read with the newest layout. It needs no later `Attempt:` line: when it is the last attempt, the Summary
   judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had

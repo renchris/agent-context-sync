@@ -2944,8 +2944,8 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
 def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt(
     fake_mac: dict[str, Path],
 ) -> None:
-    """A session whose step 1 stopped before ``install.sh --log-start`` logs one error and writes its own
-    report ("log it and go to step 3's report"): it has no ``Attempt:`` header, and none follows. That
+    """A session whose step 1 stopped before ``install.sh --log-start``, and whose agent logged the error,
+    writes its own report: it has no ``Attempt:`` header, and none follows. That
     session failed at step 1; folded into the attempt before it, the report read "fully one command"."""
     v6_install_log(fake_mac)
     late = "2026-10-06T02:16:01Z | step 1 | error | install.sh --version exited 127 | -\n"
@@ -2974,6 +2974,40 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
         return len(setup_report.parse_friction(V7_HAPPY + line).attempts)
 
     assert (attempts(11), attempts(12)) == (1, 2), "the closing line is 10:01:10: ten minutes is the line"
+
+
+def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Prompt v10's step 1 stops (no Xcode tools, a git failure) come before ``install.sh --log-start`` and
+    order no line, and step 3 still runs the report. That report judged the attempt that had finished
+    before it and said nothing else. It cannot tell such a session from a report written again by hand,
+    so it says what it read: nothing was started since attempt N finished."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY)  # its end line is 2026-09-29T10:01:10Z
+
+    def summary_at(minute: int) -> tuple[str, str]:
+        now = datetime(2026, 9, 29, 10, minute, tzinfo=UTC)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+        return text, section(text, "Summary")
+
+    note = "- note: no attempt was started and no install.sh run began since attempt 1 finished at "
+    assert note not in summary_at(5)[1], "within ten minutes it is the same session's report"
+    text, summary = summary_at(12)
+    assert (
+        f"{note}2026-09-29T10:01:10Z, more than 10 minutes before this report, so this report is of attempt "
+        "1. A later session whose step 1 command stopped before `install.sh --log-start` (no Xcode tools, a "
+        "git failure) and logged nothing is not in it." in summary
+    )
+    assert summary.strip().splitlines()[0].startswith("- **outcome: fully one command**")
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Fully one command"], "the outcome and the link are the attempt's, unchanged"
+    write_install_log(fake_mac, start="2026-09-29T10:05:00Z", run="20260929T100500Z-7", append=True)
+    assert note not in summary_at(12)[1], "an install.sh run began after the end line"
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY + "2026-09-29T10:12:00Z | step 1 | error | git pull exited 1 | -\n")
+    summary = summary_at(20)[1]
+    assert "- note: attempt 2 has no Attempt: line." in summary and note not in summary
 
 
 def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac: dict[str, Path]) -> None:
