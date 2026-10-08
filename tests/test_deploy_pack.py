@@ -1082,7 +1082,8 @@ def test_readme_report_is_the_last_command() -> None:
 def test_readme_prompt_carries_the_field_lines() -> None:
     """The corporate field report's prompt lines (KISS K04): the inbox named as the folder beside the docs
     repo, not by a fixed path (N3), and not as every inbox source (field report 2026-10-08, setup prompt v10:
-    the agent announced fourteen folders, thirteen of them the person's own); what to drop there and which
+    read literally the old sentence named fifteen folders, fourteen of them the person's own; the agent
+    announced only the one beside the docs repo and logged the wording); what to drop there and which
     formats carry a sensitivity label (N9); never emptied by hand (N14); Containers and the browser are off
     limits (N16); a sync stopped on "click Allow" is a macOS prompt waiting for the person (WF). The README
     and the deploy guide say the same about the inbox."""
