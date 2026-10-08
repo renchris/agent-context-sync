@@ -69,7 +69,7 @@ _EMITTER_VERSION = "1.0.0"
 _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""
-_SELECTION_REVISION = 1  # ``-s<n>`` of the version: the profiles, the gate, the back-offs, the kind rules
+_SELECTION_REVISION = 2  # ``-s<n>`` of the version: the profiles, the gate, the back-offs, the kind rules
 
 WINDOW_MS = 300_000
 """One window unit of the page (spec 3.1, 2.2); the renderer cuts the recording at it."""
@@ -453,6 +453,18 @@ def _long(text: str) -> bool:
     return not _NAME_RE.fullmatch(" ".join(words)) and (
         len(words) >= _LONG_WORDS or len(" ".join(words)) >= _LONG_CHARS
     )
+
+
+def _texty(profile: _Profile, kind: Kind, rows: Sequence[_Seen]) -> bool:
+    """A read the back-offs treat as a share: a share, or a picture that still holds ``_R4_LINES`` or more
+    long content rows.  A scrolled or animated desktop fails R4's 5 % change test and reads as camera;
+    reading it every 10 s lost the output a demo showed for a few seconds (a traceback on the demo-heavy Zoom
+    fixture), so such a read goes under the motion back-off, which reads on while new rows appear.  Under
+    ``teams`` the pane rule T3 already takes a static or text-heavy pane for a share, so only R4 profiles."""
+    if kind == "share":
+        return True
+    long = sum(1 for r in rows if r.region == "content" and _long(r.text))
+    return profile.name != "teams" and long >= _R4_LINES
 
 
 def _in_mask(profile: _Profile, ln: OcrLine) -> bool:
@@ -928,7 +940,9 @@ class _Piece:
         assert carry is not None
         kind, rows, record = self._record(profile, tick, image, grid, change)
         opens, new_row = self._news(kind, rows, grid)
-        ends = (carry.mode == "camera" and kind == "share") or (carry.mode == "motion" and (opens or new_row))
+        ends = (carry.mode == "camera" and _texty(profile, kind, rows)) or (
+            carry.mode == "motion" and (opens or new_row)
+        )
         before: list[tuple[int, Kind, list[_Seen], dict[str, Any], bytes]] = []
         if ends and carry.skipped:
             back = list(reversed(carry.skipped))[: max(0, carry.reads_left - 1)]
@@ -936,22 +950,31 @@ class _Piece:
             for t, g, c in back:
                 k, r, rec = self._record(profile, t, images[t], g, c)
                 before.append((t, k, r, rec, g))
-                if carry.mode == "camera" and k != "share":
+                if carry.mode == "camera" and not _texty(profile, k, r):
                     break
                 if carry.mode == "motion" and not any(self._news(k, r, g)):
                     break
         carry.skipped = []
         for t, k, r, rec, g in sorted(before, key=lambda item: item[0]):
-            self._commit(t, k, r, rec, g)
-        self._commit(tick, kind, rows, record, grid)
+            self._commit(t, k, r, rec, g, profile=profile)
+        self._commit(tick, kind, rows, record, grid, profile=profile)
 
-    def _commit(self, tick: int, kind: Kind, rows: list[_Seen], record: dict[str, Any], grid: bytes) -> None:
+    def _commit(
+        self,
+        tick: int,
+        kind: Kind,
+        rows: list[_Seen],
+        record: dict[str, Any],
+        grid: bytes,
+        *,
+        profile: _Profile,
+    ) -> None:
         carry = self.carry
         assert carry is not None
         opens, new_row = self._news(kind, rows, grid)
         if opens:
             carry.open_rows = rows
-        if kind != "share":
+        if not _texty(profile, kind, rows):
             carry.mode, carry.quiet = "camera", 0
         elif opens or new_row:
             carry.mode, carry.quiet = "normal", 0

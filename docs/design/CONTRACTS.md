@@ -9538,7 +9538,7 @@ config key, `[convert] recordings`, and no command, flag, installer option or en
 |---|---|
 | id | `recording-av` |
 | Suffixes | `.m4v`, `.mov`, `.mp4` (`RecordingConverter.extensions`); every other video suffix keeps the refusal |
-| Version | `<emitter>+<OcrEngine.identity>+<MediaEngine.identity>-s<selection revision>`, e.g. `1.0.0+ocr-apple-vision-r3-h2.0.0-l1+media-avfoundation-h1.0.0-s1`; P3 appends `+cue-…`, `+asr-…` and `-n…` |
+| Version | `<emitter>+<OcrEngine.identity>+<MediaEngine.identity>-s<selection revision>`, e.g. `1.0.0+ocr-apple-vision-r3-h2.0.0-l1+media-avfoundation-h1.0.0-s2`; P3 appends `+cue-…`, `+asr-…` and `-n…` |
 | Options | every constant of spec 2.2 that can change a page (render, media, profile and gate, piece length), the shared OCR options and `max_page_bytes`; the guard adds banner, sidecar-digest, label-policy and suffix as for every converter |
 | `outdated_key` | `<emitter><<floor>\|<cue identity or ->\|<speech identity or ->`, the shape of `ImageConverter.outdated_key` |
 | `outdated(produced, reason)` | true for an emitter below `_REREAD_BELOW`, and (from P3) for a version without `+cue-`, `+asr-` or `-n` once the converter has that stage, and for the stubs speech could change |

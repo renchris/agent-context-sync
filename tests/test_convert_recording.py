@@ -825,7 +825,7 @@ def test_a_new_emitter_alone_reads_no_recording_again(tmp_path: Path) -> None:
     for produced in ("1.0.0+ocr-a+media-b-s1", "1.0.1+ocr-a+media-b-s2", "2.0.0+x", "unavailable"):
         assert not conv.outdated(produced) and not conv.outdated(produced, "no text read on screen")
     assert conv.outdated_key == "1.0.0<1.0.0|-|-"
-    assert conv.version() == "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s1"
+    assert conv.version() == "1.0.0+ocr-paper-vision-r2-h0.3.0-l1+media-paper-media-h0.1.0-s2"
 
 
 def test_a_floor_above_a_pages_emitter_reads_it_again_once(
@@ -901,3 +901,22 @@ def test_a_row_printed_the_same_way_carries_across_a_change_of_kind() -> None:
     ]
     assert len(rec._tracks(cands, rec._PROFILES["generic"])) == 1
     assert len(rec._tracks(cands, rec._PROFILES["teams"])) == 3
+
+
+def test_a_moving_desktop_full_of_text_is_read_on_while_new_rows_appear(tmp_path: Path) -> None:
+    """Under ``generic`` a scrolled desktop changes more than 5 % of the frame and reads as camera (R4); the
+    camera back-off would read it every 10 s and lose a traceback shown for 4 s between two reads.  A camera
+    read with 2 or more long rows goes under the motion back-off instead, which reads on while rows change."""
+    store = PieceStore(tmp_path / "recordings")
+    frames = []
+    for k in range(1, 20):
+        lines = [
+            row(f"cell {k}: forecast = load_forecast('Contoso west', quarter={k})", 0.05, 0.20, 0.70, 0.03),
+            row(f"cell {k}: budget = forecast.total() * {k + 100}", 0.05, 0.30, 0.70, 0.03),
+        ]
+        if k in (7, 8):
+            lines.append(row("NameError: name 'quarterly_total' is not defined", 0.05, 0.50, 0.70, 0.03))
+        frames.append(screen(k, *lines, paint=[(0.0, 0.0, 1.0, 1.0, 20 + (k * 53) % 200)]))
+    got = reading(tmp_path, recording(screen(0), *frames, duration_ms=40_000), pieces=store)
+    assert "NameError: name 'quarterly_total' is not defined" in texts(got)
+    assert {7, 8} <= set(reads_of(store))
