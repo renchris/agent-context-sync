@@ -21,11 +21,13 @@ from datetime import datetime
 
 from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body
 from agentsync.convert.base import make_unit
+from agentsync.convert.recording import MARK_BELOW as _MARK_BELOW
+from agentsync.convert.recording import WINDOW_MS as _WINDOW_MS
 from agentsync.convert.recording import Reading, Row, State
 from agentsync.model import RenderedUnit, UnitKind
 
-_WINDOW_S = 300  # S9 rule 4: window n covers [300 (n-1), 300 n) seconds
-_LOW_CONFIDENCE = 0.60  # S6 rule 10: a printed reading under this ends in " [?]"
+_WINDOW_S = _WINDOW_MS // 1000  # S9 rule 4: window n covers [300 (n-1), 300 n) seconds
+_LOW_CONFIDENCE = _MARK_BELOW  # S6 rule 10: a printed reading under this ends in " [?]"
 _MARK = " [?]"
 _MAX_LABEL = 60  # 3.3 rule 3
 _MIN_LABEL_LETTERS = 6

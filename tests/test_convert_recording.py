@@ -27,7 +27,9 @@ from agentsync.convert.ocr import OcrLine
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.registry import Registry
 from agentsync.errors import UnreadableSourceError
+from agentsync.materialise import sha256_file
 from agentsync.model import ConversionStatus, RenderedUnit
+from agentsync.policy import PolicyConfig
 from media_kit import calls as media_calls
 from media_kit import fake_media, fake_recording, recording, row, screen
 from test_convert_core import LABEL_RULES
@@ -110,28 +112,6 @@ class KitMedia(MediaEngine):
                 args += [flag, ",".join(str(v) for v in r)]
         args += ["--threshold", str(threshold)]
         return [p["changed"] for p in self._run(args, timeout)["pairs"]]
-
-
-class MemoryPieces(PieceStore):
-    """The piece store in memory, until ``convert/pieces.py`` is merged (teammate "publish")."""
-
-    def __init__(self) -> None:
-        super().__init__(Path("/nonexistent"))
-        self.saved: dict[tuple[str, int], tuple[str, bytes]] = {}
-        self.progress_of: dict[str, tuple[int, int]] = {}
-
-    def load(self, sha256: str, piece: int, key: str) -> bytes | None:
-        found = self.saved.get((sha256, piece))
-        return found[1] if found is not None and found[0] == key else None
-
-    def save(self, sha256: str, piece: int, key: str, data: bytes) -> None:
-        self.saved[(sha256, piece)] = (key, data)
-
-    def set_progress(self, sha256: str, *, done_ms: int, total_ms: int) -> None:
-        self.progress_of[sha256] = (done_ms, total_ms)
-
-    def progress(self, sha256: str) -> tuple[int, int] | None:
-        return self.progress_of.get(sha256)
 
 
 def converter(
@@ -222,15 +202,20 @@ def teams(*screens: dict[str, Any], **kw: Any) -> dict[str, Any]:
     return recording(screen(0, *CARD), *screens, **kw)
 
 
-def reads_of(store: MemoryPieces) -> list[int]:
+def stored(store: PieceStore) -> list[dict[str, Any]]:
+    """Every piece in the store, past the header line ``PieceStore.save`` writes."""
+    return [
+        json.loads(path.read_bytes().split(b"\n", 1)[1]) for path in sorted(store.root.glob("*/piece-*.bin"))
+    ]
+
+
+def reads_of(store: PieceStore) -> list[int]:
     """The ticks read, from the stored pieces."""
-    docs = [json.loads(data) for _key, data in store.saved.values()]
-    return sorted(r["tick"] for doc in docs for r in doc["reads"])
+    return sorted(r["tick"] for doc in stored(store) for r in doc["reads"])
 
 
-def gated_of(store: MemoryPieces) -> list[int]:
-    docs = [json.loads(data) for _key, data in store.saved.values()]
-    return sorted(t for doc in docs for t in doc["gated"])
+def gated_of(store: PieceStore) -> list[int]:
+    return sorted(t for doc in stored(store) for t in doc["gated"])
 
 
 def picture_size(data: bytes) -> list[int]:
@@ -251,10 +236,7 @@ def pages(
     registry = Registry.default(CFG, ocr=fake_engine(tmp_path / "helpers"), media=media, **kw)
     conv = registry.for_name(name)
     assert conv is not None
-    try:
-        return tuple(conv.convert(staged(tmp_path, script, name), name=name))
-    except NotImplementedError:
-        pytest.skip("the renderer (teammate render) is not merged into this branch yet")
+    return tuple(conv.convert(staged(tmp_path, script, name), name=name))
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -292,7 +274,7 @@ def test_every_line_is_the_banner_the_title_a_heading_a_tagged_line_or_a_footer(
 
 
 def test_an_unchanged_screen_is_read_once(tmp_path: Path) -> None:
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     got = reading(tmp_path, teams(share(3, FIRST)), pieces=store)
     assert reads_of(store) == [0, 3]
     assert [(s.kind, s.start_ms, [k.ms for k in s.keyframes]) for s in got.states] == [
@@ -311,7 +293,7 @@ def test_the_teams_profile_needs_the_title_card_and_masks_the_strip_and_the_labe
     assert reading(tmp_path / "a", no_card).profile == "generic"
     no_pane = recording(screen(0, *CARD), screen(3, *FIRST, LABEL))
     assert reading(tmp_path / "b", no_pane).profile == "generic"
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     other_label = row("Casey Diaz", 0.01, 0.965, 0.08, 0.03)
     other_tile = row("Drew Evans", 0.89, 0.30, 0.08, 0.03)
     script = teams(share(3, FIRST), screen(10, *FIRST, other_label, other_tile, paint=[STRIP]))
@@ -410,7 +392,7 @@ def test_a_candidate_is_share_camera_or_other_by_lines_and_label(tmp_path: Path)
 
 
 def test_camera_time_is_read_every_ten_seconds_and_a_share_start_is_exact(tmp_path: Path) -> None:
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     got = reading(tmp_path, teams(*camera(1, 13), share(13, FIRST)), pieces=store)
     assert reads_of(store) == [0, 5, 10, 12, 13], "every 10 s on camera; the share's first tick caught up"
     shared = [s for s in got.states if s.kind == "share"]
@@ -513,12 +495,17 @@ def test_keyframes_are_bounded_by_the_read_limit_and_have_no_cap_of_their_own(
     first_window = [k for s in got.states for k in s.keyframes if k.ms < 300_000]
     assert len(first_window) >= 41, "no cap per window or per recording"
     monkeypatch.setattr(rec, "_MAX_READS", 10)
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     cut = reading(tmp_path / "cut", _many(40), pieces=store)
     assert len(reads_of(store)) == 10 and sum(len(s.keyframes) for s in cut.states) <= 10
 
 
 def test_a_keyframe_has_its_rows_on_the_page(tmp_path: Path) -> None:
+    (_index, window) = pages(tmp_path / "pages", teams(share(3, FIRST), share(15, SECOND)))
+    pictures = sorted(name for name, _data in window.sidecars if name.endswith(".jpg"))
+    assert pictures == ["t000000.jpg", "t000006.jpg", "t000030.jpg"]
+    for line in [r[0] for r in (*CARD, *FIRST, *SECOND)]:
+        assert re.search(rf"^\[\d\d:\d\d:\d\d\] (SCREEN|TILE): {re.escape(line)}$", window.body, re.M), line
     got = reading(tmp_path, teams(share(3, FIRST), share(15, SECOND)))
     for state in got.states:
         for keyframe in state.keyframes:
@@ -551,12 +538,12 @@ def test_running_out_of_time_gives_no_page_and_the_refusal_a_reread_looks_for(
     the signal for the cycle, which lets the recording wait; it is never a FAILED result."""
     clock = itertools.count(0.0, 1_000.0)
     monkeypatch.setattr(rec, "_clock", lambda: next(clock))
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     src = staged(tmp_path, teams(share(3, FIRST)))
     with pytest.raises(rec.RecordingNotFinished) as caught:
         converter(tmp_path, pieces=store)._reading(src, name="meeting.mp4")
     assert (caught.value.done_ms, caught.value.total_ms, caught.value.timed_out) == (0, 60_000, True)
-    assert store.saved == {}
+    assert stored(store) == [] and store.pending() == []
     cache = ConverterCache(tmp_path / "cache")
     with pytest.raises(rec.RecordingNotFinished):
         convert_file(
@@ -645,6 +632,12 @@ def test_the_registry_has_no_recording_converter_without_both_engines_and_keeps_
         conv = labelled.for_name("a.mp4")
         assert conv is not None and conv.inner._label_rule is True  # type: ignore[attr-defined]
         assert labelled.for_name("scan.png") is None, "images keep D8"
+    rule = PolicyConfig(exclude_label_names=("Secret",))
+    (index, *_windows) = pages(tmp_path / "pages", teams(share(3, FIRST)), policy=rule)
+    assert (
+        "label rule is set; this recording's own label cannot be read on a Mac and was not checked"
+        in index.body
+    )
     assert reg.for_name("a.mp4").inner._label_rule is False  # type: ignore[union-attr]
 
 
@@ -708,17 +701,22 @@ def test_a_recording_past_the_tick_limit_is_read_to_the_limit_and_says_so(
     assert [s.start_ms for s in got.states] == [0, 6_000] and got.states[-1].end_ms == 20_000
     scans = [c["args"] for c in media_calls(tmp_path / "helpers" / "fake-media") if c["args"][0] == "scan"]
     assert all(int(a[a.index("--max-ticks") + 1]) <= 10 for a in scans)
+    units = pages(tmp_path / "pages", teams(share(3, FIRST), share(15, SECOND)))
+    note = "NOTE: recording read to 00:00:20 of 00:01:00 (limit)"
+    assert note in units[0].body and note in units[-1].body
 
 
 def test_candidates_past_the_limit_are_counted_not_read_and_the_page_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(rec, "_MAX_READS", 3)
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     script = teams(share(3, FIRST), share(9, SECOND), share(15, THIRD), share(21, FIRST), share(27, SECOND))
     got = reading(tmp_path, script, pieces=store)
     assert reads_of(store) == [0, 3, 9]
     assert got.screen_read_to == (18_000, 3)
+    units = pages(tmp_path / "pages", script)
+    assert "screen text read to 00:00:18; 3 later changes not read (limit)" in units[0].body
 
 
 def test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read(
@@ -733,7 +731,7 @@ def test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read(
         return read(self, ticks)
 
     monkeypatch.setattr(rec._Work, "read", spy)
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     reading(tmp_path, teams(share(3, FIRST), share(9, SECOND), share(15, THIRD)), pieces=store)
     candidates = len(gated_of(store))
     assert seen[0] == ([0], 1_000.0 + 60 + 0.03 * 31), "tick 0, for the profile, under the scan's limit"
@@ -745,7 +743,7 @@ def test_three_reads_share_one_deadline_and_merge_by_tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(rec, "_clock", lambda: 1_000.0)
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     conv = converter(tmp_path, pieces=store)
     calls: list[tuple[list[str], Path, float]] = []
     read = conv._ocr.read
@@ -775,12 +773,8 @@ def test_three_reads_share_one_deadline_and_merge_by_tick(
     ], "one round of six candidates in three runs, split by index modulo 3"
     assert len({d for _n, d, _b in rounds}) == 3 and len({b for _n, _d, b in rounds}) == 1
     assert [s.kind for s in got.states] == ["share"] and got.unprinted_rows == 18
-    stored = {
-        r["tick"]: [line[0] for line in r["lines"]]
-        for doc in map(json.loads, (d for _k, d in store.saved.values()))
-        for r in doc["reads"]
-    }
-    assert stored == {
+    seen = {r["tick"]: [line[0] for line in r["lines"]] for doc in stored(store) for r in doc["reads"]}
+    assert seen == {
         k: [f"{w} step {k} of the build" for w in ("Compile", "Test", "Package")] for k in range(7)
     }
 
@@ -885,7 +879,7 @@ def test_a_recording_without_a_screen_share_is_a_page_with_full_frames(tmp_path:
 
 
 def test_a_video_in_a_share_is_read_every_ten_seconds_and_noted(tmp_path: Path) -> None:
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     video = [share(k, FIRST, paint=[(0.75, 0.50, 0.85, 0.70, 30 + (k * 41) % 180)]) for k in range(3, 30)]
     got = reading(tmp_path, teams(*video), pieces=store)
     assert reads_of(store)[:8] == [0, 3, 4, 5, 6, 7, 8, 13]
@@ -942,7 +936,7 @@ def _long_meeting() -> dict[str, Any]:
 
 def test_a_recording_read_over_three_calls_under_an_allowance_equals_one_call(tmp_path: Path) -> None:
     whole = reading(tmp_path / "whole", _long_meeting())
-    store = MemoryPieces()
+    store = PieceStore(tmp_path / "recordings")
     src = staged(tmp_path / "parts", _long_meeting())
     conv = converter(tmp_path / "parts", pieces=store)
     for done in (150, 300):
@@ -956,7 +950,7 @@ def test_a_recording_read_over_three_calls_under_an_allowance_equals_one_call(tm
     with rec.work_allowance(1e-9) as allowance:
         parts = conv._reading(src, name="meeting.mp4")
     assert allowance.spent_s > 0 and parts == whole
-    assert list(store.progress_of.values()) == [(600_000, 600_000)]
+    assert store.progress(sha256_file(src)) == (600_000, 600_000) and len(stored(store)) == 3
     with rec.work_allowance(0.0):
         assert conv._reading(src, name="meeting.mp4") == whole, "every piece stored: nothing to read"
 
