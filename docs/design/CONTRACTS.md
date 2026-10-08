@@ -6383,6 +6383,13 @@ prints the first line of its stdout (`OCR helper: ...`; `OCR helper: not built (
 there is none). The exit status and stderr are dropped: the step's result and the run's exit status are those
 of a run without it. A dry run prints the command. Without developer tools nothing is tried and the run
 prints `OCR helper: not built (no Xcode or Command Line Tools)`, so its output and doctor's line agree.
+**Amended (§16.37):** the helpers have a step of their own, `helpers`, logged right after `launcher`:
+`result=done` when the modules ran, whatever their lines say, `result=skipped note=no-devtools` without
+developer tools, `note=no-interpreter` when the tool's interpreter is missing. Its rc is 0 unless a signal
+stops the run during it. So the run's exit status is still that of a run without the helpers, and the
+`launcher` line times the launcher alone. Still no option. Why: in the 2026-10-08 rehearsal the speech
+helper's first build took about 100 s, and it was logged on a `launcher` line that said `skipped
+note=not-requested`.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -6504,9 +6511,9 @@ The fake helper kit (`write_fake`, `fake_image`, `fake_engine`) is there for the
 `cli._status_checks` reach no build, no compiler and no helper; a built helper that does not answer is a WARN;
 the not-built wording and the fix without developer tools; a probe that crashes),
 `tests/test_setup_report.py` (the INFO line is not counted, a warn is unexpected) and
-`tests/test_install_oneshot.py` (the build runs in the `launcher` step with the stubbed toolchain; a failing or
-crashing build changes neither the exit status nor the steps; the one line without developer tools, forced
-with `DEVELOPER_DIR`; the dry run).
+`tests/test_install_oneshot.py` (the build runs in the `helpers` step with the stubbed toolchain; a failing or
+crashing build changes neither the exit status nor the other steps, and the `helpers` step is `done`; the one
+line without developer tools, forced with `DEVELOPER_DIR`; the dry run).
 
 ### 16.26 OCR in the converters (2026-10-06)
 
@@ -8201,7 +8208,7 @@ change:
 | Step | With no `--source-local`, over a config that syncs folders |
 |---|---|
 | 1 uv, 2 agentsync | as in any run: the tool is installed again from this checkout unless the last install was this same clean commit |
-| 3 launcher | skipped (`not-requested`); the OCR helper is built when developer tools exist, as in any run |
+| 3 launcher, helpers | launcher skipped (`not-requested`); the `helpers` step builds the OCR helper when developer tools exist, as in any run |
 | 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `skipped`, note `exists` |
 | 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:` |
 | 9 report, `NEXT:` | the report is written, the run ends on the loop's `NEXT:` and exits 0 |
@@ -9649,7 +9656,7 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
 `src/agentsync/convert/media_frames.swift`, helper version 1.0.0; L6). Built, trusted, probed and pruned as the
 OCR helper is (§16.25), by the same functions of `convert/ocr.py`, which take its `MEDIA` description (an
 `ocr.Helper`). It lives in `<cache_dir>/media/` as `agentsync-media-<digest>`; the converter cache's `gc` skips
-the folder. Only `scripts/install.sh` builds it, in the `launcher` step right after the OCR helper, by running
+the folder. Only `scripts/install.sh` builds it, in the `helpers` step right after the OCR helper, by running
 `python -I -m agentsync.convert.media`, which prints one line and exits 0 when the helper is ready or switched
 off, 1 when it is not built: `media helper: ready (avfoundation, helper 1.0.0)`, `media helper: off ([convert]
 recordings = false)` (or OCR's reason when OCR is off), `media helper: not built (<reason>)`; without developer

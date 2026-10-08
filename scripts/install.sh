@@ -100,9 +100,10 @@
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
 #      rebuilt, because an ad-hoc rebuild is a new TCC identity and macOS would ask again (the developer
 #      variable AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds it anyway)
-#      In the same step, with or without that option, when developer tools exist: the on-device OCR helper
-#      (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it). It
-#      prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
+#      Then, with or without that option, a step of its own, logged `helpers` (done when the modules ran;
+#      skipped, note no-devtools, without developer tools). When developer tools exist: the on-device OCR
+#      helper (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it).
+#      It prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
 #      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
 #      "media helper: ..." line; [convert] recordings = false builds nothing), then the speech helper (python
@@ -191,12 +192,12 @@
 # is a checkout: "commit=<sha>" or, with local changes, "commit=<sha>-dirty tree=<fingerprint>", the
 # fingerprint being the first 12 hex digits of the SHA-256 of `git diff HEAD` in the source, which reproduces
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
-# exit status, done / skipped / failed: uv, agentsync, launcher, config, status, first-sync, agent, wait; or
-# list-folders alone, whose line ends with synced=N when it read the config: the folders already synced, 0
-# included; the config line ends with kept=N added=M when agentsync could count them: the folders synced
-# before the step and the ones it added), then the report step's line, then one "end" line (exit status,
-# total seconds, the report included). The report is written while a provisional end line is the log's last
-# line, so it reads a
+# exit status, done / skipped / failed: uv, agentsync, launcher, helpers, config, status, first-sync, agent,
+# wait; or list-folders alone, whose line ends with synced=N when it read the config: the folders already
+# synced, 0 included; the config line ends with kept=N added=M when agentsync could count them: the folders
+# synced before the step and the ones it added), then the report step's line, then one "end" line (exit
+# status, total seconds, the report included). The report is written while a provisional end line is the log's
+# last line, so it reads a
 # finished run; that line is then replaced by the report step's line and the final end line (when another
 # line followed it meanwhile, the report step's line is appended instead). `agentsync setup-report` reads it
 # and redacts it. git runs read-only (GIT_OPTIONAL_LOCKS=0: not even the index's stat
@@ -1719,6 +1720,13 @@ else
 		"$HOME/Library/CloudStorage cannot run from launchd until one is installed"
 	LAUNCHER_RESULT="skipped" LAUNCHER_NOTE="no-launcher"
 fi
+step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
+if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then
+	say "launcher: $(/usr/bin/codesign -d -r- "$APP_DEST" 2>&1 | sed -n 's/^#* *designated => /designated requirement: /p')"
+fi
+
+# ------------------------------------------------------------------------------------------------- 3. helpers
+step_start helpers
 # The on-device OCR helper (agentsync.convert.ocr), with or without background sync: this is the one place it
 # is compiled, so status, a sync and the LaunchAgent never start a compiler. The module reads [convert] ocr
 # itself (off builds nothing) and prints one line. OCR is optional: a helper that does not build is that
@@ -1735,6 +1743,7 @@ if have_devtools; then
 		run "$TOOL_PY" -I -m agentsync.convert.ocr
 		run "$TOOL_PY" -I -m agentsync.convert.media
 		run "$TOOL_PY" -I -m agentsync.convert.speech
+		step_end "done"
 	elif [ -x "$TOOL_PY" ]; then
 		ocr_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.ocr </dev/null 2>/dev/null | head -n 1)" || true
 		say "${ocr_line:-OCR helper: not built (the build did not run)}"
@@ -1742,15 +1751,15 @@ if have_devtools; then
 		say "${media_line:-media helper: not built (the build did not run)}"
 		speech_line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m agentsync.convert.speech </dev/null 2>/dev/null | head -n 1)" || true
 		say "${speech_line:-speech: not built (the build did not run)}"
+		step_end "done"
+	else
+		step_end skipped 0 no-interpreter
 	fi
 else
 	say "OCR helper: not built (no Xcode or Command Line Tools)"
 	say "media helper: not built (no Xcode or Command Line Tools)"
 	say "speech: not built (no Xcode or Command Line Tools)"
-fi
-step_end "$LAUNCHER_RESULT" 0 "$LAUNCHER_NOTE"
-if [ "$LAUNCHER_STATE" = "installed" ] && [ "$DRY_RUN" -eq 0 ]; then
-	say "launcher: $(/usr/bin/codesign -d -r- "$APP_DEST" 2>&1 | sed -n 's/^#* *designated => /designated requirement: /p')"
+	step_end skipped 0 no-devtools
 fi
 
 # ------------------------------------------------------------------------------------------------ 4. config

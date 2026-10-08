@@ -805,7 +805,7 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     assert (log.parent.stat().st_mode & 0o777) == 0o700 and (log.stat().st_mode & 0o777) == 0o600
     assert (log.parent.parent.stat().st_mode & 0o777) == 0o700, "a ~/agent-context it creates is 0700"
     lines = _setup_log_lines(log)
-    assert len({run for run, _ in lines}) == 1 and len(lines) == 11
+    assert len({run for run, _ in lines}) == 1 and len(lines) == 12
     start, end = lines[0][1], lines[-1][1]
     head = f"start install.sh compat=10 commit=- kind=wheel source={wheel} args={wheel} --source-local "
     assert start.startswith(head)
@@ -815,6 +815,7 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "not-requested"),
+        ("helpers", "skipped", "0", "no-interpreter" if _have_devtools() else "no-devtools"),
         ("config", "done", "0", "created"),
         ("status", "done", "0", ""),
         ("first-sync", "done", "0", ""),  # KISS K02: the first sync runs without the flag
@@ -826,9 +827,9 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     again = install_sh({**stubs, "STUB_DOCTOR_RC": "1"}, str(wheel), "--source-local", str(folder))
     assert again.returncode == 1, again.stderr  # KISS K02: a status FAIL exits 1
     lines = _setup_log_lines(log)
-    assert len(lines) == 22 and len({run for run, _ in lines}) == 2, "appended, one run id per run"
-    assert ("config", "done", "0", "add-source") in _steps(lines[11:])
-    assert ("status", "done", "1", "fail-lines") in _steps(lines[11:])
+    assert len(lines) == 24 and len({run for run, _ in lines}) == 2, "appended, one run id per run"
+    assert ("config", "done", "0", "add-source") in _steps(lines[12:])
+    assert ("status", "done", "1", "fail-lines") in _steps(lines[12:])
 
 
 def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp_path: Path) -> None:

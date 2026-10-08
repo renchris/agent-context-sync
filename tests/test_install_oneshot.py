@@ -380,6 +380,7 @@ def test_one_shot_installs_syncs_starts_and_waits(env: dict[str, str], folder: P
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "no-launcher"),
+        ("helpers", "skipped", "0", "no-interpreter" if _have_git() else "no-devtools"),
         ("config", "done", "0", "created"),
         ("status", "done", "0", ""),
         ("first-sync", "done", "0", ""),
@@ -615,7 +616,7 @@ def test_without_the_flag_the_first_sync_runs_and_ends_on_the_loops_next(
     assert last_line(cp) == f"NEXT: {LOOP_NEXT} [setup report: {report_path(env)}]"
     assert sum("NEXT:" in ln for ln in cp.stdout.splitlines() + cp.stderr.splitlines()) == 1
     assert "Stub Secret Label" not in cp.stdout + cp.stderr
-    assert steps(install_log(env))[4:6] == [("status", "done", "0", ""), ("first-sync", "done", "0", "")]
+    assert steps(install_log(env))[5:7] == [("status", "done", "0", ""), ("first-sync", "done", "0", "")]
     seen = _env_calls(env)
     assert [ln for ln in seen if not ln.startswith("status no_next=1 ")][-2:] == [
         "status no_next= pending=",
@@ -1791,10 +1792,11 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     assert last_line(again).startswith("NEXT: ") and one_next(again)
     assert last_line(again).endswith(f" [setup report: {report_path(env)}]")
     assert report_path(env).read_text(encoding="utf-8").startswith(setup_report.REPORT_TITLE)
-    assert steps(install_log(env))[-9:] == [
+    assert steps(install_log(env))[-10:] == [
         ("uv", "skipped", "0", "present"),
         ("agentsync", "done", "0", ""),
         ("launcher", "skipped", "0", "not-requested"),
+        ("helpers", "done", "0", "") if _have_git() else ("helpers", "skipped", "0", "no-devtools"),
         ("config", "skipped", "0", "exists"),
         ("status", "done", "0", ""),
         ("first-sync", "done", "0", "converted-0-deferred-0"),
@@ -3233,7 +3235,7 @@ def test_first_sync_prints_its_converted_and_deferred_line(
     assert ("first-sync", "done", "0", "converted-4-deferred-2") in steps(install_log(env))
 
 
-# ---- the on-device OCR helper is built in the launcher step ------------------------------------------------
+# ---- the on-device OCR helper is built in the helpers step -------------------------------------------------
 
 STUB_TOOL_PYTHON = """#!/bin/bash
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
@@ -3248,13 +3250,24 @@ exit "$rc"
 """
 
 
-def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
+def _others(rows: list[tuple[str, str, str, str]]) -> list[tuple[str, str, str, str]]:
+    """The install.log steps other than ``helpers``."""
+    return [r for r in rows if r[0] != "helpers"]
+
+
+def _helpers_row(rows: list[tuple[str, str, str, str]]) -> tuple[str, str, str, str]:
+    [row] = [r for r in rows if r[0] == "helpers"]
+    return row
+
+
+def test_helpers_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
     """Decision D4: install.sh is the one place the helper is compiled (python -I -m agentsync.convert.ocr
     with the tool's interpreter), with or without background sync.  OCR is optional: whatever the build
-    does, the run's exit status and its install.log steps are those of a run without it.  Without developer
-    tools nothing is tried and one line says so: status's ocr line sends the reader to this script."""
+    does, the run's exit status and its install.log steps other than ``helpers`` are those of a run without
+    it, and ``helpers`` is logged right after ``launcher``.  Without developer tools nothing is tried and one
+    line says so: status's ocr line sends the reader to this script."""
     home = Path(env["HOME"])
     cfg = home / "agent-context" / "sources.toml"
     tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
@@ -3287,7 +3300,14 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         ({"STUB_OCR_OUT": ready, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
     ):
         cp, got = run(**stub)
-        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        assert (cp.returncode, _others(got)) == (plain.returncode, _others(plain_steps)), (
+            cp.stdout + cp.stderr
+        )
+        assert _helpers_row(got) == (
+            ("helpers", "skipped", "0", "no-devtools")
+            if line == no_tools or not _have_git()
+            else ("helpers", "done", "0", "")
+        )
         assert one_next(cp)
         # -m: the build. The config step also asks this interpreter how many folders are synced (-c).
         ran = [c for c in calls(env) if c.startswith("python -I -m agentsync.convert.ocr")]
@@ -3303,7 +3323,13 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
             < index_of(log, "python ")
             < index_of(log, "agentsync add-source")
         )
-    assert [name for name, *_ in plain_steps][:4] == ["uv", "agentsync", "launcher", "config"]
+    assert [name for name, *_ in plain_steps][:5] == ["uv", "agentsync", "launcher", "helpers", "config"]
+    assert _helpers_row(plain_steps) == (
+        "helpers",
+        "skipped",
+        "0",
+        "no-interpreter" if _have_git() else "no-devtools",
+    )
     Path(env["STUB_LOG"]).unlink()
     dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, str(wheel), "--source-local", str(folder))
     planned = [ln for ln in dry.stdout.splitlines() if "agentsync.convert.ocr" in ln]
@@ -3314,12 +3340,12 @@ def test_launcher_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
 
 
-def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a_line(
+def test_helpers_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a_line(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
     """The media helper is built where the OCR helper is, right after it, by the same interpreter, on its own
-    line.  Whatever either build does, the run's exit status and its install.log steps are those of a run
-    without them.  Without developer tools nothing is tried and one line says so."""
+    line.  Whatever either build does, the run's exit status and its install.log steps other than ``helpers``
+    are those of a run without them.  Without developer tools nothing is tried and one line says so."""
     home = Path(env["HOME"])
     cfg = home / "agent-context" / "sources.toml"
     tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
@@ -3353,7 +3379,14 @@ def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a
         ({"STUB_MEDIA_OUT": ready, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
     ):
         cp, got = run(**stub)
-        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        assert (cp.returncode, _others(got)) == (plain.returncode, _others(plain_steps)), (
+            cp.stdout + cp.stderr
+        )
+        assert _helpers_row(got) == (
+            ("helpers", "skipped", "0", "no-devtools")
+            if line == no_tools or not _have_git()
+            else ("helpers", "done", "0", "")
+        )
         assert one_next(cp)
         ran = [c for c in calls(env) if c.startswith("python -I -m ")]
         if line == no_tools or not _have_git():
@@ -3380,13 +3413,13 @@ def test_launcher_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a
     assert not any(c.startswith("python ") for c in calls(env)), "a dry run builds nothing"
 
 
-def test_launcher_step_builds_the_speech_helper_after_media_and_a_failure_is_only_a_line(
+def test_helpers_step_builds_the_speech_helper_after_media_and_a_failure_is_only_a_line(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
     """The speech helper is built right after the media helper, by the same interpreter, on its own
     ``speech: ...`` line.  Whatever its build does (an older FluidAudio refused, a crash), the run's exit
-    status and its install.log steps are those of a run without it.  Without developer tools nothing is tried
-    and one line says so."""
+    status and its install.log steps other than ``helpers`` are those of a run without it.  Without developer
+    tools nothing is tried and one line says so."""
     home = Path(env["HOME"])
     cfg = home / "agent-context" / "sources.toml"
     tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
@@ -3428,7 +3461,14 @@ def test_launcher_step_builds_the_speech_helper_after_media_and_a_failure_is_onl
         ({"STUB_SPEECH_OUT": placed, "DEVELOPER_DIR": str(home / "no-developer-tools")}, no_tools),
     ):
         cp, got = run(**stub)
-        assert (cp.returncode, got) == (plain.returncode, plain_steps), cp.stdout + cp.stderr
+        assert (cp.returncode, _others(got)) == (plain.returncode, _others(plain_steps)), (
+            cp.stdout + cp.stderr
+        )
+        assert _helpers_row(got) == (
+            ("helpers", "skipped", "0", "no-devtools")
+            if line == no_tools or not _have_git()
+            else ("helpers", "done", "0", "")
+        )
         if line == no_tools or not _have_git():
             assert said(cp) == [no_tools]
             continue
