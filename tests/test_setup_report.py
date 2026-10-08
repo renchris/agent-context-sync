@@ -4222,6 +4222,14 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         governance.PurgeReason.LABEL_ESCALATION,
         now=later,
     )
+    # A purge that ran: one line per item and one summary. The one from before the oldest queued day is
+    # not counted, and neither is a line that is not JSON.
+    for at, items in (("2026-10-01T08:00:00Z", 3), ("2026-10-03T08:00:00Z", 2)):
+        for _n in range(items):
+            governance.append_audit(root, {"action": "purge", "at": at, "source_id": "tailspin-bridge"})
+        governance.append_audit(root, {"action": "purge-summary", "at": at, "verified": True})
+    with governance.audit_path(root).open("a", encoding="utf-8") as fh:
+        fh.write("cut sho\n")
     text, parts = status_parts(fake_mac)
     part = parts["Purge queue"]
     assert (
@@ -4248,6 +4256,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "- no trace: 2 queued id(s) have no row and are no alias. A re-key leaves an alias, so what took "
         "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
         "history still names for them and takes them off the queue",
+        "- audit trail since 2026-10-02 (the oldest queued day): 9 purge-enqueued, 2 purge (one per item "
+        "erased) and 1 purge-summary (one per purge that ran) line(s)",
     ], "what the columns mean for a run of the queue, in counts and fixed words"
     for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
         assert raw not in text, raw
@@ -4268,7 +4278,11 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "erase that file's page and its history",
         "- no row: 4 queued id(s) have no row. This manifest has no alias table, so none was looked up as an "
         "alias: an earlier id of a file listed now cannot be told from one a purge took away",
+        "- audit trail since 2026-10-02 (the oldest queued day): 9 purge-enqueued, 2 purge (one per item "
+        "erased) and 1 purge-summary (one per purge that ran) line(s)",
     ]
+    governance.audit_path(root).unlink()
+    assert "\n- audit trail: no file" in status_parts(fake_mac)[1]["Purge queue"]
     for claim in ("no trace", "are no alias", "A re-key leaves an alias", "a purge that already ran"):
         assert claim not in part, claim
     for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):

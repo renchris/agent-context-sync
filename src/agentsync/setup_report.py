@@ -2593,6 +2593,7 @@ _RUNS_READ = 200
 _RUNS_SHOWN = 5
 _ROWS_SHOWN = 40
 _PURGES_READ = 5000
+_AUDIT_READ = 32 * 1024 * 1024  # a larger audit trail is not read: the Purge queue part says so
 _PURGE_LOOKUPS = 300
 _EMPTY_DIRS_CHECKED = 50
 _FOLDERS_S = 2.0  # one source's empty folders: the lstat calls, then the exclude rule, each at most this long
@@ -3585,7 +3586,38 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "",
         *_table(header, rows),
         *_purge_notes(totals, aliased, alias_table=alias_table),
+        _purge_audit(
+            governance.audit_path(config.state_paths.root), min((key[3] for key in grouped), default="")
+        ),
     ]
+
+
+def _purge_audit(path: Path, since: str) -> str:
+    """One line: whether a purge ran since the oldest queued day (``since``, a UTC day), as the governance
+    audit trail's lines from that day on by action. A queued purge writes one ``purge-enqueued`` line, a
+    purge that ran one ``purge`` line per item and one ``purge-summary`` line. Counts only: no id, no hash."""
+    try:
+        if path.stat().st_size > _AUDIT_READ:
+            return f"- audit trail: not read (over {_AUDIT_READ // 1024 // 1024} MiB)"
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return "- audit trail: no file"
+    except OSError as exc:
+        return f"- audit trail: cannot read: {type(exc).__name__}"
+    day = since if _DAY_RE.fullmatch(since) else ""
+    actions: Counter[str] = Counter()
+    for line in text.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and str(record.get("at", ""))[:10] >= day:
+            actions[str(record.get("action"))] += 1
+    span = f"since {day} (the oldest queued day)" if day else "in all (no queued day is known)"
+    return (
+        f"- audit trail {span}: {actions['purge-enqueued']} purge-enqueued, {actions['purge']} purge (one "
+        f"per item erased) and {actions['purge-summary']} purge-summary (one per purge that ran) line(s)"
+    )
 
 
 def _purge_notes(fates: Counter[str], aliased: Counter[str], *, alias_table: bool) -> list[str]:
