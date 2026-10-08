@@ -23,8 +23,9 @@ reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversion
 Installer and Configuration carry a few more lines; section 4 says how to read them. They are counts, states,
 seconds, version strings and fixed words, so they add nothing to review: no file name, folder name or reason
 text is in them. They share 3 of the 12 seconds, and a part that runs out prints "not measured (time limit)".
-The one program they start, the OCR helper's `--version`, has 1.5 seconds of its own beside those 3, so a helper
-that hangs costs the other parts nothing: its line then says `did not answer within 1.5s`.
+The two programs they start, the OCR helper's and the media helper's `--version`, each have 1.5 seconds of their
+own beside those 3, so a helper that hangs costs the other parts nothing: its own line (`- helper:` or
+`- media helper:`) then says `did not answer within 1.5s`.
 The manifest is opened read-only and no folder is listed.
 The command exits 0 unless `--out` cannot be written; then it prints the report and exits 1. It embeds
 `friction.md` with the same redaction, takes the prompt version and agent from the last attempt's header, and works

@@ -26,7 +26,7 @@ import pytest
 
 from agentsync import arm_local, cli, convert, cycle, governance, loop, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
-from agentsync.convert import image, ocr, pdf
+from agentsync.convert import image, media, ocr, pdf
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
@@ -3521,6 +3521,7 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
     assert (
         "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- label rule in [policy]: off" in parts["OCR"]
     )
+    assert "- helper: off (AGENTSYNC_OCR=0)\n- media helper: off (" in parts["OCR"], "by Doctor's media probe"
     assert "- images: 0 file(s)\n" in parts["OCR"] and "- OCR time: no run is recorded" in parts["OCR"]
     assert parts["Quarantine by reason"].strip() == "- no file is quarantined or refused"
     assert parts["Purge queue"].strip() == "- no purge is queued"
@@ -4480,12 +4481,14 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         return "ready", "too late"
 
     monkeypatch.setattr(ocr, "probe", hung)
+    monkeypatch.setattr(media, "probe", hung)
     monkeypatch.setattr(setup_report, "_PROBE_S", 0.3)
     try:
         text, parts = status_parts(fake_mac)
     finally:
         release.set()
     assert "- helper: did not answer within 0.3s (a built helper's `--version`;" in parts["OCR"]
+    assert "- media helper: did not answer within 0.3s\n" in parts["OCR"], "the media helper waits the same"
     assert (
         "The helper did not say whether it is ready (its line above; Doctor's ocr line does)." in parts["OCR"]
     )
@@ -4507,8 +4510,10 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         return "ready", "paper-vision revision 2, helper 0.3.0"
 
     monkeypatch.setattr(ocr, "probe", slow)
+    monkeypatch.setattr(media, "probe", lambda _convert, _cache_dir: ("ready", "media helper 0.1.0"))
     text, parts = status_parts(fake_mac)
     assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
+    assert "- media helper: ready (media helper 0.1.0)\n- label rule in [policy]: off\n" in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
     assert "- images: 8 file(s): page 2" in parts["OCR"]
 

@@ -2543,9 +2543,10 @@ budget. A part with no time left prints :data:`NOT_MEASURED`. The OCR probe is n
 (:data:`_PROBE_S`)."""
 NOT_MEASURED = "not measured (time limit)"
 _PROBE_S = 1.5
-"""The seconds the OCR part waits for ``convert.ocr.probe``, beside :data:`EVIDENCE_BUDGET_S`. The probe is
-the one thing the evidence starts a program for (a built helper's ``--version``, which a cycle gives 5 s), so
-a helper that hangs costs this much and nothing of what the manifest parts have."""
+"""The seconds the OCR part waits for ``convert.ocr.probe``, and then for ``convert.media.probe``, beside
+:data:`EVIDENCE_BUDGET_S`. The two probes are the only things the evidence starts a program for (a built
+helper's ``--version``, which a cycle gives 5 s), so a helper that hangs costs this much and nothing of what
+the manifest parts have."""
 EVIDENCE_TITLES = (
     "OCR",
     "Quarantine by reason",
@@ -2940,8 +2941,10 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
     """The probe's state and detail (``convert.ocr.probe``: it looks, compiles nothing and stamps nothing;
     the one program it may start is a built helper's ``--version``), and whether a label rule is on.
-    Returns the two lines, the state ("" when the probe gave none) and whether a label rule is on: the
-    file counts after it are worded by them. Never raises.
+    Then the media helper that reads recordings, by the probe Doctor's media check calls
+    (``convert.media.probe``, which looks the same way): one line, with a wait of its own.
+    Returns the three lines, the OCR state ("" when the probe gave none) and whether a label rule is on:
+    the file counts after it are worded by them. Never raises.
 
     The probe has :data:`_PROBE_S` of its own, and the time it takes is not the manifest parts'
     (``_Mirror.not_counted``): a helper that hangs is the Mac the OCR evidence is wanted from, and it used
@@ -2968,6 +2971,20 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
             ]
     except Exception as exc:
         out = [f"- helper: not measured ({type(exc).__name__})"]
+    finally:
+        m.not_counted(time.monotonic() - started)
+    room = r.remaining() - _RESERVE_S
+    started = time.monotonic()
+    try:
+        from agentsync.convert import media  # noqa: PLC0415 - lazy, as above
+
+        found, detail = r.call(lambda: media.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
+        out.append(f"- media helper: {words.get(str(found), 'unknown state')} ({_shorten(str(detail), 200)})")
+    except TimeoutError:
+        late = NOT_MEASURED if room < _PROBE_S else f"did not answer within {_PROBE_S:.1f}s"
+        out.append(f"- media helper: {late}")
+    except Exception as exc:
+        out.append(f"- media helper: not measured ({type(exc).__name__})")
     finally:
         m.not_counted(time.monotonic() - started)
     try:
