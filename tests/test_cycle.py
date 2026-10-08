@@ -1150,6 +1150,47 @@ def test_budget_0_converts_every_local_file_and_defers_only_online_only_ones(
     assert any(mirror.glob("sample.pptx*")) and (mirror / "sample.pdf.md").is_file()
 
 
+def test_the_stub_of_an_online_only_file_nothing_converts_is_published_once(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file no converter claims is refused from its name, so an online-only one never gets a content hash
+    and is pending work in every pass. The stub it has is left as it is: the next pass writes nothing and
+    commits nothing. Renamed, it still gets the stub of its new path."""
+    rel = "projects/Contoso Deck Template.potx"
+    template = local_source_dir / rel
+    template.write_bytes(b"not read")
+    _mark_online_only(monkeypatch, template)
+    assert run(sample_config).commit_sha is not None
+    stub = slug.mirror_rel_path(SID, rel)
+    assert page(sample_config.docs_repo, stub)[0]["reason"] == "no converter for .potx"
+
+    def settled() -> tuple[Any, ...]:
+        row = _file_rows(sample_config)[rel]
+        with Manifest(sample_config.state_paths.db) as m:
+            [out] = m.outputs_for(SID, row.stable_id)
+        return row.state, row.state_reason, row.last_verdict, row.content_sha256, out.built_run
+
+    first = settled()
+    assert first[:4] == (RowState.REFUSED, "no converter for .potx", Verdict.REFUSED, None)
+    written: list[str] = []
+    real = Publisher.write_pages
+
+    def spy(self: Publisher, item: Any, pages: Any, run_id: int) -> Any:
+        written.append(item.rel_path)
+        return real(self, item, pages, run_id)
+
+    monkeypatch.setattr(Publisher, "write_pages", spy)
+    second = run(sample_config)
+    assert (second.exit_code, second.commit_sha, second.changes, written) == (0, None, (), [])
+    assert settled() == first
+    moved = "projects/Contoso Template.potx"
+    template.rename(local_source_dir / moved)
+    third = run(sample_config)
+    assert third.commit_sha is not None and written == [moved]
+    assert page(sample_config.docs_repo, slug.mirror_rel_path(SID, moved))[0]["status"] == "refused"
+    assert not (sample_config.docs_repo / stub).exists()
+
+
 # ---------------------------------------------------------------------------------------------------------
 # a page too long for any sidecar settles as one quarantined item
 # ---------------------------------------------------------------------------------------------------------

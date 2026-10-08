@@ -3426,6 +3426,25 @@ class _Cycle:
             )
         return True
 
+    def _stub_stands(self, src: SourceConfig, row: ItemRow, refused: ConversionResult) -> bool:
+        """True when ``row`` has the very stub ``refused`` would publish, intact and at the path it has
+        now: the row is settled as refused and nothing is published.
+
+        An online-only file nothing converts is pending work in every pass (no byte of it is read, so its row
+        never holds a content hash), and each pass published the same stub over itself."""
+        outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+        if _same_stub(outs, row, refused) is None or not _pages_intact(self.repo, outs):
+            return False
+        try:
+            pages = self.publisher.plan_pages(src, row, refused)
+        except SidecarPathError:
+            return False
+        have = [(o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if [(p.output_path, p.page_sha256) for p in pages] != have:
+            return False
+        self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.REFUSED)
+        return True
+
     def _converting(self) -> Registry:
         """The registry the next file is converted with. Once the cycle reads nothing more with its engine
         (``_ocr_over``: its OCR time is used, or the helper stopped working) it is the one without an engine
@@ -3447,7 +3466,7 @@ class _Cycle:
             self.manifest.set_state(sid, stable, row.state, None)  # re-decided below: only a new refusal
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
-            if not self._keeps_page(row, acc):
+            if not self._keeps_page(row, acc) and not self._stub_stands(src, row, refused):
                 self._publish(src, row, refused, acc)
             return
         screening = self.publisher.policy_refusal(row)
