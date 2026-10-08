@@ -2142,6 +2142,41 @@ def test_a_pandoc_that_does_not_answer_is_stopped_at_the_installers_own_limit(tm
         assert (cp.returncode, cp.stdout, cp.stderr) == (0, "the run goes on\n", "")
 
 
+def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_path: Path) -> None:
+    """Review of the v9 rehearsal fixes (2026-10-07): step 5 could print nothing for about twice the
+    progress interval. A pandoc start shorter than the interval prints nothing, and the status wait after
+    it began its own count at zero, so a 13 s start and a status that waits were 27 s of silence at the
+    default 15 s. The status wait now counts its first interval from where the pandoc start began: a line
+    is printed once the two have lasted one interval together, though neither did alone. The two functions
+    are run here as the script has them, in step 5's order, and the wait after those two counts from its
+    own start again."""
+    quiet = _write_exe(tmp_path / "pandoc", "#!/bin/bash\nsleep 2.5\n")
+    lines = [
+        "set -euo pipefail",
+        "say() { printf '%s\\n' \"$*\"; }",
+        f"status_pandoc() {{ printf '%s' {shlex.quote(str(quiet))}; }}",
+        "PROGRESS_EVERY=5",
+        "PANDOC_START_SECONDS=300",
+        _shell_function("with_progress"),
+        _shell_function("start_pandoc_once"),
+        "start_pandoc_once",
+        "with_progress status sleep 4",
+        "echo status is done",
+        "with_progress 'first sync' sleep 1",
+        "echo the run goes on",
+    ]
+    cp = subprocess.run(
+        [BASH32, "-c", "\n".join(lines)], capture_output=True, text=True, check=False, timeout=120
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert out[-2:] == ["status is done", "the run goes on"], "the next wait began a count of its own"
+    said = out[:-2]
+    assert said, "neither wait lasted an interval, the two together did: a line says the run is alive"
+    progress = rf"status: still running, \d+s|{PANDOC_PROGRESS}|pandoc: started after \d+s"
+    assert all(re.fullmatch(progress, ln) for ln in said), cp.stdout
+
+
 def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:
     """The counts are the installed agentsync's. With no interpreter to ask (the stub uv installs none) the
     step's line is what it was, and no folders: line is printed."""

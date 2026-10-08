@@ -143,7 +143,10 @@
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
 #   Steps 5, 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so
 #   a coding tool that stops a command which has
-#   printed nothing for a while does not stop this one. A whole run with --confirm-install-agent takes the
+#   printed nothing for a while does not stop this one. Step 5's two waits keep one clock for that: a start
+#   of pandoc too quick to print a line is counted in the first interval of status, which follows it (the
+#   one part with no line of its own is reading the config for the pandoc path, 0.1 s as a rule and stopped
+#   at 20 s). A whole run with --confirm-install-agent takes the
 #   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
 #   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
 #   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
@@ -495,7 +498,7 @@ SIMULATE=0
 LAUNCHCTL="${AGENTSYNC_LAUNCHCTL:-/bin/launchctl}"
 WAIT_SECONDS="${AGENTSYNC_WAIT_SECONDS:-180}"
 WAIT_POLL="${AGENTSYNC_WAIT_POLL_SECONDS:-3}"
-PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}" # a progress line at least this often in steps 6 and 8
+PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}" # a progress line at least this often in steps 5, 6 and 8
 LIST_TIMEOUT="${AGENTSYNC_LIST_TIMEOUT:-90}"
 LIST_TOTAL="${AGENTSYNC_LIST_TOTAL_SECONDS:-100}"
 POLL_LABEL="com.agentsync.poll"
@@ -632,9 +635,14 @@ with_timeout() {
 	return "$rc"
 }
 # Run a command, printing "LABEL: still running, <N>s" every $PROGRESS_SECONDS while it runs (a coding tool
-# may stop a command that prints nothing for a while); its exit status.
+# may stop a command that prints nothing for a while); its exit status. A wait that may print nothing and
+# is followed by this one (start_pandoc_once, before status) leaves the time of its last line, or of its
+# start, in $PROGRESS_SINCE: the first interval here is counted from it, once, so the two are never silent
+# for an interval each.
+PROGRESS_SINCE=""
 with_progress() {
-	local label="$1" pid rc=0 t0=$SECONDS last=$SECONDS
+	local label="$1" pid rc=0 t0=$SECONDS last="${PROGRESS_SINCE:-$SECONDS}"
+	PROGRESS_SINCE=""
 	shift
 	"$@" </dev/null &
 	pid=$!
@@ -1869,10 +1877,13 @@ print(pandoc)
 # take longer than the 60 s status gives it, and this wait is the installer's own, with progress lines. At
 # most $PANDOC_START_SECONDS, the time a conversion gives pandoc; past that it is stopped and status says
 # what it finds. Never fails the run: a pandoc that is missing or broken is the check's to report, with its
-# fix. Quiet when the start is quick, which every start but the first is.
+# fix. Quiet when the start is quick, which every start but the first is. Its clock is $PROGRESS_SINCE (see
+# with_progress): the status wait after it goes on counting from this function's last line, or from its
+# start when it printed none, the time status_pandoc took included.
 PANDOC_START_SECONDS=300
 start_pandoc_once() {
-	local pandoc pid t0=$SECONDS last=$SECONDS shown=0
+	local pandoc pid t0=$SECONDS shown=0
+	PROGRESS_SINCE=$SECONDS
 	pandoc="$(status_pandoc)"
 	[ -n "$pandoc" ] && [ -x "$pandoc" ] || return 0
 	"$pandoc" --version </dev/null >/dev/null 2>&1 &
@@ -1881,18 +1892,21 @@ start_pandoc_once() {
 		if [ $((SECONDS - t0)) -ge "$PANDOC_START_SECONDS" ]; then
 			kill "$pid" 2>/dev/null || true
 			wait "$pid" 2>/dev/null || true
+			PROGRESS_SINCE=$SECONDS
 			say "pandoc: no answer after ${PANDOC_START_SECONDS}s; status checks it next"
 			return 0
 		fi
-		if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
-			last=$SECONDS
+		if [ $((SECONDS - PROGRESS_SINCE)) -ge "$PROGRESS_EVERY" ]; then
+			PROGRESS_SINCE=$SECONDS
 			shown=1
 			say "pandoc: still running, $((SECONDS - t0))s (the first start after an install can take a minute; later ones are quick)"
 		fi
 		sleep 0.2
 	done
 	wait "$pid" 2>/dev/null || true
-	[ "$shown" -eq 0 ] || say "pandoc: started after $((SECONDS - t0))s"
+	[ "$shown" -eq 1 ] || return 0
+	PROGRESS_SINCE=$SECONDS
+	say "pandoc: started after $((SECONDS - t0))s"
 }
 status_run() { "$AGENTSYNC" status --config "$CONFIG" | tee "$DOCTOR_LOG"; } # the pipeline's status is status's
 step_start status

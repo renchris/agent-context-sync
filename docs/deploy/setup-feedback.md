@@ -364,6 +364,9 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   one prints `pandoc: still running, <N>s (...)` at each progress interval and then
   `pandoc: started after <N>s`; the time is part of the status step in install.log, as it was.
 - The status step prints `status: still running, <N>s` lines while status works, as the first sync does.
+  The pandoc start and status keep one clock: a start too quick to print a line is counted in status's
+  first interval, so the first `status: still running` line can show a small `<N>`. Before that, a 13 s
+  start followed by a status that waits was about 27 s with no line.
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
   wrong`. Under `install.sh` its fix starts `run the same scripts/install.sh command again as it is (its

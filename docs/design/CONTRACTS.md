@@ -9217,6 +9217,25 @@ under `with_progress "status"`, as the first sync and the closing status do, so
 still status's (`status_run`, under `pipefail`). The header's sentence reads "Steps 5, 6 and 8 and the
 closing status ...".
 
+**The two waits of step 5 keep one clock.** As first written, each counted its own interval: a pandoc start
+shorter than the interval printed nothing, and `with_progress "status"` then began at zero. With the two
+functions run at a 5 s interval, a 2.5 s start and a 4 s status printed nothing for 6.5 s; at the default,
+a 13 s start before a status that waits is about 27 s of silence, and a coding tool that stops a quiet
+command after 15 to 30 s stops the run there.
+
+```sh
+PROGRESS_SINCE=""    # scripts/install.sh: $SECONDS at the last line of a wait that may print none, else ""
+```
+
+- `start_pandoc_once` sets it at its start, before it reads the config for the pandoc path, and again at
+  each line it prints. It is the clock that function prints its own lines by.
+- `with_progress` counts its first interval from `$PROGRESS_SINCE` when that is set, and clears it. So a
+  `status: still running, <N>s` line is due one interval after the pandoc start's last line, or after its
+  start when it printed none. `<N>` is still the time status itself has run, so the first one can be small.
+- It is used once. The first sync's wait and the closing status begin their own count, as before.
+- Not covered: reading the config for the pandoc path prints no line of its own. That takes 0.1 s as a
+  rule and is stopped at 20 s, so only a read slower than the interval is quiet for longer than one.
+
 Not done: a background start during steps 3 and 4. It would hide most of the wait behind the OCR helper's
 build, but on a new Mac there is no config to read the pandoc path from until step 4.
 
@@ -9226,7 +9245,9 @@ is slow and which logs who started it: progress lines, then `pandoc: started aft
 quick one; a second run says nothing about pandoc. The function itself with a limit of 2 s and a pandoc that
 never answers: the stop line, the run goes on and the process is gone; no pandoc to start: silent. The
 limit is 300, the converter's, and above the check's. A slow stub status: `status: still running` lines
-above its output, exit 0, and exit 1 with `note=fail-lines` when it fails).
+above its output, exit 0, and exit 1 with `note=fail-lines` when it fails. The two functions in step 5's
+order at a 5 s interval, a 2.5 s pandoc and a 4 s status: a progress line, though neither lasted an
+interval, and a third wait after them that prints none).
 
 #### A check that runs out of time says so, and every FAIL names a fix (amends the `agentsync.ops.doctor` section, §16.21 and §16.22; `agentsync.ops.doctor`, `agentsync.cli`)
 
