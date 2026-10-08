@@ -56,7 +56,13 @@ from agentsync.arm_local import (
     cloud_provider_root,
     fold_conflict_suffix,
 )
-from agentsync.classifier import ClassifyContext, PassClassification, classify_content, classify_output
+from agentsync.classifier import (
+    ClassifyContext,
+    PassClassification,
+    breaker_trips,
+    classify_content,
+    classify_output,
+)
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr, speech
@@ -2366,7 +2372,23 @@ class _Cycle:
                 and row.last_seen_run >= since
                 and not arm.in_scope(row.rel_path)
             )
-        self._removals(src, pc, rows_before, acc, items, complete_full=complete_full, out_of_scope=outside)
+        # A complete pass with a scope change pending judges each absent file the same way, and the other
+        # way round for the root: a row last listed under an earlier ``path`` left with that root.  What is
+        # still in scope is absent for another reason and is never retired on the config's word.
+        judged = False
+        if isinstance(arm, LocalArm) and complete_full:
+            judged = self.manifest.get_meta(_SCOPE_CHANGE_META + src.id) not in (None, "")
+        if isinstance(arm, LocalArm) and judged:
+            since = self._root_since(src)
+            outside = [
+                sid
+                for sid in pc.deletion_candidates
+                if (row := rows.get(sid)) is not None
+                and (row.last_seen_run < since or not arm.in_scope(row.rel_path))
+            ]
+        self._removals(
+            src, pc, rows_before, acc, items, complete_full=complete_full, out_of_scope=outside, judged=judged
+        )
 
     def _note_roots(self, fp_changed: set[str]) -> None:
         """Record the first run of each local or inbox source under the ``path`` it has now
@@ -3181,9 +3203,12 @@ class _Cycle:
         *,
         complete_full: bool = False,
         out_of_scope: Sequence[str] = (),
+        judged: bool = False,
     ) -> None:
         """Apply the pass's removals.  ``out_of_scope``: present rows of a local or inbox source that an
-        incomplete pass did not list and whose path fails the arm's ``in_scope``."""
+        incomplete pass did not list and whose path fails the arm's ``in_scope``.  ``judged``: a complete
+        pass of such a source with a scope change pending, where ``out_of_scope`` holds the deletion
+        candidates the config no longer covers (or that an earlier root listed) and no other."""
         scan_items = scan_items or {}
         today = self.today()
         if src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
@@ -3218,28 +3243,40 @@ class _Cycle:
             # walk never completes.
             removals += [(sid, _SCOPE_CHANGE_REASON) for sid in out_of_scope]
             acc.alarms.append(_scope_change_alarm(len(out_of_scope)))
-        if pc.deletion_candidates and scope_changed:
+        absent, tripped = pc.deletion_candidates, pc.breaker_tripped
+        if judged and out_of_scope:
+            # The rows retired above left with the config.  The other absent files are still in scope, so the
+            # scope change does not explain them: they meet the breaker, judged again without the retired
+            # rows on either side, and the two-pass check, like any absence.
+            retired = set(out_of_scope)
+            absent = tuple(sid for sid in absent if sid not in retired)
+            if tripped:
+                active = self.manifest.breaker_active(src.id, _iso(self.now()))
+                live = max(0, self.manifest.live_count(src.id) - len(retired))
+                tripped = active or breaker_trips(len(absent), live, self.config.breaker)
+                acc.breaker_tripped = tripped and bool(absent or active)
+        if absent and scope_changed and not judged:
             # sources.toml narrowed this source (path/folder, include/exclude): the files still exist
             # upstream, the operator took them out of scope.  Retire their pages (exempt from the breaker, as
             # retirement is), never "deleted upstream", never a purge (review correctness-scope-change).
-            removals += [(sid, _SCOPE_CHANGE_REASON) for sid in pc.deletion_candidates]
-            acc.alarms.append(_scope_change_alarm(len(pc.deletion_candidates)))
-        elif pc.deletion_candidates:
-            if pc.breaker_tripped:
+            removals += [(sid, _SCOPE_CHANGE_REASON) for sid in absent]
+            acc.alarms.append(_scope_change_alarm(len(absent)))
+        elif absent:
+            if tripped:
                 now = self.now()
                 if not self.manifest.breaker_active(src.id, _iso(now)):
                     until = _iso(now + timedelta(days=self.config.breaker.hold_days))
                     self.manifest.trip_breaker(
-                        src.id, candidates=len(pc.deletion_candidates), tripped_at=_iso(now), until=until
+                        src.id, candidates=len(absent), tripped_at=_iso(now), until=until
                     )
                 acc.breaker_tripped = True
                 acc.alarms.append(
-                    f"deletion breaker TRIPPED: {len(pc.deletion_candidates)} absent file(s) held, nothing "
+                    f"deletion breaker TRIPPED: {len(absent)} absent file(s) held, nothing "
                     f"removed; if the deletion is real run `agentsync accept-deletions {src.id}` or retire "
                     "the source"
                 )
             else:
-                confirmed = self._confirmed_absent(src, pc.deletion_candidates, rows_before, acc)
+                confirmed = self._confirmed_absent(src, absent, rows_before, acc)
                 removals += [(sid, "deleted-upstream") for sid in confirmed]
                 srow = self.manifest.get_source(src.id)
                 if srow is not None and srow.breaker_tripped_at is not None:

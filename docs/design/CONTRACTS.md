@@ -4686,7 +4686,12 @@ a removed folder takes its known descendants with the same reason. A local/inbox
 complete passes before it is tombstoned (`extra.absent_since_run`); safe-save pairing runs in every FULL pass,
 complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
 `retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge; **amended 2026-10-06:** a local or inbox row
-whose path fails `arm_local.in_scope` is retired the same way by an incomplete pass, §16.23). A mirrored source
+whose path fails `arm_local.in_scope` is retired the same way by an incomplete pass, §16.23; **amended
+2026-10-08:** on the first complete pass of a local or inbox source after the change, "outside it" is judged per
+file: an absent file is retired only if its path fails `in_scope` or it was last listed under an earlier `path`
+(`scope_root`, §16.23). Every other absent file is an ordinary deletion candidate: the breaker, judged without the
+retired rows among the candidates or the live rows, then the two-pass rule and the purge. A Graph source still
+retires every file its complete listing lacks on that pass). A mirrored source
 missing from sources.toml raises ConfigError (exit 78). An empty local root with mirrored files is `unknown` (`.`). A graph drive whose
 baseline is incomplete runs FULL; a resumed FULL round never stages its deltaLink. DriveArm: a known item whose
 new place is derivably outside the scope (or hinted outside) is a `moved-out-of-scope` tombstone in FULL passes

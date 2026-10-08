@@ -1495,6 +1495,105 @@ def test_a_row_listed_under_the_old_root_only_is_left_to_a_complete_pass(
     assert governance.pending_purges(sample_config.state_paths.root) == []
 
 
+_LOW_BREAKER = "\n[breaker]\nfraction = 0.2\nfloor = 2\nhold_days = 7\n"
+
+
+def _excluding(config: Config, sid: str, *exclude: str) -> Config:
+    """``config`` with ``exclude`` added to the source ``sid``: its walks stay complete."""
+    sources = tuple(
+        dataclasses.replace(s, exclude=(*s.exclude, *exclude)) if s.id == sid else s for s in config.sources
+    )
+    return dataclasses.replace(config, sources=sources)
+
+
+@pytest.mark.parametrize("gone", [1, 6], ids=["two-pass", "breaker"])
+def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
+    tmp_path: Path, local_source_dir: Path, gone: int
+) -> None:
+    """A scope change explains the absence of the files it takes out of scope, and of no other. The first
+    complete pass after an exclude is added retires the excluded file; the files that are absent and still in
+    scope are ordinary deletion candidates: a few wait for a second complete pass and queue their purge, many
+    trip the breaker and stay."""
+    config = config_with(tmp_path, local_source_dir, _LOW_BREAKER)
+    victims = [f"minutes/Contoso minutes {n}.md" for n in range(gone)]
+    (local_source_dir / "minutes").mkdir()
+    for n, rel in enumerate(victims):
+        (local_source_dir / rel).write_text(f"# Minutes {n}\n\nagreed\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    for rel in victims:
+        (local_source_dir / rel).unlink()
+    excluded = _excluding(config, SID, "acme")
+    report = run(excluded)
+    rep = source_report(report)
+    assert report.exit_code == 0 and rep.enumeration_complete
+    assert any("1 file(s) now outside it retired" in a for a in rep.alarms), rep.alarms
+    rows = _file_rows(excluded)
+    assert (rows[KICKOFF].state, rows[KICKOFF].state_reason) == (RowState.TOMBSTONE, "retired:scope-change")
+    assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [KICKOFF]
+    assert governance.pending_purges(excluded.state_paths.root) == []
+    second = run(excluded)
+    rows = _file_rows(excluded)
+    if gone == 1:
+        assert not rep.breaker_tripped
+        assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+        assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
+        assert len(governance.pending_purges(excluded.state_paths.root)) == 1
+    else:
+        assert rep.breaker_tripped
+        assert any(f"breaker TRIPPED: {gone} absent file(s) held" in a for a in rep.alarms), rep.alarms
+        assert source_report(second).breaker_tripped and second.changes == ()
+        assert all(rows[rel].state is RowState.LIVE for rel in victims)
+        assert governance.pending_purges(excluded.state_paths.root) == []
+
+
+def test_an_exclude_with_no_other_absence_retires_its_files_past_the_breaker(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    """A folder taken out of scope holds more files than the breaker allows to go missing. They are retired
+    all the same, in one pass, and the breaker is neither tripped nor reported: nothing is held."""
+    config = config_with(tmp_path, local_source_dir, _LOW_BREAKER)
+    assert run(config).exit_code == 0
+    before = _file_rows(config)
+    left = sorted(rel for rel in before if rel.startswith("projects/"))
+    assert len(left) > 2 and len(left) > 0.2 * len(before)
+    excluded = _excluding(config, SID, "projects")
+    report = run(excluded)
+    rep = source_report(report)
+    assert report.exit_code == 0 and rep.enumeration_complete and not rep.breaker_tripped
+    assert [a for a in rep.alarms if "retired" in a or "absent" in a] == [
+        f"scope changed in sources.toml: {len(left)} file(s) now outside it retired "
+        "(not deleted upstream; no purge queued)"
+    ]
+    rows = _file_rows(excluded)
+    assert {rows[rel].state_reason for rel in left} == {"retired:scope-change"}
+    assert sorted(rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE) == left
+    assert governance.pending_purges(excluded.state_paths.root) == []
+    with Manifest(excluded.state_paths.db) as m:
+        srow = m.get_source(SID)
+        assert srow is not None and srow.breaker_tripped_at is None
+    assert run(excluded).changes == ()
+
+
+def test_a_drive_scope_change_still_retires_every_file_its_full_listing_lacks(drive_env: Any) -> None:
+    """A Graph source is judged as before: after a scope change, a file its complete listing no longer
+    holds is retired, in scope or not, with no purge queued."""
+    config, drive, client = drive_env
+    drive.files["I2"] = ("plan.md", b"# Plan\n\nfirst version\n")
+    drive.qx["I2"], drive.version["I2"] = "qx-I2-1", 1
+    assert run(config, client=client, only=["drive"]).exit_code == 0
+    del drive.files["I2"]  # gone from the listing, with no tombstone from the provider
+    narrowed = _excluding(config, "drive", "archive")
+    report = run(narrowed, client=client, only=["drive"])
+    assert report.exit_code == 0 and source_report(report, "drive").enumeration_complete
+    rows = _file_rows(narrowed, "drive")
+    assert (rows["Projects/plan.md"].state, rows["Projects/plan.md"].state_reason) == (
+        RowState.TOMBSTONE,
+        "retired:scope-change",
+    )
+    assert rows["Projects/notes.md"].state is RowState.LIVE
+    assert governance.pending_purges(narrowed.state_paths.root) == []
+
+
 @pytest.mark.parametrize("edited_in_that_run", [False, True])
 def test_a_manifest_with_no_recorded_root_trusts_its_paths_unless_that_run_changed_the_scope(
     sample_config: Config, edited_in_that_run: bool
