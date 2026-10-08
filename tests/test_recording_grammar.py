@@ -16,7 +16,7 @@ What a window unit is held to:
 - 3.3 rule 3: a heading label is quoted, 1 to 60 characters with six or more letters, and holds no ``"``.
 - Text holds no C0 control, DEL, NEL or Unicode line break (``str.splitlines`` would end a line there), and no
   ``<!--`` (S9 rule 5 neutralises it).
-- 3.3 rule 5: a ``NOTE`` holds one of the fixed wordings, and the two index-only ones never stand in a window.
+- 3.3 rule 5: a ``NOTE`` holds one of the fixed wordings, and the index-only ones never stand in a window.
 - The tag table: ``SAID vN:`` with one or two digits; a ``KEYFRAME`` names the file of its own tick, or for a
   revisit the earlier state's file; a ``VOICE`` line is one of its four forms.
 - S9 rules 1, 2 and 4, which the times on the lines must agree with: a window covers ``[300 (n-1), 300 n)`` s;
@@ -98,6 +98,7 @@ WINDOW_NOTES = (
     ),
     re.compile(rf"speech detected, no words recognised until {HMS}"),
     re.compile(r"no sound from here to the end of the recording"),
+    re.compile(r"v\d{1,2} is not named on this line: its lit samples show another label"),
 )
 INDEX_ONLY_NOTES = (
     re.compile(
@@ -105,6 +106,7 @@ INDEX_ONLY_NOTES = (
         r"this recording's own label cannot be read on a Mac and was not checked"
     ),
     re.compile(r"name held back: a share inside the margin band"),
+    re.compile(r"names held back: this layout's names are not yet checked against a listen"),
 )
 VOICE_FORMS = (
     re.compile(
@@ -612,6 +614,7 @@ LAST_WINDOW = f"""{UNTRUSTED_BANNER}
 [02:58:00] SCREEN-: Contoso quarterly review - Teams
 [02:58:00] SPEAKING: Luis Fe...
 [02:58:00] SAID v1: thanks everyone
+[02:58:00] NOTE: v1 is not named on this line: its lit samples show another label
 [02:58:00] NOTE: no sound from here to the end of the recording
 [02:59:56] NOTE: recording read to 03:00:00 of 04:12:30 (limit)
 
@@ -688,6 +691,7 @@ showing 3 of 3
 [00:09:40] VOICE: v3 · mixed
 [00:17:03] VOICE: v4 · unidentified
 [00:17:03] NOTE: name held back: a share inside the margin band
+[00:17:03] NOTE: names held back: this layout's names are not yet checked against a listen
 
 ## Gaps and bounds
 - sound ends at 00:31:40
@@ -770,6 +774,12 @@ WINDOW_BREAKS = [
         "an index-only NOTE",
         "NOTE: fewer than 5 lines read in the content area; the keyframe is the full frame",
         "NOTE: name held back: a share inside the margin band",
+        "index-only wording",
+    ),
+    (
+        "the naming gate's NOTE in a window",
+        "NOTE: fewer than 5 lines read in the content area; the keyframe is the full frame",
+        "NOTE: names held back: this layout's names are not yet checked against a listen",
         "index-only wording",
     ),
     ("an odd screen time", "[00:05:38] SCREEN: Q4", "[00:05:39] SCREEN: Q4", "even second"),
