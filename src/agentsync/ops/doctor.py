@@ -54,8 +54,9 @@ _AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
 ADHOC_IT_NOTE = "for IT: Developer ID build (docs/deploy/mdm)"
 _XCODE_SELECT = "/usr/bin/xcode-select"
 _DEVTOOLS_TIMEOUT_S = 5.0
-# Only scripts/install.sh builds the OCR helper (convert/ocr.py), so the ocr texts name it and no agentsync
-# command.  Without developer tools it builds nothing, so there the not-built line says what it waits for.
+# Only scripts/install.sh builds the OCR and media helpers (convert/ocr.py, convert/media.py), so the ocr and
+# media texts name it and no agentsync command.  Without developer tools it builds nothing, so there the
+# not-built line says what it waits for.
 _OCR_NOT_BUILT = "scripts/install.sh builds it"
 _OCR_NOT_BUILT_NO_DEVTOOLS = (
     "scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)"
@@ -185,6 +186,14 @@ def _ocr_status(config: Config) -> tuple[str, str]:
     from agentsync.convert import ocr  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
 
     return ocr.probe(config.convert, config.cache_dir)
+
+
+def _media_status(config: Config) -> tuple[str, str]:
+    """(state, detail) of the media helper, from ``convert.media.probe``: as :func:`_ocr_status`, it looks and
+    never compiles; the one program it may start is a built helper's ``--version``, which it gives 5 s."""
+    from agentsync.convert import media  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+
+    return media.probe(config.convert, config.cache_dir)
 
 
 def _devtools_missing() -> bool:
@@ -571,6 +580,25 @@ def _check_ocr(config: Config) -> list[CheckResult]:
         return [_bad("ocr", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
     return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
+
+
+def _check_media(config: Config) -> list[CheckResult]:
+    """The media helper that reads recordings, optional as OCR is and checked the same way: ok when ready or
+    switched off (``[convert] recordings = false`` among the switches); a not-ok INFO line when it is not
+    built (scripts/install.sh builds it; this check never compiles); WARN with the reason when it failed,
+    with a fix only when the developer tools are missing.  Never a FAIL."""
+    try:
+        state, detail = _media_status(config)
+    except Exception as exc:
+        log.debug("doctor: the media probe crashed", exc_info=True)
+        return [_bad("media", f"media helper: could not be checked ({type(exc).__name__})", Severity.WARN)]
+    if state in ("ready", "off"):
+        return [_ok("media", f"media helper: {state} ({detail})")]
+    if state == "not-built":
+        how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
+        return [_bad("media", f"{detail}; {how}", Severity.INFO)]
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    return [_bad("media", f"media helper: not working ({detail})", Severity.WARN, fix=fix)]
 
 
 def _check_config(config: Config) -> list[CheckResult]:
@@ -1571,6 +1599,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("git", _check_git),
     ("pandoc", _check_pandoc),
     ("ocr", _check_ocr),
+    ("media", _check_media),
     ("config", _check_config),
     ("docs_repo", _check_docs_repo),
     ("permissions", _check_permissions),
@@ -1611,7 +1640,8 @@ def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
 
     python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; on-device
-    OCR ready, off, not built (INFO) or failed (WARN), never built here and never a FAIL; docs_repo
+    OCR and the media helper each ready, off, not built (INFO) or failed (WARN), never built here and never a
+    FAIL; docs_repo
     outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
     sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:

@@ -25,12 +25,13 @@ import pytest
 
 from agentsync import cli, gitops
 from agentsync.config import Config, parse_config
-from agentsync.convert import ocr
+from agentsync.convert import media, ocr
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
 from conftest import fails_without_a_fix
+from media_kit import fake_media
 from test_ocr import write_fake
 
 GIT = shutil.which("git") or "/usr/bin/git"
@@ -39,8 +40,10 @@ REAL_IN_LAUNCHD = doctor._in_launchd_job
 REAL_CODESIGN_INFO = doctor._codesign_info
 REAL_LAUNCHER_CANARY = doctor._launcher_canary
 REAL_OCR_STATUS = doctor._ocr_status
+REAL_MEDIA_STATUS = doctor._media_status
 REAL_DEVTOOLS_MISSING = doctor._devtools_missing
 OCR_READY = "paper-vision revision 2, helper 0.3.0"
+MEDIA_READY = "paper-media, helper 0.1.0"
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +74,7 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(doctor, "_codesign_info", no_codesign)
     monkeypatch.setattr(doctor, "_launcher_canary", no_canary)
     monkeypatch.setattr(doctor, "_ocr_status", lambda cfg: ("ready", OCR_READY))
+    monkeypatch.setattr(doctor, "_media_status", lambda cfg: ("ready", MEDIA_READY))
     monkeypatch.setattr(doctor, "_devtools_missing", no_xcode_select)
 
     def refuse(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -121,6 +125,7 @@ EXPECTED_ORDER = [
     "git",
     "pandoc",
     "ocr",
+    "media",
     "docs_repo.location",
     "docs_repo.git",
     "docs_repo.symlinks",
@@ -157,6 +162,7 @@ def test_happy_path_has_no_errors_and_fixed_order(sample_config: Config) -> None
         assert r[name].detail.endswith(" not installed (optional background sync; see docs/deploy)"), name
     assert r["pandoc"].ok and r["pandoc"].detail.startswith("pandoc ")
     assert r["ocr"].ok and r["ocr"].detail == f"on-device OCR is ready: {OCR_READY}"
+    assert r["media"].ok and r["media"].detail == f"media helper: ready ({MEDIA_READY})"
     assert r["git"].ok and "git version" in r["git"].detail
     assert r["materialise.policy"].detail.startswith("process policy off")
     assert [x.name for x in run_checks(sample_config)] == names, "stable order"
@@ -1803,6 +1809,95 @@ def test_ocr_probe_crash_is_a_warn_without_the_exception_text(
     r = by_name(results)["ocr"]
     assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
     assert r.detail == "on-device OCR could not be checked: PermissionError"
+    assert errors(results) == []
+
+
+# ------------------------------------------------------------------------------------------------ media
+
+
+def _real_media(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real media probe on a Mac with recordings on (the suite switches OCR off, see conftest)."""
+    monkeypatch.setattr(doctor, "_media_status", REAL_MEDIA_STATUS)
+    monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+
+def test_media_off_is_ok_and_names_the_switch(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    _real_media(monkeypatch)
+    off = dataclasses.replace(
+        sample_config, convert=dataclasses.replace(sample_config.convert, recordings=False)
+    )
+    r = by_name(run_checks(off))["media"]
+    assert (r.ok, r.detail) == (True, "media helper: off ([convert] recordings = false)")
+    monkeypatch.setenv("AGENTSYNC_OCR", "0")
+    r = by_name(run_checks(sample_config))["media"]
+    assert (r.ok, r.detail) == (True, "media helper: off (AGENTSYNC_OCR=0)")
+
+
+def test_media_not_built_is_an_info_line_and_doctor_never_builds(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only scripts/install.sh compiles the media helper: status and doctor start no build and no compiler,
+    write nothing, and say who builds it."""
+    _real_media(monkeypatch)
+    _real_ocr(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+
+    def no_build(*args: object, **kwargs: object) -> None:
+        pytest.fail(f"doctor reached a helper build: {args}")
+
+    for module, names in (
+        (ocr, ("build", "_build", "_compile", "_tool", "_run_helper")),
+        (media, ("build",)),
+    ):
+        for name in names:
+            monkeypatch.setattr(module, name, no_build)
+    for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
+        r = by_name(results)["media"]
+        assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
+        assert r.detail == "the media helper is not built; scripts/install.sh builds it"
+        assert errors([r]) == []
+    assert not (sample_config.cache_dir / "media").exists()
+    line = format_results([r])
+    assert line.startswith("[info] media") and "fix:" not in line
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    assert by_name(run_checks(sample_config))["media"].detail == (
+        "the media helper is not built; scripts/install.sh builds it once the Command Line Tools are "
+        "installed (xcode-select --install)"
+    )
+
+
+def test_media_reads_the_helper_under_the_configured_cache_dir(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _real_media(monkeypatch)
+    helper = ocr._helper_path(sample_config.cache_dir, media.MEDIA)
+    fake_media(helper.parent).replace(helper)
+    r = by_name(run_checks(sample_config))["media"]
+    assert r.ok and r.detail == f"media helper: ready ({MEDIA_READY})"
+    assert by_name(run_checks(sample_config))["docs_repo.permissions"].ok, "the helper is owner-only"
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    fake_media(tmp_path, version_exit=3).replace(helper)  # built, and it stopped answering
+    r = by_name(run_checks(sample_config))["media"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
+    assert r.detail == "media helper: not working (the media helper exited 3: no message)"
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    r = by_name(run_checks(sample_config))["media"]
+    assert r.fix == "xcode-select --install, then run scripts/install.sh again"
+    assert errors(run_checks(sample_config)) == [], "the media helper is optional: never a FAIL"
+
+
+def test_media_probe_crash_is_a_warn_without_the_exception_text(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def crash(cfg: Config) -> tuple[str, str]:
+        raise PermissionError(errno.EACCES, "Permission denied", str(cfg.cache_dir))
+
+    monkeypatch.setattr(doctor, "_media_status", crash)
+    results = run_checks(sample_config)
+    r = by_name(results)["media"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, None)
+    assert r.detail == "media helper: could not be checked (PermissionError)"
     assert errors(results) == []
 
 
