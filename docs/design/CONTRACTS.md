@@ -8768,7 +8768,9 @@ Not done here, because they are not the report's:
 - `run_purge_queue` runs an entry whose id resolves to a live file. A guard there must keep an entry whose
   row is quarantined or refused: after a file comes back refused, the queued purge is the only thing that
   erases its earlier text from history.
-- The dry run's note counts every commit as "would be rewritten" when an entry targets nothing.
+- The dry run's note counted every commit as "would be rewritten" when an entry targets nothing. Done since
+  in `governance._purge_locked`: such an entry's note says nothing is targeted and no commit would be
+  rewritten, and every other dry run says "up to N commit(s)".
 
 Tests: `tests/test_setup_report.py` (the queue of §16.28 with two more entries: an id re-keyed after its file
 came back, which is `still listed`, and one re-keyed and deleted again, which is `no live twin`, both

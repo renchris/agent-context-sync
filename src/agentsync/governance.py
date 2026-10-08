@@ -1967,6 +1967,12 @@ def _purge_locked(
         citing = _topics_citing(repo, sp.db, set(docs_paths))
         items = tuple(sorted(plan.ids))
         if dry_run:
+            # the scrubber's needles are the docs paths, the ids and the source paths: with none of them and
+            # no blob, no commit changes
+            if plan.target_blobs or docs_paths or plan.ids or rel_paths:
+                note = f"up to {len(graph)} commit(s) would be rewritten"
+            else:
+                note = "nothing is targeted: no commit would be rewritten"
             return PurgeReport(
                 selector=selector.kind(),
                 reason=reason,
@@ -1977,7 +1983,7 @@ def _purge_locked(
                 cache_entries_removed=len(cache_victims) + len(piece_victims),
                 citing_pages=tuple(citing),
                 remote="dry-run",
-                notes=(f"{len(graph)} commit(s) would be rewritten",),
+                notes=(note,),
             )
         at = _iso(_now(now))
         notes: list[str] = []

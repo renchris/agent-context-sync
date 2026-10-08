@@ -580,6 +580,40 @@ def test_purge_dry_run_writes_nothing(world: World) -> None:
     assert gv.read_audit(world.state) == []
 
 
+def test_purge_dry_run_of_an_id_that_names_nothing_says_no_commit_would_be_rewritten(world: World) -> None:
+    """Field report 2026-10-08: a queued id with no row and no page read "N commit(s) would be rewritten"."""
+    commits = len(git(world.repo, "rev-list", "HEAD").split())
+    nothing = gv.purge(
+        world.config,
+        gv.PurgeSelector(stable_id="NEVER-A-ROW", source_id="src"),
+        reason=gv.PurgeReason.UPSTREAM_DELETED,
+        dry_run=True,
+    )
+    assert nothing.items == () and nothing.docs_paths == () and nothing.blobs_targeted == 0
+    assert nothing.notes == ("nothing is targeted: no commit would be rewritten",)
+    named = gv.purge(
+        world.config, gv.PurgeSelector(stable_id="S1"), reason=gv.PurgeReason.OPERATOR, dry_run=True
+    )
+    assert named.blobs_targeted > 0
+    assert named.notes == (f"up to {commits} commit(s) would be rewritten",)
+    # an outputs row with no items row and no page: no blob, but the docs path is still a needle
+    conn = sqlite3.connect(world.config.state_paths.db)
+    conn.execute(
+        "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, action_key, rendered_sha256, "
+        "status, built_run) VALUES ('mirror/src/phantom.md','src','P1','whole',NULL,'x','ok',1)"
+    )
+    conn.commit()
+    conn.close()
+    phantom = gv.purge(
+        world.config,
+        gv.PurgeSelector(docs_glob="mirror/src/phantom.md"),
+        reason=gv.PurgeReason.OPERATOR,
+        dry_run=True,
+    )
+    assert phantom.items == () and phantom.blobs_targeted == 0
+    assert phantom.notes == (f"up to {commits} commit(s) would be rewritten",)
+
+
 def test_purge_reports_survivor_when_content_is_copied_elsewhere(world: World) -> None:
     secret_page = git(world.repo, "show", f"{world.c3}:mirror/src/renamed-secret.docx.md")
     write(world.repo / "topics/copy.md", secret_page)  # identical bytes outside mirror/: same blob
