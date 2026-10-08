@@ -204,6 +204,47 @@ Learnings: both review catches were places where a builder's own note said the o
 not follow the wrong inbox sentence, so a prompt defect can stay invisible in the outcome line: read the friction
 log, not only the outcome.
 
+## B11 The v10 rehearsal's leftovers, with no prompt text (2026-10-08)
+
+Scope (grown): +build the small rehearsal findings that need no prompt text, as one reviewed batch. The operator
+asked whether the work was 100% of what is reachable; these were what was left. The prompt stays v10.
+
+Locus: L, two in-process Workflows as in B1 to B10. Verify (run `wf_5571913d-f44`): a verifier and a skeptic for
+each of 7 candidates, read-only; notes in `~/.cache/agentsync-bring-back/b11/findings/`. Build (run
+`wf_4c3c1952-ee1`): four builders in four worktrees, a fresh reviewer and a fix pass each; the lead integrated
+the four branches on `bb/b11`, folded in one review nit and wrote CONTRACTS §16.37.
+
+Built (13 commits):
+- **Report:** a report written more than 10 minutes after the last attempt finished, with no run since, says no
+  attempt was started since and that a later session that stopped in step 1 before logging is not in it (the
+  rehearsal's one "wrong" finding). The skeptic refuted the verifier's fix, which had the installer log a step 1
+  error: a report written again by hand would then read "failed at step 1" and the local work would be sent
+  again. A session that stopped before `--log-start` counts no folder question and no click. The Loop line lists
+  every wait (no "(+N more)"). "not logged as a question". The first-sync count says it is read when the report
+  is written.
+- **Installer:** the helper builds are the install.log step `helpers` (the rehearsal billed about 100 s of speech
+  build to a skipped `launcher` step) and print `helpers: still running` lines; the builds stay in the
+  foreground, so a stopped run never leaves a second build racing the re-run.
+- **Sync and status:** status counts files marked absent before the pass that removes them; the removing pass
+  says how many; a commit beside "0 change(s)" says what it holds; the summary adds "read again R".
+- **Alarm and purge:** an alarm whose unknown folders are all empty cloud folders points at the WAITING ON YOU
+  line, not at Files and Folders access; a purge dry run's headline is in the conditional.
+
+Dropped, by design (verifier and skeptic agreed): the Summary's "unexpected" label for the person's own waits
+(refuted a second time: doctor's `heartbeat.<id>` warns the same way for a stopped background sync, so a
+"yours" group would hide the next C11; the 2026-10-08 triage had dropped it too); "in _eval" without its
+folder; placeholder numbers that skip; a refused attempt with no install.log line; doctor's other fixes in single
+quotes (they name no line to search for); the stopped copy's `setup-report.md` (an old copy's own finish line
+names that file).
+
+Held for the next prompt revision (do not build without one): step 1's Xcode and git stops should log their
+error before the report (the report note above is the stopgap); step 3's second no-report case names only "not
+the installer's" while step 1 has two triggers; "the last NEXT: or WAITING ON YOU: line" has several candidates;
+a re-run whose installer NEXT already says "session done" against step 3's "start the loop"; a session with
+nothing to request and the fix-request heading; "removing a file removes its page" (the page becomes a deletion
+notice); an indented `alarm:` line is explained by a WAITING ON YOU line. Still the operator's choice, not built:
+a `.url` converter.
+
 ## B1 Field fixes from the bring-back report
 
 Items I1–I19 in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
