@@ -4792,8 +4792,8 @@ def _eval_by_name(line: str, config: Config) -> str:
 def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
-    ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and how many more there are,
-    then the loop's ``note:`` lines about files still to be read again, when it has any (a second
+    ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and every other one, in the loop's
+    order, then the loop's ``note:`` lines about files still to be read again, when it has any (a second
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
     was written before the one-time re-read finished. The two paths the config puts into these lines, the
     docs repo's ``_eval`` and the config file, are shown by name whatever the path
@@ -4815,8 +4815,8 @@ def _loop_line(r: _Run) -> str:
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
     waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
     if waits:
-        more = f" (+{len(waits) - 1} more)" if len(waits) > 1 else ""
-        text += f"; {loop_next_text(_stopped_wait(found, waits))}{more}"
+        shown = _stopped_wait(found, waits)
+        text += "".join(f"; {loop_next_text(w)}" for w in (shown, *(w for w in waits if w is not shown)))
     for reread in (ln for ln in lines if ln.startswith("note: ") and "read again" in ln):
         text += f"; {loop_next_text(reread)}"
     return f"- Loop: {stage}; {text}"

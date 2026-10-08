@@ -2563,7 +2563,7 @@ def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Pat
 
 def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: dict[str, Path]) -> None:
     """KISS K16b review: a WAIT is where setup stopped (a held listing's Allow click), so the Loop line
-    carries it, path-free, and a count of the rest; the hook runs before ``took`` is measured."""
+    carries it, path-free, and every other wait after it; the hook runs before ``took`` is measured."""
 
     def slow(config: object) -> list[str]:
         time.sleep(1.0)
@@ -2580,7 +2580,7 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
     assert loop.endswith(
         "; NEXT: draft the baseline questions: run `agentsync sync`; WAITING ON YOU: macOS held the listing "
         "of one for a privacy prompt: click Allow on the macOS prompt (it can sit behind other windows), "
-        "then run `agentsync sync` (+1 more)"
+        "then run `agentsync sync`; WAITING ON YOU: 2 queued purge(s): run `agentsync purge --queue`"
     ), loop
     took = re.search(r"^- took: ([0-9.]+)s", text, flags=re.MULTILINE)
     assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
@@ -2604,6 +2604,20 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     red = setup_report.Redactor()
     cut = 'fix: set exclude = ["~$*", "/Fabrikam Bi'
     assert setup_report._redact_lines(red, [cut]) == "fix: set exclude = [<path>]"
+
+    # The v10 rehearsal: the exclude wait, then the draft under rule 5's NEXT. The draft is the one the loop
+    # stopped on and comes first; the exclude wait follows it, still without its folder names.
+    draft = (
+        "WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions.md, "
+        "correct the answers in answers.md, and change both files to status: confirmed"
+    )
+    stop = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    hooks = setup_report.ReportHooks(loop_next=lambda config: [stop, wait, draft])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert f"; {draft}; WAITING ON YOU: 2 empty cloud folder(s) keep the listing of " in loop, loop
+    assert "set exclude = [<path>] in [[source]] id = " in loop and loop.endswith("later gains files"), loop
+    assert "Fabrikam" not in text and "Tailspin" not in text
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -2726,11 +2740,11 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     line = loop_line()
     assert re.search(
         r"; WAITING ON YOU: macOS held the listing of <(?:source|folder)-\d+> for a privacy prompt: click "
-        r"Allow on the macOS prompt \(it can sit behind other windows\), then run `agentsync sync` "
-        r"\(\+1 more\)$",
+        r"Allow on the macOS prompt \(it can sit behind other windows\), then run `agentsync sync`; "
+        r"WAITING ON YOU: 1 queued purge\(s\): run `agentsync purge --queue`$",
         line,
     ), line
-    assert "queued purge" not in line and "(WAITING ON YOU below)" not in line
+    assert line.index("macOS held") < line.index("queued purge") and "(WAITING ON YOU below)" not in line
 
     # A draft baseline: rule 5's NEXT says the wait is below, and the loop prints that wait last.
     evals = expand(config.docs_repo) / "_eval"
@@ -2740,11 +2754,15 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     found = waits()
     assert len(found) == 3 and found[-1].startswith(setup_report._WAIT_DRAFT)
     assert setup_report._WAIT_BELOW in loop.next_lines(config, count_queue=False)[0]
-    assert loop_line().endswith(
-        "; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done; "
-        "WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions.md, "
-        "correct the answers in answers.md, and change both files to status: confirmed (+2 more)"
-    )
+    line = loop_line()
+    assert re.search(
+        r"; NEXT: stop: the operator confirms the baseline questions \(WAITING ON YOU below\); session done; "
+        r"WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions\.md, "
+        r"correct the answers in answers\.md, and change both files to status: confirmed; WAITING ON YOU: 1 "
+        r"queued purge\(s\): run `agentsync purge --queue`; WAITING ON YOU: macOS held the listing of "
+        r"<(?:source|folder)-\d+> .*$",
+        line,
+    ), line
 
 
 def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> None:

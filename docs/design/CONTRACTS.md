@@ -5062,7 +5062,10 @@ steps>, count_queue=False)`, run once in its own pass after Doctor and before th
 `r.call`'s 4 s; Doctor's share holds back 1 s more than before, so the hook gets at least 2 s past a slow doctor),
 and its first `WAITING ON YOU: ` line with a count of the rest (rule 5's NEXT and a held listing's Allow click
 point at one; **amended 2026-10-07, §16.30:** the wait shown is the one the loop stopped on, which is not
-always the first), each passed through `loop_next_text`, which cuts every `~/...` or `/...` path to its last part. A missing hook, a failed or timed-out call or an unreadable state
+always the first), each passed through `loop_next_text`, which cuts every `~/...` or `/...` path to its last part.
+**Amended (2026-10-08, §16.37):** `[; WAITING ON YOU: <the wait the loop stopped on>[; WAITING ON YOU: <each
+other wait, in the loop's order>]]`: every wait is listed, the stopped one first; `(+N more)` is gone, since the
+report's reader cannot run `agentsync status`. A missing hook, a failed or timed-out call or an unreadable state
 is said on the line ("NEXT: not read (...)"); the Status section still prints no NEXT. `compute_outcome` and the
 issue form's Outcome options are unchanged: the outcome judges the install, the Loop line the loop. The issue
 link gains a fifth field, `loop_stage` (the stage; `ISSUE_FIELDS`), and the form a `loop_stage` input.
@@ -8626,6 +8629,9 @@ So a queue of any length hid both of the waits a setup stops on. The report of t
    for. `scripts/install.sh` makes the same wait its own `NEXT:`, by the same words.
 3. Else the first wait, as before.
 
+**Amended (2026-10-08, §16.37):** `(+N more)` is gone: every other wait follows the one shown, each as its own
+`; WAITING ON YOU: ...`, in the loop's order.
+
 Rule 1 falls through to rule 2 when the lines have no draft wait. The three texts are `agentsync.loop`'s own
 words, repeated here because the report never imports the loop (it gets its lines through
 `ReportHooks.loop_next`). A test reads both waits from the real loop, with a purge queued before them. The
@@ -8640,7 +8646,8 @@ mirror paths and document names, which the wait still does not carry.
 Tests: `tests/test_setup_report.py` (the real loop after a sync with one purge queued: that wait alone; then
 a held listing, which the loop prints second and the line shows with `(+1 more)`; then a draft baseline,
 which the loop prints last and the line shows with `(+2 more)` under rule 5's NEXT; the rule by itself on six
-sets of lines).
+sets of lines). **Amended (2026-10-08, §16.37):** the held listing is followed by the queued purge, and the draft
+baseline by the queued purge and the held listing; an exclude wait after the draft keeps its list as `<path>`.
 
 #### The OCR part says what its numbers are (amends §16.28; `agentsync.setup_report`)
 
