@@ -1336,9 +1336,7 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
         try:
             out += fn()
         except Exception as exc:  # one broken check must not hide the others
-            out.append(
-                _check(name, False, f"check crashed: {type(exc).__name__}: {exc}", doctor.Severity.ERROR)
-            )
+            out.append(doctor.unfinished(name, exc))
     return out
 
 

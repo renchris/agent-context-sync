@@ -2,7 +2,9 @@
 
 Every probe that touches the machine or another module is a private module-level function (``_git_path``,
 ``_run``, ``_volume_uuid``, ``_auth_status``, ...) so tests replace it with a fake; ``run_checks`` never
-raises for a single check: a probe that crashes becomes a failed :class:`CheckResult` naming the exception.
+raises for a single check: a probe that crashes becomes a failed :class:`CheckResult` naming the exception
+(:func:`unfinished`), and a program that does not answer in time becomes one that says the check ran out of
+time. Every FAIL names a fix: scripts/install.sh tells its reader so.
 """
 
 from __future__ import annotations
@@ -68,6 +70,28 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # empty cloud folder, a folder without access), and install.sh prints the loop's line for it.
 _LISTING_YOURS_NOTE = "yours: see WAITING ON YOU"
 
+# The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
+# macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start.
+# `uv tool install --force` writes a new copy at every update. Measured 2026-10-07 on a 119 MB pandoc 3.9:
+# 10 to 67 s for the first `--version` of a fresh copy (the longer times on a loaded Mac), under 1 s after.
+# scripts/install.sh therefore starts it once before it runs status (its "pandoc: ..." lines), outside this
+# limit; a status run by hand right after an update can still meet a cold one.
+_PANDOC_TIMEOUT_S = 60.0
+_PANDOC_SLOW_START = (
+    "the first start of a newly installed pandoc can take a minute, and later ones take under a second"
+)
+_EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an Intel program and no Rosetta
+
+# A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
+_CRASH_FIX = (
+    "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
+    "and no setup step clears it)"
+)
+_POLICY_FAULT_FIX = (
+    "report this line: agentsync cannot use this process's download policy on this macOS, and no setup step "
+    "clears that"
+)
+
 
 class Severity(enum.StrEnum):
     """How bad a failed check is."""
@@ -115,7 +139,9 @@ def _now() -> datetime:
 
 
 def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
-    """Run ``argv`` with launchd's PATH, capturing text output; never raises on a non-zero exit."""
+    """Run ``argv`` with launchd's PATH, capturing text output; never raises on a non-zero exit. A program
+    that does not end within ``timeout`` raises ``subprocess.TimeoutExpired``, which the check that asked
+    turns into :func:`_timed_out` (and :func:`run_checks` does for one that gets past its check)."""
     env = {"PATH": launchd.LAUNCHD_PATH, "LC_ALL": "C", "HOME": str(Path.home()), "GIT_TERMINAL_PROMPT": "0"}
     return subprocess.run(list(argv), capture_output=True, text=True, check=False, timeout=timeout, env=env)
 
@@ -356,6 +382,47 @@ def _bad(name: str, detail: str, severity: Severity = Severity.ERROR, fix: str |
     return CheckResult(name=name, ok=False, detail=detail, severity=severity, fix=fix)
 
 
+def _again_fix() -> str:
+    """The fix for a check that only has to run again: under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`)
+    the command its ``NEXT:`` line names, which a setup agent may run; else ``agentsync status``."""
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        return (
+            "run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing "
+            "first)"
+        )
+    return "agentsync status (run it again: nothing needs changing first)"
+
+
+def _timed_out(
+    name: str,
+    exc: subprocess.TimeoutExpired,
+    severity: Severity = Severity.ERROR,
+    *,
+    what: str | None = None,
+    why: str | None = None,
+) -> CheckResult:
+    """A check whose program did not answer within its limit. That is not a crash and not a finding: the
+    line says the check ran out of time, and its fix is to run the checks again (:func:`_again_fix`).
+    ``what`` is the command as the line names it (default: the program's file name), ``why`` what is known
+    about the wait."""
+    if what is None:
+        argv = exc.cmd if isinstance(exc.cmd, list | tuple) else [exc.cmd]
+        what = Path(str(argv[0])).name if argv else "the program"
+    detail = f"{what} did not answer within {exc.timeout:.0f}s: the check ran out of time, it found no fault"
+    return _bad(name, f"{detail} ({why})" if why else detail, severity, fix=_again_fix())
+
+
+def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -> CheckResult:
+    """The result of a check that raised instead of answering, so no line of ``status`` lacks what to do
+    next: a ``subprocess.TimeoutExpired`` is :func:`_timed_out`; anything else is ``check crashed: <type>:
+    <message>`` with the fix that prints its traceback and says to report it.  The traceback is logged here,
+    at info level (``-v``), so that fix holds for every caller."""
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return _timed_out(name, exc, severity)
+    log.info("doctor: check %s crashed", name, exc_info=exc)
+    return _bad(name, f"check crashed: {type(exc).__name__}: {exc}", severity, fix=_CRASH_FIX)
+
+
 # ---------------------------------------------------------------------------------------------------------
 # checks, in run order
 # ---------------------------------------------------------------------------------------------------------
@@ -378,7 +445,14 @@ def _check_git(config: Config) -> list[CheckResult]:
         return [_bad("git", f"not found: {exc}", fix="xcode-select --install")]
     if not git.is_absolute():
         return [_bad("git", f"resolved to a relative path {git}", fix="install git at /usr/bin/git")]
-    cp = _run([str(git), "--version"], timeout=30)
+    try:
+        cp = _run([str(git), "--version"], timeout=30)
+    except subprocess.TimeoutExpired as exc:
+        return [_timed_out("git", exc, what=f"{git} --version")]
+    except OSError as exc:
+        return [
+            _bad("git", f"{git} could not be started: {exc.strerror or exc}", fix="xcode-select --install")
+        ]
     out = cp.stdout.strip()
     if cp.returncode == 0 and out.startswith("git version"):
         return [_ok("git", f"{out} at {git}")]
@@ -388,8 +462,12 @@ def _check_git(config: Config) -> list[CheckResult]:
 
 
 def _check_pandoc(config: Config) -> list[CheckResult]:
-    """pandoc (configured or bundled) runs and reports a version."""
-    fix = "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
+    """pandoc (configured or bundled) runs and reports a version.  One that does not answer within
+    ``_PANDOC_TIMEOUT_S`` is most often starting for the first time (see that constant): the line says so
+    and its fix is to run again.  One macOS will not start is a FAIL with this check's fix, and says when
+    the reason is an Intel program on a Mac without Rosetta."""
+    own = "set [convert] pandoc_path to an absolute pandoc"
+    fix = f"uv sync (reinstalls pypandoc_binary) or {own}"
     try:
         pandoc = _pandoc_path(config)
     except ImportError as exc:
@@ -400,7 +478,18 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
         ]
     if not os.access(pandoc, os.X_OK):
         return [_bad("pandoc", f"{pandoc} is missing or not executable", fix=fix)]
-    cp = _run([str(pandoc), "--version"], timeout=60)
+    try:
+        cp = _run([str(pandoc), "--version"], timeout=_PANDOC_TIMEOUT_S)
+    except subprocess.TimeoutExpired as exc:
+        return [_timed_out("pandoc", exc, what=f"{pandoc} --version", why=_PANDOC_SLOW_START)]
+    except OSError as exc:
+        detail = f"{pandoc} could not be started: {exc.strerror or exc}"
+        if exc.errno == _EBADARCH:
+            detail += " (it is an Intel program, which an Apple silicon Mac runs only with Rosetta)"
+            fix = (
+                f"softwareupdate --install-rosetta (IT's step on a managed Mac), or {own} built for this Mac"
+            )
+        return [_bad("pandoc", detail, fix=fix)]
     lines = cp.stdout.strip().splitlines()
     if cp.returncode == 0 and lines and lines[0].startswith("pandoc"):
         return [_ok("pandoc", f"{lines[0]} at {pandoc}")]
@@ -508,7 +597,12 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
         )
     elif is_git:
         git = _git_path()
-        cp = _run([str(git), "-C", str(repo), "ls-files", "-s", "-z"], timeout=120)
+        try:
+            cp = _run([str(git), "-C", str(repo), "ls-files", "-s", "-z"], timeout=120)
+        except subprocess.TimeoutExpired as exc:
+            # A warn, as a git that exits non-zero here is: the lines above stand and no sync is stopped.
+            out.append(_timed_out("docs_repo.symlinks", exc, Severity.WARN, what="git ls-files"))
+            return out
         if cp.returncode != 0:
             out.append(
                 _bad("docs_repo.symlinks", f"git ls-files failed: {cp.stderr.strip()[:200]}", Severity.WARN)
@@ -611,6 +705,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         return [_bad(base, "no path configured", fix=f"set path in the [[source]] with id = {src.id!r}")]
     root = expand(src.path)
     cloud = is_cloud_path(root)
+    missing_fix = f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client"
     out: list[CheckResult] = []
     listed = False
     try:
@@ -648,13 +743,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         )
         return out
     except FileNotFoundError:
-        out.append(
-            _bad(
-                f"{base}.listable",
-                f"{root} does not exist",
-                fix=f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client",
-            )
-        )
+        out.append(_bad(f"{base}.listable", f"{root} does not exist", fix=missing_fix))
     except NotADirectoryError:
         out.append(
             _bad(
@@ -675,7 +764,11 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         else:
             out.append(_bad(f"{base}.listable", f"{root}: permission denied", fix=f"chmod u+rx '{root}'"))
     except OSError as exc:
-        out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}"))
+        # An error with no rule of its own (an I/O error, a sync app that stopped answering): the person's
+        # to look at, so the fix says where.
+        sync_app = " and that its sync app is running and signed in" if cloud else ""
+        fix = f"check that {root} opens in Finder{sync_app}"
+        out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}", fix=fix))
 
     if src.sentinel:
         target = root / src.sentinel
@@ -707,7 +800,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
 
     kind = "File Provider root" if cloud else "volume"
     if not listed and not root.exists():
-        out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {root} is missing"))
+        out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {root} is missing", fix=missing_fix))
         return out
     try:
         uuid = _volume_uuid(root)
@@ -740,8 +833,7 @@ def _check_sources(config: Config) -> list[CheckResult]:
         try:
             out.extend(_check_local_source(config, src, image))
         except Exception as exc:
-            log.debug("doctor: source %s check crashed", src.id, exc_info=True)
-            out.append(_bad(f"source.{src.id}", f"check crashed: {type(exc).__name__}: {exc}"))
+            out.append(unfinished(f"source.{src.id}", exc))
     if any(s.is_live and s.path is not None and is_cloud_path(s.path) for s in local):
         if _in_launchd_job(config):
             out.append(
@@ -778,10 +870,16 @@ def _check_materialise(config: Config) -> list[CheckResult]:
             )
         ]
     except OSError as exc:
-        return [_bad("materialise.policy", f"getiopolicy_np failed: {exc}; hydration cannot be fail-closed")]
+        return [
+            _bad(
+                "materialise.policy",
+                f"getiopolicy_np failed: {exc}; hydration cannot be fail-closed",
+                fix=_POLICY_FAULT_FIX,
+            )
+        ]
     name = _POLICY_NAMES.get(p, f"unknown({p})")
     if p not in _POLICY_NAMES:
-        return [_bad("materialise.policy", f"unexpected process policy {name}")]
+        return [_bad("materialise.policy", f"unexpected process policy {name}", fix=_POLICY_FAULT_FIX)]
     return [_ok("materialise.policy", f"process policy {name}; the cycle sets it off and opts in per read")]
 
 
@@ -919,7 +1017,11 @@ def _launcher_results(config: Config) -> list[CheckResult]:
         ]
     target = launchd.launcher_app(exe) or exe
     out = [_ok("launcher", f"{target}")]
-    sig = _codesign_info(target)
+    try:
+        sig = _codesign_info(target)
+    except subprocess.TimeoutExpired as exc:
+        out.append(_timed_out("launcher.signature", exc))
+        return out
     if not sig.valid:
         out.append(
             _bad(
@@ -1208,10 +1310,8 @@ def _check_launchd(config: Config) -> list[CheckResult]:
             out.append(_check_launchd_job(build(config), suffix))
         except ConfigError as exc:
             out.append(_bad(f"launchd.{suffix}", str(exc), fix=_LAUNCHER_FIX))
-        except Exception as exc:
-            out.append(
-                _bad(f"launchd.{suffix}", f"check crashed: {type(exc).__name__}: {exc}", Severity.WARN)
-            )
+        except Exception as exc:  # launchctl that does not answer in time is a TimeoutExpired here
+            out.append(unfinished(f"launchd.{suffix}", exc, Severity.WARN))
     if os.environ.get(AGENT_STEP_PENDING_ENV, "").strip() == "1":
         out = [_agent_step_pending(r) for r in out]
     elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
@@ -1220,8 +1320,11 @@ def _check_launchd(config: Config) -> list[CheckResult]:
 
 
 def _agent_step_pending(result: CheckResult) -> CheckResult:
-    """``result`` with an install-agent (or bootstrap) fix replaced by :data:`AGENT_STEP_NOTE`."""
-    if result.ok or result.fix is None or not result.fix.startswith(_AGENT_STEP_FIXES):
+    """``result`` with an install-agent (or bootstrap) fix replaced by :data:`AGENT_STEP_NOTE`. A FAIL keeps
+    its fix: it stops install.sh before its agent step, so that step is not what clears it."""
+    if result.ok or result.severity is Severity.ERROR:
+        return result
+    if result.fix is None or not result.fix.startswith(_AGENT_STEP_FIXES):
         return result
     return CheckResult(result.name, result.ok, result.detail, result.severity, fix=None, note=AGENT_STEP_NOTE)
 
@@ -1474,8 +1577,7 @@ def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
         try:
             results.extend(run(config))
         except Exception as exc:
-            log.debug("doctor: check %s crashed", group, exc_info=True)
-            results.append(_bad(group, f"check crashed: {type(exc).__name__}: {exc}"))
+            results.append(unfinished(group, exc))
     return results
 
 

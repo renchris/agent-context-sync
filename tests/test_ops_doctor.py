@@ -17,7 +17,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -28,8 +28,9 @@ from agentsync.config import Config, parse_config
 from agentsync.convert import ocr
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
-from agentsync.ops.doctor import CheckResult, Severity, format_results, run_checks
+from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
+from conftest import fails_without_a_fix
 from test_ocr import write_fake
 
 GIT = shutil.which("git") or "/usr/bin/git"
@@ -77,6 +78,12 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 
     monkeypatch.setattr(launchd, "_run_launchctl", refuse)
     return state
+
+
+def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
+    """``doctor.run_checks`` as the module names it at this call, so every result of every test below goes
+    through conftest's ``_every_fail_names_its_fix``: no FAIL any check here can give lacks a fix."""
+    return doctor.run_checks(config, tcc_canary=tcc_canary)
 
 
 def by_name(results: list[CheckResult]) -> dict[str, CheckResult]:
@@ -229,6 +236,286 @@ def test_pandoc_configured_but_missing(sample_config: Config, tmp_path: Path) ->
 def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
     p = doctor._pandoc_path(sample_config)
     assert p.is_absolute() and p.name == "pandoc"
+
+
+# --------------------------------------------------------------------- a check that does not finish
+
+AGAIN = "agentsync status (run it again: nothing needs changing first)"
+AGAIN_INSTALL = (
+    "run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing first)"
+)
+OUT_OF_TIME = "the check ran out of time, it found no fault"
+CRASH_FIX = (
+    "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
+    "and no setup step clears it)"
+)
+
+
+def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
+    """A ``doctor._run`` under which a matching command never answers; any other one runs for real."""
+    real_run = doctor._run
+
+    def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        if match(argv):
+            raise subprocess.TimeoutExpired(list(argv), timeout)
+        return real_run(argv, timeout)
+
+    return run
+
+
+def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The v9 rehearsal (2026-10-07): the first start of a newly installed pandoc took longer than the
+    check's 60 s, and the line read ``check crashed: TimeoutExpired: Command '[...]' timed out after 60
+    seconds`` with no fix, under an install.sh NEXT that said each FAIL names one. A check that runs out of
+    time now says so, says what is known about the wait, and names the one thing to do: run again. Under
+    install.sh that is its own command, which the setup prompt lets an agent run."""
+    pandoc = doctor._pandoc_path(sample_config)
+    monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(pandoc)))
+    results = run_checks(sample_config)
+    r = by_name(results)["pandoc"]
+    assert (r.ok, r.severity, r.note) == (False, Severity.ERROR, None)
+    assert r.detail == (
+        f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME} (the first start of a newly installed "
+        "pandoc can take a minute, and later ones take under a second)"
+    )
+    assert "crashed" not in r.detail and "TimeoutExpired" not in r.detail
+    assert r.fix == AGAIN
+    assert_fix_parses(r.fix)
+    assert [x.name for x in results if x.name != "materialise.policy"] == [
+        n for n in EXPECTED_ORDER if n != "materialise.policy"
+    ], "every other check still ran"
+
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # as scripts/install.sh runs status
+    r = by_name(run_checks(sample_config))["pandoc"]
+    assert r.fix == AGAIN_INSTALL
+    assert format_results([r]).endswith(f"later ones take under a second) (fix: {AGAIN_INSTALL})")
+
+
+def test_the_pandoc_check_waits_60_seconds(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The limit scripts/install.sh's own first start of pandoc stays outside of (it waits 300 s)."""
+    seen: list[float] = []
+    pandoc = doctor._pandoc_path(sample_config)
+
+    def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        if argv[0] == str(pandoc):
+            seen.append(timeout)
+        return subprocess.CompletedProcess(list(argv), 0, "pandoc 9.9\n", "")
+
+    monkeypatch.setattr(doctor, "_run", run)
+    assert by_name(run_checks(sample_config))["pandoc"].ok and seen == [60.0]
+
+
+def test_a_git_that_does_not_answer_in_time_is_handled_the_same_way(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other programs doctor starts had the pandoc check's shape. ``git --version`` is a FAIL that says
+    the check ran out of time. ``git ls-files`` in the docs repo is a warn, as its non-zero exit is, and the
+    two docs_repo lines above it stand where the whole group used to read "check crashed"."""
+    monkeypatch.setattr(doctor, "_run", _silent(lambda argv: list(argv[1:]) == ["--version"]))
+    r = by_name(run_checks(sample_config))["git"]
+    assert (r.ok, r.severity, r.fix) == (False, Severity.ERROR, AGAIN)
+    assert r.detail == f"{GIT} --version did not answer within 30s: {OUT_OF_TIME}"
+
+    monkeypatch.setattr(doctor, "_run", _silent(lambda argv: "ls-files" in argv))
+    r = by_name(run_checks(sample_config))
+    assert r["docs_repo.location"].ok and r["docs_repo.git"].ok and "docs_repo" not in r
+    links = r["docs_repo.symlinks"]
+    assert (links.ok, links.severity, links.fix) == (False, Severity.WARN, AGAIN)
+    assert links.detail == f"git ls-files did not answer within 120s: {OUT_OF_TIME}"
+
+
+def test_a_codesign_or_launchctl_that_does_not_answer_in_time_is_handled_the_same_way(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """codesign (the launcher's signature) and launchctl (whether a job is loaded) run under limits of
+    their own: the launcher line found before stands, and each line says which program did not answer."""
+    exe = _launcher(monkeypatch)
+
+    def no_codesign(path: Path) -> doctor._CodeSignature:
+        raise subprocess.TimeoutExpired(["/usr/bin/codesign", "--verify", str(path)], 60)
+
+    monkeypatch.setattr(doctor, "_codesign_info", no_codesign)
+    r = by_name(run_checks(sample_config))
+    assert r["launcher"].ok and str(exe.parents[2]) in r["launcher"].detail
+    sig = r["launcher.signature"]
+    assert (sig.ok, sig.severity, sig.fix) == (False, Severity.ERROR, AGAIN)
+    assert sig.detail == f"codesign did not answer within 60s: {OUT_OF_TIME}"
+    assert "launcher.requirement" not in r, "nothing is said about a signature that was not read"
+
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    install_agents(sample_config, loaded)
+
+    def no_launchctl(label: str) -> bool:
+        raise subprocess.TimeoutExpired(["/bin/launchctl", "print", label], 120)
+
+    monkeypatch.setattr(doctor, "_is_loaded", no_launchctl)
+    for name in ("launchd.poll", "launchd.reconcile"):
+        job = by_name(run_checks(sample_config))[name]
+        assert (job.ok, job.severity, job.fix) == (False, Severity.WARN, AGAIN)
+        assert job.detail == f"launchctl did not answer within 120s: {OUT_OF_TIME}"
+
+
+def test_a_timeout_that_gets_past_its_check_is_still_no_crash(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A program started deeper than a check looks (here behind a probe) still reads as out of time: one
+    source's line, a whole group's line, and a line of the integrator's checks in ``agentsync status``."""
+
+    def slow_volume(p: Path) -> str:
+        raise subprocess.TimeoutExpired(["/usr/sbin/diskutil", "info", str(p)], 20)
+
+    monkeypatch.setattr(doctor, "_volume_uuid", slow_volume)
+    src = by_name(run_checks(sample_config))["source.local-fixture"]
+    assert (src.ok, src.severity, src.fix) == (False, Severity.ERROR, AGAIN)
+    assert src.detail == f"diskutil did not answer within 20s: {OUT_OF_TIME}"
+
+    def slow_disk(p: Path) -> int:
+        raise subprocess.TimeoutExpired("df -k", 5)
+
+    monkeypatch.setattr(doctor, "_disk_free", slow_disk)
+    disk = by_name(run_checks(sample_config))["disk"]
+    assert (disk.ok, disk.fix) == (False, AGAIN)
+    assert disk.detail == f"df -k did not answer within 5s: {OUT_OF_TIME}"
+
+    def slow_policy(config: Config) -> list[CheckResult]:
+        raise subprocess.TimeoutExpired(["/usr/bin/git", "remote"], 600)
+
+    monkeypatch.setattr(cli, "_policy_check", slow_policy)
+    policy = by_name(cli._extra_checks(sample_config, offline=True))["policy"]
+    assert (policy.ok, policy.severity, policy.fix) == (False, Severity.ERROR, AGAIN)
+    assert policy.detail == f"git did not answer within 600s: {OUT_OF_TIME}"
+
+
+def test_a_check_that_crashes_names_the_command_that_prints_its_traceback(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A crash is a fault in agentsync, which nothing on the Mac clears: its line keeps the exception and
+    names ``agentsync status -v``. That command parses, and it does print the traceback, for a check of
+    doctor's and for one of the integrator's."""
+
+    def boom(p: Path) -> int:
+        raise RuntimeError("statfs exploded")
+
+    def bang(config: Config) -> list[CheckResult]:
+        raise ValueError("no such table")
+
+    monkeypatch.setattr(doctor, "_disk_free", boom)
+    monkeypatch.setattr(cli, "_policy_check", bang)
+    disk = by_name(run_checks(sample_config))["disk"]
+    assert (disk.ok, disk.severity, disk.fix) == (False, Severity.ERROR, CRASH_FIX)
+    assert disk.detail == "check crashed: RuntimeError: statfs exploded"
+    policy = by_name(cli._extra_checks(sample_config, offline=True))["policy"]
+    assert (policy.detail, policy.fix) == ("check crashed: ValueError: no such table", CRASH_FIX)
+    assert_fix_parses(CRASH_FIX)
+
+    capsys.readouterr()
+    rc = cli.main(["status", "-v", "--config", str(sample_config.config_path)])
+    said = capsys.readouterr()
+    assert rc == cli.EXIT_FAILED and f"(fix: {CRASH_FIX})" in said.out
+    for error in ('RuntimeError("statfs exploded")', 'ValueError("no such table")'):
+        assert "Traceback (most recent call last)" in said.err and f"raise {error}" in said.err, said.err
+
+
+def test_a_git_or_pandoc_that_cannot_be_started_keeps_its_own_fix(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A program macOS will not start raised out of the check too. The line now says which one and keeps
+    the check's fix. The bundled pandoc is an Intel program, so on an Apple silicon Mac without Rosetta the
+    error is "Bad CPU type in executable": the line says what that means and names both ways out."""
+    pandoc = doctor._pandoc_path(sample_config)
+    real_run = doctor._run
+    error = OSError(errno.ENOEXEC, "Exec format error")
+
+    def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        if list(argv[1:]) == ["--version"]:
+            raise error
+        return real_run(argv, timeout)
+
+    monkeypatch.setattr(doctor, "_run", run)
+    r = by_name(run_checks(sample_config))
+    assert (r["git"].ok, r["git"].fix) == (False, "xcode-select --install")
+    assert r["git"].detail == f"{GIT} could not be started: Exec format error"
+    assert r["pandoc"].detail == f"{pandoc} could not be started: Exec format error"
+    assert r["pandoc"].fix == (
+        "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
+    )
+
+    error = OSError(doctor._EBADARCH, "Bad CPU type in executable")
+    r = by_name(run_checks(sample_config))
+    assert r["pandoc"].detail == (
+        f"{pandoc} could not be started: Bad CPU type in executable (it is an Intel program, which an Apple "
+        "silicon Mac runs only with Rosetta)"
+    )
+    assert r["pandoc"].fix == (
+        "softwareupdate --install-rosetta (IT's step on a managed Mac), or set [convert] pandoc_path to an "
+        "absolute pandoc built for this Mac"
+    )
+    assert doctor._EBADARCH == 86
+
+
+def test_the_fail_lines_that_named_no_fix_name_one(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Besides a crash, four FAIL lines named no fix: a folder that cannot be listed for a reason with no
+    rule of its own, the volume line of a folder that is missing, and the two faults of the download
+    policy. Each now says what to do, so install.sh's "each names its fix" holds for them."""
+    root = sample_config.sources[0].path
+
+    def io_error(p: Path) -> str | None:
+        raise OSError(errno.EIO, "Input/output error")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(doctor, "_first_entry", io_error)
+        r = by_name(run_checks(sample_config))["source.local-fixture.listable"]
+        assert (r.severity, r.detail) == (Severity.ERROR, f"{root}: Input/output error")
+        assert r.fix == f"check that {root} opens in Finder"
+        cfg, cloud = _cloud(sample_config)
+        r = by_name(run_checks(cfg))["source.onedrive.listable"]
+        assert r.fix == f"check that {cloud} opens in Finder and that its sync app is running and signed in"
+
+    gone = dataclasses.replace(sample_config.sources[0], path=tmp_path / "gone")
+    r = by_name(run_checks(dataclasses.replace(sample_config, sources=(gone,))))
+    missing = "fix path in [[source]] id = 'local-fixture', or sign in to the sync client"
+    assert (
+        r["source.local-fixture.volume"].detail == f"volume UUID not checked: {tmp_path / 'gone'} is missing"
+    )
+    assert r["source.local-fixture.volume"].fix == r["source.local-fixture.listable"].fix == missing
+
+    if os.uname().sysname != "Darwin":
+        return  # the policy is a macOS call
+
+    def no_policy() -> int:
+        raise OSError(errno.ENOSYS, "no getiopolicy_np")
+
+    report = (
+        "report this line: agentsync cannot use this process's download policy on this macOS, and no setup "
+        "step clears that"
+    )
+    for probe in (no_policy, lambda: 9):
+        monkeypatch.setattr(doctor, "_materialize_policy", probe)
+        r = by_name(run_checks(sample_config))
+        assert (r["materialise.policy"].severity, r["materialise.policy"].fix) == (Severity.ERROR, report)
+
+
+def test_the_suite_holds_every_fail_to_a_fix(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    """install.sh's NEXT says of the [FAIL] lines that "each names its fix". conftest holds every result of
+    every test to it; this is that guard seen to work, on doctor's checks and on the integrator's."""
+
+    def bare(config: Config) -> list[CheckResult]:
+        return [CheckResult("made-up", False, "broken, and nobody says what to do")]
+
+    assert fails_without_a_fix(run_checks(sample_config)) == []
+    with monkeypatch.context() as patch:
+        patch.setattr(doctor, "_CHECKS", (*doctor._CHECKS, ("made-up", bare)))
+        with pytest.raises(AssertionError, match=r"\[FAIL\] line\(s\) that name no fix: made-up"):
+            run_checks(sample_config)
+        patch.setattr(cli, "_policy_check", bare)
+        with pytest.raises(AssertionError, match="made-up"):
+            cli._extra_checks(sample_config, offline=True)
+    warn = CheckResult("made-up", False, "degraded", Severity.WARN)
+    assert fails_without_a_fix([warn, CheckResult("fixed", False, "broken", fix="mend it")]) == []
 
 
 def test_ignored_graph_company_warns_naming_the_line(sample_config: Config) -> None:
@@ -1207,6 +1494,25 @@ def test_launchd_fix_reads_agent_step_below_while_the_installer_step_is_pending(
     # a failed check with neither fix nor note renders as before
     plain = CheckResult("x", False, "broken", Severity.WARN)
     assert format_results([plain]) == "[warn] x — broken"
+
+
+def test_a_launchd_fail_keeps_its_fix_while_the_installer_step_is_pending(
+    sample_config: Config, fakes: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A FAIL stops install.sh at its status step, before the agent step. So "installed by the agent step
+    below" was false for one, and the line named no fix under a NEXT that says each does: a re-run stopped
+    at the same line. A FAIL now keeps its fix there, as it does under AGENTSYNC_NO_NEXT_HINT alone."""
+    loaded: set[str] = fakes["loaded"]  # type: ignore[assignment]
+    install_agents(sample_config, loaded)
+    plist = launchd.plist_path(launchd.poll_spec(sample_config).label)
+    data = plistlib.loads(plist.read_bytes())
+    data["MaterializeDatalessFiles"] = True
+    plist.write_bytes(plistlib.dumps(data))
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # install.sh sets both
+    r = by_name(run_checks(sample_config))["launchd.poll"]
+    assert (r.severity, r.fix, r.note) == (Severity.ERROR, "agentsync install-agent", None)
+    assert format_results([r]).endswith(" (fix: agentsync install-agent)")
 
 
 def test_launchd_warn_fix_is_the_operators_under_no_next_hint(

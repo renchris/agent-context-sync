@@ -13,14 +13,18 @@ import pwd
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from agentsync.config import Config, parse_config
 from agentsync.gitops import ensure_repo
 from fixtures.make_fixtures import make_fixtures
+
+if TYPE_CHECKING:
+    from agentsync.ops.doctor import CheckResult
 
 REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
 
@@ -80,6 +84,37 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         mp.delenv("AGENTSYNC_CONFIG", raising=False)
         mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
         yield home
+
+
+def fails_without_a_fix(results: Iterable[CheckResult]) -> list[str]:
+    """The names of the FAIL results in ``results`` that name no fix."""
+    return [r.name for r in results if not r.ok and r.severity.value == "error" and not r.fix]
+
+
+@pytest.fixture(autouse=True)
+def _every_fail_names_its_fix(_isolate_home: Path) -> Iterator[None]:
+    """scripts/install.sh says of the ``[FAIL]`` lines above its NEXT that "each names its fix", and the
+    setup prompt lets an agent act only on what a line names. So every result the checks of ``status`` give
+    in any test is held to that: a FAIL with no fix fails the test that produced it. Both producers are
+    wrapped where they are looked up at each call (``doctor.run_checks`` and the integrator's
+    ``cli._extra_checks``), so a test reaches the wrapper through ``agentsync status``, ``setup-report`` or
+    a direct ``doctor.run_checks(...)`` alike. Its own MonkeyPatch, as ``_isolate_home`` has."""
+    from agentsync import cli  # noqa: PLC0415 - not at import time: HOME is the real one there
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    def held(real: Callable[..., list[CheckResult]]) -> Callable[..., list[CheckResult]]:
+        def checks(*args: object, **kwargs: object) -> list[CheckResult]:
+            results = real(*args, **kwargs)
+            bare = fails_without_a_fix(results)
+            assert not bare, f"[FAIL] line(s) that name no fix: {', '.join(bare)}"
+            return results
+
+        return checks
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(doctor, "run_checks", held(doctor.run_checks))
+        mp.setattr(cli, "_extra_checks", held(cli._extra_checks))
+        yield
 
 
 @pytest.fixture(scope="session")

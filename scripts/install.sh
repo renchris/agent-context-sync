@@ -111,10 +111,18 @@
 #      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
 #      from the first call and "sources: ..." from the last
-#   5. status: agentsync status (its TCC probe may raise the one-time "wants to access files managed by"
-#      prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's own TCC_PENDING (a
-#      "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8) asks the Allow for. A
-#      listing macOS holds for an Allow click in this terminal is a source.<id>.listable [FAIL]: it stops them
+#   5. status: first the pandoc that status checks ([convert] pandoc_path, else the one bundled with the
+#      tool) is started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
+#      program: on Apple silicon macOS prepares each new copy at its first start (10 to 67 s measured, under
+#      1 s after), and step 2 writes a new copy at every update, so the check ran out of time there and the
+#      run exited 1 (rehearsal 2026-10-07). A slow start prints "pandoc: still running, <N>s (...)" lines,
+#      then "pandoc: started after <N>s"; a quick one prints nothing; one with no answer in 300 s is stopped
+#      and left to status. Then agentsync status (its TCC probe may raise the one-time "wants to access
+#      files managed by" prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's
+#      own TCC_PENDING (a "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8)
+#      asks the Allow for. A listing macOS holds for an Allow click in this terminal is a
+#      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
+#      of time the fix is this same command again
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -133,8 +141,8 @@
 #      "background sync: running (...)" and leaves that run converting in the background. A job without
 #      canaries waits for an exit 0. While macOS waits for Allow (TCC_PENDING in the launcher log, or exit
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
-#   Steps 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so a
-#   coding tool that stops a command which has
+#   Steps 5, 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so
+#   a coding tool that stops a command which has
 #   printed nothing for a while does not stop this one. A whole run with --confirm-install-agent takes the
 #   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
 #   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
@@ -621,6 +629,23 @@ with_timeout() {
 	wait "$pid" || rc=$?
 	kill "$wd" 2>/dev/null || true
 	wait "$wd" 2>/dev/null || true
+	return "$rc"
+}
+# Run a command, printing "LABEL: still running, <N>s" every $PROGRESS_SECONDS while it runs (a coding tool
+# may stop a command that prints nothing for a while); its exit status.
+with_progress() {
+	local label="$1" pid rc=0 t0=$SECONDS last=$SECONDS
+	shift
+	"$@" </dev/null &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
+			last=$SECONDS
+			say "$label: still running, $((SECONDS - t0))s"
+		fi
+		sleep 0.2
+	done
+	wait "$pid" || rc=$?
 	return "$rc"
 }
 
@@ -1822,6 +1847,54 @@ action_once() {
 blocking_fails() {
 	grep '^\[FAIL' "$1" 2>/dev/null | grep -Ev '^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ' || true
 }
+# The pandoc status is about to check: [convert] pandoc_path, else the one bundled with the tool (the rule
+# of ops/doctor.py's pandoc check), read by the tool step 2 installed. Empty when it cannot say (no
+# interpreter, a config that does not load): status then reports that. -I: see the OCR helper above.
+status_pandoc() {
+	[ -x "$TOOL_PY" ] && [ -f "$CONFIG" ] || return 0
+	with_timeout 20 "$TOOL_PY" -I -c '
+import sys
+from pathlib import Path
+from agentsync.config import load_config
+
+pandoc = load_config(Path(sys.argv[1])).convert.pandoc_path
+if pandoc is None:
+    import pypandoc
+
+    pandoc = Path(pypandoc.__file__).parent / "files" / "pandoc"
+print(pandoc)
+' "$CONFIG" 2>/dev/null || true
+}
+# Start that pandoc once before status does (see step 5 in the header): its first start after an install can
+# take longer than the 60 s status gives it, and this wait is the installer's own, with progress lines. At
+# most $PANDOC_START_SECONDS, the time a conversion gives pandoc; past that it is stopped and status says
+# what it finds. Never fails the run: a pandoc that is missing or broken is the check's to report, with its
+# fix. Quiet when the start is quick, which every start but the first is.
+PANDOC_START_SECONDS=300
+start_pandoc_once() {
+	local pandoc pid t0=$SECONDS last=$SECONDS shown=0
+	pandoc="$(status_pandoc)"
+	[ -n "$pandoc" ] && [ -x "$pandoc" ] || return 0
+	"$pandoc" --version </dev/null >/dev/null 2>&1 &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		if [ $((SECONDS - t0)) -ge "$PANDOC_START_SECONDS" ]; then
+			kill "$pid" 2>/dev/null || true
+			wait "$pid" 2>/dev/null || true
+			say "pandoc: no answer after ${PANDOC_START_SECONDS}s; status checks it next"
+			return 0
+		fi
+		if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
+			last=$SECONDS
+			shown=1
+			say "pandoc: still running, $((SECONDS - t0))s (the first start after an install can take a minute; later ones are quick)"
+		fi
+		sleep 0.2
+	done
+	wait "$pid" 2>/dev/null || true
+	[ "$shown" -eq 0 ] || say "pandoc: started after $((SECONDS - t0))s"
+}
+status_run() { "$AGENTSYNC" status --config "$CONFIG" | tee "$DOCTOR_LOG"; } # the pipeline's status is status's
 step_start status
 DOCTOR_RC=0
 DOCTOR_TCC_ONLY=0 # every [FAIL] line is the launcher's TCC_PENDING: the wait (step 8) asks for the Allow instead
@@ -1837,7 +1910,10 @@ else
 	if [ "$INSTALL_AGENT" -eq 1 ] && [ "$HAVE_SOURCES" -eq 1 ]; then
 		export AGENTSYNC_AGENT_STEP_PENDING=1
 	fi
-	"$AGENTSYNC" status --config "$CONFIG" </dev/null | tee "$DOCTOR_LOG" || DOCTOR_RC=$?
+	start_pandoc_once
+	# With progress lines, like the first sync: status can wait two minutes on one folder macOS holds for a
+	# click, and it prints its lines only at its end.
+	with_progress "status" status_run || DOCTOR_RC=$?
 	unset AGENTSYNC_AGENT_STEP_PENDING
 	if [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG" && [ -z "$(blocking_fails "$DOCTOR_LOG")" ]; then
 		DOCTOR_TCC_ONLY=1
@@ -1854,23 +1930,6 @@ if [ "$DOCTOR_RC" -ne 0 ] && [ "$DOCTOR_TCC_ONLY" -eq 0 ]; then
 fi
 
 # ------------------------------------------------------------------------------------------------ 6. first sync
-# Run a command, printing "LABEL: still running, <N>s" every $PROGRESS_SECONDS while it runs (a coding tool
-# may stop a command that prints nothing for a while); its exit status.
-with_progress() {
-	local label="$1" pid rc=0 t0=$SECONDS last=$SECONDS
-	shift
-	"$@" </dev/null &
-	pid=$!
-	while kill -0 "$pid" 2>/dev/null; do
-		if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
-			last=$SECONDS
-			say "$label: still running, $((SECONDS - t0))s"
-		fi
-		sleep 0.2
-	done
-	wait "$pid" || rc=$?
-	return "$rc"
-}
 # Step 6 runs with a folder to sync and a status with no [FAIL] that stops it (SYNC_GO, KISS K02); steps 7-8
 # also need --confirm-install-agent (GO). A dry run prints them all.
 SYNC_GO=0

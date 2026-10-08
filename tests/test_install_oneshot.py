@@ -21,6 +21,7 @@ import hashlib
 import os
 import pwd
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -35,6 +36,8 @@ import pytest
 
 from agentsync import setup_report
 from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
+from agentsync.convert import pandoc as pandoc_converter
+from agentsync.ops import doctor
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -58,6 +61,13 @@ def started(agent: str) -> str:
 
 
 TCC_CLICK = "turn on agentsync-launcher in System Settings > Privacy & Security > Files and Folders"
+TCC_PENDING_FAIL = (
+    "[FAIL] tcc.fy26-projects — TCC_PENDING: /x did not answer within 15s; macOS is asking (or asked) the "
+    "privacy prompt naming agentsync-launcher (fix: click Allow on the privacy prompt naming "
+    "agentsync-launcher while logged in, then run agentsync status again)"
+)
+"""The launcher's own pending click, as status prints it (the stub's lines carry a fix, as every real FAIL
+does)."""
 
 STUB_UV = """#!/bin/bash
 echo "uv $*" >> "$STUB_LOG"
@@ -112,6 +122,7 @@ case "$sub" in
       echo "  exclude_label_names: Stub Secret Label"
       exit "${STUB_STATUS_RC:-0}"
     fi
+    [ -z "${STUB_DOCTOR_SLEEP:-}" ] || sleep "$STUB_DOCTOR_SLEEP"
     [ -z "${STUB_DOCTOR_OUT:-}" ] || printf '%s\\n' "$STUB_DOCTOR_OUT"
     if [ "${AGENTSYNC_AGENT_STEP_PENDING:-}" = 1 ]; then
       echo "[warn] launchd.poll — not loaded (installed by the agent step below)"
@@ -241,7 +252,10 @@ def wheel(tmp_path: Path) -> Path:
 
 
 def install_sh(env: dict[str, str], *args: str, timeout: float = 120) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    """One install.sh run. Its NEXT says of the [FAIL] lines above it that "each names its fix", so every
+    run of every test is held to that: the real agentsync's lines, and the stub's, which are written as the
+    real ones are."""
+    cp = subprocess.run(
         [BASH32, str(INSTALL_SH), *args],
         capture_output=True,
         text=True,
@@ -250,6 +264,9 @@ def install_sh(env: dict[str, str], *args: str, timeout: float = 120) -> subproc
         env=env,
         stdin=subprocess.DEVNULL,
     )
+    bare = [ln for ln in cp.stdout.splitlines() if ln.startswith("[FAIL] ") and " (fix: " not in ln]
+    assert not bare, f"[FAIL] line(s) that name no fix: {bare}"
+    return cp
 
 
 def calls(env: dict[str, str]) -> list[str]:
@@ -440,7 +457,7 @@ def test_a_background_run_the_launcher_refused_says_so(
 def test_doctor_tcc_pending_alone_does_not_stop_the_run(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    doctor_out = "[ok  ] config — ok\n[FAIL] tcc.fy26-projects — TCC_PENDING: did not answer within 15s"
+    doctor_out = f"[ok  ] config — ok\n{TCC_PENDING_FAIL}"
     e = {**env, "STUB_DOCTOR_OUT": doctor_out, "STUB_DOCTOR_RC": "1"}
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 0, cp.stdout + cp.stderr
@@ -450,7 +467,8 @@ def test_doctor_tcc_pending_alone_does_not_stop_the_run(
 
 
 def test_doctor_failure_skips_first_sync_and_agent(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    e = {**env, "STUB_DOCTOR_OUT": "[FAIL] docs_repo — not writable", "STUB_DOCTOR_RC": "1"}
+    fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
+    e = {**env, "STUB_DOCTOR_OUT": fail, "STUB_DOCTOR_RC": "1"}
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 1
     got = calls(env)
@@ -660,7 +678,7 @@ def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
     """The launcher's TCC_PENDING [FAIL] does not block, so it cannot hide a listing held in the terminal."""
-    fail = "[FAIL] tcc.fy26-projects — TCC_PENDING: did not answer within 15s"
+    fail = TCC_PENDING_FAIL
     held = "macOS held the listing of fy26-projects for a privacy prompt: click Allow on the macOS prompt"
     out = f"NEXT: {LOOP_NEXT}\nWAITING ON YOU: {held}\n{fail}"
     cp = install_sh(
@@ -698,7 +716,7 @@ def test_the_closing_statuss_waits_are_printed_above_its_next(
 def test_the_launchers_tcc_pending_alone_in_the_closing_status_exits_0(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    fail = "[FAIL] tcc.fy26-projects — TCC_PENDING: did not answer within 15s"
+    fail = TCC_PENDING_FAIL
     out = f"NEXT: the tcc check failed: do what the fix on its [FAIL] line below says\n{fail}"
     cp = install_sh(
         {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel), "--source-local", str(folder)
@@ -2010,6 +2028,116 @@ def test_a_rerun_clears_the_permissions_agentsync_owns_before_status_can_stop_on
     assert ("first-sync", "skipped", "0", "status-failed") in steps(install_log(env))[-5:]
 
 
+SLOW_FIRST_PANDOC = """#!/bin/bash
+who="$(ps -o command= -p "$PPID" 2>/dev/null | tr '\\n' ' ')"
+if [ -e "$0.started" ]; then
+  echo "quick $who" >> "$0.log"
+else
+  : > "$0.started"
+  echo "slow $who" >> "$0.log"
+  sleep "${STUB_PANDOC_FIRST_START:-3}"
+fi
+echo "pandoc 9.9"
+"""
+"""A pandoc whose first start is slow and whose later ones are not, as each new copy of the bundled one is
+on Apple silicon (an Intel program, which macOS prepares at its first start). Every start is logged beside
+the file: how it went, and the command of the process that started it."""
+
+PANDOC_PROGRESS = (
+    r"pandoc: still running, \d+s \(the first start after an install can take a minute; later ones are "
+    r"quick\)"
+)
+
+
+def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks(
+    real_env: dict[str, str], wheel: Path, tmp_path: Path
+) -> None:
+    """The v9 rehearsal (2026-10-07), with the real agentsync: a newly installed pandoc took longer to
+    start than the 60 s the status check gives it, so the run printed a [FAIL], skipped the sync and exited
+    1, and the same command run again passed. install.sh now starts that pandoc itself before status, with
+    progress lines, so the slow start is the installer's and the check meets a quick one: no [FAIL], a
+    sync, exit 0. A run after that says nothing about pandoc."""
+    env = {**real_env, "AGENTSYNC_PROGRESS_SECONDS": "1", "STUB_PANDOC_FIRST_START": "2.5"}
+    (tmp_path / "tools").mkdir()
+    pandoc = _write_exe(tmp_path / "tools" / "pandoc", SLOW_FIRST_PANDOC)
+    _write_config(env, f'\n[convert]\npandoc_path = "{pandoc}"\n')  # the pandoc status checks on this Mac
+    alpha = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    alpha.mkdir(parents=True)
+    (alpha / "plan.txt").write_text("a made-up plan for Alpha\n", encoding="utf-8")
+    command = (str(wheel), "--source-local", str(alpha))
+
+    cp = install_sh(env, *command)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    waits = [i for i, ln in enumerate(out) if re.fullmatch(PANDOC_PROGRESS, ln)]
+    [started] = [i for i, ln in enumerate(out) if re.fullmatch(r"pandoc: started after \d+s", ln)]
+    [checked] = [i for i, ln in enumerate(out) if ln.startswith("[ok  ] pandoc ")]
+    assert waits and waits[-1] < started < checked, cp.stdout
+    assert out[checked].endswith(f"— pandoc 9.9 at {pandoc}"), "the check ran this pandoc, and it answered"
+    assert not [ln for ln in out if ln.startswith("[FAIL]")], cp.stdout
+    assert "sync: converted 1, deferred 0 online-only" in out
+    assert last_line(cp).startswith("NEXT: ") and one_next(cp)
+    assert steps(install_log(env))[-5:-3] == [
+        ("status", "done", "0", ""),
+        ("first-sync", "done", "0", "converted-1-deferred-0"),
+    ]
+    starts = Path(f"{pandoc}.log").read_text(encoding="utf-8").splitlines()
+    assert starts[0].startswith("slow ") and str(INSTALL_SH) in starts[0], "install.sh made the slow start"
+    assert all(ln.startswith("quick ") for ln in starts[1:]), starts
+    assert any(" -m agentsync status " in ln for ln in starts[1:]), "status's check then met a quick one"
+
+    # At the default interval (at the 1 s one above a line is printed whenever the clock's second turns):
+    again = install_sh(real_env, *command)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert not [ln for ln in again.stdout.splitlines() if ln.startswith("pandoc: ")], again.stdout
+    assert any(ln.startswith("[ok  ] pandoc ") for ln in again.stdout.splitlines())
+
+
+def _shell_function(name: str) -> str:
+    """install.sh's function ``name`` as the script has it: from ``name() {`` to the brace that closes it."""
+    found = re.search(rf"(?ms)^{name}\(\) \{{$.*?^\}}$", INSTALL_SH.read_text(encoding="utf-8"))
+    assert found is not None, name
+    return found.group(0)
+
+
+def test_a_pandoc_that_does_not_answer_is_stopped_at_the_installers_own_limit(tmp_path: Path) -> None:
+    """The installer's wait for pandoc has a limit of its own, above the status check's 60 s: the 300 s one
+    conversion gives pandoc. Past it the start is stopped, the run goes on and status reports what it
+    finds. The function itself is run here, with a limit of 2 s in place of the script's 300."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [limit] = re.findall(r"(?m)^PANDOC_START_SECONDS=(\d+)$", script)
+    assert int(limit) == pandoc_converter._TIMEOUT_S == 300 and int(limit) > doctor._PANDOC_TIMEOUT_S
+
+    hung = _write_exe(tmp_path / "pandoc", '#!/bin/bash\necho "$$" > "$0.pid"\nexec sleep 600\n')
+    lines = [
+        "set -euo pipefail",
+        "say() { printf '%s\\n' \"$*\"; }",
+        f"status_pandoc() {{ printf '%s' {shlex.quote(str(hung))}; }}",
+        "PROGRESS_EVERY=1",
+        "PANDOC_START_SECONDS=2",
+        _shell_function("start_pandoc_once"),
+        "start_pandoc_once",
+        "echo the run goes on",
+    ]
+    cp = subprocess.run(
+        [BASH32, "-c", "\n".join(lines)], capture_output=True, text=True, check=False, timeout=120
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert out[-2:] == ["pandoc: no answer after 2s; status checks it next", "the run goes on"], cp.stdout
+    assert all(re.fullmatch(PANDOC_PROGRESS, ln) for ln in out[:-2]), cp.stdout
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(Path(f"{hung}.pid").read_text()), 0)
+
+    # No pandoc to start (a config that does not load, a path that is no program): silent, and no failure.
+    for answer in ("", str(tmp_path / "nothing-here")):
+        lines[2] = f"status_pandoc() {{ printf '%s' {shlex.quote(answer)}; }}"
+        cp = subprocess.run(
+            [BASH32, "-c", "\n".join(lines)], capture_output=True, text=True, check=False, timeout=120
+        )
+        assert (cp.returncode, cp.stdout, cp.stderr) == (0, "the run goes on\n", "")
+
+
 def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:
     """The counts are the installed agentsync's. With no interpreter to ask (the stub uv installs none) the
     step's line is what it was, and no folders: line is printed."""
@@ -2095,6 +2223,24 @@ def test_first_sync_and_wait_print_progress_lines(env: dict[str, str], folder: P
     wait = [ln for ln in out if re.fullmatch(r"wait: \d+s of 3s, .*", ln)]
     assert len(wait) >= 2 and "the background run is running" in wait[0], cp.stdout
     assert any("(AGENTSYNC_WAIT_SECONDS, default 180)" in ln for ln in out)
+
+
+def test_the_status_step_prints_progress_lines_too(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """Step 5 printed nothing while status ran, and status prints its lines only at its end: a minute of
+    silence in the v9 rehearsal, two for a folder macOS holds for a click. It now prints progress lines as
+    the first sync does, above status's own lines, and its exit status is still the step's."""
+    e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "1", "STUB_DOCTOR_SLEEP": "2.5"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    waits = [i for i, ln in enumerate(out) if re.fullmatch(r"status: still running, \d+s", ln)]
+    assert waits and waits[-1] < out.index("[warn] launchd.poll — not loaded (fix: agentsync install-agent)")
+    assert ("status", "done", "0", "") in steps(install_log(env))
+
+    failing = {**e, "STUB_DOCTOR_OUT": LISTING_HELD_FAIL, "STUB_DOCTOR_RC": "1"}
+    cp = install_sh(failing, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1 and LISTING_HELD_FAIL in cp.stdout.splitlines(), cp.stdout + cp.stderr
+    assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
 
 
 def test_default_progress_interval_is_15_seconds() -> None:

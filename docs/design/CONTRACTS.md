@@ -3551,6 +3551,11 @@ so their lines end "(for IT: Developer ID build (docs/deploy/mdm))" with no `fix
 fix is `agentsync install-agent` or `launchctl bootstrap ...`, the `governance.purge_queue` warn and a local
 source's incomplete `heartbeat.<id>` warn carry a note and no `fix:` either.
 
+**Amended (2026-10-07, §16.31):** every FAIL names a fix. A check that raised is `doctor.unfinished`: out of
+time (`subprocess.TimeoutExpired`) reads "did not answer within N s" and its fix is to run again, and a crash
+keeps "check crashed" and names `agentsync status -v`. Under `AGENTSYNC_AGENT_STEP_PENDING=1` only a
+`launchd.*` warn carries `AGENT_STEP_NOTE`; a FAIL keeps its fix.
+
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
 missing launcher is one `[info] launcher`
@@ -9150,3 +9155,154 @@ the pinned grammar in `tests/test_recording_grammar.py` until the converter land
 `MEETINGS` and the `CITE-*` row), `tests/test_publish.py` (the rubrics are written once, an edited or
 deleted one is restored, the text is the spec's verbatim, and a scaffolded repo's lints report nothing
 under `_rubrics/`), `tests/test_curate.py` (the citation lint and its codes).
+
+### 16.31 Fixes from the v9 rehearsal (2026-10-07)
+
+Before setup prompt v9 went back to the field, an agent played the unattended setup agent in three sandbox
+homes with the real installer: a new Mac, a Mac already set up, and a v8 copy of the prompt against the v9
+installer. All three ended as v9 means them to. This section holds the defects that rehearsal found, one
+sub-section per fix. None adds a command, flag, installer option, config key or environment variable, and
+the prompt's text is unchanged, so it is still v9.
+
+#### The first start of pandoc is the installer's wait (amends §16.13 and §16.14; `scripts/install.sh`)
+
+On a fresh install, and again after an update, step 2's command printed `[FAIL] pandoc — check crashed:
+TimeoutExpired: Command '[..., '--version']' timed out after 60 seconds`, skipped the first sync and exited
+1. Its `NEXT:` said to fix the `[FAIL]` lines above, "each names its fix", and that line named none. The
+same command run again passed, with its status step at 2 s.
+
+The cause is the bundled pandoc. `pypandoc_binary` ships an Intel program in its Apple silicon wheel too
+(`Mach-O 64-bit executable x86_64`, 119 MB). macOS runs it through Rosetta, which translates a file it has
+not seen at that file's first start. `uv tool install --force` writes a new copy at every new commit, so
+every update pays that start again. Measured: 10 s to 67 s for the first `pandoc --version` of a new copy,
+the long times on a loaded machine, and under 1 s for every later one. The status check gives pandoc 60 s,
+and the status step printed nothing while it waited.
+
+The installer now pays for that start itself, in step 5, before `agentsync status`:
+
+```sh
+status_pandoc        # scripts/install.sh: the pandoc status is about to check
+start_pandoc_once    # run "<that pandoc> --version" once, for at most PANDOC_START_SECONDS=300
+```
+
+- **Which pandoc.** The one the check runs: `[convert] pandoc_path`, else the tool's bundled one. The
+  installed tool's interpreter reads the config for it (`python -I`, public names only, at most 20 s), so
+  the installer and the check cannot disagree about a config. No interpreter, no config yet, a config that
+  does not load, or a path that is not a program: nothing is started, and status reports what it finds.
+- **Every run, not only after an install.** A run stopped during the wait leaves the tool installed, so the
+  next run skips step 2 and would meet the same cold pandoc. A warm start costs under a second.
+- **What it prints.** Nothing when the start is quick. A start that outlasts a progress interval prints
+  `pandoc: still running, <N>s (the first start after an install can take a minute; later ones are quick)`
+  at each interval (15 s; `AGENTSYNC_PROGRESS_SECONDS` is the tests' seam, as for the first sync), then
+  `pandoc: started after <N>s`.
+- **Its own limit.** 300 s, the time one conversion gives pandoc (`convert.pandoc`), five times the
+  check's. Past it the start is stopped and the run prints `pandoc: no answer after 300s; status checks it
+  next`. The wait is the function's own loop, so the stopped pandoc is the only process it ends.
+- **Never a failure.** Whatever pandoc does, the step goes on to status. A pandoc that is missing or broken
+  is the check's to report, with its fix.
+- **In the status step.** The time is logged in `step=status`, where it was before. The setup log has no
+  new step and no new note.
+- **Not in a dry run**, which starts nothing.
+
+**Status prints progress lines too.** Step 5 ran `agentsync status` in the foreground, and status prints its
+lines only at its end: a minute of silence here, two for a folder macOS holds for a click. It now runs
+under `with_progress "status"`, as the first sync and the closing status do, so
+`status: still running, <N>s` appears at each interval, above status's own lines. The step's exit status is
+still status's (`status_run`, under `pipefail`). The header's sentence reads "Steps 5, 6 and 8 and the
+closing status ...".
+
+Not done: a background start during steps 3 and 4. It would hide most of the wait behind the OCR helper's
+build, but on a new Mac there is no config to read the pandoc path from until step 4.
+
+Tests: `tests/test_install_oneshot.py` (the real agentsync behind a stub uv, and a pandoc whose first start
+is slow and which logs who started it: progress lines, then `pandoc: started after`, then
+`[ok  ] pandoc`, no `[FAIL]`, a sync, exit 0; the slow start was `install.sh`'s and status's check met a
+quick one; a second run says nothing about pandoc. The function itself with a limit of 2 s and a pandoc that
+never answers: the stop line, the run goes on and the process is gone; no pandoc to start: silent. The
+limit is 300, the converter's, and above the check's. A slow stub status: `status: still running` lines
+above its output, exit 0, and exit 1 with `note=fail-lines` when it fails).
+
+#### A check that runs out of time says so, and every FAIL names a fix (amends the `agentsync.ops.doctor` section, §16.21 and §16.22; `agentsync.ops.doctor`, `agentsync.cli`)
+
+The installer's wait above makes the timeout unlikely. It does not make it impossible: `agentsync status`
+by hand right after an update still meets a cold pandoc. And the line it printed was wrong on its own. A
+program that does not answer in time raised out of its check, `run_checks` caught it like any exception,
+and the result was `check crashed: TimeoutExpired: ...` with no fix. Under install.sh that stopped the run
+on a line a setup agent may do nothing about.
+
+```python
+# agentsync.ops.doctor
+def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -> CheckResult: ...
+```
+
+`unfinished` is the result of a check that raised instead of answering. `run_checks`, the per-source and
+per-job guards inside it and `cli._extra_checks` all build their line with it.
+
+**Out of time** (`subprocess.TimeoutExpired`). The line reads
+`<command> did not answer within <N>s: the check ran out of time, it found no fault`, and for pandoc it
+adds `(the first start of a newly installed pandoc can take a minute, and later ones take under a second)`.
+It is never "check crashed". Its fix is to run again:
+
+| Where | The fix |
+|---|---|
+| `agentsync status` by hand, and install.sh's closing status | `agentsync status (run it again: nothing needs changing first)` |
+| under install.sh's status step (`AGENTSYNC_NO_NEXT_HINT=1`) | `run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing first)` |
+
+The second is the one the setup prompt lets an agent follow: its `NEXT:` is an `install.sh` command. The
+severity is the check's own: a FAIL for a program a sync needs, a warn where the check's other faults are
+warns.
+
+Every check that starts a program was looked at for the same shape:
+
+| Check | Program and limit | Before | Now |
+|---|---|---|---|
+| `pandoc` | `pandoc --version`, 60 s | FAIL `pandoc — check crashed`, no fix | FAIL, out of time, with the sentence about a first start |
+| `git` | `git --version`, 30 s | FAIL `git — check crashed`, no fix | FAIL, out of time |
+| `docs_repo.symlinks` | `git ls-files`, 120 s | FAIL `docs_repo — check crashed`, and the group's two lines above it lost | warn, out of time; `docs_repo.location` and `docs_repo.git` stand |
+| `launcher.signature` | `codesign`, 60 s each | FAIL `launcher — check crashed` | FAIL, out of time (an info line while background sync is not installed); the `launcher` line stands and no requirement line is printed |
+| `launchd.poll`, `launchd.reconcile` | `launchctl print`, 120 s | warn `check crashed` | warn, out of time |
+| `ocr`, `tcc.<id>`, the job interpreter's import, `xcode-select -p`, a folder's listing | limits of their own | already handled, each with its own words | unchanged |
+
+A timeout that gets past its check (a program started behind a probe) is caught by the same three guards
+and reads the same way.
+
+**A program macOS will not start** (`OSError` from `git --version` or `pandoc --version`) raised out of
+the check too. It is now `<path> could not be started: <reason>` with the check's own fix. For pandoc and
+"Bad CPU type in executable" (errno 86) the line adds that it is an Intel program, which an Apple silicon
+Mac runs only with Rosetta, and the fix is `softwareupdate --install-rosetta (IT's step on a managed Mac),
+or set [convert] pandoc_path to an absolute pandoc built for this Mac`. That case is read from the errno and
+has not been seen on a Mac without Rosetta.
+
+**Every FAIL names a fix.** install.sh's `NEXT:` says so, and until now these lines did not:
+
+| FAIL | Its fix now |
+|---|---|
+| `<group> — check crashed: <type>: <message>` (doctor's checks, one source's, and the integrator's in `cli._extra_checks`) | `agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, and no setup step clears it)`. `-v` does print it: `unfinished` logs the traceback at info level (doctor's guards logged it at debug level, the integrator's not at all) |
+| `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
+| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = '<id>', or sign in to the sync client` |
+| `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
+| a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
+
+A crash still reads `check crashed: <type>: <message>`. Nothing on the Mac fixes a fault in agentsync, so
+its fix is the command that shows where it is, and the words say to report it.
+
+**A `launchd.*` FAIL keeps its fix while the agent step is pending** (amends the 2026-09-30 amendment in the
+`agentsync.ops.doctor` section). `_agent_step_pending` replaced the fix of every failed `launchd.*` line with
+"installed by the agent step below". A FAIL stops install.sh at its status step, before that step, so the
+note was false for one and a re-run stopped at the same line. Only a warn gets the note now, as under
+`AGENTSYNC_NO_NEXT_HINT=1` (§16.22).
+
+`cli._fail_step` is unchanged. Its second sentence ("its [FAIL] line below says why") is now only for a
+result built outside these checks.
+
+The rule is held by the suite, not by a default. `tests/conftest.py` wraps `doctor.run_checks` and
+`cli._extra_checks` for every test and fails the test that produces a FAIL with no fix
+(`_every_fail_names_its_fix`), and `install_sh()` in `tests/test_install_oneshot.py` does the same for every
+`[FAIL]` line an install run prints. A new FAIL without a fix therefore fails its own test.
+
+Tests: `tests/test_ops_doctor.py` (pandoc out of time: the line, both fixes, no "crashed", every other check
+still ran; the check's 60 s; git, `git ls-files`, codesign and launchctl out of time; a timeout behind a
+probe in one source, in a group and in the integrator's checks; a crash's fix, which parses, and
+`status -v` printing both tracebacks; git and pandoc that cannot be started, and errno 86; the four lines
+that named no fix; a `launchd.*` FAIL with the agent step pending; the guard itself, on a made-up check with
+no fix), `tests/test_install_oneshot.py` (the stub's `[FAIL]` lines carry a fix as the real ones do).

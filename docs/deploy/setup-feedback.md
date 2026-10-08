@@ -345,6 +345,41 @@ group and other inside `~/agent-context/setup`, and no check looks in that folde
 Triage: a report whose fix request says files in `setup/` are readable by others, from a build with this
 fix, means a file there belongs to another user or the folder is a symlink: the walk leaves both alone.
 
+### A check that ran out of time
+
+The rehearsal of prompt v9 (three sandbox homes, the real installer, 2026-10-07) found one thing that would
+have cost a round (K27). Step 2's `install.sh` printed `[FAIL] pandoc — check crashed: TimeoutExpired ...`,
+skipped the sync and exited 1, and its `NEXT:` said each `[FAIL]` names its fix, which that line did not.
+The same command run again passed. The bundled pandoc is an Intel program, and on Apple silicon macOS
+prepares each new copy at its first start: 10 to 67 s measured, against the 60 s the check gives it, and
+every update installs a new copy ([CONTRACTS §16.31](../design/CONTRACTS.md)):
+
+- `install.sh` now starts that pandoc once itself, right before status. A quick start prints nothing. A slow
+  one prints `pandoc: still running, <N>s (...)` at each progress interval and then
+  `pandoc: started after <N>s`; the time is part of the status step in install.log, as it was.
+- The status step prints `status: still running, <N>s` lines while status works, as the first sync does.
+- A check whose program does not answer in time says so:
+  `<command> did not answer within <N>s: the check ran out of time, it found no fault`. Under `install.sh`
+  its fix is `run the same scripts/install.sh command again (its NEXT line names it; nothing needs changing
+  first)`, a step the prompt lets the agent take. Run by hand, it is `agentsync status` again.
+- Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
+  `agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
+  report it.
+
+Triage:
+
+- `pandoc: started after <N>s` in the installer output's tail is the first start after an install or an
+  update, and no friction. `pandoc: no answer after 300s; status checks it next` is a pandoc that does not
+  start at all: read the `pandoc` line under Doctor.
+- A `[FAIL]` that says `ran out of time`, with an install run that exited 1 and a second one that ended 0,
+  is "worked with help" by the outcome's rule (K22). For `pandoc` it means the installer's own start did not
+  run (no interpreter or no config to read the path from) or ran out of its 300 s. For another check, the
+  line names the program that did not answer; a Mac that slow at `git --version` or `codesign` is the thing
+  to ask about.
+- `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac without Rosetta. Its
+  fix line names both ways out, and installing Rosetta is IT's step on a managed Mac.
+- A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
+
 ### The evidence parts
 
 One bring-back file should be enough. The parts below are what a maintainer would otherwise have to ask the
@@ -477,6 +512,7 @@ named as "v5b review, its L<n>").
 | K24 | step 2 with two `--source-local` printed the `docs repo ...` and `sources: ...` lines once per folder, 16 source ids each time: noise, and an agent could not tell what the second block meant (fix requests, 2026-10-06 and 2026-10-07) | installer automation | `install.sh` prints the first call's `docs repo` line and the last call's `sources:` line; every other line, the error stream and the call's exit status are as they were, and `agentsync add-source` by hand still prints both; `tests/test_install_oneshot.py` for three folders against the real agentsync and for a call that fails |
 | K25 | `fix-request.md` and `local-work/` in `~/agent-context/setup` were readable by group and other: the agent writes them under its own umask, the installer closed only its own three files, `--report-only` changed no mode, and doctor's printed `chmod -R` was the only thing that ever closed them (fix request, 2026-10-07) | installer automation | every `install.sh` run that reaches the setup folder ends by clearing group and other access on all of it, `--report-only` and the two `--log` options included; only the default folder, only the person's own regular files and folders, no symlink followed; `tests/test_install_oneshot.py` for each command, the symlinks, a setup log somewhere else and the dry run |
 | K26 | both installed background jobs read "plist differs" although they ran, and the fix doctor named, `agentsync install-agent`, would have written an interpreter path the launcher refuses: the launcher is built for the tool's `bin/python`, and a tool uv updated in place runs as `bin/python3`, the same file (field, 2026-10-07) | agentsync code | a job names its interpreter by the launcher's own path when that is the running interpreter under another name in the same folder, so doctor and the report compare against it and the refresh is safe; a job the launcher refuses is a doctor warn that says exit 64, and the report and the installer give 64 its meaning; `tests/test_ops_launchd.py`, `tests/test_launcher.py` with the real launcher, `tests/test_ops_doctor.py` and `tests/test_setup_report.py` |
+| K27 | on a fresh install, and again after an update, step 2's `install.sh` exited 1 on `[FAIL] pandoc — check crashed: TimeoutExpired ...`, a line with no fix under a `NEXT:` that said each `[FAIL]` names one; the same command run again passed. The bundled pandoc is an Intel program, and its first start after each install took longer than the check's 60 s (v9 rehearsal, 2026-10-07) | installer automation and agentsync code | `install.sh` starts that pandoc once before status, with progress lines and a 300 s limit of its own, and the status step has progress lines too; a check that runs out of time says so and its fix is the same command again; every `[FAIL]` names a fix (a crash names `agentsync status -v`), which the whole suite is held to; `tests/test_install_oneshot.py` for the slow first start against the real agentsync and for the limit, `tests/test_ops_doctor.py` for each check that starts a program, and `tests/conftest.py` for the rule |
 
 ## 5. Unavoidable steps so far
 
