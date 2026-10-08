@@ -32,8 +32,14 @@ let samplesPerMs = sampleRate / 1000
 let asrFolder = "parakeet-tdt-0.6b-v3"
 let diarizerFolder = "speaker-diarization"
 
+// FluidAudio writes "[Profiling] ... ms" lines straight to stderr on every diarizer run.  They would put a
+// timing that changes from run to run into the text agentsync reads from a helper that died without its own
+// error line, so stderr is pointed at /dev/null before any FluidAudio call and the one error line goes to the
+// stderr this process was started with.
+let errorOut = FileHandle(fileDescriptor: dup(STDERR_FILENO), closeOnDealloc: false)
+
 func fail(_ message: String) -> Never {
-    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
+    errorOut.write(Data("error: \(message)\n".utf8))
     exit(3)
 }
 
@@ -235,7 +241,10 @@ func voices(_ path: String) async {
     emit(["segments": out])
 }
 
+let devNull = open("/dev/null", O_WRONLY)
+if devNull < 0 || dup2(devNull, STDERR_FILENO) < 0 { fail("stderr cannot be set aside") }
 AppLogger.mirrorsToConsole = false  // stderr carries the one error line, nothing else
+AppLogger.minimumLevel = .warning  // nothing below a warning reaches the unified log either
 ModelHub.offlineMode = true  // a model that is not in the folder fails; FluidAudio never fetches one
 guard plain.count == 1 else { fail("\(command) takes one sound file") }
 switch command {

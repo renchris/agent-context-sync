@@ -197,7 +197,7 @@ class VttConverter:
         try:
             data = src.read_bytes()
         except OSError as exc:
-            raise ConversionError(f"cannot read: {exc}") from exc
+            raise ConversionError(f"cannot read: {exc.strerror or type(exc).__name__}") from exc
         try:
             text = _decode_text(data).removeprefix("\ufeff")
         except ConversionError:
