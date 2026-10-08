@@ -2164,14 +2164,17 @@ def run_purge_queue(
 ) -> list[PurgeReport]:
     """Run every queued purge; a held or failing one stays queued (logged), the rest are dequeued.
 
-    ``dry_run`` reports each queued purge without writing anything, and leaves the queue as it is.
+    ``dry_run`` reports each queued purge without writing anything, and leaves the queue as it is.  The
+    queue file is written after every purge that verified, so a run that stops part-way leaves no entry it
+    has already purged; the entry in flight stays in the file.
     """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
     reports: list[PurgeReport] = []
     with _maybe_lock(sp, lock):
         remaining: list[QueuedPurge] = []
-        for q in pending_purges(sp.root):
+        queue = pending_purges(sp.root)
+        for n, q in enumerate(queue):
             try:
                 rep = purge(
                     config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now
@@ -2183,6 +2186,8 @@ def run_purge_queue(
             reports.append(rep)
             if not rep.verified:
                 remaining.append(q)
+            elif not dry_run:
+                _write_queue(sp.root, [*remaining, *queue[n + 1 :]])
         if not dry_run:
             _write_queue(sp.root, remaining)
     return reports

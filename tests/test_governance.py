@@ -15,6 +15,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -698,6 +699,31 @@ def test_purge_queue_dry_run_writes_nothing_and_keeps_the_queue(world: World) ->
     assert len(reports) == 1 and reports[0].dry_run and reports[0].commits_rewritten == 0
     assert git(world.repo, "rev-parse", "HEAD").strip() == head
     assert [q.selector for q in gv.pending_purges(world.state)] == [s1]
+
+
+def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The queue file was written once, after the last entry: a stop left every purged entry queued."""
+    held = gv.PurgeSelector(stable_id="HELD-X", source_id="src")
+    g1 = gv.PurgeSelector(stable_id="G1", source_id="src")
+    k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
+    for selector in (held, g1, k1):
+        assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+    real = gv.purge
+
+    def stops_on_the_last(config: Config, selector: gv.PurgeSelector, **kwargs: Any) -> gv.PurgeReport:
+        if selector == held:
+            raise gv.GovernanceError("held")
+        if selector == k1:
+            raise RuntimeError("stopped part-way")
+        return real(config, selector, **kwargs)
+
+    monkeypatch.setattr(gv, "purge", stops_on_the_last)
+    with pytest.raises(RuntimeError, match="stopped part-way"):
+        gv.run_purge_queue(world.config, now=NOW)
+    assert not (world.repo / "mirror/src/gone.md").exists()
+    assert [q.selector for q in gv.pending_purges(world.state)] == [held, k1]
 
 
 def test_purge_works_on_a_sha256_repo(tmp_path: Path, tmp_state_dir: Path) -> None:
