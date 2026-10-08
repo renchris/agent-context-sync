@@ -9833,3 +9833,50 @@ renamed, gone with a stub and archived; `test_the_index_title_is_empty_and_its_s
 `tests/test_governance.py` (a purge removes the keyframes, the cache entry and the piece folder, and keeps
 another recording's); `tests/test_media.py`, `tests/test_convert_recording.py`, `tests/test_recording_page.py`,
 `tests/test_recording_grammar.py`, `tests/test_cycle.py`, `tests/test_loop.py` for the rest.
+
+### 16.35 Meeting recordings: speech, the speaker cue and voice naming (2026-10-08, wave P3)
+
+Additive. P3 of `docs/plans/meeting-video.md`: spec S7, S8, S8b, section 5, the `.vtt` turns and C15's speech-only
+page. (§16.32 went to the v9 rehearsal and §16.33 is P4's, so P3 takes §16.35.)
+
+**Rules.**
+
+- (lead: filled after the waves merge)
+
+<!-- slot: speech (agentsync.convert.speech) -->
+
+- (speech: fill this paragraph)
+
+<!-- end slot: speech -->
+
+<!-- slot: cue (agentsync.convert.cue; agentsync.convert.media additions) -->
+
+- (cue: fill this paragraph)
+
+<!-- end slot: cue -->
+
+<!-- slot: naming (agentsync.convert.naming) -->
+
+- (naming: fill this paragraph)
+
+<!-- end slot: naming -->
+
+<!-- slot: lines (agentsync.convert.speech_lines) -->
+
+- (lines: fill this paragraph)
+
+<!-- end slot: lines -->
+
+<!-- slot: vtt (agentsync.convert.vtt) -->
+
+- (vtt: fill this paragraph)
+
+<!-- end slot: vtt -->
+
+<!-- slot: recording (agentsync.convert.recording, agentsync.convert.recording_page) -->
+
+- (wave B: fill this paragraph)
+
+<!-- end slot: recording -->
+
+**Tests.** (lead: filled after the waves merge)
