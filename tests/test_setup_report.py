@@ -3316,6 +3316,11 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert setup_report.residue("/Users/<user>/Development/x and /Volumes/<folder-1>/Roadmap") == [
         "Roadmap"
     ], "a folder in the login's home is a path component; a folder below a redacted one is still checked"
+    assert setup_report.residue("~/Development/<folder-1> and /Users/<user>/Projects/Work/<folder-2>") == []
+    assert setup_report.residue("~/Development/Acme/<folder-1> and <folder-2> Development") == [
+        "Acme",
+        "Development",
+    ], "only the generic folders right below the home are a prefix (field report 2026-10-07)"
     assert setup_report.residue("abc-<folder-1> comms and <source-2>_xyz, alpha-beta-<org-1>") == [
         "abc",
         "xyz",

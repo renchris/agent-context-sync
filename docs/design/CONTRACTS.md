@@ -5036,10 +5036,12 @@ folder)". **Redaction (L6, L7).** `$TMPDIR` and its realpath are registered (aft
 inside it stays `~`) and any `/(private/)?var/folders/<x>/<y>` becomes `<tmp>` (legend "<tmp> this account's
 temporary folder"). The residue check ignores the fixed macOS path components (Users, Library, Application,
 Support, CloudStorage, Volumes, Applications), and `/Users/<user>/` (the login is `<user>`) is read as a home
-prefix like `~/`, so a SHADOW path such as `/Users/<user>/.local/bin/agentsync` is no hit. A word of any case
-joined to a placeholder by `-` or `_` with no space is a hit too (`abc-<folder-1>`: the leftover piece of a
-longer name; of `alpha-beta-<folder-1>` only `beta` is listed), hence "capitalised or joined" in the line; the
-`my` of `<org-N>-my.sharepoint.com` is ignored.
+prefix like `~/`, so a SHADOW path such as `/Users/<user>/.local/bin/agentsync` is no hit. The home with the
+generic folders `_project_values` skips right below it (`~/Development/`, `~/Projects/Work/`) is that prefix too,
+so `~/Development/<folder-1>` is no hit, while the same word anywhere else (`<folder-1> Development`) still is. A
+word of any case joined to a placeholder by `-` or `_` with no space is a hit too (`abc-<folder-1>`: the leftover
+piece of a longer name; of `alpha-beta-<folder-1>` only `beta` is listed), hence "capitalised or joined" in the
+line; the `my` of `<org-N>-my.sharepoint.com` is ignored.
 **Doctor (L8, V3).** An expected warn (`expected_warn`) is shown without its `(fix: ...)` or install.sh note and
 ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs keep their fix. **Installer
 (V4).** A run whose `step=report` line follows its `end` line says the report step is logged after the run's end
