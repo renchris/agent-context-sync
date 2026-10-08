@@ -250,6 +250,49 @@ def test_sync_twice_status_curate(initialised: Config, capsys: pytest.CaptureFix
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "1"
 
 
+def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A local file must be absent from two complete passes before it is removed. Between the two, status
+    ends the source's line with how many files wait; after the removal (the tombstone keeps its mark) it
+    does not."""
+    cfg = str(initialised.config_path)
+    held = " · absent 1 (removed by a later complete pass if still missing)"
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source (local, live): ")]
+    assert line.endswith(held), line
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    status = capsys.readouterr().out
+    assert "source (local, live): baseline complete" in status and " · absent " not in status
+
+
+def test_status_names_no_marked_file_while_the_deletion_breaker_holds_the_source(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tripped breaker removes nothing until accept-deletions, so the marked file is not "removed by a
+    later complete pass": status leaves the count to the breaker's own field."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    now = datetime.now(UTC)
+    with Manifest(initialised.state_paths.db) as manifest:
+        assert manifest.absent_counts() == {"source": 1}
+        manifest.trip_breaker(
+            "source", candidates=31, tripped_at=now.isoformat(), until=(now + timedelta(days=7)).isoformat()
+        )
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source (local, live): ")]
+    assert "breaker TRIPPED until " in line and "(31 candidates)" in line and " · absent " not in line, line
+
+
 def test_lint_fails_on_a_hand_edited_mirror_page(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

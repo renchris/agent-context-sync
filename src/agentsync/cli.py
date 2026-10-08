@@ -816,9 +816,11 @@ def _status_lines(config: Config) -> list[str]:
             "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
         )
         statuses = source_statuses(config, manifest, now=datetime.now(UTC))
+        absent = manifest.absent_counts()  # not in SourceStatus: that feeds the committed snapshot
     heartbeat = read_heartbeat(config.state_paths.heartbeat)
     for st in statuses:
         hb = heartbeat.get(st.source_id, {})
+        waiting = absent.get(st.source_id, 0) if st.breaker == "ok" else 0  # tripped: nothing is removed
         out.append(
             f"  {st.source_id} ({st.kind.value}, {st.state}): baseline "
             f"{'complete' if st.baseline_complete else 'INCOMPLETE'} · complete "
@@ -826,6 +828,7 @@ def _status_lines(config: Config) -> list[str]:
             f"quarantined {st.quarantined} · deferred {st.deferred} · breaker {st.breaker} · "
             f"auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
+            + (f" · absent {waiting} (removed by a later complete pass if still missing)" if waiting else "")
         )
     state_md = config.layout.state_md
     if state_md.is_file():

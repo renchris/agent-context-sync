@@ -2183,6 +2183,21 @@ class Manifest:
             ).fetchall()
         }
 
+    def absent_counts(self) -> dict[str, int]:
+        """source_id -> present rows a complete pass did not list (``extra.absent_since_run``), removed by a
+        later complete pass if still missing. A tombstone keeps its mark, so only present states count."""
+        states = [st.value for st in _PRESENT_STATES]
+        return {
+            str(r[0]): int(r[1])
+            for r in self._db.execute(
+                "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+                "AND extra_json LIKE '%absent_since_run%' "
+                "AND json_extract(extra_json, '$.absent_since_run') IS NOT NULL "
+                f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
+                states,
+            ).fetchall()
+        }
+
     def clear_absent_marks(self, source_id: str, run_id: int) -> int:
         """Drop ``extra.absent_since_run`` from rows observed in ``run_id`` (the H0 fast path does not
         rewrite ``extra_json``, so a file that came back unchanged would otherwise keep its old mark)."""

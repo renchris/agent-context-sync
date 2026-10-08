@@ -4624,7 +4624,8 @@ the **durable key** (the item's first id) is what page frontmatter `stable_id` a
 so a same-content safe-save or a volume-UUID change moves no committed byte (§5.1 "nothing volatile" now holds for
 local sources). New `Manifest` methods: `durable_id`, `aliases_of`, `resolve_alias`, `forget_item`,
 `mark_for_rescreen`, `pending_named`, `set_redacted`, `is_redacted`, `redacted_ids`, `present_counts`,
-`descendants`, `mark_absent`, `record_run_changes`, `run_changes`, `clear_run_changes`. A purge by any id the
+`descendants`, `mark_absent`, `record_run_changes`, `run_changes`, `clear_run_changes` (**amended 2026-10-08,
+§16.37:** and `absent_counts`). A purge by any id the
 item ever carried resolves every alias; `_Rewriter` also targets a blob at one of the item's own page paths that
 names the same source path under an unknown id (a rekey from before `item_aliases`). `PurgeReport` gains
 `paths_left: tuple[str, ...] = ()`; `verified` is False when a purged item's page path is still in HEAD, or its
@@ -4683,7 +4684,9 @@ boundary); `parse_governance` rejects a prefix that is not a URL or carries a pa
 **Cycle (correctness-*).** A provider tombstone's `extra["removed"|"removed_reason"]` is kept on the row;
 `moved:*`, `moved-out-of-scope` and `excluded` tombstone as reason `moved` (`# [MOVED OUT OF SCOPE]`, no purge);
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
-complete passes before it is tombstoned (`extra.absent_since_run`); safe-save pairing runs in every FULL pass,
+complete passes before it is tombstoned (`extra.absent_since_run`; **amended 2026-10-08, §16.37:** `status` ends
+that source's line with `· absent N (removed by a later complete pass if still missing)` while N present rows
+carry the mark); safe-save pairing runs in every FULL pass,
 complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
 `retired:scope-change` (`# [RETIRED]`, breaker-exempt, no purge; **amended 2026-10-06:** a local or inbox row
 whose path fails `arm_local.in_scope` is retired the same way by an incomplete pass, §16.23; **amended
