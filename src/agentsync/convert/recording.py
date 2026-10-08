@@ -56,8 +56,10 @@ from agentsync.convert.media import (
     MediaError,
     Rect,
 )
+from agentsync.convert.naming import Naming
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage, OcrLine, text_rows
 from agentsync.convert.pieces import PieceStore
+from agentsync.convert.speech_lines import SpeechReading
 from agentsync.errors import UnreadableSourceError
 from agentsync.materialise import sha256_file
 from agentsync.model import RenderedUnit
@@ -253,13 +255,36 @@ class State:
 
 
 @dataclass(frozen=True, slots=True)
+class Speech:
+    """What S8 and S8b settled about one recording's sound (P3).
+
+    ``identity`` is the speech engine's (``SpeechEngine.identity``), printed in the index's What ran table.
+    ``reading`` is S8's Python stages over the engine's words and voices after the hole repair.  ``namings``
+    holds S8b's verdict per voice, in voice order (every voice is ``unidentified`` when the profile has no
+    speaker cue, since there is then no lit sample).  ``vetoed`` holds ``(voice, start_ms)`` of each ``SAID``
+    line of a named voice that S8b rule 5 leaves unnamed; the renderer gives it the veto ``NOTE``."""
+
+    identity: str
+    reading: SpeechReading
+    namings: tuple[Naming, ...]
+    vetoed: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Reading:
-    """Everything S1 to S6 settled about one recording; the renderer's whole input (a pure function of it).
+    """Everything S1 to S8b settled about one recording; the renderer's whole input (a pure function of it).
 
     ``read_ms`` is the media time read (``duration_ms``, or 03:00:00 past ``_MAX_TICKS``).  ``screen_read_to``
     is ``(ms, later changes not read)`` once ``_MAX_READS`` cut the reading.  ``title_card`` holds tick 0's
     rows (``teams`` only).  ``names`` holds ``(first_ms, text, reads)`` of strip and label rows read at 3 or
-    more candidates.  ``unprinted_rows`` counts rows read but on screen under 4 s (S6 rule 6)."""
+    more candidates.  ``unprinted_rows`` counts rows read but on screen under 4 s (S6 rule 6).
+
+    P3.  ``picture_unread`` is None when the picture was read; else the fixed reason it was not (no picture
+    track, or VP9 / AV1, C15), and the page is a speech-only page: no states, no rows, no keyframes.
+    ``speech`` is None when no speech engine ran; ``no_speech`` then says why in fixed wording, or is None
+    when the converter has no speech engine at all.  ``speaking`` is the ``SPEAKING`` lines of S7 as
+    ``(ms, label as read)``, None when the profile has no speaker cue; ``cue_identity`` is the cue's
+    identity (``cue.identity()``) when it ran."""
 
     duration_ms: int
     read_ms: int
@@ -277,6 +302,11 @@ class Reading:
     names: tuple[tuple[int, str, int], ...]
     unprinted_rows: int
     screen_read_to: tuple[int, int] | None
+    picture_unread: str | None = None
+    speech: Speech | None = None
+    no_speech: str | None = None
+    speaking: tuple[tuple[int, str], ...] | None = None
+    cue_identity: str | None = None
 
 
 # ---------------------------------------------------------------------------------------------------------

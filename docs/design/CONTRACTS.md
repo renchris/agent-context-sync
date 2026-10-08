@@ -9966,7 +9966,8 @@ class VttConverter:
 
 <!-- slot: recording (agentsync.convert.recording, agentsync.convert.recording_page) -->
 
-- (wave B: fill this paragraph)
+- (wave B: fill this paragraph.) `agentsync.convert.recording` gains `Speech` and the `Reading` fields
+  `picture_unread`, `speech`, `no_speech`, `speaking` and `cue_identity` (P3 interface; defaults keep P1 pages).
 
 <!-- end slot: recording -->
 
