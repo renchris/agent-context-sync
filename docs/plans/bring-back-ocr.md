@@ -127,6 +127,27 @@ mirrored file below) favors counting them as empty, but only with a companion ch
 complete pass the breaker and the two-pass check are both skipped. The 14 queued purges have no manifest row;
 preview with `agentsync purge --queue --dry-run` before running the queue.
 
+## B9 Rehearsal before the next real run (2026-10-07)
+
+The operator asked how many more rounds to expect. Both v8 stops were findable without the corporate Mac, so an
+agent now plays the unattended setup agent through the whole prompt in sandbox homes before a prompt is handed
+over: a new Mac (must stop at the folder question), a Mac already set up and left in the field state (must finish
+with no stop), and an old prompt copy (must be refused). v9 passed all three with the real installer. The
+rehearsal found one defect that could cost a turn and three small ones, fixed in 12 commits ending `fd120b2`
+(gate 2925 passed; run `wf_5538ff00-563`; CONTRACTS §16.32):
+
+- The bundled pandoc's first start after an update is slow (30 to 67 s measured under load, against the health
+  check's 60 s). The installer now waits it out itself before status, with progress lines, and a check that runs
+  out of time names a fix an agent may follow. A test fails any `[FAIL]` line that names no fix.
+- A refused old copy is no longer reported as having asked a question; a first install prints no stray warning;
+  the draft-baseline wait says where its files are.
+
+Held for the next prompt revision (it needs prompt wording, which would force v10): at the new-Mac folder stop the
+prompt says both "stop and wait" and "then the report, always".
+
+Not exercised by a sandbox: File Provider behavior, the macOS privacy prompt, launchd, real volumes, the
+corporate network. A third-round surprise would come from there.
+
 Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
 is not read; a picture drawn rotated is read as stored; image types outside the raster table are stubs; a long
 scan past the time limit converts without OCR.
