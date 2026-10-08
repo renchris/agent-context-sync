@@ -46,6 +46,7 @@ from pathlib import Path
 from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.arm_local import _unexcluded, exclude_advice
 from agentsync.config import Config, SourceConfig
+from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
     _CHECKPOINT_PENDING_META,
@@ -210,19 +211,25 @@ def _unpublished(manifest: Manifest, sources: Sequence[SourceConfig]) -> _Files:
     is retried by every sync and is not counted: it would make rule 3 loop.
 
     Recordings have buckets of their own and never make rule 3 (spec S0 rules 3 and 6): one the recording
-    pass is still reading (:data:`RECORDING_WAITS`, with the minutes read from its ``recording_progress:``
-    meta), and an online-only one whose download failed, which the person fixes in Finder, not with a sync.
+    pass is still reading (:data:`RECORDING_WAITS`, or a ``no converter`` stub from before recordings were
+    read that it has read in part, with the minutes read from its ``recording_progress:`` meta), and an
+    online-only one whose download failed, which the person fixes in Finder, not with a sync.
     An online-only recording not tried yet waits for the recording download allowance, never for the
     source's document budget, so it is never over that budget."""
     out = _Files()
     for src in sources:
-        for row in manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS)):
+        for row in manifest.iter_items(src.id, states=(RowState.LIVE, RowState.DATALESS, RowState.REFUSED)):
             if row.is_dir:
                 continue
             recording = Path(row.rel_path).suffix.lower() in _RECORDING_SUFFIXES
-            if row.state_reason == RECORDING_WAITS:
+            key = f"{RECORDING_PROGRESS_META}{src.id}:{row.stable_id}"
+            if row.state is RowState.REFUSED:  # counted only while the stub path is part way through it
+                stub = (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)
+                if not (recording and stub and _progress(manifest.get_meta(key))):
+                    continue
+            if row.state_reason == RECORDING_WAITS or row.state is RowState.REFUSED:
                 out.recording[src.id] = out.recording.get(src.id, 0) + 1
-                read = _progress(manifest.get_meta(f"{RECORDING_PROGRESS_META}{src.id}:{row.stable_id}"))
+                read = _progress(manifest.get_meta(key))
                 if read is None:
                     out.unknown += 1
                 else:

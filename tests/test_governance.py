@@ -522,6 +522,31 @@ def test_purge_of_a_recording_removes_its_keyframes_cache_entry_and_stored_piece
     assert world.entry_k.exists()
 
 
+def test_purge_removes_the_pieces_of_a_recording_staged_under_a_hash_its_row_does_not_hold(
+    world: World,
+) -> None:
+    """Spec 4.1: a first read killed in its transaction leaves the row without a hash while its pieces stay;
+    purge finds them by the hash the recording record (``recording:<source>``) says it was staged under."""
+    staged, other = sha("killed recording"), sha("other recording")
+    conn = sqlite3.connect(world.config.state_paths.db)
+    conn.execute(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, last_seen_run) "
+        "VALUES ('src', 'R2', 'Weekly sync.mp4', 'Weekly sync.mp4', 'live', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('recording:src', ?)",
+        (json.dumps({"staged": {"R2": staged, "R3": other}}),),
+    )
+    conn.commit()
+    conn.close()
+    store = PieceStore.under(world.config.cache_dir)
+    for digest in (staged, other):
+        store.save(digest, 0, "k", b"piece")
+    rep = gv.purge(world.config, gv.PurgeSelector(stable_id="R2"), reason=gv.PurgeReason.OPERATOR, now=NOW)
+    assert rep.verified, rep
+    assert store.pending() == [other]
+
+
 def test_purge_by_docs_glob(world: World) -> None:
     keep_blobs = {s for s, p in all_blobs(world.repo).items() if p == "mirror/src/keep.md"}
     rep = gv.purge(

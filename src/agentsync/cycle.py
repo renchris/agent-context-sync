@@ -99,6 +99,7 @@ from agentsync.manifest import (
 )
 from agentsync.model import (
     ByteBudget,
+    CanonicalHash,
     ChangeOp,
     ConversionResult,
     ConversionStatus,
@@ -190,6 +191,7 @@ _REREAD_BUDGET_S = 120.0
 finishes).  The rest wait for later cycles.  Reading again also stops once the cycle's OCR time is used up
 (``_OCR_BUDGET_S``): past it a file would be converted without OCR, which is what it was read again for."""
 _reread_clock = time.monotonic
+_recording_clock = time.monotonic  # the staging of a recording, charged to the recording allowance
 _POLICY_META = "policy_fingerprint"
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
@@ -223,9 +225,13 @@ _RECORDING_META = "recording:"
 """``recording:<source_id>``: what the recording pass knows of the source's recordings across cycles.  A JSON
 object of ``reading`` (the stable id being read when it was stored, cleared when the read ends: a cycle
 that finds one was killed in that read, and counts it as a failed one), ``failed`` ({stable id: the cycles a
-read of it was killed, timed out or failed in}), ``started`` ({stable id: the run that stored its first
-piece}, which orders the recordings that have pieces) and ``fetch`` ({stable id: [failed downloads, the stat
-they failed at]})."""
+read of it was killed, timed out or failed in at one piece}), ``failed_at`` ({stable id: the media time read
+before that piece, ms}), ``started`` ({stable id: the run that stored its first piece}, which orders the
+recordings that have pieces), ``staged`` ({stable id: the canonical hash its unfinished read was staged
+under, committed before the read, so its pieces are found when the row holds no hash or another one}) and
+``fetch`` ({stable id: [failed downloads, the stat they failed at]})."""
+_NEW_BYTES = frozenset({Verdict.CREATED, Verdict.CHANGED, Verdict.MAYBE_CHANGED})
+"""The verdicts of a row whose bytes may not be the ones its pages were made from."""
 _RECORDING_STOPPED = (
     "reading this recording stopped or failed in two syncs; run agentsync materialise on it from a terminal "
     "to read it"
@@ -431,7 +437,9 @@ class _Recordings:
 
     reading: str | None = None
     failed: dict[str, int] = field(default_factory=dict)
+    failed_at: dict[str, int] = field(default_factory=dict)
     started: dict[str, int] = field(default_factory=dict)
+    staged: dict[str, str] = field(default_factory=dict)
     fetch: dict[str, tuple[int, str]] = field(default_factory=dict)
 
     @classmethod
@@ -447,11 +455,19 @@ class _Recordings:
             return record
         reading = doc.get("reading")
         record.reading = reading if isinstance(reading, str) else None
-        for name, target in (("failed", record.failed), ("started", record.started)):
+        for name, target in (
+            ("failed", record.failed),
+            ("failed_at", record.failed_at),
+            ("started", record.started),
+        ):
             values = doc.get(name)
             for stable, count in values.items() if isinstance(values, dict) else ():
                 if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
                     target[str(stable)] = count
+        staged = doc.get("staged")
+        for stable, sha in staged.items() if isinstance(staged, dict) else ():
+            if isinstance(sha, str) and sha:
+                record.staged[str(stable)] = sha
         fetch = doc.get("fetch")
         for stable, entry in fetch.items() if isinstance(fetch, dict) else ():
             if (
@@ -468,13 +484,30 @@ class _Recordings:
         doc: dict[str, object] = {}
         if self.reading is not None:
             doc["reading"] = self.reading
-        if self.failed:
-            doc["failed"] = dict(sorted(self.failed.items()))
-        if self.started:
-            doc["started"] = dict(sorted(self.started.items()))
+        for name, values in (
+            ("failed", self.failed),
+            ("failed_at", self.failed_at),
+            ("started", self.started),
+            ("staged", self.staged),
+        ):
+            if values:
+                doc[name] = dict(sorted(values.items()))
         if self.fetch:
             doc["fetch"] = {stable: list(entry) for stable, entry in sorted(self.fetch.items())}
         return json.dumps(doc, sort_keys=True) if doc else ""
+
+    def fail(self, stable: str, at: int) -> int:
+        """Count one failed read of ``stable`` at the piece after ``at`` ms of media time; a failure at
+        another piece starts the count again (spec 4.1: two failures of the same piece).  The count."""
+        same = stable in self.failed and self.failed_at.get(stable) == at
+        self.failed[stable] = self.failed[stable] + 1 if same else 1
+        self.failed_at[stable] = at
+        return self.failed[stable]
+
+    def forget(self, stable: str) -> None:
+        """Clear the failure count of ``stable`` and its place in the reading order."""
+        for values in (self.failed, self.failed_at, self.started):
+            values.pop(stable, None)
 
 
 _RecordingRun = Literal["none", "background", "named"]
@@ -834,6 +867,12 @@ def _sync_leaves(config: Config, paths: Iterable[Path]) -> list[Path]:
         return st.st_uid == os.geteuid() and bool(st.st_mode & stat.S_IRUSR)
 
     return [p for p in paths if p not in own or not ours(p)]
+
+
+def _charge(allowance: recording_mod.Allowance | None, started: float) -> None:
+    """Add the time since ``started`` (on ``_recording_clock``) to the recording allowance, if any."""
+    if allowance is not None:
+        allowance.spent_s += _recording_clock() - started
 
 
 def _discard_staged(fetched: FetchResult, staging: Path) -> None:
@@ -2672,8 +2711,13 @@ class _Cycle:
         """Leave a recording of a source's queue to the recording pass, unfetched (spec S0 rule 4).  It
         waits (``RECORDING_WAITS``), or keeps ``HYDRATION_REFUSED`` until its download is tried again.  An
         online-only recording that has the page it was given while it was on this Mac keeps it
-        (``_keeps_page``)."""
-        if row.dataless and self._keeps_page(row, acc):
+        (``_keeps_page``), unless its bytes may be new: a version that waited for the recording pass (its
+        reason says so) or one whose verdict says its bytes changed, which waits for the recording download
+        (ruling R1).  A ``materialise PATH`` run makes what it names maybe-changed without new bytes."""
+        new_bytes = row.state_reason in (RECORDING_WAITS, HYDRATION_REFUSED) or (
+            row.last_verdict in _NEW_BYTES and not self.forced_paths
+        )
+        if row.dataless and not new_bytes and self._keeps_page(row, acc):
             return
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
         acc.deferred += 1
@@ -2692,9 +2736,15 @@ class _Cycle:
             record = _Recordings.parse(self.manifest.get_meta(_RECORDING_META + source_id))
             self._recording_records[source_id] = record
             if record.reading is not None:
-                record.failed[record.reading] = record.failed.get(record.reading, 0) + 1
+                record.fail(record.reading, self._read_to(record.staged.get(record.reading)))
                 self._save_recording(source_id)
         return record
+
+    def _read_to(self, sha: str | None) -> int:
+        """The media time (ms) the piece store holds of the recording staged under ``sha``: where its read
+        stopped."""
+        progress = self.pieces.progress(sha) if sha else None
+        return progress[0] if progress is not None else 0
 
     def _save_recording(self, source_id: str, *, reading: str | None = None) -> None:
         """Store the source's ``_RECORDING_META`` value when it is not the one stored.  ``reading``: the
@@ -2763,7 +2813,7 @@ class _Cycle:
                         continue
                     fetches += online
                     try:
-                        self._read_recording(src, arm, row, stub=stub, online=online)
+                        self._read_recording(src, arm, row, stub=stub, online=online, allowance=allowance)
                     except Exception as exc:  # one recording's trouble: reported, never the source's failure
                         log.exception("%s: reading a recording stopped", src.id)
                         self._acc(src).errors.append(f"reading a recording stopped: {type(exc).__name__}")
@@ -2853,7 +2903,14 @@ class _Cycle:
             self._acc(src).alarms.append(_RECORDING_NOT_DOWNLOADED.format(path=row.rel_path))
 
     def _read_recording(
-        self, src: SourceConfig, arm: SourceArm, row: ItemRow, *, stub: bool, online: bool = False
+        self,
+        src: SourceConfig,
+        arm: SourceArm,
+        row: ItemRow,
+        *,
+        stub: bool,
+        online: bool = False,
+        allowance: recording_mod.Allowance | None = None,
     ) -> None:
         """Read one recording in a manifest transaction of its own (spec S0 rule 7).
 
@@ -2862,11 +2919,17 @@ class _Cycle:
         counted, and so is one the process died in (``_recording_load``).  ``stub``: the stub path, where a
         read that fails keeps the page or stub the recording has (``_after_fetch`` with ``reread``).
         ``online``: reading it is a download, under an allowance of its own (never the source's
-        ``ByteBudget``) and a deadline; a refusal or the deadline makes it ``HYDRATION_REFUSED``."""
+        ``ByteBudget``) and a deadline; a refusal or the deadline makes it ``HYDRATION_REFUSED``.
+        ``allowance``: the pass's recording allowance, charged for the staging copy and for the work of a
+        Graph recording read to the end under an allowance of its own (spec S0 rule 5).
+
+        The canonical hash of the staged bytes goes into the record (``staged``) in a write committed on its
+        own, before the read: a kill rolls back the hash the read stores on the row, and the pieces it left
+        are found by this one."""
         sid, stable, acc = src.id, row.stable_id, self._acc(src)
         record = self._recording_load(sid)
         if self.forced_paths:
-            record.failed.pop(stable, None)  # ``materialise PATH`` names it: its count starts again (O13)
+            record.forget(stable)  # ``materialise PATH`` names it: its count starts again (O13)
         elif record.failed.get(stable, 0) >= _REREAD_ATTEMPTS:
             with self.manifest.transaction():
                 self._recording_given_up(src, row, acc)
@@ -2875,6 +2938,7 @@ class _Cycle:
             return
         self._save_recording(sid, reading=stable)
         item = _item_from_row(row)
+        started = _recording_clock()
         try:
             if online:
                 deadline = _RECORDING_DEADLINE_S + max(row.size or 0, 0) / _RECORDING_FLOOR_BPS
@@ -2893,22 +2957,44 @@ class _Cycle:
             else:
                 log.debug("a recording could not be read (%s); it waits", type(exc).__name__)
             return
+        finally:
+            _charge(allowance, started)
         if online:  # on this Mac now: what a refused download left on the row is void
-            self._recording_load(sid).fetch.pop(stable, None)
+            record.fetch.pop(stable, None)
             if row.state_reason == HYDRATION_REFUSED:
                 self.manifest.set_state(sid, stable, row.state, None)
+        started = _recording_clock()
+        try:
+            h1 = canonical_hash(fetched.path, suffix=item.suffix)
+        except OSError as exc:  # gone or unreadable since it was staged: the next pass says what it is
+            log.debug("a staged recording could not be hashed (%s); it waits", type(exc).__name__)
+            _discard_staged(fetched, self.staging)
+            self._save_recording(sid)
+            return
+        finally:
+            _charge(allowance, started)
+        record.staged[stable] = h1.sha256
+        self._save_recording(sid, reading=stable)
         with self.manifest.transaction():
             try:
                 # A Graph recording is read to the end in the run that downloaded it: nothing keeps its bytes
                 # for a later cycle, which would download it again (one recording is under 900 s of work)
-                whole = recording_mod.work_allowance(None) if src.kind.is_graph else contextlib.nullcontext()
-                with whole:
-                    result = self._after_fetch(src, row, fetched, acc, reread=stub)
+                whole: contextlib.AbstractContextManager[recording_mod.Allowance | None] = (
+                    recording_mod.work_allowance(None) if src.kind.is_graph else contextlib.nullcontext()
+                )
+                with whole as inner:
+                    try:
+                        result = self._after_fetch(src, row, fetched, acc, reread=stub, h1=h1)
+                    finally:
+                        if inner is not None and allowance is not None:
+                            allowance.spent_s += inner.spent_s
             except RecordingNotFinished as signal:
                 self._recording_waits(src, row, acc, signal)
             except _HelperDown:  # no file's failure: the recording waits as it was, its read not counted
                 if self._media_down and _MEDIA_DOWN not in acc.alarms:
                     acc.alarms.append(_MEDIA_DOWN)
+                if self.pieces.progress(h1.sha256) is None:
+                    record.staged.pop(stable, None)  # nothing was stored under it
             except Exception as exc:  # its pages may be half written: as pending work they are checked again
                 log.warning("%s: a recording's read failed (%s)", sid, type(exc).__name__)
                 acc.errors.append(_one_line(f"{row.rel_path}: {type(exc).__name__}: {exc}"))
@@ -2930,7 +3016,7 @@ class _Cycle:
         sid, stable = src.id, row.stable_id
         record = self._recording_load(sid)
         record.started.setdefault(stable, self.run_id)
-        if signal.timed_out and self._recording_failed(src, row, acc):
+        if signal.timed_out and self._recording_failed(src, row, acc, at=signal.done_ms):
             return
         fresh = self.manifest.get_item(sid, stable) or row
         if fresh.state in (RowState.LIVE, RowState.DATALESS) and fresh.state_reason is None:
@@ -2941,21 +3027,22 @@ class _Cycle:
         self, src: SourceConfig, row: ItemRow, acc: _SourceAcc, result: ConversionResult | None, *, stub: bool
     ) -> None:
         """Settle what one finished read came to.  A failed read (the converter failed, or the media helper
-        failed on this file while it still answers) counts against the recording; any other read is done
-        with: it waits no more, and its pieces go now that its page is in the converter cache (4.1)."""
+        failed on this file while it still answers) counts against the recording; a first read that came to
+        no conversion (None: its content is a purged item's) settles nothing; any other read is done with:
+        it waits no more, and its pieces go now that its page is in the converter cache (4.1)."""
         sid, stable = src.id, row.stable_id
         if stub:  # None: the read failed and the page or stub it had is kept
             failed = result is None or self._lacks(row.name, result)
+        elif result is None:
+            return
         else:
-            failed = result is not None and (
-                result.status is ConversionStatus.FAILED or self._lacks(row.name, result)
-            )
+            failed = result.status is ConversionStatus.FAILED or self._lacks(row.name, result)
         if failed:
             self._recording_failed(src, row, acc)
             return
         record = self._recording_load(sid)
-        record.failed.pop(stable, None)
-        record.started.pop(stable, None)
+        record.forget(stable)
+        staged = record.staged.pop(stable, None)
         fresh = self.manifest.get_item(sid, stable)
         if fresh is not None and fresh.state_reason == RECORDING_WAITS:
             self.manifest.set_state(sid, stable, fresh.state, None)
@@ -2963,14 +3050,19 @@ class _Cycle:
         sha = (result.canonical_sha256 if result is not None else "") or (
             fresh.canonical_sha256 if fresh is not None else None
         )
-        if sha:
-            self.pieces.remove(sha)
+        for done in {sha, staged}:
+            if done:
+                self.pieces.remove(done)
 
-    def _recording_failed(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> bool:
-        """Count one failed read of a recording; True when that was its second cycle and it is given up."""
+    def _recording_failed(
+        self, src: SourceConfig, row: ItemRow, acc: _SourceAcc, *, at: int | None = None
+    ) -> bool:
+        """Count one failed read of a recording at the piece after ``at`` ms (by default where its stored
+        pieces end); True when that was the second failure of that piece and it is given up."""
         record = self._recording_load(src.id)
-        record.failed[row.stable_id] = record.failed.get(row.stable_id, 0) + 1
-        if record.failed[row.stable_id] < _REREAD_ATTEMPTS:
+        if at is None:
+            at = self._read_to(record.staged.get(row.stable_id))
+        if record.fail(row.stable_id, at) < _REREAD_ATTEMPTS:
             return False
         self._recording_given_up(src, row, acc)
         return True
@@ -2983,30 +3075,37 @@ class _Cycle:
         fresh = self.manifest.get_item(sid, stable) or row
         stub = self._stub(fresh, ConversionStatus.UNREADABLE, _RECORDING_STOPPED)
         self._publish(src, fresh, stub, acc, quarantine_reason=_RECORDING_STOPPED)
-        record = self._recording_load(sid)
-        record.failed.pop(stable, None)
-        record.started.pop(stable, None)
+        self._recording_load(sid).forget(stable)
         self._set_progress(sid, stable, "")
         log.warning("%s: a recording whose read stopped in two syncs was given up", sid)
 
     def _prune_pieces(self) -> None:
         """Reconcile's clean-up of the piece store (spec 4.1): a recording's folder goes once no row waits on
         its hash.  A recording that waits, is read in part behind its stub, or was given up (O13) keeps its
-        pieces.  Never in a cycle without the recording converter, which cannot tell what is a recording."""
+        pieces, and so does the hash an unfinished read was staged under (``staged``: a kill rolls back the
+        row's), while the row is there; the record forgets the others.  Never in a cycle without the
+        recording converter, which cannot tell what is a recording."""
         if not self._recording_suffixes() or not self.pieces.pending():
             return
         keep: set[str] = set()
         for src in self.config.sources:
+            record, present = self._recording_load(src.id), set[str]()
             for row in self.manifest.iter_items(src.id, states=_PRESENT):
-                sha = row.canonical_sha256
-                if not sha or not self._recording(row.name):
+                if not self._recording(row.name):
                     continue
-                if (
+                present.add(row.stable_id)
+                staged, sha = record.staged.get(row.stable_id), row.canonical_sha256
+                if staged:
+                    keep.add(staged)
+                if sha and (
                     row.state_reason in (RECORDING_WAITS, _RECORDING_STOPPED)
                     or _no_converter_stub(row)
                     or row.last_verdict is Verdict.DEFERRED
                 ):
                     keep.add(sha)
+            for stable in set(record.staged) - present:
+                del record.staged[stable]
+            self._save_recording(src.id)
         removed = self.pieces.prune(keep)
         if removed:
             log.info("piece store: %d recording folder(s) no row waits on removed", removed)
@@ -3393,7 +3492,14 @@ class _Cycle:
             )
 
     def _after_fetch(
-        self, src: SourceConfig, row: ItemRow, fetched: FetchResult, acc: _SourceAcc, *, reread: bool = False
+        self,
+        src: SourceConfig,
+        row: ItemRow,
+        fetched: FetchResult,
+        acc: _SourceAcc,
+        *,
+        reread: bool = False,
+        h1: CanonicalHash | None = None,
     ) -> ConversionResult | None:
         """H1, convert, H2, publish for one fetched file.  Returns the conversion its pages now stand for;
         None when none took the place of what they stood for before.
@@ -3403,9 +3509,12 @@ class _Cycle:
         the file its page: a conversion that fails leaves the page as it is, and one that gives the page or
         the stub it already has leaves it untouched and only moves its action key.  The same holds for a
         ``no converter`` stub, which was made without reading a byte: a failed read of the file leaves the
-        stub, where it would otherwise become a failed conversion nothing reads again."""
+        stub, where it would otherwise become a failed conversion nothing reads again.
+
+        ``h1``: the canonical hash of the staged bytes, when the caller has it (the recording pass)."""
         sid, stable = row.source_id, row.stable_id
-        h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
+        if h1 is None:
+            h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
         if self.suppressions.matches_content(h1.sha256):
             self._suppress_purged_content(src, row, acc)
             return None
@@ -3426,7 +3535,7 @@ class _Cycle:
         # the path, so every read plans the item again at the path it has now.
         intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
         same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact
-        if same and not reread:
+        if same and not reread and not self._reads_anyway(fresh):
             result = None
             if self._outdated_in_queue(src, fresh):
                 # The same bytes, and pages from before something their converter has: read again here.
@@ -3507,6 +3616,16 @@ class _Cycle:
         acc.counts[Verdict.CHANGED] += 1
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
         return result
+
+    def _reads_anyway(self, row: ItemRow) -> bool:
+        """True when the recording pass converts ``row`` from the bytes its stored hash names all the same:
+        the hash may be one a read stored without publishing (a recording that waits, one given up (O13), a
+        ``no converter`` stub the stub path read in part), and ``materialise PATH`` reads what it names."""
+        return self._in_recording_pass and (
+            bool(self.forced_paths)
+            or row.state_reason in (RECORDING_WAITS, _RECORDING_STOPPED)
+            or _no_converter_stub(row)
+        )
 
     def _move_key(
         self, sid: str, stable: str, outs: Sequence[OutputRow], key: str, status: OutputStatus

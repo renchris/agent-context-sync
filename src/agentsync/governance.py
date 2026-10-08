@@ -1782,6 +1782,30 @@ def _piece_victims(cache_root: Path, canonical: set[str]) -> list[str]:
     return sorted(set(PieceStore.under(cache_root).pending()) & canonical)
 
 
+def _staged_hashes(db: Path, items: Iterable[tuple[str, str, str, bool]]) -> set[str]:
+    """The canonical hashes the purged recordings' unfinished reads were staged under (``staged`` in the
+    manifest meta ``recording:<source id>``): a first read killed in its transaction leaves its pieces under
+    a hash its row does not hold."""
+    files = [(s, i) for s, i, _r, d in items if not d]
+    if not files or not db.exists():
+        return set()
+    conn = _connect(db)
+    try:
+        out: set[str] = set()
+        for source_id in sorted({s for s, _i in files}):
+            row = conn.execute("SELECT value FROM meta WHERE key = ?", (f"recording:{source_id}",)).fetchone()
+            try:
+                doc = json.loads(row["value"]) if row is not None and row["value"] else {}
+            except ValueError:
+                doc = {}
+            staged = doc.get("staged") if isinstance(doc, dict) else None
+            if isinstance(staged, dict):
+                out |= {str(staged[i]) for s, i in files if s == source_id and staged.get(i)}
+        return out
+    finally:
+        conn.close()
+
+
 def _scrub_file(path: Path, scrubber: _Scrubber) -> bool:
     """Remove hit lines from one text file in place (0600 tmp + rename); True if changed."""
     try:
@@ -1937,7 +1961,9 @@ def _purge_locked(
         scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=False)
         log_scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=True)
         cache_victims = _cache_entries(expand(config.cache_dir), mt.action_keys, mt.rendered | plan.rendered)
-        piece_victims = _piece_victims(expand(config.cache_dir), mt.canonical | plan.canonical)
+        piece_victims = _piece_victims(
+            expand(config.cache_dir), mt.canonical | plan.canonical | _staged_hashes(sp.db, mt.items)
+        )
         citing = _topics_citing(repo, sp.db, set(docs_paths))
         items = tuple(sorted(plan.ids))
         if dry_run:

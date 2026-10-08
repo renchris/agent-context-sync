@@ -3464,10 +3464,11 @@ class StubRecording(RecordingConverter):
         sha, total = hashlib.sha256(data).hexdigest(), spec["minutes"] * 60_000
         allowance = self.rec.allowances[-1] if self.rec.allowances else None
         assert self._pieces is not None, "the cycle hands the converter its piece store"
+        worked = False  # a used-up allowance stops a read once it has worked a piece (the real contract)
         for n in range(-(-total // PIECE_MS)):
             if self._pieces.load(sha, n, "k1") is not None:
                 continue
-            if allowance is not None and allowance.used_up:
+            if allowance is not None and allowance.used_up and worked:
                 self.rec.stop(RecordingNotFinished(done_ms=n * PIECE_MS, total_ms=total, timed_out=False))
             if (name, n) in self.rec.crash_at:
                 raise Crash
@@ -3476,6 +3477,7 @@ class StubRecording(RecordingConverter):
             if self.rec.media_fails:
                 raise MediaError("the media helper exited 3")
             self.rec.worked.append((name, n))
+            worked = True
             if isinstance(self._ocr, cycle_mod._CycleOcr):
                 self._ocr.spent_s += spec.get("ocr_s", 0.0)
             self._pieces.save(sha, n, "k1", f"{name}:{n}".encode())
@@ -4233,3 +4235,211 @@ def test_a_graph_recording_is_read_to_the_end_in_the_run_that_downloaded_it(
     assert rec.opened[:2] == [cycle_mod._RECORDING_BUDGET_S, None]
     (row,) = _file_rows(config, "drive").values()
     assert row.state is RowState.LIVE and row.state_reason is None and row.last_verdict is Verdict.UNCHANGED
+
+
+SYNC = "Contoso weekly sync.mp4"
+
+
+def test_a_new_version_read_over_two_cycles_replaces_the_page_of_the_old_one(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """Ruling R1, spec 4.1: a published recording replaced by a longer one is read over two cycles, and the
+    second cycle finishes the new one from its pieces; the hash the first cycle stored is never taken for
+    the bytes of the page it has."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    assert run(config).exit_code == 0 and _recording_page(config, MEETING)[0]["status"] == "current"
+    stub_recording(path, 30, piece_s=70.0, text="Contoso review, second cut")
+    rec.worked.clear()
+    assert run(config).exit_code == 0 and rec.worked == [(SYNC, n) for n in range(3)]
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    assert run(config).exit_code == 0 and rec.worked == [(SYNC, n) for n in range(6)]
+    assert "SCREEN Contoso review, second cut" in _recording_page(config, MEETING)[1]
+    assert _row(config, MEETING).state_reason is None and not _pieces_of(config, path).exists()
+
+
+def test_materialise_path_reads_a_recording_given_up_after_two_time_outs(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """O13: a piece that timed out in two cycles gives the recording up with its hash stored; ``materialise
+    PATH`` still reads it, from its pieces, and publishes its page."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 15)
+    rec.timeout_at.add((SYNC, 1))
+    for _ in range(2):
+        assert run(config).exit_code == 0
+    assert _row(config, MEETING).state_reason == cycle_mod._RECORDING_STOPPED
+    rec.timeout_at.clear()
+    converts = len(rec.converts)
+    assert run(config, materialise_paths=[path]).exit_code == 0 and len(rec.converts) == converts + 1
+    assert rec.worked == [(SYNC, 0), (SYNC, 1), (SYNC, 2)]
+    row = _row(config, MEETING)
+    assert row.state is RowState.LIVE and row.state_reason is None
+    assert _recording_page(config, MEETING)[0]["status"] == "current" and _record(config) == {}
+
+
+def test_materialise_path_finishes_a_no_converter_stub_the_stub_path_read_in_part(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``no converter`` stub from before recordings were read, read in part by the stub path, is read to
+    the end by ``materialise PATH``: its stub is not taken for a page of the bytes the stub path hashed."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: None)
+    path = stub_recording(meetings / MEETING, 30, piece_s=70.0)
+    assert run(config).exit_code == 0
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: rec.media)
+    assert run(config).exit_code == 0 and rec.worked == [(SYNC, n) for n in range(3)]
+    assert _row(config, MEETING).state_reason == "no converter for .mp4"
+    assert run(config, materialise_paths=[path]).exit_code == 0
+    assert rec.worked == [(SYNC, n) for n in range(6)]
+    row = _row(config, MEETING)
+    assert row.state is RowState.LIVE and row.state_reason is None
+    assert _recording_page(config, MEETING)[0]["status"] == "current" and _progress(config, MEETING) == ""
+
+
+def test_a_recording_changed_while_the_media_helper_was_down_is_read_once_it_answers(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """Spec S0 rule 8: a new version staged in a cycle whose media helper stopped answering waits as it
+    was, and the next cycle reads it: the hash that cycle stored does not stand for the old page."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    assert run(config).exit_code == 0
+    stub_recording(path, 10, piece_s=10.0, text="Contoso review, second cut")
+    rec.media_fails, rec.media.up = True, False
+    assert run(config).exit_code == 0 and _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    rec.media_fails, rec.media.up = False, True
+    assert run(config).exit_code == 0
+    assert "SCREEN Contoso review, second cut" in _recording_page(config, MEETING)[1]
+    assert _row(config, MEETING).state_reason is None
+
+
+def test_a_new_version_evicted_before_it_was_read_waits_for_its_download_and_replaces_the_page(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling R1 keeps the page of the bytes it was made from, and only those: a new version that waited
+    for the recording pass and was evicted before it was read waits for the recording download, and the
+    reconcile job that downloads it replaces the page."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10, piece_s=10.0)
+    assert run(config).exit_code == 0
+    stub_recording(path, 10, piece_s=10.0, text="Contoso review, second cut")
+    assert run(config, mode=None).exit_code == 0, "an interactive sync reads no recording: it waits"
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    _online_only(monkeypatch, path)
+    assert run(config).exit_code == 0
+    row = _row(config, MEETING)
+    assert row.state_reason == cycle_mod.RECORDING_WAITS and row.last_verdict is Verdict.DEFERRED
+    assert run(config).exit_code == 0, "a poll cycle downloads no recording"
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS
+    assert run(config, mode=CycleMode.RECONCILE).exit_code == 0
+    assert "SCREEN Contoso review, second cut" in _recording_page(config, MEETING)[1]
+
+
+def test_two_kills_at_different_pieces_never_give_a_recording_up(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """Spec 4.1: only two failures of the same piece give a recording up.  A long recording killed at
+    piece 1 and, cycles later, at piece 7 keeps being read, and its page is published."""
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 60, piece_s=70.0)
+    rec.crash_at.add((SYNC, 1))
+    with pytest.raises(Crash):
+        run(config)
+    rec.crash_at = {(SYNC, 7)}
+    for _ in range(2):
+        assert run(config).exit_code == 0
+    with pytest.raises(Crash):
+        run(config)
+    rec.crash_at.clear()
+    assert run(config).exit_code == 0
+    assert _row(config, MEETING).state_reason == cycle_mod.RECORDING_WAITS, "not the O13 stub"
+    assert _record(config)["failed"] == {_row(config, MEETING).stable_id: 1}
+    assert run(config, materialise_paths=[path]).exit_code == 0
+    assert _recording_page(config, MEETING)[0]["status"] == "current"
+
+
+def test_the_pieces_of_a_first_read_killed_in_its_transaction_survive_reconcile(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """A kill on the first read rolls back the row's hash; the recording record keeps the hash it was
+    staged under (committed before the read), so reconcile keeps its pieces and the next read resumes."""
+    from agentsync import cli  # noqa: PLC0415
+
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 15)
+    rec.crash_at.add((SYNC, 1))
+    with pytest.raises(Crash):
+        run(config)
+    rec.crash_at.clear()
+    assert _row(config, MEETING).canonical_sha256 is None and _pieces_of(config, path).is_dir()
+    assert cli.main(["reconcile", "--config", str(config.config_path)]) == cli.EXIT_OK
+    assert _pieces_of(config, path).is_dir(), "an operator's reconcile reads no recording and keeps them"
+    staged = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert _record(config)["staged"] == {_row(config, MEETING).stable_id: staged}
+    assert run(config).exit_code == 0 and rec.worked == [(SYNC, 0), (SYNC, 1), (SYNC, 2)]
+    assert _recording_page(config, MEETING)[0]["status"] == "current" and _record(config) == {}
+
+
+def test_the_recording_allowance_is_charged_for_staging_and_a_graph_recordings_whole_read(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec S0 rule 5: the 180 s are recording work of every kind.  The staging copy counts, and so does the
+    work of a Graph recording read to the end under an allowance of its own."""
+    monkeypatch.setattr(cycle_mod, "_free_bytes", lambda _path: 10**15)
+    config = config_with(tmp_path, meetings, GRAPH_SOURCE)
+    name = "Contoso all hands.mp4"
+    body = stub_recording(tmp_path / "upload" / name, 20, piece_s=70.0).read_bytes()
+    drive = FakeDrive({"I1": (name, body)})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    now = [0.0]
+    monkeypatch.setattr(cycle_mod, "_recording_clock", lambda: now[0], raising=False)
+    real_fetch = DriveArm.fetch
+
+    def fetch(self: Any, item: Any, dest: Path, budget: Any) -> Any:
+        now[0] += 30.0  # the download and the staging copy
+        return real_fetch(self, item, dest, budget)
+
+    monkeypatch.setattr(DriveArm, "fetch", fetch)
+    kept: list[Allowance] = []
+    opened = recording_mod.work_allowance
+
+    @contextlib.contextmanager
+    def keeping(seconds: float | None) -> Iterator[Allowance]:
+        with opened(seconds) as allowance:
+            kept.append(allowance)
+            yield allowance
+
+    monkeypatch.setattr(recording_mod, "work_allowance", keeping)
+    try:
+        assert run(config, client=client, mode=CycleMode.RECONCILE).exit_code == 0
+    finally:
+        client.close()
+    assert rec.worked == [(name, n) for n in range(4)]
+    outer, whole = kept[0], kept[1]
+    assert (outer.seconds, whole.seconds) == (cycle_mod._RECORDING_BUDGET_S, None)
+    assert outer.spent_s == 30.0 + 4 * 70.0 and outer.used_up
+
+
+def test_a_no_converter_stub_read_in_part_is_counted_with_the_minutes_read(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec S0 rule 6: a ``no converter`` stub from before recordings were read that the stub path reads
+    over several cycles is counted with the recordings still being read, with its minutes."""
+    config = config_with(tmp_path, meetings)
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: None)
+    stub_recording(meetings / MEETING, 30, piece_s=70.0)
+    assert run(config).exit_code == 0
+    monkeypatch.setattr(cycle_mod.media, "engine", lambda _convert, _cache_dir: rec.media)
+    assert run(config).exit_code == 0 and _progress(config, MEETING) == f"{3 * PIECE_MS} {30 * 60_000}"
+    with Manifest(config.state_paths.db) as m:
+        files = loop._unpublished(m, config.sources)
+    assert files.recording == {SID: 1} and (files.read_ms, files.total_ms) == (3 * PIECE_MS, 30 * 60_000)
+    assert run(config).exit_code == 0 and _recording_page(config, MEETING)[0]["status"] == "current"
+    with Manifest(config.state_paths.db) as m:
+        assert loop._unpublished(m, config.sources).recording == {}
