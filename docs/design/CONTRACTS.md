@@ -9520,15 +9520,17 @@ config key, `[convert] recordings`, and no command, flag, installer option or en
   false a `.mp4` keeps the `no converter for .mp4` refusal it had, unread, and the installer builds no media
   helper when `recordings` is false.
 - **Labels (ruling 2).** A `[policy]` label rule does not unregister the converter: processing stays on the Mac.
-  While one is active the `policy` line of `status` gains the fixed clause `; recordings are converted on this
-  Mac under it (a recording's label cannot be read)` and each index carries `LABEL_RULE_NOTE`. `.mp4`, `.m4v` and
+  While one is active and `recordings` is on, the `policy` line of `status` gains the fixed clause `; recordings
+  are converted on this Mac under it (a recording's label cannot be read)` (`cli._RECORDINGS_UNDER_LABELS`), and
+  each index read under it carries the label `NOTE` of 3.3 rule 5. `.mp4`, `.m4v` and
   `.mov` do not join `cycle._LABEL_CAPABLE`. Images keep D8.
 - **Who reads (ruling 5).** Only a background sync (poll or reconcile job) and `agentsync materialise <file>`.
-  An interactive `sync` reads and downloads no recording and counts them.
+  An interactive `sync`, the operator verbs `reconcile` and `accept-deletions` (a tool's timeout may end any of
+  them) and a dry run read and download no recording; `sync` counts them.
 - **Never rule 3 (ruling 4).** A recording that waits is a `note:` (or a `WAITING ON YOU:` line while no
   background job is installed); it never holds the next step.
 - **Text-only scans.** The secret scan and the token lint read pages and `.txt`, `.md`, `.csv` sidecars only;
-  `cycle._publish` adds only those to `ok_pages`. A keyframe's bytes are never scanned.
+  `cycle._publish` adds only those to `ok_pages` (`cycle._TEXT_SIDECARS`). A keyframe's bytes are never scanned.
 
 **The converter** (`agentsync.convert.recording`, `src/agentsync/convert/recording.py`; S1 to S6).
 
@@ -9540,8 +9542,9 @@ config key, `[convert] recordings`, and no command, flag, installer option or en
 | Options | every constant of spec 2.2 that can change a page (render, media, profile and gate, piece length), the shared OCR options and `max_page_bytes`; the guard adds banner, sidecar-digest, label-policy and suffix as for every converter |
 | `outdated_key` | `<emitter><<floor>\|<cue identity or ->\|<speech identity or ->`, the shape of `ImageConverter.outdated_key` |
 | `outdated(produced, reason)` | true for an emitter below `_REREAD_BELOW`, and (from P3) for a version without `+cue-`, `+asr-` or `-n` once the converter has that stage, and for the stubs speech could change |
-| Stubs (`UnreadableSourceError`, cached) | `not a recording on-device reading supports (MP4, M4V, MOV)`; `recording has no picture and no sound`; `recording has no picture; its speech is not read by this version`; `recording's picture cannot be decoded on this Mac (VP9 or AV1)` |
-| Failure | a `MediaError` (an `OcrError`) gives the `no converter for .mp4` refusal and caches nothing; `RecordingNotFinished` is re-raised by `convert_file` ahead of its `except Exception` and is never a result |
+| Stubs (`UnreadableSourceError`, cached) | `not a recording on-device reading supports (MP4, M4V, MOV)`; `recording has no picture and no sound`; `recording has no picture; its speech is not read by this version`; `recording's picture cannot be decoded on this Mac (VP9 or AV1)`; `no text read on screen; speech is not read by this version` |
+| Failure | a `MediaError` (an `OcrError`; also `a frame of the recording could not be read by on-device OCR` and `the media helper's answer does not match what it was asked`) gives the `no converter for .mp4` refusal and caches nothing; `RecordingNotFinished` is re-raised by `convert_file` ahead of its `except Exception` and is never a result |
+| Constants | `WINDOW_MS` = 300,000 (one window unit) and `MARK_BELOW` = 0.60 (a printed row read under it ends in ` [?]`), which the renderer uses; the rest of 2.2 is private to the module |
 
 One action key per recording, over the canonical hash of the bytes (`unit_id` `whole`): a rename, a move or a
 second copy is a cache hit. A change of any constant, revision or helper is a new key but reads nothing again
@@ -9564,6 +9567,9 @@ of kind `window` discards it as corrupt and converts again.
 # agentsync.convert.recording
 Kind = Literal["share", "camera", "other"]
 Tag = Literal["SCREEN", "TILE"]
+WINDOW_MS = 300_000
+MARK_BELOW = 0.60
+# STEP_MS, GRID_W, GRID_H and JPEG_QUALITY are imported from agentsync.convert.media
 
 class RecordingNotFinished(Exception):   # the allowance ran out with pieces left, or a piece passed its deadline
     def __init__(self, *, done_ms: int, total_ms: int, timed_out: bool) -> None: ...
@@ -9608,54 +9614,53 @@ class RecordingConverter:
 
 **The page** (`agentsync.convert.recording_page`, `src/agentsync/convert/recording_page.py`; S9, spec 3.3 to
 3.5). `render` is a pure function of a `Reading`: the index unit and the window units, sorted by index, each body
-in the line grammar `tests/test_recording_grammar.py` pins. Every string read from the picture is cleaned (`clean`:
-no control character, lone surrogate or Unicode line break, `<!--` neutralised) and printed only after a time and
-a tag, never in a table cell and never at the start of a line.
+in the line grammar `tests/test_recording_grammar.py` pins. Every string read from the picture is cleaned (no
+control character, lone surrogate or Unicode line break, `<!--` neutralised) and printed only after a time and a
+tag, never in a table cell and never at the start of a line. Window length and the `[?]` mark come from
+`recording.WINDOW_MS` and `recording.MARK_BELOW`; the fixed `NOTE` wordings, the index's "Not on this page"
+sentence and its How to read lines are private constants of the module, pinned by the grammar test.
 
 ```python
 # agentsync.convert.recording_page
-WINDOW_S = 300            # window n covers [300 (n-1), 300 n) seconds
-LOW_CONFIDENCE = 0.60     # a printed reading under this ends in MARK
-MARK = " [?]"
-MAX_LABEL = 60            # a state heading's quoted label, at most this many characters
-MIN_LABEL_LETTERS = 6     # and only with this many letters or more
-MAX_NAMES = 40            # the index's names read on screen
-LEFT_LISTED = 6           # when this many rows or fewer left the screen, each is a SCREEN- line too
-CONTINUATION_NOTE: str    # fixed NOTE wordings the renderer adds itself (3.3 rule 5)
-CARRY_OVER_NOTE: str
-SCREEN_LIMIT_NOTE: str
-READ_LIMIT_NOTE: str
-LABEL_RULE_NOTE: str
-NOT_DETECTED: str         # the index's "Not on this page" sentence
-TIMES_FACT: str
-HOW_TO_READ: tuple[str, ...]
-def clock(seconds: int) -> str: ...                     # HH:MM:SS
-def clean(text: str) -> str: ...
-def heading_label(label: str | None) -> str | None: ...
 def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]: ...
 ```
 
 **The media helper** (`agentsync.convert.media`, `src/agentsync/convert/media.py`, source
-`src/agentsync/convert/media_frames.swift`; L6). Built, trusted, probed and pruned as the OCR helper is (§16.25):
-only `scripts/install.sh` builds it, in the `launcher` step, by running `python -I -m agentsync.convert.media`,
-which prints one line and exits 0 when the helper is ready or switched off, 1 when it is not built: `media
-helper: ready (<detail>)`, `media helper: off ([convert] recordings = false)` (or the other reason it is off),
-`media helper: not built (<reason>)`. `status`, the `doctor` alias, the setup report, a dry run, a sync and the
-LaunchAgent never compile. It reads a recording with AVFoundation; nothing leaves the Mac.
+`src/agentsync/convert/media_frames.swift`, helper version 1.0.0; L6). Built, trusted, probed and pruned as the
+OCR helper is (§16.25), by the same functions of `convert/ocr.py`, which take its `MEDIA` description (an
+`ocr.Helper`). It lives in `<cache_dir>/media/` as `agentsync-media-<digest>`; the converter cache's `gc` skips
+the folder. Only `scripts/install.sh` builds it, in the `launcher` step right after the OCR helper, by running
+`python -I -m agentsync.convert.media`, which prints one line and exits 0 when the helper is ready or switched
+off, 1 when it is not built: `media helper: ready (avfoundation, helper 1.0.0)`, `media helper: off ([convert]
+recordings = false)` (or OCR's reason when OCR is off), `media helper: not built (<reason>)`; without developer
+tools the installer prints `media helper: not built (no Xcode or Command Line Tools)`. `status`, the `doctor`
+alias, the setup report, a dry run, a sync and the LaunchAgent never compile. It reads a recording with
+AVFoundation; nothing leaves the Mac.
 
 - **Protocol** (pinned by `tests/media_kit.py`). `--version`; `info FILE`; `scan FILE --out DIR [--step-ms]
   [--first-tick K] [--max-ticks N]` writing `grids.bin`, one 320x180 box-averaged luma grid (57,600 bytes) per
   2 s tick; `frames FILE --out DIR --ticks a,b [--crop X0,Y0,X1,Y1 | --crop-right F]` writing `tHHMMSS.jpg`
   (ImageIO, quality 0.7, no metadata); `diff GRIDS --pairs a:b --include R --exclude R [--threshold]`. One JSON
   document on stdout; exit 3 with a message on stderr is a failure. P3 adds `pills` and `audio`.
-- **Probe states** as §16.25's: `ready`, `off` (`AGENTSYNC_OCR=0`, `[convert] ocr = false`, `[convert]
-  recordings = false`, not macOS: then it starts nothing), `not-built`, `failed`. `engine` returns a
-  `MediaEngine` only when `ready`; neither compiles or raises.
-- **Doctor** (`ops.doctor`, one `media` line after `ocr`) calls `probe` only and is never a FAIL: ok when ready
-  or off, a not-ok INFO naming `scripts/install.sh` when not built, a WARN when it fails.
+- **Probe states** as §16.25's: `ready` (detail `avfoundation, helper 1.0.0`, `MediaEngine.description`),
+  `off` (OCR's switches first, then `[convert] recordings = false`; off macOS `the media helper needs macOS`:
+  then it starts nothing), `not-built` (`the media helper is not built`), `failed`. `engine` returns a
+  `MediaEngine` only when `ready`, and renews the helper's modification time (its last use); neither compiles or
+  raises.
+- **Doctor** (`ops.doctor`, check `media`, right after `ocr`) calls `probe` only, through the private
+  `doctor._media_status`, and is never a FAIL:
+
+  | `probe` state | Line |
+  |---|---|
+  | `ready`, `off` | ok: `media helper: <state> (<detail>)` |
+  | `not-built` | not-ok INFO, no fix: `<detail>; scripts/install.sh builds it`, or `<detail>; scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)` |
+  | `failed` | WARN: `media helper: not working (<detail>)`, with the fix `xcode-select --install, then run scripts/install.sh again` only when the developer tools are missing |
+  | the probe raised | WARN: `media helper: could not be checked (<exception type>)` |
 - **Helper down (S0 rule 8).** After a `MediaError` the cycle asks `MediaEngine.alive()` (`--version`, 5 s).
   When that fails the helper is down for the cycle: no further recording is fetched, the failed read is not
-  counted against the file, and the source's report gets one fixed alarm naming `scripts/install.sh`.
+  counted against the file, and the source's report gets one alarm, `the media helper stopped working in this
+  sync (it does not answer --version); recordings wait and are read once it works: run scripts/install.sh
+  again`.
 
 ```python
 # agentsync.convert.media
@@ -9665,6 +9670,8 @@ JPEG_QUALITY = 0.7
 Rect = tuple[float, float, float, float]    # x0, y0, x1, y1 in fractions of the frame, origin top-left
 
 class MediaError(OcrError): ...             # its text never holds a path
+MEDIA: ocr.Helper                            # Helper("media helper", "media", "agentsync-media", <source>, MediaError,
+                                             #        "the media helper needs macOS")
 
 @dataclass(frozen=True, slots=True)
 class MediaInfo: duration_ms: int; width: int; height: int; picture: str | None; audio: bool; created: str | None
@@ -9727,6 +9734,10 @@ class PieceStore:
     def prune(self, keep: Iterable[str]) -> int: ...
 ```
 
+**Who reads, in code.** `run_cycle(..., recordings=None)` gains the keyword `recordings`, one of `"none"`,
+`"background"` or `"named"`: None derives it (`named` with `materialise_paths`, `none` for an interactive run,
+else `background`). The CLI's `reconcile` and `accept-deletions` pass `"none"`. A dry run reads none.
+
 **The cycle's recording pass** (S0 rules 1 to 9). After the last selected source has finished its queue and its
 re-read pass, and before the secret scan, one pass works recordings: those with stored pieces first (oldest
 start first), then new and changed ones, then online-only ones, then the `no converter for .mp4` stubs a re-read
@@ -9735,38 +9746,78 @@ deferred unfetched with its mark) and `_reread_targets` leaves the converter's s
 
 - **Allowance.** A background cycle works pieces of one recording at a time until `_RECORDING_BUDGET_S` = 180 s
   of recording work is spent (kept apart from the OCR seconds of the cycle's images); the piece in flight
-  finishes. `materialise PATH` reads every recording it names to the end, one after the other.
+  finishes. `materialise PATH` reads every recording it names to the end, one after the other. A recording of a
+  Microsoft Graph source is read to the end in the run that downloads it, whatever the allowance: nothing keeps
+  its bytes for a later cycle.
 - **One piece, one transaction.** A `reading` mark is committed on its own before each piece; a cycle that finds
   it counts one failed read of that piece. A piece that runs out of time leaves the recording waiting, never
-  failed. A piece killed or timed out in two cycles settles the recording as a stub and keeps its pieces; a
-  `materialise PATH` run that names it clears the count and resumes.
+  failed. A read killed, timed out or failed in two cycles settles the recording as the stub `reading this
+  recording stopped or failed in two syncs; run agentsync materialise on it from a terminal to read it` and keeps
+  its pieces; a `materialise PATH` run that names it clears the count and resumes. What the pass knows across
+  cycles is the manifest meta `recording:<source id>` (private).
 - **Downloads (ruling 1).** A recording whose read would be a download is downloaded under an allowance of its
   own, never the per-source document budget: `_RECORDING_FETCHES` = 1 per cycle, `_RECORDING_MAX_BYTES` = 4 GiB,
   newest modification time first, only by the reconcile job or `materialise PATH`, only when the volume keeps
   `2 x size + 5 GiB` free, with a deadline of `60 s + size / 500,000 B/s`. A read that fails with `errno 89`, is
-  refused or passes its deadline sets `HYDRATION_REFUSED` and is tried once more in a later reconcile cycle. A
-  recording read while it was local keeps its pages once it becomes online-only.
+  refused or passes its deadline sets `HYDRATION_REFUSED` and is tried once more in a later reconcile cycle; a
+  `materialise PATH` run adds the source alarm `<path>: an online-only recording could not be downloaded; in
+  Finder choose Always Keep on This Device`. A recording read while it was local keeps its pages once it
+  becomes online-only.
 - **Staging** is the existing copy-and-hash path, which discards a copy whose size or modification time moved.
 - **Waiting.** A local recording that waits, or whose pieces are part-done, has `state_reason`
-  `cycle.RECORDING_WAITS`; the minutes read are in the manifest meta key `loop.RECORDING_PROGRESS_META` +
-  `<source id>:<stable id>`. `loop._unpublished` counts these rows in a bucket of their own, never rule 3.
+  `cycle.RECORDING_WAITS` (`"recording-waits"`); the media time read is the manifest meta
+  `cycle.RECORDING_PROGRESS_META` + `<source id>:<stable id>` (`recording_progress:…`), valued
+  `"<done_ms> <total_ms>"`, `""` once the recording is published or given up. `loop` imports both from `cycle`
+  and counts these rows in a bucket of their own, never rule 3.
 
-**The notes** (`loop`, printed by `sync` and `status`; none blocks the next step):
+**The notes** (`loop._recording_lines`, printed by `sync` and `status`; none blocks the next step). `(35 of 127
+minutes)` is the media time read, floored to whole minutes; it reads `of at least` while some recording has no
+length yet and is left out while none has one.
 
 - with a background job installed: `note: N recording(s) in <source ids> are still being read (35 of 127
   minutes); each background sync reads more; they do not block the next step`
-- with none: `WAITING ON YOU: N recording(s) in <source ids> wait to be read (…), and no background sync is
-  installed to read them (an interactive sync reads no recording): run `<install.sh> --confirm-install-agent`,
-  or `<agentsync> materialise <file>` for one recording; they do not block the next step`
+- with none, a wait: `WAITING ON YOU: N recording(s) in <source ids> wait to be read (35 of 127 minutes), and no
+  background sync is installed to read them (an interactive sync reads no recording): run
+  ``~/src/agent-context-sync/scripts/install.sh --confirm-install-agent``, or ``~/.local/bin/agentsync materialise
+  <file>`` for one recording; they do not block the next step` (`loop.INSTALL_SH` and `loop.BIN`, in backticks)
 - a download that failed: `note: N online-only recording(s) in <source ids> (X.X GB) could not be downloaded by
   agentsync: in Finder choose Always Keep on This Device on their folder, or Download Now on a file; the next
-  background sync reads them; they do not block the next step`; a `materialise PATH` run that names one prints
-  `<path>: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device`.
+  background sync reads them; they do not block the next step`
+- `agentsync materialise PATH` prints, for a named recording it could not download, `<path>: an online-only
+  recording could not be downloaded; in Finder choose Always Keep on This Device`.
 
 **Publish.** `GITATTRIBUTES` gains `*.jpg binary` (merged into an existing `.gitattributes` as every line is).
 Keyframes are ordinary binary sidecars: written under `<stem>.files/`, moved by a rename, removed when the item
 becomes a stub, and copied to `archive/` by `[governance] archive = true`, where they outlive the source's
 expiry as every archived page does. With the shipped defaults they are purged with the recording.
+
+**OCR plumbing** (amends §16.25; `agentsync.convert.ocr`). The helper code is shared through a description of
+each Swift helper, so OCR's behaviour, wordings and file names are unchanged. The recording converter reads rows
+with their boxes through `text_rows`, which `text_lines` is built on; `text_lines`' output and `_LAYOUT_REVISION`
+are unchanged.
+
+```python
+# agentsync.convert.ocr
+@dataclass(frozen=True, slots=True)
+class Helper:            # what sets one Swift helper apart; build, trust, run and prune take it
+    name: str            # what every reason and log line calls it: "OCR helper", "media helper"
+    folder: str          # its folder under cache_dir: "ocr", "media"
+    prefix: str          # its file name starts <prefix>-<digest>: "agentsync-ocr", "agentsync-media"
+    source: Callable[[], bytes]   # its packaged Swift source
+    error: type[OcrError]         # what it raises: OcrError, MediaError
+    off_macos: str                # why it is off without macOS
+
+@dataclass(frozen=True, slots=True)
+class OcrRow:            # one row as text_lines builds it: the union of its lines' boxes, their lowest confidence
+    text: str
+    confidence: float
+    x: float
+    y: float
+    w: float
+    h: float
+
+def text_rows(lines: Sequence[OcrLine], *, width: int, height: int) -> list[OcrRow]: ...  # reading order; noise rule
+```
 
 **Lints.** `lints.lint_secrets` and `lints.lint_no_tokens` read text files only: pages and sidecars ending
 `.md`, `.txt` or `.csv` (`lints._TEXT_SUFFIXES`). Pipeline files are still all read by the token lint. Why: over
