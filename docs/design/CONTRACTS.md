@@ -3552,9 +3552,11 @@ fix is `agentsync install-agent` or `launchctl bootstrap ...`, the `governance.p
 source's incomplete `heartbeat.<id>` warn carry a note and no `fix:` either.
 
 **Amended (2026-10-07, §16.32):** every FAIL names a fix. A check that raised is `doctor.unfinished`: out of
-time (`subprocess.TimeoutExpired`) reads "did not answer within N s" and its fix is to run again, and a crash
-keeps "check crashed" and names `agentsync status -v`. Under `AGENTSYNC_AGENT_STEP_PENDING=1` only a
-`launchd.*` warn carries `AGENT_STEP_NOTE`; a FAIL keeps its fix.
+time (`subprocess.TimeoutExpired`) reads "did not answer within N s" and its fix is to run again, then what
+to do if the same line comes back; an operating-system error (`OSError`) reads "could not read <path>:
+<reason>" and its fix names the path; and a crash keeps "check crashed" and names `agentsync status -v`.
+Under `AGENTSYNC_AGENT_STEP_PENDING=1` only a `launchd.*` warn carries `AGENT_STEP_NOTE`; a FAIL keeps its
+fix.
 
 Amendment (2026-10-05, KISS K11a): background sync is optional. Unless a LaunchAgent plist exists
 (`launchd.agents_installed`) or `AGENTSYNC_AGENT_STEP_PENDING=1` (together `doctor.agents_wanted(config)`), a
@@ -9169,6 +9171,13 @@ homes with the real installer: a new Mac, a Mac already set up, and a v8 copy of
 installer. All three ended as v9 means them to. This section holds the defects that rehearsal found, one
 sub-section per fix. None adds a command, flag, installer option, config key or environment variable, and
 the prompt's text is unchanged, so it is still v9.
+
+A review of these fixes before they landed found five places where a new rule was wrong or incomplete: a
+fix that only said "run again" for a program that never answers, two waits in step 5 that each counted
+their own progress interval, an operating-system error called a crash that no setup step clears, a docs
+repo path with spaces left in the report's Loop line, and a Rosetta fix that read as a command for the
+agent and stopped at a license question. Each is written up below where its rule is, with what the first
+wording was.
 
 #### The first start of pandoc is the installer's wait (amends §16.13 and §16.14; `scripts/install.sh`)
 
