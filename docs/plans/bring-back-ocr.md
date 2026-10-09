@@ -254,6 +254,15 @@ review): the report's first-sync clause carries the installer's read-again count
 `helpers: still running` ending in `speech: off`). Both scenarios were played again on that landed commit before
 the go-ahead.
 
+Final rehearsal on `1a3a27d` (run `wf_3870484c-942`, reports in `~/.cache/agentsync-bring-back/rehearsal-b11b/`):
+both PASS; the follow-ups read right (`read again 2` in the report and `-reread-2` in install.log; eight
+`helpers: building the speech helper` ticks); the "no attempt was started since" note appeared on a report written
+10 minutes after the finish. No finding cost a turn or was wrong. Left on purpose, all cosmetic, because each
+changes installer output and would need yet another rehearsal: the `speech: off` line does not say the helper
+was built; the note's "no install.sh run began" means runs in install.log (`--report-only` is not logged there);
+the removing pass prints the same `deletion_candidate=N` counter as the marking pass (its alarm tells them apart).
+The prompt block on origin/main is byte-identical to `69694db`'s: v10 stays, and a saved v10 copy needs no recopy.
+
 ## B1 Field fixes from the bring-back report
 
 Items I1–I19 in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
