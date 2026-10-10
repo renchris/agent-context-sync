@@ -263,6 +263,27 @@ was built; the note's "no install.sh run began" means runs in install.log (`--re
 the removing pass prints the same `deletion_candidate=N` counter as the marking pass (its alarm tells them apart).
 The prompt block on origin/main is byte-identical to `69694db`'s: v10 stays, and a saved v10 copy needs no recopy.
 
+## B12 The fourth bring-back: v10 ran clean (2026-10-10)
+
+Scope (frozen): when the operator pastes the corporate Mac's v10 `~/agent-context/bring-back.md`, triage it against
+main, fix what is new, rehearse before any re-paste go-ahead; redact anything identifying.
+
+The corporate Mac ran prompt v10 at `4a42af9`. It was one command, with 0 human turns, 0 deviations and 0 errors,
+and install exit 0 after 723 s. Triage:
+[docs/research/corporate-bring-back-2026-10-10.md](../research/corporate-bring-back-2026-10-10.md) (run
+`wf_0f0bb474-b7e`: 6 items, a verifier and a skeptic each, one critic; findings in
+`~/.cache/agentsync-bring-back/v10/findings/`). Locus: L, as in B1 to B11.
+
+- **Under the proposed stop rule:** 0 turn items. The two wrong items were latent redaction leaks, built in
+  `ba5b993`: a "Last, First" full name kept its first name, and a hosted MDM server's host was printed. Everything
+  else is cosmetic, known or the operator's.
+- **F34, the 12-minute install:** the first speech-helper build took about 687 s on the corporate network, against
+  about 101 s in the warm-cache rehearsal. It cost no turn and does not recur on this Mac. Held for v11: a
+  step 2 timeout sentence that names a first speech build.
+- Held, cosmetic (add to B11's list): section 1 has no speech line; the PAC path is not redacted on a new Mac;
+  the IT request does not name the speech build's binary download; the speech build passes no proxy variables
+  (meeting-video R8); a group kill leaves compiler processes running.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; proposed, operator ruling pending)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
@@ -285,6 +306,11 @@ reach (File Provider, the privacy prompt, launchd, real volumes, the corporate n
 them once there. The bottleneck is no longer setup: three sessions ended waiting on the operator confirming the
 baseline questions (1,455 items to curate behind it) and on decisions `71d3e66ef726` (empty cloud folders) and
 `085fac870dd6` (online-only images).
+
+Update (2026-10-10, B12): the v10 paste ran clean, the second clean field run after v9. By rule 3, setup is done
+unless the operator rules otherwise. That Mac now runs `4a42af9`, which has the scope-change guard, so the printed
+`exclude` line is safe to paste there. Decision `085fac870dd6` is moot on that Mac (0 online-only images in three
+reports). The operator's open items, in order, are in the B12 triage, "Operator actions, in order".
 
 ## B1 Field fixes from the bring-back report
 

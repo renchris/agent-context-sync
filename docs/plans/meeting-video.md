@@ -308,6 +308,11 @@ CONTRACTS §16.35 and the test file), then wave A of five teammates (*speech*, *
     decode noise change a transcript); the Core ML cache in `~/Library/Caches/agentsync-speech/` (57 MB) sits
     outside `cache_dir`, so purge and gc never see it; holes before the first word or after the last are not
     flagged; `test_status_shows_the_policy_and_a_broken_policy_fails` fails under heavy load only (pre-existing).
+    Field answer to the first part (2026-10-10, the corporate Mac's v10 run at `4a42af9`): FluidAudio built there
+    with the Command Line Tools on a direct path to github.com. The cold first build took about 687 s (helpers
+    step 702 s) and ended in `speech: off` (models not placed). The next install reuses it (about 1 s, measured
+    in `/tmp`). A sandbox timing is warm: SwiftPM ignores HOME. Triage:
+    `docs/research/corporate-bring-back-2026-10-10.md` E1.
 
 ### P4 — Hard cases and platforms (upcoming)
 
