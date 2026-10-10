@@ -1476,8 +1476,9 @@ def _login_name() -> str:
 
 
 def _full_name() -> str:
-    """The account's full name (what ``id -F`` prints)."""
-    return pwd.getpwuid(os.getuid()).pw_gecos.split(",", 1)[0].strip()
+    """The account's full name (what ``id -F`` prints). macOS keeps a comma in it ("Doe, Jane"), so the whole
+    field is the name: cut at the comma, the first name was never registered (field report 2026-10-10)."""
+    return pwd.getpwuid(os.getuid()).pw_gecos.strip()
 
 
 def _serial_number(run: Callable[[Sequence[str], float], tuple[int, str]]) -> str | None:
@@ -1864,7 +1865,7 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         full = _full_name()
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
-        for part in full.split():
+        for part in full.replace(",", " ").split():
             if len(part.strip(".,")) >= 3:  # a lone first or last name: its written and upper-case forms
                 red.add("name", part.strip(".,"))
                 red.add("name", part.strip(".,").upper())
@@ -2088,6 +2089,10 @@ def _environment(r: _Run) -> list[str]:
     def enrollment() -> str:
         rc, text = r.run(["/usr/bin/profiles", "status", "-type", "enrollment"], 5.0)
         joined = "; ".join(ln.strip() for ln in text.splitlines() if ln.strip())
+        # A hosted MDM's host can carry the company's own label, spelled unlike the OneDrive org. Registered
+        # here, before any section is redacted (field report 2026-10-10).
+        for host in re.findall(r"MDM server: \w+://([^/:\s;]+)", joined):
+            r.red.add("host", host, ignore_case=True)
         return joined if rc == 0 else f"`profiles` exited {rc}: {joined}"
 
     def clt() -> str:

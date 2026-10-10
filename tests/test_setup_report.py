@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1446,6 +1446,51 @@ def test_a_login_that_is_the_full_name_run_together_is_user(
     text, _summary = summary_of(fake_mac)
     assert "| <user> chose; <name> and <name> and <name> agreed |" in section(text, "Agent friction log")
     assert "janedoe" not in text.lower() and "jane" not in text.lower()
+
+
+def test_the_full_name_keeps_its_comma(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``id -F`` prints "Doe, Jane" whole; the GECOS field is not cut at its comma."""
+
+    class Entry:
+        pw_gecos = " Doe, Jane "
+
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    assert setup_report._full_name() == "Doe, Jane"
+
+
+def test_a_full_name_written_last_comma_first_registers_both_names(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS keeps the comma of "Doe, Jane" in the full name: the first name is a name too (field report
+    2026-10-10, where cutting at the comma left it in the report)."""
+    monkeypatch.setattr(setup_report, "_full_name", lambda: "Doe, Jane")
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| asked Jane; Doe, Jane approved |"))
+    text, _summary = summary_of(fake_mac)
+    assert "| asked <name>; <name> approved |" in section(text, "Agent friction log")
+    assert "jane" not in text.lower() and "doe," not in text.lower()
+
+
+def test_a_hosted_mdm_server_host_is_redacted(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hosted MDM's host can name the company where the OneDrive org is spelled otherwise: the whole host is
+    <host> (field report 2026-10-10)."""
+    real = setup_report._Run.run
+
+    def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        if list(argv[:2]) == ["/usr/bin/profiles", "status"]:
+            return (
+                0,
+                "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\nMDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n",
+            )
+        return real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", run)
+    write_install_log(fake_mac)
+    text, _summary = summary_of(fake_mac)
+    assert "MDM server: https://<host>:443/mdm/ServerURL" in section(text, "Environment")
+    assert "contosoltd" not in text.lower()
 
 
 def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Path], tmp_path: Path) -> None:
