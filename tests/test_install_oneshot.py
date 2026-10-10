@@ -892,6 +892,34 @@ def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
         assert name not in text, name
 
 
+def test_the_shell_report_keeps_every_pair_past_a_non_ascii_folder(env: dict[str, str], folder: Path) -> None:
+    """A folder named with an en dash gives a %q pair that is not UTF-8; under a UTF-8 locale every pair
+    sorted after it was lost, the home path and the other folders with it (review 2026-10-10)."""
+    home = Path(env["HOME"])
+    org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    dash, beta = org / "Contoso \u2013 Docs", org / "Client Beta"
+    for f in (dash, beta):
+        f.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        f'[[source]]\nid = "docs"\nkind = "local"\npath = "{dash}"\n'
+        f'[[source]]\nid = "beta"\nkind = "local"\npath = "{beta}"\n',
+        encoding="utf-8",
+    )
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        f"Prompt: v10\nF1 | step 1 | clean | 1 | Client Beta under {home} | -\n", encoding="utf-8"
+    )
+    cp = install_sh({**env, "LC_ALL": "en_US.UTF-8"}, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "<folder-" in text.split("\n## Agent friction log\n", 1)[1]
+    for value in ("Client Beta", str(home), "Contoso"):
+        assert value not in text, value
+
+
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     """Field report 2026-10-05: one file comes back, not three. bring-back.md holds the redacted report, the
     fix request and step 1's local-work patch, 0600 beside the report."""

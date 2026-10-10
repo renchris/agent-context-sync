@@ -909,8 +909,10 @@ redaction_pairs() {
 }
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
+	# Every stage byte-wise: under a UTF-8 locale macOS cut and sort stop at the first pair that is not UTF-8
+	# (printf %q writes one for a curly apostrophe or an NFD accent) and every pair after it is lost.
 	REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
-		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | cut -f 2-)" awk '
+		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" awk '
 	function lit(s, v, p, word,    out, i, n, pre, post) {
 		out = ""
 		n = length(v)
