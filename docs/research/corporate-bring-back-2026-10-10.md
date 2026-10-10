@@ -82,6 +82,14 @@ report's placeholders. The paste and the full findings stay outside the reposito
 lines in `setup_report.py` plus a registration in `enrollment()`, three tests, and CONTRACTS (the v4 and v5
 redaction paragraphs) and `docs/deploy/setup-feedback.md` amended. Gate green (3,337 passed).
 
+Five rounds of fresh review and rehearsal followed, each on the landed commit (plan section B12 lists the runs).
+They built `2dc272a`, `d44b49e`, `2964568`, `de3eff0` and `0839f34`:
+- the name's fuzzy forms for comma, short and suffix parts;
+- the shell fallback report redacting the same two values, and the folders an earlier run added;
+- every stage of that report's pipeline reading bytes, not characters.
+
+Every rehearsal passed with no turn and nothing wrong left.
+
 ## Operator actions, in order
 
 These are corrected per the E5 skeptic and the critic. None of them is a setup step.

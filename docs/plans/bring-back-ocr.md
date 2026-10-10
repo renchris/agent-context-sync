@@ -284,6 +284,34 @@ and install exit 0 after 723 s. Triage:
   the IT request does not name the speech build's binary download; the speech build passes no proxy variables
   (meeting-video R8); a group kill leaves compiler processes running.
 
+Review and rehearsal of the fix, five rounds. Each landed commit got a fresh reviewer and both scenarios, new Mac
+and field-state Mac plus an old v9 copy, played on the landed commit. Runs: `wf_6e059eef-1ae`, `wf_6419e9a5-7b5`,
+`wf_299a8f7e-a61`, `wf_6e4d02c8-806` and `wf_18f6ca60-02c`; reports in
+`~/.cache/agentsync-bring-back/rehearsal-v10fix{,2,3,4,5}/`. Every rehearsal passed, and no finding cost a turn.
+Each review found a redaction gap the last fix had opened or left, and each one was built with a test that fails
+without it:
+- `2dc272a`: keeping the name whole had lost its fuzzy forms ("doe", "jane-doe"); the shell fallback report
+  leaked both values too.
+- `d44b49e`: short comma parts ("Doe, Ed"); also the rehearsal's one wrong finding, older than this round:
+  `install.sh --report-only` names no folder, so the shell fallback printed earlier runs' folder names in clear.
+  It now reads them from sources.toml and install.log.
+- `2964568`: a suffix ("Doe, Jane, Jr."); BSD sed stopping at a byte that is not UTF-8.
+- `de3eff0`: the same for sort; pairs applied longest first, so "Plans" no longer half-redacts "Plans Archive".
+- `0839f34`: the same for cut, which in de3eff0 dropped every pair after a non-ASCII folder's (review
+  "high").
+
+The shell fallback writes the report only when agentsync itself cannot run. Learning: in a shell pipeline that
+carries `printf %q` output, every stage needs `LC_ALL=C`. Each review found the next stage that lacked it.
+
+Held, not built:
+- The shell fallback report stops at an install.log line that holds a `$'…'` word (any folder named with a
+  curly apostrophe, an en dash or an NFD accent). This happens in every version since 1935b66. Adding
+  `LC_ALL=C` alone would print the escaped name instead, so it needs the `$'…'` form redacted first.
+- The fallback's Summary says "source commit -" under `--report-only`.
+- `speech: off` does not say the helper was built.
+- A speech build killed by a signal reads as "exit -9".
+- A two-letter first part ("Li, Jane") is redacted only inside the joined forms, as CONTRACTS now says.
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; proposed, operator ruling pending)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
