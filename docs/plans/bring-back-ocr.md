@@ -263,6 +263,29 @@ was built; the note's "no install.sh run began" means runs in install.log (`--re
 the removing pass prints the same `deletion_candidate=N` counter as the marking pass (its alarm tells them apart).
 The prompt block on origin/main is byte-identical to `69694db`'s: v10 stays, and a saved v10 copy needs no recopy.
 
+## Outlook and the stop rule for prompt versions (2026-10-09; proposed, operator ruling pending)
+
+The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
+a few significant ones rather than forever back and forth. we are at v10 now ... i dont want to do this forever
+until v100." Field rounds so far: v6/v7 found 19 items (several cost a turn), v8 found 11 (two stops, both findable
+without the Mac), v9 ran clean (one command, 0 turns, 0 errors; one prompt finding that did no harm). v10 exists
+for three wording fixes, not a failure: since B7 any wording change bumps the version so an old copy is visible.
+
+Proposed rule (lead's conviction about 80% that v10 is the last setup version the operator pastes):
+1. v10 is frozen. Prompt-wording findings go to the held list in B11 and are not built.
+2. v11 only for a field finding that costs the person a turn or gives a wrong result; it then carries the whole
+   held list in one revision. Cosmetic ("small") findings, in the field or in a rehearsal, never make a version
+   and are not built round by round.
+3. Setup is done after one more clean field run (one command, 0 turns, nothing wrong): v9 did it once, a clean v10
+   run makes two. Triage of the next bring-back builds only "turn" and "wrong" items.
+
+The next paste of v10 on the corporate Mac is an update, not a test: that Mac runs `c7bfdb8`, which lacks the
+scope-change guard that makes the `exclude` line safe. A surprise can still come only from what a sandbox cannot
+reach (File Provider, the privacy prompt, launchd, real volumes, the corporate network); v9 already passed through
+them once there. The bottleneck is no longer setup: three sessions ended waiting on the operator confirming the
+baseline questions (1,455 items to curate behind it) and on decisions `71d3e66ef726` (empty cloud folders) and
+`085fac870dd6` (online-only images).
+
 ## B1 Field fixes from the bring-back report
 
 Items I1–I19 in the triage § 3 (setup report redaction and attempt accounting, doctor and installer wording,
