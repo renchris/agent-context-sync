@@ -855,6 +855,36 @@ def test_report_only_runs_just_the_report(env: dict[str, str]) -> None:
     )
 
 
+def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
+    env: dict[str, str], folder: Path
+) -> None:
+    """``--report-only`` names no folder, so the shell fallback reads them from sources.toml and from
+    install.log's args (rehearsal 2026-10-10: the folder names were in clear)."""
+    home = Path(env["HOME"])
+    org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    beta, gamma = org / "Client Beta", org / "Gamma Plans"
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(f'[[source]]\nid = "client-beta"\nkind = "local"\npath = "{beta}"\n', encoding="utf-8")
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    escaped = str(gamma).replace(" ", "\\ ")
+    (setup / "install.log").write_text(
+        f"2026-10-10T01:00:00Z run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- "
+        f"args=--source-local {escaped}\n",
+        encoding="utf-8",
+    )
+    (setup / "friction.md").write_text(
+        "Prompt: v10\nF1 | step 1 | clean | 1 | Client Beta and Gamma Plans | -\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert "(shell fallback: agentsync is not installed)" in cp.stdout
+    text = report_path(env).read_text(encoding="utf-8")
+    for name in ("Client Beta", "Gamma Plans", "Gamma\\ Plans", "Contoso"):
+        assert name not in text, name
+
+
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     """Field report 2026-10-05: one file comes back, not three. bring-back.md holds the redacted report, the
     fix request and step 1's local-work patch, 0600 beside the report."""

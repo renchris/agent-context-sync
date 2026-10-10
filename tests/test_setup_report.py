@@ -1484,6 +1484,22 @@ def test_a_full_name_written_last_comma_first_registers_both_names(
     assert "jane" not in text.lower()
 
 
+def test_a_short_first_part_of_a_comma_name_keeps_the_last_name_fuzzy(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Doe, Ed": the parts are joined and swapped whatever their length, as "Ed Doe" and "doe-ed"."""
+
+    class Entry:
+        pw_gecos = "Doe, Ed"
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| Ed Doe, doe-ed and doe agreed |"))
+    text, _summary = summary_of(fake_mac)
+    assert "| <name>, <name> and <name> agreed |" in section(text, "Agent friction log")
+
+
 MDM_STATUS = (
     "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\n"
     "MDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n"
@@ -1511,6 +1527,24 @@ def test_a_hosted_mdm_server_host_is_redacted(
     assert "MDM server: https://<host>:443/mdm/ServerURL" in section(text, "Environment")
     assert "| enrolled with <host> |" in section(text, "Agent friction log")
     assert "contosoltd" not in text.lower()
+
+
+def test_an_mdm_host_with_no_dot_is_not_registered(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bare host would redact the report's own words wherever they appear."""
+    real = setup_report._Run.run
+
+    def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        if list(argv[:2]) == ["/usr/bin/profiles", "status"]:
+            return 0, "MDM enrollment: Yes (User Approved)\nMDM server: https://mdm:8443/mdm/ServerURL\n"
+        return real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", run)
+    write_install_log(fake_mac)
+    text, _summary = summary_of(fake_mac)
+    assert "MDM server: https://mdm:8443/mdm/ServerURL" in section(text, "Environment")
+    assert "- MDM enrollment (" in section(text, "Environment")
 
 
 def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Path], tmp_path: Path) -> None:

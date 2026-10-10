@@ -833,7 +833,26 @@ report_agentsync() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm line w take
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words
+	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
+	# (written with printf %q, which read without -r undoes).
+	if [ -f "$CONFIG" ]; then
+		while IFS= read -r line; do
+			known+=("$line")
+		done < <(sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
+	fi
+	if [ -f "$SETUP_LOG" ]; then
+		while IFS= read -r line; do
+			# shellcheck disable=SC2162 # backslashes are the %q escapes to undo
+			read -a words <<<"$line" || true
+			take=0
+			for w in ${words[@]+"${words[@]}"}; do
+				[ "$take" -eq 1 ] && known+=("$w")
+				[ "$w" = --source-local ] && take=1 || take=0
+			done
+		done < <(sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null)
+	fi
 	add_pair() {
 		[ "${#1}" -ge 3 ] || return 0
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
@@ -861,7 +880,7 @@ redaction_pairs() {
 		done
 	fi
 	n=0
-	for f in ${FOLDERS[@]+"${FOLDERS[@]}"}; do
+	for f in ${known[@]+"${known[@]}"}; do
 		case "$f" in
 		"$cs"/*/*) rel="${f#"$cs"/*/}" ;;
 		*) continue ;;
@@ -882,7 +901,7 @@ redaction_pairs() {
 	fi
 	# A hosted MDM's host can name the company, spelled unlike the OneDrive organisation.
 	mdm="$(with_timeout 5 /usr/bin/profiles status -type enrollment 2>/dev/null </dev/null |
-		sed -n 's|.*MDM server: [A-Za-z]*://\([^/:;[:space:]]*\).*|\1|p' | head -n 1 || true)"
+		sed -n 's|.*MDM server: [A-Za-z]*://\([^/@]*@\)\{0,1\}\([^/:;?#@[:space:]]*\).*|\2|p' | head -n 1 || true)"
 	case "$mdm" in *.*) add_pair "$mdm" "<host>" ;; esac
 	user="$(id -un 2>/dev/null || true)"
 	[ -z "$user" ] || add_pair "$user" "<user>" w
@@ -1047,8 +1066,9 @@ fallback_body() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name (<name>), the"
-	say "organisation after OneDrive- (<org-N>), the MDM server's host (<host>) and the --source-local folder names"
-	say "(<folder-N>). Read the report before sending it: anything else confidential is yours to remove."
+	say "organisation after OneDrive- (<org-N>), the MDM server's host (<host>) and the names of the folders under"
+	say "CloudStorage that --source-local, sources.toml or install.log name (<folder-N>). Read the report before"
+	say "sending it: anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
 friction_text() {

@@ -56,7 +56,7 @@ Redaction is on by default and consistent, so the same value is always the same 
 | `<org-N>` | the organization in `OneDrive-<org>`, `OneDrive-SharedLibraries-<org>` and `OneDrive - <org>`, the tenant's and SharePoint host's first label |
 | `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except agentsync's own words such as `inbox` or `mail` |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know |
-| `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host name and the MDM server's host, proxy hosts |
+| `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host name and the MDM server's host (when it has a dot), proxy hosts |
 | `(source N)`, `(not in the config, N)` | in the evidence parts only: a configured source id the redaction does not know, by its place in sources.toml; a source id that is in the manifest or the purge queue and no longer in sources.toml |
 
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping
