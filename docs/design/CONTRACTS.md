@@ -4890,8 +4890,10 @@ listed in a thread bounded to 3 s), hex runs of 16 or more digits with at least 
 (`<hash-N>`: launcher cdhashes, content hashes), docs-repo commit ids from the docs repo's `.git/logs/HEAD` (read as
 a file) and from status's `last runs:` line (`<commit-N>`, every abbreviation sharing the first 7 digits maps to the
 same placeholder), and the ComputerName and LocalHostName (`scutil --get`) as `<host>`, which also covers run ids that
-embed a host name; so is the MDM server's host in the Environment line (`profiles status -type enrollment`), whose
-first label can be the company's own (amended 2026-10-10). The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
+embed a host name. The agentsync checkout's own 12-digit commit is not redacted (it is public and triage needs it).
+**Amended (2026-10-10):** the MDM server's host in the Environment line (`profiles status -type enrollment`) is
+`<host>` too, when it has a dot, since a hosted MDM's labels can name the company where the OneDrive organisation is
+spelled otherwise; the shell fallback report registers it the same way.
 **Amended (2026-10-06, §16.22):** a listed folder named only with coding-agent product words (`Copilot`) is kept
 too, unless it is configured; every configured source id is registered, not only a cloud folder's; a source
 folder outside CloudStorage is registered from its project folder down; the shell-escaped form of a fuzzy value
@@ -4938,8 +4940,10 @@ else "real".
 
 v5 revision, redaction (J6, J21). Folder, library, organisation and full-name values are registered `fuzzy`: they
 also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
-`client-alpha`, `CLIENT_ALPHA`, `ClientAlpha`); a lone first or last name matches its written and upper-case forms;
-a full name written "Last, First" (macOS keeps the comma) registers both names (amended 2026-10-10).
+`client-alpha`, `CLIENT_ALPHA`, `ClientAlpha`); a lone first or last name matches its written and upper-case forms.
+**Amended (2026-10-10):** a full name written "Last, First" (macOS keeps the comma) is registered whole, and each
+part between its commas, the parts without commas and, for two parts, the other order ("Jane Doe") are fuzzy values
+too; the shell fallback splits the name at commas as well.
 The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
 Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
 source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,

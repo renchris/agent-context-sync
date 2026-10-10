@@ -1865,6 +1865,14 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         full = _full_name()
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
+        # "Doe, Jane" (macOS keeps the comma): each part between commas, the name without them and, for two
+        # parts, the other order are fuzzy names too, so "doe", "jane-doe" and "Jane Doe" are <name> as well.
+        segs = [seg.strip() for seg in full.split(",") if len(seg.strip(" .")) >= 3]
+        if len(segs) > 1:
+            for form in dict.fromkeys(
+                [" ".join(segs), *segs, *([f"{segs[1]} {segs[0]}"] if len(segs) == 2 else [])]
+            ):
+                red.add("name", form, fuzzy=True)
         for part in full.replace(",", " ").split():
             if len(part.strip(".,")) >= 3:  # a lone first or last name: its written and upper-case forms
                 red.add("name", part.strip(".,"))
@@ -2091,8 +2099,10 @@ def _environment(r: _Run) -> list[str]:
         joined = "; ".join(ln.strip() for ln in text.splitlines() if ln.strip())
         # A hosted MDM's host can carry the company's own label, spelled unlike the OneDrive org. Registered
         # here, before any section is redacted (field report 2026-10-10).
-        for host in re.findall(r"MDM server: \w+://([^/:\s;]+)", joined):
-            r.red.add("host", host, ignore_case=True)
+        for url in re.findall(r"MDM server: (\S+)", joined):
+            host = urlsplit(url.rstrip(";")).hostname or ""
+            if "." in host:  # a bare word would redact the report's own words
+                r.red.add("host", host, ignore_case=True)
         return joined if rc == 0 else f"`profiles` exited {rc}: {joined}"
 
     def clt() -> str:

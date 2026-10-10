@@ -800,6 +800,27 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
         assert full_name not in text
 
 
+def test_the_shell_report_redacts_a_full_name_written_last_comma_first(
+    env: dict[str, str], folder: Path
+) -> None:
+    """macOS keeps the comma of "Doe, Jane": the shell fallback splits the name there too (field report
+    2026-10-10)."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        '#!/bin/bash\n[ "$1" = -F ] && { echo "Doe, Jane"; exit 0; }\nexec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | Jane chose; Doe, Jane approved; Doe agreed | -\n"
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    text = report_path(env).read_text()
+    assert "<name> chose; <name> approved; <name> agreed" in text
+    assert "Jane" not in text and "Doe" not in text
+
+
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
     cp = install_sh(env, "--source-local", str(tmp_path / "nowhere"))
     assert cp.returncode == 2

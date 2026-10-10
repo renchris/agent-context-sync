@@ -119,6 +119,8 @@ def section(text: str, title: str) -> str:
     return text.split(f"\n## {title}\n", 1)[1].split("\n## ", 1)[0]
 
 
+_REAL_FULL_NAME = setup_report._full_name  # the fake_mac fixture replaces it
+
 RAW = (ORG, ORG.lower(), *FOLDERS, LIBRARY, LOGIN, FULL_NAME, "Jane", EMAIL, GUID, SERIAL, HOST)
 
 
@@ -1461,35 +1463,53 @@ def test_the_full_name_keeps_its_comma(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_full_name_written_last_comma_first_registers_both_names(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """macOS keeps the comma of "Doe, Jane" in the full name: the first name is a name too (field report
-    2026-10-10, where cutting at the comma left it in the report)."""
-    monkeypatch.setattr(setup_report, "_full_name", lambda: "Doe, Jane")
+    """macOS keeps the comma of "Doe, Jane" in the full name: both names, in either order and in every written
+    form, are <name> (field report 2026-10-10: cut at the comma, the first name stayed in the report)."""
+
+    class Entry:
+        pw_gecos = " Doe, Jane "
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
     write_install_log(fake_mac)
-    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| asked Jane; Doe, Jane approved |"))
+    write_friction(
+        fake_mac,
+        V5_HAPPY.replace(
+            "| 1 folder chosen |", "| asked Jane; Doe, Jane approved; jane-doe, doe and DOE_JANE agreed |"
+        ),
+    )
     text, _summary = summary_of(fake_mac)
-    assert "| asked <name>; <name> approved |" in section(text, "Agent friction log")
-    assert "jane" not in text.lower() and "doe," not in text.lower()
+    friction = section(text, "Agent friction log")
+    assert "| asked <name>; <name> approved; <name>, <name> and <name> agreed |" in friction, friction
+    assert "jane" not in text.lower()
+
+
+MDM_STATUS = (
+    "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\n"
+    "MDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n"
+)
 
 
 def test_a_hosted_mdm_server_host_is_redacted(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A hosted MDM's host can name the company where the OneDrive org is spelled otherwise: the whole host is
-    <host> (field report 2026-10-10)."""
+    <host>, registered before any section is redacted (field report 2026-10-10)."""
     real = setup_report._Run.run
 
     def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
         if list(argv[:2]) == ["/usr/bin/profiles", "status"]:
-            return (
-                0,
-                "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\nMDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n",
-            )
+            return 0, MDM_STATUS
         return real(self, argv, timeout)
 
     monkeypatch.setattr(setup_report._Run, "run", run)
     write_install_log(fake_mac)
+    write_friction(
+        fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| enrolled with contosoltd.mdm.example |")
+    )
     text, _summary = summary_of(fake_mac)
     assert "MDM server: https://<host>:443/mdm/ServerURL" in section(text, "Environment")
+    assert "| enrolled with <host> |" in section(text, "Agent friction log")
     assert "contosoltd" not in text.lower()
 
 

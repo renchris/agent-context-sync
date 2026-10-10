@@ -833,7 +833,7 @@ report_agentsync() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm
 	add_pair() {
 		[ "${#1}" -ge 3 ] || return 0
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
@@ -876,10 +876,14 @@ redaction_pairs() {
 	name="$(id -F 2>/dev/null || true)"
 	if [ -n "$name" ]; then
 		add_pair "$name" "<name>"
-		for tok in $name; do
+		for tok in ${name//,/ }; do # "Doe, Jane": macOS keeps the comma
 			add_pair "$tok" "<name>" w
 		done
 	fi
+	# A hosted MDM's host can name the company, spelled unlike the OneDrive organisation.
+	mdm="$(with_timeout 5 /usr/bin/profiles status -type enrollment 2>/dev/null </dev/null |
+		sed -n 's|.*MDM server: [A-Za-z]*://\([^/:;[:space:]]*\).*|\1|p' | head -n 1 || true)"
+	case "$mdm" in *.*) add_pair "$mdm" "<host>" ;; esac
 	user="$(id -un 2>/dev/null || true)"
 	[ -z "$user" ] || add_pair "$user" "<user>" w
 }
@@ -1043,8 +1047,8 @@ fallback_body() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name (<name>), the"
-	say "organisation after OneDrive- (<org-N>) and the --source-local folder names (<folder-N>). Read the report"
-	say "before sending it: anything else confidential is yours to remove."
+	say "organisation after OneDrive- (<org-N>), the MDM server's host (<host>) and the --source-local folder names"
+	say "(<folder-N>). Read the report before sending it: anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
 friction_text() {
