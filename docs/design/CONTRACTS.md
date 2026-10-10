@@ -4944,9 +4944,11 @@ v5 revision, redaction (J6, J21). Folder, library, organisation and full-name va
 also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
 `client-alpha`, `CLIENT_ALPHA`, `ClientAlpha`); a lone first or last name matches its written and upper-case forms.
 **Amended (2026-10-10):** a full name written "Last, First" (macOS keeps the comma) is registered whole. Its parts
-joined without the commas and its first two parts in the other order ("Jane Doe") are fuzzy values too, and so is
-the first part when it has 3 or more letters, as it was before the whole field was kept; a later part is a lone
-name (written and upper-case forms). The shell fallback splits the name at commas as well.
+joined without the commas and its first two parts in either order ("Jane Doe", and "Doe Jane" for "Doe, Jane, Jr.")
+are fuzzy values too, and so is the first part when it has 3 or more characters, as it was before the whole field
+was kept; a later part of 3 or more characters is a lone name (written and upper-case forms). A first part of 2
+characters ("Li, Jane") is redacted only inside those joined forms, as a second name of 2 always was. The shell
+fallback splits the name at commas as well.
 The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
 Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
 source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,

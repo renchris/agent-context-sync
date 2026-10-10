@@ -1865,12 +1865,16 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         full = _full_name()
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
-        # "Doe, Jane" (macOS keeps the comma): the name without its commas and the first two parts in the
-        # other order are fuzzy names too ("jane-doe", "Jane Doe"), and so is the first part when it is a word
-        # of 3 or more ("doe"), as before the whole field was kept. Later parts stay as written (below).
+        # "Doe, Jane" (macOS keeps the comma): the name without its commas and the first two parts in either
+        # order are fuzzy names too ("jane-doe", "Jane Doe", "Doe Jane" for "Doe, Jane, Jr."), and so is the
+        # first part when it has 3 or more characters ("doe"), as before the whole field was kept. Later parts
+        # stay as written (below).
         segs = [seg.strip() for seg in full.split(",") if seg.strip(" .")]
         if "," in full and segs:
-            forms = [" ".join(segs), *([f"{segs[1]} {segs[0]}"] if len(segs) >= 2 else [])]
+            forms = [
+                " ".join(segs),
+                *([f"{segs[0]} {segs[1]}", f"{segs[1]} {segs[0]}"] if len(segs) >= 2 else []),
+            ]
             forms += [segs[0]] if len(segs[0].strip(" .")) >= 3 else []
             for form in dict.fromkeys(forms):
                 red.add("name", form, fuzzy=True)

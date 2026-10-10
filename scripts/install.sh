@@ -836,11 +836,12 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm line w take
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
-	# (written with printf %q, which read without -r undoes).
+	# (written with printf %q, which read without -r undoes; a $'..' form stays as it is). LC_ALL=C: under a
+	# UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is lost.
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
 			known+=("$line")
-		done < <(sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
+		done < <(LC_ALL=C sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
 	fi
 	if [ -f "$SETUP_LOG" ]; then
 		while IFS= read -r line; do
@@ -851,7 +852,7 @@ redaction_pairs() {
 				[ "$take" -eq 1 ] && known+=("$w")
 				[ "$w" = --source-local ] && take=1 || take=0
 			done
-		done < <(sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null)
+		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | sort -u)
 	fi
 	add_pair() {
 		[ "${#1}" -ge 3 ] || return 0

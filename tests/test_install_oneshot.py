@@ -869,18 +869,18 @@ def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True)
     escaped = str(gamma).replace(" ", "\\ ")
-    (setup / "install.log").write_text(
-        f"2026-10-10T01:00:00Z run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- "
-        f"args=--source-local {escaped}\n",
-        encoding="utf-8",
+    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- "
+    (setup / "install.log").write_bytes(
+        f"2026-10-09T01:00:00Z {head}source=~/src/Cafe\xcc args=--source-local /tmp/x\n".encode("latin-1")
+        + f"2026-10-10T01:00:00Z {head}source=- args=--source-local {escaped}\n".encode()
     )
     (setup / "friction.md").write_text(
         "Prompt: v10\nF1 | step 1 | clean | 1 | Client Beta and Gamma Plans | -\n"
     )
-    cp = install_sh(env, "--report-only")
+    cp = install_sh({**env, "LC_ALL": "en_US.UTF-8"}, "--report-only")  # BSD sed stops at a bad byte there
     assert cp.returncode == 0, cp.stderr
     assert "(shell fallback: agentsync is not installed)" in cp.stdout
-    text = report_path(env).read_text(encoding="utf-8")
+    text = report_path(env).read_bytes().decode("utf-8", "replace")  # the log tail keeps the stray byte
     for name in ("Client Beta", "Gamma Plans", "Gamma\\ Plans", "Contoso"):
         assert name not in text, name
 

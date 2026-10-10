@@ -1500,6 +1500,25 @@ def test_a_short_first_part_of_a_comma_name_keeps_the_last_name_fuzzy(
     assert "| <name>, <name> and <name> agreed |" in section(text, "Agent friction log")
 
 
+def test_a_comma_name_with_a_suffix_keeps_both_orders_and_later_parts_stay_as_written(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Doe, Grant, Jr.": "Doe Grant" and "Grant Doe" are fuzzy whatever the suffix; "Grant" is a lone name,
+    so the lower-case word "grant" in agentsync's own advice is kept."""
+
+    class Entry:
+        pw_gecos = "Doe, Grant, Jr."
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(
+        fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| doe-grant and GrantDoe said grant access |")
+    )
+    text, _summary = summary_of(fake_mac)
+    assert "| <name> and <name> said grant access |" in section(text, "Agent friction log")
+
+
 MDM_STATUS = (
     "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\n"
     "MDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n"
