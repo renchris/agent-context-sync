@@ -852,7 +852,7 @@ redaction_pairs() {
 				[ "$take" -eq 1 ] && known+=("$w")
 				[ "$w" = --source-local ] && take=1 || take=0
 			done
-		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | sort -u)
+		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | LC_ALL=C sort -u)
 	fi
 	add_pair() {
 		[ "${#1}" -ge 3 ] || return 0
@@ -908,7 +908,9 @@ redaction_pairs() {
 	[ -z "$user" ] || add_pair "$user" "<user>" w
 }
 redact_stream() {
-	REDACT_PAIRS="$(redaction_pairs)" awk '
+	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
+	REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
+		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | cut -f 2-)" awk '
 	function lit(s, v, p, word,    out, i, n, pre, post) {
 		out = ""
 		n = length(v)
@@ -1054,11 +1056,11 @@ fallback_body() {
 	say "## Recent errors"
 	say ""
 	[ -z "$LAST_ERROR" ] || say "- $LAST_ERROR"
-	if [ -f "$SETUP_LOG" ] && grep -q 'result=failed' "$SETUP_LOG" 2>/dev/null; then
+	if [ -f "$SETUP_LOG" ] && LC_ALL=C grep -q 'result=failed' "$SETUP_LOG" 2>/dev/null; then
 		say "- failed steps in the install log:"
 		say ""
 		say "~~~"
-		grep 'result=failed' "$SETUP_LOG" | tail -10
+		LC_ALL=C grep 'result=failed' "$SETUP_LOG" | tail -10
 		say "~~~"
 	elif [ -z "$LAST_ERROR" ]; then
 		say "None recorded."

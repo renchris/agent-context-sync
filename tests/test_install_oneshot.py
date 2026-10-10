@@ -862,26 +862,33 @@ def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     install.log's args (rehearsal 2026-10-10: the folder names were in clear)."""
     home = Path(env["HOME"])
     org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
-    beta, gamma = org / "Client Beta", org / "Gamma Plans"
+    beta, gamma, archive = org / "Client Beta", org / "Gamma Plans", org / "Gamma Plans Archive"
     cfg = home / "agent-context" / "sources.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(f'[[source]]\nid = "client-beta"\nkind = "local"\npath = "{beta}"\n', encoding="utf-8")
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True)
-    escaped = str(gamma).replace(" ", "\\ ")
-    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- "
-    (setup / "install.log").write_bytes(
-        f"2026-10-09T01:00:00Z {head}source=~/src/Cafe\xcc args=--source-local /tmp/x\n".encode("latin-1")
-        + f"2026-10-10T01:00:00Z {head}source=- args=--source-local {escaped}\n".encode()
+
+    def esc(p: Path) -> str:
+        return str(p).replace(" ", "\\ ")
+
+    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- "
+    (
+        setup / "install.log"
+    ).write_bytes(  # a byte that is not UTF-8 inside an argument (printf %q writes them)
+        f"2026-10-09T01:00:00Z {head}args=--source-local /tmp/Cafe\xcc\n".encode("latin-1")
+        + f"2026-10-10T01:00:00Z {head}args=--source-local {esc(gamma)}".encode()
+        + f" --source-local {esc(archive)}\n".encode()
     )
     (setup / "friction.md").write_text(
-        "Prompt: v10\nF1 | step 1 | clean | 1 | Client Beta and Gamma Plans | -\n"
+        "Prompt: v10\nF1 | step 1 | clean | 1 | Client Beta, Gamma Plans and Gamma Plans Archive | -\n"
     )
-    cp = install_sh({**env, "LC_ALL": "en_US.UTF-8"}, "--report-only")  # BSD sed stops at a bad byte there
+    # Under a UTF-8 locale BSD sed and sort stop at that byte; longest first, "Archive" goes with its folder.
+    cp = install_sh({**env, "LC_ALL": "en_US.UTF-8"}, "--report-only")
     assert cp.returncode == 0, cp.stderr
     assert "(shell fallback: agentsync is not installed)" in cp.stdout
     text = report_path(env).read_bytes().decode("utf-8", "replace")  # the log tail keeps the stray byte
-    for name in ("Client Beta", "Gamma Plans", "Gamma\\ Plans", "Contoso"):
+    for name in ("Client Beta", "Gamma Plans", "Gamma\\ Plans", "Archive", "Contoso"):
         assert name not in text, name
 
 
