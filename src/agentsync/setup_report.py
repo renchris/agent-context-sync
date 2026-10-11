@@ -1740,6 +1740,8 @@ class _Facts:
     out_counted: list[str] = dataclasses.field(default_factory=list)
     # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
     first_sync: tuple[int, int, int] | None = None
+    # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
+    runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
 
@@ -3584,10 +3586,11 @@ def _took(seconds: float | None) -> str:
     return "?" if seconds is None else _secs(max(seconds, 0.0))
 
 
-def _ocr_time(m: _Mirror) -> list[str]:
+def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28). The last
     column is the files each run's re-read left (``reread_left``): read down the runs, it is how many syncs
-    a mirror's one-time re-read takes.
+    a mirror's one-time re-read takes. Each run's re-read count is kept for the Summary's first-sync line
+    (``_Facts.runs_read``).
 
     The sums are over every run read and the table shows :data:`_RUNS_SHOWN` of them, so the title says
     when runs are hidden: the field's table of five was read as all there were, and its rows were added up
@@ -3595,6 +3598,7 @@ def _ocr_time(m: _Mirror) -> list[str]:
     again" is no count of new pages: the pages each run added and changed have a column of their own (the
     run record's ``A`` and ``M``, which every build wrote)."""
     runs = _run_rows(m)
+    r.facts.runs_read = tuple((x.run_id, x.started, x.n("reread")) for x in runs)
     if not runs:
         return ["- OCR time: no run is recorded"]
     engine = [x for x in runs if "ocr_ms" in x.counts]
@@ -3694,7 +3698,7 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     return [
         *helper,
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
-        *_lines(lambda: _ocr_time(m)),
+        *_lines(lambda: _ocr_time(r, m)),
     ]
 
 
@@ -5037,7 +5041,45 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"{done} of {total} source(s) with a complete baseline (status, read when this report "
             "was written)"
         )
+    if pool:
+        parts += _reread_since(r, pool[-1])
     return "- first sync: " + " · ".join(parts)
+
+
+def _reread_since(r: _Run, run: InstallRun) -> list[str]:
+    """The re-reads since install run ``run`` began by the runs other than its own sync, a sum over the runs
+    as the OCR part's ``read(s) again`` is (a file read in two of them counts twice), from the run records the
+    OCR part read (``_Facts.runs_read``): nothing when there are none, or when the records or the run's start
+    were not read. The installer's sync is the run that started inside its first-sync step
+    (the step's start and seconds, a second's slack for the stamps); its own count is the clause before, and a
+    skipped step ran none. A run of another that started inside the step too (a poll that took the lock just
+    before the installer's sync, which waits for it) is left out with it: the sum can fall short, and never
+    counts the installer's own re-reads twice. Who started the others is not recorded: the background job's
+    runs and a sync typed in a terminal (the setup prompt's syncs before the report) are alike."""
+    rows, began = r.facts.runs_read, run.started
+    if not rows or began is None:
+        return []
+    step = run.step("first-sync") or {}
+    at = parse_time(step.get("at", "")) if step.get("result") != "skipped" else None
+    seconds = int(step["seconds"]) if step.get("seconds", "").isdigit() else 0
+
+    def own(started: datetime) -> bool:
+        return at is not None and at <= started <= at + timedelta(seconds=seconds + 1)
+
+    others = [
+        (n, again)
+        for n, started, again in rows
+        if again > 0 and started is not None and started >= began and not own(started)
+    ]
+    if not others:
+        return []
+    oldest = rows[-1][1]
+    least = "at least " if len(rows) >= _RUNS_READ and oldest is not None and oldest >= began else ""
+    return [
+        f"since this install run began, {least}{sum(a for _n, a in others)} read(s) again by {len(others)} "
+        f"other run(s) (the newest is run {others[0][0]}; the background job's runs and syncs typed in a "
+        "terminal are recorded alike: see the OCR part)"
+    ]
 
 
 def _it_draft_line(step: int = REPORT_STEP) -> str:

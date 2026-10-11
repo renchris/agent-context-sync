@@ -5905,3 +5905,83 @@ def test_the_redaction_count_is_the_placeholders_the_report_shows(fake_mac: dict
         assert red.counts[kind] == len(re.findall(rf"<{kind}-\d+>", main)), kind
     assert f"- redaction: {red.total} replacement(s)" in section(text, "Summary")
     assert f"\n{red.total} replacement(s) of {red.values} value(s) (" in section(text, "Redaction")
+
+
+N32_INSTALL = (
+    "2026-10-10T01:56:00Z run=20261010T015600Z-77 start install.sh compat=6 commit=0123456789ab "
+    "kind=checkout source=- launchd=simulated args=\n"
+    "2026-10-10T01:56:00Z run=20261010T015600Z-77 step=agentsync seconds=48 rc=0 result=done\n"
+    "2026-10-10T01:56:49Z run=20261010T015600Z-77 step=helpers seconds=702 rc=0 result=done\n"
+    "2026-10-10T02:08:42Z run=20261010T015600Z-77 step=first-sync seconds=2 rc=0 result=done "
+    "note=converted-0-deferred-0{reread}\n"
+    "2026-10-10T02:08:44Z run=20261010T015600Z-77 end rc=0 seconds=764\n"
+)
+
+
+def _n32_runs(seed: Seed, rows: list[tuple[int, str, int]]) -> None:
+    for run_id, at, again in rows:
+        seed.m._db.execute(
+            "INSERT INTO runs (run_id, mode, started_at, finished_at, status, host, pid, counts_json) "
+            "VALUES (?, 'poll', ?, ?, 'ok', 'Contoso-Mac', 1, ?)",
+            (
+                run_id,
+                f"2026-10-10T{at}Z",
+                f"2026-10-10T{at}Z",
+                json.dumps({"reread": again, "reread_for": 1}),
+            ),
+        )
+
+
+def _n32_line(fake_mac: dict[str, Path]) -> str:
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+    return line
+
+
+def test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The v10 report's clause read ``converted 0, deferred 0 online-only`` while the OCR part showed a run
+    that read 17 files again: a background poll during the helpers step, not the installer's sync. The
+    first-sync line says what runs other than the installer's sync read again since the install run began
+    (a run before it is not counted), with the newest run's id, and that who started them is not recorded."""
+    (fake_mac["setup"] / "install.log").write_text(N32_INSTALL.format(reread=""), encoding="utf-8")
+    seed = Seed(fake_mac["config"])
+    _n32_runs(
+        seed,
+        [
+            (1732, "01:50:00", 5),  # before the install run: not counted
+            (1733, "02:01:51", 17),  # the background poll during the helpers step
+            (1734, "02:07:02", 0),
+            (1735, "02:08:43", 4),  # the installer's own sync (inside its first-sync step): not counted here
+            (1736, "02:15:00", 3),  # the setup prompt's sync before the report
+        ],
+    )
+    seed.close()
+    line = _n32_line(fake_mac)
+    assert line.startswith("- first sync: done in 2s (install.log) · converted 0, deferred 0 online-"), line
+    assert line.endswith(
+        " · since this install run began, 20 read(s) again by 2 other run(s) (the newest is run 1736; the "
+        "background job's runs and syncs typed in a terminal are recorded alike: see the OCR part)"
+    ), line
+
+    # Only the installer's sync and runs before the install read again: the line is as before.
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DELETE FROM runs WHERE run_id IN (1733, 1736)")
+    seed.close()
+    assert "since this install run began" not in _n32_line(fake_mac)
+
+    # A skipped first-sync step ran no sync, so a run that started inside it is another's.
+    skipped = N32_INSTALL.replace(
+        "seconds=2 rc=0 result=done note=converted-0-deferred-0{reread}",
+        "seconds=0 rc=0 result=skipped note=status-failed",
+    )
+    (fake_mac["setup"] / "install.log").write_text(skipped, encoding="utf-8")
+    assert "began, 4 read(s) again by 1 other run(s) (the newest is run 1735;" in _n32_line(fake_mac)
+
+    # More runs than the report reads, all since the install began: the count is a floor.
+    monkeypatch.setattr(setup_report, "_RUNS_READ", 1)
+    seed = Seed(fake_mac["config"])
+    _n32_runs(seed, [(1740, "02:30:00", 6)])
+    seed.close()
+    assert "began, at least 6 read(s) again by 1 other run(s) (the newest is run 1740;" in _n32_line(fake_mac)

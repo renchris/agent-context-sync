@@ -5070,7 +5070,9 @@ was written" (status is read when the report runs, after any later sync; a sourc
 listing of it was complete since its scope last changed, and a later
 incomplete listing does not clear it). **Amended (2026-10-11, §16.40 "The first-sync count names the field it
 counts"):** the clause now reads "N of M source(s) with a complete baseline (status, read when this report was
-written)"; the count is unchanged. The generated-at, agentsync, install source and took bullets end the Summary under
+written)"; the count is unchanged. **Amended (2026-10-11, §16.40 "The first-sync line counts what other runs read
+again"):** when runs other than the installer's sync read files again since that install run began, the line ends
+`· since this install run began, [at least ]N read(s) again by K other run(s) (...)`. The generated-at, agentsync, install source and took bullets end the Summary under
 `RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
 source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
 · on origin/main: yes|no|unknown (as of the checkout's last fetch)`, every git call read-only
@@ -10478,7 +10480,9 @@ The installer logs its first-sync note as `converted-N-deferred-M-reread-R` when
 again R` (R > 0), and as `converted-N-deferred-M` otherwise, so an older install.log and R = 0 parse as before.
 The Summary's first-sync clause reads `converted N, deferred M online-only, read again R (<source>...)` when the
 note, or with no note the sync's own line in install.out, carries R. Why: the second v10 rehearsal's installer
-printed `read again 2` and the report's clause dropped it.
+printed `read again 2` and the report's clause dropped it. **Amended (2026-10-11, §16.40 "The first-sync line
+counts what other runs read again"):** the clause also counts, after `· since this install run began, `, what runs
+other than the installer's sync read again; the installer's own `read again R` is unchanged.
 
 #### The helpers ticker names the helper it waits for (`scripts/install.sh`)
 
@@ -10809,6 +10813,26 @@ written)". The count is unchanged: the sources status shows `baseline complete`,
 set by a complete listing and cleared only by a scope change, so a source showing `baseline complete · complete
 no` has one and is counted, and the words claim nothing about the first sync itself. Test:
 `test_first_sync_doctor_warns_and_it_draft_in_the_summary`.
+
+**The first-sync line counts what other runs read again** (B13 N32, v10 E3-verifier E3.c; amends §16.14's
+first-sync line and §16.37's "The first sync's read-again count reaches the report"). When runs other than the
+installer's sync read files again since that install run began, the Summary's first-sync line ends `· since this
+install run began, [at least ]N read(s) again by K other run(s) (the newest is run <id>; the background job's runs
+and syncs typed in a terminal are recorded alike: see the OCR part)`.
+- N is the sum of the run records' `reread` over those runs, the OCR part's unit: a file read in two runs counts
+  twice. `_ocr_time` keeps each run it read in `_Facts.runs_read`; no new query.
+- The installer's sync is a run that started inside its first-sync step (the step line's stamp, its seconds and
+  one second of slack) and keeps its own `read again R`. A skipped step ran no sync.
+- Another run that started inside the step is left out with it, for example a poll that took the lock just
+  before the installer's sync, which waits for it. So N can fall short, but it never counts the installer's
+  re-reads twice.
+- The line says `at least` when all 200 runs the report reads started after the install began.
+- Nothing is added when no such run read again, or when the OCR part did not run.
+- A run record does not say who started the run, so the line never says background.
+
+Why: the v10 report's clause read `converted 0, deferred 0` while a poll during the helpers step had read 17
+files again, and only the OCR part showed it. No command, flag or key. `docs/deploy/setup-feedback.md` has a
+`first sync:` row. Test: `test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
