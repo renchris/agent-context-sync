@@ -5009,7 +5009,9 @@ error, then questions, clicks and approvals beyond the expected ones); a separat
 not change the outcome by itself):" list follows with the other deviation, prompt, error and untyped lines.
 **Install source (K6).** The last install.sh start line's `commit=<sha>[-dirty]` and `tree=<12-hex>` (the SHA-256
 prefix of `git diff HEAD` in that checkout; the older `commit=<sha>-dirty dirty <fp>` form is still read) are shown
-as `last install.sh run: commit <sha>-dirty tree <fp> (...)`. **Redaction (K9).** The login name is registered
+as `last install.sh run: commit <sha>-dirty tree <fp> (...)` (**amended 2026-10-11, §16.40 "The install
+source's commit skips a run that read no commit":** the start line is the last run's that reached an install
+step). **Redaction (K9).** The login name is registered
 before the fuzzy full name, so a login that is the name run together (`janedoe` for "Jane Doe") is `<user>`; the
 residue check runs over the whole redacted report (`residue_by_section`) and lists its hits by section ("Residue
 check: N capitalised or joined word(s) next to a placeholder in this report (<section>: <words>; ...)").
@@ -10753,6 +10755,20 @@ copies the Summary, so it carries the new words. Rejected: logging `--report-onl
 become true. The `--report-only` run that writes the report would then always start after the end line, so the
 note would never fire in either case it exists for, and every install.log reader would see a run with no step.
 Test: `test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since`.
+
+**The install source's commit skips a run that read no commit** (B13 N20, triage 2026-10-08 D4.b; amends K6).
+The Summary's `last install.sh run: commit <sha>` is now the start line of the last run that reached an install
+step, meaning a run with a step line other than `report` and `list-folders`. install.sh computes and logs the
+commit just before its first install step (`step_start uv`), and `report` (from the EXIT trap) and `list-folders`
+are the only steps a run can log without getting there, so the rule is exactly "this start line's `commit=` was
+computed". A `--list-folders` run logs `commit=- kind=- source=-`, and a usage error logs `commit=-` whether it came
+before the source was resolved (`kind=-`) or after it (`--source-local` with a folder that does not exist logs
+`kind=checkout commit=-`); none of them installed anything, and each turned the line into `commit -`, also in the
+`--report-only` report that follows it. A run killed during the uv step has no step line and is skipped; it
+installed nothing. An install run that logged `commit=-` (a checkout on a Mac with no developer tools) still says
+`commit -`. That is why the rule is not "the last start line with a commit", which would show an older run's
+commit as the last one's. The label `last install.sh run` stays. Test:
+`test_install_source_skips_a_run_that_read_no_commit`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

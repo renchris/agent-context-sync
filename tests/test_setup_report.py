@@ -1434,6 +1434,47 @@ def test_install_source_names_the_dirty_tree(fake_mac: dict[str, Path], commit: 
     ), "tree=<fp> (K6), and the start line written before it"
 
 
+def test_install_source_skips_a_run_that_read_no_commit(fake_mac: dict[str, Path]) -> None:
+    """A --list-folders run and a run a usage error stopped log ``commit=-`` before reading their source
+    (N20): the install source's commit is the last run's that reached an install step, and a run that did
+    and logged no commit (no developer tools) still says ``commit -``."""
+    write_install_log(fake_mac)
+    log = fake_mac["setup"] / "install.log"
+
+    def append(text: str) -> str:
+        log.write_text(log.read_text(encoding="utf-8") + text, encoding="utf-8")
+        _text, summary = summary_of(fake_mac)
+        return summary
+
+    summary = append(
+        "2026-09-29T10:05:00Z run=20260929T100500Z-12 start install.sh compat=10 commit=- kind=- source=- "
+        "args=--list-folders\n"
+        "2026-09-29T10:05:00Z run=20260929T100500Z-12 step=list-folders seconds=4 rc=0 result=done\n"
+        "2026-09-29T10:05:04Z run=20260929T100500Z-12 end rc=0 seconds=4\n"
+    )
+    assert "; last install.sh run: commit 0123456789ab" in summary and "commit -" not in summary
+    # usage errors after the source is resolved (kind=checkout) and before (``--list-folders x``): no step
+    summary = append(
+        "2026-09-29T10:06:00Z run=20260929T100600Z-13 start install.sh compat=10 commit=- kind=checkout "
+        "source=- args=--source-local /nonexistent/Contoso\n"
+        "2026-09-29T10:06:00Z run=20260929T100600Z-13 step=report seconds=1 rc=0 result=done note=agentsync\n"
+        "2026-09-29T10:06:01Z run=20260929T100600Z-13 end rc=2 seconds=1\n"
+        "2026-09-29T10:07:00Z run=20260929T100700Z-14 start install.sh compat=10 commit=- kind=- source=x "
+        "args=x\n"
+        "2026-09-29T10:07:00Z run=20260929T100700Z-14 end rc=2 seconds=0\n"
+    )
+    assert "; last install.sh run: commit 0123456789ab" in summary and "commit -" not in summary
+    summary = append(
+        "2026-09-29T10:08:00Z run=20260929T100800Z-15 start install.sh compat=10 commit=- kind=checkout "
+        "source=- args=--source-local x\n"
+        "2026-09-29T10:08:00Z run=20260929T100800Z-15 step=uv seconds=0 rc=0 result=skipped note=present\n"
+        "2026-09-29T10:08:41Z run=20260929T100800Z-15 step=agentsync seconds=41 rc=0 result=done\n"
+        "2026-09-29T10:08:42Z run=20260929T100800Z-15 step=report seconds=1 rc=0 result=done note=agentsync\n"
+        "2026-09-29T10:08:43Z run=20260929T100800Z-15 end rc=0 seconds=43\n"
+    )
+    assert "; last install.sh run: commit -" in summary and "commit 0123456789ab" not in summary
+
+
 def test_a_login_that_is_the_full_name_run_together_is_user(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

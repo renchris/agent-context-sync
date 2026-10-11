@@ -2181,10 +2181,12 @@ def _install_source(r: _Run) -> str:
     if directory is not None and (directory / ".git").exists() and r.devtools():
         where += _checkout_facts(r, directory)
     with contextlib.suppress(Exception):
+        # The last run that reached an install step: a --list-folders run and a run a usage error stopped log
+        # ``commit=-`` before reading their source's commit, so they say nothing about the installed copy.
         starts = [
             (fields["start"], lines)
             for _id, fields, lines in _install_runs(r.install_log)
-            if "start" in fields
+            if "start" in fields and any(k not in ("start", "end", "report", "list-folders") for k in fields)
         ]
         if starts:
             start, lines = starts[-1]
