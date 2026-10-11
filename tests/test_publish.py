@@ -1229,6 +1229,7 @@ def status(sid: str, *, baseline: bool = True, **kw: object) -> SourceStatus:
         "live": 3,
         "dataless": 0,
         "quarantined": 1,
+        "refused": 0,
         "deferred": 0,
         "breaker": "ok",
         "auth": "ok",
@@ -1967,3 +1968,17 @@ def httpx_mock(drive: object) -> object:
     import httpx  # noqa: PLC0415
 
     return httpx.MockTransport(drive.handler)  # type: ignore[attr-defined]
+
+
+def test_state_files_count_refused_rows_apart_from_quarantined_ones(env: Env) -> None:
+    """STATE.md and the committed snapshot carry quarantined and refused as two counts (U7, 2026-10-07), and
+    the read-side contract sends an agent to QUARANTINE.tsv for either."""
+    rep = CycleReport(run_id=7, mode=CycleMode.POLL, sources=(), changes=(), commit_sha=None)
+    env.pub.write_state(rep, [status("src", quarantined=0, refused=11)])
+    text = env.text("_sync/STATE.md")
+    assert "live: 3 · dataless: 0 · quarantined: 0 · refused: 11 · deferred: 0" in text
+    assert "- `quarantined > 0` or `refused > 0` → name the counts, point at `_sync/QUARANTINE.tsv`" in text
+    env.pub.write_state_snapshot([status("src", quarantined=2, refused=11)])
+    snap = env.text("_sync/STATE.snapshot.md")
+    assert "| live | dataless | quarantined | refused | deferred | breaker | auth |" in snap
+    assert "| 3 | 0 | 2 | 11 | 0 | ok | ok |" in snap

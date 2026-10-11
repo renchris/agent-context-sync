@@ -2701,7 +2701,8 @@ class SourceStatus:
     cadence_s: int
     live: int
     dataless: int
-    quarantined: int
+    quarantined: int  # file rows in state quarantined only (2026-10-11, B13, §16.39 N23: was their sum with refused)
+    refused: int  # 2026-10-11 (B13, §16.39 N23): file rows in state refused (both get a stub and a QUARANTINE.tsv row)
     deferred: int
     breaker: str  # "ok" | "TRIPPED until <iso> (<n> candidates)"
     auth: str  # "ok" | "REAUTH_REQUIRED <iso>"
@@ -10724,6 +10725,27 @@ dry run acts on nothing and counts nothing. `counts` and `run_sources.counts_jso
 Why: B11's final rehearsal printed the same counter on both passes and only the alarm told them apart; the
 removal under `accept-deletions` or on a Graph source raises no alarm (§16.37), so its line said nothing at all.
 Tests: `tests/test_cli.py`, `tests/test_e2e.py`, `tests/test_cycle.py`.
+
+#### N23: status counts refused files apart from quarantined ones (`agentsync.publish`, `agentsync.cycle`, `agentsync.cli`)
+
+`SourceStatus` carries `quarantined` (file rows in state quarantined) and `refused` (file rows in state refused)
+as two counts; before, `quarantined` was their sum (`cycle.source_statuses`). Every reader prints both:
+`agentsync status` prints `quarantined Q · refused R · deferred D` on the source's line, `_sync/STATE.md` prints
+`quarantined: Q · refused: R · deferred: D`, and the committed `_sync/STATE.snapshot.md` has a `refused` column
+after `quarantined`. The column arrives with the next commit that has content; it makes none of its own, and
+nothing reads the snapshot back.
+
+STATE.md's read-side contract names both, because `_sync/QUARANTINE.tsv` lists both: `` `quarantined > 0` or
+`refused > 0` → name the counts, point at `_sync/QUARANTINE.tsv`: unreadable, not absent``. With the old line a
+source that holds only refused files would read `quarantined: 0` and send no agent to the file.
+
+The two counts are the manifest's file rows by state, as the setup report's Quarantine part counts them. They
+are not the sync line's `quarantined=` and `refused=`: those count what one pass stubbed, and a failed
+conversion is `error=` on the sync line and a quarantined row here, so status's `quarantined` can be the larger
+number even on the pass that wrote the stubs. The
+report's Overlapping-sources part still prints their sum as `stubs N` (§16.28). Why: a field report's status
+said `quarantined 11` beside a Quarantine part with 0 quarantined and 11 refused. Tests: `tests/test_cli.py`
+(the status line), `tests/test_publish.py` (STATE.md, its contract line, the snapshot).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

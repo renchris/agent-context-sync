@@ -2404,3 +2404,26 @@ def test_status_prints_the_recording_lines_and_their_commands_parse(
     assert named == ["agentsync materialise <file>"]
     for command in named:
         _assert_fix_parses(command)
+
+
+def test_status_counts_refused_files_apart_from_quarantined_ones(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Field report 2026-10-07 (U7): status's ``quarantined 11`` summed 0 quarantined and 11 refused rows,
+    while the sync line and the report's Quarantine part split them. Status prints each state's own count."""
+    projects = local_source_dir / "projects"
+    (projects / "drawing.xyzq").write_bytes(b"\x00\x01")  # no converter: refused
+    (projects / "model.dwg").write_bytes(b"\x00\x02")  # no converter: refused
+    (projects / "locked.pdf").write_bytes(
+        b"%PDF-1.7\n1 0 obj<</Encrypt 2 0 R>>endobj\ntrailer<</Encrypt 2 0 R>>\n%%EOF\n"
+    )  # encrypted: quarantined
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    with Manifest(initialised.state_paths.db) as manifest:
+        by_state, _ = manifest.state_counts("source")
+    quarantined, refused = by_state[RowState.QUARANTINED], by_state[RowState.REFUSED]
+    assert quarantined >= 1 and refused >= 2
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source (local, live): ")]
+    assert f" · quarantined {quarantined} · refused {refused} · deferred " in line, line

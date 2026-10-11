@@ -4130,8 +4130,8 @@ def _purge_notes(fates: Counter[str], aliased: Counter[str], *, kept: int, alias
 
 
 def _source_counts(m: _Mirror, source_id: str) -> list[str]:
-    """One line: a source's files by state, as status counts them, and whether its last listing was
-    complete."""
+    """One line: a source's files by state (live as status counts it; stubs are its quarantined plus refused
+    rows), and whether its last listing was complete."""
     states: Counter[str] = Counter()
     for state, files in m.rows(
         "SELECT state, COUNT(*) FROM items WHERE source_id = ? AND is_dir = 0 GROUP BY state", (source_id,)

@@ -839,8 +839,8 @@ def _status_lines(config: Config) -> list[str]:
             f"  {st.source_id} ({st.kind.value}, {st.state}): baseline "
             f"{'complete' if st.baseline_complete else 'INCOMPLETE'} · complete "
             f"{'yes' if st.enumeration_complete else 'no'} · live {st.live} (dataless {st.dataless}) · "
-            f"quarantined {st.quarantined} · deferred {st.deferred} · breaker {st.breaker} · "
-            f"auth {st.auth} · "
+            f"quarantined {st.quarantined} · refused {st.refused} · deferred {st.deferred} · "
+            f"breaker {st.breaker} · auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
             + (f" · absent {waiting} (removed by a later complete pass if still missing)" if waiting else "")
         )

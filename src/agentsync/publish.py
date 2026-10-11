@@ -384,7 +384,8 @@ class SourceStatus:
     cadence_s: int
     live: int
     dataless: int
-    quarantined: int
+    quarantined: int  # file rows in state quarantined only
+    refused: int  # file rows in state refused (both get a stub and a QUARANTINE.tsv row)
     deferred: int
     breaker: str  # "ok" | "TRIPPED until <iso> (<n> candidates)"
     auth: str  # "ok" | "REAUTH_REQUIRED <iso>"
@@ -1874,7 +1875,8 @@ class Publisher:
             "- `freshness: STALE` (cursor or last success older than 3x cadence) or `breaker: TRIPPED` →"
             " deletions"
             " and tombstones are unreliable; do not assert a document is gone.",
-            "- `quarantined > 0` → name the count, point at `_sync/QUARANTINE.tsv`: unreadable, not absent.",
+            "- `quarantined > 0` or `refused > 0` → name the counts, point at `_sync/QUARANTINE.tsv`:"
+            " unreadable, not absent.",
             *(
                 [
                     "- `auth: REAUTH_REQUIRED` → those sources are stale; a human must run "
@@ -1902,7 +1904,7 @@ class Publisher:
                 f"cadence_s: {st.cadence_s} · freshness: {self._freshness(st, now)}",
                 f"last_success: {st.last_success or 'never'}",
                 f"live: {st.live} · dataless: {st.dataless} · quarantined: {st.quarantined} · "
-                f"deferred: {st.deferred}",
+                f"refused: {st.refused} · deferred: {st.deferred}",
                 f"breaker: {st.breaker}",
                 f"auth: {st.auth}",
             ]
@@ -1937,8 +1939,8 @@ class Publisher:
             f"snapshot_at: {now.strftime('%Y-%m-%dT%H:00Z')}",
             "",
             "| source | kind | state | pass | complete | baseline | cursor age (h) | fingerprint | live | "
-            "dataless | quarantined | deferred | breaker | auth |",
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+            "dataless | quarantined | refused | deferred | breaker | auth |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for st in sorted(statuses, key=lambda s: s.source_id):
             age_h = "-" if st.cursor_age_s is None else str(round(st.cursor_age_s / 3600))
@@ -1954,6 +1956,7 @@ class Publisher:
                 str(st.live),
                 str(st.dataless),
                 str(st.quarantined),
+                str(st.refused),
                 str(st.deferred),
                 _one_line(st.breaker, 80),
                 _one_line(st.auth, 60).split(" ")[0],
