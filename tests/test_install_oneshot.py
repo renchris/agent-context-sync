@@ -3859,6 +3859,44 @@ def test_a_run_stopped_during_the_helper_builds_lets_the_build_end_first(
     assert ("helpers", "failed", "143", "") in steps(install_log(env))
 
 
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
+def test_a_run_killed_during_the_helper_builds_reads_as_killed(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """H14: no trap sees a SIGKILL, so the run keeps the step lines that had ended and has no end line; the
+    helpers step under way has none. The report reads the run id's pid (install.sh's $$) and says the
+    process is gone instead of "interrupted, or still running"."""
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "2", "STUB_SPEECH_SLEEP": "3"}
+    proc = subprocess.Popen(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+        env=e,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not any(c.startswith("python -I -m agentsync.convert.speech") for c in calls(env)):
+            assert proc.poll() is None and time.monotonic() < deadline, "the speech build never started"
+            time.sleep(0.05)
+        os.kill(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=30)  # reaps the pid: an unreaped zombie still exists and reads as "in use"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    lines = install_log(env)
+    names = [s[0] for s in steps(lines)]
+    assert "launcher" in names and "helpers" not in names, lines
+    assert not any(" end rc=" in ln for ln in lines), lines
+    (run,) = setup_report.read_install_runs(install_log_path(env))
+    assert run.run_id.endswith(f"-{proc.pid}"), "the run id carries the pid a SIGKILL ends"
+    assert setup_report._open_state(run) == "its process is gone: killed, or the Mac restarted"
+
+
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------
 
 

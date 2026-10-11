@@ -195,14 +195,14 @@ install.log (a `--list-folders` run is not an install run):
 - **Worked with help**: the last install run exited 0, but one of those conditions fails; the Summary says which.
   Without a friction log, or without the attempt's `Attempt:` line (from `install.sh --log-start`), the human
   turns are unknown, so the outcome is at best this one.
-- **Failed at step N**: the last install run did not exit 0 or has no end line (stopped early); then N is 2, the
-  step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an error logged
-  in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a `--list-folders` re-run
-  included; for step 2 an install run), with no later step logged before the report. Since prompt v7, step 2 is the
-  one install.sh command, so any install run of the attempt that ended 0 resolves a step 2 error, whenever the
-  line was logged: a step 2 `error` line written after install.sh exited 0 is agent friction. If no install run
-  happened, N is the step of the last `error` line, failing that the last step logged, and failing that 1 when
-  only `--list-folders` ran.
+- **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
+  is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
+  error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a
+  `--list-folders` re-run included; for step 2 an install run), with no later step logged before the report. Since
+  prompt v7, step 2 is the one install.sh command, so any install run of the attempt that ended 0 resolves a step 2
+  error, whenever the line was logged: a step 2 `error` line written after install.sh exited 0 is agent friction.
+  If no install run happened, N is the step of the last `error` line, failing that the last step logged, and
+  failing that 1 when only `--list-folders` ran.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after
@@ -462,7 +462,7 @@ says otherwise.
 | Repeat conversions | Are the same files converted on every run? | The last column counts files converted again from the bytes their own page was made from, right after the run before had converted them. A copy of a file is a new file and is not counted. The cache line answers for runs of an older build, by the bytes alone: a copy counts there. A failed conversion is counted in the run it failed in and is not tried again until the file's bytes change, so a later run with no failure is not a retry that worked: Quarantine by reason counts the files still stuck, class `conversion failed`. |
 | Background runs: installed plist | Which arguments of an installed LaunchAgent differ from what this build would write? | Positions and their class (launcher, interpreter, config path, canary path, ...), never a value. `the same file: yes` means both paths reach one file. It does not mean the job runs: the launcher starts only the exact path it was built for, and two tool environments can share one base interpreter. Since 2026-10-07 this build writes the launcher's own path when that is its interpreter under another name in the same folder (`python` beside `python3`), so such a job reads `interpreter same`, and `canary paths: 1 installed, 3 in this build` is a config that gained folders: the operator's `agentsync install-agent` refreshes it. A job whose `last exit code` is 64 is one the launcher refuses at every run; doctor's `launchd.*` line names the two paths. |
 | Summary: `installer output:` | Did a run print two `NEXT:` lines, or another instruction beside its own? | `N NEXT: line(s) in N run(s)`: one per run is expected, so the two numbers are the same. The counts are over whole runs. The report reads the end of install.out, and when that starts inside a run the lines before the first run header are left out: the line then ends `(whole runs only: the N line(s) read before the first run header are not counted)`. The counts cover every run read, older attempts' too, so a `fix:` line an older installer printed is still in them; the tail under Installer shows the last run. |
-| Installer: every run | Was a run cut short? | One line per run, and each run with no end line with its start time and the step it reached. |
+| Installer: every run | Was a run cut short? | One line per run, and each run with no end line with its start time, whether its process is gone (killed) or still exists, and the last step it logged (the step under way has no line). |
 | Configuration: agent-named folders | Is a folder named like the coding agent only listed, or also a source? | Two counts. A listed one keeps its name in the report; a configured one is a placeholder. |
 
 A part that prints "not measured (time limit)" ran out of its share of the report's time. The Summary's

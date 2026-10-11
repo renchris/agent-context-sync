@@ -8111,7 +8111,10 @@ report builds its own, so the comparison adds no line to what the installer prin
 
 **Installer.** After the tables of the last three runs: every run on one line (the last 20: start, kind, step
 lines, last step logged, end), and the runs with no end line, each with its start time and the step it
-reached. A step name or result is printed only when it is one of install.sh's own words.
+reached (**amended 2026-10-11, §16.40 "A run with no end line says whether its process is gone":** each with
+its start time, whether its process is gone, and the last step it logged; a step's line is written when the
+step ends, so the step under way has none). A step name or result is printed only when it is one of
+install.sh's own words.
 
 **Configuration.** One line: how many folders listed under `~/Library/CloudStorage` are named only with a
 coding agent's product words, and how many configured source folders are (§16.22: a listed one keeps its
@@ -10707,6 +10710,31 @@ characters around placeholders (every reader of redacted text would have to stri
 prints no count, so it has no twin. Tests: `test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest`
 and `test_the_redaction_count_is_the_placeholders_the_report_shows`. Rehearsal triage will see the number rise
 (the field report's 182 would be about 238).
+
+**A run with no end line says whether its process is gone** (B13 H14 and N33; amends §16.28's Installer
+paragraph and §16.14's outcome detail). No trap sees a SIGKILL, so a killed run keeps its start line and the step
+lines that had ended, and has no end line; install.sh writes a step's line when the step ends, so the step under
+way has none. The run id ends in install.sh's `$$`, and the report runs on the Mac that wrote it, so the report
+probes that pid with signal 0 (`_pid_alive`, in the probes block; `_RUN_PID_RE` and `_open_state` beside
+`_reached`). Signal 0 sends nothing, and only runs with no end line are probed, so the report stays read-only.
+No such process reads `its process is gone: killed, or the Mac restarted` (HUP, INT and TERM log 129, 130 and
+143, so a run with no end line whose process is gone was killed, or the Mac stopped); a process that exists, also
+another user's, reads `its process id is in use: still running, or the id was reused`; a run id with no pid, or a
+pid of 0 or 1, keeps `interrupted, or still running`. The pid is read and never printed. The state is in the
+per-run status (`no end line (<state>)`), the Summary's `- install.sh:` line and the outcome detail (`install.sh
+has no end line (<state>; last failed step <step>)`; the outcome kind and step are unchanged). The bullet under
+`Runs with no end line` reads `- run <id>: started <t>, <state>; the last of its N step line(s) is <step
+(result)>, and nothing after it is logged (a step's line is written when the step ends, so a step under way has
+none)`, or `it has no step line (...)`. It never says a run reached a step: the step under way when a run stops
+has no line, and the run reported as having "reached launcher" was in `helpers` (v10 E1 run B1). install.log's
+format is unchanged. Rejected: an end line written for the dead run by the next run (it would invent an exit
+that `retried_runs` and the seconds total count), a line at each step's start (it doubles the step lines every
+reader counts), and naming the next step from a fixed order (older installers had no `helpers` step). Tests:
+`test_a_run_with_no_end_line_says_whether_its_process_is_gone`,
+`test_a_run_with_no_end_line_and_a_failed_step_keeps_the_two_apart`,
+`test_a_run_cut_off_in_a_step_names_the_last_step_logged`, `test_pid_alive_reads_this_process_and_a_reaped_one`
+and `test_a_run_killed_during_the_helper_builds_reads_as_killed`. Accepted: a reused pid reads as "in use",
+which keeps both readings, as before.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

@@ -5368,9 +5368,12 @@ def test_argument_roles_follow_the_shape_launchd_writes() -> None:
     assert roles([]) == [] and roles([7, "--mode"]) == ["interpreter", "other"]
 
 
-def test_installer_lists_every_run_and_the_ones_with_no_end_line(fake_mac: dict[str, Path]) -> None:
+def test_installer_lists_every_run_and_the_ones_with_no_end_line(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The first bring-back file counted four runs and showed three. Every run is one line now, and a run
-    with no end line says when it started and the step it reached."""
+    with no end line says when it started, whether its process is gone, and the last step it logged."""
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)  # pid 777 may exist on this Mac
     log = fake_mac["setup"] / "install.log"
     stopped = "20261006T021601Z-777"
     log.write_text(
@@ -5402,10 +5405,117 @@ def test_installer_lists_every_run_and_the_ones_with_no_end_line(fake_mac: dict[
     ]
     assert "Runs with no end line (stopped early, or still running): 1\n" in inst
     assert (
-        "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, reached agentsync (failed, rc 1) after 2 step "
-        "line(s)" in inst
+        "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, its process is gone: killed, or the Mac "
+        "restarted; the last of its 2 step line(s) is agentsync (failed, rc 1), and nothing after it is "
+        "logged (a step's line is written when the step ends, so a step under way has none)\n" in inst
     )
+    assert " reached " not in inst
     assert "Wingtip" not in inst and "-777" not in inst
+
+
+_KILLED_RUN = "20261010T043017Z-4243"
+
+
+def _append_killed_run(fake_mac: dict[str, Path], *, failed: bool = False) -> None:
+    """v10 E1 run B1's shape: a SIGKILL during the helper builds left uv, agentsync and launcher lines (a
+    step's line is written when the step ends) and no end line."""
+    log = fake_mac["setup"] / "install.log"
+    run = _KILLED_RUN
+    launcher = "seconds=0 rc=1 result=failed" if failed else "seconds=0 rc=0 result=skipped"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + f"2026-10-10T04:30:17Z run={run} start install.sh compat=10 commit=0123456789ab kind=checkout "
+        "source=- args=\n"
+        f"2026-10-10T04:30:17Z run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
+        f"2026-10-10T04:30:17Z run={run} step=agentsync seconds=9 rc=0 result=done\n"
+        f"2026-10-10T04:30:26Z run={run} step=launcher {launcher}\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize(
+    ("alive", "state"),
+    [
+        (False, "its process is gone: killed, or the Mac restarted"),
+        (True, "its process id is in use: still running, or the id was reused"),
+        (None, "interrupted, or still running"),
+    ],
+)
+def test_a_run_with_no_end_line_says_whether_its_process_is_gone(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, alive: bool | None, state: str
+) -> None:
+    """H14: SIGKILL is never trapped, so a killed run has no end line, and the report said "interrupted, or
+    still running" for a run whose process was long gone. The run id ends in install.sh's pid, and the
+    report runs on the same Mac: signal 0 says which. The pid is read, never printed."""
+    seen: list[int] = []
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: seen.append(pid) or alive)
+    _append_killed_run(fake_mac)
+    text, summary = summary_of(fake_mac)
+    assert 4243 in seen
+    inst = section(text, "Installer").split("<details>", 1)[0]
+    assert f"run 20261010T043017Z: no end line ({state})\n" in inst
+    assert (
+        f"- run 20261010T043017Z (the newest run): started 2026-10-10T04:30:17Z, {state}; the last of its 3 "
+        "step line(s) is launcher (skipped), and nothing after it is logged (a step's line is written when "
+        "the step ends, so a step under way has none)\n" in inst
+    )
+    assert f"- install.sh: 2 install runs; the last no end line ({state}) (uv 0s" in summary
+    assert f"(computed: install.sh has no end line ({state}))" in summary
+    assert "reached launcher" not in text and "-4243" not in text
+
+
+def test_a_run_with_no_end_line_and_a_failed_step_keeps_the_two_apart(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """H14 C2: "killed, or the Mac restarted, last failed step x" read as a third alternative after "or"."""
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)
+    _append_killed_run(fake_mac, failed=True)
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "(computed: install.sh has no end line (its process is gone: killed, or the Mac restarted; last "
+        "failed step launcher))" in summary
+    )
+
+
+def test_a_run_cut_off_in_a_step_names_the_last_step_logged(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """N33, v10 E1 run B1: a SIGKILL during the helper builds left uv, agentsync and launcher lines and no
+    end line, and the report said the run "reached launcher". A step's line is written when the step ends, so
+    the bullet names the last step line and says nothing after it is logged; a start line alone has none."""
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)  # pids 4243 and 4244 may exist
+    _append_killed_run(fake_mac)
+    log = fake_mac["setup"] / "install.log"
+    bare = "20261010T050000Z-4244"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + f"2026-10-10T05:00:00Z run={bare} start install.sh compat=10 commit=0123456789ab kind=checkout "
+        "source=- args=\n",
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    inst = section(text, "Installer").split("<details>", 1)[0]
+    assert "reached launcher" not in inst and "-4243" not in inst and "-4244" not in inst
+    assert (
+        "- run 20261010T043017Z: started 2026-10-10T04:30:17Z, its process is gone: killed, or the Mac "
+        "restarted; the last of its 3 step line(s) is launcher (skipped), and nothing after it is logged (a "
+        "step's line is written when the step ends, so a step under way has none)\n" in inst
+    )
+    assert (
+        "- run 20261010T050000Z (the newest run): started 2026-10-10T05:00:00Z, its process is gone: killed, "
+        "or the Mac restarted; it has no step line (a step's line is written when the step ends, so a step "
+        "under way has none)\n" in inst
+    )
+
+
+def test_pid_alive_reads_this_process_and_a_reaped_one() -> None:
+    """Signal 0 sends nothing: this process exists, a child that was waited on does not, and 0 and 1 (a
+    process group, init) are never probed."""
+    assert setup_report._pid_alive(os.getpid()) is True
+    child = subprocess.Popen(["/usr/bin/true"])
+    child.wait()  # reaped: an unreaped zombie still exists
+    assert setup_report._pid_alive(child.pid) is False
+    assert setup_report._pid_alive(0) is None and setup_report._pid_alive(1) is None
 
 
 def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: dict[str, Path]) -> None:

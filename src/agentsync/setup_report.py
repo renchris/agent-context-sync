@@ -42,7 +42,7 @@ no converter reads by a fixed list of file types (:func:`_refused_type`), the pu
 queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
 flag, and conversions repeated run after run. Background runs says how an installed plist's arguments
 differ from what this build would write, by class (:func:`argument_roles`), and Installer lists every run
-and the ones with no end line.
+and the ones with no end line, with whether each one's process is gone.
 
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation, team or account
@@ -1405,8 +1405,8 @@ def compute_outcome(
         failing = last.failed_step()
         where = f" at its {failing[0]} step (rc {failing[1].get('rc', '?')})" if failing else ""
         if last.rc is None:
-            last_failed = f", last failed step {failing[0]}" if failing else ""
-            detail = f"install.sh has no end line (stopped early{last_failed})"
+            last_failed = f"; last failed step {failing[0]}" if failing else ""
+            detail = f"install.sh has no end line ({_open_state(last)}{last_failed})"
         else:
             detail = f"install.sh exited {last.rc}{where}"
         return Outcome("failed", layout.install_step, (detail,), version)
@@ -1549,6 +1549,22 @@ def issue_link(report: str) -> str | None:
 
 def _login_name() -> str:
     return pwd.getpwuid(os.getuid()).pw_name
+
+
+def _pid_alive(pid: int) -> bool | None:
+    """Whether process ``pid`` exists on this Mac: False when it does not, True when it does (also another
+    user's), None when it cannot be told. Signal 0 sends nothing."""
+    if pid <= 1:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
 
 
 def _full_name() -> str:
@@ -2521,8 +2537,26 @@ def _step_word(value: str | None) -> str:
     return value if value is not None and _STEP_WORD_RE.fullmatch(value) else "?"
 
 
+_RUN_PID_RE = re.compile(r"-(\d{1,7})$")  # a run id's suffix: install.sh's $$
+
+
+def _open_state(run: InstallRun) -> str:
+    """Why a run with no end line has none, read from its process id (the run id's suffix: install.sh's $$).
+    A process that is gone was killed before it could log its end line (SIGKILL, or the Mac restarted: HUP,
+    INT and TERM log 129, 130 and 143). One that exists is still running, or its id was reused. The id is
+    read, never printed."""
+    m = _RUN_PID_RE.search(run.run_id)
+    alive = _pid_alive(int(m.group(1))) if m else None
+    if alive is False:
+        return "its process is gone: killed, or the Mac restarted"
+    if alive:
+        return "its process id is in use: still running, or the id was reused"
+    return "interrupted, or still running"
+
+
 def _reached(run: InstallRun) -> str:
-    """The last step a run logged, with its result: how far it got."""
+    """The last step line a run logged, with its result. A step's line is written when the step ends, so the
+    step under way when a run stopped is never this one."""
     if not run.steps:
         return "no step line"
     name, fields = run.steps[-1]
@@ -2534,7 +2568,7 @@ def _reached(run: InstallRun) -> str:
 
 def _run_list(runs: Sequence[InstallRun]) -> list[str]:
     """Every run on one line (the tables above show the last :data:`INSTALL_RUNS_SHOWN` only), and the runs
-    with no end line by their start time and the step they reached."""
+    with no end line by their start time, whether their process is gone, and the last step they logged."""
     listed = runs[-_RUNS_LISTED:]
     rows = [
         (
@@ -2562,9 +2596,15 @@ def _run_list(runs: Sequence[InstallRun]) -> list[str]:
     ]
     for run in open_runs[-_RUNS_LISTED:]:
         newest = " (the newest run)" if run is runs[-1] else ""
+        logged = (
+            f"the last of its {len(run.steps)} step line(s) is {_reached(run)}, and nothing after it is "
+            "logged"
+            if run.steps
+            else "it has no step line"
+        )
         out.append(
-            f"- run {run.display_id}{newest}: started {_iso(run.started)}, reached {_reached(run)} after "
-            f"{len(run.steps)} step line(s)"
+            f"- run {run.display_id}{newest}: started {_iso(run.started)}, {_open_state(run)}; {logged} "
+            "(a step's line is written when the step ends, so a step under way has none)"
         )
     return out
 
@@ -2593,7 +2633,7 @@ def _installer_runs(r: _Run) -> list[str]:
         status = (
             f"exit {run.rc} after {run.seconds if run.seconds is not None else '?'}s"
             if run.rc is not None
-            else "no end line (interrupted, or still running)"
+            else f"no end line ({_open_state(run)})"
         )
         if run.simulated:
             status += " · launchd: simulated"
@@ -5059,7 +5099,11 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     if not installs:
         return f"- install.sh: {where}"
     last = installs[-1]
-    status = f"exit {last.rc} after {last.seconds}s" if last.rc is not None else "no end line (stopped early)"
+    status = (
+        f"exit {last.rc} after {last.seconds}s"
+        if last.rc is not None
+        else f"no end line ({_open_state(last)})"
+    )
     steps = " · ".join(f"{k} {v.get('seconds', '?')}s" for k, v in last.steps if k != "report")
     return f"- install.sh: {where}; the last {status}" + (f" ({steps})" if steps else "")
 
