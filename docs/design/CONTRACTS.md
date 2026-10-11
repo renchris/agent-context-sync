@@ -4913,6 +4913,9 @@ NFC (or the reverse) is one placeholder, not two and not in clear. The shell fal
 in git's config files are registered, and the shell fallback registers proxy values as well.
 **Amended (2026-10-11, §16.40):** the organisation is the part after the app's name in a CloudStorage folder of any
 provider (`Dropbox-<team>` too), not only after `OneDrive-`, in both reports.
+**Amended (2026-10-11, §16.41 "The shell fallback report reads past a `$'...'` word"):** install.log's
+`--source-local $'...'` words are unquoted into those folders too, and every `$'...'` word in the shell report is
+`<path>`.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -11098,6 +11101,33 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     an earlier run, and none) and `tests/test_install_next_line.py`
     (`test_the_report_of_each_install_run_expects_its_own_next_line_after_it`: the real setup-report through
     install.sh, two install runs and `--report-only`; bring-back.md carries the same line).
+- **The shell fallback report reads past a `$'...'` word** (amends the 2026-10-10 amendment to the setup report's
+  redaction, under "Redaction is on by default"). macOS's bash 3.2 `printf %q` writes a name with a byte it finds
+  unprintable as `$'...'`: under a UTF-8 locale a curly apostrophe, a dash, an NFD accent or most CJK, with the
+  character's first byte raw; under C every non-ASCII name, every byte in octal.
+  - Before: under UTF-8 the report's exclude-list sed ran in the user's locale and stopped at that install.log
+    line, so every section after the Installer tail was lost (every version since 1935b66). Under C nothing
+    stopped, but no pair matched the octal text, so the Installer section showed the folder name escaped. In
+    both locales a `--report-only` run with no sources.toml showed the folder in clear in the friction log
+    (written before the Installer section): `read` split the word at its spaces and kept it quoted, so it never
+    named a CloudStorage folder. And a word pair (a full-name token,
+    the login) directly beside a non-ASCII character ended the report: macOS awk's `index`, `substr` and
+    `length` are byte-wise, but its regex match under UTF-8 exits at a byte that is not UTF-8 on its own.
+  - Now every stage of the shell report's filter, and of the two readers of the report it writes
+    (`report_issue_link`, `friction_text`), runs byte-wise (`LC_ALL=C`); every `$'...'` word is `<path>`
+    before the pairs run (install.sh logs only paths that way: `source=`, `--source-local`); and a
+    `--source-local $'...'` word in install.log is unquoted (`printf %b`, after the escaped quote) into the
+    folders the report redacts, through the same helper the plain words go through (`logged_source_local`).
+    Coarser than `agentsync setup-report`, which keeps the path's known components; the shell report shows
+    the whole word as `<path>`. Only over-redaction is added: any other `$'` in the friction text becomes
+    `<path>`. The Redaction section's own text names the form in words ("every word in bash's dollar-quote
+    form"), since a literal `$'` there would itself be redacted.
+  - Tests: `tests/test_install_oneshot.py`: `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`
+    (a curly apostrophe, an en dash, an NFD accent, and an ASCII apostrophe beside an en dash, which `%q`
+    writes as `\'` inside the word, under UTF-8; an NFC accent under C),
+    `test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte`, and the headings and issue-link
+    line in `test_the_shell_report_only_redacts_the_folders_earlier_runs_added` and the `Jane’s folder` line
+    in `test_the_shell_report_redacts_a_full_name_written_last_comma_first`, both under UTF-8.
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

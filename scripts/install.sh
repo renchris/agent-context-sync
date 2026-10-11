@@ -174,7 +174,7 @@
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
 #      same headings (machine facts, install.log, this run's doctor output, friction.md; the home path,
 #      login name, full name, the organisation after a CloudStorage folder's app name (OneDrive-<org>) and the
-#      --source-local folder names redacted); when the report ends with its issue link
+#      --source-local folder names redacted, a $'...' word as <path>); when the report ends with its issue link
 #      (https://github.com/renchris/agent-context-sync/issues/new?template=...), one line "issue link (review
 #      the report first): <link>" follows, the last line before NEXT: (not for the --report-only of an
 #      attempt --log-start stopped, see --report-only)
@@ -893,8 +893,12 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
-	# (written with printf %q, which read without -r undoes; a $'..' form stays as it is). LC_ALL=C: under a
-	# UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is lost.
+	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
+	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
+	# lost. Both install.log loops hand each argument, unquoted, to logged_source_local.
+	logged_source_local() {
+		known+=("$1")
+	}
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
 			known+=("$line")
@@ -906,10 +910,18 @@ redaction_pairs() {
 			read -a words <<<"$line" || true
 			take=0
 			for w in ${words[@]+"${words[@]}"}; do
-				[ "$take" -eq 1 ] && known+=("$w")
+				[ "$take" -eq 1 ] && logged_source_local "$w"
 				[ "$w" = --source-local ] && take=1 || take=0
 			done
 		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | LC_ALL=C sort -u)
+		# A $'..' word, which read splits and leaves quoted: its bytes. bash 3.2's %q writes one for a byte it
+		# finds unprintable (under UTF-8 a curly apostrophe, a dash, an NFD accent, most CJK; under C any
+		# non-ASCII name). sed undoes the escaped quote, which %b keeps; %b undoes the rest.
+		while IFS= read -r line; do
+			line="${line#--source-local \$\'}"
+			logged_source_local "$(printf '%b' "${line%\'}")"
+		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null |
+			LC_ALL=C grep -oE -e "--source-local \\\$'([^'\\\\]|\\\\.)*'" | LC_ALL=C sed "s/\\\\'/'/g" | LC_ALL=C sort -u)
 	fi
 	emit_pair() { # VALUE PLACEHOLDER [w]: the pair and its printf %q form
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
@@ -1074,9 +1086,13 @@ redaction_pairs() {
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
 	# Every stage byte-wise: under a UTF-8 locale macOS cut and sort stop at the first pair that is not UTF-8
-	# (printf %q writes one for a curly apostrophe or an NFD accent) and every pair after it is lost.
-	REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
-		LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" awk '
+	# (printf %q writes one for a curly apostrophe or an NFD accent) and every pair after it is lost. A $'..'
+	# word (install.log's args, a re-run line in the friction log) is <path> first: its octal bytes match no
+	# pair, so it would show the escaped folder name. awk too: macOS awk's index and substr are byte-wise, but a
+	# regex match (lit's word test) under UTF-8 exits at a byte that is not UTF-8 on its own ("Jane" + U+2019).
+	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
+		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
+			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" LC_ALL=C awk '
 	function lit(s, v, p, word,    out, i, n, pre, post) {
 		out = ""
 		n = length(v)
@@ -1237,26 +1253,28 @@ fallback_body() {
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
 	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
 	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts with a"
-	say "dot and the system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage"
-	say "that --source-local, sources.toml or install.log name (<folder-N>). Read the report before sending it:"
-	say "anything else confidential is yours to remove."
+	say "dot and the system PAC URL after its scheme (<proxy-N>), the names of the folders under CloudStorage that"
+	say "--source-local, sources.toml or install.log name (<folder-N>), and every word in bash's dollar-quote form,"
+	say "how install.log writes a name with a curly apostrophe, a dash or an accent (<path>). Read the report"
+	say "before sending it: anything else confidential is yours to remove."
 }
-# The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
+# The friction log for the shell report: friction.md, else what an earlier report holds under its heading
+# (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).
 friction_text() {
 	local f
 	f="$(friction_file)"
 	if [ -f "$f" ]; then
 		head -c 262144 "$f"
 	elif [ -f "$REPORT_PATH" ]; then
-		awk '/^## / { found = ($0 == "## Agent friction log"); next } found { print }' "$REPORT_PATH" |
-			grep -v '^<!-- agent:' | grep -v '^No friction log at ' | sed '/./,$!d'
+		LC_ALL=C awk '/^## / { found = ($0 == "## Agent friction log"); next } found { print }' "$REPORT_PATH" |
+			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi
 }
 # An exclude line (the loop's WAITING ON YOU text for an empty cloud folder, which an agent may log) names
 # folders below a source root, which redact_stream has never seen: the list is shown as <path>, as
 # `agentsync setup-report` shows it. The second expression is a line cut inside the list.
 scrub_exclude_lists() {
-	sed -e 's/exclude = \[.*\] in \[\[source\]\]/exclude = [<path>] in [[source]]/' \
+	LC_ALL=C sed -e 's/exclude = \[.*\] in \[\[source\]\]/exclude = [<path>] in [[source]]/' \
 		-e 's/exclude = \[".*$/exclude = [<path>]/'
 }
 write_fallback_report() { # RC WHY
@@ -1457,9 +1475,10 @@ on_exit() {
 	exit "$rc"
 }
 # The issue link the setup report ends with (its last line, when it starts with $ISSUE_URL), else empty.
+# Byte-wise: the shell report can hold a byte that is not UTF-8 (a log line's), where BSD sed stops.
 report_issue_link() {
 	local l
-	l="$(sed '/^[[:space:]]*$/d' "$REPORT_PATH" 2>/dev/null | tail -1)"
+	l="$(LC_ALL=C sed '/^[[:space:]]*$/d' "$REPORT_PATH" 2>/dev/null | LC_ALL=C tail -1)"
 	case "$l" in
 	"$ISSUE_URL"*) printf '%s' "$l" ;;
 	esac

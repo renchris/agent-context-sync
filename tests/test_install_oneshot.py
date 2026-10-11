@@ -822,12 +822,17 @@ def test_the_shell_report_redacts_a_full_name_written_last_comma_first(
     friction.parent.mkdir(parents=True)
     friction.write_text(
         "Prompt: v4\nF1 | step 3 | clean | 1 | Jane chose; Doe, Jane approved; Doe agreed | -\n"
+        "F2 | step 3 | clean | 1 | Jane\u2019s folder | -\n",
+        encoding="utf-8",
     )
-    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    # Under UTF-8 macOS awk's regex match (the whole-word test) exited at "Jane" + U+2019 (B13 H15).
+    utf8 = {**env, "STUB_UV_INSTALL_RC": "2", "LC_ALL": "en_US.UTF-8"}
+    cp = install_sh(utf8, "--source-local", str(folder))
     assert cp.returncode == 1
-    text = report_path(env).read_text()
+    text = report_path(env).read_text(encoding="utf-8")
     assert "<name> chose; <name> approved; <name> agreed" in text
     assert "Jane" not in text and "Doe" not in text
+    assert "<name>\u2019s folder" in text and _headings(text) == list(setup_report.SECTION_TITLES)
 
 
 @pytest.mark.parametrize(
@@ -1014,6 +1019,9 @@ def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     text = report_path(env).read_bytes().decode("utf-8", "replace")  # the log tail keeps the stray byte
     for name in ("Client Beta", "Gamma Plans", "Gamma\\ Plans", "Archive", "Contoso"):
         assert name not in text, name
+    # Past the stray byte too, and the issue link still follows (BSD sed in its two readers; B13 H15).
+    assert _headings(text) == list(setup_report.SECTION_TITLES), "past the stray byte (BSD sed)"
+    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {setup_report.ISSUE_URL}"
 
 
 def test_the_shell_report_keeps_every_pair_past_a_non_ascii_folder(env: dict[str, str], folder: Path) -> None:
@@ -1042,6 +1050,55 @@ def test_the_shell_report_keeps_every_pair_past_a_non_ascii_folder(env: dict[str
     assert "<folder-" in text.split("\n## Agent friction log\n", 1)[1]
     for value in ("Client Beta", str(home), "Contoso"):
         assert value not in text, value
+
+
+@pytest.mark.parametrize(
+    ("name", "locale"),
+    [
+        ("Fabrikam\u2019s Q1", "en_US.UTF-8"),  # a curly apostrophe
+        ("Fabrikam \u2013 Q1", "en_US.UTF-8"),  # an en dash
+        ("Fabrikame\u0301 Q1", "en_US.UTF-8"),  # an NFD accent (NFC is no $'...' word under UTF-8)
+        ("Fabrikam\u00e9 Q1", "C"),  # under C every non-ASCII name is one, every byte octal
+        ("Fabrikam's \u2013 Q1", "en_US.UTF-8"),  # an ASCII apostrophe too: written escaped inside the word
+    ],
+)
+def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
+    env: dict[str, str], name: str, locale: str
+) -> None:
+    """bash 3.2's ``printf %q`` writes a folder name it finds unprintable as ``$'...'``: under UTF-8 with its
+    first byte raw, so the shell report stopped at that install.log line (BSD sed); under C as octal, which
+    no pair matched, so the Installer section showed the name escaped. And under ``--report-only`` the
+    friction log named the folder in clear: the word was never unquoted into the folders to redact
+    (B13 H15)."""
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / name
+    folder.mkdir(parents=True)
+    loc = {**env, "LC_ALL": locale}
+    word = subprocess.run(
+        [BASH32, "-c", 'printf %q "$1"', "_", str(folder)], capture_output=True, env=loc, check=True
+    ).stdout
+    assert word.startswith(b"$'"), word  # the field's form, as install.sh's log_start writes it
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = b"run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- "
+    (setup / "install.log").write_bytes(
+        b"2026-10-10T01:00:00Z " + head + b"args=--source-local " + word + b" --confirm-install-agent\n"
+        b"2026-10-10T01:00:01Z run=20261010T010000Z-1 step=agentsync seconds=1 rc=2 result=failed\n"
+    )
+    (setup / "friction.md").write_text(
+        f"Prompt: v10\nF1 | step 1 | clean | 1 | listed {name} | -\n", encoding="utf-8"
+    )
+    cp = install_sh(loc, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    raw = report_path(env).read_bytes()
+    text = raw.decode("utf-8", "replace")
+    assert _headings(text) == list(setup_report.SECTION_TITLES), "every section, past the install.log tail"
+    assert "args=--source-local <path> --confirm-install-agent" in text
+    assert "listed <folder-1> | -" in text.split("\n## Agent friction log\n", 1)[1]
+    installer = raw.split(b"## Installer", 1)[1].split(b"## Configuration", 1)[0]
+    assert name.encode() not in raw and b"Fabrikam" not in installer and b"\\" not in installer
+    flat = " ".join(text.split())
+    assert "and every word in bash's dollar-quote form" in flat, "the Redaction text is not itself redacted"
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
@@ -1348,6 +1405,21 @@ def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
     text = report_path(env).read_text()
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
     assert friction.strip() == "Outcome: failed at step 2"
+
+
+def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: dict[str, str]) -> None:
+    """With no friction.md the shell report takes the friction log from the earlier report. macOS awk's
+    regex match exits under UTF-8 at a byte that is not UTF-8 on its own, and every later line was lost
+    (B13 H15)."""
+    report_path(env).parent.mkdir(parents=True)
+    report_path(env).write_bytes(
+        b"# agentsync setup report\n\n## Agent friction log\n\n"
+        b"F1 | step 1 | clean | 1 | saw Cafe\xcc | -\nF2 | step 2 | clean | 1 | later | -\n"
+    )
+    cp = install_sh({**env, "LC_ALL": "en_US.UTF-8"}, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    friction = report_path(env).read_bytes().split(b"\n## Agent friction log\n", 1)[1].split(b"\n## ", 1)[0]
+    assert b"| later |" in friction
 
 
 # ---- the sandbox seam and the dry run (AGENTSYNC_INSTALL_DRY_RUN=1) ----------------------------------------
