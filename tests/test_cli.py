@@ -2254,7 +2254,7 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
     assert lines[-3:-1] == [
         lines[-3],
         "NEXT: draft the baseline questions: follow step 1 (Draft) of the agentsync-docs skill's \"Baseline "
-        'questions" section, then run `~/.local/bin/agentsync sync`',
+        'questions" section (also in ~/agent-context/docs/AGENTS.md), then run `~/.local/bin/agentsync sync`',
     ], "the online-only deferrals do not hold the loop at 'sync again'"
     m = re.fullmatch(r"converted (\d+), deferred 2 online-only", lines[-3])
     assert m and int(m.group(1)) >= 8, lines[-3]

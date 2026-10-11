@@ -3359,6 +3359,14 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
     ), line
     assert "Client" not in line and "kb docs" not in line and "/" not in line.split("; WAITING ON YOU: ")[1]
 
+    # Rules 4, 6 and 8 name the docs repo's AGENTS.md by its path (B13 N34): its name, the same way.
+    rule4 = f"NEXT: draft the baseline questions: follow step 1 (Draft) of {loop._baseline(docs)}, then run x"
+    hooks = setup_report.ReportHooks(loop_next=lambda config: [rule4])
+    text, _red = setup_report.build_report(cfg, hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert '"Baseline questions" section (also in AGENTS.md), then run x' in line, line
+    assert "Client" not in line and "kb docs" not in line, line
+
     # The wait for empty cloud folders names the config file by its path (§16.36): its name, the same way.
     spaced = docs.parent / "ctx" / "sources.toml"
     spaced.parent.mkdir()

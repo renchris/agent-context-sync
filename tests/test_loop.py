@@ -25,7 +25,9 @@ from agentsync.model import CycleMode, PassKind, RowState, Verdict
 from test_cli import _assert_fix_parses
 
 BIN = "~/.local/bin/agentsync"
-BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
+BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section (also in ~/agent-context/docs/AGENTS.md)'
+"""Where rules 4, 6 and 8 send the agent: the skill's section, and the docs repo's AGENTS.md by its path
+(every test here keeps the default docs repo under its own HOME)."""
 DRAFT_WAIT = (
     "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md, correct the "
     "answers in answers.md, and change both files to status: confirmed"
@@ -1054,3 +1056,17 @@ def test_checks_name_the_doctor_check_each_wait_explains(tmp_path: Path, folder:
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
     assert loop.next_step(load_config(path), count_queue=False).checks == ("governance.purge_queue",)
+
+
+def test_the_baseline_next_names_the_agents_md_that_carries_the_section(tmp_path: Path, folder: Path) -> None:
+    """Bring-back 2026-10-06 row 23 (B13 N34): rules 4, 6 and 8 send the agent to the skill's Baseline
+    questions section, which an agent that loads no skill (Codex, Copilot) never reads. The docs repo's root
+    AGENTS.md carries the same section (``publish.root_guide``), so the NEXT line names that file by its path:
+    a bare "AGENTS.md" is the agent's own project's when it runs from another folder."""
+    config = _synced(tmp_path, folder)
+    [step] = [ln for ln in _lines(config) if ln.startswith("NEXT: ")]
+    m = re.search(r"\(also in (\S+)\)", step)
+    assert m, step
+    guide = Path(m.group(1)).expanduser()
+    assert guide == config.docs_repo / "AGENTS.md" and guide.is_file(), guide
+    assert skill.BASELINE in guide.read_text(encoding="utf-8"), "the file named carries the section"

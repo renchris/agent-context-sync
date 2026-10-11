@@ -30,7 +30,8 @@ third-party content). One wait is the exception: the ``exclude = [...]`` line fo
 folders names them, since the operator has to paste it; the setup report shows that list as ``<path>``.
 The draft baseline's wait says where its two files are: the docs repo's ``_eval`` folder, by its path
 (:func:`_shown`). That is the config's own folder and the tool's own file names, as a command line here
-names ``~/.local/bin/agentsync``: no mirror path and no document's name.
+names ``~/.local/bin/agentsync``: no mirror path and no document's name. Rules 4, 6 and 8 name the docs
+repo's ``AGENTS.md`` the same way (:func:`_baseline`).
 ``sync`` (without ``--mode``) and ``status`` print :meth:`NextStep.lines`.
 """
 
@@ -91,6 +92,8 @@ AFTER_BASELINE_PAGES = 20
 
 _EVAL_DIR = "_eval"
 _BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
+_AGENTS_MD = "AGENTS.md"
+"""The docs repo's root guide that also carries the Baseline questions section (``publish.root_guide``)."""
 _STATUS_LINE = re.compile(r"^\s*status:\s*(\S+)\s*$")
 _STATUS_LINES_READ = 10  # the skill puts ``status:`` on the first line; a frontmatter fence may precede it
 _UNCONVERTED = frozenset({Verdict.CREATED, Verdict.MAYBE_CHANGED, Verdict.CHANGED, Verdict.DEFERRED})
@@ -145,6 +148,13 @@ def _shown(path: Path) -> str:
         return "~/" + path.relative_to(Path.home()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _baseline(docs: Path) -> str:
+    """Where the Baseline questions section is, for the NEXT lines of rules 4, 6 and 8: the skill's section,
+    and the docs repo's root AGENTS.md by its path (an agent that loads no skill reads that file; a bare
+    "AGENTS.md" would be the agent's own project's when it runs from another folder)."""
+    return f"{_BASELINE} (also in {_shown(docs / _AGENTS_MD)})"
 
 
 def _eval_status(path: Path) -> str | None:
@@ -650,7 +660,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     # Rules 4-6: the baseline comes before the first curated page.
     if not pages and questions is None:
         return done(
-            f"draft the baseline questions: follow step 1 (Draft) of {_BASELINE}, then run `{BIN} sync`",
+            f"draft the baseline questions: follow step 1 (Draft) of {_baseline(docs)}, "
+            f"then run `{BIN} sync`",
             4,
         )
     if questions is not None and not confirmed:
@@ -661,7 +672,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     if not pages and not has_before:
         return done(
             "run the 'before' baseline in a session that did not draft the questions (start a new one if "
-            f"this one did): follow step 2 (Run) of {_BASELINE}, then run `{BIN} sync`",
+            f"this one did): follow step 2 (Run) of {_baseline(docs)}, then run `{BIN} sync`",
             6,
         )
 
@@ -678,7 +689,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     if confirmed and len(pages) >= AFTER_BASELINE_PAGES and not any(eval_dir.glob("results-*-after.md")):
         return done(
             f"{len(pages)} curated pages exist: run the 'after' baseline in a session that did not write "
-            f"them (start a new one if this one did): follow step 2 (Run) of {_BASELINE}, then run "
+            f"them (start a new one if this one did): follow step 2 (Run) of {_baseline(docs)}, then run "
             f"`{BIN} sync`",
             8,
         )

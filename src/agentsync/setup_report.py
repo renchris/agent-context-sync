@@ -5384,10 +5384,13 @@ def _eval_by_name(line: str, config: Config) -> str:
     and for :data:`_NEXT_PATH_RE` a path ends at its first space: of ``~/Client Alpha/kb docs/_eval`` it left
     ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
     (``loop._shown``), before the paths without spaces are shortened.  The wait for empty cloud folders
-    names the config file by its path, and that one is replaced by its file name the same way."""
+    names the config file by its path, and rules 4, 6 and 8 name the docs repo's ``AGENTS.md`` by its path:
+    each is replaced by its file name the same way."""
     from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-    line = line.replace(loop._shown(expand(config.docs_repo) / loop._EVAL_DIR), _EVAL_SHOWN)
+    docs = expand(config.docs_repo)
+    line = line.replace(loop._shown(docs / loop._EVAL_DIR), _EVAL_SHOWN)
+    line = line.replace(loop._shown(docs / loop._AGENTS_MD), loop._AGENTS_MD)
     return line.replace(loop._shown(config.config_path), config.config_path.name)
 
 
@@ -5397,11 +5400,12 @@ def _loop_line(r: _Run) -> str:
     ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and every other one, in the loop's
     order, then the loop's ``note:`` lines about files still to be read again, when it has any (a second
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
-    was written before the one-time re-read finished. The two paths the config puts into these lines, the
-    docs repo's ``_eval`` and the config file, are shown without their path (the docs repo's ``_eval``
-    folder, the config file by its name) whatever the path (:func:`_eval_by_name`). Records the loop's
-    ``checks`` for the Summary's doctor line, only once its waits are on this line. Sets ``r.loop_stage``
-    for the issue link; :func:`build_report` runs it once, before ``took``."""
+    was written before the one-time re-read finished. The three paths the config puts into these lines, the
+    docs repo's ``_eval``, its ``AGENTS.md`` and the config file, are shown without their path (the docs
+    repo's ``_eval`` folder, ``AGENTS.md`` and the config file by their names) whatever the path
+    (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its waits
+    are on this line. Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before
+    ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"

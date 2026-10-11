@@ -616,7 +616,8 @@ already carries `SOURCE-MISSING` is not repeated.
     `WAITING ON YOU:` and `note:` lines follow it), the look-up order, never open `_eval/answers.md`
     or `_eval/results-*`, the authoring rules moved from the topics seed, what each `curate` row asks), then
     `skill.BASELINE`, the Baseline questions section the skill also carries (loop rules 4, 6 and 8 send every
-    agent there, and an AGENTS.md reader never loads the skill), then the inbox line when a live inbox
+    agent there, and an AGENTS.md reader never loads the skill; **amended 2026-10-11, §16.39 N34:** their NEXT
+    lines name AGENTS.md by its path), then the inbox line when a live inbox
     source exists (**amended 2026-10-06, §16.22:** which folder it names), then `BOUNDARY_TEXT` verbatim.
     Paths are relative to the docs repo (no `docs/` prefix, no
     `git -C docs`); the archive and snapshot lines appear only with `[governance] archive = true`. `skill_text`
@@ -5806,7 +5807,8 @@ errors are retried by every sync and are not rule 3 (they would make it loop). *
 `sync again:` while another sync reads more of it. The text is fixed wording plus
 counts and source ids, never a mirror path or a file name; commands are spelled with `AGENTSYNC_BIN`.
 **Amended (2026-10-07, §16.32):** the draft baseline's wait names the docs repo's `_eval` folder by its path
-and the tool's own two file names in it.
+and the tool's own two file names in it. **Amended (2026-10-11, §16.39 N34):** rules 4, 6 and 8 name the docs
+repo's root AGENTS.md by its path, after the skill's section.
 
 Callers: `sync` without `--mode` prints `next_lines` after its summary line unless `AGENTSYNC_NO_NEXT_HINT=1`;
 `status` prints them after its status lines (since KISS K08a, first: §16.21). `next_lines` never raises (an unreadable state is a logged warning
@@ -10944,6 +10946,21 @@ Why: the part read `inbox missing` on a Mac whose kept inbox existed, because so
 folders that were gone (triage 2026-10-08), the one place that still used the older meaning. Amends §16.21
 item 2 and the note in §16.36 (dated lines there). Test: `tests/test_loop.py`
 (`test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source`).
+
+#### N34: the baseline NEXT names the docs repo's AGENTS.md too (`agentsync.loop`, `agentsync.setup_report`)
+
+Rules 4, 6 and 8's NEXT lines name the docs repo's root AGENTS.md by its path after the skill's section:
+`... the agentsync-docs skill's "Baseline questions" section (also in ~/agent-context/docs/AGENTS.md), then
+run ...` (`loop._baseline`; the path is the configured docs repo's, written as `loop._shown` writes every path
+here). The setup report's Loop line shows it as `AGENTS.md`, its last part like every path on that line,
+whatever the docs repo's path (`_eval_by_name`, since a path with a space would otherwise leave its tail).
+
+Why: an agent that loads no skill was sent only to the skill, while the section it needs is in the root guide
+`publish.root_guide` writes as AGENTS.md (bring-back 2026-10-06, row 23). A bare `AGENTS.md` would be the
+agent's own project's file when it runs `agentsync sync` from another folder. The path adds no value to a
+report: its Configuration part already names the docs repo. Amends §12 item 12 and §16.20 (dated lines
+there). Tests: `tests/test_loop.py` (`test_the_baseline_next_names_the_agents_md_that_carries_the_section`),
+`tests/test_setup_report.py` (`test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 
