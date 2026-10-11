@@ -213,6 +213,16 @@ def _holder_path(lock_path: Path) -> Path:
     return lock_path.with_name(lock_path.name + ".json")
 
 
+def _holder_identity(body: str) -> str:
+    """``LockHeldError.who``, named by the CLI's ``skipped: lock held by ...`` WARNING: the holder's label
+    alone. Its pid, start, host, beat and stage stay on the stderr line; any of them would make each holder
+    run (or each skip) a new line that the report's Recent errors cannot merge."""
+    info = LockInfo.parse(body)
+    if info is None:  # empty: the holder is between its flock and its body write, or releasing
+        return f"an unidentified holder ({'unparseable' if body.strip() else 'empty'} lock body)"
+    return info.label
+
+
 def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     """Human description of a lock holder for LockHeldError and doctor."""
     info = LockInfo.parse(body)
@@ -281,7 +291,9 @@ class SingleWriterLock:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 body = _read_fd(fd)
-                raise LockHeldError(_describe_holder(body, self.read_holder(self._path))) from None
+                raise LockHeldError(
+                    _describe_holder(body, self.read_holder(self._path)), who=_holder_identity(body)
+                ) from None
             previous_body = _read_fd(fd)
             previous = LockInfo.parse(previous_body)
             current_boot = _current_boot_or_zero()

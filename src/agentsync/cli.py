@@ -93,7 +93,7 @@ from agentsync.slug import collision_key
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 EXIT_USAGE = 2
-EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held"
+EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <label>"
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
@@ -1898,7 +1898,7 @@ def _main(argv: Sequence[str] | None) -> int:
         return handler(args)
     except LockHeldError as exc:
         _err(f"skipped: lock held ({exc})")
-        _log.warning("skipped: lock held")
+        _log.warning("skipped: lock held by %s", exc.who)
         return EXIT_LOCK_HELD
     except ConfigError as exc:
         _err(f"configuration error: {exc}")

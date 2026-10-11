@@ -381,6 +381,7 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 1. `materialise.fail_closed()` (process materialisation policy OFF, inherited by every child process).
 2. `SingleWriterLock(state_paths.lock, label).acquire()` — `LockHeldError` → CLI exit 75 "skipped: lock held";
    `broke_stale=True` forces FULL passes this cycle.
+   **Amended (2026-10-11, §16.39 N24):** the logged WARNING is `skipped: lock held by <label>`.
    **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
    exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
    truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
@@ -1010,7 +1011,7 @@ class ManifestSchemaError(AgentSyncError):
 class LockHeldError(AgentSyncError):
     """Another live agentsync process holds the single-writer lock (CLI exit 75, logged as skipped)."""
 
-    def __init__(self, holder: str) -> None:
+    def __init__(self, holder: str, *, who: str | None = None) -> None:  # who: 2026-10-11, §16.39 N24
         super().__init__(f"lock held: {holder}")
 
 class BudgetExhaustedError(AgentSyncError):
@@ -3667,7 +3668,7 @@ EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 
 EXIT_USAGE = 2
 
-EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held"
+EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <label>"
 
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 
@@ -10961,6 +10962,28 @@ agent's own project's file when it runs `agentsync sync` from another folder. Th
 report: its Configuration part already names the docs repo. Amends §12 item 12 and §16.20 (dated lines
 there). Tests: `tests/test_loop.py` (`test_the_baseline_next_names_the_agents_md_that_carries_the_section`),
 `tests/test_setup_report.py` (`test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces`).
+
+#### N24: the lock-held warning names its holder (`agentsync.cli`, `agentsync.errors`, `agentsync.ops.lock`, `agentsync.cycle`)
+
+A run refused the lock (exit 75) logs `WARNING agentsync.cli: skipped: lock held by <who>`. `<who>` is
+`LockHeldError.who`: the holder's lock label (`poll`, `reconcile`, `dry_run`, `governance`), or `an
+unidentified holder (empty lock body)` or `an unidentified holder (unparseable lock body)`; the body is empty
+between a holder's flock and its body write. The holder's pid, start time, host, beat and stage stay on the
+stderr line `skipped: lock held (lock held: <full holder>)`, which has no level word and is unchanged.
+`LockHeldError(holder, *, who=None)`: `who` defaults to `holder`, and `str(exc)` and `.holder` are as before.
+The interactive wait's re-raise carries `who` through and no longer doubles the `lock held:` prefix. No
+command, flag, option or key is added.
+
+Why the label alone: the setup report's Recent errors keeps only lines with a level word, so the holder was
+on a line it drops, and it merges only lines that read the same after their time (§16.36). The beat and its
+age change on every skip, and the pid and start time on every run of the holder, so where a reconcile and a
+poll collide each hour, or at each wake, one entry per run filled the 40-entry window (measured in design: 43
+entries against 1) and pushed out the other errors. The merged entry's count and its first and last time
+still tell a stuck holder from repeated slow runs. Amends §9 step 2 (dated line there) and the §15 copies of
+`LockHeldError` and `EXIT_LOCK_HELD`. Tests: `tests/test_cli.py`
+(`test_lock_held_warning_names_the_holder_and_repeats_verbatim`), `tests/test_ops_lock.py`
+(`test_second_instance_in_same_process_is_refused`,
+`test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

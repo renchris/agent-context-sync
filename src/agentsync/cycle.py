@@ -4448,7 +4448,7 @@ def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
         except LockHeldError as exc:
             waited = time.monotonic() - start
             if waited >= wait_s:
-                raise LockHeldError(f"{exc}; waited {int(waited)}s") from None
+                raise LockHeldError(f"{exc.holder}; waited {int(waited)}s", who=exc.who) from None
             if waited - noted >= _LOCK_PROGRESS_S:
                 noted = waited
                 log.warning(

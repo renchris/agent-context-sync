@@ -774,6 +774,29 @@ def test_lock_held_exits_75(initialised: Config, capsys: pytest.CaptureFixture[s
         lock.release()
 
 
+def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """N24 (field 2026-10-08 D10.d): the report's Recent errors keeps only lines with a level word, so the
+    holder goes in the WARNING itself, by its label alone (no pid, start, beat, age or stage), so that the
+    skips behind every run of one kind read the same and the report merges them."""
+    lock = SingleWriterLock(initialised.state_paths.lock, "reconcile")
+    lock.acquire()
+    cfg = str(initialised.config_path)
+    texts: list[str] = []
+    try:
+        for stage in ("source:contoso-docs", "commit"):
+            lock.beat(stage)
+            assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_LOCK_HELD
+            err = capsys.readouterr().err.splitlines()
+            texts += [ln.split(" WARNING ", 1)[1] for ln in err if " WARNING agentsync.cli: skipped" in ln]
+            # the detail that changes from skip to skip stays on the stderr line, which has no level word
+            assert any(ln.startswith("skipped: lock held (") and f"stage {stage!r}" in ln for ln in err), err
+    finally:
+        lock.release()
+    assert texts == ["agentsync.cli: skipped: lock held by reconcile"] * 2
+
+
 def test_sync_without_mode_waits_for_a_running_sync(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -793,10 +816,13 @@ def test_interactive_lock_wait_is_injectable_and_ends_in_lock_held(initialised: 
     lock = SingleWriterLock(initialised.state_paths.lock, "poll")
     lock.acquire()
     try:
-        with pytest.raises(LockHeldError, match="waited"):
+        with pytest.raises(LockHeldError, match="waited") as ei:
             run_cycle(initialised, mode=None, lock_wait_s=0.3)
     finally:
         lock.release()
+    # §16.39 N24: the re-raise keeps the holder's label for the WARNING and does not double the prefix
+    assert ei.value.who == "poll"
+    assert str(ei.value).count("lock held: ") == 1, str(ei.value)
 
 
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:

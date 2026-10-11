@@ -19,9 +19,12 @@ class ManifestSchemaError(AgentSyncError):
 class LockHeldError(AgentSyncError):
     """Another live agentsync process holds the single-writer lock (CLI exit 75, logged as skipped)."""
 
-    def __init__(self, holder: str) -> None:
+    def __init__(self, holder: str, *, who: str | None = None) -> None:
         super().__init__(f"lock held: {holder}")
         self.holder = holder
+        # The holder by its lock label alone (poll, reconcile, governance): the CLI's WARNING names it, so the
+        # skips behind every run of one kind log the same line, which the report's Recent errors merges.
+        self.who = who if who is not None else holder
 
 
 class BudgetExhaustedError(AgentSyncError):

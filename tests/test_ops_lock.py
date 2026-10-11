@@ -189,11 +189,30 @@ def test_second_instance_in_same_process_is_refused(tmp_path: Path) -> None:
         assert f"pid {os.getpid()} (reconcile)" in ei.value.holder
         assert "last beat" in ei.value.holder
         assert str(ei.value).startswith("lock held: ")
+        assert ei.value.who == "reconcile"  # N24: the CLI's WARNING names the holder by its label alone
         # the refused attempt must not have disturbed the holder's body
         info = LockInfo.parse(path.read_text())
         assert info is not None and info.label == "reconcile"
     finally:
         first.release()
+
+
+def test_a_holder_with_no_lock_body_yet_is_named_as_unidentified(tmp_path: Path) -> None:
+    """N24: between a holder's flock and its body write (or its truncate and unlock) the body is empty; the
+    CLI's WARNING then names an unidentified holder, the same text at every such skip."""
+    path = tmp_path / "agentsync.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        with pytest.raises(LockHeldError) as ei:
+            SingleWriterLock(path, "poll").acquire()
+        assert ei.value.who == "an unidentified holder (empty lock body)"
+        os.pwrite(fd, b"not a lock body\n", 0)
+        with pytest.raises(LockHeldError) as ei:
+            SingleWriterLock(path, "poll").acquire()
+        assert ei.value.who == "an unidentified holder (unparseable lock body)"
+    finally:
+        os.close(fd)
 
 
 def test_double_acquire_on_one_instance_raises(tmp_path: Path) -> None:
