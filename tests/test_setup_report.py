@@ -5618,3 +5618,47 @@ def test_a_dropbox_team_folder_is_an_org_and_its_app_name_no_residue(
     check = next(ln for ln in section(text, "Redaction").splitlines() if "Residue check:" in ln)
     assert "Dropbox" not in check and "Box" not in check, check
     assert set(re.findall(r"<org-\d+>", text)) == {"<org-1>", "<org-2>"}
+
+
+def test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest() -> None:
+    """A numbered kind counts as often as the text shows its placeholders, and one the text never shows drops
+    out; an unnumbered kind keeps its replacement count; a disabled Redactor is unchanged (B13 N31)."""
+    red = setup_report.Redactor()
+    red.add("source", "northwind-ledger")
+    red.add("folder", "Client Alpha", fuzzy=True)
+    red.add("home", "/Users/jdoe")
+    assert red.redact("/Users/jdoe northwind-ledger Client Alpha") == "~ <source-1> <folder-1>"
+    for _ in range(2):  # the same text gives the same count
+        red.recount("~ <source-1> <source-1> <source-10> agent text")
+        assert red.counts["source"] == 2 and "folder" not in red.counts and red.counts["home"] == 1
+        assert red.values == 2 and red.kinds_used() == ["home", "source"]
+    off = setup_report.Redactor(enabled=False)
+    off.recount("<source-1>")
+    assert off.total == 0 and off.values == 0
+
+
+def test_the_redaction_count_is_the_placeholders_the_report_shows(fake_mac: dict[str, Path]) -> None:
+    """A source's label is replaced once and shown in every row for it, and a friction item is redacted
+    before it is cut short: the count of a numbered kind is what the report shows, in the Summary's line and
+    the Redaction section alike (B13 N31)."""
+    cfg = fake_mac["config"]
+    made = load_config(cfg).sources[0].id
+    hand_set = "northwind-ledger"
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace(f'id = "{made}"', f'id = "{hand_set}"'), "utf-8")
+    seed = Seed(cfg)
+    for name in ("one.png", "two.png", "three.png"):
+        seed.item(hand_set, name, state="refused", reason=NO_CONVERTER, page="refused")
+    seed.close()
+    what = "the folder listing took a while " * 8 + " ".join([str(fake_mac["one"])] * 3)
+    friction = write_friction(
+        fake_mac,
+        V5_HAPPY.replace("| step 3 | end | install.sh exited 0 | -", f"| step 3 | error | {what} | -"),
+    )
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks(), friction_path=friction)
+    main = text.split("\n## Redaction\n", 1)[0]
+    numbered = [k for k in red.kinds_used() if k not in setup_report._UNNUMBERED]
+    assert "source" in numbered and red.counts["source"] >= 3
+    for kind in numbered:
+        assert red.counts[kind] == len(re.findall(rf"<{kind}-\d+>", main)), kind
+    assert f"- redaction: {red.total} replacement(s)" in section(text, "Summary")
+    assert f"\n{red.total} replacement(s) of {red.values} value(s) (" in section(text, "Redaction")

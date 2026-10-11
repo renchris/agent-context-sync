@@ -69,9 +69,10 @@ and cut to ``<path>`` at the first path component the Redactor does not know. Na
 nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,
 and those in the install.out tail, with a sync's ``alarm:`` and ``error:`` lines there) show item paths,
 document names and every quoted name as ``<path>``. install.sh run ids
-are shown without their process id. The friction log is redacted with the same map. The login name is
-registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue check runs over
-the whole redacted report, listing its hits by section.
+are shown without their process id. The friction log is redacted with the same map. The Redaction section's
+count of a numbered placeholder is how often the report shows it; the unnumbered ones count replacements. The
+login name is registered before the full name (``janedoe`` for "Jane Doe" is ``<user>``), and the residue
+check runs over the whole redacted report, listing its hits by section.
 """
 
 from __future__ import annotations
@@ -361,6 +362,7 @@ _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
 _UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "mdmhost", "tmp"})
+_NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder-12>); never <mdmhost>
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
 _GENERIC_FOLDERS = frozenset(
     {
@@ -615,8 +617,8 @@ def _agent_words(name: str) -> bool:
 
 class Redactor:
     """Replace known values and email/GUID/hex/temporary-folder patterns with placeholders, the same value
-    always with the same placeholder (``<folder-1>``); counts every replacement per kind. Disabled, it returns
-    text unchanged.
+    always with the same placeholder (``<folder-1>``); counts every replacement per kind, and a numbered kind,
+    after :meth:`recount`, as often as the report shows it. Disabled, it returns text unchanged.
 
     A value registered ``fuzzy`` (folder, library, organisation and full-name values) also matches its case,
     space, hyphen, underscore and CamelCase variants, and its shell-escaped form: ``Client Alpha`` covers
@@ -640,18 +642,35 @@ class Redactor:
 
     @property
     def total(self) -> int:
-        """Every replacement made so far."""
+        """Every replacement, a numbered kind as the text :meth:`recount` was given shows it."""
         return sum(self.counts.values())
 
     @property
     def values(self) -> int:
-        """How many distinct values were replaced so far (placeholders that appear in the output)."""
+        """Distinct values replaced (after :meth:`recount`, the numbered ones the report shows)."""
         return len(self._used)
 
     def kinds_used(self) -> list[str]:
         """The kinds with at least one replacement, in legend order."""
         order = [*_LEGEND, *sorted(k for k in self.counts if k not in _LEGEND)]
         return [k for k in order if self.counts.get(k)]
+
+    def recount(self, text: str) -> None:
+        """Count each numbered placeholder (``<folder-1>``, ``<source-2>``) as often as ``text``, the finished
+        report, shows it, and keep among :attr:`values` only those it shows. A value replaced once and shown
+        in many rows (a source's label, which :class:`_Labels` caches per id) then counts once per row, and
+        one replaced in a line that was cut short afterwards (a friction item) does not count. The unnumbered
+        kinds keep their replacement count: the report writes ``~/`` paths and template fields such as the IT
+        request's ``<serial>`` itself. One pass over ``text``: up to ``_LISTING_MAX`` folder names are
+        registered. A disabled Redactor is left unchanged."""
+        if not self.enabled:
+            return
+        numbered = {k for k in self._kind_of.values() if k not in _UNNUMBERED}
+        shown = Counter(p for p in _NUMBERED_RE.findall(text) if self._kind_of.get(p) in numbered)
+        for kind in numbered:
+            del self.counts[kind]  # a Counter raises no KeyError for a kind it does not hold
+        self.counts.update(self._kind_of[p] for p in shown.elements())
+        self._used = {p for p in self._used if self._kind_of.get(p) not in numbered} | set(shown)
 
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
@@ -5308,6 +5327,7 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
+    unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (
         f"Residue check: {listed} capitalised or joined word(s) next to a placeholder in this report ("
         + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
@@ -5319,7 +5339,10 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
         "",
         "## Redaction",
         "",
-        f"{red.total} replacement(s) of {red.values} value(s) ({kinds}).",
+        f"{red.total} replacement(s) of {red.values} value(s) ({kinds}). Numbered placeholders are counted "
+        f"each time this report shows them; the unnumbered kinds ({unnumbered}) each time a value was "
+        "replaced, a line cut short afterwards included, because the report also writes ~/ paths and "
+        "template fields of its own.",
         f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
         "anything else confidential (a project name inside a log line, say) is yours to remove.",
         check,
@@ -5464,7 +5487,8 @@ def build_report(
     now: datetime | None = None,
     budget_s: float = TIME_BUDGET_S,
 ) -> tuple[str, Redactor]:
-    """The report text and the redactor that produced it (its ``total`` is the redaction count), always
+    """The report text and the redactor that produced it (its ``total`` is the redaction count, numbered
+    placeholders as the report shows them: :meth:`Redactor.recount`), always
     redacted (KISS K16b: the ``redact`` argument went with ``--no-redact``, its last caller). Never
     raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
     agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
@@ -5515,6 +5539,7 @@ def build_report(
     for title in SECTION_TITLES[:-1]:
         lines += bodies[title]
     main = _redact_lines(red, lines)
+    red.recount(main)
     counts = f"{red.total} replacement(s) of {red.values} value(s) (legend under Redaction)"
     main = main.replace(_REDACTION_MARK, counts)
     try:

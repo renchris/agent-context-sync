@@ -5290,6 +5290,10 @@ the last stdout line is `ISSUE_LINK_LABEL` + " " + the link ("issue link (review
 goes to stdout (exit 1). Without `--out` the report itself is stdout and its last line is the bare link
 (SUPERSEDED 2026-10-05, KISS K16a: without `--out` the report goes to `setup_report.DEFAULT_OUT` and the CLI prints
 the same two lines as with `--out`).
+**Amended (2026-10-11, §16.40):** `Redactor.recount(text: str) -> None` counts each numbered placeholder as often
+as `text` shows it and keeps among `values` only the numbered ones it shows; `build_report` calls it once on the
+redacted report before the Summary's count goes in. So `counts` of a numbered kind, `total` and `values` (and the
+CLI's "wrote ..." line) are what the report shows; the unnumbered kinds still count replacements.
 **Amended (2026-10-04, KISS K08a):** `cli._doctor_lines_offline` is removed. Both hooks read one
 `cli._build_status(config, offline=True)`: Doctor gets its check lines, Status its loop line and status lines
 (the checks render once). Offline means no Graph probe, no TCC canary (it can raise a privacy prompt), no NEXT
@@ -10680,6 +10684,29 @@ Tests: `test_org_of_takes_the_part_after_any_providers_app_name`,
 `test_the_shell_report_redacts_any_providers_team_and_account`. Trade-off: a domain that is an ordinary word
 (`SynologyDrive-Home`-shaped) is replaced wherever the word appears, as the OneDrive organisation already is; the
 shell numbers its organisations in glob order, so its `<org-N>` can differ from the Python report's.
+
+**The redaction count is what the report shows** (B13 N31). The count was of replacement events, and the text a
+reader sees differed from it both ways. A source's label (`_Labels.of`) is replaced once and cached per id, so it
+was counted once and shown in every row for that source (a field report: 182 replacements counted, source 119,
+against 175 `<source-N>` shown). A friction item is redacted and then cut short (`_item_line`, `_shorten`), and
+`_source_local_shown` redacts pieces of an argument and may then cut it to `<path>`, so replacements in the
+cut-off part were counted and not shown. Rule: `build_report` calls `Redactor.recount(main)` once, on the redacted
+report before its Redaction section, and each numbered placeholder (`<kind-N>`, `_NUMBERED_RE`) counts as often as
+that text shows it; `values` keeps only the numbered placeholders it shows. The unnumbered kinds (home, user, name,
+serial, host, mdmhost, tmp) keep their replacement count, because the report writes `~/` paths and template fields
+such as the IT request's `<serial>` itself, so a count of them in the text would not be a redaction count. The
+Summary's `- redaction:` line, the Redaction section's line and the CLI's "wrote ..." line all carry the recounted
+numbers. `recount` is one pass over the text (`findall`), since up to `_LISTING_MAX` folder names are registered:
+2,039 placeholders over 442 KB took 1.2 ms that way against about 1 s with one `str.count` each. The Redaction
+section's count line adds: "Numbered placeholders are counted each time this report shows them; the unnumbered
+kinds (...) each time a value was replaced, a line cut short afterwards included, because the report also writes
+~/ paths and template fields of its own." The kind list is built from `_LEGEND` and `_UNNUMBERED`, and the sentence
+writes no literal unnumbered placeholder. Rejected: counting `~` and `<serial>` in the text (they are the report's
+own words too); fixing each cache and cut at its source (a new one would bring the drift back); sentinel
+characters around placeholders (every reader of redacted text would have to strip them). The shell fallback
+prints no count, so it has no twin. Tests: `test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest`
+and `test_the_redaction_count_is_the_placeholders_the_report_shows`. Rehearsal triage will see the number rise
+(the field report's 182 would be about 238).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
