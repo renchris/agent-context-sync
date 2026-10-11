@@ -4050,3 +4050,46 @@ def test_the_shell_report_redacts_the_pac_url_and_proxy_hosts(
     assert re.search(r"\| git pull: Could not resolve proxy: <proxy-\d+> \|", text), text
     assert "fabrikam" not in text.lower() and "cloudproxy" not in text.lower(), text
     assert "- proxy environment: yes" in text, "a host with no dot is not registered"
+
+
+def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """The shell fallback reads the git config files ``_git_proxy_urls`` reads: the XDG config and the
+    ``.git/config`` of the checkout the script runs from, as well as ``~/.gitconfig``. A Latin-1 byte in a
+    config file stops BSD sed in a UTF-8 locale before it reaches the proxy line; the git reader runs under
+    ``LC_ALL=C`` (B13 H19, H1). The fixture's locale is C, so this test runs in en_US.UTF-8."""
+    src = tmp_path / "checkout"
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    (src / ".git").mkdir()
+    (src / ".git" / "config").write_text("[http]\n\tproxy = http://repo.fabrikam.example:3128\n")
+    xdg = tmp_path / "xdg"
+    (xdg / "git").mkdir(parents=True)
+    (xdg / "git" / "config").write_text("[http]\n\tproxy = xdg.fabrikam.example:8080\n")
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_bytes(
+        b"[user]\n\tname = Jos\xe9\n[http]\n\tproxy = http://home.fabrikam.example:1\n"
+    )
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    hosts = ("repo", "xdg", "home")
+    friction.write_text(
+        "Prompt: v10\n"
+        + "".join(f"F1 | step 1 | error | Could not resolve proxy: {h}.fabrikam.example | -\n" for h in hosts)
+    )
+    cp = subprocess.run(
+        [BASH32, str(src / "scripts" / "install.sh"), "--report-only"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={**env, "LC_ALL": "en_US.UTF-8", "XDG_CONFIG_HOME": str(xdg)},
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert "(shell fallback: agentsync is not installed)" in cp.stdout
+    text = report_path(env).read_text(encoding="utf-8", errors="replace")
+    for h in hosts:
+        assert f"{h}.fabrikam" not in text, h
+    assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \|", text)) == len(hosts), text

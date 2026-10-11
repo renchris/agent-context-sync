@@ -10653,8 +10653,8 @@ registers the same PAC value, the PAC URL's host and the host of every proxy URL
 proxy environment variables, `[network] proxy` and the same git config files, its own checkout standing for the
 installed one), cutting the path before the userinfo, as `urlsplit` does. Redaction only grows. Tests:
 `test_a_pac_url_is_redacted_after_its_scheme`, `test_a_proxy_in_any_git_config_file_is_redacted`,
-`test_a_proxy_only_git_knows_is_redacted` and `test_the_shell_report_redacts_the_pac_url_and_proxy_hosts`. Not
-changed: the Python report still registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl
+`test_a_proxy_only_git_knows_is_redacted`, `test_the_shell_report_redacts_the_pac_url_and_proxy_hosts` and
+`test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale`. Not changed: the Python report still registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl
 getenv`) is printed but not registered. An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
 match stays on its own line, and does not take the next line's first token (`[user]`, `sslVerify`). A proxy value
 that `urlsplit` rejects (`http://[x`) is skipped. Before this, either case made the whole redactor fail, so the
