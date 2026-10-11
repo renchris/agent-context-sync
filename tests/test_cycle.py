@@ -3016,6 +3016,92 @@ def test_a_re_read_that_fails_keeps_the_page_and_a_file_is_given_up_after_two_cy
     assert run(sample_config).commit_sha is None and len(fetched) == 8
 
 
+def test_the_build_digest_follows_the_installed_files_and_nothing_else(tmp_path: Path) -> None:
+    """What names a build in a re-read's ``for`` moves with a packaged file's bytes or name, and not with
+    its mtime or a compiled cache (16.39 N4)."""
+    pkg = tmp_path / "pkg"
+    (pkg / "sub").mkdir(parents=True)
+    (pkg / "a.py").write_text("A = 1\n")
+    (pkg / "sub" / "b.py").write_text("B = 2\n")
+
+    def digest() -> str:
+        cycle_mod._build_digest.cache_clear()
+        return cycle_mod._build_digest(pkg)
+
+    d0 = digest()
+    assert len(d0) == 64
+    os.utime(pkg / "a.py", (1, 1))
+    assert digest() == d0
+    (pkg / "__pycache__").mkdir()
+    (pkg / "__pycache__" / "a.cpython-311.pyc").write_bytes(b"\x00compiled")
+    assert digest() == d0
+    (pkg / "sub" / "b.py").write_text("B = 3\n")
+    d1 = digest()
+    assert d1 != d0
+    (pkg / "sub" / "b.py").rename(pkg / "sub" / "c.py")
+    assert digest() not in {d0, d1}
+
+
+def test_a_build_whose_folder_cannot_be_listed_still_has_a_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tree replaced under the process (an install during a sync) gives a digest and no error."""
+    gone = tmp_path / "replaced"
+    gone.mkdir()
+
+    def rglob(self: Path, pattern: str) -> Any:
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(Path, "rglob", rglob)
+    cycle_mod._build_digest.cache_clear()
+    try:
+        assert len(cycle_mod._build_digest(gone)) == 64
+    finally:
+        cycle_mod._build_digest.cache_clear()
+
+
+def test_a_file_given_up_is_read_again_by_another_build(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that changes no version, suffix, engine or floor still starts the re-read over: two
+    files given up under one build are read again by the next, and only once (16.39 N4).  ``__version__``
+    is the same in both, as it has been in every build."""
+    other = "projects/Contoso gadget review.pdf"
+    _commented(local_source_dir / REVIEW, "Contoso widget review")
+    _commented(local_source_dir / other, "Contoso gadget review")
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    pages = _mirror_bytes(sample_config, REVIEW, other, PLAIN_PDF)
+    rows = _file_rows(sample_config)
+    fetched = _fetches(monkeypatch)
+    real = pdf_mod.PdfConverter.convert
+    broken_for = {Path(rel).name for rel in pages}
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name in broken_for:
+            raise RuntimeError(f"cannot open /Users/someone/Library/{name}")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(pdf_mod.PdfConverter, "convert", convert)
+    assert run(sample_config).exit_code == 0
+    broken_for.discard(Path(REVIEW).name)
+    assert run(sample_config).commit_sha is not None and len(fetched) == 6
+    given_up = sorted(rows[rel].stable_id for rel in (other, PLAIN_PDF))
+    assert _reread_record(sample_config) == (True, given_up)
+    broken_for.clear()
+    assert run(sample_config).commit_sha is None and len(fetched) == 6
+    before = _run_record(sample_config)["reread_for"]
+    build = tmp_path / "another-build"
+    build.mkdir()
+    (build / "cycle.py").write_text("# another build\n")
+    monkeypatch.setattr(cycle_mod, "_BUILD_ROOT", build, raising=False)
+    again = run(sample_config)
+    assert again.commit_sha is not None and len(fetched) == 8
+    assert COMMENTS in _mirror_page(sample_config, other)[1] and _reread_record(sample_config) == (True, [])
+    assert _run_record(sample_config)["reread_for"] != before
+    assert run(sample_config).commit_sha is None and len(fetched) == 8
+
+
 def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

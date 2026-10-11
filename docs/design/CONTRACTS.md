@@ -7545,7 +7545,9 @@ failed conversion.
   once and later converted without OCR (past the budget, or after the engine failed on the new bytes) was
   left out by `reread_candidates` and `reread_left` alike, and the same cycle stored `done` again.
 - A file in `tried` gets what it lacks when its bytes change (the ordinary conversion), when the
-  capabilities change, or when agentsync is upgraded (its version is part of them).
+  capabilities change, or when agentsync is upgraded (its version is part of them). **Amended 2026-10-11,
+  §16.39 N4:** the version was 0.1.0 in every build, so an upgrade restarted nothing; what is part of them
+  now is a digest of the installed package's files (`_build_digest`), so another build of agentsync does.
 
 **A file the pass calls maybe-changed** (`_outdated_in_queue`; amended 2026-10-06). `_reread_source` reads
 only a file listed `unchanged`. A file the walk calls maybe-changed in every pass (a volume that reports no
@@ -7569,7 +7571,8 @@ once a cycle (`_Cycle._reread_load`).
 - `for` is `_Cycle._capabilities()`: the sha256 of this agentsync's version, the suffixes that have a
   converter, the engine's identity (`""` without one) and each converter's `outdated_key`. A new version,
   suffix, engine, emitter or floor is something new to look for, and a file given up under one build is
-  tried by the next.
+  tried by the next. **Amended 2026-10-11, §16.39 N4:** the build's part is `_build_digest`, a digest of the
+  installed package's files, not the version: another build is what is new to look for.
 - `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false; a file that failed
   once is still left, one in `tried` is not). While the first record says so for the current capabilities,
   a cycle reads one meta value for the source and runs none of the queries below. **Amended 2026-10-11,
@@ -10774,6 +10777,31 @@ nothing counts against the targets it took, as before. Cost: one more `produced_
 which the cycle read a file again. Amends §16.27 "The record", `done` (dated line there). Tests:
 `tests/test_cycle.py`, a scan from emitter 2.0.0 the engine fails on (read in two cycles, then given up), and a
 field-build image the engine fails on once (its text is back in the next cycle).
+
+#### N4: an upgrade restarts the re-read (`agentsync.cycle`)
+
+The build's part of `_Cycle._capabilities` is `cycle._build_digest(_BUILD_ROOT)`: a sha256 over the files of
+the installed `agentsync` package (each one's path under the package and the sha256 of its bytes, in path order,
+`__pycache__/` and `*.pyc` left out), worked out once a process. It was `__version__`, which has been `0.1.0`
+since the first commit: two builds gave the same `for`, a source's record with its `tried` files carried over,
+and a file given up under one build was never tried by the next, although §16.27 and the README ("left alone
+until it changes or agentsync is upgraded") said it was. The README sentence is unchanged and now true.
+
+Not the install stamp's commit: install.sh writes none for a changed checkout or a wheel, and every commit would
+move it. A commit that changes no packaged file restarts nothing; the two deploy docs the wheel carries
+(`agentsync/_deploy/`) are packaged files, so an edit to either restarts the scan once, and a checkout run and
+the installed tool hash differently (the record's second slot keeps both, so going between them costs a manifest
+query, not repeated attempts). A dependency upgrade alone does not move the digest and restarts nothing: `for`
+holds each converter's `outdated_key` (its emitter and floor), not its version string, so a file given up stays
+given up until a packaged file changes. A file or a folder that cannot be read (a tree an install is replacing
+under a running sync) counts as such: the digest is still made, and the next process starts over once more.
+
+The first sync on the build that carries this changes every source's `for` once: each scan runs again (a
+manifest query; only files that still lack something are read) and a given-up file gets its two attempts again,
+inside the cycle's 120 s re-read budget and the three-in-a-row stop. Every later install that changes a packaged
+file does the same, which is what a new engine or floor already did. Amends §16.27 (two dated lines there).
+Tests: `tests/test_cycle.py` (the digest follows bytes and names, not mtimes or compiled caches; a folder that
+cannot be listed still gives one; two files given up are read again, once, under another build).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

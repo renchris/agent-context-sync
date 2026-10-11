@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+import functools
 import gc
 import hashlib
 import json
@@ -181,13 +182,13 @@ and how far it got.  A JSON list of at most two records ``{"done": bool, "for": 
 id>, ...]}``: the one the last cycle wrote, then the last one written for another ``for``.  A record can
 also hold ``"failed": {<stable id>: <count>}`` and ``"reading": <stable id>``.
 
-``for`` is ``_Cycle._capabilities``: this agentsync's version, the suffixes that have a converter, the OCR
-engine's identity and each converter's ``outdated_key``.  ``failed``: the files whose re-read failed, with
-the number of cycles it failed in.  ``tried``: those it failed in ``_REREAD_ATTEMPTS`` cycles; they are not
-read again for the same ``for``, and the second record keeps that true when an engine goes and comes back.
-``reading``: the file being read when the record was stored, cleared when its read ends; a cycle that finds
-one was killed in that read, and counts it as a failed one.  ``done`` counts in the first record only: no
-file on this Mac was left to read again, so no cycle looks until one leaves such a file."""
+``for`` is ``_Cycle._capabilities``: this build (``_build_digest``), the suffixes that have a converter,
+the OCR engine's identity and each converter's ``outdated_key``.  ``failed``: the files whose re-read
+failed, with the number of cycles it failed in.  ``tried``: those it failed in ``_REREAD_ATTEMPTS`` cycles;
+they are not read again for the same ``for``, and the second record keeps that true when an engine goes and
+comes back.  ``reading``: the file being read when the record was stored, cleared when its read ends; a
+cycle that finds one was killed in that read, and counts it as a failed one.  ``done`` counts in the first
+record only: no file on this Mac was left to read again, so no cycle looks until one leaves such a file."""
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
 _REREAD_ATTEMPTS = 2
 """The cycles in which one file's re-read may fail before the file is given up for what this install has.
@@ -424,6 +425,33 @@ class _Rereads:
 
 
 _RereadRecord = tuple[str, bool, dict[str, int], str | None]  # for, done, failed, reading
+_BUILD_ROOT = Path(__file__).resolve().parent
+"""The installed agentsync package, whose files name the build in ``_Cycle._capabilities``."""
+
+
+@functools.cache
+def _build_digest(root: Path) -> str:
+    """sha256 over the files of the package at ``root``: each one's path under it and the sha256 of its
+    bytes, in path order, compiled caches left out.  ``__version__`` has been 0.1.0 since the first commit,
+    so it never told two builds apart; this does, from a clean or a changed checkout or a wheel alike.
+    Worked out once a process.  A file or a folder that cannot be read counts as such, so the digest is
+    still made (CONTRACTS.md 16.39 N4)."""
+    h = hashlib.sha256()
+    try:
+        files = sorted(
+            p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+        )
+    except OSError:  # the tree is being replaced under this process: the next process lists it whole
+        files = []
+    for path in files:
+        try:
+            data = hashlib.sha256(path.read_bytes()).digest()
+        except OSError:
+            data = b"unreadable"
+        h.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0" + data)
+    return h.hexdigest()
+
+
 _REREAD_FOR_DIGITS = 8
 
 
@@ -2640,17 +2668,17 @@ class _Cycle:
 
     # ---- files converted before a capability existed: read again once ------------------------------------
     def _capabilities(self) -> str:
-        """Digest of what a re-read looks for: this agentsync's version, the suffixes that have a converter,
-        the OCR engine's identity and what each converter's ``outdated`` goes by besides (its
-        ``outdated_key``: an emitter and its floor).  ``_REREAD_META`` stores it per source.  The version is
-        in it so that an upgrade starts over: a file given up under one build is tried by the next."""
+        """Digest of what a re-read looks for: this build (``_build_digest``), the suffixes that have a
+        converter, the OCR engine's identity and what each converter's ``outdated`` goes by besides (its
+        ``outdated_key``: an emitter and its floor).  ``_REREAD_META`` stores it per source.  The build is in
+        it so that an upgrade starts over: a file given up under one build is tried by the next."""
         if self._capability is None:
             keys = {
                 (c.converter_id, str(getattr(getattr(c, "inner", c), "outdated_key", "")))
                 for c in self.registry.converters()
             }
             doc = {
-                "agentsync": __version__,
+                "agentsync": _build_digest(_BUILD_ROOT),
                 "extensions": list(self.registry.extensions()),
                 "ocr": self.ocr.identity if self.ocr is not None else "",
                 "rules": sorted(list(k) for k in keys if k[1]),
