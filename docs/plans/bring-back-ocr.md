@@ -1,5 +1,5 @@
 ---
-status: done
+status: in-progress
 ---
 
 # Plan — the corporate Mac's bring-back file: field fixes, riders, PDF comments, on-device OCR
@@ -312,7 +312,54 @@ Held, not built:
 - A speech build killed by a signal reads as "exit -9".
 - A two-letter first part ("Li, Jane") is redacted only inside the joined forms, as CONTRACTS now says.
 
-## Outlook and the stop rule for prompt versions (2026-10-09; proposed, operator ruling pending)
+## B13 Build every captured item, prompt v11 (2026-10-10)
+
+Scope (frozen): build every item in the ledger below to done (fixed with a test, or for prompt text pinned by the
+digest test), or record per item the reason a build would make things worse; ship the prompt-wording items as v11;
+gate green, landed, CI read back green; v11 rehearsed (new Mac, field-state Mac, old v10 copy refused) on the landed
+commit before the re-paste go-ahead. Operator ruling: "Outlook and the stop rule", Ruling (2026-10-10).
+
+Locus: L, as in B1 to B12, under the operator's "ultracode" opt-in. Why not S: the items are already triaged and
+each wave's synthesis (spec against skeptic, branch against branch) is the lead's. Waves: (1) a design Workflow, a
+designer and a skeptic per item plus a completeness critic that re-reads every earlier triage's held and not-built
+rows and B13's not-built list; specs in `~/.cache/agentsync-bring-back/b13/design/`. (2) a build Workflow, one
+builder per cluster in its own worktree (one owner per file), a fresh reviewer and a fix pass each; the lead
+integrates, runs the gate, lands, reads CI. (3) the rehearsal Workflow on the landed commit. Lead context: under
+50%; succession point after the land, with this section as the bridge.
+
+| Id | Item | Cluster | Source |
+|---|---|---|---|
+| H1 | Step 1's Xcode and git stops log their error before the report | prompt | B11 |
+| H2 | Step 3's second no-report case names both step-1 triggers | prompt | B11 |
+| H3 | "the last NEXT: or WAITING ON YOU: line" has several candidates | prompt | B11 |
+| H4 | A re-run whose installer NEXT says "session done" against step 3's "start the loop" | prompt | B11 |
+| H5 | A session with nothing to request and the fix-request heading | prompt | B11 |
+| H6 | "removing a file removes its page": the page becomes a deletion notice | prompt | B11 |
+| H7 | An indented `alarm:` line is explained by a WAITING ON YOU line | prompt | B11 |
+| H8 | Step 2's timeout sentence names a first speech build (up to 20 minutes) | prompt | B12 F34, E1.e |
+| H9 | The IT request names the speech build's prebuilt binary download | docs | B12 C1 |
+| H10 | The speech build's `swift package resolve` gets the proxy variables | installer | B12 C2, meeting-video R8 |
+| H11 | A group kill leaves compiler processes running | installer | B12 E1.d |
+| H12 | A speech build killed by a signal reads as "exit -9" | installer | B12 |
+| H13 | `speech: off` does not say the helper was built | installer | B11, B12 |
+| H14 | A SIGKILL during install leaves no end line | installer | B12 E1.d |
+| H15 | The shell fallback report stops at an install.log line holding a `$'…'` word | fallback report | B12 |
+| H16 | The fallback's Summary says "source commit -" under `--report-only` | fallback report | B12 |
+| H17 | The "no install.sh run began" note means runs in install.log; `--report-only` is not logged there | report | B11 |
+| H18 | Section 1 of the report has no speech line | report | B12 E3.e |
+| H19 | A cloud proxy's PAC path is not redacted (only the URL's host) | report | B12 E4.a″ |
+| H20 | A two-letter first part ("Li, Jane") is redacted only inside the joined forms | report | B12 |
+| H21 | Installer-output counts span earlier attempts; attempt 1 reads "failed at step 2" under v6 rules | report | B12 E3.b, E3.h |
+| H22 | Recent errors counts only the last 64 KiB of each log | report | B12 C4 |
+| H23 | The removing pass prints the same `deletion_candidate=N` counter as the marking pass | sync | B11 |
+| H24 | A `.url` (internet shortcut) converter | converter | B10, B11 |
+
+Re-examined by the critic under the ruling (each either keeps its written reason or joins the ledger): skipping
+the speech build until models are placed (B12 E1.f); `config.graph_company` on a WAITING ON YOU line (B12 E2); the
+B11 dropped list; the report's "unexpected" and "(status: baseline complete)" labels (B10). Not in scope: the
+empty-cloud-folder rule, which is decision `71d3e66ef726` (default: keep the rule, fires 2026-10-20).
+
+## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
 a few significant ones rather than forever back and forth. we are at v10 now ... i dont want to do this forever
@@ -339,6 +386,16 @@ Update (2026-10-10, B12): the v10 paste ran clean, the second clean field run af
 unless the operator rules otherwise. That Mac now runs `4a42af9`, which has the scope-change guard, so the printed
 `exclude` line is safe to paste there. Decision `085fac870dd6` is moot on that Mac (0 online-only images in three
 reports). The operator's open items, in order, are in the B12 triage, "Operator actions, in order".
+
+Ruling (operator, 2026-10-10): "why or why not are we not implementing said improvements and fixes that we've
+documented and captured ... There is zero cost for us to go and implement. There is immense cost for inaction."
+The proposed rule is replaced. Building costs the operator nothing; only a paste does. So:
+1. Every captured item is built, or carries a stated reason it would make things worse. No item is held for want
+   of a prompt version. One ledger (B13) holds every item to that end state.
+2. Prompt-wording items ship together as one version (v11), rehearsed on the landed commit before the go-ahead;
+   the operator pastes it once, as the update the Mac takes anyway.
+3. Field rounds after v11 triage every finding the same way: build it, or record why not.
+Decision `085fac870dd6` was closed as actioned 2026-10-10 (no download; moot on that Mac).
 
 ## B1 Field fixes from the bring-back report
 
