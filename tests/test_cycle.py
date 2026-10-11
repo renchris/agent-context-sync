@@ -3336,6 +3336,56 @@ def test_a_file_the_engine_fails_on_twice_is_given_up_and_an_engine_that_comes_b
     assert run(sample_config).commit_sha is None and fetched.count(worse) == 3
 
 
+def test_a_page_from_an_older_emitter_the_engine_fails_on_is_read_again_by_the_next_cycle(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan mirrored by emitter 2.0.0 is read again by an engine that fails on it.  What the read leaves
+    is this emitter's page without OCR, a version the cycle's targets did not name when it started: the
+    file is still left, the next cycle reads it once more, and then it is given up (16.39 N3)."""
+    (local_source_dir / "scans").mkdir()
+    bad = "scans/Contoso bad scan.pdf"
+    build_picture_pdf(local_source_dir / bad, [(["Contoso bad scan: cover"], []), ([], [page_picture(95)])])
+    with _before_comments(monkeypatch):
+        assert run(sample_config).exit_code == 0
+    engine = shade_engine(tmp_path / "ocr-bin", {95: "fail"})
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).exit_code == 0 and fetched.count(bad) == 1
+    bad_id = _file_rows(sample_config)[bad].stable_id
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {bad_id: 1}
+    assert _reread_notes(sample_config) == [_sync_again(1)]
+    assert run(sample_config).commit_sha is None and fetched.count(bad) == 2
+    assert _reread_record(sample_config) == (True, [bad_id]) and _reread_failed(sample_config) == {}
+    assert run(sample_config).commit_sha is None and fetched.count(bad) == 2
+
+
+def test_a_field_build_image_the_engine_fails_on_once_gets_its_text_back_in_the_next_cycle(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An image page of the field build (emitter 1.0.0) is read again, and the engine fails on it: the image
+    gets the ``no converter`` stub a Mac without an engine gives it, a version the targets the cycle took
+    before the read did not name.  The file is still left, so the next cycle, whose engine works, reads it
+    once more and its page has the picture's text again (16.39 N3)."""
+    _shade_png(local_source_dir / SITE_PLAN, 70)
+    good = shade_engine(tmp_path / "ocr-good", {70: ["Loading dock"]})
+    found: list[Any] = [good]
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: found[0])
+    with monkeypatch.context() as field:
+        field.setattr(image_mod, "_EMITTER_VERSION", "1.0.0")
+        assert run(sample_config).exit_code == 0
+    found[0] = shade_engine(tmp_path / "ocr-bad", {70: "fail"})
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).exit_code == 0 and fetched.count(SITE_PLAN) == 1
+    assert _mirror_page(sample_config, SITE_PLAN)[0]["status"] == "refused"
+    plan_id = _file_rows(sample_config)[SITE_PLAN].stable_id
+    assert _reread_record(sample_config) == (False, []) and _reread_failed(sample_config) == {plan_id: 1}
+    found[0] = good
+    assert run(sample_config).commit_sha is not None and fetched.count(SITE_PLAN) == 2
+    assert "Loading dock" in _mirror_page(sample_config, SITE_PLAN)[1]
+    assert _reread_record(sample_config) == (True, []) and _reread_failed(sample_config) == {}
+    assert run(sample_config).commit_sha is None and fetched.count(SITE_PLAN) == 2
+
+
 def test_re_reads_stop_at_their_time_and_go_on_in_the_next_cycle_past_a_file_that_fails(
     sample_config: Config,
     local_source_dir: Path,

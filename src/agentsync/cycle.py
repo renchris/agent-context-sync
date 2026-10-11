@@ -2810,7 +2810,7 @@ class _Cycle:
         if state.done:
             return  # nothing was left to read again, and this cycle found nothing either (_reread_reopen)
         targets = self._reread_targets(src.id)
-        kept, after, more = self._reread_kept, "", bool(targets)
+        kept, read, after, more = self._reread_kept, self._reread_n, "", bool(targets)
         while more and not self._reread_over():
             rows = self.manifest.reread_candidates(
                 src.id, targets, seen_run=self.run_id, skip=state.tried(), after=after, limit=_REREAD_BATCH
@@ -2827,6 +2827,11 @@ class _Cycle:
             )
         # Done when no file on this Mac is left to read again: none the cycle's time ran out before, none
         # that is pending, none this pass did not list and none whose read failed fewer times than it may.
+        # A read can leave a file under a version the targets taken before it did not name (an older
+        # emitter's page that the engine failed on is now this emitter's page without OCR, a field-build
+        # image's the ``no converter`` stub): after a read the targets are asked for again (16.39 N3).
+        if self._reread_n > read:
+            targets = self._reread_targets(src.id)
         left = self.manifest.reread_count(src.id, targets, skip=state.tried()) if targets else 0
         self._reread_left += left
         state.done = not left

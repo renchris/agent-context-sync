@@ -7572,7 +7572,9 @@ once a cycle (`_Cycle._reread_load`).
   tried by the next.
 - `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false; a file that failed
   once is still left, one in `tried` is not). While the first record says so for the current capabilities,
-  a cycle reads one meta value for the source and runs none of the queries below.
+  a cycle reads one meta value for the source and runs none of the queries below. **Amended 2026-10-11,
+  §16.39 N3:** what is left is counted against targets asked for again after the cycle's reads, so a file a
+  failed read left under a version no earlier target named is still left.
 - A cycle looks again when the capabilities are not those of the first record, and when `_reread_reopen`
   cleared `done`: a file was just converted without something its converter has (past `_OCR_BUDGET_S`, or
   after the engine failed: `_lacks`), or a file the last pass saw online-only is on this Mac. It is stored
@@ -10755,6 +10757,23 @@ The cache count in the purge headline reads `1 cache entry` or `N cache entries`
 be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`. The other counts keep `(s)`
 (`item(s)`, `docs path(s)`, `commit(s)`, `blob(s)`), as every other CLI line does. Why: the v10 rehearsal read
 `entr(ies)` as a typo. Amends §16.37 "Purge dry run" (dated line there). Tests: `tests/test_cli.py`.
+
+#### N3: a failed re-read under a new version is still left (`agentsync.cycle`)
+
+`_Cycle._reread_source` counted what was left against the targets it took before reading. A re-read the engine
+failed on writes this build's version without an engine: a PDF's page without `+ocr-`, or an image's `no
+converter` stub. When the file's version before the read differed from that, no target named the new one. The
+old version could be an older emitter, the field build, or a pypdfium2 or pdfminer.six the install has since
+upgraded. The cycle then stored `done` with the file at one failure, and the file never got the second read
+§16.27 gives it. A field-build image kept the stub, without its text, even once the engine worked again.
+
+When the cycle has read a file of the source again (`_reread_n` moved during the call), the count now asks for
+the targets again after the reads (`_reread_targets`). So the run record's `reread_left` and the `sync again`
+note count that file, the next cycle reads it, and a second failure puts it in `tried`. A call that read
+nothing counts against the targets it took, as before. Cost: one more `produced_by` statement for a source in
+which the cycle read a file again. Amends §16.27 "The record", `done` (dated line there). Tests:
+`tests/test_cycle.py`, a scan from emitter 2.0.0 the engine fails on (read in two cycles, then given up), and a
+field-build image the engine fails on once (its text is back in the next cycle).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 
