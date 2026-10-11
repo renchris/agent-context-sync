@@ -45,7 +45,7 @@ from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.arm_local import _unexcluded, exclude_advice
-from agentsync.config import Config, SourceConfig
+from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
 from agentsync.cycle import (
@@ -714,7 +714,9 @@ def status_line(config: Config) -> str:
     """``status``'s one loop line (KISS K08a): ``loop: skill <current|stale|missing> · inbox <on|missing|off>
     · baseline <missing|draft|confirmed|before|after> · topics N · checkpoint <date|never> · to curate N ·
     archive <on|off>``. ``to curate`` is :func:`queue_rows` (not the purge queue, which status prints on its
-    own line). Disk only; a part that cannot be read shows ``?``."""
+    own line). ``inbox`` is the folder the guides name (the live inbox source on the folder
+    ``config.ensure_inbox`` keeps, else every live inbox source); doctor checks each source's folder. Disk
+    only; a part that cannot be read shows ``?``."""
     docs = expand(config.docs_repo)
 
     def part(name: str, fn: Callable[[], object]) -> str:
@@ -725,10 +727,14 @@ def status_line(config: Config) -> str:
             return f"{name} ?"
 
     def inbox() -> str:
-        boxes = [s for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
+        # The inbox the guides name (publish's root_guide): the live inbox source on the folder
+        # config.ensure_inbox keeps, else every live inbox source. doctor checks each source's folder.
+        boxes = [s.path for s in config.live_sources() if s.kind is SourceKind.INBOX and s.path is not None]
         if not boxes:
             return "off"
-        return "on" if all(expand(s.path).is_dir() for s in boxes if s.path is not None) else "missing"
+        kept = canonical_source_root(docs.parent / "inbox")
+        named = [kept] if kept in boxes else boxes
+        return "on" if all(expand(path).is_dir() for path in named) else "missing"
 
     def checkpoint() -> str:
         found = gitops.curated_checkpoint(docs) if (docs / ".git").exists() else None

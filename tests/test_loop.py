@@ -593,6 +593,29 @@ def test_status_line_tracks_skill_baseline_topics_and_queue(tmp_path: Path, fold
     assert " topics 2 " in loop.status_line(config) and "skill missing" in loop.status_line(config)
 
 
+def test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source(tmp_path: Path, folder: Path) -> None:
+    """2026-10-08 D2.a: the guides name one inbox, the folder ``ensure_inbox`` keeps (publish's root_guide),
+    so status's ``inbox`` part is about that folder: a hand-added inbox source whose folder is gone is
+    doctor's FAIL, not "inbox missing" while the kept inbox is there. With no live source on the kept folder
+    the part covers every live inbox source, as the guide then lists them all."""
+    gone = tmp_path / "Contoso" / "old drop"
+    config = _synced(tmp_path, folder, inbox_source_table("old-drop", gone))
+    assert " · inbox missing · " in loop.status_line(config)  # no source on the kept folder yet
+    config, kept = ensure_inbox(config.config_path)
+    assert kept is not None and kept.path is not None
+    assert " · inbox on · " in loop.status_line(config)
+    gone.mkdir(parents=True)
+    kept.path.rmdir()
+    assert " · inbox missing · " in loop.status_line(config)
+    cfg = config.config_path
+    head = f'id = "{kept.id}"\n'
+    paused = cfg.read_text(encoding="utf-8").replace(head, head + 'state = "paused"\n')
+    cfg.write_text(paused, encoding="utf-8")
+    assert " · inbox on · " in loop.status_line(load_config(cfg))  # paused: the live one is the inbox
+    shutil.rmtree(gone)
+    assert " · inbox missing · " in loop.status_line(load_config(cfg))
+
+
 # ---- the one-time re-read: a note that says "sync again" while a sync reads more --------------------------
 
 REREAD_TAIL = (

@@ -5862,7 +5862,8 @@ A green doctor or a full-looking status read as "done" while the curation half h
 2. `loop.status_line(config)`: `loop: skill <current|stale|missing> · inbox <on|missing|off> · baseline
    <missing|draft|confirmed|before|after> · topics N · checkpoint <curated tag date|never> · to curate N ·
    archive <on|off>` (a part that cannot be read shows `?`). **Amended (2026-10-06, §16.22):** the part was
-   labelled `queue`, which read as the purge queue printed two lines below.
+   labelled `queue`, which read as the purge queue printed two lines below. **Amended (2026-10-11, §16.39
+   N22):** `inbox` is the kept inbox (the folder the guides name), not every live inbox source.
 3. `doctor.format_results(doctor.run_checks(config, tcc_canary=<due>) + cli._extra_checks(config))`: doctor's
    lines byte for byte, so install.sh's `^\[FAIL` parsing is unchanged.
 4. The status lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its
@@ -10391,7 +10392,7 @@ copy is stopped at step 1 like every older copy (§16.28).
   no longer say a sync keeps it (`ensure_inbox` runs for init and add-source only). doctor's ok line for an empty
   inbox source outside CloudStorage adds "(drop files you save by hand here)" only when the source's path is that
   folder; any other reads "`<root>` is empty", still ok. `status`'s `inbox on|missing|off` part is unchanged: it
-  is about every live inbox source.
+  is about every live inbox source. (**Amended 2026-10-11, §16.39 N22:** it is now about the kept inbox.)
 - **Step 3 names the two stops with no report.** "Two cases have no report: while you wait for my folder answer
   in step 1, and when step 1 stops because this prompt is not the installer's. Every other stop still ends with
   the report." Step 1's rule stays word for word. The second case is step 1's whole version stop (the `--version`
@@ -10925,6 +10926,24 @@ background sync. Amends §16.14 (dated lines there, in K16b and in the `ReportHo
 (`test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected`,
 `test_no_yours_group_without_the_loops_checks`, `test_no_yours_group_when_the_loop_line_is_not_read`,
 `test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli`).
+
+#### N22: status's inbox part is about the kept inbox (`agentsync.loop`)
+
+`status`'s `inbox on|missing|off` (`loop.status_line`) is about the inbox the guides name: the live inbox source
+on the folder `config.ensure_inbox` keeps (`canonical_source_root(<docs repo's parent folder>/inbox)`), else every
+live inbox source, the same choice `publish.Publisher.root_guide` makes. A hand-added inbox source whose folder is
+gone is doctor's `source.<id>.listable` FAIL in the same `status` output, with exit 1, and no longer makes the
+part read `inbox missing` while the kept inbox is there. The three words and `inbox ?` are unchanged.
+
+Rejected: `missing` or `off` when no live source is on the kept folder. The guide then names the other inbox
+sources as the drop folder, so `on` answers whether the folders it names exist, and no `[FAIL]` line would
+explain another word. Also rejected: moving `root_guide`'s selection into a shared helper, a refactor of
+pinned guide output that the fix does not need; the test pins the shared meaning instead.
+
+Why: the part read `inbox missing` on a Mac whose kept inbox existed, because sources added by hand pointed at
+folders that were gone (triage 2026-10-08), the one place that still used the older meaning. Amends §16.21
+item 2 and the note in §16.36 (dated lines there). Test: `tests/test_loop.py`
+(`test_status_line_inbox_is_the_kept_inbox_not_every_inbox_source`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 
