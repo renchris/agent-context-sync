@@ -6461,7 +6461,7 @@ def _yours_step() -> loop.NextStep:
 @pytest.mark.parametrize(
     "tail",
     [
-        " (fix: agentsync status (its WAITING ON YOU line about project-x says what stops the listing and "
+        " (fix: agentsync status (each WAITING ON YOU line about project-x says what stops the listing and "
         "what to do: another sync does not clear it))",
         " (yours: see WAITING ON YOU)",
     ],

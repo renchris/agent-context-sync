@@ -919,17 +919,23 @@ class LocalArm:
         if stats.unknown_dirs:
             shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
             more = f" (+{len(stats.unknown_dirs) - 5} more)" if len(stats.unknown_dirs) > 5 else ""
-            if self.cfg.kind is SourceKind.LOCAL and stats.unknown_dirs == stats.empty_cloud_dirs:
-                # Only empty cloud folders: the loop's WAITING ON YOU line names the cause and the step.
-                cause = "empty cloud folder(s), zero children in a cloud tree"
-                advice = (
-                    f"see the WAITING ON YOU line about {self.source_id}, which agentsync status also prints"
+            cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
+            advice = "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
+            if stats.empty_cloud_dirs:
+                # The loop's WAITING ON YOU lines name the empty cloud folders and the step for each, and warn
+                # against excluding one that held mirrored files (that retires its pages unchecked): point
+                # there, never at an exclude. Only an unreadable folder keeps the access advice.
+                where = (
+                    f"each WAITING ON YOU line about {self.source_id} says what to do, and agentsync status "
+                    "prints them"
                 )
-            else:
-                cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
-                advice = (
-                    "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
-                )
+                if stats.unknown_dirs == stats.empty_cloud_dirs:
+                    cause, advice = "empty cloud folder(s), zero children in a cloud tree", where
+                else:
+                    advice = (
+                        "grant the agent Files and Folders access for the other folders; for the empty "
+                        f"ones, {where}"
+                    )
             alarms.append(
                 f"{len(stats.unknown_dirs)} unknown dir(s) — {cause}: {shown}{more}; enumeration "
                 f"incomplete, no deletions this pass ({advice})"

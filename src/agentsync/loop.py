@@ -532,16 +532,17 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     # it cannot list (TCC, an empty cloud folder, a missing root or sentinel), which another
                     # sync does not clear. A Graph FULL pass resumes, so sync again is right for it.
                     ran_full = last is not None and last.pass_kind is PassKind.FULL
-                    if ran_full and src.kind is SourceKind.LOCAL:
+                    if ran_full and src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
+                        # An empty cloud folder is unknown on every pass in an inbox too: the same waits.
                         stored, below = _empty_dirs(manifest, src)
                         if below:
                             empty.append((src, below, _missed(manifest, src.id)))
+                        elif src.kind is SourceKind.INBOX:
+                            inbox_partial.append(src.id)
                         elif stored:
                             incomplete.append(src.id)  # all excluded since that walk: the next sync lists it
                         else:
                             unlisted.append(src.id)
-                    elif ran_full and src.kind is SourceKind.INBOX:
-                        inbox_partial.append(src.id)
                     else:
                         incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
@@ -622,9 +623,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         )
     if inbox_partial:
         notes.append(
-            f"the inbox ({', '.join(sorted(inbox_partial))}) was not fully listed (a file still being "
-            "written, or a folder that cannot be read); a later sync lists it; it does not block the next "
-            "step"
+            f"the inbox ({', '.join(sorted(inbox_partial))}) was not fully listed: a later sync lists a file "
+            "that was still being written, but not a folder it cannot read or an empty cloud folder "
+            f"(`{BIN} sync -v` names the cause); it does not block the next step"
         )
     if files.online:
         notes.append(

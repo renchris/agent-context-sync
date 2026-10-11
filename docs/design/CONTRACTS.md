@@ -5801,7 +5801,9 @@ reason (`it-request`). None of these is rule 3: another sync would not clear the
 §16.22):** the local-source wait names the empty cloud folders its last walk stored and prints the exclude line
 to paste, but only for folders with no mirrored file below them; with none stored it points at `sync -v`; once
 sources.toml excludes them all it is rule 3 (sync again). An inbox whose newest FULL pass
-was incomplete (often a file still being written) is a `note:`. Online-only files within the budget
+was incomplete (often a file still being written) is a `note:` (**amended 2026-10-11, §16.39 N27:** unless its
+last walk stored empty cloud folders, which get the local source's waits; the note has a new text).
+Online-only files within the budget
 are one `note:` line and never rule 3, so permanently deferred files still reach rules 4-9. Item
 errors are retried by every sync and are not rule 3 (they would make it loop). **Amended (2026-10-07,
 §16.28):** a source whose one-time re-read (§16.27) is not finished is one more `note:`, which starts
@@ -6065,7 +6067,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
   status (its WAITING ON YOU line about <id> says what stops the listing and what to do: another sync does not
   clear it)`: "a full pass clears this" was never true of a local walk, which is always a full pass, and
-  status prints the loop's lines above the checks. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
+  status prints the loop's lines above the checks. **Amended 2026-10-11, §16.39 N27:** the fix reads "each
+  WAITING ON YOU line about <id>", since a source can have two. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
   `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
@@ -11013,7 +11016,12 @@ There is no `since` there: the report states the fact, so the two counts can dif
 change.
 
 Known limit: between an edit to sources.toml and the next sync both counts are against the last walk, as the
-wait's folders are; the next sync rewrites them.
+wait's folders are; the next sync rewrites them. In an inbox (N27) both counts also include a mirrored file
+that is still there but that the last walk withheld as changed within `quiescence_s` (or future-dated): a
+withheld item is not in the listing, so its row is not stamped. Nothing is taken out for it (the clause
+promises only "those still absent"), and the first sync that lists the file drops it from the count. The
+withheld set is not stored per walk, so the count cannot leave it out
+(`test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it`).
 
 Why: with a listing held incomplete, files deleted upstream stay mirrored and no line said how many
 (rehearsal v10, `unchanged=26` beside `live 30`), so the person pasting the exclude line could not tell what
@@ -11023,6 +11031,46 @@ there). Tests: `tests/test_loop.py`
 `test_a_pass_that_failed_after_its_walk_counts_no_file_as_not_listed`,
 `test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line`), `tests/test_setup_report.py`
 (`test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one`).
+
+#### N27: empty cloud folders: the alarm, an inbox, and the WAITING ON YOU lines (`agentsync.arm_local`, `agentsync.loop`, `agentsync.ops.doctor`)
+
+Whenever a local or inbox walk found an empty cloud folder below the root, the scan's alarm no longer offers an
+exclude:
+- all unknown folders empty: `N unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: ...;
+  enumeration incomplete, no deletions this pass (each WAITING ON YOU line about <id> says what to do, and
+  agentsync status prints them)`, for an inbox as for a local source;
+- mixed with another cause: the old cause, then `(grant the agent Files and Folders access for the other
+  folders; for the empty ones, each WAITING ON YOU line about <id> says what to do, and agentsync status prints
+  them)`;
+- no empty cloud folder below the root (an unreadable folder, a provider error, an empty cloud root): the old
+  text, byte for byte.
+
+An inbox whose newest FULL pass stored empty cloud folders that today's `exclude` does not prune gets the
+local source's two waits (§16.22), with N26's count (which in an inbox also includes a present file the last
+walk withheld as still being written: N26, Known limit), since another sync does not clear them: the paste line
+only for folders with nothing mirrored below them (an inbox's default `exclude` is all always-excluded names,
+so its list is the folders alone), and the line about folders that held mirrored files, whose step is the
+person's. Its `heartbeat.<id>` check is then among `NextStep.checks`. Any other incomplete inbox keeps one
+`note:`, which no longer says "a later sync lists it": `the inbox (<ids>) was not fully listed: a later sync
+lists a file that was still being written, but not a folder it cannot read or an empty cloud folder
+(\`agentsync sync -v\` names the cause); it does not block the next step`. Doctor's local heartbeat fix reads
+"each WAITING ON YOU line about <id>". No pointer uses nested parentheses (doctor's fix parser strips one
+level).
+
+Why: in the mixed case the alarm said "exclude a deliberately empty cloud folder" two lines above the wait
+that warns such an exclude retires pages with no deletion check; "a later sync lists it" was false for an
+empty cloud folder, an empty cloud inbox root and a folder the walk cannot read, and a step only the person
+can take belongs in a wait (install.sh, the setup report's Loop line and the setup prompt show waits, not
+notes); "the WAITING ON YOU line" sat above two lines when a source had both kinds of folder. Rejected: an
+inbox-only note telling the person to remove the folders, which drops the "if the files were removed on
+purpose" condition for a folder whose removal lets held deletions through. Not changed: an empty cloud source
+root still gets the old alarm's exclude advice, though a root cannot be excluded. Amends §16.20, §16.22 and
+§16.37 (dated lines in §16.20 and §16.22). Tests: `tests/test_arm_local.py`
+(`test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them`,
+`test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`,
+`test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`), `tests/test_loop.py`
+(`test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source`,
+`test_an_inbox_listing_left_incomplete_by_no_empty_folder_promises_nothing`), `tests/test_ops_doctor.py`.
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

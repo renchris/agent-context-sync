@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from errno import EDEADLK
 from pathlib import Path
@@ -419,6 +420,101 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         f"WAITING ON YOU: 2 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
         f"before you run `{BIN} purge --queue` (rewrites history)"
     ], "deleted upstream, not retired: each deletion queued its purge"
+
+
+def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_path: Path) -> None:
+    """b13 N27 (b): an empty cloud folder keeps an inbox's listing incomplete on every pass, as in a local
+    source, so it gets the same WAITING ON YOU lines (the exclude line only for a folder with nothing
+    mirrored below it), never the inbox note's "a later sync lists it"; once the folders are gone the
+    held deletion takes the usual path."""
+    box = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
+    (box / "Empty").mkdir(parents=True)
+    for rel in ("keep.txt", "Kept/old.txt"):
+        _write(box / rel, "The purchase order is approved.\n")
+    config = _setup(tmp_path, inbox_source_table("drop", box) + "quiescence_s = 0\n")
+    run_cycle(config, mode=None)
+    (box / "Kept" / "old.txt").unlink()
+    for _ in range(2):
+        run_cycle(config, mode=None)
+        with Manifest(config.state_paths.db) as manifest:
+            assert manifest.live_count("drop") == 2, "the listing is incomplete: the deletion is held"
+        lines = _lines(config)
+        assert [ln for ln in lines if ln.startswith("WAITING ON YOU")] == [
+            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete (deletions held; "
+            'another sync does not clear it): if they are meant to be empty, set exclude = ["/Empty/"] in '
+            f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
+            "gains files",
+            "WAITING ON YOU: 1 empty cloud folder(s) in drop held 1 file(s) the mirror still has (the "
+            "listing stays incomplete, so their deletion is held; another sync does not clear it): if the "
+            "files were removed on purpose, remove the empty folder(s) from the cloud drive too, and later "
+            "syncs take the pages out with the usual deletion check; excluding such a folder instead retires "
+            "its pages at once, with no deletion check and no purge queued. "
+            f"`{BIN} sync -v` names the folders; in all, the last walk of drop did not list 1 file(s) the "
+            "mirror still has: once the listing is complete, later syncs take out the pages of those still "
+            "absent, with the usual deletion check",
+        ]
+        assert not any(ln.startswith("note: ") for ln in lines)
+    (box / "Empty").rmdir()
+    (box / "Kept").rmdir()
+    for _ in range(3):
+        run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_source("drop").enumeration_complete  # type: ignore[union-attr]
+        assert manifest.live_count("drop") == 1
+    assert [ln for ln in _lines(config) if ln.startswith(("WAITING ON YOU", "note: "))] == [
+        f"WAITING ON YOU: 1 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"before you run `{BIN} purge --queue` (rewrites history)"
+    ], "deleted, not retired: the deletion queued its purge"
+
+
+def test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it(tmp_path: Path) -> None:
+    """§16.39 N26, Known limit (b13 N27 review): an inbox walk leaves a file that changed too recently out
+    of its listing, so a mirrored file that is still there counts as "not listed" beside an empty cloud
+    folder. Nothing is taken out for it, and the first sync that lists it drops it from the count."""
+    box = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
+    (box / "Empty").mkdir(parents=True)
+    _write(box / "keep.txt", "The purchase order is approved.\n")
+    config = _setup(tmp_path, inbox_source_table("drop", box) + "quiescence_s = 0\n")
+    run_cycle(config, mode=None)
+    paste = (
+        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete (deletions held; "
+        'another sync does not clear it): if they are meant to be empty, set exclude = ["/Empty/"] in '
+        f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
+        "gains files"
+    )
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
+    settled = (box / "keep.txt").stat()
+    ahead = time.time() + 3600  # dated ahead of the clock: withheld by every walk, and never waited for
+    os.utime(box / "keep.txt", (ahead, ahead))
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.unlisted_count("drop") == 1
+        assert manifest.live_count("drop") == 1, "withheld, not deleted"
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
+        paste + "; the last walk of drop did not list 1 file(s) the mirror still has: once the listing is "
+        "complete, later syncs take out the pages of those still absent, with the usual deletion check"
+    ]
+    os.utime(box / "keep.txt", ns=(settled.st_atime_ns, settled.st_mtime_ns))
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.unlisted_count("drop") == 0
+        assert manifest.live_count("drop") == 1
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
+
+
+def test_an_inbox_listing_left_incomplete_by_no_empty_folder_promises_nothing(tmp_path: Path) -> None:
+    """b13 N27 (b): an empty inbox root in a cloud tree is unknown on every pass too (and so is a folder
+    it cannot read): the general note says which cause a later sync clears, and what names the cause."""
+    box = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
+    box.mkdir(parents=True)
+    config = _setup(tmp_path, inbox_source_table("drop", box))
+    run_cycle(config, mode=None)
+    notes = [ln for ln in _lines(config) if ln.startswith("note: ")]
+    assert notes == [
+        "note: the inbox (drop) was not fully listed: a later sync lists a file that was still being "
+        "written, but not a folder it cannot read or an empty cloud folder "
+        f"(`{BIN} sync -v` names the cause); it does not block the next step"
+    ]
 
 
 def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:

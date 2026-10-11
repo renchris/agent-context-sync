@@ -1564,14 +1564,16 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
 
 
 def _incomplete_fix(src: SourceConfig) -> str:
-    """The fix for a source whose listing stays incomplete. A Graph pass resumes, and an inbox is incomplete
-    while a file in it is still being written, so another sync clears those. A local folder's walk is
-    always a full pass, so the same folder stops it again: the loop's WAITING ON YOU line, which status
-    prints above the checks, says which case it is and what to do (it names the empty cloud folders)."""
+    """The fix for a source whose listing stays incomplete. A Graph pass resumes, and an inbox is most often
+    incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names
+    any other cause, and prints the loop's WAITING ON YOU lines for an inbox's empty cloud folders. A local
+    folder's walk is always a full pass, so the same folder stops it again: the loop's WAITING ON YOU lines,
+    which status prints above the checks, say which case it is and what to do (they name the empty cloud
+    folders)."""
     if src.kind is not SourceKind.LOCAL:
         return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
     return (
-        f"agentsync status (its WAITING ON YOU line about {src.id} says what stops the listing and what to "
+        f"agentsync status (each WAITING ON YOU line about {src.id} says what stops the listing and what to "
         "do: another sync does not clear it)"
     )
 

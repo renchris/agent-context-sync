@@ -1335,8 +1335,8 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     # Bring-back S11: a local walk is always a full pass, so "another sync clears this" was false for it.
     # The loop's WAITING ON YOU line, which status prints above the checks, says what to do.
     assert r.fix == (
-        "agentsync status (its WAITING ON YOU line about local-fixture says what stops the listing and what "
-        "to do: another sync does not clear it)"
+        "agentsync status (each WAITING ON YOU line about local-fixture says what stops the listing and "
+        "what to do: another sync does not clear it)"
     )
     assert_fix_parses(r.fix)
 
@@ -1375,7 +1375,7 @@ def test_heartbeat_incomplete_fix_by_source_kind(
         _beat(sample_config, enumeration_complete=False)
     monkeypatch.setattr(os, "scandir", lambda *a, **k: pytest.fail("the heartbeat check lists no folder"))
     r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
-    assert r.fix is not None and r.fix.startswith("agentsync status (its WAITING ON YOU line about ")
+    assert r.fix is not None and r.fix.startswith("agentsync status (each WAITING ON YOU line about ")
     assert "Bids" not in r.fix and r.note is None
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
