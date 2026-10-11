@@ -331,9 +331,9 @@ def _scope_change_alarm(count: int) -> str:
 
 
 def _accept_incomplete_alarm(source_id: str, held: int | None) -> str:
-    """``accept-deletions`` on a pass that did not list the whole source: nothing applied (N15)."""
+    """``accept-deletions`` on a pass that did not list the whole source: no deletion applied (N15)."""
     text = (
-        "accept-deletions applied nothing: this pass did not list the whole source, so no absent file is "
+        "accept-deletions applied no deletion: this pass did not list the whole source, so no absent file is "
         "confirmed"
     )
     if held is None:
@@ -3317,10 +3317,12 @@ class _Cycle:
             else:
                 # The listing stopped short of known files, so none is confirmed absent and the operator's
                 # assertion has nothing to apply. Clearing the breaker here would spend it: the next complete
-                # pass trips again on the same files (N15). Keep it, report it, and say nothing was applied.
+                # pass trips again on the same files (N15). Keep it, report it, say no deletion applied.
                 acc.breaker_tripped = self.manifest.breaker_active(src.id, _iso(self.now()))
-                acc.alarms.append(
-                    _accept_incomplete_alarm(src.id, srow.breaker_candidates if held and srow else None)
+                acc.alarms.append(  # an expired hold is not said to hold files
+                    _accept_incomplete_alarm(
+                        src.id, srow.breaker_candidates if acc.breaker_tripped and srow else None
+                    )
                 )
         if scope_changed and complete_full:
             self.manifest.set_meta(scope_key, "")

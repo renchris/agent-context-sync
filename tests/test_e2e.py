@@ -376,7 +376,7 @@ def test_f_mass_delete_trips_the_breaker_and_commits_nothing(tmp_path: Path, loc
         assert not m.breaker_active(SID, "2026-09-29T12:00:00Z")
 
 
-_HELD_ALARM = "accept-deletions applied nothing: this pass did not list the whole source"
+_HELD_ALARM = "accept-deletions applied no deletion: this pass did not list the whole source"
 
 
 def test_f_accept_deletions_on_an_incomplete_pass_keeps_the_breaker(

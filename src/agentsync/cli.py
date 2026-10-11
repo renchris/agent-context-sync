@@ -680,7 +680,7 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
 def _cmd_accept_deletions(args: argparse.Namespace) -> int:
     """The operator asserts SOURCE's absent files really were deleted: a RECONCILE of that source alone that
     clears its breaker and applies the held removals (the breaker itself is unchanged).  A pass that leaves a
-    known file unlisted confirms no absence: it applies nothing, keeps the breaker and says so.  Like
+    known file unlisted confirms no absence: it applies no deletion, keeps the breaker and says so.  Like
     interactive sync it waits for a running cycle's lock: launchd never re-runs an operator's assertion after
     exit 75."""
     config = _config(args)
