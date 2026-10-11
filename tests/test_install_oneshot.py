@@ -3160,6 +3160,30 @@ def test_log_step_forms(env: dict[str, str]) -> None:
     assert re.fullmatch(r"\S+ \| prompt \| \(step 2b\) e \| f", lines[2])
 
 
+def test_every_friction_time_is_the_second_of_the_call_that_wrote_it(env: dict[str, str]) -> None:
+    """N40: the header, each --log line and the end line carry the UTC second of the install.sh call that
+    wrote them, not a time the agent gives (setup-feedback.md section 1 says so)."""
+    calls = [
+        ("--log-start", started("Contoso Agent")),
+        ("--log", "1", "question", "a", "-"),
+        ("--log", "2", "prompt", "b", "c"),
+        ("--report-only",),
+    ]
+    windows = []
+    local = {**env, "TZ": "EST5"}  # a Mac's own zone is not UTC: the stamp must still be
+    for argv in calls:
+        before = datetime.now(UTC).replace(microsecond=0)
+        cp = install_sh(local, *argv)
+        assert cp.returncode == 0, cp.stderr
+        windows.append((before, datetime.now(UTC)))
+    lines = friction_path(env).read_text().splitlines()
+    stamped = [lines[0].removeprefix("Attempt: "), *(line.split(" | ", 1)[0] for line in lines[3:])]
+    assert len(stamped) == len(calls), lines
+    for text, (before, after) in zip(stamped, windows, strict=True):
+        at = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        assert before <= at <= after, (text, before, after)
+
+
 def test_friction_options_are_exclusive(env: dict[str, str]) -> None:
     for argv in (
         ["--log-start", "a", "--report-only"],

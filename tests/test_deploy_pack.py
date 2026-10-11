@@ -1990,6 +1990,19 @@ def test_denied_access_remedy_is_the_files_and_folders_toggle() -> None:
         assert _DENIAL_REMEDY in text, text
 
 
+def test_setup_feedback_says_a_friction_time_is_the_second_of_the_call_that_wrote_it() -> None:
+    """N40 (2026-10-06 bring-back, row 7): install.sh stamps each friction line with the second of its own
+    call, so lines logged one after another share one time; section 1 says so, so triage does not read it as
+    a fault."""
+    section = _feedback_page().split("## 1. How a report is produced", 1)[1].split("\n## ", 1)[0]
+    section = " ".join(section.split())
+    assert (
+        "Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the"
+        " moment of the event" in section
+    )
+    assert "share one time (three lines at one second are not a fault)" in section
+
+
 def test_known_friction_register_names_real_tests() -> None:
     """Every test the feedback page's Known friction table cites exists in this file (a glob '*' matches at
     least one), so a renamed test cannot leave a stale proof behind."""
