@@ -1954,7 +1954,8 @@ def test_speech_off_is_ok_and_names_the_switch_or_the_missing_models(
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.detail) == (
         True,
-        "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)",
+        "speech: off (the speech helper is built; the speech models are not placed: parakeet-tdt-0.6b-v3/ "
+        "and speaker-diarization/)",
     )
     place_models(helper.parent)
     r = by_name(run_checks(sample_config))["speech"]

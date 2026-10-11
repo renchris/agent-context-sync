@@ -366,15 +366,15 @@ def _resolve(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str, _Built | No
         return state, detail, None
     unplaced = _unplaced(found.helper.parent)
     if unplaced:
-        return "off", unplaced, None
+        return "off", f"the speech helper is built; {unplaced}", None
     return state, detail, found
 
 
 def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
     """(state, detail) for doctor and ``status``: ``ready``, ``off``, ``not-built`` or ``failed``.  Never
-    compiles, never raises and takes no digest; ``off`` when the media helper is switched off or a model
-    folder is not placed, ``failed`` with a fixed wording naming ``04e363c`` when the helper was built from
-    another FluidAudio commit."""
+    compiles, never raises and takes no digest; ``off`` when the media helper is switched off or, with the
+    helper built, a model folder is not placed (the detail then says the helper is built), ``failed`` with a
+    fixed wording naming ``04e363c`` when the helper was built from another FluidAudio commit."""
     state, detail, _ = _resolve(cfg, cache_dir)
     return state, detail
 

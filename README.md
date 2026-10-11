@@ -265,11 +265,12 @@ FluidAudio's own names, in the `speech` folder of agentsync's cache
 - `speaker-diarization/`, the voice separator (22 MB of model files).
 
 A Mac where FluidAudio itself downloaded them keeps copies in `~/Library/Application Support/FluidAudio/Models/`.
-Speech stays off until both folders are there; `status` then says `speech: off (the speech models are not placed:
-...)`. Each sync checks every model file against a pinned SHA-256 digest before it uses them; a folder that does
-not match is not used, and the log says which. The helper must be built from FluidAudio `04e363c` or later (the
-first build that keeps one speaker in one voice): the installer refuses an older one, and `status` reports a helper
-built from any other commit as `speech: failed`. Speech is off whenever recordings are (`recordings = false` above).
+Speech stays off until both folders are there; the installer and `status` then say `speech: off (the speech helper
+is built; the speech models are not placed: ...)`. Each sync checks every model file against a pinned SHA-256 digest
+before it uses them; a folder that does not match is not used, and the log says which. The helper must be built from
+FluidAudio `04e363c` or later (the first build that keeps one speaker in one voice): the installer refuses an older
+one, and `status` reports a helper built from any other commit as `speech: failed`. Speech is off whenever
+recordings are (`recordings = false` above).
 On its first run macOS compiles the models for this Mac and keeps the result in
 `~/Library/Caches/agentsync-speech/` (about 57 MB: model graphs only, no audio and no voice data); deleting that
 folder is safe and only makes the next first run slow again.

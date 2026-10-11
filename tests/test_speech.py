@@ -31,7 +31,10 @@ DAY = 24 * 3600
 WORDS = [["Contoso", 1000, 1400], ["storage", 1500, 1900], ["budget", 9100, 9500], ["approved", 9600, 9990]]
 SEGMENTS = [["S1", 900, 2000], ["S2", 9000, 10100]]
 OLD = "1111111111111111111111111111111111111111"
-NOT_PLACED = "the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/"
+NOT_PLACED = (
+    "the speech helper is built; the speech models are not placed: parakeet-tdt-0.6b-v3/ and "
+    "speaker-diarization/"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -263,6 +266,9 @@ def test_probe_and_status_never_compile_and_take_no_digest(
 def test_the_module_entry_prints_one_speech_line(
     tools: Path, tmp_path: Path, config_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """The installer's one speech line: off when switched off (nothing built), and after a build with the
+    models not placed it says the helper is built (B13 H13: the B11 and B12 rehearsals read minutes of
+    building end in a bare ``speech: off`` and could not tell the build had succeeded)."""
     cache = tmp_path / "cache"
     config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n[convert]\nrecordings = false\n')
     assert speech._main() == 0

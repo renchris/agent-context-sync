@@ -4024,7 +4024,10 @@ def test_helpers_step_builds_the_speech_helper_after_media_and_a_failure_is_only
     tool_py.parent.mkdir(parents=True, exist_ok=True)
     _write_exe(tool_py, STUB_TOOL_PYTHON)
 
-    placed = "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)"
+    placed = (
+        "speech: off (the speech helper is built; the speech models are not placed: parakeet-tdt-0.6b-v3/ "
+        "and speaker-diarization/)"
+    )
     older = (
         "speech: not built (FluidAudio 1111111 does not descend from the build floor 04e363c; the speech "
         "helper is not built)"
@@ -4078,7 +4081,10 @@ def test_helpers_step_prints_progress_lines_while_the_builds_run(
     tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
     tool_py.parent.mkdir(parents=True, exist_ok=True)
     _write_exe(tool_py, STUB_TOOL_PYTHON)
-    placed = "speech: off (the speech models are not placed: parakeet-tdt-0.6b-v3/ and speaker-diarization/)"
+    placed = (
+        "speech: off (the speech helper is built; the speech models are not placed: parakeet-tdt-0.6b-v3/ "
+        "and speaker-diarization/)"
+    )
     e = {**env, "AGENTSYNC_PROGRESS_SECONDS": "2", "STUB_SPEECH_SLEEP": "3.5", "STUB_SPEECH_OUT": placed}
     cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
