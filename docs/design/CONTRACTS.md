@@ -10437,3 +10437,27 @@ every 15 s. Why: both v10 rehearsals printed 12 and 13 `helpers: still running` 
 the OCR and media lines said ready, then `speech: off (the speech models are not placed: ...)`; the time was
 the speech helper's first build, and nothing said so. The speech line is the module's probe and is unchanged,
 still one line: no tick starts with `speech:`.
+
+### 16.38 Purge: a live file keeps what it holds (2026-10-11, wave B13 lane A)
+
+Reserved for lane A of B13 (`docs/plans/bring-back-ocr.md`).
+
+### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
+
+Reserved for lane B of B13.
+
+### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
+
+Reserved for lane C of B13.
+
+### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
+
+Reserved for lane D of B13.
+
+### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
+
+Reserved for lane E of B13.
+
+### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
+
+Reserved for lane F of B13.

@@ -359,6 +359,89 @@ the speech build until models are placed (B12 E1.f); `config.graph_company` on a
 B11 dropped list; the report's "unexpected" and "(status: baseline complete)" labels (B10). Not in scope: the
 empty-cloud-folder rule, which is decision `71d3e66ef726` (default: keep the rule, fires 2026-10-20).
 
+### B13 design result (2026-10-11)
+
+Runs `wf_0bcde692-839` (cut off by account `next`'s weekly limit after 9 designs) and its continuation
+`wf_abafd050-e40` (134 agents, 0 errors): a designer and a skeptic for each item, one completeness critic. Specs
+and skeptic corrections: `~/.cache/agentsync-bring-back/b13/design/<id>-{design,skeptic}.md` (and `.patch`
+prototypes); digest `results.json`, lane map `lanes.json`. All 71 items are verdict build; where the skeptic
+corrected the designer, the skeptic's design is the one built. The critic added N1 to N47 and kept 16 not-built
+reasons (notes in `critic.md`); the five reasons it refuted joined the ledger as N16, N17, N18, N19 and N42.
+
+Two are data-integrity defects, reproduced on main, and land first (lane A): N1, a purge deletes the rows and index
+line of whatever live file now holds a purged path while the run says VERIFIED, after which a repair pass deletes
+that live page as an orphan; N2, the purge queue runs an upstream-deleted entry whose id now resolves to a listed
+file. N5 as first designed would publish plaintext passwords (gitleaks replaces the builtin patterns rather than
+adding to them); the skeptic's design keeps both scans.
+
+| Id | Item | Lane |
+|---|---|---|
+| N1 | A purge deletes the rows and index line of a live file that now holds a purged path | A |
+| N2 | The purge queue runs an upstream-deleted entry whose id now resolves to a listed file | A |
+| N3 | A re-read can close a source's scan while a file still lacks OCR | B |
+| N4 | README says a given-up file is tried again "when agentsync is upgraded" | B |
+| N5 | Credential quarantines are never screened again after the secret-scan rules change | B |
+| N6 | install.sh reinstalls agentsync with `uv tool install --force` while a background job may run | D |
+| N7 | Redaction does no Unicode normalisation (an NFD folder name escapes it) | C |
+| N8 | Name forms leak for a display name with a bracketed tail or a middle part | C |
+| N9 | Non-OneDrive cloud provider folders are printed verbatim in Environment | C |
+| N10 | Recent errors shows the log's local-time stamps | C |
+| N11 | A doctor fix copied from the report quotes `~` so a shell does not expand it | B |
+| N12 | Shell fallback report edge cases (word splitting and others) | D |
+| N13 | A purge by selector never dequeues the queue entries it erased | A |
+| N14 | The purge wait text for queued purges | A |
+| N15 | accept-deletions on an incomplete pass clears a tripped breaker and applies nothing | A |
+| N16 | The Summary's doctor line calls the person's own waits "unexpected" | B |
+| N17 | "N of M source(s) listed completely (status: baseline complete)" label | C |
+| N18 | The Summary's wait says "in _eval" without its folder | C |
+| N19 | Doctor's source-table fixes print `id = 'x'` in single quotes | B |
+| N20 | "last install.sh run: commit" takes the last start line of any run | C |
+| N21 | The report install.sh writes at its own exit counts one NEXT short | D |
+| N22 | Status's inbox line checks every inbox-kind source, not the kept inbox | B |
+| N23 | Status's per-source "quarantined N" adds refused rows, while the report splits them | B |
+| N24 | The "skipped: lock held" warning drops the holder | B |
+| N25 | The Summary always says "first sync:" even when the config existed | C |
+| N26 | Neither the exclude wait nor the report's empty-cloud-folder part counts the mirrored files | B |
+| N27 | Empty-cloud-folder texts in the mixed case | B |
+| N28 | The per-directory "unknown (EPERM)" line stays a WARNING on every pass | B |
+| N29 | The IT draft line prints whenever the draft exists and never says it is from an earlier run | C |
+| N30 | Doctor's 500-entry permission sample is spent inside .git and the mirror | B |
+| N31 | The redaction legend counts fewer replacements than the placeholders a reader sees | C |
+| N32 | The Summary does not say the update's re-reads ran in background runs | C |
+| N33 | A run with no end line reads "reached launcher (skipped)" when it was in helpers | C |
+| N34 | The baseline NEXT names only the skill's Baseline questions section | B |
+| N35 | The Quarantine line's "other N (D distinct)" gives no shape words | C |
+| N36 | The dry-run headline says "cache entr(ies)" | B |
+| N37 | An all-zero re-read table collapses into one line | C |
+| N38 | tests/test_config.py cites a commit that is not on main | E |
+| N39 | The MDM host shares the `<host>` placeholder with the Mac's own name | C |
+| N40 | No doc says friction lines logged together share one timestamp | F |
+| N41 | The installer's refusal friction line for an old copy has no exit code | D |
+| N42 | Prompt v11: friction lines get a naming rule | F |
+| N43 | Prompt v11: the agent logs a go-ahead or an answer the person gives | F |
+| N44 | Prompt v11: placeholders in fix-request.md renumber across sessions | F |
+| N45 | OCR reads a PDF picture stored on its side as stored | E |
+| N46 | `.msg` is not converted (olefile, BSD; fails closed under label rules) | E |
+| N47 | `.drawio` and `.vsdx` are refused (standard-library converter, with the `.vsdx` label screen) | E |
+
+### B13 build lanes (2026-10-11)
+
+Locus changed to S: the lead's account (`next4`) reached 99% of its weekly limit after the design runs, so each
+lane runs as a dispatched session on an account with headroom, in its own worktree, and lands itself through
+`/ship` (rebase onto main, gate, CI read back). One owner per primary file; a lane edits another lane's file only
+in the hunks its own items need. CONTRACTS sections are reserved per lane (§16.38 to §16.43) so appends do not
+collide. Each lane writes its result note to `~/.cache/agentsync-bring-back/b13/lanes/<lane>.md`; the lead folds
+the notes into this plan. After A to F land, a rehearsal session plays v11 on the landed commit.
+
+| Lane | Items | Primary files | Account |
+|---|---|---|---|
+| A purge | N1 N2 N13 N14 N15 | governance.py | next |
+| B sync, status, doctor | H23 N3 N4 N5 N11 N16 N19 N22 N23 N24 N26 N27 N28 N30 N34 N36 | cycle.py, loop.py, cli.py, manifest.py, lints.py, arm_local.py, ops/doctor.py | next2 |
+| C setup report | H14 H17 to H22 N7 N8 N9 N10 N17 N18 N20 N25 N29 N31 N32 N33 N35 N37 N39 | setup_report.py, install.sh's redaction | next3 |
+| D installer | H11 H15 H16 N6 N12 N21 N41 | install.sh outside redaction | next |
+| E converters, speech | H10 H12 H13 H24 N38 N45 N46 N47 | convert/, pyproject.toml | next2 |
+| F prompt v11 | H1 to H9 N40 N42 N43 N44 | README.md prompt block, test_deploy_pack.py, docs/deploy/ | next3 |
+
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
 The operator, 2026-10-09: "we will do the prompt back and forth as many times as we need, but hoping that it can be
