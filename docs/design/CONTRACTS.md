@@ -10993,7 +10993,11 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
-Reserved for lane D of B13.
+- **The stopped attempt's error line gives its exit code.** `install.sh --log-start` ends the step 1 error line
+  of a copy it stops with `; setup stopped (exit 2)`, the exit code the prompt's error rule asks for (the
+  v10 rehearsal's old-copy scenario). `_PROMPT_STOP_RE` (`agentsync.setup_report`) reads only as far as the
+  reason, and the awk readers in install.sh (`friction_attempt_stopped`, `friction_earlier_end`) look for
+  the fixed mark before it, so a line an earlier installer wrote, without the code, is read the same.
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

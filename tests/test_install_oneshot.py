@@ -2987,6 +2987,8 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         assert attempt.header == {"Prompt": said, "Agent": agent}
         event, closed = attempt.events
         assert (event.step, event.kind) == (1, "error") and why in event.what
+        assert event.what.endswith(f"; setup stopped (exit {cp.returncode})"), "the line gives the real exit"
+        assert setup_report._PROMPT_STOP_RE.match(event.what), "the report still reads the line as the stop"
         assert event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
         assert closed.kind == "finished" and attempt.finished, "the stop closes its own attempt"
     assert len(setup_report.parse_friction(friction_path(env).read_text()).attempts) == len(cases)

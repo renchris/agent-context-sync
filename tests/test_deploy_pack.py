@@ -811,8 +811,9 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
     assert (event.step, event.kind, event.fix) == (1, "error", f"copy the prompt again from {source}")
     assert event.what == (
         f"install.sh --log-start: the pasted setup prompt is v7 or older and this installer is for setup "
-        f"prompt v{PROMPT[0]}: the pasted copy is not the current one; setup stopped"
+        f"prompt v{PROMPT[0]}: the pasted copy is not the current one; setup stopped (exit 2)"
     )
+    assert setup_report._PROMPT_STOP_RE.match(event.what), "the report still reads the line as the stop"
     report = subprocess.run(
         [shell, "-c", REPORT_COMMAND],
         cwd=home,

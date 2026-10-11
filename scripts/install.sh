@@ -342,7 +342,7 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			fix="copy the prompt again from $PROMPT_SOURCE"
 			# The attempt is closed here: the agent is told to run no other step, so no --report-only may
 			# follow, and a later session's line must not join an attempt left open.
-			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped | $fix"$'\n'"$now | end | finished"$'\n' || true
+			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
 			# The last sentence is for a current copy whose agent changed the value. It names no value that
 			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
 			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again exactly as the prompt writes it.\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
