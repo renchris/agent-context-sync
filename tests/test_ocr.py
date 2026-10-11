@@ -1363,6 +1363,35 @@ def test_the_real_helper_reads_a_pdf_page_without_a_text_layer_and_a_picture_bes
     assert sorted(p.name for p in tmp_path.iterdir()) == [src.name]
 
 
+def test_the_real_helper_reads_a_pdf_picture_stored_on_its_side_the_way_up_the_page_shows_it(
+    vision: ocr.OcrEngine, tmp_path: Path
+) -> None:
+    """A screenshot stored turned a quarter right and drawn turned a quarter left, so the page shows it
+    upright: read as stored, its two lines came back as one, in the wrong order."""
+    pil = pytest.importorskip("PIL.Image")
+    draw_module = pytest.importorskip("PIL.ImageDraw")
+    font_module = pytest.importorskip("PIL.ImageFont")
+    from agentsync.convert.pdf import PdfConverter  # noqa: PLC0415
+    from test_convert_builders import PdfPicture, build_picture_pdf  # noqa: PLC0415 - it imports this module
+
+    im = pil.new("L", (900, 300), 255)
+    for y, line in ((60, "Orders by month"), (180, "March 412 April 388")):
+        draw_module.Draw(im).text((40, y), line, fill=0, font=font_module.truetype(FONT, 40))
+    stored = im.transpose(pil.Transpose.ROTATE_270)  # 300 x 900: the stored rows are the shown columns
+    shot = PdfPicture(0, "0 72 -216 0 276 30", px=stored.size, pixels=stored.tobytes())  # 216 x 72 pt
+    text = ["This page has a text layer of its own.", "A screenshot follows below."]
+    src = build_picture_pdf(tmp_path / "orders.pdf", [(text, [shot])])
+    try:
+        (unit,) = PdfConverter(CFG, ocr=vision).convert(src, name=src.name)
+    except ocr.OcrError:
+        pytest.skip("Apple Vision text recognition does not run on this machine")
+    assert [ln.casefold() for ln in unit.body.split("\n") if ln][-3:] == [
+        "[text in an image on this page, read by on-device ocr (apple vision):]",
+        "orders by month",
+        "march 412 april 388",
+    ]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # the helper's tile joining on made-up readings (developer tools only; Vision recognises nothing here)
 # ---------------------------------------------------------------------------------------------------------

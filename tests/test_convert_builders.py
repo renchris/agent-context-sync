@@ -280,8 +280,11 @@ def page_picture(shade: int) -> PdfPicture:
     return PdfPicture(shade, f"{PICTURE_PAGE[0]} 0 0 {PICTURE_PAGE[1]} 0 0")
 
 
-def build_picture_pdf(path: Path, pages: list[tuple[list[str], list[PdfPicture]]]) -> Path:
-    """A PDF whose pages hold text and pictures, for the OCR tests.
+def build_picture_pdf(
+    path: Path, pages: list[tuple[list[str], list[PdfPicture]]], *, rotate: int = 0
+) -> Path:
+    """A PDF whose pages hold text and pictures, for the OCR tests.  With ``rotate`` every page has that
+    /Rotate (degrees clockwise), which a viewer applies.
 
     A page is ``(text lines, pictures)``, ``PICTURE_PAGE`` points in size.  Text is 12 pt Helvetica from
     x = 20; line ``i`` has its baseline at y = 180 - 14 * i.  A page with no text line and a ``page_picture``
@@ -330,7 +333,8 @@ def build_picture_pdf(path: Path, pages: list[tuple[list[str], list[PdfPicture]]
         page_no = len(objs) + 1
         kids.append(f"{page_no} 0 R")
         objs.append(
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources << /Font "
+            f"<< /Type /Page /Parent 2 0 R /Rotate {rotate} /MediaBox [0 0 {width} {height}] "
+            "/Resources << /Font "
             f"<< /F1 3 0 R >> /XObject << {' '.join(xobjects)} >> >> /Contents {page_no + 1} 0 R >>".encode()
         )
         objs.append(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")

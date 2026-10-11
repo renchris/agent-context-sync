@@ -6861,7 +6861,7 @@ The same holds, engine or not, for a file the pdfminer fallback converts: PDFium
 With an engine `version()` ends in its identity (`2.1.0+pypdfium2-…+pdfminer.six-…+ocr-apple-vision-r3-h2.0.0-l1`)
 and `options()` gains the shared OCR options and five of its own: `ocr_pdf_rules` (2; bumped when a rule
 below changes without one of the numbers changing; 2 is the cover rule and the picture limits as written
-here), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
+here; **amended (2026-10-11, §16.42):** it is 3, a picture read the way up the page shows it), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
 `ocr_pictures_seen` (400) and `ocr_picture_pixels` (400,000,000). The emitter version is not what moves
 with an OCR rule: it would move the key of every PDF on a Mac without an engine.
 
@@ -6930,10 +6930,13 @@ Signed in Rotterdam
   and says its few words twice. The box of a picture inside a form XObject is placed by the form's matrix
   and by that of each form around it (a picture up to three forms deep is found).
 - **Its stored pixels are read**, not a rendering of the page (`PdfImage.get_bitmap()`: the image's matrix
-  and mask are not applied). A picture is known by the sha256 of its stored stream and its pixel size
+  and mask are not applied). **Amended (2026-10-11, §16.42):** they are turned and flipped the way up the
+  page shows them, and which way up that is belongs to what a picture is known by, so one stream drawn two
+  ways is two pictures. A picture is known by the sha256 of its stored stream and its pixel size
   (`PdfImage.get_data(decode_simple=False)`: nothing is decoded for it), so one drawn on every page is
   decoded, offered and read once, and its text is printed under the first page it is on.
-  A picture stored on its side is read on its side. Each picture with text gets a block after its page's
+  ~~A picture stored on its side is read on its side.~~ (superseded, §16.42) A picture the page itself shows
+  on its side is read on its side (§16.42). Each picture with text gets a block after its page's
   text: the head line `[text in an image on this page, read by on-device OCR (Apple Vision):]`, then its
   lines. A picture PDFium cannot place or decode is skipped: nothing a picture holds can fail the document.
 - **Picture limits.** At most 400 image objects of a file that pass the size rule are looked at
@@ -7000,7 +7003,7 @@ encrypted PDF refused before a page is rendered; through
 later read that works, the stub of a PDF of page images, the banner; `_png` for each bitmap format and a
 padded row), `tests/test_convert_determinism.py` (a PDF read by OCR twice, from the cache under a second
 name, and from a cold cache) and `tests/test_ocr.py` (the real helper reads a page image and a picture the
-converter wrote). `PdfPicture`, `page_picture`, `build_picture_pdf` and `shade_engine` in
+converter wrote). **Amended (2026-10-11, §16.42):** and the tests of §16.42. `PdfPicture`, `page_picture`, `build_picture_pdf` and `shade_engine` in
 `tests/test_convert_builders.py` build the files and the fake helper that tells images apart by their first
 pixel.
 
@@ -11173,7 +11176,43 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 
-Reserved for lane E of B13.
+#### A PDF picture is read the way up the page shows it (N45)
+
+Amends §16.26 ("Its stored pixels are read"). With an engine, `PdfConverter` turns and flips a picture's
+stored pixels the way up a viewer shows it before the helper reads it: `_shown(obj, rotation)` takes the
+image's matrix, the matrix of each form around it and the page's `/Rotate`, snaps the directions of the
+stored columns and rows to the nearest screen axis, and `_png(bitmap, shown)` writes the picture in that
+orientation, a row at a time, with no imaging library. One of the eight turns and flips; a picture drawn a
+little askew is read the quarter-turn nearest; one at 45 degrees, skewed to no area, or whose matrix cannot
+be read is read as stored. A page whose `/Rotate` cannot be read counts as not turned; `MemoryError` is
+never taken for either failure, it fails the pass. A page image is rendered by PDFium with its `/Rotate` as
+before, and `_png(bitmap)` writes it byte for byte as before. A picture is known by (stream sha256, pixel
+size, orientation), so one stream drawn two ways is two pictures, each charged its pixels; one drawn the
+same way on every page is still decoded once. `ocr_pdf_rules` is 3. No version, no helper, no key of a Mac
+without an engine moves. A page already published is not read again for this: it keeps its reading until
+its file changes (as with the bump to 2). Measured with the real helper: a screenshot stored a quarter
+right and drawn upright read as one merged line in reverse order before, as its two lines now; one stored
+bottom-up (drawn with a negative `d`) was mirrored and unreadable before, and is read now.
+
+The other way round is now the limit: a picture stored upright and drawn turned, so that the page itself
+shows it on its side (a wide table turned to fit a portrait page, a browser's CSS-turned image), is read
+on its side, as a page without a text layer always was. Vision still reads its words; its lines come back
+merged. Measured on a Chrome-printed and a WebKit-printed page: three table rows read as three lines
+before, as one line now. The file cannot tell the two cases apart (both are a wide stored picture shown
+tall); only the text in it can. The page's way up is taken because browsers (Chrome, WebKit) embed every
+portrait phone photo the first way, its EXIF turn applied by the matrix, and because a mirrored or
+upside-down picture, which nobody draws that way on purpose, was not read at all. Pictures in a deck or
+Word file drawn with a `rot` or flip are still read as stored (their embedded JPEG's EXIF is honoured by
+the helper).
+
+Every new name in `agentsync.convert.pdf` is private (`_shown`, `_screen_axis`, `_Axes`, `_UPRIGHT`).
+
+Tests: `tests/test_convert_formats.py` (a picture drawn upright, turned, flipped, inside a turned form and
+on a turned page, against PDFium's own drawing of the page; one drawn askew, at 45 degrees and with no
+area; a turned picture through the converter, and one stream drawn two ways; a `/Rotate` that cannot be
+read, and memory running out while it is read; `ocr_pdf_rules` 3) and `tests/test_ocr.py` (the real helper
+reads a picture stored on its side as its two lines). `build_picture_pdf(…, rotate=)` in
+`tests/test_convert_builders.py` writes the page's `/Rotate`.
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 

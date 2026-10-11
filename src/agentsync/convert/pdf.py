@@ -119,11 +119,12 @@ a searchable scan is covered many times over, and the one stamped line of an e-s
 letter page needs 324 characters) is not."""
 _MAX_PICTURES_SEEN = 400  # image objects of one file that are looked at
 _MAX_PICTURE_PIXELS = 8 * MAX_MEGAPIXELS * 1_000_000  # pixels of one file's pictures decoded here
-_OCR_RULES = 2
+_OCR_RULES = 3
 """Bumped when a rule here that decides what OCR reads, or how a page shows it, changes without one of the
 numbers below changing.  It is in the options only with an engine, so it moves no key of a Mac without one
 (the emitter version would).  2: a picture is covered by its size, not by 20 characters anywhere in it; an
-image object counts toward the limits once it may be read, and a repeated one is decoded once."""
+image object counts toward the limits once it may be read, and a repeated one is decoded once.  3: a picture
+is read the way up the page shows it (``_shown``), not as it is stored."""
 _PDF_OCR_OPTIONS: dict[str, OptionValue] = {
     "ocr_pdf_rules": _OCR_RULES,
     "ocr_page_dpi": _RENDER_DPI,
@@ -555,31 +556,86 @@ def _png_chunk(tag: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
 
 
-def _png(bitmap: Any) -> bytes:
+_Axes = tuple[tuple[int, int], tuple[int, int]]
+_UPRIGHT: _Axes = ((1, 0), (0, 1))
+"""Where a stored picture's columns and its rows point as shown, on screen (x right, y down): as stored."""
+
+
+def _screen_axis(x: float, y: float) -> tuple[int, int] | None:
+    """A direction on screen snapped to the axis it is nearest; None for a diagonal or no direction."""
+    if abs(x) > abs(y):
+        return (1 if x > 0 else -1, 0)
+    if abs(y) > abs(x):
+        return (0, 1 if y > 0 else -1)
+    return None
+
+
+def _shown(obj: Any, rotation: int) -> _Axes:
+    """Which way up the page shows a picture: the screen axes its stored columns and rows point along.
+
+    From the image's own matrix, that of each form around it (as ``_page_box``), and the page's /Rotate,
+    which a viewer applies.  Image space has its first stored row at the top (v = 1), so the rows run along
+    minus the matrix's second column.  Each direction is snapped to the nearest axis, so a picture drawn a
+    little askew is read the quarter-turn nearest; one drawn at 45 degrees, or skewed so both directions
+    snap to one axis, and one whose matrix cannot be read, is read as stored, as before."""
+    try:
+        m = obj.get_matrix()
+        cols, rows = (m.a, m.b), (-m.c, -m.d)
+        form = obj.container
+        while form is not None:
+            f = form.get_matrix()
+            cols = (f.a * cols[0] + f.c * cols[1], f.b * cols[0] + f.d * cols[1])
+            rows = (f.a * rows[0] + f.c * rows[1], f.b * rows[0] + f.d * rows[1])
+            form = form.container
+    except MemoryError:
+        raise
+    except Exception:
+        return _UPRIGHT
+    axes: list[tuple[int, int] | None] = []
+    for page_x, page_y in (cols, rows):
+        x, y = page_x, -page_y  # PDF space has y up, the screen y down
+        for _turn in range(rotation // 90 % 4):
+            x, y = -y, x  # /Rotate turns the page clockwise
+        axes.append(_screen_axis(x, y) if math.isfinite(x) and math.isfinite(y) else None)
+    col, row = axes
+    if col is None or row is None or (col[0] == 0) == (row[0] == 0):
+        return _UPRIGHT
+    return (col, row)
+
+
+def _png(bitmap: Any, shown: _Axes = _UPRIGHT) -> bytes:
     """A PDFium bitmap as an 8-bit PNG, gray or RGB; a fourth byte per pixel (alpha, padding) is dropped.
 
-    Written here, a row at a time, and not through an imaging library: the pixels are never copied whole,
-    and the file holds nothing but them (no time, no text chunk), so the same pixels give the same bytes."""
+    ``shown`` (``_shown``) turns and flips it the way up a viewer shows it: stored column ``i`` and row
+    ``j`` land at ``i * shown[0] + j * shown[1]``, moved to start at the top left.  Written here, a row at a
+    time, and not through an imaging library: the pixels are never copied whole, and the file holds nothing
+    but them (no time, no text chunk), so the same pixels give the same bytes."""
     count, width, height, stride = bitmap.n_channels, bitmap.width, bitmap.height, bitmap.stride
     if count not in (1, 3, 4) or width < 1 or height < 1:
         raise ValueError("not a bitmap this writes")
+    (ux, uy), (vx, vy) = shown
+    out_width, out_height = (width, height) if ux else (height, width)
+    left = (width - 1) * (ux < 0) + (height - 1) * (vx < 0)  # where stored (0, 0) is shown
+    top = (width - 1) * (uy < 0) + (height - 1) * (vy < 0)
+    step = ux * count + vx * stride  # in the buffer, from one shown pixel to the next one right of it
     view = memoryview(bitmap.buffer).cast("B")
     red, blue = (0, 2) if bitmap.rev_byteorder else (2, 0)
     packer = zlib.compressobj(1)
     parts: list[bytes] = []
-    row = bytearray(width * 3)
-    for at in range(0, height * stride, stride):
+    row = bytearray(out_width * (1 if count == 1 else 3))
+    for y in range(out_height):
+        at = (vx * -left + vy * (y - top)) * stride + (ux * -left + uy * (y - top)) * count
         parts.append(packer.compress(b"\x00"))  # the row's filter type: none
         if count == 1:
-            parts.append(packer.compress(view[at : at + width]))
+            row[:] = view[at::step][:out_width]
+            parts.append(packer.compress(row))
             continue
-        end = at + width * count
-        row[0::3] = view[at + red : end : count]
-        row[1::3] = view[at + 1 : end : count]
-        row[2::3] = view[at + blue : end : count]
+        row[0::3] = view[at + red :: step][:out_width]
+        row[1::3] = view[at + 1 :: step][:out_width]
+        row[2::3] = view[at + blue :: step][:out_width]
         parts.append(packer.compress(row))
     parts.append(packer.flush())
-    head = struct.pack(">IIBBBBB", width, height, 8, 0 if count == 1 else 2, 0, 0, 0)
+    head = struct.pack(">IIBBBBB", out_width, out_height, 8, 0 if count == 1 else 2, 0, 0, 0)
     return b"".join(
         (
             b"\x89PNG\r\n\x1a\n",
@@ -676,12 +732,13 @@ class _PagePictures:
         self._deadline = deadline
         self._seen = 0
         self._pixels = 0
-        self._offered: set[tuple[bytes, int, int]] = set()  # (sha256 of the stored stream, width, height)
+        # (sha256 of the stored stream, width, height, which way up it is shown)
+        self._offered: set[tuple[bytes, int, int, _Axes]] = set()
         self.pages: list[int] = []
         self.cut = False
         self.done = False
 
-    def _picture(self, obj: Any, textpage: Any) -> bytes | None:
+    def _picture(self, obj: Any, textpage: Any, rotation: int) -> bytes | None:
         """One image object as PNG bytes, or None when it is not one to read."""
         width, height = obj.get_px_size()
         pixels = width * height
@@ -694,7 +751,8 @@ class _PagePictures:
         box = _page_box(obj)
         if box is None or _covered(textpage, box):
             return None
-        stored = (hashlib.sha256(obj.get_data(decode_simple=False)).digest(), width, height)
+        shown = _shown(obj, rotation)
+        stored = (hashlib.sha256(obj.get_data(decode_simple=False)).digest(), width, height, shown)
         if stored in self._offered:
             return None  # drawn again: it was offered, and charged, where it was first seen
         if self._pixels + pixels > _MAX_PICTURE_PIXELS:
@@ -704,18 +762,24 @@ class _PagePictures:
         self._pixels += pixels
         bitmap = obj.get_bitmap()  # the stored image: its matrix and mask are not applied
         try:
-            return _png(bitmap)
+            return _png(bitmap, shown)  # the way up the page shows it
         finally:
             bitmap.close()
 
     def _on_page(self, page: Any, textpage: Any) -> Iterator[bytes]:
+        try:
+            rotation = int(page.get_rotation())  # /Rotate: 0, 90, 180 or 270, clockwise
+        except MemoryError:
+            raise
+        except Exception:
+            rotation = 0  # a page whose /Rotate cannot be read is shown as it is drawn
         objects = iter(page.get_objects(filter=(self._image,), max_depth=_FORM_DEPTH))
         while not self.cut:
             try:
                 obj = next(objects, None)
                 if obj is None:
                     return
-                data = self._picture(obj, textpage)
+                data = self._picture(obj, textpage, rotation)
             except MemoryError:
                 raise
             except Exception as exc:  # this picture is skipped (when the listing failed, the page's rest)

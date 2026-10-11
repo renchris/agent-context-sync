@@ -1051,7 +1051,7 @@ def test_pdf_version_and_options_change_only_with_an_engine(tmp_path: Path) -> N
     assert reading.options() == {
         **plain.options(),
         **image._OCR_OPTIONS,
-        "ocr_pdf_rules": 2,
+        "ocr_pdf_rules": 3,
         "ocr_page_dpi": 300,
         "ocr_page_max_px": 6000,
         "ocr_pictures_seen": 400,
@@ -1319,9 +1319,9 @@ def test_pdf_ocr_reads_each_distinct_picture_once_and_none_that_fails_the_size_r
     decoded: list[tuple[int, int]] = []
     real = pdf_mod._png
 
-    def spy(bitmap: Any) -> bytes:
+    def spy(bitmap: Any, *shown: Any) -> bytes:
         decoded.append((bitmap.width, bitmap.height))
-        return real(bitmap)
+        return real(bitmap, *shown)
 
     monkeypatch.setattr(pdf_mod, "_png", spy)
     monkeypatch.setattr(pdf_mod, "MAX_MEGAPIXELS", 0.1)  # 100,000 pixels
@@ -1354,9 +1354,9 @@ def test_the_picture_limits_are_not_spent_on_icons_or_on_a_picture_drawn_again(
     decoded: list[int] = []
     real = pdf_mod._png
 
-    def spy(bitmap: Any) -> bytes:
+    def spy(bitmap: Any, *shown: Any) -> bytes:
         decoded.append(bitmap.buffer[0])
-        return real(bitmap)
+        return real(bitmap, *shown)
 
     monkeypatch.setattr(pdf_mod, "_png", spy)
     monkeypatch.setattr(pdf_mod, "_MAX_PICTURES_SEEN", 7)  # the six charts and the screenshot
@@ -1393,16 +1393,177 @@ def test_a_picture_drawn_with_no_size_is_skipped_and_the_document_converts(
     assert calls(engine.helper) == []
 
 
+# A 6 x 4 picture of 24 shades, and ways it is drawn: (its matrix, the matrix of a form around it, the page's
+# /Rotate).  It is shown 60 x 40 pt, or 40 x 60 pt turned, on a page with no text.  Shown upright in the
+# first and the last way only.
+_SHADES = bytes(range(10, 34))
+_DRAWN = {
+    "upright": ("60 0 0 40 150 20", "", 0),
+    "a quarter turn left": ("0 40 -60 0 190 20", "", 0),
+    "a quarter turn right": ("0 -40 60 0 150 80", "", 0),
+    "upside down": ("-60 0 0 -40 210 60", "", 0),
+    "flipped top to bottom": ("60 0 0 -40 150 60", "", 0),
+    "turned by its form": ("60 0 0 40 0 0", "0 1 -1 0 190 20", 0),
+    "on a page turned right": ("60 0 0 40 150 20", "", 90),
+    "turned left on a page turned right": ("0 40 -60 0 190 20", "", 90),
+}
+
+
+def _offered_and_rendered(src: Path) -> tuple[list[list[int]], list[list[int]]]:
+    """The one picture of page 1 as ``_PagePictures`` offers it, and as PDFium draws the page: the shade at
+    the centre of each of its cells, in the box the drawing is not white in."""
+    import pypdfium2  # noqa: PLC0415
+    import pypdfium2.raw as pdfium_c  # noqa: PLC0415
+
+    doc = pypdfium2.PdfDocument(str(src))
+    try:
+        streams = pdf_mod._PagePictures(doc, pdfium_c, [0], pdf_mod._clock() + 60).streams()
+        try:
+            (offered,) = [stream.read() for stream in streams]
+        finally:
+            streams.close()
+        width, height, colour, rows = _png_pixels(offered)
+        assert colour == 0
+        page = doc[0]
+        drawing = page.render(scale=2, grayscale=True, draw_annots=False)
+        try:
+            view = memoryview(drawing.buffer).cast("B")
+            ink = [
+                (x, y)
+                for y in range(drawing.height)
+                for x in range(drawing.width)
+                if view[y * drawing.stride + x] < 250
+            ]
+            left, top = min(x for x, _y in ink), min(y for _x, y in ink)
+            cell_w = (max(x for x, _y in ink) + 1 - left) / width
+            cell_h = (max(y for _x, y in ink) + 1 - top) / height
+            seen = [
+                [
+                    view[int(top + (row + 0.5) * cell_h) * drawing.stride + int(left + (col + 0.5) * cell_w)]
+                    for col in range(width)
+                ]
+                for row in range(height)
+            ]
+        finally:
+            drawing.close()
+            page.close()
+    finally:
+        doc.close()
+    return [list(row) for row in rows], seen
+
+
+@pytest.mark.parametrize(("matrix", "form", "rotate"), _DRAWN.values(), ids=_DRAWN.keys())
+def test_a_picture_is_read_the_way_up_the_page_shows_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, matrix: str, form: str, rotate: int
+) -> None:
+    """Its stored pixels, turned and flipped as a viewer shows them: PDFium's own drawing is the oracle.  A
+    picture stored on its side used to be read on its side, its lines merged by a reading order built on
+    upright lines, and one stored mirrored was not read at all."""
+    monkeypatch.setattr(pdf_mod, "_MIN_PX", 1)  # a picture of 24 cells the drawing can be checked by
+    picture = PdfPicture(10, matrix, (6, 4), form=form, pixels=_SHADES)
+    offered, seen = _offered_and_rendered(
+        build_picture_pdf(tmp_path / "doc.pdf", [([], [picture])], rotate=rotate)
+    )
+    assert offered == seen
+    stored = [list(_SHADES[row * 6 : row * 6 + 6]) for row in range(4)]
+    upright = (matrix, form, rotate) in (_DRAWN["upright"], _DRAWN["turned left on a page turned right"])
+    assert (offered == stored) == upright
+
+
+def test_a_picture_drawn_a_little_askew_is_read_the_quarter_turn_nearest(tmp_path: Path) -> None:
+    """Ten degrees off a quarter turn left; one at 45 degrees, or so skewed that its rows and columns lie
+    along one axis, is read as stored, as before."""
+    import pypdfium2  # noqa: PLC0415
+    import pypdfium2.raw as pdfium_c  # noqa: PLC0415
+
+    stored = [list(_SHADES[row * 6 : row * 6 + 6]) for row in range(4)]
+    left = [[stored[row][col] for row in range(4)] for col in reversed(range(6))]
+    for matrix, want in (
+        ("-6.95 39.39 -59.09 10.42 190 20", left),  # a quarter turn left, ten degrees short
+        ("42.43 42.43 -28.28 28.28 150 20", stored),  # 45 degrees
+        ("60 40 60 40 150 20", stored),  # no area: both run up and to the right
+    ):
+        src = build_picture_pdf(
+            tmp_path / "doc.pdf", [(_TEXT, [PdfPicture(10, matrix, (6, 4), pixels=_SHADES)])]
+        )
+        doc = pypdfium2.PdfDocument(str(src))
+        try:
+            page = doc[0]
+            try:
+                (obj,) = page.get_objects(filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,))
+                bitmap = obj.get_bitmap()
+                try:
+                    _w, _h, _c, rows = _png_pixels(pdf_mod._png(bitmap, pdf_mod._shown(obj, 0)))
+                finally:
+                    bitmap.close()
+            finally:
+                page.close()
+        finally:
+            doc.close()
+        assert [list(row) for row in rows] == want, matrix
+
+
+def test_a_turned_picture_is_read_through_the_converter_by_what_it_shows(tmp_path: Path) -> None:
+    """End to end, with the fake helper that reads a picture by its first pixel: the one at the top left of
+    the picture as the page shows it, not the first one stored."""
+    pixels = bytearray([60]) * (96 * 64)
+    pixels[95] = 61  # stored top right: shown top left once the picture is turned a quarter left
+    turned = PdfPicture(60, "0 96 -64 0 214 20", pixels=bytes(pixels))
+    src = _staged(tmp_path, [(_TEXT, [turned])])
+    engine = shade_engine(tmp_path / "bin", {60: ["Contoso read on its side"], 61: ["Orders by month"]})
+    u = _ocr_one(src, engine)
+    assert u.body == _ocr_one(src, None).body + f"\n{_OCR_PICTURE}\nOrders by month\n"
+    # One stream drawn two ways is two pictures: each is read the way up it is shown.
+    upright = turned._replace(matrix="96 0 0 64 150 100")
+    src = _staged(tmp_path, [(_TEXT, [turned, upright])], name="twice.pdf")
+    u = _ocr_one(src, engine)
+    assert u.body.endswith(f"{_OCR_PICTURE}\nOrders by month\n\n{_OCR_PICTURE}\nContoso read on its side\n")
+
+
+def test_a_page_whose_rotation_cannot_be_read_is_shown_as_drawn_and_memory_running_out_is_not_hidden(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/Rotate that cannot be read counts as 0, so the picture is still read; MemoryError is never taken for
+    that: it fails the pass, as it does everywhere else in it."""
+    import pypdfium2  # noqa: PLC0415
+    import pypdfium2.raw as pdfium_c  # noqa: PLC0415
+
+    monkeypatch.setattr(pdf_mod, "_MIN_PX", 1)
+    src = build_picture_pdf(
+        tmp_path / "doc.pdf", [([], [PdfPicture(10, "60 0 0 40 150 20", (6, 4), pixels=_SHADES)])], rotate=90
+    )
+
+    def offered(error: Exception) -> list[bytes]:
+        def unreadable(_page: Any) -> int:
+            raise error
+
+        monkeypatch.setattr(pypdfium2.PdfPage, "get_rotation", unreadable)
+        doc = pypdfium2.PdfDocument(str(src))
+        try:
+            streams = pdf_mod._PagePictures(doc, pdfium_c, [0], pdf_mod._clock() + 60).streams()
+            try:
+                return [stream.read() for stream in streams]
+            finally:
+                streams.close()
+        finally:
+            doc.close()
+
+    (png,) = offered(RuntimeError("boom"))
+    assert [list(row) for row in _png_pixels(png)[3]] == [list(_SHADES[r * 6 : r * 6 + 6]) for r in range(4)]
+    with pytest.raises(MemoryError):
+        offered(MemoryError())
+
+
 @pytest.mark.parametrize("error", [ZeroDivisionError("float division by zero"), RuntimeError("boom")])
 def test_a_picture_that_cannot_be_decoded_is_skipped_and_the_others_are_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
     real = pdf_mod._png
 
-    def flaky(bitmap: Any) -> bytes:
+    def flaky(bitmap: Any, *shown: Any) -> bytes:
         if bitmap.buffer[0] == 40:
             raise error
-        return real(bitmap)
+        return real(bitmap, *shown)
 
     monkeypatch.setattr(pdf_mod, "_png", flaky)
     src = _staged(tmp_path, [(_TEXT, [PdfPicture(40, _BESIDE), PdfPicture(41, "96 0 0 64 20 20")])])
