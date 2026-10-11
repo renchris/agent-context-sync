@@ -27,6 +27,7 @@ from test_convert_builders import (
     build_pptx_rich,
     build_xlsx_rich,
     eml_bytes,
+    msg_bytes,
     page_picture,
     pandoc_build,
     shade_engine,
@@ -65,6 +66,8 @@ def extra_inputs(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     )
     (d / "busy.teams.json").write_text(teams, encoding="utf-8")
     out["busy.teams.json"] = d / "busy.teams.json"
+    (d / "thread.msg").write_bytes(msg_bytes(plain=None, html="<p>Hi <b>there</b></p>"))
+    out["thread.msg"] = d / "thread.msg"
     (d / "notes.yaml").write_text("a: 1\nb: [x, y]\n", encoding="utf-8")
     out["notes.yaml"] = d / "notes.yaml"
     (d / "table.tsv").write_text("k\tv\na\t1\n", encoding="utf-8")

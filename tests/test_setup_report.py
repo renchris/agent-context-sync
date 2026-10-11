@@ -39,7 +39,7 @@ from agentsync import (
     setup_report,
 )
 from agentsync.config import Config, ConvertConfig, load_config
-from agentsync.convert import image, media, ocr, pdf, speech
+from agentsync.convert import image, media, msg, ocr, pdf, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.recording import RecordingConverter
@@ -347,7 +347,7 @@ LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05 09:00:00,000 WARNING agentsyn
 def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
     """A file at the top of a source has no slash to know it by: its extension is all the scrub has. A file
     the cycle fetches and converts is a file its WARNING lines can name, so every claimed suffix is known."""
-    assert len(CONVERTED_SUFFIXES) == 36 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
+    assert len(CONVERTED_SUFFIXES) == 37 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
         *CONVERTED_SUFFIXES
     }
     for name in (f"Contoso Roadmap{suffix}", f"Fabrikam Org Chart{suffix.upper()}"):
@@ -5067,6 +5067,8 @@ REASONS = {
     policy.EMPTY_OUTPUT_REASON: "empty",
     "empty PDF: no pages": "empty",
     policy.NOT_OOXML_REASON: "not the type its name says",
+    msg.NOT_MSG_REASON: "not the type its name says",
+    f"{msg.NOT_MSG_REASON}: OleFileError": "not the type its name says",
     cycle.HYDRATION_REFUSED: "download refused by the OS",
     None: "no reason recorded",
     "  ": "no reason recorded",
@@ -5532,7 +5534,7 @@ def test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own(tmp_path: 
     assert setup_report._NO_CONVERTER == convert.NO_CONVERTER_PREFIX
     staged = tmp_path / "staged.bin"
     staged.write_bytes(b"bytes")
-    for name, kind in (("Wingtip thread.MSG", ".msg"), ("Makefile", "no extension"), ("a.b c", "other")):
+    for name, kind in (("Wingtip thread.OFT", ".oft"), ("Makefile", "no extension"), ("a.b c", "other")):
         refused = convert.convert_file(
             staged,
             name=name,

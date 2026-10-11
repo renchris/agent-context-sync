@@ -424,12 +424,13 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
         "text-plain": (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".url"),
         "vtt-turns": (".vtt",),
         "eml-stdlib": (".eml",),
+        "msg-olefile": (".msg",),
         "teams-month": (".teams.json",),
     }
     assert ids == {ext: cid for cid, exts in routes.items() for ext in exts}
     assert reg.extensions() == tuple(sorted(ids))
     assert [c.converter_id for c in reg.converters()] == sorted(c.converter_id for c in reg.converters())
-    assert len(reg.converters()) == 9
+    assert len(reg.converters()) == 10
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
@@ -461,9 +462,9 @@ def test_the_default_registry_reads_images_only_when_it_is_handed_an_engine() ->
     routes = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
     assert {ext for ext, cid in routes.items() if cid == "image-ocr"} == set(IMAGE_SUFFIXES)
     assert reg.for_name("Contoso diagram.PNG").converter_id == "image-ocr"  # type: ignore[union-attr]
-    # Eleven: the nine, ``pandoc-gfm`` a second time for the suffixes it reads no picture in, and the image
+    # Twelve: the ten, ``pandoc-gfm`` a second time for the suffixes it reads no picture in, and the image
     # converter.
-    assert len(reg.converters()) == 11 and reg.extensions() == tuple(sorted(routes))
+    assert len(reg.converters()) == 12 and reg.extensions() == tuple(sorted(routes))
     for ext in plain.extensions():
         assert routes[ext] == plain.for_name(f"x{ext}").converter_id, ext  # type: ignore[union-attr]
     assert reg.for_name("clip.mp4") is None and reg.for_name("drawing.svg") is None
@@ -529,8 +530,10 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert rule.labels_active
     reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
     assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
-    assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
-    assert len(reg.converters()) == 10, "the nine, and pandoc-gfm a second time: no image converter"
+    assert reg.for_name("Contoso thread.msg") is None, "a .msg label is not read either: no .msg converter"
+    plain = Registry.default(ConvertConfig()).extensions()
+    assert ".msg" in plain and reg.extensions() == tuple(ext for ext in plain if ext != ".msg")
+    assert len(reg.converters()) == 10, "the nine, and pandoc-gfm a second time: no image or .msg converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 
@@ -684,7 +687,9 @@ def test_the_emitter_of_a_version_is_three_plain_numbers_or_nothing(
         ("data.json", "text-plain"),
         ("archive.tar.md", "markdown-passthrough"),
         ("deck.pptm", None),
-        ("mail.msg", None),
+        ("mail.msg", "msg-olefile"),
+        ("Mail.MSG", "msg-olefile"),
+        ("template.oft", None),
         ("Makefile", None),
         (".md", None),
         ("noext.", None),

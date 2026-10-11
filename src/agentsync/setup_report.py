@@ -2960,7 +2960,7 @@ def quarantine_class(reason: str | None) -> str:
         return "encrypted"
     if text.startswith(("empty-output", "empty pdf")):
         return "empty"
-    if text.startswith(("not-ooxml", "not a zip")):
+    if text.startswith(("not-ooxml", "not a zip", "not-msg")):
         return "not the type its name says"
     return "other"
 

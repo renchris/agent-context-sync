@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import ctypes
+import datetime as dt
 import functools
 import hashlib
 import io
@@ -39,6 +40,7 @@ from agentsync.convert._common import _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.markdown import MarkdownConverter
+from agentsync.convert.msg import NOT_MSG_REASON, MsgConverter
 from agentsync.convert.pandoc import PandocConverter, _bundled_pandoc, _PandocRunner, _PandocWithoutOcr
 from agentsync.convert.pdf import PdfConverter
 from agentsync.convert.pptx import PptxConverter
@@ -51,7 +53,9 @@ from agentsync.curate import _EVIDENCE_LINE, _evidence
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, UnitKind
 from agentsync.ops import launchd
+from agentsync.policy import PolicyConfig
 from test_convert_builders import (
+    MsgAttachment,
     PdfPicture,
     build_annotated_pdf,
     build_commented_pdf,
@@ -61,8 +65,10 @@ from test_convert_builders import (
     build_picture_pdf,
     build_pptx_rich,
     build_xlsx_rich,
+    cfb_bytes,
     eml_bytes,
     make_zip,
+    msg_bytes,
     ole_encrypted,
     page_picture,
     pandoc_build,
@@ -3406,6 +3412,197 @@ def test_eml_protected_and_empty(tmp_path: Path) -> None:
         EmlConverter(CFG).convert(_write(tmp_path, "i.eml", irm), name="i.eml")
     with pytest.raises(ConversionError, match="empty"):
         EmlConverter(CFG).convert(_write(tmp_path, "e.eml", b"  \n"), name="e.eml")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# msg
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _msg_result(tmp_path: Path, data: bytes, registry: Registry | None = None) -> ConversionResult:
+    return convert_file(
+        _write(tmp_path, "x.msg", data),
+        name="x.msg",
+        content_sha256="0" * 64,
+        canonical_sha256="0" * 64,
+        registry=registry or Registry.default(CFG),
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+
+
+def test_msg_headers_body_attachments_like_an_eml(tmp_path: Path) -> None:
+    big = bytes(range(256)) * 40  # past the 4096-byte mini-stream cutoff: a regular-sector stream
+    sheet = b"region,spend\nNorth,100\n"
+    inner = {"__properties_version1.0": b"\0" * 24, "__substg1.0_0037001F": "Original".encode("utf-16-le")}
+    data = msg_bytes(
+        subject="Contoso kickoff recap",
+        plain="Hi all,\r\n\r\nThe purchase order is approved.\r\n",
+        attachments=(
+            ("spend.csv", sheet, "text/csv"),
+            ("deck.bin", big, "application/octet-stream"),
+            ("", inner, ""),
+            ("Contoso chart.xlsx", {"Workbook": b"sheet bytes"}, ""),
+        ),
+    )
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "r.msg", data), name="r.msg"))
+    assert u.title == "Contoso kickoff recap"
+    for row in (
+        "# Contoso kickoff recap\n",
+        "| From | Jane Doe <jane.doe@example.com> |",
+        "| To | Team <team@example.com> |",
+        "| Cc | Boss <boss@example.com> |",
+        "| Date | Mon, 14 Sep 2026 09:12:00 +0000 |",
+        "| Subject | Contoso kickoff recap |",
+        "| Message-ID | <m1@example.com> |",
+        "| In-Reply-To | <m0@example.com> |",
+        "## Body\n\nHi all,\n\nThe purchase order is approved.\n",
+        f"| 1 | spend.csv | text/csv | 23 | {hashlib.sha256(sheet).hexdigest()} |",
+        f"| 2 | deck.bin | application/octet-stream | 10240 | {hashlib.sha256(big).hexdigest()} |",
+        "| 3 | Original.msg | application/vnd.ms-outlook | - | - |",
+        "| 4 | Contoso chart.xlsx | application/octet-stream | - | - |",
+        "Attachments are listed, not converted; save one into the inbox to convert it.",
+    ):
+        assert row in u.body, row
+    assert "region,spend" not in u.body and "\r" not in u.body, "attachments are listed, not converted"
+    assert u.summary == (
+        "Email from Jane Doe <jane.doe@example.com>, Mon, 14 Sep 2026 09:12:00 +0000: "
+        "Contoso kickoff recap; 4 attachment(s)"
+    )
+
+
+def test_msg_from_is_who_the_message_was_sent_for_as_an_eml_from_header_is(tmp_path: Path) -> None:
+    """A shared mailbox's mail is sent by a person on its behalf: From names the mailbox, as the .eml does."""
+    data = msg_bytes(representing=("Contoso Finance", "finance@contoso.example"))
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "f.msg", data), name="f.msg"))
+    assert "| From | Contoso Finance <finance@contoso.example> |" in u.body and "Jane Doe" not in u.body
+    assert u.summary.startswith("Email from Contoso Finance <finance@contoso.example>, ")
+    exchange = msg_bytes(representing=("Contoso Finance", "/O=CONTOSO/OU=EXCHANGE/CN=RECIPIENTS/CN=FIN"))
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "x.msg", exchange), name="x.msg"))
+    assert "| From | Contoso Finance |" in u.body, "a directory name is not an address"
+
+
+def test_msg_html_only_goes_through_pandoc_and_a_rich_text_only_body_is_named(tmp_path: Path) -> None:
+    src = _write(tmp_path, "h.msg", msg_bytes(plain=None, html="<p>Hi <b>there</b> café</p>"))
+    assert "Hi **there** café" in _one(MsgConverter(CFG).convert(src, name="h.msg")).body
+    streams = {"__properties_version1.0": b"\0" * 32, "__substg1.0_10090102": b"\x01\x02\x03\x04"}
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "r.msg", cfb_bytes(streams)), name="r.msg"))
+    assert "## Body\n\n[no text body: the message has only a rich-text body, which is not read]\n" in u.body
+    assert u.title == "(no subject)" and u.summary == "Email from unknown sender: (no subject)"
+
+
+def test_msg_narrow_strings_are_read_by_the_message_code_page(tmp_path: Path) -> None:
+    props = struct.pack("<32xIIQ", (0x3FFD << 16) | 0x0003, 6, 28592)  # ISO 8859-2, no ``cp28592`` in Python
+    streams = {"__properties_version1.0": props, "__substg1.0_0037001E": "Zażółć".encode("iso8859_2")}
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "n.msg", cfb_bytes(streams)), name="n.msg"))
+    assert u.title == "Zażółć"
+
+
+@pytest.mark.parametrize(
+    ("message_class", "attachments", "reason"),
+    [
+        ("IPM.Note.SMIME", (), "encrypted"),
+        ("IPM.Note", (("smime.p7m", b"\x30\x80", "application/pkcs7-mime"),), "encrypted"),
+        ("IPM.Note", (("smime.p7m", b"\x30\x80", "application/x-pkcs7-mime"),), "encrypted"),
+        ("IPM.Note.rpmsg.Microsoft.Voicemail", (), "IRM-protected"),
+        ("IPM.Note", (("message.rpmsg", b"\x76\xe8\x04\x60", "application/octet-stream"),), "IRM-protected"),
+        (
+            "IPM.Note",
+            (("protected.bin", b"\x76\xe8", "application/x-microsoft-rpmsg-message"),),
+            "IRM-protected",
+        ),
+        # The type is read as an .eml part's is: parameters dropped, case and padding ignored.
+        (
+            "IPM.Note",
+            (
+                (
+                    "smime.p7m",
+                    b"\x30\x80",
+                    "Application/PKCS7-MIME ; smime-type=enveloped-data; name=smime.p7m",
+                ),
+            ),
+            "encrypted",
+        ),
+        (
+            "IPM.Note",
+            (("protected.bin", b"\x76\xe8", "application/x-microsoft-rpmsg-message; name=message.rpmsg"),),
+            "IRM-protected",
+        ),
+        # Marked as an attached message (method 5): the listed type is not the type the screen reads.
+        (
+            "IPM.Note",
+            (
+                (
+                    "protected.bin",
+                    {"__properties_version1.0": b"\0" * 24},
+                    "application/x-microsoft-rpmsg-message",
+                ),
+            ),
+            "IRM-protected",
+        ),
+        (
+            "IPM.Note",
+            (("sealed.bin", {"__properties_version1.0": b"\0" * 24}, "application/pkcs7-mime"),),
+            "encrypted",
+        ),
+    ],
+)
+def test_msg_protected_is_unreadable(
+    tmp_path: Path, message_class: str, attachments: tuple[MsgAttachment, ...], reason: str
+) -> None:
+    src = _write(tmp_path, "p.msg", msg_bytes(message_class=message_class, attachments=attachments))
+    with pytest.raises(UnreadableSourceError, match=f"^{reason}$"):
+        MsgConverter(CFG).convert(src, name="p.msg")
+
+
+def test_signed_msg_is_read(tmp_path: Path) -> None:
+    data = msg_bytes(
+        message_class="IPM.Note.SMIME.MultipartSigned",
+        attachments=(("smime.p7m", b"\x30\x80", "application/pkcs7-mime"),),
+    )
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "s.msg", data), name="s.msg"))
+    assert "Body text." in u.body and "| 1 | smime.p7m | application/pkcs7-mime | 2 |" in u.body
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"From: someone\n\nnot a compound file\n",  # an .eml saved under a .msg name
+        bytes.fromhex("D0CF11E0A1B11AE1") + b"\0" * 504,  # a compound-file header and nothing behind it
+        cfb_bytes({"WordDocument": b"\0" * 64}),  # a compound file that is not a message (.doc renamed)
+    ],
+    ids=["an eml", "a bare header", "a word document"],
+)
+def test_not_a_message_is_a_settled_unreadable_stub(tmp_path: Path, data: bytes) -> None:
+    result = _msg_result(tmp_path, data)
+    assert result.status is ConversionStatus.UNREADABLE and (result.reason or "").startswith(NOT_MSG_REASON)
+
+
+def test_a_msg_with_an_encrypted_office_attachment_is_encrypted_office(tmp_path: Path) -> None:
+    """The encryption screen reads the whole compound file, never a name in it: a protected Office file
+    inside a message refuses the message, where the same attachment in an .eml (base64) is only listed."""
+    locked = cfb_bytes({"EncryptionInfo": b"\x04\x00\x04\x00", "EncryptedPackage": b"\0" * 64})
+    office = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    result = _msg_result(tmp_path, msg_bytes(attachments=(("Contoso plan.docx", locked, office),)))
+    assert (result.status, result.reason) == (ConversionStatus.UNREADABLE, policy.ENCRYPTED_OFFICE_REASON)
+
+
+def test_msg_dates_and_ids_survive_a_rebuild(tmp_path: Path) -> None:
+    a = MsgConverter(CFG).convert(_write(tmp_path, "a.msg", msg_bytes()), name="a.msg")
+    b = MsgConverter(CFG).convert(_write(tmp_path, "b.msg", msg_bytes()), name="b.msg")
+    assert a == b
+    later = msg_bytes(sent=dt.datetime(2026, 9, 15, tzinfo=dt.UTC))
+    c = MsgConverter(CFG).convert(_write(tmp_path, "c.msg", later), name="c.msg")
+    assert c[0].rendered_sha256 != a[0].rendered_sha256 and "| Date | Tue, 15 Sep 2026" in c[0].body
+
+
+@pytest.mark.parametrize(
+    "rule", [PolicyConfig(refuse_unlabelled=True), PolicyConfig(exclude_label_names=("Secret",))]
+)
+def test_under_a_label_rule_a_msg_is_the_no_converter_stub(tmp_path: Path, rule: PolicyConfig) -> None:
+    """A .msg label sits where the screen does not read it, so no rule can clear one: it is not converted."""
+    assert _msg_result(tmp_path, msg_bytes()).status is ConversionStatus.OK
+    result = _msg_result(tmp_path, msg_bytes(), Registry.default(CFG, policy=rule))
+    assert (result.status, result.reason) == (ConversionStatus.REFUSED, "no converter for .msg")
 
 
 # ---------------------------------------------------------------------------------------------------------

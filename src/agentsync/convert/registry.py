@@ -189,8 +189,13 @@ class Registry:
         pieces: PieceStore | None = None,
         speech: SpeechEngine | None = None,
     ) -> Registry:
-        """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, vtt, eml, teams),
-        each behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
+        """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, vtt, eml, teams,
+        msg), each behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
+
+        ``.msg`` gets ``msg-olefile`` unless a ``[policy]`` label rule is active: a ``.msg`` carries its label
+        in a named MAPI property the screen does not read, so under a rule it stays the ``no converter`` stub
+        (plan D8, as for images).  It needs no engine, so a caller that leaves ``policy`` out reads every
+        ``.msg``: pass the effective policy.
 
         With ``ocr`` (the engine the cycle resolved) the pandoc, pptx and pdf converters read with it, and
         raster images get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image
@@ -230,6 +235,10 @@ class Registry:
             EmlConverter(cfg),
             TeamsMonthConverter(cfg),
         ]
+        if not content_policy.labels_active:
+            from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
+
+            converters.append(MsgConverter(cfg))
         if ocr is not None and not content_policy.labels_active:
             from agentsync.convert.image import ImageConverter  # noqa: PLC0415
 

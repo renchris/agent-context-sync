@@ -61,7 +61,9 @@ channel or chat and month, written by your own export script under the
 Only `.eml`, `.pdf` and the Office formats (`.docx`, `.xlsx`, `.pptx`) carry a sensitivity label, so a `.vtt`, a
 `.teams.json` or pasted text skips the label exclusions in `sources.toml`; prefer `.eml` and `.docx`. A screenshot or a
 photo carries no label agentsync can read either, so while a label exclusion is set no image file is converted
-([Images and scans](#images-and-scans-on-device-ocr)). Files stay in the
+([Images and scans](#images-and-scans-on-device-ocr)). An Outlook `.msg` is converted like an `.eml`, but its label
+is not read either, so while a label exclusion is set a `.msg` is not converted; drag the message out as `.eml`
+instead. Files stay in the
 inbox: never empty it by hand, because removing a file turns its page into a tombstone and queues a purge.
 
 **The diff is part of every sync, not a separate step.** Each run lists every source, decides from metadata alone

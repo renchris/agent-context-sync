@@ -37,6 +37,7 @@ from agentsync import cycle as cycle_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
 from agentsync.convert import image as image_mod
+from agentsync.convert import msg as msg_mod
 from agentsync.convert import ocr
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
@@ -72,6 +73,7 @@ from conftest import config_text
 from test_convert_builders import (
     build_annotated_pdf,
     build_picture_pdf,
+    msg_bytes,
     page_picture,
     pandoc_build,
     shade_engine,
@@ -2228,6 +2230,54 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+
+
+KICKOFF_MSG = "projects/Contoso kickoff.msg"
+
+
+def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.msg`` can carry a sensitivity label nothing here reads, so a label rule fails closed: no ``.msg``
+    converter. The [policy] re-screen covers ``.msg``, so the page published before the rule does not stay,
+    and a ``.msg`` that arrives under the rule is not fetched."""
+    recap = msg_bytes(subject="Contoso kickoff recap", plain="Renewal is in March.\n")
+    (local_source_dir / KICKOFF_MSG).write_bytes(recap)
+    open_config = config_with(tmp_path, local_source_dir)
+    assert run(open_config).exit_code == 0
+    fm, body = _mirror_page(open_config, KICKOFF_MSG)
+    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.0+olefile-")
+    assert fm["source_title"] == "Contoso kickoff recap" and "Renewal is in March." in body
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    late = "projects/Contoso renewal.msg"
+    (local_source_dir / late).write_bytes(msg_bytes(plain="The price is agreed.\n"))
+    fetched = _fetches(monkeypatch)
+    assert run(labelled).exit_code == 0 and not [rel for rel in fetched if rel.endswith(".msg")]
+    for rel in (KICKOFF_MSG, late):
+        fm, body = _mirror_page(labelled, rel)
+        assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+        assert "Renewal is in March." not in body and "The price is agreed." not in body
+    assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
+    with Manifest(labelled.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+
+
+def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.msg`` refused before ``msg-olefile`` existed is read again, once, with no step of the person's."""
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+    with monkeypatch.context() as old:
+        old.setattr(msg_mod.MsgConverter, "extensions", ())
+        assert run(sample_config).exit_code == 0
+        assert _mirror_page(sample_config, KICKOFF_MSG)[0]["reason"] == "no converter for .msg"
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.commit_sha is not None and fetched == [KICKOFF_MSG]
+    fm, body = _mirror_page(sample_config, KICKOFF_MSG)
+    assert fm["converter"].startswith("msg-olefile@") and fm["status"] == "current"
+    assert "| From | Jane Doe <jane.doe@example.com> |" in body and "Renewal is in March." in body
+    assert run(sample_config).commit_sha is None and fetched == [KICKOFF_MSG], "no file is read a second time"
 
 
 def test_a_helper_that_fails_on_everything_costs_no_image_its_reading(

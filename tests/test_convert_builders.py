@@ -561,3 +561,212 @@ def test_builders_produce_valid_containers(tmp_path: Path) -> None:
 def test_png_is_stable() -> None:
     assert png_bytes() == png_bytes()
     assert png_bytes().startswith(b"\x89PNG")
+
+
+_CFB_FREE, _CFB_END, _CFB_FATSECT, _CFB_NONE = 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD, 0xFFFFFFFF
+_CFB_MAGIC = bytes.fromhex("D0CF11E0A1B11AE1")
+
+
+def _cfb_sorted(names: list[str]) -> list[str]:
+    return sorted(names, key=lambda n: (len(n), n.upper()))
+
+
+def cfb_bytes(streams: Mapping[str, bytes]) -> bytes:
+    """A compound file (MS-CFB version 3) holding ``streams`` ("storage/…/stream" -> bytes); storages implied.
+
+    Streams under 4096 bytes go in the mini stream, as Outlook writes them.  Siblings are a right-leaning
+    chain, all black: enough for olefile, which walks the tree without checking its balance."""
+    tree: dict[tuple[str, ...], list[str]] = {(): []}
+    for path in streams:
+        parts = tuple(path.split("/"))
+        for depth in range(1, len(parts) + 1):
+            siblings = tree.setdefault(parts[: depth - 1], [])
+            if parts[depth - 1] not in siblings:
+                siblings.append(parts[depth - 1])
+    order: list[tuple[str, ...]] = [()]
+
+    def walk(node: tuple[str, ...]) -> None:
+        for name in _cfb_sorted(tree.get(node, [])):
+            order.append((*node, name))
+            walk((*node, name))
+
+    walk(())
+    sid = {node: i for i, node in enumerate(order)}
+    mini, minifat, starts = bytearray(), [], {}
+    big = [(path, data) for path, data in streams.items() if len(data) >= 4096]
+    for path, data in streams.items():
+        if len(data) >= 4096:
+            continue
+        n = -(-len(data) // 64)
+        starts[path] = len(minifat) if n else _CFB_END
+        minifat += [len(minifat) + i + 1 for i in range(n - 1)] + ([_CFB_END] if n else [])
+        mini += data + b"\0" * (n * 64 - len(data))
+
+    def sectors(size: int) -> int:
+        return -(-size // 512)
+
+    n_minifat, n_dir, n_mini = sectors(len(minifat) * 4), sectors(len(order) * 128), sectors(len(mini))
+    n_big = sum(sectors(len(data)) for _path, data in big)
+    n_fat = 1
+    while n_fat * 128 < n_fat + n_minifat + n_dir + n_mini + n_big:
+        n_fat += 1
+    assert n_fat <= 109, "a header-only FAT list: no DIFAT sector is written"
+    fat: list[int] = [_CFB_FATSECT] * n_fat
+
+    def chain(n: int) -> int:
+        if n == 0:
+            return _CFB_END
+        first = len(fat)
+        fat.extend([first + i + 1 for i in range(n - 1)] + [_CFB_END])
+        return first
+
+    minifat_start, dir_start, mini_start = chain(n_minifat), chain(n_dir), chain(n_mini)
+    for path, data in big:
+        starts[path] = chain(sectors(len(data)))
+    fat += [_CFB_FREE] * (n_fat * 128 - len(fat))
+    entries = bytearray()
+    for node in order:
+        path = "/".join(node)
+        is_stream = path in streams
+        kids = [] if is_stream else _cfb_sorted(tree.get(node, []))
+        siblings = _cfb_sorted(tree[node[:-1]]) if node else []
+        nxt = siblings.index(node[-1]) + 1 if node else 0
+        right = sid[(*node[:-1], siblings[nxt])] if node and nxt < len(siblings) else _CFB_NONE
+        child = sid[(*node, kids[0])] if kids else _CFB_NONE
+        name = (node[-1] if node else "Root Entry").encode("utf-16-le")
+        kind = 2 if is_stream else (1 if node else 5)
+        if is_stream:
+            start, size = starts[path], len(streams[path])
+        elif node:
+            start, size = 0, 0
+        else:
+            start, size = (mini_start if mini else _CFB_END), len(mini)
+        entries += struct.pack(
+            "<64sHBBIII16sIQQIQ",
+            name,
+            len(name) + 2,
+            kind,
+            1,
+            _CFB_NONE,
+            right,
+            child,
+            b"\0" * 16,
+            0,
+            0,
+            0,
+            start,
+            size,
+        )
+    entries += b"\0" * (n_dir * 512 - len(entries))
+    header = struct.pack(
+        "<8s16sHHHHH6sIIIIIIIII",
+        _CFB_MAGIC,
+        b"\0" * 16,
+        0x3E,
+        3,
+        0xFFFE,
+        9,
+        6,
+        b"\0" * 6,
+        0,
+        n_fat,
+        dir_start,
+        0,
+        4096,
+        minifat_start,
+        n_minifat,
+        _CFB_END,
+        0,
+    ) + struct.pack("<109I", *(list(range(n_fat)) + [_CFB_FREE] * (109 - n_fat)))
+    body = bytearray(struct.pack(f"<{len(fat)}I", *fat))
+    body += struct.pack(f"<{len(minifat)}I", *minifat) + b"\xff" * (n_minifat * 512 - len(minifat) * 4)
+    body += entries + mini + b"\0" * (n_mini * 512 - len(mini))
+    for _path, data in big:
+        body += data + b"\0" * (sectors(len(data)) * 512 - len(data))
+    return header + bytes(body)
+
+
+def _msg_props(header: int, fixed: Mapping[int, tuple[int, int]]) -> bytes:
+    """A ``__properties_version1.0`` stream: ``header`` bytes, then a 16-byte entry per id: (type, value)."""
+    out = bytearray(header)
+    for pid, (ptype, value) in sorted(fixed.items()):
+        out += struct.pack("<IIQ", (pid << 16) | ptype, 6, value)
+    return bytes(out)
+
+
+def _utf16(text: str) -> bytes:
+    return text.encode("utf-16-le")
+
+
+MsgAttachment = tuple[str, "bytes | Mapping[str, bytes]", str]
+"""(file name, content, MIME tag). Content that is bytes is a file by value; a mapping is the streams of the
+attachment's object storage: an attached message when it holds a properties stream, else an OLE object."""
+
+
+def msg_bytes(
+    *,
+    subject: str = "Hello",
+    plain: str | None = "Body text.\n",
+    html: str | None = None,
+    message_class: str = "IPM.Note",
+    attachments: tuple[MsgAttachment, ...] = (),
+    sent: dt.datetime = dt.datetime(2026, 9, 14, 9, 12, tzinfo=dt.UTC),
+    representing: tuple[str, str] | None = None,
+) -> bytes:
+    """An Outlook .msg (MS-OXMSG, Unicode properties), the shape of ``eml_bytes``: one To, one Cc recipient.
+
+    The sender is Jane Doe; ``representing`` is the (name, address) the message was sent on behalf of."""
+    filetime = int((sent - dt.datetime(1601, 1, 1, tzinfo=dt.UTC)).total_seconds() * 10**7)
+    s: dict[str, bytes] = {
+        "__properties_version1.0": _msg_props(32, {0x0039: (0x0040, filetime)}),
+        "__substg1.0_001A001F": _utf16(message_class),
+        "__substg1.0_0037001F": _utf16(subject),
+        "__substg1.0_0C1A001F": _utf16("Jane Doe"),
+        "__substg1.0_5D01001F": _utf16("jane.doe@example.com"),
+        "__substg1.0_0E04001F": _utf16("Team"),
+        "__substg1.0_0E03001F": _utf16("Boss"),
+        "__substg1.0_1035001F": _utf16("<m1@example.com>"),
+        "__substg1.0_1042001F": _utf16("<m0@example.com>"),
+        "__substg1.0_1039001F": _utf16("<m0@example.com>"),
+        "__nameid_version1.0/__substg1.0_00020102": b"",
+    }
+    if representing is not None:
+        s["__substg1.0_0042001F"] = _utf16(representing[0])
+        s["__substg1.0_5D02001F"] = _utf16(representing[1])
+    for i, (name, addr, kind) in enumerate(
+        (("Team", "team@example.com", 1), ("Boss", "boss@example.com", 2))
+    ):
+        r = f"__recip_version1.0_#{i:08X}/"
+        s[r + "__properties_version1.0"] = _msg_props(8, {0x0C15: (0x0003, kind)})
+        s[r + "__substg1.0_3001001F"] = _utf16(name)
+        s[r + "__substg1.0_39FE001F"] = _utf16(addr)
+    if plain is not None:
+        s["__substg1.0_1000001F"] = _utf16(plain)
+    if html is not None:
+        s["__substg1.0_10130102"] = html.encode("utf-8")
+    for i, (filename, content, ctype) in enumerate(attachments):
+        a = f"__attach_version1.0_#{i:08X}/"
+        if isinstance(content, bytes):
+            method = 1
+            s[a + "__substg1.0_37010102"] = content
+        else:
+            method = 5 if "__properties_version1.0" in content else 6
+            for inner, data in content.items():
+                s[f"{a}__substg1.0_3701000D/{inner}"] = data
+        s[a + "__properties_version1.0"] = _msg_props(8, {0x3705: (0x0003, method)})
+        if filename:
+            s[a + "__substg1.0_3707001F"] = _utf16(filename)
+        if ctype:
+            s[a + "__substg1.0_370E001F"] = _utf16(ctype)
+    return cfb_bytes(s)
+
+
+def test_a_built_msg_is_a_compound_file_olefile_reads_back() -> None:
+    import olefile  # noqa: PLC0415
+
+    big = bytes(range(256)) * 40
+    data = msg_bytes(attachments=(("deck.bin", big, "application/octet-stream"),))
+    assert data == msg_bytes(attachments=(("deck.bin", big, "application/octet-stream"),))
+    with olefile.OleFileIO(io.BytesIO(data)) as ole:
+        assert ole.openstream("__substg1.0_0037001F").read() == _utf16("Hello")
+        assert ole.openstream(["__attach_version1.0_#00000000", "__substg1.0_37010102"]).read() == big

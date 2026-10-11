@@ -357,6 +357,7 @@ PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pd
 .tiff .webp .heic .heif` → `image-ocr`. With an OCR engine `pandoc-gfm` is two converters: one with the
 engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.42):** `.url` → `text-plain`.
+**SUPERSEDED (2026-10-11, §16.42):** with no label rule, `.msg` → `msg-olefile`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -599,6 +600,7 @@ already carries `SOURCE-MISSING` is not repeated.
 8. **PDF** via pdfminer.six (plan), **pptx** via python-pptx (plan) instead of MarkItDown; `.msg` is not routed
    (no permissive parser chosen) and becomes a REFUSED stub until one is.
    **SUPERSEDED (2026-09-29, §16.9):** PDF via pypdfium2 (PDFium, BSD/Apache), pdfminer.six as the fallback.
+   **SUPERSEDED (2026-10-11, §16.42):** `.msg` via olefile (BSD); no `.msg` converter under a label rule.
 9. **PyYAML** was added as a runtime dependency (curated pages are agent-written YAML; a hand parser would be a
    defect source). Mirror frontmatter is still rendered by a hand-rolled deterministic writer.
 10. **One launchd job per mode** (`<prefix>.poll` StartInterval = poll_interval_s, `<prefix>.reconcile`
@@ -4651,7 +4653,8 @@ file), and `gitops.COMMIT_PATHSPECS` includes it.
 **Content policy (security-governance-04/05/06).** A published item refused by the label policy deletes its
 earlier conversions from the cache (`ConverterCache.delete(keys)`) and queues a `LABEL_ESCALATION` purge. The
 manifest meta keeps `policy_fingerprint`; when the effective policy changes, every label-capable file
-(`OOXML_SUFFIXES`, `.pdf`, `.eml`; **amended 2026-10-06, §16.26:** and the image suffixes) that is
+(`OOXML_SUFFIXES`, `.pdf`, `.eml`; **amended 2026-10-06, §16.26:** and the image suffixes; **amended
+2026-10-11, §16.42:** and `.msg`) that is
 published or refused by policy is re-screened (content hashes
 forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty (**amended
 2026-10-06:** and not again until the next policy change, §16.23). An OOXML name
@@ -11244,6 +11247,91 @@ lower-case section and a spaced key; one with `URL=` only under another section;
 line before the real one), `tests/test_convert_core.py` (the pinned route set), `tests/test_cycle.py` (a
 stub from before the converter is read once as a page, and not again) and `tests/test_setup_report.py`
 (a log line naming a file of each claimed suffix is scrubbed).
+
+#### Outlook messages through olefile (N46)
+
+Amends §7's routing, §14 item 8 and the content-policy re-screen list. `Registry.default` routes `.msg` to
+`msg-olefile` (`agentsync.convert.msg.MsgConverter`) unless `policy.labels_active`: a `.msg` holds its
+sensitivity label in a named MAPI property that `policy.read_labels` does not read, so any label rule
+keeps the `no converter for .msg` stub (plan D8, as for images). A reader written by hand that missed one
+place a label can sit would publish an excluded message; keeping the converter out cannot. `.msg` joins
+`cycle._LABEL_CAPABLE`, so a page published before a rule is re-screened into that stub, and a `.msg`
+that arrives under a rule is not fetched. No purge is queued, because no label was read: the page's
+earlier text stays in history, as for an image (§16.26). The converter needs no engine, so a caller of
+`Registry.default` that leaves `policy` out reads every `.msg`; the cycle, its only caller, passes the
+effective policy.
+
+The page has the `.eml` shape. The header table is From, To, Cc, Date, Subject, Message-ID, In-Reply-To
+and References, from MAPI properties. From is the sent-representing party (0x0042 with 0x5D02, else
+0x0065), which is what an `.eml`'s From header holds, so mail from a shared mailbox or a delegate names
+the mailbox; else the sender (0x0C1A with 0x5D01, else 0x0C1F). An address with no `@` (an Exchange
+directory name) is dropped and the name stands alone. To and Cc are the recipient storages by type (name
+0x3001, address 0x39FE else 0x3003), else the display strings 0x0E04 and 0x0E03. Date is the submit time
+0x0039, else the delivery time 0x0E06, in UTC. The body is the plain body 0x1000, else the HTML body
+0x1013 through pandoc; a message with only a compressed rich-text body says `[no text body: the message
+has only a rich-text body, which is not read]` (no RTF decompressor is shipped). Unicode strings are
+UTF-16; a narrow string is decoded by the message code page 0x3FFD and the HTML body by the internet code
+page 0x3FDE (each falling back to the other, then to `_decode_text`), with the Windows ids Python has no
+`cpN` codec for mapped by hand; text is NFC. Attachments are listed in storage order by name (0x3707, else
+0x3704, else 0x3001), type (0x370E, else `application/octet-stream`), size and sha256, never converted. An
+attached message (method 5, or an object storage that holds a properties stream) is listed as `<its
+subject>.msg`, `application/vnd.ms-outlook`, size and sha256 `-`, and never opened further; any other
+object storage (an embedded OLE object, method 6) is listed under its own name and type with size and
+sha256 `-`. The summary is `Email from <From>, <Date>: <subject>; N attachment(s)`.
+
+UNREADABLE, cached and settled: a message class starting `IPM.Note.SMIME` other than
+`IPM.Note.SMIME.MultipartSigned`, or (outside that signed class) an attachment typed
+`application/pkcs7-mime` or `application/x-pkcs7-mime`, is `encrypted`; a class containing `rpmsg`, an
+attachment named `*.rpmsg` or one typed `application/x-microsoft-rpmsg-message` is `IRM-protected`. The
+type the screen reads is the storage's own 0x370E tag as `Message.get_content_type` gives an `.eml` part's:
+cut at the first `;`, stripped, lower case. It is read for every attachment storage, also one listed as
+`application/vnd.ms-outlook` because it is marked method 5. No `smime-type` parameter is read from a
+`.msg`, so a PKCS #7 part outside the signed class fails closed. A file that
+does not start with the compound-file magic, that olefile cannot open, that has no root properties
+stream (a `.doc` renamed), or whose reading raises anything, is `NOT_MSG_REASON` (`not-msg (not an Outlook
+message)`, then `: <exception type>` when there was one). `setup_report.quarantine_class` reports
+`not-msg` as `not the type its name says`. `policy.sniff_container` scans the whole compound file, never a
+name in it, so a `.msg` that carries an encrypted Office attachment (or the stream name `EncryptedPackage`
+anywhere in its bytes, a body that quotes it included) is `encrypted-office` as a whole, before the
+converter runs; the same attachment in an `.eml` is base64 and is only listed. That screen is shared by
+every compound format and is not narrowed for `.msg`.
+
+`.msg` stays out of `slug.STRIP_SUFFIXES`: the page keeps the path of the stub it replaces. An existing
+`no converter for .msg` stub becomes a page with no operator step: on this Mac through the re-read pass
+(§16.27), online-only through the work queue. `.msg` was already in `_PATH_IN_LOG_RE` and stays in
+`_REFUSED_TYPE_LIST`; the per-suffix scrub test now covers 37 suffixes. `.oft` is still refused. Not
+built: a `.msg` label reader, a compressed-RTF reader, and opening attached messages.
+
+olefile (`olefile>=0.47,<1`, locked at 0.47) is pure Python with no dependency of its own: BSD-2-Clause,
+with the PIL licence (HPND) for the parts taken from PIL's OleFileIO, both permissive. It logs nothing
+unless asked. Its wheel also installs a Python 2 `olefile/olefile2.py` and a top-level `OleFileIO_PL`
+shim; neither is imported. Version: `1.0.0+olefile-<v>+python-<v>+pandoc-<v>`; options as `eml-stdlib`.
+
+##### `agentsync.convert.msg` — `src/agentsync/convert/msg.py` — owner: **convert**
+
+```python
+NOT_MSG_REASON = "not-msg (not an Outlook message)"
+
+class MsgConverter:
+    converter_id = "msg-olefile"
+    extensions: tuple[str, ...] = (".msg",)
+
+    def __init__(self, cfg: ConvertConfig) -> None: ...
+    def version(self) -> str: ...
+    def options(self) -> Mapping[str, OptionValue]: ...
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
+```
+
+Tests: `tests/test_convert_formats.py` (headers, body and the four kinds of attachment; From for a shared
+mailbox; an HTML-only and a rich-text-only body; a narrow string in a code page Python does not name;
+each protected kind, a type that carries a parameter and one on a method-5 storage, and a signed message
+read; three files that are not messages; an encrypted Office
+attachment; equal output on a rebuild; the stub under each label rule), `tests/test_convert_core.py` (the
+route set, the counts, no `.msg` converter under a rule), `tests/test_cycle.py` (a page becomes the stub
+under a rule with no purge; a stub from before the converter is read once), `tests/test_setup_report.py`
+(the reason class) and `tests/test_convert_determinism.py`. `cfb_bytes` and `msg_bytes` in
+`tests/test_convert_builders.py` write a compound file and a message from nothing; no binary file is
+committed.
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 
