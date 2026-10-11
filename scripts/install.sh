@@ -887,17 +887,45 @@ short_name() {
 		;;
 	esac
 }
+# A folder name every OneDrive or Google Drive has: setup_report._GENERIC_FOLDERS (a test keeps them equal). A
+# configured one is still redacted, as the Python report does, but only as a whole word.
+generic_folder() {
+	case "$1" in
+	Apps | Attachments | Desktop | Documents | Downloads | "Microsoft Copilot Chat Files") return 0 ;;
+	"Microsoft Teams Chat Files" | Music | "My Drive" | Notebooks | "Personal Vault" | Pictures) return 0 ;;
+	Recordings | Shared | "Shared Documents" | "Shared drives" | Videos) return 0 ;;
+	esac
+	return 1
+}
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
-	# lost. Both install.log loops hand each argument, unquoted, to logged_source_local.
+	# lost. Both install.log loops hand each argument, unquoted, to logged_source_local. An argument is placed
+	# as that run placed it ("~/..." is the home); install.log has no working directory, so a relative one is
+	# placed only when it names CloudStorage or one of its entries, else it is shown as <path>.
 	logged_source_local() {
-		known+=("$1")
+		local rel part
+		case "$1" in
+		\~) known+=("$HOME") ;;
+		\~/*) known+=("$HOME/${1#\~/}") ;;
+		/*) known+=("$1") ;;
+		*Library/CloudStorage/*) known+=("$cs/${1#*Library/CloudStorage/}") ;;
+		*)
+			rel="${1#./}" # the word as logged stays the loose one: install.log shows "./Name"
+			part="${rel%%/*}"
+			# "$cs/.." always exists, so a "." or ".." first part ("../docs", "././Notes") would be placed in
+			# CloudStorage and its bare last word registered: it is loose, shown as <path>.
+			case "$part" in
+			"" | . | ..) loose+=("$1") ;;
+			*) if [ -e "$cs/$part" ]; then known+=("$cs/$rel"); else loose+=("$1"); fi ;;
+			esac
+			;;
+		esac
 	}
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
@@ -910,7 +938,12 @@ redaction_pairs() {
 			read -a words <<<"$line" || true
 			take=0
 			for w in ${words[@]+"${words[@]}"}; do
-				[ "$take" -eq 1 ] && logged_source_local "$w"
+				if [ "$take" -eq 1 ]; then
+					case "$w" in
+					\$\'*) ;; # read split it at its spaces, still quoted: the loop after this one unquotes it whole
+					*) logged_source_local "$w" ;;
+					esac
+				fi
 				[ "$w" = --source-local ] && take=1 || take=0
 			done
 		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | LC_ALL=C sort -u)
@@ -959,6 +992,9 @@ redaction_pairs() {
 		add_pair "${TMPDIR%/}" "<tmp>"
 	fi
 	add_pair "$HOME" "~"
+	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
+		printf '%s\t%s\t\n' "--source-local $(printf '%q' "$w")" "--source-local <path>"
+	done
 	if [ -d "$cs" ]; then
 		# The organisation, team or account after the app's name ("<app>-<domain>", as setup_report._org_of
 		# reads it): not a bare app name, Personal, Business or Work, nor a name repeating the app's (Box-Box).
@@ -989,7 +1025,9 @@ redaction_pairs() {
 			part="${rel%%/*}"
 			[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
 			n=$((n + 1))
-			add_pair "$part" "<folder-$n>"
+			whole=""
+			if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments"
+			add_pair "$part" "<folder-$n>" "$whole"
 		done
 	done
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
@@ -1000,8 +1038,8 @@ redaction_pairs() {
 	if [ -n "$name" ]; then
 		add_pair "$name" "<name>"
 		# Every word as written ("(JJ)" too) and without its brackets ("Doe, Jane (Contoso)"): macOS keeps the
-		# comma.
-		read -r -a toks <<<"${name//,/ }"
+		# comma. read, not an unquoted for: a part with * ? or [ would glob.
+		read -r -a toks <<<"${name//,/ }" || true
 		for tok in ${toks[@]+"${toks[@]}"}; do
 			add_pair "$tok" "<name>" w
 			# A two-letter part ("Li") too, as setup_report does: add_pair keeps 3 for orgs and folders.
@@ -1089,32 +1127,62 @@ redact_stream() {
 	# (printf %q writes one for a curly apostrophe or an NFD accent) and every pair after it is lost. A $'..'
 	# word (install.log's args, a re-run line in the friction log) is <path> first: its octal bytes match no
 	# pair, so it would show the escaped folder name. awk too: macOS awk's index and substr are byte-wise, but a
-	# regex match (lit's word test) under UTF-8 exits at a byte that is not UTF-8 on its own ("Jane" + U+2019).
+	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
+	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" LC_ALL=C awk '
-	function lit(s, v, p, word,    out, i, n, pre, post) {
-		out = ""
-		n = length(v)
-		while ((i = index(s, v)) > 0) {
-			pre = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
-			post = substr(s, i + n, 1)
-			if (word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) {
-				out = out substr(s, 1, i + n - 1)
-			} else {
-				out = out substr(s, 1, i - 1) p
-			}
-			s = substr(s, i + n)
-		}
-		return out s
+	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
+	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
+	# report, which replaces in one pass. A held piece ends in ">" or "~", never a word character, as the
+	# line it stood in did. A placeholder already in the text (the friction log of an earlier report; an
+	# agent may copy one from either report or from it-request.md, whose <org>, <Org>, <team> and <TEAMID>
+	# are template fields) is held from the start: only these names, since "<jdoe>" may be the login itself.
+	# A heading of the report itself is never redacted, as in the Python report.
+	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
+	BEGIN {
+		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
+		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
+			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
+		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
 	}
-	BEGIN { np = split(ENVIRON["REDACT_PAIRS"], rows, "\n") }
+	$0 in heading { print; next }
 	{
-		line = $0
+		m = 0; s = $0
+		while (match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy)-([0-9]+|N))>/)) {
+			keep(substr(s, 1, RSTART - 1), 0)
+			keep(substr(s, RSTART, RLENGTH), 1)
+			s = substr(s, RSTART + RLENGTH)
+		}
+		keep(s, 0)
+		ns = m
+		for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
 		for (k = 1; k <= np; k++) {
 			if (split(rows[k], f, "\t") < 2) continue
-			line = lit(line, f[1], f[2], f[3] == "w")
+			v = f[1]
+			if (!index($0, v)) continue # every plain piece is a piece of the input line
+			n = length(v); word = (f[3] == "w"); m = 0
+			for (j = 1; j <= ns; j++) {
+				if (held[j]) { keep(seg[j], 1); continue }
+				s = seg[j]; acc = ""
+				while ((i = index(s, v)) > 0) {
+					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
+					post = substr(s, i + n, 1)
+					if (word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) {
+						acc = acc substr(s, 1, i + n - 1)
+					} else {
+						keep(acc substr(s, 1, i - 1), 0); acc = ""
+						keep(f[2], 1)
+					}
+					s = substr(s, i + n)
+				}
+				keep(acc s, 0)
+			}
+			ns = m
+			for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
 		}
+		line = ""
+		for (j = 1; j <= ns; j++) line = line seg[j]
 		print line
 	}'
 }
@@ -1248,15 +1316,20 @@ fallback_body() {
 		say "None recorded."
 	fi
 	say ""
+}
+# The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
+# value can replace a word of it ("the login name" with a folder named "name").
+fallback_redaction() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
 	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
 	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts with a"
 	say "dot and the system PAC URL after its scheme (<proxy-N>), the names of the folders under CloudStorage that"
-	say "--source-local, sources.toml or install.log name (<folder-N>), and every word in bash's dollar-quote form,"
-	say "how install.log writes a name with a curly apostrophe, a dash or an accent (<path>). Read the report"
-	say "before sending it: anything else confidential is yours to remove."
+	say "--source-local, sources.toml or install.log name (<folder-N>; a name every OneDrive has only as a whole"
+	say "word), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
+	say "in bash's dollar-quote form, how install.log writes a name with a curly apostrophe, a dash or an accent"
+	say "(<path>). Read the report before sending it: anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).
@@ -1299,6 +1372,7 @@ write_fallback_report() { # RC WHY
 		umask 077
 		{
 			fallback_body "$1" "$2" "$friction" | redact_stream | scrub_exclude_lists
+			fallback_redaction
 			printf '\n%s\n' "$ISSUE_URL" # the issue form, after redaction (a login may match the URL's owner)
 		} >"$tmp"
 	) 2>/dev/null || {

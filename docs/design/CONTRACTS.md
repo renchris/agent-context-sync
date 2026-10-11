@@ -4916,6 +4916,9 @@ provider (`Dropbox-<team>` too), not only after `OneDrive-`, in both reports.
 **Amended (2026-10-11, §16.41 "The shell fallback report reads past a `$'...'` word"):** install.log's
 `--source-local $'...'` words are unquoted into those folders too, and every `$'...'` word in the shell report is
 `<path>`.
+**Amended (2026-10-11, §16.41 "The shell fallback report's redaction edge cases"):** an install.log word written
+`~/...` is placed under the home, and a relative one that names no CloudStorage entry is shown as
+`--source-local <path>`; a configured generic folder (`Documents`) is matched as a whole word.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -4976,6 +4979,9 @@ comma or not, that has two letters and starts with a capital is a lone name too 
 "Jane Li"), in no form the report's own lines or an agent's sentences use (`_SHORT_WORDS` in any case, `_SHORT_CAPS`
 in upper case). A part like "Do" is redacted only inside the joined forms, and a lower-case particle ("de", "la")
 is never a lone name.
+**Amended (2026-10-11, §16.41 "The shell fallback report's redaction edge cases"):** the shell fallback splits the
+name without glob expansion, never replaces inside a placeholder, and keeps its own headings and Redaction section
+unredacted.
 The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
 Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
 source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,
@@ -11128,6 +11134,42 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     `test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte`, and the headings and issue-link
     line in `test_the_shell_report_only_redacts_the_folders_earlier_runs_added` and the `Jane’s folder` line
     in `test_the_shell_report_redacts_a_full_name_written_last_comma_first`, both under UTF-8.
+- **The shell fallback report's redaction edge cases** (`scripts/install.sh`; amends the 2026-10-10 amendments
+  in §16.14: the folders the shell report registers, and, under "v5 revision, redaction", the full name split at
+  commas).
+  - Before: a part of the full name with `*`, `?` or `[` was glob-expanded against the working directory, so
+    `Jane*` became the names of matching files there (`Janet-notes.txt`), and the part itself was not a pair. A configured generic component (`Documents`) matched inside other words
+    (`MyDocuments` became `My<folder-1>`). A value matched inside a placeholder an earlier value wrote, or one
+    already in the text: a folder named `name` gave `<<folder-1>>`, and the Redaction note's own words were
+    replaced (`the login <folder-1> (<user>)`). A configured folder named like a heading word redacted the
+    heading (`## Agent friction <folder-1>`, which the next `--report-only` looks for when friction.md is
+    missing). And a `--source-local` word in install.log written `~/...` or relative was never placed, so a
+    `--report-only` run showed its folder names in clear.
+  - Now the full name's parts are split without glob expansion. A configured CloudStorage component that is
+    one of `setup_report._GENERIC_FOLDERS` is redacted as a whole word, as the Python report matches it (a test
+    keeps the shell's `generic_folder` list equal to that set); any other component is still a substring. No
+    value is replaced inside a placeholder an earlier value wrote, as in the Python report's single pass, nor
+    inside a report or it-request.md placeholder already in the text (the friction log of an earlier report:
+    `<name>`, `<user>`, `<host>`, `<mdmhost>`, `<tmp>`, `<path>`, `<serial>`, `<org>`, `<Org>`, `<team>`,
+    `<TEAMID>`, and `<org-N>`, `<folder-N>` and the other numbered kinds); the Python report does not hold the
+    latter. The filter runs byte-wise (`LC_ALL=C`). The shell report's headings are never redacted, and its
+    Redaction section is written after redaction, as the issue link is. A `--source-local` word read from
+    install.log is placed as install.sh placed it (`~` is the home); a relative word is placed only when it
+    names CloudStorage or one of its entries (install.log records no working directory; a `.` or `..` first part
+    never does, though `$cs/..` exists), and otherwise the
+    argument as logged (`./` kept) is shown as `--source-local <path>`, never the bare word, which may be a
+    common one (`docs`). A `$'...'` word is placed only whole, once unquoted, never as the still-quoted
+    pieces `read` splits it into at its spaces.
+  - Stated, not built: friction-log prose naming a relative folder install.log cannot place stays in clear (the
+    shell lists nothing inside a provider, for the File Provider privacy prompt); a distinctive configured
+    name stays a substring pair (`log` still gives `install.<folder-1>` in body text).
+  - Tests: `tests/test_install_oneshot.py`: `test_the_shell_report_does_not_glob_a_name_part`,
+    `test_the_shell_folder_list_is_the_python_reports_generic_set`,
+    `test_the_shell_report_redacts_a_generic_configured_folder_as_a_whole_word`,
+    `test_the_shell_report_never_redacts_inside_a_placeholder` (also the note's words and a copied
+    `<mdmhost>`), `test_the_shell_report_reads_tilde_and_relative_folders_from_install_log` (the words as bash
+    3.2's `printf %q` logs them, `./`, `../` and `./../` included), and `test_the_shell_report_never_redacts_its_own_headings`
+    (`Status`, `log`).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

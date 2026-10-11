@@ -1052,6 +1052,148 @@ def test_the_shell_report_keeps_every_pair_past_a_non_ascii_folder(env: dict[str
         assert value not in text, value
 
 
+def _stub_id(env: dict[str, str], full: str, login: str | None = None) -> None:
+    """``id -F`` (and ``id -un`` when given) answered by a stub on PATH."""
+    un = f'[ "$1" = -un ] && {{ echo {shlex.quote(login)}; exit 0; }}\n' if login else ""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        f'#!/bin/bash\n[ "$1" = -F ] && {{ echo {shlex.quote(full)}; exit 0; }}\n{un}exec /usr/bin/id "$@"\n',
+    )
+
+
+def test_the_shell_report_does_not_glob_a_name_part(env: dict[str, str], tmp_path: Path) -> None:
+    """A part of the full name with ``*`` was expanded against the working directory, so the part itself was
+    never redacted (review 2026-10-10, B13 N12)."""
+    _stub_id(env, "Doe, Jane*")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "Janet-notes.txt").write_text("")
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text("Prompt: v10\nF1 | step 1 | clean | 1 | Jane* approved | -\n")
+    cp = subprocess.run(  # install_sh() takes no working directory
+        [BASH32, str(INSTALL_SH), "--report-only"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+        cwd=work,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert "| <name> approved |" in report_path(env).read_text()
+
+
+def test_the_shell_folder_list_is_the_python_reports_generic_set() -> None:
+    body = INSTALL_SH.read_text().split("\ngeneric_folder() {\n", 1)[1].split("\n}\n", 1)[0]
+    rows = re.findall(r"^\t(.*)\) return 0 ;;$", body, re.M)
+    names = {n.strip().strip('"') for row in rows for n in row.split("|")}
+    assert names == set(setup_report._GENERIC_FOLDERS)
+
+
+def test_the_shell_report_redacts_a_generic_configured_folder_as_a_whole_word(env: dict[str, str]) -> None:
+    """A configured ``Documents`` is redacted, as in the Python report, but no longer inside other words
+    (B13 N12)."""
+    home = Path(env["HOME"])
+    plans = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Documents" / "Fabrikam Plans"
+    plans.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "plans"\nkind = "local"\npath = "{plans}"\n')
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v10\nF1 | step 1 | clean | 1 | MyDocuments, DocumentsArchive: Documents | -\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert "| MyDocuments, DocumentsArchive: <folder-1> |" in report_path(env).read_text()
+
+
+def test_the_shell_report_never_redacts_inside_a_placeholder(env: dict[str, str]) -> None:
+    """A folder named ``name`` and a login ``org`` matched inside ``<name>`` and ``<org-1>``, the ones an
+    earlier pair wrote, and inside the Redaction note's own words; a folder ``host`` inside a ``<mdmhost>``
+    copied from a Python report (review 2026-10-10, B13 N12)."""
+    _stub_id(env, "Jane Doe", login="org")
+    home = Path(env["HOME"])
+    org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    for name in ("name", "host"):
+        (org / name).mkdir(parents=True)
+    cfg.write_text(
+        "".join(f'[[source]]\nid = "{n}"\nkind = "local"\npath = "{org / n}"\n' for n in ("name", "host"))
+    )
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v10\nF1 | step 1 | clean | 1 | Jane Doe under OneDrive-Contoso | -\n"
+        "F2 | step 1 | clean | 1 | copied <name> and <mdmhost> | -\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert "| <name> under OneDrive-<org-1> |" in text
+    assert "| copied <name> and <mdmhost> |" in text
+    assert "<<" not in text
+    note = " ".join(text.split("\n## Redaction\n", 1)[1].split())
+    assert "the login name (<user>), the full name and its joined forms (<name>), the organisation" in note
+    assert "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>)" in note
+
+
+def test_the_shell_report_reads_tilde_and_relative_folders_from_install_log(env: dict[str, str]) -> None:
+    """A quoted ``~/...`` folder (install.sh expands it) and a relative one were not read from install.log,
+    so ``--report-only`` showed their names; a relative one that names no CloudStorage entry is ``<path>``,
+    and so is one starting ``..``, which was placed in CloudStorage and its last word redacted everywhere
+    (B13 N12)."""
+    home = Path(env["HOME"])
+    org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    for name in ("Fabrikam Plans", "Northwind Q1"):
+        (org / name).mkdir(parents=True)
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+    typed = ("~/Library/CloudStorage/OneDrive-Contoso/Fabrikam Plans", "OneDrive-Contoso/Northwind Q1")
+    typed += ("Tailspin Notes", "./Tailspin Notes", "../Notes", "./../docs")
+    words = subprocess.run(  # as install.sh's log_start writes them: bash 3.2 leaves a leading ~ bare
+        [BASH32, "-c", 'printf "%q\\n" "$@"', "_", *typed], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    assert words[0].startswith("~/") and words[3] == "./Tailspin\\ Notes", words
+    (setup / "install.log").write_text(
+        "".join(f"2026-10-10T0{i}:00:00Z {head}{w}\n" for i, w in enumerate(words, 1))
+    )
+    (setup / "friction.md").write_text(
+        "Prompt: v10\nF1 | step 1 | clean | 1 | Fabrikam Plans, Northwind Q1 | -\n"
+        "F2 | step 1 | clean | 1 | Release Notes in ~/agent-context/docs | -\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert re.search(r"\| <folder-\d>, <folder-\d> \|", text)
+    # "$cs/.." always exists: a ".." first part was placed in CloudStorage and "Notes", "docs" became pairs
+    assert "| Release Notes in ~/agent-context/docs |" in text
+    assert text.count("args=--source-local <path>\n") == 4, "the bare, ./, ../ and ./../ relative words"
+    for name in ("Fabrikam", "Northwind", "Tailspin"):
+        assert name not in text, name
+
+
+@pytest.mark.parametrize("folder", ["Status", "log"])
+def test_the_shell_report_never_redacts_its_own_headings(env: dict[str, str], folder: str) -> None:
+    """A configured folder named like a word of a heading turned ``## Status`` into ``## <folder-1>`` and
+    ``## Agent friction log`` into ``## Agent friction <folder-1>``, which a later --report-only run looks
+    for (B13 N12). The Python report never redacts its headings."""
+    home = Path(env["HOME"])
+    path = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / folder
+    path.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "s"\nkind = "local"\npath = "{path}"\n')
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert _headings(report_path(env).read_text()) == list(setup_report.SECTION_TITLES)
+
+
 @pytest.mark.parametrize(
     ("name", "locale"),
     [
