@@ -1008,6 +1008,7 @@ class _Rewriter:
         selector: PurgeSelector | None,
         explicit_paths: set[str],
         plan: _Plan,
+        others: set[tuple[str, str]] | None = None,
     ) -> None:
         self.repo = repo
         self.cat = cat
@@ -1015,6 +1016,7 @@ class _Rewriter:
         self.selector = selector
         self.explicit = explicit_paths
         self.plan = plan
+        self.others = others or set()
         self.scrubber: _Scrubber | None = None
         self.sha_remap: dict[str, str] = {}
         self._identity: dict[str, dict[str, str] | None] = {}
@@ -1051,7 +1053,11 @@ class _Rewriter:
         key = (ident["source_id"], ident["stable_id"])
         if key in self.plan.ids or sel.matches_item(key[0], key[1], ident.get("source_path", "")):
             return True
-        if path in self.explicit and (key[0], ident.get("source_path", "")) in self.plan.rel_paths:
+        if (
+            path in self.explicit
+            and key not in self.others
+            and (key[0], ident.get("source_path", "")) in self.plan.rel_paths
+        ):
             # The same page path of the same source file under an id the manifest no longer knows: the item
             # before a safe-save rekey recorded without an alias (a manifest older than item_aliases).
             return True
@@ -1087,12 +1093,17 @@ class _Rewriter:
                 self._record_target(path, sha)
                 if name.endswith(b".md"):
                     stems.add(name[:-3])
+        # a page this tree keeps (another item's, not targeted): its sidecar dir is that item's too
+        kept_pages = {
+            n[:-3] for m, n, _s in entries if m not in (_TREE_MODE, _GITLINK_MODE) and n.endswith(b".md")
+        }
+        kept_pages -= stems
         for mode, name, _sha in entries:
             if mode != _TREE_MODE or not name.endswith(_SIDECAR_SUFFIX.encode()):
                 continue
             stem = name[: -len(_SIDECAR_SUFFIX)]
             page = prefix + stem.decode("utf-8", "surrogateescape") + ".md"
-            if stem in stems or page in self.explicit:
+            if stem in stems or (page in self.explicit and stem not in kept_pages):
                 dropped.add(name)
                 self.plan.dropped_paths.add(prefix + name.decode("utf-8", "surrogateescape") + "/")
         return dropped
@@ -1579,11 +1590,18 @@ class PurgeReport:
     notes: tuple[str, ...] = ()
     paths_left: tuple[str, ...] = ()  # extension: purged items' page paths still in HEAD (or never targeted)
     taken_paths: tuple[str, ...] = ()  # extension: targeted docs paths another item's live page holds in HEAD
+    not_run: str = ""  # extension: why the queue did not run this entry (it stays queued); "" when it ran
 
     @property
     def verified(self) -> bool:
         """True when this was a real run and nothing targeted remains readable in the repo."""
-        return not self.dry_run and not self.survivors and self.unreachable_left == 0 and not self.paths_left
+        return (
+            not self.dry_run
+            and not self.not_run
+            and not self.survivors
+            and self.unreachable_left == 0
+            and not self.paths_left
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1595,6 +1613,9 @@ class _ManifestTargets:
     rendered: set[str]
     teams_months: list[tuple[str, str]]
     aliases: set[tuple[str, str]] = field(default_factory=set)  # retired ids of the selected items
+    # every id (and retired id) of a file the manifest lists that is not selected: never another item's
+    # earlier id for the rewriter's same-path rule
+    others: set[tuple[str, str]] = field(default_factory=set)
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -1613,7 +1634,7 @@ def _resolve_manifest(db: Path, selector: PurgeSelector, ids: set[tuple[str, str
     try:
         items: list[tuple[str, str, str, bool]] = []
         rows = conn.execute(
-            "SELECT i.source_id, i.stable_id, i.rel_path, i.is_dir, i.canonical_sha256, s.kind "
+            "SELECT i.source_id, i.stable_id, i.rel_path, i.is_dir, i.canonical_sha256, s.kind, i.state "
             "FROM items i LEFT JOIN sources s ON s.source_id = i.source_id ORDER BY i.source_id, i.stable_id"
         ).fetchall()
         outputs = conn.execute(
@@ -1693,7 +1714,16 @@ def _resolve_manifest(db: Path, selector: PurgeSelector, ids: set[tuple[str, str
             ):
                 keys.add(r["action_key"])
         aliases = {(s, a) for (s, i) in selected for a in aliases_of.get((s, i), ())}
-        return _ManifestTargets(items, docs_paths, keys, canonical, rendered, teams, aliases)
+        others = {
+            k
+            for r in rows
+            if r["state"] != "tombstone" and (r["source_id"], r["stable_id"]) not in selected
+            for k in [
+                (r["source_id"], r["stable_id"]),
+                *((r["source_id"], a) for a in aliases_of.get((r["source_id"], r["stable_id"]), ())),
+            ]
+        }
+        return _ManifestTargets(items, docs_paths, keys, canonical, rendered, teams, aliases, others)
     finally:
         conn.close()
 
@@ -1998,7 +2028,15 @@ def _purge_locked(
             # and that id's manifest rows make its page paths explicit for the next walk, as pass 2 sees them
             for _ in range(4):
                 before = (len(plan.ids), len(plan.target_blobs), len(mt.docs_paths))
-                rw = _Rewriter(repo, cat, hlen, selector=selector, explicit_paths=mt.docs_paths, plan=plan)
+                rw = _Rewriter(
+                    repo,
+                    cat,
+                    hlen,
+                    selector=selector,
+                    explicit_paths=mt.docs_paths,
+                    plan=plan,
+                    others=mt.others,
+                )
                 for _sha, _parents, _ts in graph:
                     _, raw = cat.read(_sha)
                     rw.walk(_split_commit(raw)[0])
@@ -2063,7 +2101,9 @@ def _purge_locked(
         unreachable: list[str] = []
         head_tree: str | None = None
         if has_repo and cat is not None and graph:
-            rw = _Rewriter(repo, cat, hlen, selector=selector, explicit_paths=mt.docs_paths, plan=plan)
+            rw = _Rewriter(
+                repo, cat, hlen, selector=selector, explicit_paths=mt.docs_paths, plan=plan, others=mt.others
+            )
             rw.scrubber = index_scrubber
             result = _apply_rewrite(repo, cat, rw, graph, worktrees)
             cat.close()
@@ -2225,6 +2265,46 @@ def _audit_purge(
     )
 
 
+_LISTED_STATES = ("live", "dataless")
+"""Row states of a file the source still has (``RowState.LIVE``, ``RowState.DATALESS``)."""
+
+
+def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
+    """Why the queue must not run ``q`` now, or "".
+
+    Only an ``upstream-deleted`` entry is judged.  It is queued as its row becomes a tombstone, and a file
+    that came back is listed again: under the queued id, or under a later one the queued id is an alias of
+    (a re-key), which a purge follows.  Run, the entry would erase that file's page and history.  A row that
+    is quarantined or refused does not stop it: after a file comes back refused, the queued purge is the only
+    thing that erases its earlier text from history.  Label escalation, DLP and erasure entries erase live
+    content on purpose and are never judged here."""
+    if q.reason is not PurgeReason.UPSTREAM_DELETED:
+        return ""
+    mt = _resolve_manifest(db, q.selector, set())
+    keys = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir]
+    if not keys:
+        return ""
+    conn = _connect(db)
+    try:
+        listed: list[tuple[str, str]] = []
+        for key in keys:
+            row = conn.execute(
+                "SELECT state FROM items WHERE source_id = ? AND stable_id = ?", key
+            ).fetchone()
+            if row is not None and row["state"] in _LISTED_STATES:
+                listed.append(key)
+    finally:
+        conn.close()
+    if not listed:
+        return ""
+    later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
+    via = f", {later} of them under a later id" if later else ""
+    return (
+        f"stays queued: the manifest lists the file as live or online-only ({len(listed)} row(s){via}); "
+        "an upstream deletion is not run against a listed file, and runs once the file is gone again"
+    )
+
+
 def run_purge_queue(
     config: Config,
     *,
@@ -2246,6 +2326,23 @@ def run_purge_queue(
         remaining: list[QueuedPurge] = []
         queue = pending_purges(sp.root)
         for n, q in enumerate(queue):
+            why = _kept_upstream_deletion(sp.db, q)
+            if why:
+                log.warning("governance: %s", why)
+                reports.append(
+                    PurgeReport(
+                        selector=q.selector.kind(),
+                        reason=q.reason,
+                        dry_run=dry_run,
+                        items=(),
+                        docs_paths=(),
+                        remote="not run",
+                        notes=(why,),
+                        not_run=why,
+                    )
+                )
+                remaining.append(q)
+                continue
             try:
                 rep = purge(
                     config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now

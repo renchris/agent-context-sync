@@ -4630,7 +4630,8 @@ local sources). New `Manifest` methods: `durable_id`, `aliases_of`, `resolve_ali
 `descendants`, `mark_absent`, `record_run_changes`, `run_changes`, `clear_run_changes` (**amended 2026-10-08,
 §16.37:** and `absent_counts`). A purge by any id the
 item ever carried resolves every alias; `_Rewriter` also targets a blob at one of the item's own page paths that
-names the same source path under an unknown id (a rekey from before `item_aliases`). `PurgeReport` gains
+names the same source path under an unknown id (a rekey from before `item_aliases`; **amended 2026-10-11,
+§16.38:** an id the manifest lists, in any state but tombstone or as an alias of such a row, is not unknown). `PurgeReport` gains
 `paths_left: tuple[str, ...] = ()`; `verified` is False when a purged item's page path is still in HEAD, or its
 page paths held history blobs and none was targeted. `Suppressions` gains `paths` (exact source paths, NFC +
 casefold) and `canonical` (H1 hashes; never the empty file) plus `matches_content(canonical_sha256)`; every
@@ -8835,7 +8836,8 @@ Not done here, because they are not the report's:
   five and their pins together.
 - `run_purge_queue` runs an entry whose id resolves to a live file. A guard there must keep an entry whose
   row is quarantined or refused: after a file comes back refused, the queued purge is the only thing that
-  erases its earlier text from history.
+  erases its earlier text from history. Done since in §16.38: an `upstream-deleted` entry whose file is live or
+  online-only stays queued with its reason; a quarantined or refused row still runs.
 - The dry run's note counted every commit as "would be rewritten" when an entry targets nothing. Done since
   in `governance._purge_locked`: such an entry's note says nothing is targeted and no commit would be
   rewritten, and every other dry run says "up to N commit(s)".
@@ -10469,6 +10471,32 @@ live item with an outputs row at the path but no page there in HEAD still loses 
 `tests/test_governance.py::test_purge_keeps_the_rows_and_index_lines_of_another_item_now_at_the_purged_path`,
 `::test_purge_keeps_the_manifest_line_of_a_new_file_with_the_same_name`,
 `::test_purge_marks_no_path_taken_that_the_rewrite_drops`.
+
+#### `purge --queue` keeps an upstream deletion of a file that is listed again (`agentsync.governance`, `agentsync.setup_report`; done from §16.30 "Not done here")
+
+`run_purge_queue` asks `_kept_upstream_deletion` before each entry. For reason `upstream-deleted` only, the rows a
+purge of the entry would delete (`_resolve_manifest`: its own id, an alias followed to the current id) are read;
+one in state `live` or `dataless` keeps the entry queued with a `PurgeReport` that is not verified (`not_run`, new
+field, "" when the entry ran; `remote` "not run"; the note `stays queued: the manifest lists the file as live or
+online-only (N row(s)[, K of them under a later id]); an upstream deletion is not run against a listed file, and
+runs once the file is gone again`), in a dry run too. The note names no id and no path. `quarantined` and
+`refused` rows still run: after a file comes back refused, the queued purge is the only erasure of its earlier
+text. `label-escalation`, `dlp-remediation`, `erasure-request` and `operator` entries are never judged. A kept
+entry exits 1 as a held one does and writes no audit line; `purge --queue`'s last line counts only the entries
+that ran (`N queued purge(s) run; M still queued`). The report's `still listed` line under the purge table says
+whether a run keeps those entries queued, keeps some and erases the others (with both counts), or would erase
+them all.
+
+The same-path rule in `_Rewriter` skips an id the manifest lists (any state but tombstone, or an alias of such a
+row; `_ManifestTargets.others`, passed to both passes): that is another file's earlier page, not the purged
+item's before an unrecorded re-key. A `.files` dir at an explicit page path is dropped only in a tree whose page
+there is targeted or absent. Why: the 2026-10-07 field queue held upstream deletions of files that were back, and
+a rename followed by a new file under the old name let a purge of the new file erase the renamed live file, its
+page in HEAD and its history while it reported VERIFIED. Tests: `tests/test_governance.py::
+test_purge_queue_runs_an_upstream_deletion_of_a_file_that_came_back_refused`,
+`::test_purge_spares_a_live_file_whose_earlier_page_path_a_deleted_file_took`,
+`::test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again`, the `still listed` pins in
+`tests/test_setup_report.py`, and `tests/test_cli.py::test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run`.
 
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 

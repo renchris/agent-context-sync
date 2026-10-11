@@ -708,8 +708,10 @@ def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
     held = gv.PurgeSelector(stable_id="HELD-X", source_id="src")
     g1 = gv.PurgeSelector(stable_id="G1", source_id="src")
     k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
-    for selector in (held, g1, k1):
+    for selector in (held, g1):
         assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+    # K1 is live: an upstream deletion of it is kept before purge() is called (C8), so it stops as a label
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
     real = gv.purge
 
     def stops_on_the_last(config: Config, selector: gv.PurgeSelector, **kwargs: Any) -> gv.PurgeReport:
@@ -724,6 +726,55 @@ def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
         gv.run_purge_queue(world.config, now=NOW)
     assert not (world.repo / "mirror/src/gone.md").exists()
     assert [q.selector for q in gv.pending_purges(world.state)] == [held, k1]
+
+
+def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(world: World) -> None:
+    """C8 (2026-10-07), CONTRACTS 16.30 'Not done here': `purge --queue` ran an upstream-deleted entry whose
+    id names a listed file, by its own id or as an alias, and erased that live file's page and history. Such
+    an entry stays queued and NOT VERIFIED with its reason; a quarantined or refused row still runs, and so
+    does any other reason."""
+    db = world.config.state_paths.db
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO item_aliases (source_id, alias_id, stable_id) VALUES ('src', 'K0', 'K1')")
+    conn.execute("UPDATE items SET state = 'quarantined', state_reason = 'encrypted' WHERE stable_id = 'S1'")
+    conn.commit()
+    conn.close()
+    by_alias = gv.PurgeSelector(source_id="src", stable_id="K0")
+    by_id = gv.PurgeSelector(source_id="src", stable_id="K1")
+    quarantined = gv.PurgeSelector(source_id="src", stable_id="S1")
+    deleted = gv.PurgeSelector(source_id="src", stable_id="G1")
+    for selector in (by_alias, by_id, quarantined, deleted):
+        assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+    head = git(world.repo, "rev-parse", "HEAD").strip()
+    previews = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
+    assert [r.notes[0].startswith("stays queued:") for r in previews] == [True, True, False, False]
+    assert git(world.repo, "rev-parse", "HEAD").strip() == head
+    reports = gv.run_purge_queue(world.config, now=NOW)
+    assert [r.verified for r in reports] == [False, False, True, True]
+    assert reports[0].notes == (
+        "stays queued: the manifest lists the file as live or online-only (1 row(s), 1 of them under a later "
+        "id); an upstream deletion is not run against a listed file, and runs once the file is gone again",
+    )
+    assert reports[0].items == () and reports[0].docs_paths == () and reports[0].commits_rewritten == 0
+    assert [bool(r.not_run) for r in reports] == [True, True, False, False]
+    assert (world.repo / "mirror/src/keep.md").is_file() and "KEEP-BODY" in git(world.repo, "log", "-p")
+    assert not any(exists(world.repo, b) for b in world.secret_blobs), "the quarantined file's earlier text"
+    assert not (world.repo / "mirror/src/gone.md").exists()
+    assert [q.selector for q in gv.pending_purges(world.state)] == [by_alias, by_id]
+    # online-only is listed too
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE items SET state = 'dataless' WHERE stable_id = 'K1'")
+    conn.commit()
+    conn.close()
+    assert [r.not_run != "" for r in gv.run_purge_queue(world.config, dry_run=True, now=NOW)] == [True, True]
+    # a label escalation erases live content on purpose: never judged
+    assert gv.enqueue_purge(world.state, by_id, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    *_, label = gv.run_purge_queue(world.config, now=NOW)
+    assert label.reason is gv.PurgeReason.LABEL_ESCALATION and label.verified and not label.not_run
+    assert not (world.repo / "mirror/src/keep.md").exists()
+    # the file is gone now: the next run runs the two entries it kept and empties the queue
+    assert all(r.verified for r in gv.run_purge_queue(world.config, now=NOW))
+    assert gv.pending_purges(world.state) == []
 
 
 def test_purge_works_on_a_sha256_repo(tmp_path: Path, tmp_state_dir: Path) -> None:
@@ -1284,3 +1335,87 @@ def test_purge_marks_no_path_taken_that_the_rewrite_drops(
     assert rep.verified and not exists(repo, f"HEAD:{cur}")
     assert cur not in git(repo, "show", "HEAD:CHANGELOG/2026-06.md")
     assert cur not in git(repo, "show", "HEAD:DEPENDS.tsv")
+
+
+def test_purge_queue_runs_an_upstream_deletion_of_a_file_that_came_back_refused(world: World) -> None:
+    """C8: a refused row does not keep an upstream deletion queued; the queued purge is the only erasure of
+    the file's earlier text."""
+    conn = sqlite3.connect(world.config.state_paths.db)
+    conn.execute("UPDATE items SET state = 'refused', state_reason = 'label' WHERE stable_id = 'K1'")
+    conn.commit()
+    conn.close()
+    k1 = gv.PurgeSelector(source_id="src", stable_id="K1")
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+    (rep,) = gv.run_purge_queue(world.config, now=NOW)
+    assert rep.verified and not rep.not_run and rep.items == (("src", "K1"),)
+    assert "KEEP-BODY" not in git(world.repo, "log", "-p", "--all")
+    assert gv.pending_purges(world.state) == []
+
+
+def test_purge_spares_a_live_file_whose_earlier_page_path_a_deleted_file_took(world: World) -> None:
+    """S1 was hr/secret.docx at mirror/src/secret.docx.md and was renamed (c3). A new file N9 named
+    hr/secret.docx took the freed page path and was deleted upstream. The same-path rule for a re-key the
+    manifest did not record took S1's earlier pages there as N9's, and the purge of N9 erased the live S1:
+    its row, its page in HEAD and its history, VERIFIED. S1 is a file the manifest lists: never N9's."""
+    repo = world.repo
+    write(repo / "mirror/src/secret.docx.md", page("src", "N9", "hr/secret.docx", "NEW-FILE-BODY"))
+    c6 = commit_all(repo, "sync: 1a src", "2026-06-25T10:00:00Z")
+    tomb = TombstoneRow(
+        output_path="mirror/src/secret.docx.md",
+        source_id="src",
+        stable_id="N9",
+        unit_id="whole",
+        deleted_at="2026-06-26",
+        deleted_run=6,
+        last_rendered_sha256=sha("NEW-FILE-BODY"),
+        last_commit=c6,
+        reap_after="2026-12-17",
+        reason="deleted-upstream",
+    )
+    write(
+        repo / "mirror/src/secret.docx.md",
+        render_tombstone(tomb, title="secret", source_kind="local", source_path="hr/secret.docx"),
+    )
+    commit_all(repo, "sync: 1d src", "2026-06-26T10:00:00Z")
+    conn = sqlite3.connect(world.config.state_paths.db)
+    conn.execute(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, last_seen_run) "
+        "VALUES ('src', 'N9', 'secret.docx', 'hr/secret.docx', 'tombstone', 6, 6)"
+    )
+    conn.execute(
+        "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, action_key, rendered_sha256, "
+        "status, built_run) VALUES ('mirror/src/secret.docx.md', 'src', 'N9', 'whole', NULL, ?, "
+        "'tombstone', 6)",
+        (sha("N9"),),
+    )
+    conn.execute(
+        "INSERT INTO tombstones VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            tomb.output_path,
+            tomb.source_id,
+            tomb.stable_id,
+            tomb.unit_id,
+            tomb.deleted_at,
+            tomb.deleted_run,
+            tomb.last_rendered_sha256,
+            tomb.last_commit,
+            tomb.reap_after,
+            tomb.reason,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    n9 = gv.PurgeSelector(source_id="src", stable_id="N9")
+    assert gv.enqueue_purge(world.state, n9, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
+    (preview,) = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
+    assert preview.items == (("src", "N9"),) and preview.docs_paths == ("mirror/src/secret.docx.md",)
+    (rep,) = gv.run_purge_queue(world.config, now=NOW)
+    assert rep.verified and rep.items == (("src", "N9"),)
+    assert (repo / "mirror/src/renamed-secret.docx.md").is_file()
+    conn = sqlite3.connect(world.config.state_paths.db)
+    assert conn.execute("SELECT state FROM items WHERE stable_id = 'S1'").fetchall() == [("live",)]
+    conn.close()
+    history = git(repo, "log", "-p", "--all")
+    assert "SECRET-ALPHA-1" in history and "SECRET-ALPHA-3" in history and "NEW-FILE-BODY" not in history
+    assert any(p.endswith(".files/img.png") for p in all_blobs(repo).values()), "S1's earlier sidecar"
+    assert gv.pending_purges(world.state) == []

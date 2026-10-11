@@ -1347,6 +1347,29 @@ def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
 
 
+def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C8: an upstream deletion of a file the manifest lists again stays queued with its reason; the last line
+    counts only the entries that ran, as for a held one."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    page = "mirror/source/projects/sample.txt.md"
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    reason = governance.PurgeReason.UPSTREAM_DELETED
+    assert governance.enqueue_purge(initialised.state_paths.root, selector, reason)
+    head = git(repo, "rev-parse", "HEAD").strip()
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "NOT VERIFIED · 0 item(s) · 0 docs path(s)" in out and "  note: stays queued: " in out
+    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 still queued"
+    assert sid not in out and "sample" not in out
+    assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
+    assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
+
+
 def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

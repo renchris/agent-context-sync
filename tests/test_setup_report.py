@@ -4504,6 +4504,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         seed.item(inbox, "Northwind memo.eml", state="tombstone", rel="Tailspin/Northwind memo.eml"),
         seed.item(inbox, "payroll.eml", state="tombstone", canonical="d" * 64),
         seed.item(inbox, "merger.eml"),  # queued, and listed again since
+        # Queued, and back since as a quarantined file: a run of the queue still erases its earlier text.
+        seed.item(inbox, "Contoso offsite.eml", state="quarantined", reason="contains a secret"),
         "id-that-was-never-a-row",
         # Queued, then back and saved again: the row moved to a new id and the queued one is its alias.
         seed.item(inbox, "Fourth Coffee notes.eml"),
@@ -4543,7 +4545,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     text, parts = status_parts(fake_mac)
     part = parts["Purge queue"]
     assert (
-        "- 9 purge(s) queued. For a queued stable id the last six columns say what the manifest holds" in part
+        "- 10 purge(s) queued. For a queued stable id the last six columns say what the manifest holds"
+        in part
     )
     header = "| source | reason | selector | queued (UTC day) | purges | same bytes live | same path live | "
     assert header + "still listed | no live twin | no row | not looked up |" in part
@@ -4555,18 +4558,19 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "| (not in the config, 1) | label-escalation | stable-id | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |",
         "| <folder-2> | erasure-request | path-glob | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |",
         # an id that is now an alias is judged by the row it points at: listed again, and deleted again
-        "| inbox | upstream-deleted | stable-id | 2026-10-02 | 7 | 1 | 1 | 2 | 2 | 1 | 0 |",
+        "| inbox | upstream-deleted | stable-id | 2026-10-02 | 8 | 1 | 1 | 3 | 2 | 1 | 0 |",
     ]
     assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
         "- renamed or re-keyed: 2 queued id(s) are an earlier id of a file the manifest now holds under a "
         "later one (it was saved again, or its volume's id changed). Each is counted by that file's row, "
         "since a purge follows the alias to it",
-        "- still listed: 2 queued purge(s) name a file the manifest lists now (1 of them under a later id). "
-        "A run of the queue would erase that file's page and its history",
+        "- still listed: 3 queued purge(s) name a file the manifest lists now (1 of them under a later id). "
+        "A run of the queue keeps 2 of them queued (an upstream deletion of a file that is live or "
+        "online-only) and erases the page and history of the other 1",
         "- no trace: 2 queued id(s) have no row and are no alias. A re-key leaves an alias, so what took "
         "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
         "history still names for them and takes them off the queue",
-        "- audit trail since 2026-10-02 (the oldest queued day): 9 purge-enqueued, 2 purge (one per item "
+        "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
         "erased) and 1 purge-summary (one per purge that ran) line(s)",
     ], "what the columns mean for a run of the queue, in counts and fixed words"
     for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
@@ -4581,14 +4585,15 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     text, parts = status_parts(fake_mac)
     part = parts["Purge queue"]
     assert (
-        rows(part)[2] == "| inbox | upstream-deleted | stable-id | 2026-10-02 | 7 | 1 | 1 | 1 | 1 | 3 | 0 |"
+        rows(part)[2] == "| inbox | upstream-deleted | stable-id | 2026-10-02 | 8 | 1 | 1 | 2 | 1 | 3 | 0 |"
     )
     assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
-        "- still listed: 1 queued purge(s) name a file the manifest lists now. A run of the queue would "
-        "erase that file's page and its history",
+        "- still listed: 2 queued purge(s) name a file the manifest lists now. A run of the queue keeps 1 of "
+        "them queued (an upstream deletion of a file that is live or online-only) and erases the page and "
+        "history of the other 1",
         "- no row: 4 queued id(s) have no row. This manifest has no alias table, so none was looked up as an "
         "alias: an earlier id of a file listed now cannot be told from one a purge took away",
-        "- audit trail since 2026-10-02 (the oldest queued day): 9 purge-enqueued, 2 purge (one per item "
+        "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
         "erased) and 1 purge-summary (one per purge that ran) line(s)",
     ]
     governance.audit_path(root).unlink()

@@ -1749,7 +1749,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         if dry_run:
             _out(f"{len(reports)} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
             return EXIT_OK
-        _out(f"{len(reports)} queued purge(s) run; {len(left)} still queued")
+        ran = sum(1 for r in reports if not r.not_run)  # an entry the queue did not run stays queued
+        _out(f"{ran} queued purge(s) run; {len(left)} still queued")
         return EXIT_OK if all(r.verified for r in reports) and not left else EXIT_FAILED
     if not args.selector:
         _err("purge: SELECTOR (id=<stable_id> | path=<glob> | docs=<glob>) or --queue is required")

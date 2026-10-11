@@ -38,6 +38,8 @@ is a copy that no purge reaches, so exclude it too.
 
 - **Upstream deletion or disposition:** after a complete listing and the deletion breaker, the page becomes a
   tombstone and a purge is queued (`purge_on_upstream_delete = true`). `agentsync purge --queue` runs the queue.
+  An entry whose file is listed again (it came back, under its id or a later one) stays queued and runs once the
+  file is gone again; a file that came back quarantined or refused is still purged.
   Schedule it (weekly is suggested), or run it on request. Tombstones of purged items carry no `git show` recovery
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
