@@ -42,7 +42,7 @@ is a copy that no purge reaches, so exclude it too.
   the docs paths a run would erase.
   An entry whose file is listed again (it came back, under its id or a later one) stays queued and runs once the
   file is gone again; a file that came back quarantined or refused is still purged.
-  Schedule the queue run (weekly is suggested), or run it on request. Tombstones of purged items carry no `git show` recovery
+  Run it weekly (suggested) or on request, after the preview. Tombstones of purged items carry no `git show` recovery
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
   objects are pruned. This runs automatically on the full pass `agentsync sync` makes when one is due.

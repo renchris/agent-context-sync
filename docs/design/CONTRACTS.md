@@ -4575,7 +4575,7 @@ class AgentSpec:
 | `hold SCOPE --reason R --owner O` · `hold SCOPE --release --owner O` · `hold --list` | `set_hold` / `release_hold` / `active_holds` | 0 · 1 · 2 |
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
-| `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged; **amended 2026-10-11, §16.38:** not on a pass that leaves a known file unlisted). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
+| `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (**amended 2026-10-11, §16.38:** not on a pass that leaves a known file unlisted) (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text. Since KISS K11a (2026-10-05) hidden, with no options: `--no-backup-exclusions`, `--interval` and `--reconcile-interval` are deleted, the exclusions always apply and both intervals come from sources.toml; `uninstall-agent` is its hidden pair. The launchd argv is unchanged | 0 · 1 · 2 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13). Since KISS K14 (2026-10-04, §16.13) hidden and without options (`--docs-repo`, `--source-local` and `--force` are deleted): writes the template only when sources.toml is missing, then the same setup as `add-source` | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted. Since KISS K14 (2026-10-04, §16.13) the one setup verb: `--id` is deleted; a missing sources.toml is written from the template with the folder's table; then `config.ensure_inbox` and init's setup (docs repo, scaffold, state dir, owner-only modes, Time Machine exclusions, remote refusal). So K05's "`ensure_inbox` first" holds only when PATH is the inbox folder (`docs_repo`'s parent `/inbox`, canonical) of a config with no `kind = "inbox"` source: the template is written if missing, `ensure_inbox` runs before the PATH lookup, and the folder stays kind `inbox`, never a `local` source install.sh would count (K14 review) | 0 added or already configured · 1 disallowed remote on the docs repo · 2 bad path · 78 invalid sources.toml |
@@ -10509,22 +10509,28 @@ if the entry's purge would have: an `upstream-deleted` purge suppresses nothing,
 `label-escalation`, `dlp-remediation`, `erasure-request` or `operator` entry of the same item. A queue file this
 build cannot read or write is logged and left byte-for-byte as it was; the purge still returns its verified
 report. After a verified purge, `run_purge_queue`'s entries kept so far also drop the ones that purge covered, so
-its own write does not put them back. Why: the v10 bring-back's `agentsync purge id=...` erased an item and left
+its own write does not put them back; an entry this run already reported as `stays queued:` is not dropped (its
+report stands, and the next run clears it once the file is gone). Why: the v10 bring-back's `agentsync purge id=...` erased an item and left
 its queued purge waiting in every wait line. Tests: `tests/test_governance.py::
 test_a_purge_by_selector_takes_the_queued_purges_it_did_off_the_queue`,
 `::test_a_purge_leaves_a_queued_purge_it_cannot_stand_in_for`.
 
 #### The purge wait names the preview before the run (`agentsync.loop`, `agentsync.cli`, `agentsync.cycle`; amends §16.20 and §16.30)
 
-Every text that asks the operator to run the purge queue names the preview first. The loop's wait: `N queued
-purge(s): preview with `agentsync purge --queue --dry-run` (writes nothing) before you run `agentsync purge
---queue` (rewrites history)`. `status`: `queued purges: N (preview with `agentsync purge --queue --dry-run` before
-`agentsync purge --queue`)`. Doctor's `governance.purge_queue` fix: `agentsync purge --queue --dry-run (a preview
-that writes nothing); then agentsync purge --queue`, in the house fix grammar (a command, a parenthesis, then prose
-after `;`). STATE.md's queued-purges line: `- N purge request(s) waiting; preview with `agentsync purge --queue
---dry-run`, then run `agentsync purge --queue` (rewrites history)`. The label-escalation alarm ends with
-`cycle._PURGE_QUEUE_STEPS`, `(preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)`,
-which any later alarm that queues a purge uses too. Each text keeps its head (`N queued purge(s): `, `queued
+Every text that asks the operator to run the purge queue names the preview first (BIN below is the installed
+`~/.local/bin/agentsync`; STATE.md, the alarm and doctor's fix write `agentsync`):
+
+- the loop's wait: ``N queued purge(s): preview with `BIN purge --queue --dry-run` (writes nothing) before you
+  run `BIN purge --queue` (rewrites history)``
+- `status`: ``queued purges: N (preview with `BIN purge --queue --dry-run` before `BIN purge --queue`)``
+- doctor's `governance.purge_queue` fix: `agentsync purge --queue --dry-run (a preview that writes nothing); then
+  agentsync purge --queue`, in the house fix grammar (a command, a parenthesis, then prose after `;`)
+- STATE.md's queued-purges line: ``- N purge request(s) waiting; preview with `agentsync purge --queue
+  --dry-run`, then run `agentsync purge --queue` (rewrites history)``
+- the label-escalation alarm ends with `cycle._PURGE_QUEUE_STEPS`, ``(preview with `agentsync purge --queue
+  --dry-run` before `agentsync purge --queue`)``, which any later alarm that queues a purge uses too.
+
+Each text keeps its head (`N queued purge(s): `, `queued
 purges: N (`, `- N purge request(s) waiting; `, `label escalation:`), so readers keyed on the prefix are unchanged.
 Why: a run rewrites history and cannot be undone (with `--push`, the remote too); the wait knows only the count,
 while the preview prints each entry's reason and docs paths, and which entries the run keeps queued. Tests:
@@ -10534,12 +10540,13 @@ while the preview prints each entry's reason and docs paths, and which entries t
 
 #### accept-deletions on an incomplete pass keeps the breaker (`agentsync.cycle`, `agentsync.loop`)
 
-`accept-deletions SOURCE` (and `reconcile --accept-deletions`) applies nothing and keeps the source's deletion
+`accept-deletions SOURCE` (and `reconcile --accept-deletions`) applies no deletion and keeps the source's deletion
 breaker when its pass leaves a known file unlisted (`Manifest.unseen_live`, less the rows retired this pass on the
 config's word): an incomplete listing proves no absence. Its source line then reads `BREAKER TRIPPED` while the
-breaker holds, and it adds the alarm `accept-deletions applied nothing: this pass did not list the whole source,
+breaker is active, and it adds the alarm `accept-deletions applied no deletion: this pass did not list the whole source,
 so no absent file is confirmed; the deletion breaker still holds N file(s): once a sync lists SOURCE in full, run
-`agentsync accept-deletions SOURCE` again`. Without a tripped breaker the alarm is only its first clause. A pass
+`agentsync accept-deletions SOURCE` again`. Without an active breaker (none tripped, or its hold expired) the
+alarm is only its first clause. A pass
 that lists every known file clears the breaker, complete or not, because the breaker holds no file then (a breaker
 whose files came back is cleared only by this verb, so keeping it there would leave a dead wait on a source that
 stays incomplete, such as one with an empty cloud folder or a folder with no access). Exit code unchanged (0).

@@ -2353,6 +2353,7 @@ def run_purge_queue(
     reports: list[PurgeReport] = []
     with _maybe_lock(sp, lock):
         remaining: list[QueuedPurge] = []
+        stays: list[QueuedPurge] = []  # reported "stays queued": a later purge's cover must not drop them
         queue = pending_purges(sp.root)
         for n, q in enumerate(queue):
             why = _kept_upstream_deletion(sp.db, q)
@@ -2371,6 +2372,7 @@ def run_purge_queue(
                     )
                 )
                 remaining.append(q)
+                stays.append(q)
                 continue
             try:
                 rep = purge(
@@ -2384,8 +2386,11 @@ def run_purge_queue(
             if not rep.verified:
                 remaining.append(q)
             elif not dry_run:
-                # purge() took off the file every entry it covered; keep none of them here either
-                remaining = [e for e in remaining if not _covers(q.selector, rep, e)]
+                # purge() took off the file every entry it covered; keep none of them here either, except an
+                # entry this run already reported as staying queued: it stays, and the next run clears it
+                remaining = [
+                    e for e in remaining if any(e is k for k in stays) or not _covers(q.selector, rep, e)
+                ]
                 _write_queue(sp.root, [*remaining, *queue[n + 1 :]])
         if not dry_run:
             _write_queue(sp.root, remaining)

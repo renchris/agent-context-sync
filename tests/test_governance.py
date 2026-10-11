@@ -772,8 +772,11 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     *_, label = gv.run_purge_queue(world.config, now=NOW)
     assert label.reason is gv.PurgeReason.LABEL_ESCALATION and label.verified and not label.not_run
     assert not (world.repo / "mirror/src/keep.md").exists()
+    # the run reported the two entries as staying queued, so the label purge's cover does not drop them
+    assert [q.selector for q in gv.pending_purges(world.state)] == [by_alias, by_id]
     # the file is gone now: the next run runs the two entries it kept and empties the queue
     assert all(r.verified for r in gv.run_purge_queue(world.config, now=NOW))
+    assert gv.pending_purges(world.state) == []
     assert gv.pending_purges(world.state) == []
 
 
