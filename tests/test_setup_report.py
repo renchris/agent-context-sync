@@ -1529,7 +1529,8 @@ def test_a_hosted_mdm_server_host_is_redacted(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A hosted MDM's host can name the company where the OneDrive org is spelled otherwise: the whole host is
-    <host>, registered before any section is redacted (field report 2026-10-10)."""
+    <mdmhost>, no vendor suffix kept, registered before any section is redacted (field report 2026-10-10).
+    Its own placeholder: <host> is the Mac's name, and one placeholder for both hid which a line names."""
     real = setup_report._Run.run
 
     def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
@@ -1540,12 +1541,51 @@ def test_a_hosted_mdm_server_host_is_redacted(
     monkeypatch.setattr(setup_report._Run, "run", run)
     write_install_log(fake_mac)
     write_friction(
-        fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| enrolled with contosoltd.mdm.example |")
+        fake_mac,
+        V5_HAPPY.replace("| 1 folder chosen |", f"| {HOST} enrolled with contosoltd.mdm.example |"),
     )
     text, _summary = summary_of(fake_mac)
-    assert "MDM server: https://<host>:443/mdm/ServerURL" in section(text, "Environment")
-    assert "| enrolled with <host> |" in section(text, "Agent friction log")
-    assert "contosoltd" not in text.lower()
+    assert "MDM server: https://<mdmhost>:443/mdm/ServerURL" in section(text, "Environment")
+    assert "| <host> enrolled with <mdmhost> |" in section(text, "Agent friction log")
+    legend = "<host> this Mac's host or computer name · <mdmhost> MDM server's host"
+    assert legend in section(text, "Redaction")
+    assert "contosoltd" not in text.lower() and "mdm.example" not in text
+
+
+def test_every_placeholder_kind_is_one_the_report_reads_back() -> None:
+    """A path component or source id that redacts to a placeholder is kept as one only if _PLACEHOLDER_RE
+    reads it, and a hyphen there means a number: a kind spelled ``<mdm-host>`` would be cut to ``<path>`` or
+    ``(source N)``."""
+    for kind in setup_report._LEGEND:
+        if kind != "home":
+            shown = setup_report.Redactor()._placeholder(kind)
+            assert setup_report._PLACEHOLDER_RE.fullmatch(shown), shown
+            assert setup_report._PLACEHOLDERS_ONLY_RE.fullmatch(shown + shown), shown
+
+
+@pytest.mark.parametrize("folder", ["MDM", "Host"])
+def test_a_folder_named_mdm_or_host_leaves_the_mdm_placeholder_whole(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, folder: str
+) -> None:
+    """The Summary's item lines are redacted twice (_item_line, then the whole report), so a listed folder
+    named MDM or Host matched inside ``<mdm-host>`` (``<<folder-4>-host>``, a false residue word). One word,
+    ``<mdmhost>``, has no word boundary inside it."""
+    real = setup_report._Run.run
+
+    def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        if list(argv[:2]) == ["/usr/bin/profiles", "status"]:
+            return 0, MDM_STATUS
+        return real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", run)
+    (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / folder).mkdir()
+    write_install_log(fake_mac)
+    end = "2026-09-29T10:01:00Z | step 3 | end | install.sh exited 0 | -\n"
+    deviation = "2026-09-29T10:01:00Z | step 3 | deviation | enrolled with contosoltd.mdm.example | -\n"
+    write_friction(fake_mac, V5_HAPPY.replace(end, end + deviation))
+    text, _summary = summary_of(fake_mac)
+    assert "· deviation · enrolled with <mdmhost>" in section(text, "Summary")
+    assert "Summary:" not in section(text, "Redaction")
 
 
 def test_an_mdm_host_with_no_dot_is_not_registered(

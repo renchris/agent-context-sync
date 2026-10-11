@@ -56,8 +56,10 @@ too; the inbox kept beside the docs repo is agentsync's own, and so is every fol
 parent is itself a generic folder such as ``~/Documents``), every configured source id but agentsync's own
 words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``),
 hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
-(``<commit-N>``), the serial number (``<serial>``), the host and computer names (``<host>``), proxy hosts
-(``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
+(``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
+MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
+proxy hosts (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
+``/var/folders/<x>/<y>``: ``<tmp>``).
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
 CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). A
 ``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
@@ -355,7 +357,7 @@ _GUID_RE = r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-F
 _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-Fa-f]{16,}(?![0-9A-Za-z])"
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
-_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "tmp"})
+_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "mdmhost", "tmp"})
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
 _GENERIC_FOLDERS = frozenset(
     {
@@ -448,7 +450,8 @@ _LEGEND = {
     "hash": "<hash-N> hex fingerprint (launcher cdhash, content hash)",
     "commit": "<commit-N> docs-repo commit",
     "serial": "<serial> serial number",
-    "host": "<host> host or computer name",
+    "host": "<host> this Mac's host or computer name",
+    "mdmhost": "<mdmhost> MDM server's host",
     "proxy": "<proxy-N> proxy host",
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }
@@ -623,7 +626,8 @@ class Redactor:
 
     def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
-        host, proxy); a value already registered (or a variant of a fuzzy one) keeps its first placeholder.
+        host, mdmhost, proxy); a value already registered (or a variant of a fuzzy one) keeps its first
+        placeholder.
         Values under 2 characters are ignored (they would match inside ordinary words). ``fuzzy`` implies
         ``ignore_case`` and adds the space/hyphen/underscore/CamelCase variants (not for a value whose
         normalized form is under 3 characters)."""
@@ -2148,7 +2152,7 @@ def _environment(r: _Run) -> list[str]:
             with contextlib.suppress(ValueError):  # a malformed URL keeps the line, unredacted as before
                 host = urlsplit(url.rstrip(";")).hostname or ""
                 if "." in host:  # a bare word would redact the report's own words
-                    r.red.add("host", host, ignore_case=True)
+                    r.red.add("mdmhost", host, ignore_case=True)
         return joined if rc == 0 else f"`profiles` exited {rc}: {joined}"
 
     def clt() -> str:

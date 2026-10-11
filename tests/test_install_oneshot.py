@@ -3759,3 +3759,45 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
     assert cp.returncode == 1
     text = report_path(env).read_text()
     assert "| <tmp>/x |" in text and str(tmpdir) not in text
+
+
+# ---- the shell report's MDM host has its own placeholder (N39) ---------------------------------------------
+
+MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
+SHELL_REDACTION_FNS = re.compile(r"(?ms)^(?:redaction_pairs|redact_stream)\(\) \{\n.*?^\}$")
+
+
+@pytest.mark.parametrize(
+    ("login", "path"), [("jdoe", "/mdm/ServerURL"), ("mdm", "/<user>/ServerURL"), ("host", "/mdm/ServerURL")]
+)
+def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login: str, path: str) -> None:
+    """The shell fallback registers the MDM server's host as <mdmhost>, the Python report's kind, not the
+    Mac's <host>; one word, so a login named mdm or host (a later, whole-word pair) cannot match inside it.
+    `/usr/bin/profiles` is an absolute path no PATH stub reaches, so the real redaction_pairs and
+    redact_stream run with with_timeout answering for it, and id answering for the login and full name."""
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(INSTALL_SH.read_text()))
+    assert funcs.startswith("redaction_pairs() {") and "\nredact_stream() {" in funcs
+    harness = "\n".join(
+        [
+            "with_timeout() {",
+            "\tshift",
+            '\t[ "$1" = /usr/bin/profiles ] || { "$@"; return; }',
+            f"\tprintf 'MDM enrollment: Yes\\nMDM server: %s\\n' '{MDM_URL}'",
+            "}",
+            f'id() {{ case "$1" in -un) echo {login} ;; -F) echo "Jane Doe" ;; esac; }}',
+            "FOLDERS=() CONFIG=/nonexistent SETUP_LOG=/nonexistent",
+            funcs,
+            f"printf '%s\\n' 'MDM server: {MDM_URL}' | redact_stream",
+        ]
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path)},
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout == f"MDM server: https://<mdmhost>:443{path}\n"

@@ -4903,6 +4903,8 @@ matches; and the install.out tail's agentsync log lines get the Recent errors sc
 spelled otherwise. The shell fallback report registers that host as well (as written, case-sensitive), and the
 names of the folders under CloudStorage that this run's `--source-local`, sources.toml's `path =` lines or
 install.log's `args=` name, so a `--report-only` run, which names no folder, still redacts them.
+**Amended (2026-10-11, §16.40):** that host is `<mdmhost>`, its own kind, in both reports; `<host>` is only
+this Mac's names.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -5231,7 +5233,7 @@ class ReportHooks:
 
 class Redactor:
     """Known values (home ~, <user>, <name>, <org-N>, <library-N>, <folder-N>, <source-N>, <serial>, <host>,
-    <proxy-N>, <tmp>), docs-repo commits (<commit-N>) and email/GUID/long-hex/temporary-folder patterns
+    <mdmhost>, <proxy-N>, <tmp>), docs-repo commits (<commit-N>) and email/GUID/long-hex/temporary-folder patterns
     (<email-N>, <guid-N>, <hash-N>, <tmp>) to placeholders, the same value always the same placeholder; single pass, longest value first,
     bounded so /Users/jdoe2 is not /Users/jdoe."""
     def __init__(self, *, enabled: bool = True) -> None: ...
@@ -10564,7 +10566,13 @@ Reserved for lane B of B13.
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 
-Reserved for lane C of B13.
+**The MDM server's host is `<mdmhost>`** (B13 N39; amends the v4 revision's 2026-10-10 amendment). `enrollment()`
+registers it as kind `mdmhost` (unnumbered; legend `<mdmhost> MDM server's host`, right after `<host> this Mac's
+host or computer name`), and the shell fallback's `redaction_pairs` uses the same placeholder and its Redaction
+paragraph names it. The whole host is replaced, and no vendor suffix is kept. A host equal to a value already
+registered keeps that value's placeholder. The kind is one word: a hyphen in a placeholder means a number, and a
+word boundary inside it would let a shorter value (`mdm`, `host`) match there when a line is redacted twice (the
+Summary's item lines are, by `_item_line` and then by the whole report).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

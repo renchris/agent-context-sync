@@ -908,7 +908,7 @@ redaction_pairs() {
 	# A hosted MDM's host can name the company, spelled unlike the OneDrive organisation.
 	mdm="$(with_timeout 5 /usr/bin/profiles status -type enrollment 2>/dev/null </dev/null |
 		sed -n 's|.*MDM server: [A-Za-z]*://\([^/@]*@\)\{0,1\}\([^/:;?#@[:space:]]*\).*|\2|p' | head -n 1 || true)"
-	case "$mdm" in *.*) add_pair "$mdm" "<host>" ;; esac
+	case "$mdm" in *.*) add_pair "$mdm" "<mdmhost>" ;; esac
 	user="$(id -un 2>/dev/null || true)"
 	[ -z "$user" ] || add_pair "$user" "<user>" w
 }
@@ -1076,9 +1076,9 @@ fallback_body() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name (<name>), the"
-	say "organisation after OneDrive- (<org-N>), the MDM server's host (<host>) and the names of the folders under"
-	say "CloudStorage that --source-local, sources.toml or install.log name (<folder-N>). Read the report before"
-	say "sending it: anything else confidential is yours to remove."
+	say "organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>) and the names of the folders"
+	say "under CloudStorage that --source-local, sources.toml or install.log name (<folder-N>). Read the report"
+	say "before sending it: anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
 friction_text() {
