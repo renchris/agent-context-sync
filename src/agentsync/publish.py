@@ -1910,8 +1910,10 @@ class Publisher:
                 counts = ", ".join(
                     f"{k.value}={v}" for k, v in sorted(r.counts.items(), key=lambda kv: kv[0].value)
                 )
+                split = (("absent_marked", r.absent_marked), ("absent_removed", r.absent_removed))
                 lines.append(
                     f"this_run: {counts or 'no observations'} · materialised_bytes: {r.materialised_bytes}"
+                    + "".join(f" · {k}: {v}" for k, v in split if v)
                 )
                 if r.skipped_reason:
                     lines.append(f"skipped_reason: {_quoted(r.skipped_reason)}")

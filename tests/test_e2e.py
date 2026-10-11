@@ -326,7 +326,13 @@ def test_f_delete_writes_a_tombstone(synced: Config, local_source_dir: Path) -> 
     (local_source_dir / "projects" / "sample.csv").unlink()
     first = run(synced)  # a local file must be absent from two complete passes (an Office save in flight)
     assert first.changes == () and any("absent" in a for a in source_report(first).alarms)
+    # the counter is the same on both passes; the split says which one marked and which one removed
+    assert (source_report(first).absent_marked, source_report(first).absent_removed) == (1, 0)
+    assert "absent_marked: 1" in (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     report = run(synced)
+    assert (source_report(report).absent_marked, source_report(report).absent_removed) == (0, 1)
+    state_md = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    assert "absent_removed: 1" in state_md and "absent_marked" not in state_md
     rel = mirror("projects/sample.csv.md")
     assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.DELETED, rel)]
     assert report.commit_sha is not None
@@ -358,6 +364,7 @@ def test_f_mass_delete_trips_the_breaker_and_commits_nothing(tmp_path: Path, loc
     rep = source_report(report)
     assert rep.breaker_tripped and any("breaker TRIPPED" in a for a in rep.alarms)
     assert counts(report)[Verdict.DELETION_CANDIDATE] == len(victims)
+    assert (rep.absent_marked, rep.absent_removed) == (0, 0)  # held: neither marked nor removed
     assert report.changes == () and report.commit_sha is None
     assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
     assert page(repo, mirror("projects/sample.csv.md"))[0]["status"] == "current"
@@ -368,9 +375,13 @@ def test_f_mass_delete_trips_the_breaker_and_commits_nothing(tmp_path: Path, loc
 
     held = run(config)  # still held on the next cycle: nothing removed
     assert held.changes == () and source_report(held).breaker_tripped
+    assert (source_report(held).absent_marked, source_report(held).absent_removed) == (0, 0)
 
     accepted = run(config, mode=CycleMode.RECONCILE, only=[SID], accept_deletions=[SID])
     assert sorted(c.op for c in accepted.changes) == [ChangeOp.DELETED] * len(victims)
+    # accept-deletions removes on the first pass and raises no alarm: the count is the line's only word for it
+    acc = source_report(accepted)
+    assert (acc.absent_marked, acc.absent_removed) == (0, len(victims))
     assert accepted.commit_sha is not None
     with Manifest(config.state_paths.db) as m:
         assert not m.breaker_active(SID, "2026-09-29T12:00:00Z")

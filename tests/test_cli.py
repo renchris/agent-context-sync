@@ -42,7 +42,7 @@ from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
-from agentsync.model import CycleMode, CycleReport, RowState, SourceKind, Verdict
+from agentsync.model import CycleMode, CycleReport, PassKind, RowState, SourceKind, SourceReport, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock
 
@@ -302,6 +302,60 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     status = capsys.readouterr().out
     assert "source (local, live): baseline complete" in status and " · absent " not in status
+
+
+def test_the_sync_line_tells_the_marking_pass_from_the_removing_pass(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``deletion_candidate=1`` is on the source's line of both passes (the classifier counts the absence
+    before its outcome is known). The line says which pass it is: the first marks the file absent and keeps
+    it, the second removes it."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
+    capsys.readouterr()
+    lines = []
+    for _ in range(3):
+        assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+        (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source: ")]
+        lines.append(line)
+    marking, removing, after = lines
+    assert "deletion_candidate=1" in marking and "deletion_candidate=1" in removing
+    assert " · 1 marked absent · " in marking and "removed as deleted upstream" not in marking, marking
+    assert " · 1 removed as deleted upstream · " in removing and "marked absent" not in removing, removing
+    assert "absent" not in after and "removed" not in after, after
+
+
+def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The two counts sit after the breaker bit and before the cursor bit, each only when nonzero, so a pass
+    with no absent file prints the line it always did."""
+    src = SourceReport(
+        source_id="src",
+        kind=SourceKind.LOCAL,
+        pass_kind=PassKind.FULL,
+        enumeration_complete=True,
+        counts={Verdict.DELETION_CANDIDATE: 2, Verdict.UNCHANGED: 1},
+        absent_marked=2,
+    )
+    report = CycleReport(run_id=4, mode=CycleMode.POLL, sources=(src,), changes=(), commit_sha=None)
+    cli._print_report(report)
+    assert capsys.readouterr().out.splitlines()[1] == (
+        "  src: full_enumeration · complete · 2 marked absent · cursor held · "
+        "deletion_candidate=2, unchanged=1"
+    )
+    both = dataclasses.replace(src, absent_marked=1, absent_removed=3)
+    cli._print_report(dataclasses.replace(report, sources=(both,)))
+    assert capsys.readouterr().out.splitlines()[1] == (
+        "  src: full_enumeration · complete · 1 marked absent · 3 removed as deleted upstream · "
+        "cursor held · deletion_candidate=2, unchanged=1"
+    )
+    neither = dataclasses.replace(src, absent_marked=0)
+    cli._print_report(dataclasses.replace(report, sources=(neither,)))
+    assert capsys.readouterr().out.splitlines()[1] == (
+        "  src: full_enumeration · complete · cursor held · deletion_candidate=2, unchanged=1"
+    )
 
 
 def test_status_names_no_marked_file_while_the_deletion_breaker_holds_the_source(

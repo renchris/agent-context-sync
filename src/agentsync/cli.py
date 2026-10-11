@@ -407,6 +407,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             bits.append(f"{s.deferred} deferred")
         if s.breaker_tripped:
             bits.append("BREAKER TRIPPED")
+        # the counts line's deletion_candidate=N is the same on the marking and the removing pass: say which
+        if s.absent_marked:
+            bits.append(f"{s.absent_marked} marked absent")
+        if s.absent_removed:
+            bits.append(f"{s.absent_removed} removed as deleted upstream")
         bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
         over = [a for a in s.alarms if run_budget is not None and _OVER_BUDGET in a]

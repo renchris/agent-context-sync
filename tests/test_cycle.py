@@ -1582,6 +1582,10 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
     if gone == 1:
         assert not rep.breaker_tripped
         assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+        # two candidates, the retired file and the absent one: the retired file counts in neither part
+        assert rep.counts[Verdict.DELETION_CANDIDATE] == 2
+        assert (rep.absent_marked, rep.absent_removed) == (1, 0)
+        assert (source_report(second).absent_marked, source_report(second).absent_removed) == (0, 1)
         assert not any("removed as deleted upstream" in a for a in rep.alarms), (
             "the marking pass removes nothing"
         )
@@ -1593,6 +1597,7 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
     else:
         assert rep.breaker_tripped
         assert any(f"breaker TRIPPED: {gone} absent file(s) held" in a for a in rep.alarms), rep.alarms
+        assert (rep.absent_marked, rep.absent_removed) == (0, 0)
         assert source_report(second).breaker_tripped and second.changes == ()
         assert all(rows[rel].state is RowState.LIVE for rel in victims)
         assert governance.pending_purges(excluded.state_paths.root) == []

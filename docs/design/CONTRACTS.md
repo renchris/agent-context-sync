@@ -960,6 +960,8 @@ class SourceReport:
     errors: tuple[str, ...] = ()
     converted: int = 0  # 2026-09-30 (L3): files read and converted this run (their pages changed or not)
     deferred_online_only: int = 0  # 2026-09-30 (L3): of ``deferred``, the online-only files (a download refused)
+    absent_marked: int = 0  # 2026-10-11 (B13, §16.39 H23): of the deletion candidates, files marked absent (kept)
+    absent_removed: int = 0  # 2026-10-11 (B13, §16.39 H23): of them, files removed this pass as deleted upstream
 
 @dataclass(frozen=True, slots=True)
 class CycleReport:
@@ -10488,7 +10490,8 @@ order of registration), and the stopped copy's `setup-report.md` (an old copy's 
   stays out of `SourceStatus`, which feeds the committed `_sync/STATE.snapshot.md`.
 - The pass that removes a local or inbox file still absent from a second complete pass adds the alarm `N file(s)
   still absent from this complete pass: removed as deleted upstream`. Graph sources and `accept-deletions` are
-  unchanged.
+  unchanged. **Amended 2026-10-11, §16.39 H23:** unchanged in the alarm (they raise none); the line of their
+  source now says `K removed as deleted upstream`, as the line of this pass does.
 - When the sync header's `0 change(s)` (it counts `MirrorChange` rows) sits beside a commit, it adds ` (no
   source changed a mirror page; the commit holds other docs-repo files)`: a baseline flip in INDEX.md and the
   snapshot, or the agent's `_eval` drafts. Marking a file absent never commits.
@@ -10701,6 +10704,26 @@ page does.
 
 Why: the 2026-10-05 join-link fix (de081ae) never reached the invites quarantined before it; nothing stored what
 rules a stub was made under. Tests: `tests/test_credential_rescreen.py`.
+
+#### H23: the sync line tells the marking pass from the removing pass (`agentsync.cycle`, `agentsync.cli`, `agentsync.publish`)
+
+`deletion_candidate=N` on a source's sync line still counts every file absent from a complete full pass: the
+classifier counts them before their outcome is known, so the count is the same on the pass that marks a file and
+on the pass that removes it. `SourceReport` carries the outcome as two counts, last in the class and 0 by
+default: `absent_marked` (a local or inbox file absent for the first time, kept) and `absent_removed` (a file
+removed this pass as deleted upstream: a local or inbox file on its second absence, a Graph item or a file under
+`accept-deletions` on its first). `_Cycle._confirmed_absent` is the one place that sets them. The source's line
+prints `M marked absent` and `K removed as deleted upstream`, each only when nonzero, after `BREAKER TRIPPED`
+and before the cursor's word; a pass with neither prints the line it always did. `_sync/STATE.md`'s `this_run:`
+line adds ` · absent_marked: M` and ` · absent_removed: K` after `materialised_bytes`, each only when nonzero.
+
+A tripped breaker and a scope change add to neither: the line says `BREAKER TRIPPED`, the scope-change alarm
+says `retired`. So `deletion_candidate` = marked + removed + held by the breaker + retired by a scope change. A
+dry run acts on nothing and counts nothing. `counts` and `run_sources.counts_json` are unchanged.
+
+Why: B11's final rehearsal printed the same counter on both passes and only the alarm told them apart; the
+removal under `accept-deletions` or on a Graph source raises no alarm (§16.37), so its line said nothing at all.
+Tests: `tests/test_cli.py`, `tests/test_e2e.py`, `tests/test_cycle.py`.
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

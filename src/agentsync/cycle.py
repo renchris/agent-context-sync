@@ -1349,6 +1349,8 @@ class _SourceAcc:
     materialised_bytes: int = 0
     deferred: int = 0
     deferred_online_only: int = 0
+    absent_marked: int = 0
+    absent_removed: int = 0
     converted: int = 0
     breaker_tripped: bool = False
     live_rows: int = 0
@@ -1376,6 +1378,8 @@ class _SourceAcc:
             errors=tuple(self.errors),
             converted=self.converted,
             deferred_online_only=self.deferred_online_only,
+            absent_marked=self.absent_marked,
+            absent_removed=self.absent_removed,
         )
 
 
@@ -3537,6 +3541,7 @@ class _Cycle:
         old row as a safe-save instead of splitting the document.  Graph sources delete on one pass (their
         ids are stable; absence there is not a save artefact)."""
         if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX) or src.id in self.accept_deletions:
+            acc.absent_removed += len(candidates)  # no alarm here: the source's line is what says so
             return list(candidates)
         rows = self.manifest.get_items(src.id, candidates)
         confirmed: list[str] = []
@@ -3550,10 +3555,12 @@ class _Cycle:
                 first.append(sid)
         if first:
             self.manifest.mark_absent(src.id, first, self.run_id)
+            acc.absent_marked += len(first)
             acc.alarms.append(
                 f"{len(first)} file(s) absent from this complete pass: removed only if still absent next pass"
             )
         if confirmed:
+            acc.absent_removed += len(confirmed)
             acc.alarms.append(
                 f"{len(confirmed)} file(s) still absent from this complete pass: removed as deleted upstream"
             )

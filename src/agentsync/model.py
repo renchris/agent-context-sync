@@ -406,6 +406,8 @@ class SourceReport:
     errors: tuple[str, ...] = ()
     converted: int = 0  # files whose bytes were read and converted this run (pages changed or not)
     deferred_online_only: int = 0  # of ``deferred``: online-only files (a download the budget did not allow)
+    absent_marked: int = 0  # of the deletion candidates: local/inbox files absent for the first time (kept)
+    absent_removed: int = 0  # of the deletion candidates: files removed this pass as deleted upstream
 
 
 @dataclass(frozen=True, slots=True)
