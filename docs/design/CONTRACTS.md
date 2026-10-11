@@ -10654,12 +10654,16 @@ proxy environment variables, `[network] proxy` and the same git config files, it
 installed one), cutting the path before the userinfo, as `urlsplit` does. Redaction only grows. Tests:
 `test_a_pac_url_is_redacted_after_its_scheme`, `test_a_proxy_in_any_git_config_file_is_redacted`,
 `test_a_proxy_only_git_knows_is_redacted`, `test_the_shell_report_redacts_the_pac_url_and_proxy_hosts` and
-`test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale`. Not changed: the Python report still registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl
-getenv`) is printed but not registered. An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
+`test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale`. Not changed: the Python report still
+registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl getenv`) is printed but not
+registered. An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
 match stays on its own line, and does not take the next line's first token (`[user]`, `sslVerify`). A proxy value
 that `urlsplit` rejects (`http://[x`) is skipped. Before this, either case made the whole redactor fail, so the
-report fell back to redacting the home folder only. Tests: `test_an_unreadable_proxy_value_keeps_the_redaction` and
-`test_an_empty_git_proxy_takes_no_token_from_the_next_line`.
+report fell back to redacting the home folder only. Tests: `test_an_unreadable_proxy_value_keeps_the_redaction`
+(the whole report) and `test_an_empty_git_proxy_takes_no_token_from_the_next_line` (the pattern alone: with the
+`urlsplit` guard, a pattern that reached across the line break would still leave the report redacted). Lane F's
+`test_an_empty_git_proxy_takes_no_line_after_it` asserted what the first one's `empty-git-proxy` case asserts and
+is merged into it.
 
 **A bracketed part or a middle part does not hide the first and last name** (B13 N8; amends the v5 revision's
 2026-10-10 amendment on full names). The registrations from the whole field are unchanged. The name without its

@@ -1861,21 +1861,19 @@ def test_a_pac_url_is_redacted_after_its_scheme(
     assert (m.group(2), m.group(1)) == ("<proxy-1>", "<proxy-2>"), friction
 
 
-@pytest.mark.parametrize("where", ["home", "xdg", "checkout"])
+@pytest.mark.parametrize("where", ["xdg", "checkout"])
 def test_a_proxy_in_any_git_config_file_is_redacted(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, where: str
 ) -> None:
     """A git error logged at step 1 names git's proxy (``Could not resolve proxy: <host>``), and a proxy set
     only in git's config files is in no environment variable: the report reads those files, with no git
-    process (B13 H19, H1 skeptic C2)."""
+    process (B13 H19, H1 skeptic C2). ``~/.gitconfig`` and the cloned checkout are
+    ``test_a_proxy_only_git_knows_is_redacted``."""
     for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(net, "system_proxy", lambda runner=None: net.SystemProxy())
     host = "gitproxy.fabrikam.example"
-    if where == "home":
-        with (Path.home() / ".gitconfig").open("a", encoding="utf-8") as f:
-            f.write(f"[http]\n\tproxy = http://jdoe:secret@{host}:3128\n")
-    elif where == "xdg":
+    if where == "xdg":
         xdg = tmp_path / "xdg"
         (xdg / "git").mkdir(parents=True)
         config = f'[http "https://github.com/"]\n\tProxy = "{host}:3128" ; set by IT\n'
@@ -1884,7 +1882,9 @@ def test_a_proxy_in_any_git_config_file_is_redacted(
     else:
         checkout = tmp_path / "checkout"
         (checkout / ".git").mkdir(parents=True)
-        (checkout / ".git" / "config").write_text(f'[remote "origin"]\n\tproxy=https://{host}\n')
+        (checkout / ".git" / "config").write_text(
+            f'[remote "origin"]\n\tproxy=https://jdoe:secret@{host}:3128\n'
+        )
         monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {checkout}", checkout))
     write_install_log(fake_mac)
     line = f"| git pull: Could not resolve proxy: {host} |"
@@ -3709,18 +3709,6 @@ def test_a_proxy_only_git_knows_is_redacted(fake_mac: dict[str, Path], tmp_path:
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "fabrikam" not in text.lower()
     assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \(exit 1\)", text)) >= 2, text
-
-
-@pytest.mark.usefixtures("clean_doctor")
-def test_an_empty_git_proxy_takes_no_line_after_it(fake_mac: dict[str, Path], tmp_path: Path) -> None:
-    """``git config http.proxy ""`` writes ``proxy =`` with nothing after it. A pattern that let ``=`` reach
-    across the line break took the next line's ``[user]`` as a proxy, whose URL parse raised, and the report
-    fell back to a redactor that knew only the home folder: every folder and the org in clear (B13 lane F
-    review)."""
-    (Path.home() / ".gitconfig").write_text("[http]\n\tproxy = \n[user]\n\tname = X\n", encoding="utf-8")
-    write_friction(fake_mac, V11_HAPPY)
-    _rc, text, _ = report(tmp_path, fake_mac["config"])
-    assert ORG not in text and not any(folder in text for folder in FOLDERS), "redaction stays on"
 
 
 @pytest.mark.usefixtures("clean_doctor")
