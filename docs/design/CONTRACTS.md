@@ -10498,6 +10498,21 @@ test_purge_queue_runs_an_upstream_deletion_of_a_file_that_came_back_refused`,
 `::test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again`, the `still listed` pins in
 `tests/test_setup_report.py`, and `tests/test_cli.py::test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run`.
 
+#### A purge by selector takes the queue entries it did off the queue (`agentsync.governance`; amends §16.36 "Purge: the dry run's note and the queue file")
+
+A verified `purge()` (never a dry run) takes off `purge-queue.json`, under the same writer lock, every queued
+entry it covers (`_covers`): the entry names one item by source and stable id, the purge erased that id (or it as
+an alias: `report.items` holds the item's retired ids), the purge was not narrowed by `--source` to another
+source (a docs glob can match another source's page and erases only that page), and the purge suppressed the item
+if the entry's purge would have: an `upstream-deleted` purge suppresses nothing, so it leaves a queued
+`label-escalation`, `dlp-remediation`, `erasure-request` or `operator` entry of the same item. A queue file this
+build cannot read or write is logged and left byte-for-byte as it was; the purge still returns its verified
+report. After a verified purge, `run_purge_queue`'s entries kept so far also drop the ones that purge covered, so
+its own write does not put them back. Why: the v10 bring-back's `agentsync purge id=...` erased an item and left
+its queued purge waiting in every wait line. Tests: `tests/test_governance.py::
+test_a_purge_by_selector_takes_the_queued_purges_it_did_off_the_queue`,
+`::test_a_purge_leaves_a_queued_purge_it_cannot_stand_in_for`.
+
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 
 Reserved for lane B of B13.

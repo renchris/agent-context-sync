@@ -660,6 +660,32 @@ def enqueue_purge(
     return True
 
 
+def _covers(selector: PurgeSelector, report: PurgeReport, entry: QueuedPurge) -> bool:
+    """True when the verified purge of ``selector`` (``report``) already did what the queued ``entry`` asks:
+    the entry names one item by source and stable id, the purge erased that id (or it as an alias) and was not
+    narrowed to another source, and it suppressed the item if the entry's purge would have (every reason but
+    ``upstream-deleted`` suppresses)."""
+    sel = entry.selector
+    if not (sel.stable_id and sel.source_id) or (sel.source_id, sel.stable_id) not in report.items:
+        return False
+    if selector.source_id not in (None, sel.source_id):
+        # a docs glob narrowed to another source targets the matched page only, not the item's other pages
+        return False
+    return report.reason is not PurgeReason.UPSTREAM_DELETED or entry.reason is PurgeReason.UPSTREAM_DELETED
+
+
+def _drop_covered(state_dir: Path, selector: PurgeSelector, report: PurgeReport) -> None:
+    """Take off the queue every entry a verified purge already did (:func:`_covers`).  A queue file this build
+    cannot read or write is logged and left as it is: the purge itself is done and its report stands."""
+    try:
+        queue = pending_purges(state_dir)
+        kept = [q for q in queue if not _covers(selector, report, q)]
+        if len(kept) != len(queue):
+            _write_queue(state_dir, kept)
+    except Exception as exc:  # the purge already verified: the queue is only tidied
+        log.warning("governance: purge queue not updated after a verified purge: %s", exc)
+
+
 # ---------------------------------------------------------------------------------------------------------
 # git plumbing
 # ---------------------------------------------------------------------------------------------------------
@@ -1992,9 +2018,12 @@ def purge(
     repo = expand(config.docs_repo)
     sp = config.state_paths
     with _maybe_lock(sp, lock and not dry_run):
-        return _purge_locked(
+        report = _purge_locked(
             config, repo, sp, selector=selector, reason=reason, gov=gov, dry_run=dry_run, push=push, now=now
         )
+        if report.verified:  # never on a dry run
+            _drop_covered(sp.root, selector, report)
+        return report
 
 
 def _purge_locked(
@@ -2355,6 +2384,8 @@ def run_purge_queue(
             if not rep.verified:
                 remaining.append(q)
             elif not dry_run:
+                # purge() took off the file every entry it covered; keep none of them here either
+                remaining = [e for e in remaining if not _covers(q.selector, rep, e)]
                 _write_queue(sp.root, [*remaining, *queue[n + 1 :]])
         if not dry_run:
             _write_queue(sp.root, remaining)

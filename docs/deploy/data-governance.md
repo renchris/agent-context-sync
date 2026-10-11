@@ -52,6 +52,9 @@ is a copy that no purge reaches, so exclude it too.
   published again while it still exists upstream. Every purge changes commit hashes, so consumers must re-clone.
   If another file's page now sits at a purged path, the preview marks it `taken:`; that page, its manifest row and
   its index lines stay.
+  A purge that verifies also takes off the queue each queued purge of an item it erased, except a queued
+  `label-escalation` (or other suppressing) purge when its own reason is `upstream-deleted`, and any entry of another
+  source when it was narrowed by `--source`.
 - **Erasure or DLP request:** find the item with `agentsync status` or `rg` in `_manifest/`, then run
   `agentsync purge path=… --reason erasure-request` (or `dlp-remediation`).
 

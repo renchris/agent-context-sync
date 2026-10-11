@@ -1419,3 +1419,45 @@ def test_purge_spares_a_live_file_whose_earlier_page_path_a_deleted_file_took(wo
     assert "SECRET-ALPHA-1" in history and "SECRET-ALPHA-3" in history and "NEW-FILE-BODY" not in history
     assert any(p.endswith(".files/img.png") for p in all_blobs(repo).values()), "S1's earlier sidecar"
     assert gv.pending_purges(world.state) == []
+
+
+@pytest.mark.parametrize("reason", [gv.PurgeReason.ERASURE_REQUEST, gv.PurgeReason.UPSTREAM_DELETED])
+def test_a_purge_by_selector_takes_the_queued_purges_it_did_off_the_queue(
+    world: World, reason: gv.PurgeReason
+) -> None:
+    """v10 bring-back (E5.c): `agentsync purge id=...` erased an item and left its queued purge waiting."""
+    up, label = gv.PurgeReason.UPSTREAM_DELETED, gv.PurgeReason.LABEL_ESCALATION
+    s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
+    k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
+    any_source = gv.PurgeSelector(stable_id="S1")  # may name S1 in another source too: kept
+    for selector, why in ((s1, up), (s1, label), (k1, up), (any_source, up)):
+        assert gv.enqueue_purge(world.state, selector, why, now=NOW)
+    gv.purge(world.config, s1, reason=reason, dry_run=True, now=NOW)
+    assert len(gv.pending_purges(world.state)) == 4  # a dry run takes nothing off
+    rep = gv.purge(world.config, s1, reason=reason, now=NOW)
+    assert rep.verified and rep.items == (("src", "S1"),)
+    # an upstream-deleted purge suppresses nothing: the label-escalation entry stays, its run still suppresses
+    kept = [] if reason is not up else [(s1, label)]
+    left = [(q.selector, q.reason) for q in gv.pending_purges(world.state)]
+    assert left == [*kept, (k1, up), (any_source, up)]
+
+
+def test_a_purge_leaves_a_queued_purge_it_cannot_stand_in_for(world: World) -> None:
+    """A docs glob narrowed to another source erases the matched page only, so the item's queued purge stays;
+    a queue file this build cannot read is left as it is, and the purge's report stands."""
+    s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    page = gv.PurgeSelector(source_id="other", docs_glob="mirror/src/renamed-secret.docx.md")
+    rep = gv.purge(world.config, page, reason=gv.PurgeReason.OPERATOR, now=NOW)
+    assert rep.verified and rep.items == (("src", "S1"),)
+    assert "SECRET-ALPHA-1" in git(world.repo, "log", "--all", "-p")  # the earlier page is still in history
+    assert [q.selector for q in gv.pending_purges(world.state)] == [s1]
+    queue = world.state / "governance" / "purge-queue.json"
+    data = json.loads(queue.read_text(encoding="utf-8"))
+    data["queue"].append(
+        {"selector": {"stable_id": "X9", "source_id": "src"}, "reason": "later", "enqueued_at": ""}
+    )
+    queue.write_text(json.dumps(data), encoding="utf-8")
+    before = queue.read_bytes()
+    assert gv.purge(world.config, s1, reason=gv.PurgeReason.OPERATOR, now=NOW).verified
+    assert queue.read_bytes() == before
