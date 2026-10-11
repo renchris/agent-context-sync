@@ -10513,7 +10513,9 @@ only line naming the other causes.
 
 A dry run's headline names no commit count and says the cache entries "would be removed" (`purge <kind>
 (<reason>): dry run · N item(s) · N docs path(s) · N blob(s) targeted · N cache entr(ies) would be removed`);
-the note below it carries the commit count (§16.36). A real run's headline is unchanged.
+the note below it carries the commit count (§16.36). A real run's headline is unchanged. **Amended 2026-10-11,
+§16.39 N36:** both runs' headlines spell the cache count out, `N cache entries` (`1 cache entry` for one), and
+neither says `entr(ies)`.
 
 Tests: `tests/test_setup_report.py`, `tests/test_install_oneshot.py`, `tests/test_launcher.py`,
 `tests/test_cli.py` (status, the sync header and summary, the purge dry run), `tests/test_cycle.py` and
@@ -10746,6 +10748,13 @@ number even on the pass that wrote the stubs. The
 report's Overlapping-sources part still prints their sum as `stubs N` (§16.28). Why: a field report's status
 said `quarantined 11` beside a Quarantine part with 0 quarantined and 11 refused. Tests: `tests/test_cli.py`
 (the status line), `tests/test_publish.py` (STATE.md, its contract line, the snapshot).
+
+#### N36: the purge headline spells its cache count (`agentsync.cli`)
+
+The cache count in the purge headline reads `1 cache entry` or `N cache entries` (0 included), followed by `would
+be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`. The other counts keep `(s)`
+(`item(s)`, `docs path(s)`, `commit(s)`, `blob(s)`), as every other CLI line does. Why: the v10 rehearsal read
+`entr(ies)` as a typo. Amends §16.37 "Purge dry run" (dated line there). Tests: `tests/test_cli.py`.
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

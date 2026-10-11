@@ -1728,10 +1728,12 @@ def _print_purge(rep: governance.PurgeReport) -> None:
     # a dry run changed nothing: its commit count is in the note, its cache count is what would go
     rewritten = "" if rep.dry_run else f"{rep.commits_rewritten} commit(s) rewritten · "
     removed = "would be removed" if rep.dry_run else "removed"
+    # "entr(ies)" read as a typo (rehearsal v10): this count's word is spelled out, singular for 1
+    entries = "cache entry" if rep.cache_entries_removed == 1 else "cache entries"
     _out(
         f"purge {rep.selector} ({rep.reason.value}): {state} · {len(rep.items)} item(s) · "
         f"{len(rep.docs_paths)} docs path(s) · {rewritten}{rep.blobs_targeted} blob(s) targeted · "
-        f"{rep.cache_entries_removed} cache entr(ies) {removed}"
+        f"{rep.cache_entries_removed} {entries} {removed}"
     )
     for p in rep.docs_paths:
         _out(f"  path: {p}")

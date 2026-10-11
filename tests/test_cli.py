@@ -1305,6 +1305,38 @@ def _stable_id(config: Config, rel_path: str) -> str:
         return next(r.stable_id for r in m.iter_items("source") if r.rel_path == rel_path)
 
 
+@pytest.mark.parametrize(
+    ("dry_run", "count", "tail"),
+    [
+        (True, 0, "0 cache entries would be removed"),
+        (True, 1, "1 cache entry would be removed"),
+        (True, 2, "2 cache entries would be removed"),
+        (False, 1, "1 cache entry removed"),
+        (False, 3, "3 cache entries removed"),
+    ],
+)
+def test_purge_headline_spells_the_cache_count(
+    dry_run: bool, count: int, tail: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The purge headline's cache count is "1 cache entry" or "N cache entries", never "entr(ies)" (rehearsal
+    v10, finding 4); the dry run still names no commit count, the real run still does."""
+    rep = governance.PurgeReport(
+        selector="stable-id",
+        reason=governance.PurgeReason.UPSTREAM_DELETED,
+        dry_run=dry_run,
+        items=(("contoso", "x"),),
+        docs_paths=("mirror/contoso/plan.md",),
+        commits_rewritten=0 if dry_run else 3,
+        blobs_targeted=2,
+        cache_entries_removed=count,
+    )
+    cli._print_purge(rep)
+    (head,) = [line for line in capsys.readouterr().out.splitlines() if line.startswith("purge ")]
+    assert head.endswith(f"2 blob(s) targeted · {tail}"), head
+    assert "entr(ies)" not in head
+    assert ("rewritten" in head) is not dry_run
+
+
 def test_purge_removes_every_blob_and_the_item_never_comes_back(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1321,7 +1353,7 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     assert "  taken: " not in out  # only a path another file's live page holds is marked taken
     # A dry run changed nothing, so its headline says what would go and names no commit count
     (head,) = [line for line in out.splitlines() if line.startswith("purge ")]
-    assert head.endswith("cache entr(ies) would be removed") and "rewritten" not in head
+    assert head.endswith(" · 1 cache entry would be removed") and "rewritten" not in head
     assert "note: up to " in out and " commit(s) would be rewritten" in out
     rc = cli.main(
         ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
@@ -1329,7 +1361,7 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK, out
     assert "VERIFIED" in out and page in out
-    assert " commit(s) rewritten · " in out and "cache entr(ies) removed" in out
+    assert " commit(s) rewritten · " in out and re.search(r" · 1 cache entry removed$", out, re.M)
     gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
     assert gone.returncode != 0  # the blob is unreadable afterwards
     audit = governance.read_audit(initialised.state_paths.root)
