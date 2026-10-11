@@ -2570,11 +2570,11 @@ def _installer_output(r: _Run) -> list[str]:
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
         "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
-        "as <path>, as in Recent errors.",
+        "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
         f"<details><summary>the last {len(shown)} line(s) of {path} (what the agent saw)</summary>",
         "",
-        *_fence(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown),
+        *_fence(_utc_log_times(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown)),
         "",
         "</details>",
     ]
@@ -4695,7 +4695,42 @@ def _scrub_segment(part: str) -> str:
 
 
 _LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[,.]\d+)?Z?) (.*)")
-"""A log line's leading time (a Python log line's local one, the launcher's UTC one) and the text after it."""
+"""A log line's leading time (a Python log line's, once :func:`_utc_log_times` made it UTC, or the launcher's)
+and the text after it."""
+_LOCAL_LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3}) ")
+"""A Python log line's leading time: ``logging``'s default ``asctime``, the Mac's local time with no zone."""
+_LOG_STEP_BACK = timedelta(seconds=1)
+"""How far a log line's time may go back from the line above it and still be read as the same pass of the
+clock: two threads log through one handler, and a record's time is taken before the handler's lock, so lines
+can be written a few milliseconds out of order. Only a larger step back, in the hour a fall-back repeats,
+is read as the clock going back."""
+
+
+def _utc_log_times(lines: Iterable[str]) -> list[str]:
+    """``lines`` (one file's, in order) with each Python log line's leading local time written as UTC
+    (``2026-10-05 09:00:00,000`` -> ``2026-10-05T15:00:00.000Z`` on a Mac at UTC-6), read with this Mac's
+    time zone. ``logging`` writes local time with no offset; beside the report's UTC times it gave the Mac's
+    UTC offset away. In the hour a fall-back repeats, the later reading is taken when the earlier one would
+    put the line more than :data:`_LOG_STEP_BACK` before the converted line above it. A stamp no calendar
+    holds, and every other line, is unchanged."""
+    out: list[str] = []
+    last: datetime | None = None
+    for ln in lines:
+        m = _LOCAL_LOG_TIME_RE.match(ln)
+        if m is None:
+            out.append(ln)
+            continue
+        try:  # a stamp no clock wrote (year 0001, month 13) stays as it is, and never fails the section
+            naive = datetime.fromisoformat(f"{m[1]}.{m[2]}")
+            moment = naive.astimezone(UTC)
+            if last is not None and moment < last - _LOG_STEP_BACK:
+                moment = max(moment, naive.replace(fold=1).astimezone(UTC))
+        except (ValueError, OverflowError, OSError):
+            out.append(ln)
+            continue
+        last = moment
+        out.append(f"{moment:%Y-%m-%dT%H:%M:%S}.{m[2]}Z {ln[m.end() :]}")
+    return out
 
 
 def _merge_repeats(lines: list[str]) -> list[tuple[str, str]]:
@@ -4743,7 +4778,7 @@ def _recent_errors(r: _Run) -> list[str]:
         # name are one entry, and two sources' lines stay apart. Scrubbed with the file name in front, as
         # shown, so a path in a line's first segment is covered.
         cut = len(path.name) + 2
-        shown = [_scrub_item_paths(f"{path.name}: {ln}")[cut:] for ln in own]
+        shown = _utc_log_times(_scrub_item_paths(f"{path.name}: {ln}")[cut:] for ln in own)
         hits += [f"{path.name}: {ln}{note}" for ln, note in _merge_repeats(shown)]
     merged = (
         f" ({lines} as logged: lines in a row that read the same here are shown once, with their count"

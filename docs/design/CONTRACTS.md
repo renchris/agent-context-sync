@@ -10925,6 +10925,25 @@ table says "log entries (repeats in a row shown once), read from the last 64 KiB
 `test_recent_errors_name_their_window` (a 3000-line log over 64 KiB names the window and counts the lines read) and
 `test_recent_errors_merge_a_line_repeated_in_a_row` (a short log does not).
 
+**Log times in the report are UTC** (B13 N10, field reports 2026-10-07 C12 and 2026-10-08 D3.f; amends §16.22: any
+line of the install.out tail that starts with a log time gets that time in UTC; nothing else in it changes).
+`logging` writes the Mac's local time with no zone (`cli.py` `_setup_logging`), and beside the report's UTC times
+that gave the Mac's UTC offset away. The log files stay as written. `_utc_log_times` rewrites the leading
+`YYYY-MM-DD HH:MM:SS,mmm` of a line in Recent errors and in the install.out tail as `YYYY-MM-DDTHH:MM:SS.mmmZ`,
+read with this Mac's time zone at report time. It runs after `_scrub_item_paths`, so `_LOG_HEAD_RE` still sees the
+written form, and before the merge, so the merge note's last time is UTC too; the install.out intro adds "and a
+log line's local time is shown in UTC". Within one file, a time that would go back more than 1 s
+(`_LOG_STEP_BACK`, milliseconds included) in the hour a fall-back repeats takes the later reading; a smaller
+step back is two threads' lines written out of order and keeps its own reading, so it does not move that line,
+or the lines after it, an hour on. A stamp no calendar holds (year 0001, month 13) stays as written and never fails the
+section. A line whose time ends in `Z` (the launcher's) is unchanged. Limits: a line written before the Mac changed
+time zone is read with the new zone; a log line quoted inside another line keeps its local stamp (the one producer
+is install.sh's `warning: agentsync setup-report failed (<why>): <last output line>`, which can reach a later
+report's install.out tail); the friction log is the agent's own prose and is not rewritten. The shell fallback
+shows no job log and no install.out tail, so it has no twin. `docs/deploy/setup-feedback.md` §4 says which times
+were converted. Tests: `test_log_times_in_the_report_are_utc`, and the merge test under the `mac_zone` fixture
+(America/Denver: the CI runners are in UTC, where the conversion changes nothing).
+
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
 Reserved for lane D of B13.

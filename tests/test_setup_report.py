@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -200,6 +200,23 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
     assert "(item paths and document names shown as <path>)" in errors
 
 
+@pytest.fixture
+def mac_zone() -> Iterator[None]:
+    """This Mac's time zone is America/Denver (UTC-6 until 2026-11-01, then UTC-7): the report reads a Python
+    log line's local time with it. Set here because the CI runners are in UTC, where the conversion changes
+    nothing; ``tzset`` is run again on the way out, which monkeypatch would not do."""
+    old = os.environ.get("TZ")
+    os.environ["TZ"] = "America/Denver"
+    time.tzset()
+    yield
+    if old is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = old
+    time.tzset()
+
+
+@pytest.mark.usefixtures("mac_zone")
 def test_recent_errors_merge_a_line_repeated_in_a_row(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     """Field report 2026-10-07: one warning per empty folder, 5 a poll, filled the 40-line window. Lines of
     one file that read the same after their time, once item paths are ``<path>``, are one line with a count
@@ -222,12 +239,12 @@ def test_recent_errors_merge_a_line_repeated_in_a_row(fake_mac: dict[str, Path],
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     errors = section(text, "Recent errors")
     assert (
-        "2026-10-05 09:00:00,000 WARNING agentsync.arm_local: src-a: directory '<path>' has no children "
-        "(4 times in a row, the last at 2026-10-05 09:05:00,100)\n" in errors
+        "2026-10-05T15:00:00.000Z WARNING agentsync.arm_local: src-a: directory '<path>' has no children "
+        "(4 times in a row, the last at 2026-10-05T15:05:00.100Z)\n" in errors
     )
-    assert "09:05:00,000" not in errors and "Mooring" not in text and "Harbor" not in text
-    assert "09:15:00,000 WARNING agentsync.arm_local: src-b: directory '<path>' has no children\n" in errors
-    assert "09:20:00,000 WARNING agentsync.arm_local: src-a: directory '<path>' has no children\n" in errors
+    assert "15:05:00.000Z" not in errors and "Mooring" not in text and "Harbor" not in text
+    assert "15:15:00.000Z WARNING agentsync.arm_local: src-b: directory '<path>' has no children\n" in errors
+    assert "15:20:00.000Z WARNING agentsync.arm_local: src-a: directory '<path>' has no children\n" in errors
     assert "The last 5 of 5 WARNING/ERROR line(s) in " in errors and "KiB" not in errors
     assert (
         "(8 as logged: lines in a row that read the same here are shown once, with their count and last time)"
@@ -249,6 +266,68 @@ def test_recent_errors_name_their_window(fake_mac: dict[str, Path], tmp_path: Pa
     head = re.search(window, errors)
     assert head and int(head[1]) == len(setup_report._tail(log)), errors[:300]
     assert "poll 2999 unstable" in errors
+
+
+@pytest.mark.usefixtures("mac_zone")
+def test_log_times_in_the_report_are_utc(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """Field report 2026-10-07 (C12): ``logging`` writes the Mac's local time with no zone, and beside the
+    report's UTC times it gave the Mac's UTC offset away. Recent errors and the install.out tail show a Python
+    log line's time in UTC, read with this Mac's zone; the launcher's UTC line is unchanged. In the hour a
+    fall-back repeats (01:00 to 02:00 on 2026-11-01 in Denver), a line written after the change reads as the
+    later hour, not before the line above it."""
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-10-05T14:05:00Z agentsync-launcher[42]: PROGRAM_REFUSED ERROR path=/tmp/x\n"
+        + "2026-11-01 01:30:00,000 WARNING agentsync.cycle: src-a: before the change\n"
+        + "2026-11-01 01:10:00,000 WARNING agentsync.cycle: src-a: after the change\n"
+        + "0001-01-01 00:00:00,000 WARNING agentsync.cycle: src-a: a stamp no clock wrote\n",
+        encoding="utf-8",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "2026-09-29 04:00:20,000 WARNING agentsync.arm_local: src-x: not crossing into another volume\n"
+        "NEXT: review ~/agent-context/setup-report.md\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    errors = section(text, "Recent errors")
+    assert "com.agentsync.poll.err.log: 2026-09-29T16:05:01.000Z WARNING agentsync.cycle: <email-1>" in errors
+    assert "com.agentsync.poll.err.log: 2026-09-29T16:05:02.000Z ERROR agentsync.cycle: drive" in errors
+    assert "2026-10-05T14:05:00Z agentsync-launcher[42]: PROGRAM_REFUSED" in errors
+    assert "2026-11-01T07:30:00.000Z WARNING agentsync.cycle: src-a: before the change\n" in errors
+    assert "2026-11-01T08:10:00.000Z WARNING agentsync.cycle: src-a: after the change\n" in errors
+    assert "0001-01-01 00:00:00,000 WARNING agentsync.cycle: src-a: a stamp no clock wrote\n" in errors
+    inst = section(text, "Installer")
+    assert "2026-09-29T10:00:20.000Z WARNING agentsync.arm_local: src-x: not crossing" in inst
+    assert "a log line's local time is shown in UTC" in inst
+    assert not re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d{3}", text)
+
+
+@pytest.mark.usefixtures("mac_zone")
+def test_a_small_step_back_in_the_repeated_hour_keeps_its_reading() -> None:
+    """Review of B13 N10: two threads log through one handler, so a line can be written a few milliseconds
+    before the line above it. In the hour a fall-back repeats, that step back is not the clock going back:
+    the line, and the first-pass lines after it, keep the earlier reading. A step back of more than a second
+    still takes the later one."""
+    shown = setup_report._utc_log_times(
+        [
+            "2026-11-01 01:30:05,000 WARNING agentsync.cycle: a",
+            "2026-11-01 01:30:04,990 WARNING agentsync.recording: b",
+            "2026-11-01 01:40:00,000 WARNING agentsync.cycle: c",
+            "2026-11-01 01:59:00,000 WARNING agentsync.cycle: d",
+            "2026-11-01 01:05:00,000 WARNING agentsync.cycle: e",
+            "2026-11-01 01:04:59,500 WARNING agentsync.recording: f",
+        ]
+    )
+    assert [ln.split(" ")[0] for ln in shown] == [
+        "2026-11-01T07:30:05.000Z",
+        "2026-11-01T07:30:04.990Z",
+        "2026-11-01T07:40:00.000Z",
+        "2026-11-01T07:59:00.000Z",
+        "2026-11-01T08:05:00.000Z",
+        "2026-11-01T08:04:59.500Z",
+    ]
 
 
 CONVERTED_SUFFIXES = sorted({*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions})
