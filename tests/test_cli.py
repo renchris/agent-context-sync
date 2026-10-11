@@ -1264,6 +1264,7 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     assert cli.main(["purge", f"id={sid}", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "dry run" in out and (repo / page).is_file()
+    assert "  taken: " not in out  # only a path another file's live page holds is marked taken
     # A dry run changed nothing, so its headline says what would go and names no commit count
     (head,) = [line for line in out.splitlines() if line.startswith("purge ")]
     assert head.endswith("cache entr(ies) would be removed") and "rewritten" not in head

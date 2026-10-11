@@ -48,6 +48,8 @@ is a copy that no purge reaches, so exclude it too.
   rewrites history in the repo and the published worktree, deletes cache entries and manifest rows, and writes one
   audit line. For every reason except upstream deletion, the item is also **suppressed**, so it is never fetched or
   published again while it still exists upstream. Every purge changes commit hashes, so consumers must re-clone.
+  If another file's page now sits at a purged path, the preview marks it `taken:`; that page, its manifest row and
+  its index lines stay.
 - **Erasure or DLP request:** find the item with `agentsync status` or `rg` in `_manifest/`, then run
   `agentsync purge path=… --reason erasure-request` (or `dlp-remediation`).
 

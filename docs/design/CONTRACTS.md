@@ -4336,6 +4336,8 @@ class PurgeReport:
     citing_pages: tuple[str, ...] = ()
     remote: str = 'disabled'
     notes: tuple[str, ...] = ()
+    paths_left: tuple[str, ...] = ()
+    taken_paths: tuple[str, ...] = ()
     @property
     def verified(self) -> bool:
         """True when this was a real run and nothing targeted remains readable in the repo."""
@@ -10448,7 +10450,25 @@ still one line: no tick starts with `speech:`.
 
 ### 16.38 Purge: a live file keeps what it holds (2026-10-11, wave B13 lane A)
 
-Reserved for lane A of B13 (`docs/plans/bring-back-ocr.md`).
+#### A purge keeps another file's live page at a purged path, and its rows (amends §16.7, §16.12)
+
+A targeted docs path where a worktree HEAD holds a blob the purge did not target is *taken*: another file's live
+page sits where the purged item's page once was (an upstream deletion's tombstone was reaped and a new file, often
+with the same name, was published to the freed path before the queue ran). The outputs, tombstones and depends
+rows keyed by that path stay, the history's index files keep the lines that name it by path, and the live item's
+own `_manifest` line stays by its id even when it names the same source path. Logs, run errors and ignored files
+are still scrubbed by it. The manifest re-read runs inside pass 1's fixpoint, so pass 1 walks with the page paths
+pass 2 treats as explicit; a path is taken only where pass 2 keeps the blob, and the preview's blob and item
+counts are the real run's. `PurgeReport` gains `taken_paths: tuple[str, ...] = ()`, set in the dry run too;
+`agentsync purge` prints `  taken: <path> (another file's live page is there now: its manifest row and index
+lines stay)` after the `path:` lines. `verified` is unchanged. Why: the purge deleted the live file's outputs row,
+depends rows, manifest line and DEPENDS.tsv line while it reported VERIFIED, and a repair pass then deleted the
+live page as an orphan. Residuals: lines in history that name only the taken path (a CHANGELOG `- A`/`- D` line,
+an older DEPENDS.tsv row) stay, which leaks nothing new because the path is the live page's own name in HEAD; a
+live item with an outputs row at the path but no page there in HEAD still loses its row. Tests:
+`tests/test_governance.py::test_purge_keeps_the_rows_and_index_lines_of_another_item_now_at_the_purged_path`,
+`::test_purge_keeps_the_manifest_line_of_a_new_file_with_the_same_name`,
+`::test_purge_marks_no_path_taken_that_the_rewrite_drops`.
 
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 

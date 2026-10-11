@@ -9,7 +9,8 @@ retention, hold, eDiscovery and DLP, so this module owns every way that copy is 
   reflog, runs ``gc --prune=now`` and verifies with ``cat-file --batch-check`` that no targeted blob
   survives.  Index-like generated files (``_manifest/*.jsonl``, ``CHANGELOG``, ``INDEX.md``,
   ``DEPENDS.tsv``, ``_sync/*``) are rewritten in every
-  commit with the lines that name a purged item removed.  Surviving tombstones of OTHER items have their
+  commit with the lines that name a purged item removed (a docs path that another item's live page holds in
+  HEAD is not one of those names).  Surviving tombstones of OTHER items have their
   ``git show <sha>`` hints remapped to the rewritten commits so their recovery still works.
 * :func:`compact_history` squashes history older than ``[governance] history_days`` into one root snapshot,
   then expires reflogs and prunes, with the same verification.
@@ -928,8 +929,10 @@ class _Scrubber:
         rel_paths: Iterable[tuple[str, str]],
         *,
         standalone_rel_paths: bool,
+        spare_ids: Iterable[tuple[str, str]] = (),
     ) -> None:
         self._ids = set(ids)
+        self._spare = set(spare_ids)  # the live items now at a taken path: their own JSON lines stay
         self._paths = _needle_regex([*docs_paths, *(sid for _, sid in self._ids)])
         self._pairs: dict[str, re.Pattern[str]] = {}
         by_source: dict[str, set[str]] = {}
@@ -946,6 +949,14 @@ class _Scrubber:
 
     def line_hit(self, line: str) -> bool:
         """True when ``line`` names a purged item."""
+        if self._spare and line.startswith("{"):
+            with contextlib.suppress(ValueError):
+                obj = json.loads(line)
+                if (
+                    isinstance(obj, dict)
+                    and (str(obj.get("source_id")), str(obj.get("stable_id"))) in self._spare
+                ):
+                    return False
         if self._paths is not None and self._paths.search(line):
             return True
         if self._standalone is not None and self._standalone.search(line):
@@ -1337,6 +1348,48 @@ def _in_head(repo: Path, path: str) -> bool:
     return _git(repo, "cat-file", "-e", f"HEAD:{path}", check=False).returncode == 0
 
 
+def _taken_paths(
+    rw: _Rewriter, heads: Iterable[str], paths: Iterable[str]
+) -> dict[str, tuple[str, str] | None]:
+    """The docs paths a worktree HEAD holds with a blob pass 1 did not target, each with the identity of the
+    page there (None for a page without one): another item's live page now at a path the purged item once
+    had.  The rewrite keeps that blob, so the purge keeps its manifest rows and its index lines too."""
+    wanted = sorted({p for p in paths if p and not p.endswith("/")})
+    out: dict[str, tuple[str, str] | None] = {}
+    if not wanted:
+        return out
+    trees: dict[str, dict[str, tuple[bytes, str]]] = {}
+
+    def entries(tree: str) -> dict[str, tuple[bytes, str]]:
+        if tree not in trees:
+            _, data = rw.cat.read(tree)
+            trees[tree] = {
+                name.decode("utf-8", "surrogateescape"): (mode, sha)
+                for mode, name, sha in _parse_tree(data, rw.hlen)
+            }
+        return trees[tree]
+
+    for head in heads:
+        _, raw = rw.cat.read(head)
+        root = _split_commit(raw)[0]
+        for path in wanted:
+            sha: str | None = root
+            mode = _TREE_MODE
+            for part in path.split("/"):
+                if sha is None or mode != _TREE_MODE:
+                    sha = None
+                    break
+                mode, sha = entries(sha).get(part, (b"", None))
+            if sha is None or mode in (_TREE_MODE, _GITLINK_MODE) or sha in rw.plan.target_blobs:
+                continue
+            ident = rw.identity(sha)
+            key = (ident["source_id"], ident["stable_id"]) if ident else None
+            if key is not None and key in rw.plan.ids:
+                continue
+            out.setdefault(path, key)
+    return out
+
+
 def surviving_objects(repo: Path, shas: Iterable[str]) -> list[str]:
     """Return the objects of ``shas`` that ``git cat-file`` can still read (empty = all gone)."""
     wanted = sorted(set(shas))
@@ -1525,6 +1578,7 @@ class PurgeReport:
     remote: str = "disabled"
     notes: tuple[str, ...] = ()
     paths_left: tuple[str, ...] = ()  # extension: purged items' page paths still in HEAD (or never targeted)
+    taken_paths: tuple[str, ...] = ()  # extension: targeted docs paths another item's live page holds in HEAD
 
     @property
     def verified(self) -> bool:
@@ -1930,6 +1984,7 @@ def _purge_locked(
     plan = _Plan(ids={(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases)
     plan.rel_paths |= {(s, r) for s, _i, r, d in mt.items if not d}
     worktrees: list[_Worktree] = []
+    taken: dict[str, tuple[str, str] | None] = {}
     graph: list[tuple[str, list[str], int]] = []
     hlen = 20
     cat: _CatFile | None = None
@@ -1939,18 +1994,23 @@ def _purge_locked(
             hlen = _hash_len(repo)
             graph = _commit_graph(repo, [w.head for w in worktrees if w.head])
             cat = _CatFile(repo)
-            # pass 1 to a fixpoint: a glob match reveals an id whose other (renamed) paths are targets too
+            # pass 1 to a fixpoint: a glob match reveals an id whose other (renamed) paths are targets too,
+            # and that id's manifest rows make its page paths explicit for the next walk, as pass 2 sees them
             for _ in range(4):
-                before = (len(plan.ids), len(plan.target_blobs))
+                before = (len(plan.ids), len(plan.target_blobs), len(mt.docs_paths))
                 rw = _Rewriter(repo, cat, hlen, selector=selector, explicit_paths=mt.docs_paths, plan=plan)
                 for _sha, _parents, _ts in graph:
                     _, raw = cat.read(_sha)
                     rw.walk(_split_commit(raw)[0])
-                if (len(plan.ids), len(plan.target_blobs)) == before:
+                if plan.ids - {(s, i) for s, i, _r, d in mt.items if not d} - mt.aliases:
+                    mt = _resolve_manifest(sp.db, selector, plan.ids)
+                    plan.ids |= {(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases
+                if (len(plan.ids), len(plan.target_blobs), len(mt.docs_paths)) == before:
+                    # pass 1 decided what pass 2 will: a blob it did not target at a docs path stays in HEAD
+                    taken = _taken_paths(
+                        rw, [w.head for w in worktrees if w.head], mt.docs_paths | plan.dropped_paths
+                    )
                     break
-            if plan.ids - {(s, i) for s, i, _r, d in mt.items if not d} - mt.aliases:
-                mt = _resolve_manifest(sp.db, selector, plan.ids)
-                plan.ids |= {(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases
         affected_sources = sorted(
             {s for s, _ in plan.ids} | ({selector.source_id} if selector.source_id else set())
         )
@@ -1959,6 +2019,15 @@ def _purge_locked(
         docs_paths = sorted(mt.docs_paths | plan.dropped_paths)
         rel_paths = plan.rel_paths | {(s, r) for s, _i, r, _d in mt.items}
         scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=False)
+        # The history's index files keep the lines of a live page at a taken path: by its path, and its own
+        # manifest line by its id.  Logs, run errors and ignored files are scrubbed by every path.
+        index_scrubber = _Scrubber(
+            [p for p in docs_paths if p not in taken],
+            plan.ids,
+            rel_paths,
+            standalone_rel_paths=False,
+            spare_ids={k for k in taken.values() if k is not None},
+        )
         log_scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=True)
         cache_victims = _cache_entries(expand(config.cache_dir), mt.action_keys, mt.rendered | plan.rendered)
         piece_victims = _piece_victims(
@@ -1984,6 +2053,7 @@ def _purge_locked(
                 citing_pages=tuple(citing),
                 remote="dry-run",
                 notes=(note,),
+                taken_paths=tuple(sorted(taken)),
             )
         at = _iso(_now(now))
         notes: list[str] = []
@@ -1994,7 +2064,7 @@ def _purge_locked(
         head_tree: str | None = None
         if has_repo and cat is not None and graph:
             rw = _Rewriter(repo, cat, hlen, selector=selector, explicit_paths=mt.docs_paths, plan=plan)
-            rw.scrubber = scrubber
+            rw.scrubber = index_scrubber
             result = _apply_rewrite(repo, cat, rw, graph, worktrees)
             cat.close()
             cat = None
@@ -2031,7 +2101,7 @@ def _purge_locked(
         rows = _manifest_apply(
             sp.db,
             mt.items,
-            set(docs_paths),
+            set(docs_paths) - set(taken),
             action_keys=set(mt.action_keys),
             scrubber=scrubber,
             commit_map=cmap,
@@ -2092,6 +2162,7 @@ def _purge_locked(
             citing_pages=tuple(citing),
             remote=remote,
             notes=tuple(notes),
+            taken_paths=tuple(sorted(taken)),
         )
         _audit_purge(
             sp.root,

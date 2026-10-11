@@ -1722,6 +1722,8 @@ def _print_purge(rep: governance.PurgeReport) -> None:
     )
     for p in rep.docs_paths:
         _out(f"  path: {p}")
+    for p in rep.taken_paths:
+        _out(f"  taken: {p} (another file's live page is there now: its manifest row and index lines stay)")
     for s in rep.survivors:
         _out(f"  SURVIVOR: {s}")
     if rep.unreachable_left:

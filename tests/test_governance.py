@@ -1105,3 +1105,182 @@ def test_time_machine_exclusions_batch_and_fallback(
     assert len(calls) == 7  # one batch + six per-path retries
     assert lines[-1] == f"failed {cfg.state_paths.staging}: denied"
     assert lines[4] == f"pending {cfg.state_paths.db}"
+
+
+def test_purge_keeps_the_rows_and_index_lines_of_another_item_now_at_the_purged_path(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """An upstream-deleted item's page path is later taken by a different live file (the tombstone was reaped,
+    the queued purge was not yet run).  The purge drops the old item's blobs and its manifest line, and keeps
+    the live file's page, outputs row, DEPENDS row, manifest line and DEPENDS.tsv line (field triage
+    2026-10-08: they were erased while the run said VERIFIED)."""
+    repo, at = tmp_docs_repo, "mirror/src/report.md"
+
+    def shard(stable_id: str, rel: str) -> str:
+        line = {
+            "outputs": [{"path": at, "unit_id": "whole"}],
+            "rel_path": rel,
+            "source_id": "src",
+            "stable_id": stable_id,
+            "state": "live",
+        }
+        return json.dumps(line, sort_keys=True) + "\n"
+
+    write(repo / at, page("src", "A1", "old/report.txt", "ALPHA-GONE"))
+    write(repo / "_manifest/src.jsonl", shard("A1", "old/report.txt"))
+    write(repo / "DEPENDS.tsv", f"page\tsource\ntopics/x.md\t{at}\n")
+    commit_all(repo, "c1", "2026-06-01T10:00:00Z")
+    (repo / at).unlink()
+    write(repo / "_manifest/src.jsonl", "")
+    write(repo / "DEPENDS.tsv", "page\tsource\n")
+    commit_all(repo, "c2", "2026-06-02T10:00:00Z")
+    write(repo / at, page("src", "B1", "new/report.txt", "BRAVO-LIVE"))
+    write(repo / "_manifest/src.jsonl", shard("B1", "new/report.txt"))
+    write(repo / "DEPENDS.tsv", f"page\tsource\ntopics/x.md\t{at}\n")
+    commit_all(repo, "c3", "2026-06-03T10:00:00Z")
+    config = make_config(tmp_path, repo, tmp_state_dir)
+    db = config.state_paths.db
+    m = Manifest(db)
+    m.set_tree_sha(git(repo, "rev-parse", "HEAD^{tree}").strip())
+    m.close()
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO sources (source_id, kind, config_state, config_fingerprint) "
+        "VALUES ('src','local','live','x')"
+    )
+    conn.execute(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, last_seen_run) "
+        "VALUES ('src', 'B1', 'report.txt', 'new/report.txt', 'live', 1, 1)"
+    )
+    conn.execute(
+        "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, rendered_sha256, status, "
+        "built_run) VALUES (?, 'src', 'B1', 'whole', ?, 'ok', 1)",
+        (at, sha("BRAVO-LIVE")),
+    )
+    conn.execute("INSERT INTO depends VALUES ('topics/x.md', ?, ?, 'primary')", (at, "0" * 64))
+    conn.commit()
+    conn.close()
+    selector = gv.PurgeSelector(source_id="src", stable_id="A1")
+
+    preview = gv.purge(config, selector, reason=gv.PurgeReason.UPSTREAM_DELETED, dry_run=True)
+    assert preview.docs_paths == (at,) and preview.taken_paths == (at,)
+    rep = gv.purge(config, selector, reason=gv.PurgeReason.UPSTREAM_DELETED)
+
+    assert rep.verified and rep.taken_paths == (at,)
+    assert rep.manifest_rows_removed["outputs"] == 0 and rep.manifest_rows_removed["depends"] == 0
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT stable_id FROM outputs WHERE output_path = ?", (at,)).fetchall() == [("B1",)]
+    assert conn.execute("SELECT page FROM depends WHERE source = ?", (at,)).fetchall() == [("topics/x.md",)]
+    conn.close()
+    assert "BRAVO-LIVE" in git(repo, "show", f"HEAD:{at}")
+    assert git(repo, "show", "HEAD:_manifest/src.jsonl") == shard("B1", "new/report.txt")
+    assert f"topics/x.md\t{at}" in git(repo, "show", "HEAD:DEPENDS.tsv")
+    history = "".join(git(repo, "cat-file", "-p", s) for s in all_blobs(repo))
+    assert "ALPHA-GONE" not in history and '"stable_id": "A1"' not in history
+
+
+def _seed_live(repo: Path, config: Config, rows: list[tuple[str, str, str, str]]) -> Path:
+    """A manifest whose tree_sha is HEAD's, with source ``src`` and one live item and outputs row per
+    (stable_id, rel_path, output_path, body)."""
+    db = config.state_paths.db
+    m = Manifest(db)
+    m.set_tree_sha(git(repo, "rev-parse", "HEAD^{tree}").strip())
+    m.close()
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO sources (source_id, kind, config_state, config_fingerprint) "
+        "VALUES ('src', 'local', 'live', 'x')"
+    )
+    for stable_id, rel, out, body in rows:
+        conn.execute(
+            "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, last_seen_run) "
+            "VALUES ('src', ?, 'report.txt', ?, 'live', 1, 1)",
+            (stable_id, rel),
+        )
+        conn.execute(
+            "INSERT INTO outputs (output_path, source_id, stable_id, unit_id, rendered_sha256, status, "
+            "built_run) VALUES (?, 'src', ?, 'whole', ?, 'ok', 1)",
+            (out, stable_id, sha(body)),
+        )
+    conn.commit()
+    conn.close()
+    return db
+
+
+def _shard_line(stable_id: str, rel: str, at: str) -> str:
+    """One ``_manifest/src.jsonl`` line in the export's own form (``Manifest.export_shard``)."""
+    line = {
+        "outputs": [{"path": at, "rendered_sha256": None, "unit_id": "whole"}],
+        "rel_path": rel,
+        "source_id": "src",
+        "stable_id": stable_id,
+        "state": "live",
+        "state_reason": None,
+    }
+    return json.dumps(line, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+def test_purge_keeps_the_manifest_line_of_a_new_file_with_the_same_name(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """The field shape of a taken path: the deleted file and the new one have the same name in the same
+    folder, so the same source path.  The source-path rule would hit the new file's manifest line; it is kept
+    by its id, while the purged item's line and page leave every commit."""
+    repo, at, rel = tmp_docs_repo, "mirror/src/dir/report.md", "dir/report.txt"
+    write(repo / at, page("src", "A1", rel, "ALPHA-GONE"))
+    write(repo / "_manifest/src.jsonl", _shard_line("A1", rel, at))
+    commit_all(repo, "c1", "2026-06-01T10:00:00Z")
+    (repo / at).unlink()
+    write(repo / "_manifest/src.jsonl", "")
+    commit_all(repo, "c2", "2026-06-02T10:00:00Z")
+    write(repo / at, page("src", "B1", rel, "BRAVO-LIVE"))
+    write(repo / "_manifest/src.jsonl", _shard_line("B1", rel, at))
+    commit_all(repo, "c3", "2026-06-03T10:00:00Z")
+    config = make_config(tmp_path, repo, tmp_state_dir)
+    db = _seed_live(repo, config, [("B1", rel, at, "BRAVO-LIVE")])
+    selector = gv.PurgeSelector(source_id="src", stable_id="A1")
+
+    rep = gv.purge(config, selector, reason=gv.PurgeReason.UPSTREAM_DELETED)
+
+    assert rep.verified and rep.taken_paths == (at,)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT stable_id FROM outputs WHERE output_path = ?", (at,)).fetchall() == [("B1",)]
+    conn.close()
+    assert git(repo, "show", "HEAD:_manifest/src.jsonl") == _shard_line("B1", rel, at)
+    history = "".join(git(repo, "cat-file", "-p", s) for s in all_blobs(repo))
+    assert "ALPHA-GONE" not in history and '"stable_id":"A1"' not in history
+
+
+def test_purge_marks_no_path_taken_that_the_rewrite_drops(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """A docs-glob purge finds item Y only in history; the manifest read that follows makes Y's current page
+    path explicit, where HEAD holds a page under an id the manifest does not know for the same source path (a
+    rekey from before item_aliases), which the rewrite drops.  That path is not taken: its index lines go, and
+    the preview counts what the run drops."""
+    repo, old, cur, rel = (
+        tmp_docs_repo,
+        "mirror/src/tmp/report.md",
+        "mirror/src/dir/report.md",
+        "dir/report.txt",
+    )
+    write(repo / old, page("src", "Y", rel, "YANKEE-OLD"))
+    commit_all(repo, "c1", "2026-06-01T10:00:00Z")
+    (repo / old).unlink()
+    write(repo / cur, page("src", "Z", rel, "ZULU-LEGACY"))
+    write(repo / "CHANGELOG/2026-06.md", f"- D {old}\n- A {cur}\n")
+    write(repo / "DEPENDS.tsv", f"page\tsource\ntopics/x.md\t{cur}\n")
+    commit_all(repo, "c2", "2026-06-02T10:00:00Z")
+    config = make_config(tmp_path, repo, tmp_state_dir)
+    _seed_live(repo, config, [("Y", rel, cur, "ZULU-LEGACY")])
+    selector = gv.PurgeSelector(docs_glob="mirror/src/tmp/*")
+
+    preview = gv.purge(config, selector, reason=gv.PurgeReason.OPERATOR, dry_run=True)
+    rep = gv.purge(config, selector, reason=gv.PurgeReason.OPERATOR)
+
+    assert preview.taken_paths == () and rep.taken_paths == ()
+    assert preview.blobs_targeted == rep.blobs_targeted == 2
+    assert preview.items == rep.items == (("src", "Y"), ("src", "Z"))
+    assert rep.verified and not exists(repo, f"HEAD:{cur}")
+    assert cur not in git(repo, "show", "HEAD:CHANGELOG/2026-06.md")
+    assert cur not in git(repo, "show", "HEAD:DEPENDS.tsv")
