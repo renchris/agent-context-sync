@@ -983,3 +983,24 @@ def test_the_purge_wait_names_the_preview_before_the_run(tmp_path: Path) -> None
     assert _commands(wait) == ["agentsync purge --queue --dry-run", "agentsync purge --queue"]
     for command in _commands(wait):
         _assert_fix_parses(command)
+
+
+def test_the_breaker_wait_of_an_incomplete_source_asks_for_a_full_listing_first(
+    tmp_path: Path, folder: Path
+) -> None:
+    config = _synced(tmp_path, folder)
+    now = datetime.now(UTC)
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.trip_breaker(
+            "work",
+            candidates=3,
+            tripped_at=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            until=(now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        manifest.set_enumeration_complete("work", False, 1)
+    lines = _lines(config)
+    breaker = [line for line in lines if "deletion breaker" in line]
+    assert breaker == [
+        "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone): if they really were deleted, "
+        f"run `{BIN} accept-deletions work` once a sync lists work in full"
+    ]

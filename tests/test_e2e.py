@@ -376,6 +376,73 @@ def test_f_mass_delete_trips_the_breaker_and_commits_nothing(tmp_path: Path, loc
         assert not m.breaker_active(SID, "2026-09-29T12:00:00Z")
 
 
+_HELD_ALARM = "accept-deletions applied nothing: this pass did not list the whole source"
+
+
+def test_f_accept_deletions_on_an_incomplete_pass_keeps_the_breaker(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    """N15: an incomplete listing confirms no absence, so accept-deletions applies nothing and keeps the
+    breaker; clearing it there spent the assertion and the next complete pass tripped again."""
+    config = config_with(
+        tmp_path, local_source_dir, "\n[breaker]\nfraction = 0.2\nfloor = 2\nhold_days = 7\n"
+    )
+    assert run(config).commit_sha is not None
+    victims = ["sample.csv", "sample.txt", "sample.html", "sample.md", "sample.pdf"]
+    for name in victims:
+        (local_source_dir / "projects" / name).unlink()
+    assert source_report(run(config)).breaker_tripped
+    sentinel = local_source_dir / "README.txt"
+    kept = sentinel.read_bytes()
+    sentinel.unlink()
+    accepted = run(config, mode=CycleMode.RECONCILE, only=[SID], accept_deletions=[SID])
+    rep = source_report(accepted)
+    assert accepted.changes == () and rep.breaker_tripped
+    held = [a for a in rep.alarms if a.startswith(_HELD_ALARM)]
+    assert len(held) == 1 and "still holds 5 file(s)" in held[0], rep.alarms
+    with Manifest(config.state_paths.db) as m:
+        assert m.breaker_active(SID, "2026-09-29T12:00:00Z")
+    assert page(config.docs_repo, mirror("projects/sample.csv.md"))[0]["status"] == "current"
+    sentinel.write_bytes(kept)  # the same bytes: a changed sentinel would add an M to the next run
+    again = run(config, mode=CycleMode.RECONCILE, only=[SID], accept_deletions=[SID])
+    assert sorted(c.op for c in again.changes) == [ChangeOp.DELETED] * len(victims)
+    with Manifest(config.state_paths.db) as m:
+        assert not m.breaker_active(SID, "2026-09-29T12:00:00Z")
+    after = run(config)
+    assert after.changes == () and not source_report(after).breaker_tripped
+
+
+def test_f_accept_deletions_clears_a_breaker_whose_files_came_back_on_an_incomplete_pass(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    """A pass that listed every known file holds nothing absent, complete or not: accept-deletions clears the
+    breaker there and says nothing (an unreadable folder with no known file keeps the listing incomplete)."""
+    config = config_with(
+        tmp_path, local_source_dir, "\n[breaker]\nfraction = 0.2\nfloor = 2\nhold_days = 7\n"
+    )
+    assert run(config).commit_sha is not None
+    victims = ["sample.csv", "sample.txt", "sample.html", "sample.md", "sample.pdf"]
+    saved = {n: (local_source_dir / "projects" / n).read_bytes() for n in victims}
+    for name in victims:
+        (local_source_dir / "projects" / name).unlink()
+    assert source_report(run(config)).breaker_tripped
+    for name, data in saved.items():
+        (local_source_dir / "projects" / name).write_bytes(data)
+    locked = local_source_dir / "Locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        accepted = run(config, mode=CycleMode.RECONCILE, only=[SID], accept_deletions=[SID])
+    finally:
+        locked.chmod(0o755)
+    rep = source_report(accepted)
+    assert not rep.enumeration_complete and not rep.breaker_tripped
+    assert not any(a.startswith(_HELD_ALARM) for a in rep.alarms), rep.alarms
+    with Manifest(config.state_paths.db) as m:
+        src_row = m.get_source(SID)
+        assert src_row is not None and src_row.breaker_tripped_at is None
+
+
 # ---------------------------------------------------------------------------------------------------------
 # (g) dataless: st_flags mocked (tmpfs/APFS tmp dirs cannot hold a real placeholder)
 # ---------------------------------------------------------------------------------------------------------

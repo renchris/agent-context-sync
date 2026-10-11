@@ -4575,7 +4575,7 @@ class AgentSpec:
 | `hold SCOPE --reason R --owner O` · `hold SCOPE --release --owner O` · `hold --list` | `set_hold` / `release_hold` / `active_holds` | 0 · 1 · 2 |
 | `offboard` [`--purge-data`] [`--confirm DOCS_REPO`] | `governance.offboard` (dry run without `--confirm`) | 0 · 1 errors |
 | `policy show` | `policy.load_policy` (SUPERSEDED 2026-10-04, KISS K08a, §16.21: a hidden alias of `status`, which prints the policy; a broken policy is the `policy` FAIL, exit 1) | 0 · 78 invalid policy |
-| `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
+| `accept-deletions SOURCE` (2026-10-04, KISS K13a) | `run_cycle(mode=RECONCILE, only=[SOURCE], accept_deletions=[SOURCE])`: the operator asserts the deletion is real; clears SOURCE's tripped breaker and applies its held removals (the breaker itself is unchanged; **amended 2026-10-11, §16.38:** not on a pass that leaves a known file unlisted). The breaker alarm names it. `reconcile [--source ID ...] [--accept-deletions]` is a hidden alias (`--accept-deletions` without `--source` exits 2). Like interactive `sync` it waits up to 10 minutes for a running cycle's lock (launchd never retries an operator's assertion) | 0 · 1 · 75 lock still held after the wait · 78 unknown source |
 | `install-agent` [`--no-backup-exclusions`] | refuses on `remote_policy_findings` (1); `apply_time_machine_exclusions` once; prints `launchd runs: <ProgramArguments[0]>` and the TCC prompt text. Since KISS K11a (2026-10-05) hidden, with no options: `--no-backup-exclusions`, `--interval` and `--reconcile-interval` are deleted, the exclusions always apply and both intervals come from sources.toml; `uninstall-agent` is its hidden pair. The launchd argv is unchanged | 0 · 1 · 2 · 78 |
 | `init` | as before; exits 1 when the docs repo has a disallowed remote. Then `config.ensure_inbox` (2026-10-04, KISS K05, §16.13). Since KISS K14 (2026-10-04, §16.13) hidden and without options (`--docs-repo`, `--source-local` and `--force` are deleted): writes the template only when sources.toml is missing, then the same setup as `add-source` | 0 · 1 · 2 · 78 |
 | `add-source PATH` [`--id ID`] | `config.derive_source_id` → `local_source_table` → `append_to_config` (§16.13); idempotent on the canonical path. Once PATH is valid, `config.ensure_inbox` first (2026-10-04, KISS K05); `--inbox` is deleted. Since KISS K14 (2026-10-04, §16.13) the one setup verb: `--id` is deleted; a missing sources.toml is written from the template with the folder's table; then `config.ensure_inbox` and init's setup (docs repo, scaffold, state dir, owner-only modes, Time Machine exclusions, remote refusal). So K05's "`ensure_inbox` first" holds only when PATH is the inbox folder (`docs_repo`'s parent `/inbox`, canonical) of a config with no `kind = "inbox"` source: the template is written if missing, `ensure_inbox` runs before the PATH lookup, and the folder stays kind `inbox`, never a `local` source install.sh would count (K14 review) | 0 added or already configured · 1 disallowed remote on the docs repo · 2 bad path · 78 invalid sources.toml |
@@ -10531,6 +10531,25 @@ while the preview prints each entry's reason and docs paths, and which entries t
 `tests/test_loop.py::test_the_purge_wait_names_the_preview_before_the_run` and the pins it moved in
 `tests/test_loop.py`, `tests/test_cli.py`, `tests/test_setup_report.py`, `tests/test_e2e.py` and
 `tests/test_review_fixes.py::test_sg04`.
+
+#### accept-deletions on an incomplete pass keeps the breaker (`agentsync.cycle`, `agentsync.loop`)
+
+`accept-deletions SOURCE` (and `reconcile --accept-deletions`) applies nothing and keeps the source's deletion
+breaker when its pass leaves a known file unlisted (`Manifest.unseen_live`, less the rows retired this pass on the
+config's word): an incomplete listing proves no absence. Its source line then reads `BREAKER TRIPPED` while the
+breaker holds, and it adds the alarm `accept-deletions applied nothing: this pass did not list the whole source,
+so no absent file is confirmed; the deletion breaker still holds N file(s): once a sync lists SOURCE in full, run
+`agentsync accept-deletions SOURCE` again`. Without a tripped breaker the alarm is only its first clause. A pass
+that lists every known file clears the breaker, complete or not, because the breaker holds no file then (a breaker
+whose files came back is cleared only by this verb, so keeping it there would leave a dead wait on a source that
+stays incomplete, such as one with an empty cloud folder or a folder with no access). Exit code unchanged (0).
+The loop's breaker wait adds ` once a sync lists SOURCE in full` when the source's last full listing was
+incomplete; for a complete source it is unchanged. Why: clearing on an incomplete pass spent the operator's
+assertion, applied nothing, and the next complete pass tripped again on the same files. The designer's first rule
+(clear only on a complete pass) was measured worse than main when nothing is absent, so the built rule keys on
+known files left unlisted. Tests: `tests/test_e2e.py::test_f_accept_deletions_on_an_incomplete_pass_keeps_the_breaker`,
+`::test_f_accept_deletions_clears_a_breaker_whose_files_came_back_on_an_incomplete_pass`,
+`tests/test_loop.py::test_the_breaker_wait_of_an_incomplete_source_asks_for_a_full_listing_first`.
 
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 

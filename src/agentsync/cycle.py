@@ -330,6 +330,20 @@ def _scope_change_alarm(count: int) -> str:
     )
 
 
+def _accept_incomplete_alarm(source_id: str, held: int | None) -> str:
+    """``accept-deletions`` on a pass that did not list the whole source: nothing applied (N15)."""
+    text = (
+        "accept-deletions applied nothing: this pass did not list the whole source, so no absent file is "
+        "confirmed"
+    )
+    if held is None:
+        return text
+    return (
+        f"{text}; the deletion breaker still holds {held} file(s): once a sync lists {source_id} in full, "
+        f"run `agentsync accept-deletions {source_id}` again"
+    )
+
+
 def _download_cost(src: SourceConfig, row: ItemRow) -> int:
     """The bytes fetching ``row`` costs the per-cycle materialise budget: a download only. A Graph item is
     always a download; a local or inbox file only when the manifest saw it dataless (online-only). An
@@ -3290,8 +3304,24 @@ class _Cycle:
                     self.manifest.clear_breaker(src.id)
         elif src.id in self.accept_deletions:
             srow = self.manifest.get_source(src.id)
-            if srow is not None and srow.breaker_tripped_at is not None:
-                self.manifest.clear_breaker(src.id)
+            held = srow is not None and srow.breaker_tripped_at is not None
+            unlisted: set[str] = set()
+            if not complete_full:
+                unlisted = {r.stable_id for r in self.manifest.unseen_live(src.id, self.run_id)}
+                unlisted -= set(out_of_scope)  # retired above on the config's word, not held
+            if not unlisted:
+                # Nothing absent (a complete pass), or a pass that listed every known file: the breaker holds
+                # no file, so clearing it spends no assertion.
+                if held:
+                    self.manifest.clear_breaker(src.id)
+            else:
+                # The listing stopped short of known files, so none is confirmed absent and the operator's
+                # assertion has nothing to apply. Clearing the breaker here would spend it: the next complete
+                # pass trips again on the same files (N15). Keep it, report it, and say nothing was applied.
+                acc.breaker_tripped = self.manifest.breaker_active(src.id, _iso(self.now()))
+                acc.alarms.append(
+                    _accept_incomplete_alarm(src.id, srow.breaker_candidates if held and srow else None)
+                )
         if scope_changed and complete_full:
             self.manifest.set_meta(scope_key, "")
         last_commit = gitops.head_sha(self.repo) if removals else None
@@ -4221,7 +4251,8 @@ def run_cycle(
     ``budget_bytes`` overrides every source's per-cycle materialise budget (download bytes: only online-only
     files and Graph items are charged, so 0 still converts every local file); ``materialise_paths`` restricts
     the work queue to those files (``agentsync materialise``); ``accept_deletions`` lists sources whose
-    breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion);
+    breaker is cleared and whose absence-based removals apply this cycle (operator-asserted deletion), unless
+    the cycle leaves one of their known files unlisted: then nothing applies and the breaker stays;
     ``recordings`` says who reads recordings (spec S0 rule 5): None derives it, ``named`` for
     ``materialise_paths``, ``none`` for an interactive run, else ``background``.  An operator verb with a mode
     of its own (``reconcile``, ``accept-deletions``) passes ``none``: a tool's timeout can end it.

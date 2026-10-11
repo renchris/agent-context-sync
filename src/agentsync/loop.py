@@ -522,9 +522,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     else:
                         incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
+                    later = "" if row.enumeration_complete else f" once a sync lists {src.id} in full"
                     waits.append(
                         f"the deletion breaker tripped on {src.id} ({row.breaker_candidates or 0} file(s) "
-                        f"gone): if they really were deleted, run `{BIN} accept-deletions {src.id}`"
+                        f"gone): if they really were deleted, run `{BIN} accept-deletions {src.id}`{later}"
                     )
                 if src.kind.is_graph and row is not None and row.auth_state != "ok":
                     signin.append(src.id)
