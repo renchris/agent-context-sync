@@ -4911,6 +4911,8 @@ NFC (or the reverse) is one placeholder, not two and not in clear. The shell fal
 (`iconv` `UTF-8-MAC`) of every value it registers that is not printable ASCII; a value that is not UTF-8 adds none.
 **Amended (2026-10-11, §16.40):** the system PAC URL after its scheme is a `<proxy-N>` value too, proxies set only
 in git's config files are registered, and the shell fallback registers proxy values as well.
+**Amended (2026-10-11, §16.40):** the organisation is the part after the app's name in a CloudStorage folder of any
+provider (`Dropbox-<team>` too), not only after `OneDrive-`, in both reports.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -10659,6 +10661,25 @@ the N8 entry above. Tests: `test_a_two_letter_name_part_is_a_lone_name_unless_th
 two lists are the same in both places). Held: a two-letter name that is a listed word ("He", "An", "Do") stays
 redacted only inside the joined forms, since alone it would replace the report's words; an all-capitals GECOS
 ("LI, JANE") registers "LI" only.
+
+**A CloudStorage folder of any provider registers its organisation** (B13 N9; amends the v4 revision's redaction
+values). macOS names a `~/Library/CloudStorage` folder `<app>-<domain>`. Both reports register the part after the
+app's name as `<org-N>` (fuzzy in the Python report), for every provider and not only `OneDrive-`; a leading
+`SharedLibraries-` is dropped. Not registered: a bare app name (`Dropbox`), `Personal`, `Business` and `Work`, and
+a part equal to the app's name (`Box-Box`). The Python report leaves a part that the email pattern matches whole to
+that pattern, which turns the whole folder name into `<email-N>`; any other part with `@` is an `<org-N>`. The
+shell fallback, which has no email pattern, registers an address part as `<org-N>` too. Hidden entries (a leading
+dot) are skipped, as in the Environment line. The Python report registers the `OneDrive-` organisations first, so
+`<org-1>` stays the OneDrive organisation, and its residue check skips the app name before a registered folder's
+`<org-N>` (`Dropbox-<org-2>` is no hit; `residue(..., ignore=)`, `_Run.provider_heads`). `it-request`'s `<org>`
+is unchanged (OneDrive only: it is the Entra organisation). Why: a `Dropbox-<team>` folder printed verbatim in the
+Environment line and in install.log's `--source-local` arguments, and the shell report printed a Google Drive
+account's address. The shell's Redaction paragraph and `docs/deploy/setup-feedback.md`'s `<org-N>` row say so.
+Tests: `test_org_of_takes_the_part_after_any_providers_app_name`,
+`test_a_dropbox_team_folder_is_an_org_and_its_app_name_no_residue` and
+`test_the_shell_report_redacts_any_providers_team_and_account`. Trade-off: a domain that is an ordinary word
+(`SynologyDrive-Home`-shaped) is replaced wherever the word appears, as the OneDrive organisation already is; the
+shell numbers its organisations in glob order, so its `<org-N>` can differ from the Python report's.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

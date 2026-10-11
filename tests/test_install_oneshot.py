@@ -911,6 +911,32 @@ def test_the_shell_short_name_lists_are_the_reports() -> None:
     assert lists == [set(setup_report._SHORT_WORDS), set(setup_report._SHORT_CAPS)]
 
 
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, str], locale: str) -> None:
+    """A CloudStorage folder of any provider: the part after the app's name is <org-N> in the shell fallback
+    too (a Dropbox team; a Google Drive account's address, which the shell has no email pattern for), and a
+    folder that names none (Box-Box) stays as it is (B13 N9)."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    team = cloud / "Dropbox-Wingtip Partners" / "Q3 Launch"
+    drive = cloud / "GoogleDrive-jane.doe@contoso.com" / "My Drive"
+    for d in (team, drive, cloud / "Box-Box" / "Shared"):
+        d.mkdir(parents=True)
+    cp = install_sh(
+        {**env, "LC_ALL": locale, "STUB_UV_INSTALL_RC": "2"},
+        "--source-local",
+        str(team),
+        "--source-local",
+        str(drive),
+    )
+    assert cp.returncode == 1
+    text = report_path(env).read_text()
+    for secret in ("Wingtip Partners", "Wingtip\\ Partners", "jane.doe@contoso.com"):
+        assert secret not in text, secret
+    assert "Dropbox-<org-" in text and "GoogleDrive-<org-" in text and "## Redaction" in text
+    # The Redaction paragraph calls <org-N> the organisation, not "the name", which reads as the person's.
+    assert "the organisation or team after the app's name in a CloudStorage folder" in " ".join(text.split())
+
+
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
     cp = install_sh(env, "--source-local", str(tmp_path / "nowhere"))
     assert cp.returncode == 2

@@ -5564,3 +5564,57 @@ def test_a_bracketed_part_of_two_letters_stays_a_name(
     write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| (JJ) and jane-doe agreed |"))
     text, _summary = summary_of(fake_mac)
     assert "| <name> and <name> agreed |" in section(text, "Agent friction log")
+
+
+@pytest.mark.parametrize(
+    ("provider", "org"),
+    [
+        ("OneDrive-Contoso", "Contoso"),
+        ("OneDrive-SharedLibraries-Contoso", "Contoso"),
+        ("OneDrive-Personal", None),
+        ("Dropbox-Wingtip Partners", "Wingtip Partners"),
+        ("Dropbox-Personal", None),
+        ("Dropbox-business", None),
+        ("Box-Box", None),
+        ("Dropbox", None),
+        ("GoogleDrive-jane.doe@contoso.com", None),
+        ("SharedLibraries-Contoso", "Contoso"),
+        ("Nextcloud-mlee@192.168.1.10", "mlee@192.168.1.10"),
+    ],
+)
+def test_org_of_takes_the_part_after_any_providers_app_name(provider: str, org: str | None) -> None:
+    """macOS names a CloudStorage folder ``<app>-<domain>``: the domain is the organisation for every
+    provider, not only OneDrive, unless it is generic, repeats the app's name or is an email address the email
+    pattern takes whole; an ``@`` value that pattern misses is an organisation (B13 N9)."""
+    assert setup_report._org_of(provider) == org
+
+
+def test_a_dropbox_team_folder_is_an_org_and_its_app_name_no_residue(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """A ``Dropbox-<team>`` folder's team is ``<org-N>`` in the Environment line and in install.log's
+    ``--source-local`` argument; ``Dropbox`` before it is no residue hit; OneDrive's organisation stays
+    ``<org-1>``; a hidden entry registers nothing (B13 N9)."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage"
+    launch = cloud / "Dropbox-Wingtip Partners" / "Q3 Launch"
+    launch.mkdir(parents=True)
+    for name in ("Dropbox-Personal", "Box-Box", ".cache-folder"):
+        (cloud / name).mkdir()
+    log = fake_mac["setup"] / "install.log"
+    quoted = str(launch).replace(" ", "\\ ")
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-09-29T11:00:00Z run=20260929T110000Z-4343 start install.sh commit=0123456789ab "
+        f"kind=checkout source=- args=--source-local {quoted}\n",
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    assert "Wingtip" not in text
+    environment = section(text, "Environment")
+    assert "Dropbox-<org-" in environment and "OneDrive-<org-1>" in environment
+    assert "Box-Box" in environment and "Dropbox-Personal" in environment
+    assert re.search(r"Dropbox-<org-\d+>/<folder-\d+>", section(text, "Installer"))
+    check = next(ln for ln in section(text, "Redaction").splitlines() if "Residue check:" in ln)
+    assert "Dropbox" not in check and "Box" not in check, check
+    assert set(re.findall(r"<org-\d+>", text)) == {"<org-1>", "<org-2>"}

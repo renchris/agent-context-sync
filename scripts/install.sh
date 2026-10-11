@@ -161,10 +161,11 @@
 #      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
 #      same headings (machine facts, install.log, this run's doctor output, friction.md; the home path,
-#      login name, full name, OneDrive-<org> and the --source-local folder names redacted); when the report
-#      ends with its issue link (https://github.com/renchris/agent-context-sync/issues/new?template=...), one
-#      line "issue link (review the report first): <link>" follows, the last line before NEXT: (not for
-#      the --report-only of an attempt --log-start stopped, see --report-only)
+#      login name, full name, the organisation after a CloudStorage folder's app name (OneDrive-<org>) and the
+#      --source-local folder names redacted); when the report ends with its issue link
+#      (https://github.com/renchris/agent-context-sync/issues/new?template=...), one line "issue link (review
+#      the report first): <link>" follows, the last line before NEXT: (not for the --report-only of an
+#      attempt --log-start stopped, see --report-only)
 # and finally one line starting "NEXT:" with the single next step and, in brackets, the report path. A run
 # that ends with a folder to sync and nothing failed ends on the loop's NEXT (KISS K02): install.sh runs
 # `agentsync status` once more with its NEXT line on, prints none of its output and lifts its first "NEXT:"
@@ -917,14 +918,20 @@ redaction_pairs() {
 	fi
 	add_pair "$HOME" "~"
 	if [ -d "$cs" ]; then
+		# The organisation, team or account after the app's name ("<app>-<domain>", as setup_report._org_of
+		# reads it): not a bare app name, Personal, Business or Work, nor a name repeating the app's (Box-Box).
+		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern.
 		for e in "$cs"/*; do
 			[ -e "$e" ] || continue
 			e="$(basename "$e")"
 			case "$e" in
-			OneDrive-Personal | OneDrive-Personal\ *) continue ;;
-			OneDrive-*) org="${e#OneDrive-}" ;;
-			SharedLibraries-*) org="${e#SharedLibraries-}" ;;
+			*-*) ;;
 			*) continue ;;
+			esac
+			org="${e#*-}"
+			org="${org#SharedLibraries-}"
+			case "$org" in
+			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
 			esac
 			n=$((n + 1))
 			add_pair "$org" "<org-$n>"
@@ -1198,10 +1205,11 @@ fallback_body() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
-	say "(<name>), the organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>), proxy hosts with a"
-	say "dot and the system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage that"
-	say "--source-local, sources.toml or install.log name (<folder-N>). Read the report before sending it: anything"
-	say "else confidential is yours to remove."
+	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
+	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts with a"
+	say "dot and the system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage"
+	say "that --source-local, sources.toml or install.log name (<folder-N>). Read the report before sending it:"
+	say "anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
 friction_text() {

@@ -45,8 +45,10 @@ differ from what this build would write, by class (:func:`argument_roles`), and 
 and the ones with no end line.
 
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
-path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation from
-``~/Library/CloudStorage/OneDrive-<org>`` and ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
+path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation, team or account
+after the app's name in a ``~/Library/CloudStorage`` folder (``OneDrive-<org>``,
+``OneDrive-SharedLibraries-<org>``, ``Dropbox-<team>``; not ``Personal``, ``Business`` or ``Work``, nor a name
+repeating the app's, such as ``Box-Box``), and in ``OneDrive - <org>`` (``<org-N>``), SharePoint library names
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
 folder listing shows, configured or not; kept when only listed: a few generic names such as ``Documents``,
 and a name made only of coding-agent product words such as ``Copilot``, so the agent's own name stays
@@ -1726,6 +1728,9 @@ class _Run:
         self.friction_path = default_friction_path()
         self.friction_error: str | None = None
         self.listing_note: str | None = None
+        # The app names before a registered CloudStorage organisation ("Dropbox" of "Dropbox-<org-2>"): not
+        # names, so the residue check skips them.
+        self.provider_heads: frozenset[str] = frozenset()
         self.install_log = default_setup_log()
         self.install_runs: list[InstallRun] = []
         with contextlib.suppress(OSError):
@@ -1836,12 +1841,27 @@ def _cloud_parts(path: Path) -> tuple[str, list[str]] | None:
     return None
 
 
+_GENERIC_DOMAINS = frozenset({"personal", "business", "work"})
+"""Domain names after a CloudStorage folder's app name that name no organisation (``OneDrive-Personal``)."""
+
+
 def _org_of(provider: str) -> str | None:
-    for prefix in ("OneDrive-SharedLibraries-", "OneDrive-"):
-        if provider.startswith(prefix):
-            org = provider[len(prefix) :]
-            return None if org in ("", "Personal") else org
-    return None
+    """The organisation, team or account a ~/Library/CloudStorage folder names after its app's name. macOS
+    names the folder ``<app>-<domain>``: ``OneDrive-Contoso``, ``OneDrive-SharedLibraries-Contoso``,
+    ``Dropbox-Contoso Marketing``. None for a bare app name (``Dropbox``), a generic domain (``Personal``,
+    ``Business``, ``Work``), one that repeats the app's name (``Box-Box``), and an email address the email
+    pattern matches whole (it turns the whole folder name into ``<email-N>``); any other part with ``@`` is an
+    organisation."""
+    app, _, org = provider.partition("-")
+    org = org.removeprefix("SharedLibraries-")
+    if (
+        not org
+        or re.fullmatch(_EMAIL_RE, org)
+        or org.casefold() in _GENERIC_DOMAINS
+        or org.casefold() == app.casefold()
+    ):
+        return None
+    return org
 
 
 _GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNORECASE | re.MULTILINE)
@@ -2000,8 +2020,19 @@ def _build_redactor(r: _Run) -> Redactor:
         for h in _computer_names(r.run):
             red.add("host", h, ignore_case=True)
     orgs: list[str] = []
+    heads: set[str] = set()  # the app names before a registered organisation ("Dropbox" of "Dropbox-<team>")
     with contextlib.suppress(OSError):
-        orgs += [o for o in (_org_of(p.name) for p in sorted(cloud_storage_root().iterdir())) if o]
+        # OneDrive's first, so <org-1> stays the OneDrive organisation; hidden entries are skipped, as the
+        # Environment line skips them.
+        names = sorted(
+            (p.name for p in cloud_storage_root().iterdir() if not p.name.startswith(".")),
+            key=lambda n: (not n.startswith("OneDrive-"), n),
+        )
+        for provider in names:
+            org = _org_of(provider)
+            if org:
+                orgs.append(org)
+                heads.add(provider.partition("-")[0])
     cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
     project_paths: list[Path] = []  # configured folders outside CloudStorage and outside agentsync's own
     if r.config is not None:
@@ -2020,6 +2051,7 @@ def _build_redactor(r: _Run) -> Redactor:
                 org = _org_of(parts[0])
                 if org:
                     orgs.append(org)
+                    heads.add(parts[0].partition("-")[0])
             elif src.path is not None and not any(expand(src.path).is_relative_to(o) for o in own):
                 project_paths.append(expand(src.path))
         tenant = r.config.graph.tenant
@@ -2032,6 +2064,7 @@ def _build_redactor(r: _Run) -> Redactor:
                     orgs.append(host.split(".", 1)[0])
                 name = site_path.rstrip("/").rsplit("/", 1)[-1]
                 red.add("library", unquote(name), fuzzy=True)
+    r.provider_heads = frozenset(heads)
     for org in orgs:
         red.add("org", org, fuzzy=True)
     for _sid, provider, comps in cloud_sources:
@@ -5237,30 +5270,32 @@ def _section(title: str, fn: Callable[[], list[str]]) -> list[str]:
     return ["", f"## {title}", "", *body]
 
 
-def residue(text: str) -> list[str]:
+def residue(text: str, *, ignore: frozenset[str] = frozenset()) -> list[str]:
     """Capitalised words right next to a name, organisation, library, folder or source placeholder in
     ``text`` (redacted text), and words of any case joined to one by ``-`` or ``_``: what redaction may have
     missed (a project's second word, an abbreviation in front of a folder's name). A login's home
     ``/Users/<user>/`` is a path prefix like ``~/`` (the folder after it is a path component, not a name's
     second word), and so is the home with :data:`_GENERIC_HOME_DIRS` below it (``~/Development/<folder-1>``
     is no hit, ``<folder-1> Development`` is one). The fixed macOS path components (Users, Library,
-    Application Support, ...) are no hit."""
+    Application Support, ...) are no hit, and neither is a word in ``ignore`` (a CloudStorage folder's app
+    name before its ``<org-N>``)."""
     found: list[str] = []
     for m in _RESIDUE_RE.finditer(_HOME_CONTAINER_RE.sub("~/", _USER_HOME_RE.sub("~/", text))):
         word = m.group(1) or m.group(2) or m.group(3) or m.group(4)
-        if word and word not in _RESIDUE_IGNORED and word not in _GENERIC_FOLDERS and word not in found:
+        known = word in _RESIDUE_IGNORED or word in _GENERIC_FOLDERS or word in ignore
+        if word and not known and word not in found:
             found.append(word)
     return found
 
 
-def residue_by_section(report: str) -> list[tuple[str, list[str]]]:
+def residue_by_section(report: str, *, ignore: frozenset[str] = frozenset()) -> list[tuple[str, list[str]]]:
     """:func:`residue` of each ``## `` section of a redacted report (the text before the first heading as
-    "top"), in report order, only the sections with a hit."""
+    "top"), in report order, only the sections with a hit; ``ignore`` as for :func:`residue`."""
     out: list[tuple[str, list[str]]] = []
     title, body = "top", list[str]()
     for line in [*report.splitlines(), "## "]:
         if line.startswith("## "):
-            words = residue("\n".join(body))
+            words = residue("\n".join(body), ignore=ignore)
             if words:
                 out.append((title, words))
             title, body = line[3:].strip(), []
@@ -5486,7 +5521,7 @@ def build_report(
         link = _issue_link(r, red)
     except Exception:  # the link is a convenience: the bare form always works
         link = ISSUE_URL
-    tail = [*_redaction_section(red, residue_by_section(main)), "", link]
+    tail = [*_redaction_section(red, residue_by_section(main, ignore=r.provider_heads)), "", link]
     return main + "\n" + "\n".join(tail) + "\n", red
 
 
