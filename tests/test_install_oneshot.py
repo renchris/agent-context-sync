@@ -1108,6 +1108,54 @@ def test_bring_back_does_not_count_the_report_of_a_stopped_copy(env: dict[str, s
     assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
 
 
+STEP1_STOP = "2026-10-06T17:16:11Z | step 1 | error | xcode-select -p printed no path (exit 2) | -\n"
+"""What setup prompt v11 has an agent log at step 1's Xcode stop, 30 minutes after ``ENDED``: a step 1 error
+of a session whose step 1 stopped before ``--log-start`` wrote a header (``parse_friction``'s header-less
+attempt)."""
+
+
+def test_bring_back_does_not_repeat_local_work_after_a_step_1_stop_logged_with_no_header(
+    env: dict[str, str],
+) -> None:
+    """B13 H1: since v11 step 1's Xcode and git stops log the failed command as a step 1 error before the
+    report. That line, more than NEW_SESSION_GAP after the last end line, is another session, as an
+    ``Attempt:`` line would be: the attempt before it reached its report, so section 3 does not send its patch
+    again (the shell now reads the attempt boundary the report's Summary reads). No end line is added for a
+    header-less attempt, and work the stopping session kept is still sent."""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\n{ENDED} | end | finished\n{STEP1_STOP}",
+        encoding="utf-8",
+    )
+    written = "2026-10-06T16:42:39Z"
+    patch = _keep_patch(env, written, "+old = 1\n", "0001-old.patch")
+    assert _local_work(env) == _not_repeated(patch, written)
+    assert friction_path(env).read_text(encoding="utf-8").endswith(STEP1_STOP), "no end line for it"
+    _keep_patch(env, "2026-10-06T17:15:00Z", "+new = 2\n", "0002-new.patch")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+new = 2\n~~~~~~~~~~\n" + _not_repeated(patch, written)
+
+
+@pytest.mark.parametrize(
+    ("logged", "sent"), [("2026-10-06T16:56:11Z", True), ("2026-10-06T16:56:12Z", False)]
+)
+def test_a_step_1_error_within_ten_minutes_of_the_end_line_is_the_same_attempts(
+    env: dict[str, str], logged: str, sent: bool
+) -> None:
+    """The boundary is parse_friction's: a step 1 error at most NEW_SESSION_GAP (600 s) after the end line is
+    a late line of that attempt, whose own end line never counts, so its patch is sent as before; one second
+    later it is another session, and the patch is not repeated."""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: x\n{ENDED} | end | finished\n"
+        f"{logged} | step 1 | error | git pull --ff-only exited 1 | -\n",
+        encoding="utf-8",
+    )
+    written = "2026-10-06T16:42:39Z"
+    patch = _keep_patch(env, written)
+    expected = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n" if sent else _not_repeated(patch, written)
+    assert _local_work(env) == expected
+
+
 def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:
     """The rule's known limit, held as documented: this Mac cannot know what was copied back. A session
     keeps work and reports, nobody copies that file, and a second session starts. Its bring-back file
@@ -2942,6 +2990,27 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     stopped = install_sh(env, "--report-only")
     assert last_line(stopped).startswith(STOPPED_NEXT) and invites(stopped) == [], stopped.stdout
     assert back.read_bytes() == kept
+
+
+def test_a_stopped_copy_is_read_as_stopped_whatever_bytes_a_late_line_holds(env: dict[str, str]) -> None:
+    """B13 H1 (skeptic C3): macOS awk in a UTF-8 locale aborts on a line that is not UTF-8 ("towc: multibyte
+    conversion failure"), and the friction readers swallowed that, so a stopped copy with one such late line
+    read as not stopped: its report wrote bring-back.md and the normal NEXT. They run under LC_ALL=C. The
+    fixture's own locale is C, which is why no test saw it: this one runs in en_US.UTF-8."""
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    with friction_path(env).open("ab") as f:
+        f.write(b"2026-10-06T16:50:00Z | step 1 | deviation | ran it again \xff | -\n")
+    cp = subprocess.run(
+        [BASH32, str(INSTALL_SH), "--report-only"],
+        capture_output=True,
+        check=False,
+        timeout=120,
+        env={**env, "LC_ALL": "en_US.UTF-8"},
+        stdin=subprocess.DEVNULL,
+    )
+    out = cp.stdout.decode("utf-8", errors="replace")
+    assert cp.returncode == 0 and out.splitlines()[-1].startswith(STOPPED_NEXT), out
+    assert not (report_path(env).parent / "bring-back.md").exists()
 
 
 def test_a_session_after_a_stopped_copy_that_wrote_no_report_is_not_called_out_of_date(

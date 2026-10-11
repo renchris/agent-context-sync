@@ -410,21 +410,25 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 # whose step 1 stopped before --log-start, and that one is not a stopped copy. Any other line after the end
 # line is a late line of the stopped session (an old copy logs the failed command, then writes its report).
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
-friction_attempt_stopped() {
-	local f
-	f="$(friction_file)"
-	[ -f "$f" ] || return 1
-	awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" '
+# awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
+# a step 1 error line, which after an end line may open a header-less attempt (parse_friction)
+FRICTION_AWK='
 		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
 			y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0
 			if (m <= 2) { y--; m += 12 }
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
 		}
+'
+STEP1_ERROR_RE='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step 1 [|] error [|]'
+friction_attempt_stopped() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 1
+	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		/^Attempt:/ { stopped = 0; ended = ""; next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
-		ended != "" && /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z \| step 1 \| error \|/ &&
-			secs($0) - secs(ended) > gap { stopped = 0; ended = ""; next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { stopped = 0; ended = ""; next }
 		index($0, mark) { stopped = 1 }
 		END { exit !stopped }' "$f" 2>/dev/null
 }
@@ -434,7 +438,7 @@ friction_close_attempt() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
-	awk '/^Attempt:/ { open = 1; ended = 0; next } /\| end \| finished[[:space:]]*$/ { ended = 1 }
+	LC_ALL=C awk '/^Attempt:/ { open = 1; ended = 0; next } /\| end \| finished[[:space:]]*$/ { ended = 1 }
 		END { exit !(open && !ended) }' "$f" || return 0
 	if friction_append "$(date -u +%Y-%m-%dT%H:%M:%SZ) | end | finished"$'\n'; then
 		printf 'friction log: attempt finished in %s\n' "$f"
@@ -1115,16 +1119,19 @@ write_fallback_report() { # RC WHY
 	mv -f "$tmp" "$REPORT_PATH"
 }
 # When an earlier attempt reached its report, for section 3 of the bring-back file: the time of the last
-# "<UTC> | end | finished" line that a later "Attempt:" line follows, and that does not close an attempt
-# --log-start stopped (a copy of the prompt that is not this installer's: its report is not brought back).
+# "<UTC> | end | finished" line that a later "Attempt:" line follows, or a step 1 error line dated more than
+# NEW_SESSION_GAP after it (a session whose step 1 stopped before --log-start: parse_friction's header-less
+# attempt), and that does not close an attempt --log-start stopped (a copy of the prompt that is not this
+# installer's: its report is not brought back).
 # Prints nothing when there is none, or no friction log. The current attempt's own end line never counts,
 # so a second --report-only in one attempt writes the same section 3.
 friction_earlier_end() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
-	awk -v mark="| step 1 | error | $PROMPT_STOPPED " '
+	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		/^Attempt:/ { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
+		e != "" && $0 ~ s1 && secs($0) - secs(e) > gap { if (!stopped) last = e; e = ""; stopped = 0; next }
 		index($0, mark) { stopped = 1 }
 		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z \| end \| finished[[:space:]]*$/ { e = substr($0, 1, 20) }
 		END { print last }' "$f" 2>/dev/null || true
