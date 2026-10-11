@@ -18,14 +18,26 @@ import threading
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agentsync import arm_local, cli, convert, cycle, governance, loop, materialise, net, policy, setup_report
+from agentsync import (
+    arm_local,
+    cli,
+    convert,
+    cycle,
+    governance,
+    it_request,
+    loop,
+    materialise,
+    net,
+    policy,
+    setup_report,
+)
 from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, media, ocr, pdf, speech
 from agentsync.convert.cache import ConverterCache
@@ -734,7 +746,9 @@ def test_run_type_is_computed(fake_mac: dict[str, Path], monkeypatch: pytest.Mon
     assert all(is_temporary(root) and is_temporary(f"{root}/x") for root in TEMPORARY_ROOTS)
 
 
-def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str, Path]) -> None:
+def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
     write_install_log(fake_mac)
     write_friction(fake_mac)
 
@@ -784,13 +798,57 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str,
         "Owners: `<requester-upn>` + `<it-owner>`; reply with `<tenant-id>` and `<app-client-id>`\n"
     )
     draft.write_text(draft_text, encoding="utf-8")
+    noon = datetime(2026, 10, 1, 12, tzinfo=UTC).timestamp()  # noon: the same date in any time zone
+    os.utime(draft, (noon, noon))
     text, summary = summary_of(fake_mac, doctor=doctor, status=status)
     assert (
         f"- IT draft: {setup_report.IT_DRAFT} exists; 4 field(s) left for you (<it-contact>, "
         "<requester-upn>, <team>, <wanted-by>); 3 left for IT" in summary
     )
+    # no date = in its Filled line: the file's date; and its email is not what it-request writes (N29)
+    command = f"agentsync it-request --out {setup_report.IT_DRAFT}"
+    assert f"3 left for IT; file last changed 2026-10-01; differs from what `{command}` writes now" in summary
     for raw in RAW:
         assert raw not in text, raw
+    # what it-request writes: dated by its Filled line, and no difference
+    facts = it_request.MacFacts(
+        requester_name=FULL_NAME, serial=SERIAL, arch="arm64", today=date(2026, 9, 30)
+    )
+    real = it_request.render(it_request.load_template(), facts).text
+    draft.write_text(real, encoding="utf-8")
+    text, summary = summary_of(fake_mac, doctor=doctor, status=status)
+    assert "3 left for IT; written 2026-09-30\n" in summary and "differs from" not in summary
+    for raw in RAW:
+        assert raw not in text, raw
+    # a page that changed since: the first line of the draft that is not what it-request writes now
+    load_template = it_request.load_template
+    page = load_template()
+    newer = it_request.Template(
+        page.page.replace("**Written:** `<date>`.", "**Written:** `<date>` by `<company>`.").replace(
+            "| `<version>`, `<shared-mailbox-upn>` |", "| `<company>`, `<version>`, `<shared-mailbox-upn>` |"
+        ),
+        page.entra,
+        "newer",
+    )
+    assert newer.page.count("`<company>`") == 2, "the page's Written line or its leave-them row moved"
+    monkeypatch.setattr(it_request, "load_template", lambda: newer)
+    n = next(i for i, ln in enumerate(real.split("\n"), 1) if ln.startswith("**Written:**"))
+    _text, summary = summary_of(fake_mac, doctor=doctor, status=status)
+    assert (
+        f"3 left for IT; written 2026-09-30; differs from what `{command}` writes now from line {n} (an "
+        "earlier agentsync wrote it, or it was edited there): unless that line is your own edit, run that "
+        "command again before sending it; it keeps this copy as a .bak\n" in summary
+    )
+
+    def broken() -> it_request.Template:
+        raise ValueError("Contoso")
+
+    # a compare that fails costs its own clause, not the Summary
+    monkeypatch.setattr(it_request, "load_template", broken)
+    text, summary = summary_of(fake_mac, doctor=doctor, status=status)
+    assert "; not compared with what agentsync it-request writes now (ValueError)\n" in summary
+    assert "- first sync: " in summary and "Contoso" not in text
+    monkeypatch.setattr(it_request, "load_template", load_template)
     draft.write_text(draft_text.replace("`<team>`", "Finance").replace("`<wanted-by>`", "Friday"))
     _text, summary = summary_of(fake_mac, doctor=doctor, status=status)
     assert "exists; 2 field(s) left for you (<it-contact>, <requester-upn>); 3 left for IT" in summary

@@ -4952,7 +4952,8 @@ the Allow clicks marked "(expected)", redacted before they are shortened. The ru
 "simulated launchd" when the attempt's last install.sh run says `launchd=simulated`, else "sandbox" when HOME (or
 what it resolves to) is under one of `SANDBOX_HOMES` (/tmp, /private/tmp, /var/folders, /private/var/folders),
 else "real". **Amended (2026-10-11, §16.40 "The first-sync line says `sync:` after a config that already existed"):** the first-sync line is labelled `sync`
-after a config that already existed.
+after a config that already existed. **Amended (2026-10-11, §16.40 "The IT draft line dates the draft and names where it differs"):** the IT draft line
+then gives the draft's date and the first line where its email is not what `agentsync it-request` writes now.
 
 v5 revision, redaction (J6, J21). Folder, library, organisation and full-name values are registered `fuzzy`: they
 also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
@@ -5507,7 +5508,9 @@ def write_draft(path: Path, text: str, *, now: datetime | None = None) -> Path |
 ```
 
 The module `agentsync.it_request` (`src/agentsync/it_request.py`) is owned by the integrator and imports nothing
-from `agentsync.cli` or `agentsync.setup_report`.
+from `agentsync.cli` or `agentsync.setup_report`. **Amended (2026-10-11, §16.40 "The IT draft line dates the draft and names where it differs"):** `render` takes a keyword-only
+`fillers` (default `FILLERS`), and `first_difference(template, text)` is new; `setup_report` imports
+`it_request` (lazily), never the reverse.
 
 ### 16.16 `curate-queue` and `install-skill`: the curation loop for agents (2026-10-01, integrator)
 
@@ -10873,6 +10876,40 @@ repo:` line gives the folder. The live wait `agentsync status` prints (`loop.py`
 `test_a_draft_baseline_shows_its_wait_on_the_loop_line`,
 `test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces` and
 `test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
+
+**The IT draft line dates the draft and names where it differs** (B13 N29; amends §16.14's Summary clause on the
+IT draft and §16.15's `agentsync.it_request` interface). The line read `- IT draft: <path> exists; N field(s) left for
+you (...); M left for IT` whatever wrote the draft, and a draft from an earlier agentsync told IT a User-Agent
+agentsync no longer sends. After "M left for IT" it now adds, in this order:
+- `; written YYYY-MM-DD`: the last `date = YYYY-MM-DD` on the draft's `Filled from this Mac:` line (above its
+  first `---`; it-request's `<date>` filler). With none, `; file last changed YYYY-MM-DD`, the file's mtime as a
+  UTC date; nothing if that cannot be read.
+- `; differs from what `agentsync it-request --out ~/agent-context/it-request-draft.md` writes now from line N (an
+  earlier agentsync wrote it, or it was edited there): unless that line is your own edit, run that command again
+  before sending it; it keeps this copy as a .bak` when `first_difference` gives a line (`write_draft` keeps a
+  different earlier draft as `<path>.<stamp>.bak`, so the advice loses nothing).
+- `; not compared with what agentsync it-request writes now (<exception type>)` when loading the page or the
+  compare raises anything: the type only, and the rest of the Summary stands (as `_loop_line`'s catch).
+
+```python
+# agentsync.it_request
+def render(template: Template, facts: MacFacts, *,
+           fillers: Mapping[str, Callable[[MacFacts], str | None]] = FILLERS) -> Draft: ...
+def first_difference(template: Template, text: str) -> int | None: ...  # raises TemplateError
+```
+
+`first_difference` compares the email below the draft's first `---` line with `render(template, MacFacts(),
+fillers={})`, line by line, line endings and trailing blanks ignored; it returns the first differing file line,
+the first line past the shorter when the counts differ, 1 when the draft has no `---` line, else None. A
+placeholder the page's table does not mark "leave them" matches any value on its line (in or out of its code
+span): the person, the command or IT fills it, and the table lets the person change a command's value
+(`<requester-name>`). A line with such placeholders matches when its literal pieces appear in order, the first at
+the start and the last at the end, each middle piece at its leftmost place: linear, where a regex of them
+backtracks on a long typed line. The limit: text an older draft has beyond the current page, on a line with such
+a placeholder, is taken as that placeholder's value and not reported; text the page has and the draft lacks is
+always found. Only a date, a line number and fixed words reach the report, never the draft's text. No command,
+flag or key. Tests: `test_first_difference_matches_a_filled_draft_and_names_a_changed_line` and
+`test_first_sync_doctor_warns_and_it_draft_in_the_summary`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

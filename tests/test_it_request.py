@@ -265,3 +265,44 @@ def test_cli_out_defaults_to_the_default_draft(home: Path, capsys: pytest.Captur
     assert Path(it_request.DEFAULT_OUT).expanduser() == out
     assert stat.S_IMODE(out.stat().st_mode) == 0o600
     assert f"wrote {out} " in capsys.readouterr().out
+
+
+def _newer_page() -> Template:
+    """Today's page as a later one might be: the Written line names the company too."""
+    page = PAGE.read_text(encoding="utf-8")
+    newer = page.replace("**Written:** `<date>`.", "**Written:** `<date>` by `<company>`.").replace(
+        "| `<version>`, `<shared-mailbox-upn>` |", "| `<company>`, `<version>`, `<shared-mailbox-upn>` |"
+    )
+    assert newer.count("`<company>`") == 2, "the page's Written line or its leave-them row moved"
+    return Template(newer, ENTRA.read_text(encoding="utf-8"), "newer")
+
+
+def test_first_difference_matches_a_filled_draft_and_names_a_changed_line() -> None:
+    """setup-report says where a draft on disk stops being what it-request writes now (N29): a filled field
+    is no difference, a sentence of the page that changed is."""
+    tpl = template()
+    facts = MacFacts(
+        requester_name="Doe, Pat (Contoso)", serial="C02XY0000000", arch="arm64", orgs=("Contoso",)
+    )
+    draft = it_request.render(tpl, facts).text
+    assert it_request.first_difference(tpl, draft) is None
+    filled = (
+        draft.replace("`<team>`", "Finance")
+        .replace("`<wanted-by>`", "Friday")
+        .replace("<it-contact>", "IT Desk <it@contoso.example>")
+    )
+    assert filled != draft and it_request.first_difference(tpl, filled) is None
+    assert it_request.first_difference(tpl, draft.replace("Doe, Pat (Contoso)", "Roe, Sam")) is None
+    lines = draft.split("\n")
+    # a page that gained words on a line: the draft's line of it
+    written = next(i for i, ln in enumerate(lines, 1) if ln.startswith("**Written:**"))
+    assert it_request.first_difference(_newer_page(), draft) == written
+    # a draft that lost its last line: that line's number
+    body = draft.rstrip("\n").split("\n")
+    assert it_request.first_difference(tpl, "\n".join(body[:-1]) + "\n") == len(body)
+    assert it_request.first_difference(tpl, "no line of dashes") == 1
+    assert it_request.first_difference(tpl, "\r\n".join(f"{ln}  " for ln in lines)) is None
+    # a matcher that backtracks would take hours on this line: each field is found at its leftmost place
+    long = next(i for i, ln in enumerate(lines) if ln.startswith("**Requester:**"))
+    lines[long] = "**Requester:** " + ", " * 20000 + ". **Device:** " * 3 + " (" * 20000 + "X"
+    assert it_request.first_difference(tpl, "\n".join(lines)) == long + 1

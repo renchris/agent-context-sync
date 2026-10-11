@@ -1466,6 +1466,11 @@ def loop_next_text(line: str) -> str:
     return _NEXT_PATH_RE.sub(r"\1", line.strip())
 
 
+_IT_DRAFT_DATE_RE = re.compile(r"\bdate = (\d{4}-\d{2}-\d{2})\b")
+"""The ``date = YYYY-MM-DD`` an IT request draft's ``Filled from this Mac:`` line gives (``it_request``'s
+``<date>`` filler)."""
+
+
 def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
     """(person fields, IT fields) still unfilled in an IT request draft: the placeholders of
     :data:`IT_PERSON_FIELDS` and :data:`IT_ADMIN_FIELDS` found in the email (below the draft's first ``---``
@@ -5097,19 +5102,43 @@ def _reread_since(r: _Run, run: InstallRun) -> list[str]:
 
 
 def _it_draft_line(step: int = REPORT_STEP) -> str:
-    """The IT draft (written by prompt ``step``: v6's step 3, v5's step 4): whether it exists and which of its
-    fields are still open."""
+    """The IT draft (written by prompt ``step``: v6's step 3, v5's step 4): whether it exists, which of its
+    fields are still open, when it was written (the ``date =`` its ``Filled from this Mac:`` line gives, else
+    the file's last change, UTC) and the first line where its email stops being what ``agentsync it-request``
+    writes now (:func:`agentsync.it_request.first_difference`): an earlier agentsync wrote it, or it was
+    edited there. Only a date, a line number and fixed words reach the report, never the draft's text."""
     path = expand(IT_DRAFT)
+    command = f"agentsync it-request --out {IT_DRAFT}"
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
-        command = f"agentsync it-request --out {IT_DRAFT}"
         return f"- IT draft: {IT_DRAFT} not written (prompt step {step}: `{command}`)"
     except OSError as exc:
         return f"- IT draft: {IT_DRAFT} cannot be read: {type(exc).__name__}: {exc.strerror or exc}"
     person, admin = it_draft_fields(text)
     mine = f"{len(person)} field(s) left for you" + (f" ({', '.join(person)})" if person else "")
-    return f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
+    line = f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
+    head = re.split(r"^---[ \t]*$", text, maxsplit=1, flags=re.MULTILINE)[0]
+    filled = [ln for ln in head.splitlines() if ln.startswith("Filled from this Mac:")]
+    dates = _IT_DRAFT_DATE_RE.findall(filled[0]) if filled else []
+    if dates:
+        line += f"; written {dates[-1]}"
+    else:
+        with contextlib.suppress(OSError):
+            line += f"; file last changed {datetime.fromtimestamp(path.stat().st_mtime, UTC):%Y-%m-%d}"
+    try:
+        from agentsync import it_request  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        n = it_request.first_difference(it_request.load_template(), text)
+    except Exception as exc:  # one clause: the rest of the Summary stands (as _loop_line's catch)
+        return line + f"; not compared with what agentsync it-request writes now ({type(exc).__name__})"
+    if n is not None:
+        line += (
+            f"; differs from what `{command}` writes now from line {n} (an earlier agentsync wrote it, or it "
+            "was edited there): unless that line is your own edit, run that command again before sending it; "
+            "it keeps this copy as a .bak"
+        )
+    return line
 
 
 _WAIT_BELOW = "(WAITING ON YOU below)"

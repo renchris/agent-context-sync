@@ -31,7 +31,7 @@ import re
 import subprocess
 import tempfile
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from importlib import metadata, resources
@@ -353,8 +353,14 @@ def _drop_operator_sections(body: str) -> str:
     return "".join(p for p in parts if not re.match(r"## .*\(operator\)\s*$", p.split("\n", 1)[0]))
 
 
-def render(template: Template, facts: MacFacts) -> Draft:
-    """The email draft for this Mac (see the module docstring)."""
+def render(
+    template: Template,
+    facts: MacFacts,
+    *,
+    fillers: Mapping[str, Callable[[MacFacts], str | None]] = FILLERS,
+) -> Draft:
+    """The email draft for this Mac (see the module docstring). ``fillers`` are the command rows' fillers
+    (:data:`FILLERS`); :func:`first_difference` passes none, to keep every placeholder in the text."""
     table = placeholder_table(template.page)
     if "\n---\n" not in template.page:
         raise TemplateError(f"{PAGE_REL}: no '---' line between the placeholder table and the request")
@@ -368,7 +374,7 @@ def render(template: Template, facts: MacFacts) -> Draft:
 
     filled: dict[str, str] = {}
     for p in table:
-        if p.by_command and p.name in FILLERS and (value := FILLERS[p.name](facts)):
+        if p.by_command and p.name in fillers and (value := fillers[p.name](facts)):
             filled[p.name] = value
     entra = _fill(template.entra, filled, escape=lambda v: json.dumps(v)[1:-1])
     body = _JSON_FENCE_RE.sub(lambda _m: f"```json\n{entra.rstrip(chr(10))}\n```", body, count=1)
@@ -404,6 +410,67 @@ def render(template: Template, facts: MacFacts) -> Draft:
         "",
     ]
     return Draft("\n".join(head) + "\n" + body.rstrip("\n") + "\n", you_fill, it_fills, filled, notes)
+
+
+_DASHES_RE = re.compile(r"^---[ \t]*$", flags=re.MULTILINE)
+
+
+def _email_lines(text: str) -> tuple[int, list[str]] | None:
+    """The file line number of ``text``'s first ``---`` line and the lines from there on (index 0 is the rest
+    of that line), line endings and trailing blanks ignored; None when there is no ``---`` line."""
+    parts = _DASHES_RE.split(text.replace("\r\n", "\n"), maxsplit=1)
+    if len(parts) < 2:
+        return None
+    return parts[0].count("\n") + 1, [line.rstrip() for line in parts[1].rstrip().split("\n")]
+
+
+def _fits(pieces: list[str], line: str) -> bool:
+    """``line`` is ``pieces`` in order with any text between them: the first at the start, the last at the
+    end. Each middle piece is taken at its leftmost place, which is complete for literals separated by
+    wildcards (as for a glob's ``*``) and linear, where a regex of them backtracks."""
+    first, *middle, last = pieces
+    if not line.startswith(first):
+        return False
+    pos = len(first)
+    for piece in middle:
+        at = line.find(piece, pos)
+        if at < 0:
+            return False
+        pos = at + len(piece)
+    return len(line) - len(last) >= pos and line.endswith(last)
+
+
+def first_difference(template: Template, text: str) -> int | None:
+    """The 1-based line of ``text`` (a draft on disk) where its email (below its first ``---`` line) stops
+    being what :func:`render` writes from ``template``, else None; 1 when ``text`` has no ``---`` line.
+
+    A placeholder the table does not mark "leave them" matches any value on its line (the person, the command
+    or IT fills it, and the person may change a command's value), so a draft whose fields were filled still
+    matches; a reworded sentence, an added or a dropped line does not. Line endings and trailing blanks are
+    ignored. The limit of that rule: text an older draft has beyond the current page, on a line with such a
+    placeholder, is taken as that placeholder's value and not reported. Raises :class:`TemplateError` as
+    :func:`render` does."""
+    got = _email_lines(text)
+    if got is None:
+        return 1
+    skeleton = _email_lines(render(template, MacFacts(), fillers={}).text)
+    if skeleton is None:  # render always writes a --- line
+        raise TemplateError("the rendered draft has no '---' line")
+    offset, lines = got
+    want = skeleton[1]
+    wild = sorted(
+        (p.name for p in placeholder_table(template.page) if not p.source.startswith(LEAVE)),
+        key=len,
+        reverse=True,
+    )
+    tok = re.compile(rf"`?(?:{'|'.join(map(re.escape, wild))})`?") if wild else None
+    for i, (g, w) in enumerate(zip(lines, want, strict=False)):
+        pieces = tok.split(w) if tok is not None else [w]
+        if not (_fits(pieces, g) if len(pieces) > 1 else g == w):
+            return offset + i
+    if len(lines) != len(want):
+        return offset + min(len(lines), len(want))
+    return None
 
 
 # ---------------------------------------------------------------------------------------------------------
