@@ -388,6 +388,28 @@ these words is not registered, in any case: registered, "Copilot" would turn the
 Copilot CLI" into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). A
 configured folder or source id with such a name is registered like any other (several of the words are also
 first names and project codenames), and :func:`residue` still lists the word."""
+_SHORT_WORDS = frozenset(
+    {
+        *("am", "an", "as", "at", "be", "by", "do", "go", "he", "hi", "if", "in", "is", "it", "me", "my"),
+        *("no", "of", "ok", "on", "or", "so", "to", "up", "us", "we", "cc", "co", "re", "dr", "jr", "mr"),
+        *("ms", "sr"),
+    }
+)
+"""Two-letter words, lower-case, that the report's own lines and an agent's sentences use in any case: a word
+that starts a sentence ("No friction log", "An install.sh run", "Do it", "My Drive"), a title or suffix
+("Ms", "Jr"), a mail prefix ("Re", "Cc"). A two-letter part of the full name that is one of them is not
+registered alone: it would replace those words. It is still redacted inside the joined forms ("Jane Do").
+install.sh's ``short_name`` holds the same list."""
+_SHORT_CAPS = frozenset(
+    {
+        *("ad", "ai", "ca", "ci", "db", "eu", "gb", "hr", "id", "io", "ip", "kb", "mb", "os", "ou", "pc"),
+        *("pm", "pr", "qa", "rc", "tb", "tz", "uk", "ui", "uv", "ux", "vm", "vs", "ii", "iv", "vi"),
+    }
+)
+"""Two-letter abbreviations and numerals, lower-case, that the report and an agent write in upper case only
+("AI", "OS", the doctor line's "subject.OU", a suffix "II"). A two-letter part of the full name that is one of
+them ("Ai", "Ip", "Ou") is registered in its written form, not in its upper-case one. install.sh's
+``short_name`` holds the same list."""
 _GENERIC_IDS = frozenset(
     {
         "agent",
@@ -574,6 +596,13 @@ def _word_pattern(word: str) -> str:
     """A regex for one word of a fuzzy value, or for a whole case-insensitive value, also as ``printf %q``
     writes it (``R&D`` and ``R\\&D``; ``Old Plans/in tray`` and ``Old\\ Plans/in\\ tray``)."""
     return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), word)
+
+
+def _short_word(form: str) -> bool:
+    """Whether a two-letter form is one of the report's own words: any case of a :data:`_SHORT_WORDS` word,
+    the upper case of a :data:`_SHORT_CAPS` one."""
+    low = form.casefold()
+    return low in _SHORT_WORDS or (form.isupper() and low in _SHORT_CAPS)
 
 
 def _agent_words(name: str) -> bool:
@@ -1922,8 +1951,8 @@ def _build_redactor(r: _Run) -> Redactor:
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
         # "Doe, Jane" (macOS keeps the comma): the name without its commas and the first two parts in either
         # order are fuzzy names too ("jane-doe", "Jane Doe", "Doe Jane" for "Doe, Jane, Jr."), and so is the
-        # first part when it has 3 or more characters ("doe"), as before the whole field was kept. Later parts
-        # stay as written (below).
+        # first part when it has 3 or more characters ("doe"), as before the whole field was kept. Later
+        # parts, and a two-letter part as _short_word allows ("Li"), are lone names (below).
         segs = [seg.strip() for seg in full.split(",") if seg.strip(" .")]
         if "," in full and segs:
             forms = [
@@ -1934,9 +1963,17 @@ def _build_redactor(r: _Run) -> Redactor:
             for form in dict.fromkeys(forms):
                 red.add("name", form, fuzzy=True)
         for part in full.replace(",", " ").split():
-            if len(part.strip(".,")) >= 3:  # a lone first or last name: its written and upper-case forms
-                red.add("name", part.strip(".,"))
-                red.add("name", part.strip(".,").upper())
+            word = part.strip(".,")
+            if len(word) >= 3:  # a lone first or last name: its written and upper-case forms
+                lone = [word, word.upper()]
+            elif len(word) == 2 and word.isalpha() and word[0].isupper():
+                # A two-letter name ("Li") too, in no form that is one of the report's own words. A part
+                # written in lower case is a particle ("de", "la"): alone it names no one.
+                lone = [form for form in (word, word.upper()) if not _short_word(form)]
+            else:
+                lone = []
+            for form in lone:
+                red.add("name", form)
         # A bracketed part ("Doe, Jane (Contoso)", "Jane (JJ) Doe") is a company, team or nickname. Without
         # it, and in the order the name is said ("Jane Q. Doe" for "Doe, Jane Q."), the name is a fuzzy value
         # too, and so are its words joined without their dots ("jane-q-doe") and every two of its words in

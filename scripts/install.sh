@@ -835,6 +835,27 @@ report_agentsync() {
 		fi
 	done
 }
+# TOKEN: whether a part of the full name is a two-letter name to register alone: a capital first (a particle
+# such as "de" names no one), no word of setup_report._SHORT_WORDS in any case, and no _SHORT_CAPS abbreviation
+# written in upper case ("Ai" is a name, "AI" is not).
+short_name() {
+	local low
+	case "$1" in
+	[[:upper:]][[:alpha:]]) ;;
+	*) return 1 ;;
+	esac
+	low="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+	case "$low" in
+	am | an | as | at | be | by | do | go | he | hi | if | in | is | it | me | my | no | of | ok | on | or | so | to | up | us | we | cc | co | re | dr | jr | mr | ms | sr) return 1 ;;
+	esac
+	case "$1" in
+	[[:upper:]][[:upper:]])
+		case "$low" in
+		ad | ai | ca | ci | db | eu | gb | hr | id | io | ip | kb | mb | os | ou | pc | pm | pr | qa | rc | tb | tz | uk | ui | uv | ux | vm | vs | ii | iv | vi) return 1 ;;
+		esac
+		;;
+	esac
+}
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
@@ -934,6 +955,8 @@ redaction_pairs() {
 		read -r -a toks <<<"${name//,/ }"
 		for tok in ${toks[@]+"${toks[@]}"}; do
 			add_pair "$tok" "<name>" w
+			# A two-letter part ("Li") too, as setup_report does: add_pair keeps 3 for orgs and folders.
+			if short_name "${tok%.}"; then printf '%s\t%s\tw\n' "${tok%.}" "<name>"; fi
 		done
 		read -r -a toks <<<"$(printf '%s' "$name" | LC_ALL=C sed 'y/,()[]{}/       /')"
 		for tok in ${toks[@]+"${toks[@]}"}; do

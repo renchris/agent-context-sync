@@ -873,6 +873,44 @@ def test_the_shell_report_shows_a_login_that_is_the_name_run_together_as_user(
     assert "<user> ran it; <name> and <name> agreed" in report_path(env).read_text()
 
 
+@pytest.mark.parametrize(
+    ("gecos", "said", "shown"),
+    [
+        ("Li, Jane", "asked Li; Jane Li agreed", "asked <name>; <name> agreed"),
+        ("Do, Jane", "Do it; Jane Do agreed", "Do it; <name> agreed"),
+        ("Tanaka, Ai", "asked Ai; the AI agent agreed", "asked <name>; the AI agent agreed"),
+        ("de la Cruz, Maria", "ran ls -la; Maria de la Cruz agreed", "ran ls -la; <name> agreed"),
+    ],
+    ids=["two-letter", "a-word", "an-abbreviation", "a-particle"],
+)
+def test_the_shell_report_redacts_a_two_letter_name_part(
+    env: dict[str, str], folder: Path, gecos: str, said: str, shown: str
+) -> None:
+    """The shell fallback registers a two-letter part ("Li") alone by setup_report's rule (B13 H20)."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        f'#!/bin/bash\n[ "$1" = -F ] && {{ echo "{gecos}"; exit 0; }}\nexec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(f"Prompt: v4\nF1 | step 3 | clean | 1 | {said} | -\n")
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    text = report_path(env).read_text()
+    assert shown in text, text
+
+
+def test_the_shell_short_name_lists_are_the_reports() -> None:
+    """install.sh's short_name holds setup_report's two lists of two-letter words, word for word."""
+    body = INSTALL_SH.read_text().split("\nshort_name() {\n", 1)[1].split("\n}\n", 1)[0]
+    lists = [
+        set(line.strip().removesuffix(") return 1 ;;").split(" | "))
+        for line in body.splitlines()
+        if line.strip().endswith(") return 1 ;;") and " | " in line
+    ]
+    assert lists == [set(setup_report._SHORT_WORDS), set(setup_report._SHORT_CAPS)]
+
+
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
     cp = install_sh(env, "--source-local", str(tmp_path / "nowhere"))
     assert cp.returncode == 2

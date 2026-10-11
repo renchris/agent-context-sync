@@ -1520,6 +1520,35 @@ def test_a_comma_name_with_a_suffix_keeps_both_orders_and_later_parts_stay_as_wr
     assert "| <name> and <name> said grant access |" in section(text, "Agent friction log")
 
 
+@pytest.mark.parametrize(
+    ("gecos", "said", "shown"),
+    [
+        ("Li, Jane", "asked Li, LI; Jane Li, li-jane agreed", "asked <name>, <name>; <name>, <name> agreed"),
+        ("Jane Li", "asked Li and LI; Jane Li agreed", "asked <name> and <name>; <name> agreed"),
+        ("Do, Jane", "Do it, said Jane Do and DO-JANE", "Do it, said <name> and <name>"),
+        ("Tanaka, Ai", "asked Ai; the AI agent agreed", "asked <name>; the AI agent agreed"),
+        ("de la Cruz, Maria", "ran ls -la; Maria de la Cruz agreed", "ran ls -la; <name> agreed"),
+    ],
+    ids=["comma", "no-comma", "a-word", "an-abbreviation", "a-particle"],
+)
+def test_a_two_letter_name_part_is_a_lone_name_unless_the_report_uses_it(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, gecos: str, said: str, shown: str
+) -> None:
+    """ "Li" of "Li, Jane" or "Jane Li" is <name> alone too, written and upper-case. "Do" is a word the report
+    and the agent use, so it is <name> only inside the joined forms; "Ai" is a name, "AI" is not; a particle
+    written in lower case ("la") is not registered alone (B13 H20)."""
+
+    class Entry:
+        pw_gecos = gecos
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {said} |"))
+    text, _summary = summary_of(fake_mac)
+    assert f"| {shown} |" in section(text, "Agent friction log")
+
+
 MDM_STATUS = (
     "Enrolled via DEP: No\nMDM enrollment: Yes (User Approved)\n"
     "MDM server: https://contosoltd.mdm.example:443/mdm/ServerURL\n"

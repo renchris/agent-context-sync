@@ -4964,6 +4964,11 @@ fallback splits the name at commas as well.
 words in either order, the words joined) are fuzzy names too, so a bracketed tail, a middle part, a suffix or a
 title ("Doe, Jane (Contoso)", "Jane Q. Doe", "Jane Doe, Jr.", "Dr. Jane Doe") does not hide `jane-doe`; the shell
 fallback builds the joined forms as well, and emits the login before the name (K9).
+**Amended (2026-10-11, §16.40):** this replaces the sentence on a first part of 2 characters. Any part of the name,
+comma or not, that has two letters and starts with a capital is a lone name too ("Li" and "LI" for "Li, Jane" or
+"Jane Li"), in no form the report's own lines or an agent's sentences use (`_SHORT_WORDS` in any case, `_SHORT_CAPS`
+in upper case). A part like "Do" is redacted only inside the joined forms, and a lower-case particle ("de", "la")
+is never a lone name.
 The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
 Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
 source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,
@@ -10639,6 +10644,21 @@ full name and its joined forms (`<name>`)". Tests:
 `test_the_shell_report_redacts_the_joined_forms_of_a_display_name` and
 `test_the_shell_report_shows_a_login_that_is_the_name_run_together_as_user`. Not covered: nested brackets ("Jane
 Doe (Contoso (EU))" keeps the outer part in the core; first plus last is still registered).
+
+**A two-letter name part is a lone name too** (B13 H20; replaces the v5 revision's sentence on a first part of 2
+characters). Any part of the name, comma or not, that has two letters and starts with a capital is also a lone
+name, in its written and upper-case forms ("Li" and "LI" for "Li, Jane" or "Jane Li"). No form that the report's
+own lines or an agent's sentences use is registered: any case of a sentence-opening word, title, suffix or mail
+prefix (`_SHORT_WORDS`: "No", "An", "Do", "He", "Jr", "Re"), and the upper case of an abbreviation or numeral
+(`_SHORT_CAPS`: "AI", "OU", "II"). So "Ai" is a lone name and "AI" is not. A part like "Do" is redacted only
+inside the joined forms. A part written in lower case ("de", "la") is a particle and is never a lone name: alone
+it names no one, and registered it would turn `ls -la` into `ls -<name>`. The shell fallback registers a two-letter
+part by the same rule and the same lists (`short_name`, the written form, whole words); its joined forms come from
+the N8 entry above. Tests: `test_a_two_letter_name_part_is_a_lone_name_unless_the_report_uses_it`,
+`test_the_shell_report_redacts_a_two_letter_name_part` and `test_the_shell_short_name_lists_are_the_reports` (the
+two lists are the same in both places). Held: a two-letter name that is a listed word ("He", "An", "Do") stays
+redacted only inside the joined forms, since alone it would replace the report's words; an all-capitals GECOS
+("LI, JANE") registers "LI" only.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
