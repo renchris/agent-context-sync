@@ -58,8 +58,8 @@ words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-
 hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
 (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
 MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
-proxy hosts (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
-``/var/folders/<x>/<y>``: ``<tmp>``).
+proxy hosts, those in git's config files included, and the system PAC URL after its scheme (``<proxy-N>``) and
+this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
 CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). A
 ``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
@@ -453,7 +453,7 @@ _LEGEND = {
     "serial": "<serial> serial number",
     "host": "<host> this Mac's host or computer name",
     "mdmhost": "<mdmhost> MDM server's host",
-    "proxy": "<proxy-N> proxy host",
+    "proxy": "<proxy-N> proxy host, or the system PAC URL after its scheme",
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }
 _TEMPLATE_NOTE = (
@@ -1818,26 +1818,16 @@ _GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNOREC
 way to switch a proxy off) must not take the next line's first word."""
 
 
-def _install_checkout() -> Path | None:
-    """The checkout this agentsync was installed from (its ``direct_url.json``), or None for a wheel."""
-    with contextlib.suppress(Exception):
-        raw = importlib.metadata.distribution("agentsync").read_text("direct_url.json")
-        info = json.loads(raw or "{}")
-        url = str(info.get("url", ""))
-        if url.startswith("file:") and "dir_info" in info:
-            return Path(unquote(urlsplit(url).path))
-    return None
-
-
 def _git_proxy_urls() -> list[str]:
     """``proxy`` values in the config files git reads (``http.proxy``, ``http.<url>.proxy``,
-    ``remote.<name>.proxy``), read as files: no git process, since step 1 may have stopped on missing
-    developer tools. Since setup prompt v11 step 1's git stop logs git's error, which names that proxy's host
-    (``Could not resolve proxy: <host>``). The checkouts are the one agentsync was installed from and the one
-    the prompt clones."""
+    ``remote.<name>.proxy``): ``~/.gitconfig``, ``$XDG_CONFIG_HOME/git/config``, ``/etc/gitconfig`` and
+    the ``.git/config`` of two checkouts, the one agentsync was installed from (``direct_url.json``) and the
+    one the prompt clones. Read as files, with no git process: step 1 may have stopped on missing developer
+    tools. Since setup prompt v11 step 1's git stop logs git's error, which names that proxy's host (``Could
+    not resolve proxy: <host>``). ``scripts/install.sh``'s fallback redaction reads the same files."""
     xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     names = [Path.home() / ".gitconfig", Path(xdg) / "git" / "config", Path("/etc/gitconfig")]
-    for checkout in (_install_checkout(), Path.home() / "src" / "agent-context-sync"):
+    for checkout in (_installed_from()[1], Path.home() / "src" / "agent-context-sync"):
         if checkout is not None and checkout / ".git" / "config" not in names:
             names.append(checkout / ".git" / "config")
     urls: list[str] = []
@@ -1849,13 +1839,13 @@ def _git_proxy_urls() -> list[str]:
 
 def _proxy_hosts(r: _Run) -> list[str]:
     urls = [os.environ.get(k, "") for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")]
-    urls += _git_proxy_urls()
     urls += [os.environ.get(k, "") for k in ("HTTP_PROXY", "http_proxy")]
     if r.system_proxy is not None:
         urls += [r.system_proxy.https_proxy or "", r.system_proxy.http_proxy or ""]
         urls += [r.system_proxy.pac_url or ""]
     if r.config is not None and r.config.network.proxy:
         urls.append(r.config.network.proxy)
+    urls += _git_proxy_urls()  # last: a git-only proxy leaves every other source's <proxy-N> as it was
     hosts: list[str] = []
     for url in filter(None, (u.strip() for u in urls)):
         if url.lower() in ("direct", "none", "off"):
@@ -2020,6 +2010,10 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add("source", src.id)
     for host in _proxy_hosts(r):
         red.add("proxy", host, ignore_case=True)
+    # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
+    # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
+    pac = r.system_proxy.pac_url if r.system_proxy is not None else None
+    red.add("proxy", pac.split("://", 1)[-1] if pac else None, ignore_case=True)
     with contextlib.suppress(Exception):
         for sha in _docs_commits(r):
             red.add_commit(sha)
@@ -2029,7 +2023,9 @@ def _build_redactor(r: _Run) -> Redactor:
 # ---- sections -------------------------------------------------------------------------------------------
 
 
-def _install_source(r: _Run) -> str:
+def _installed_from() -> tuple[str, Path | None]:
+    """Where agentsync was installed from, as the header shows it, and the checkout's directory when it was
+    one (``direct_url.json``)."""
     where = "unknown"
     directory: Path | None = None
     with contextlib.suppress(Exception):
@@ -2046,6 +2042,11 @@ def _install_source(r: _Run) -> str:
                 where = f"wheel {path.name}"
             elif url:
                 where = url
+    return where, directory
+
+
+def _install_source(r: _Run) -> str:
+    where, directory = _installed_from()
     if directory is not None and (directory / ".git").exists() and r.devtools():
         where += _checkout_facts(r, directory)
     with contextlib.suppress(Exception):

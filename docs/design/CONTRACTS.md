@@ -4909,6 +4909,8 @@ this Mac's names.
 its NFC form and matches it as written, in NFC and in NFD, so a folder Finder named NFD on disk and an agent typed
 NFC (or the reverse) is one placeholder, not two and not in clear. The shell fallback adds the NFC and NFD forms
 (`iconv` `UTF-8-MAC`) of every value it registers that is not printable ASCII; a value that is not UTF-8 adds none.
+**Amended (2026-10-11, §16.40):** the system PAC URL after its scheme is a `<proxy-N>` value too, proxies set only
+in git's config files are registered, and the shell fallback registers proxy values as well.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -10588,6 +10590,29 @@ printable ASCII, after the one length gate on the value as written, so every cal
 name and its tokens) gets both forms. Tests: `test_a_folder_name_is_redacted_in_either_unicode_form` and
 `test_the_shell_report_redacts_a_folder_in_either_unicode_form`. Out of scope: an accent-stripped ASCII spelling
 (`Cafe Plans`, a different word), one string mixing both forms, and a `$'..'` word the shell reader does not decode.
+
+**Proxy values: the PAC URL after its scheme, and git's proxies** (B13 H19, H1 skeptic C2). A cloud proxy's PAC
+path can name the customer (`/<domain>/proxy.pac`, `?customer=`), and agentsync prints the PAC URL whole (doctor's
+`network.proxy` line, the policy error, the Environment line). The report registers the system PAC URL after its
+scheme as one `<proxy-N>` value beside its host, so it is redacted where agentsync prints it and where it is quoted
+without the scheme; the scheme stays visible (`https://<proxy-2>`). It also registers the `proxy =` values in the
+config files git reads (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`, `/etc/gitconfig` and the `.git/config` of
+the installed checkout, the one `direct_url.json` names, and of the checkout the prompt clones,
+`~/src/agent-context-sync`), read as files with no git process, because a git error logged at step 1 names git's
+proxy (`Could not resolve proxy: <host>`) and step 1 may have stopped with no git. One reader,
+`_git_proxy_urls`, serves this and §16.43's H1; its values come after every other proxy source, so a git-only
+proxy leaves the other sources' `<proxy-N>` numbers as they were. The shell fallback's `redaction_pairs`
+registers the same PAC value, the PAC URL's host and the host of every proxy URL that has a dot (scutil, the
+proxy environment variables, `[network] proxy` and the same git config files, its own checkout standing for the
+installed one), cutting the path before the userinfo, as `urlsplit` does. Redaction only grows. Tests:
+`test_a_pac_url_is_redacted_after_its_scheme`, `test_a_proxy_in_any_git_config_file_is_redacted`,
+`test_a_proxy_only_git_knows_is_redacted` and `test_the_shell_report_redacts_the_pac_url_and_proxy_hosts`. Not
+changed: the Python report still registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl
+getenv`) is printed but not registered. An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
+match stays on its own line, and does not take the next line's first token (`[user]`, `sslVerify`). A proxy value
+that `urlsplit` rejects (`http://[x`) is skipped. Before this, either case made the whole redactor fail, so the
+report fell back to redacting the home folder only. Tests: `test_an_unreadable_proxy_value_keeps_the_redaction` and
+`test_an_empty_git_proxy_takes_no_token_from_the_next_line`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

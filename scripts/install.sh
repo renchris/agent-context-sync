@@ -838,7 +838,7 @@ report_agentsync() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm line w take
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm line w take u h v g pac seen
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form stays as it is). LC_ALL=C: under a
@@ -923,6 +923,49 @@ redaction_pairs() {
 	mdm="$(with_timeout 5 /usr/bin/profiles status -type enrollment 2>/dev/null </dev/null |
 		sed -n 's|.*MDM server: [A-Za-z]*://\([^/@]*@\)\{0,1\}\([^/:;?#@[:space:]]*\).*|\2|p' | head -n 1 || true)"
 	case "$mdm" in *.*) add_pair "$mdm" "<mdmhost>" ;; esac
+	# Proxy values, as the Python report registers them (B13 H19): the system PAC URL after its scheme (a cloud
+	# proxy's path can name the customer: /<domain>/proxy.pac), and the host of it and of every proxy URL:
+	# scutil's, the proxy environment variables, [network] proxy and git's config files (read as files: the
+	# logged git error names git's proxy, and step 1 may have stopped with no git). status's network.proxy lines
+	# print them. scutil by name (on every Mac's PATH), so a test can stand in for it.
+	n=0
+	seen=" "
+	while IFS= read -r u; do
+		pac=""
+		case "$u" in pac=*)
+			u="${u#pac=}"
+			pac="${u#*://}"
+			;;
+		esac
+		h="${u#*://}"
+		h="${h%%[/?#]*}"
+		h="${h##*@}"
+		h="${h%%:*}"
+		case "$h" in *.*) ;; *) h="" ;; esac # a bare host (proxy, wpad, direct) would redact the report's words
+		for v in "$pac" "$h"; do
+			[ -n "$v" ] || continue
+			case "$seen" in *" $v "*) continue ;; esac
+			seen="$seen$v "
+			n=$((n + 1))
+			add_pair "$v" "<proxy-$n>"
+		done
+	done < <(
+		{
+			with_timeout 5 "$(command -v scutil || printf /usr/sbin/scutil)" --proxy 2>/dev/null </dev/null |
+				LC_ALL=C sed -n -e 's/^[[:space:]]*ProxyAutoConfigURLString : /pac=/p' \
+					-e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' || true
+			printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" \
+				"${HTTP_PROXY:-}" "${http_proxy:-}"
+			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
+			# The files setup_report._git_proxy_urls reads: the global ones and the checkouts' .git/config, this
+			# script's (the one agentsync is installed from) and the one the prompt clones.
+			for g in "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig \
+				"${repo:-/nonexistent}/.git/config" "$HOME/src/agent-context-sync/.git/config"; do
+				[ ! -f "$g" ] ||
+					LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#]*\).*/\1/p' "$g"
+			done
+		} 2>/dev/null
+	)
 	user="$(id -un 2>/dev/null || true)"
 	[ -z "$user" ] || add_pair "$user" "<user>" w
 }
@@ -1090,9 +1133,10 @@ fallback_body() {
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name (<name>), the"
-	say "organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>) and the names of the folders"
-	say "under CloudStorage that --source-local, sources.toml or install.log name (<folder-N>). Read the report"
-	say "before sending it: anything else confidential is yours to remove."
+	say "organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>), proxy hosts with a dot and the"
+	say "system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage that"
+	say "--source-local, sources.toml or install.log name (<folder-N>). Read the report before sending it: anything"
+	say "else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading.
 friction_text() {

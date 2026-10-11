@@ -222,6 +222,7 @@ def env(tmp_path: Path) -> dict[str, str]:
     stubbin = tmp_path / "stubbin"
     stubbin.mkdir()
     _write_exe(stubbin / "uv", STUB_UV)
+    _write_exe(stubbin / "scutil", "#!/bin/bash\nexit 0\n")  # no system proxy: not the developer's own
     return {
         "HOME": str(home),
         "PATH": f"{stubbin}:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -3781,7 +3782,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
         [
             "with_timeout() {",
             "\tshift",
-            '\t[ "$1" = /usr/bin/profiles ] || { "$@"; return; }',
+            '\t[ "$1" = /usr/bin/profiles ] || return 0',
             f"\tprintf 'MDM enrollment: Yes\\nMDM server: %s\\n' '{MDM_URL}'",
             "}",
             f'id() {{ case "$1" in -un) echo {login} ;; -F) echo "Jane Doe" ;; esac; }}',
@@ -3832,3 +3833,67 @@ def test_the_shell_report_redacts_a_folder_in_either_unicode_form(
     assert "picked <folder-1>" in text.split("\n## Agent friction log\n", 1)[1]
     for form in ("NFC", "NFD"):
         assert unicodedata.normalize(form, "Café") not in text, form
+
+
+# ---- the shell report redacts the PAC URL and every proxy host (H19) ---------------------------------------
+
+
+def test_the_shell_report_redacts_the_pac_url_and_proxy_hosts(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """status's network.proxy lines name the system PAC URL and the proxy host; a cloud proxy's PAC path can
+    carry the customer's domain, and a git error names git's proxy. The shell fallback redacts the PAC URL
+    after its scheme, its host and every proxy host with a dot (scutil, the environment, [network] proxy and
+    git's config files, read as files), as the Python report does (B13 H19)."""
+    pac = "https://pac.cloudproxy.example/fabrikam.com/proxy.pac"
+    stubbin = Path(env["PATH"].split(":")[0])
+    _write_exe(
+        stubbin / "scutil",
+        '#!/bin/bash\n[ "$1" = --proxy ] || exit 1\n'
+        "printf '<dictionary> {\\n  HTTPSProxy : proxy\\n  ProxyAutoConfigEnable : 1\\n'\n"
+        f"printf '  ProxyAutoConfigURLString : {pac}\\n}}\\n'\n",
+    )
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_text(
+        '[http]\n\tProxy = "http://gitproxy.fabrikam.example:3128" ; IT\n\tproxy =\n'
+    )
+    # The checkout the prompt clones: setup_report._git_proxy_urls reads its .git/config too (B13 H1).
+    clone = home / "src" / "agent-context-sync" / ".git"
+    clone.mkdir(parents=True)
+    (clone / "config").write_text(
+        '[http "https://github.com/"]\n\tproxy = clone.fabrikam.example:8080\n[user]\n'
+    )
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir()
+    cfg.write_text('[network]\nproxy = "cfgproxy.fabrikam.example" # set by "IT"\n')
+    setup = home / "agent-context" / "setup"
+    setup.mkdir()
+    (setup / "friction.md").write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v10\n"
+        f"2026-10-10T00:00:01Z | step 1 | error | PAC {pac.split('://', 1)[1]} "
+        "on host pac.cloudproxy.example | -\n"
+        "2026-10-10T00:00:02Z | step 1 | error | Could not resolve proxy: gitproxy.fabrikam.example | -\n"
+        "2026-10-10T00:00:03Z | step 1 | error | the config names cfgproxy.fabrikam.example | -\n"
+        "2026-10-10T00:00:04Z | step 1 | error | git pull: Could not resolve proxy: clone.fabrikam.example"
+        " | -\n"
+    )
+    lines = (
+        f"[info] network.proxy — system proxy uses PAC {pac}; PAC/WPAD is unsupported\n"
+        "[info] network.proxy.job — the LaunchAgent resolves http://proxy.fabrikam.example:8080 (source: env)"
+    )
+    e = {
+        **env,
+        "STUB_DOCTOR_OUT": lines,
+        "STUB_REPORT_RC": "2",
+        "HTTPS_PROXY": "http://user:pw@proxy.fabrikam.example:8080/a@b",
+    }
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert "shell fallback" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    assert "system proxy uses PAC https://<proxy-" in text and "resolves http://<proxy-" in text, text
+    assert re.search(r"\| PAC <proxy-\d+> on host <proxy-\d+> \|", text), text
+    assert re.search(r"\| Could not resolve proxy: <proxy-\d+> \|", text), text
+    assert re.search(r"\| the config names <proxy-\d+> \|", text), text
+    assert re.search(r"\| git pull: Could not resolve proxy: <proxy-\d+> \|", text), text
+    assert "fabrikam" not in text.lower() and "cloudproxy" not in text.lower(), text
+    assert "- proxy environment: yes" in text, "a host with no dot is not registered"

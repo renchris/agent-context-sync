@@ -1607,6 +1607,103 @@ def test_an_mdm_host_with_no_dot_is_not_registered(
     assert "- MDM enrollment (" in section(text, "Environment")
 
 
+def test_a_pac_url_is_redacted_after_its_scheme(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cloud proxy's PAC path can carry the customer's domain (``/<domain>/proxy.pac``): the PAC URL after
+    its scheme is one proxy value, so a quote without the scheme is covered too, and the bare host keeps its
+    own placeholder (B13 H19)."""
+    pac = "https://pac.cloudproxy.example/fabrikam.com/proxy.pac"
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(
+        net, "system_proxy", lambda runner=None: net.SystemProxy(pac_enabled=True, pac_url=pac)
+    )
+    write_install_log(fake_mac)
+    quote = f"| PAC {pac} on host pac.cloudproxy.example, typed {pac.split('://', 1)[1]} |"
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", quote))
+    text, _summary = summary_of(fake_mac)
+    assert "fabrikam" not in text.lower() and "cloudproxy" not in text.lower()
+    env = section(text, "Environment")
+    assert "PAC: yes" in env and re.search(r"a PAC file \(https://<proxy-\d+>\)", env)
+    friction = section(text, "Agent friction log")
+    m = re.search(r"\| PAC https://(<proxy-\d+>) on host (<proxy-\d+>), typed (<proxy-\d+>) \|", friction)
+    assert m and m.group(1) == m.group(3) != m.group(2), friction
+
+
+@pytest.mark.parametrize("where", ["home", "xdg", "checkout"])
+def test_a_proxy_in_any_git_config_file_is_redacted(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, where: str
+) -> None:
+    """A git error logged at step 1 names git's proxy (``Could not resolve proxy: <host>``), and a proxy set
+    only in git's config files is in no environment variable: the report reads those files, with no git
+    process (B13 H19, H1 skeptic C2)."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(net, "system_proxy", lambda runner=None: net.SystemProxy())
+    host = "gitproxy.fabrikam.example"
+    if where == "home":
+        with (Path.home() / ".gitconfig").open("a", encoding="utf-8") as f:
+            f.write(f"[http]\n\tproxy = http://jdoe:secret@{host}:3128\n")
+    elif where == "xdg":
+        xdg = tmp_path / "xdg"
+        (xdg / "git").mkdir(parents=True)
+        config = f'[http "https://github.com/"]\n\tProxy = "{host}:3128" ; set by IT\n'
+        (xdg / "git" / "config").write_text(config)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    else:
+        checkout = tmp_path / "checkout"
+        (checkout / ".git").mkdir(parents=True)
+        (checkout / ".git" / "config").write_text(f'[remote "origin"]\n\tproxy=https://{host}\n')
+        monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {checkout}", checkout))
+    write_install_log(fake_mac)
+    line = f"| git pull: Could not resolve proxy: {host} |"
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", line))
+    text, _summary = summary_of(fake_mac)
+    assert "fabrikam" not in text.lower(), text
+    friction = section(text, "Agent friction log")
+    assert re.search(r"\| git pull: Could not resolve proxy: <proxy-\d+> \|", friction), friction
+
+
+@pytest.mark.parametrize(
+    ("gitconfig", "https_proxy"),
+    [
+        # `git config http.proxy ""` (git's way to turn a proxy off) writes "proxy = " with nothing after it
+        (
+            '[http]\n\tproxy = \n[user]\n\tname = Jane Doe\n[remote "origin"]\n\tproxy =\n[branch "main"]\n',
+            "",
+        ),
+        ("", "http://[proxy.fabrikam.example"),  # a malformed value in the environment
+    ],
+    ids=["empty-git-proxy", "malformed-env-proxy"],
+)
+def test_an_unreadable_proxy_value_keeps_the_redaction(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, gitconfig: str, https_proxy: str
+) -> None:
+    """A proxy value that is empty or no URL is skipped, not fatal: an error there used to drop the report
+    to a home-only redactor, printing the org, login, folders, serial and host in clear (B13 H19 review)."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    if https_proxy:
+        monkeypatch.setenv("HTTPS_PROXY", https_proxy)
+    monkeypatch.setattr(net, "system_proxy", lambda runner=None: net.SystemProxy())
+    (Path.home() / ".gitconfig").write_text(gitconfig, encoding="utf-8")
+    write_install_log(fake_mac)
+    text, _summary = summary_of(fake_mac)
+    for raw in RAW:
+        assert raw not in text, raw
+
+
+def test_an_empty_git_proxy_takes_no_token_from_the_next_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``proxy =`` with no value is git's "no proxy": the next line's key is not read as a proxy host."""
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: ("", None))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    (Path.home() / ".gitconfig").write_text("[http]\n\tproxy =\n\tsslVerify = false\n", encoding="utf-8")
+    assert "sslVerify" not in setup_report._git_proxy_urls()
+
+
 def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     log = fake_mac["logs"] / "com.agentsync.poll.err.log"
     log.write_text(
