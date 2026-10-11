@@ -74,8 +74,9 @@ that run as you:
 
 This builds and ad-hoc signs the launcher (`--launcher PATH` copies a prebuilt, signed one instead), syncs once,
 installs two LaunchAgents (a poll every 5 minutes and an hourly reconcile) and waits up to 3 minutes for the first
-background run and your Allow click, so give the command a 10-minute timeout. `agentsync uninstall-agent` removes
-the LaunchAgents again without offboarding. A plain `install.sh` run never touches the launcher, so after pulling a
+background run and your Allow click, so give the command a 10-minute timeout (30 minutes while the speech helper
+is not built: its build alone can take up to 20 minutes). `agentsync uninstall-agent` removes the LaunchAgents
+again without offboarding. A plain `install.sh` run never touches the launcher, so after pulling a
 new version re-run `install.sh --confirm-install-agent`: it rebuilds the launcher only if its sources changed, and
 an ad-hoc rebuild means one new Allow click. The launcher starts only the interpreter it was built for
 (`bin/python` in the uv tool environment), and the jobs name it by that path, also when the updated tool itself

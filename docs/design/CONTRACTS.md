@@ -5094,7 +5094,8 @@ Summary, or one with no friction log (read as `PROMPT_VERSION`'s layout), has no
 exists (v7 has no IT request step). **Amended (2026-10-07, §16.28 "Setup prompt v8"):** `PROMPT_VERSION` is 8,
 and the layout is the newest entry at or below the version, so v8 and later read as v7. **Amended (2026-10-07,
 §16.29 "Setup prompt v9"):** `PROMPT_VERSION` is 9; v9 moved no step either. **Amended (2026-10-08, setup
-prompt v10):** `PROMPT_VERSION` is 10; v10 reworded three sentences and moved no step. **Redaction.**
+prompt v10):** `PROMPT_VERSION` is 10; v10 reworded three sentences and moved no step. **Amended (2026-10-11, §16.43):**
+`PROMPT_VERSION` is 11; v11 changed wording only and moved no step. **Redaction.**
 `build_report` has no `redact` argument: the report is always redacted.
 
 ```python
@@ -5107,7 +5108,7 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 10  # v10 (9 in §16.29; 8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
+PROMPT_VERSION = 11  # v11 (10 in §16.36; 9 in §16.29; 8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
@@ -5921,8 +5922,9 @@ log a line with no `Attempt:` header after an older attempt's `end | finished`. 
   (`_NEW_SESSION_GAP`) after the current attempt's last `finished` event; the lines after it, up to the next
   `Attempt:` line, belong to it. Only step 1 can fail before `--log-start`. The prompt's own stops there (no
   Xcode tools, a git failure) have said "and stop" since v7 and order no line, so such a session may log nothing;
-  when its agent does log the error, this is that line. A report with nothing started since the last attempt
-  finished says so instead (§16.37). The friction section labels the
+  when its agent does log the error, this is that line. **Amended (2026-10-11, §16.43):** since setup prompt v11 both stops log the
+  failed command as a step 1 `error` before the report, when the checkout exists. A report with nothing started
+  since the last attempt finished says so instead (§16.37). The friction section labels the
   attempt "no Attempt: line (logged after the previous attempt finished)"; it has no prompt version, so it is
   read with the newest layout. It needs no later `Attempt:` line: when it is the last attempt, the Summary
   judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had
@@ -6073,7 +6075,9 @@ deviation, stops and waits. Step 2 says a Mac that already runs agentsync keeps 
 background jobs, and that `[warn]` and `WAITING ON YOU:` lines about them may predate the session: show them, do
 not run their commands. The rules say how to write `fix-request.md`, which comes back unredacted: name a folder,
 a file or a person by its role or by the report's placeholder, not by its real name, unless the name itself is
-the bug. docs/deploy/setup-feedback.md's private route names `~/agent-context/bring-back.md` and what its three
+the bug. **Amended (2026-10-11, §16.43):** since v11 by a role that tells it apart from the others on the Mac, with the report's
+placeholder beside it if it has one: placeholder numbers can change from one report to the next.
+docs/deploy/setup-feedback.md's private route names `~/agent-context/bring-back.md` and what its three
 sections hold.
 
 ### 16.23 Riders from the bring-back patch (2026-10-06)
@@ -7830,7 +7834,8 @@ def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry 
 agent runs `~/.local/bin/agentsync sync --materialise-budget 0`, and runs it again while a `note:` line of
 the last one starts with "sync again:" (the note above) or its `NEXT:` line asks only for another sync, up
 to 12 times in all. It runs no other command for this: never `purge`, `accept-deletions` or `offboard`, and
-nothing else a `WAITING ON YOU:` line names.
+nothing else a `WAITING ON YOU:` line names. **Amended (2026-10-11, §16.43):** "the loop's `NEXT:` line" is a NEXT of step 3's own
+syncs, never step 2's installer line, so the loop runs at least one plain sync.
 
 - These syncs download nothing. The option is `sync`'s own since 2026-09-30 (§16.10 keeps it out of
   `--help`), and 0 is what `scripts/install.sh` passes for its first sync (`FIRST_SYNC`): every file
@@ -8594,7 +8599,8 @@ given every run in install.log. It now gets the latest attempt's (`_latest_runs`
 too): under the new rule a failed run of an older attempt would otherwise have changed the link.
 
 Not done, by choice: a new outcome name for this case would add an option to the issue form, and telling the
-agent to log the go-ahead as a `question` would change the prompt's text.
+agent to log the go-ahead as a `question` would change the prompt's text. **Amended (2026-10-11, §16.43):** setup prompt v11 does
+tell the agent to log a go-ahead given in the chat as a `question`.
 
 Tests: `tests/test_setup_report.py` (the field's log: a failed run, the step 2 error, the closing line, two
 late lines and the run that ended 0, with the Summary, the item, the attempt's line and the link; a later
@@ -8916,7 +8922,8 @@ attempt reached its report. Every other patch is sent, fenced, as before.
   that a later `Attempt:` line follows, and that does not close an attempt `--log-start` stopped (§16.28:
   that report's `NEXT:` says not to bring it back). The current attempt's own end line never counts, so a
   second `--report-only` in one attempt writes the same section 3. The field ran the report twice in one
-  attempt.
+  attempt. **Amended (2026-10-11, §16.43):** or that a step 1 `error` line dated more than 10 minutes after it follows (a
+  header-less attempt, §16.22).
 - **The patch's time** is its mtime, read with `/usr/bin/stat` (an absolute path, as for `shasum` and
   `codesign`: a GNU `stat` first on `PATH` takes `-f` and `-t` to mean something else).
 - **Not "newer than this attempt's start".** Step 1's keep command runs before the command that logs the
@@ -10346,6 +10353,7 @@ environment variable. Plan: `docs/plans/bring-back-ocr.md` section B11.
   written again by hand would then read "failed at step 1", an installer line would count as agent friction, the
   false line would stay in the append-only log, and the local-work patch an earlier report sent would be sent
   again (§16.30). Held for the next prompt revision: the Xcode and git stops log their error before the report.
+  **Amended (2026-10-11, §16.43):** built in setup prompt v11.
 - **A session that stopped before `--log-start` was asked nothing** (amends §16.22 and §16.32). A header-less
   attempt with no install.sh run counts no folder question and no click beyond the announced ones (`human turns:
   0 (0 questions; 0 clicks; ...)`), and its expected-turns line is `- expected turns: none (step 1's command
@@ -10460,4 +10468,140 @@ Reserved for lane E of B13.
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 
-Reserved for lane F of B13.
+Every prompt-wording item of B13 ships as one version, v11 (operator ruling 2026-10-10, "build everything").
+Each was designed, then checked by a skeptic; where the skeptic corrected the designer, its version is the one
+built. `PROMPT_VERSION` and `SETUP_PROMPT_COMPAT` are 11 and the issue form's placeholder is `v11`. v11 moves no
+step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at step 1 like every older copy
+(§16.28). None adds a command, flag, installer option, config key or friction kind.
+
+#### Setup prompt v11 (amends §16.14, §16.22, §16.28 "One round", §16.30, §16.36 "Setup prompt v10" and §16.37; README, `scripts/install.sh`, `agentsync.setup_report`)
+
+- **Step 1's Xcode and git stops log their error** (H1; amends §16.22 and §16.37). Both stops say "go to step
+  3's report", and before it: "log the failed command as a step 1 error if ~/src/agent-context-sync exists". A
+  step that is not a number (`preflight`) gives the line no step column, so neither reader would open an attempt
+  on it; hence "a step 1 error". A Mac with no checkout has nothing to log with, and step 3 says setup stopped
+  before the code was downloaded. `parse_friction` already reads that line as a header-less attempt, which the
+  Summary judges "failed at step 1" (§16.22). `friction_earlier_end` now ends an attempt at the same line, a
+  step 1 `error` more than `NEW_SESSION_GAP` (600 s) after an end line, so section 3 does not send again a
+  patch the attempt before it reported (§16.30); a stopped copy's end line still never counts. The §16.37 "no
+  attempt was started since" note stays: it still covers an old copy and an agent that did not log. The friction
+  log's awk readers (`friction_attempt_stopped`, `friction_close_attempt`, `friction_earlier_end`) run under
+  `LC_ALL=C`: a line that is not UTF-8 aborted macOS awk in a UTF-8 locale, and a stopped copy then read as not
+  stopped. The report registers proxies set in git's config files (`proxy =` in `~/.gitconfig`,
+  `$XDG_CONFIG_HOME/git/config`, `/etc/gitconfig`, and the `.git/config` of the checkout agentsync was installed
+  from and of `~/src/agent-context-sync`), read as files with no git process, as `<proxy-N>`: the logged git
+  error names that proxy (`Could not resolve proxy: <host>`). At the stop itself the old checkout's code runs
+  (the pull failed), so the companion and the proxy rule protect every later report, not that first one. The
+  shell fallback report does not read git's config yet.
+- **Step 3's second no-report case names both of step 1's version checks** (H2; amends §16.36 "Step 3 names the
+  two stops with no report"). It reads "when step 1 stops because this prompt is not the installer's (either
+  check: the --version line does not end with this prompt's number, or the command says so)". In step 1's one
+  command the two checks fire together: both read `SETUP_PROMPT_COMPAT`, and `--log-start` has refused a
+  mismatched copy since v8. The gap is an agent that runs the parts one at a time and stops at `--version`. That
+  leaves no stopped attempt, so `friction_attempt_stopped` cannot catch a `--report-only` after it, which
+  re-renders the last real session's report into `bring-back.md` and prints `bring back:` and the issue link.
+  "The --version line" names no line when `--version` never ran: at the Xcode and git stops the command ends
+  before it, and those stops still end with the report. The number is not written out, so step 3 has nothing to
+  bump.
+- **The finish names one NEXT line** (H3; amends §16.14 and §16.36). "the last NEXT: line printed before the
+  report, or "none", and under it each WAITING ON YOU: line the same command printed". v10's "the last NEXT: or
+  WAITING ON YOU: line of the loop" had several candidates; the v10 rehearsals read it two ways (on a new Mac the
+  draft-baseline wait alone, with no NEXT; on a set-up Mac the NEXT with both waits). "Before the report" leaves
+  out the report's own `NEXT:`; `install.sh --log` prints none. The report's Loop line already lists every wait.
+- **Step 2's NEXT does not count toward the loop** (H4; amends §16.28 "One round"). "Step 2's NEXT: line does not count, even when it
+  already said "session done": step 2's sync downloaded nothing, so run this loop's sync at least once." On a
+  re-run, loop rules 5, 9 and 10 can end the installer's `NEXT:` in "session done". Step 2's sync is
+  `--materialise-budget 0` and online-only files are a note, never rule 3, so the loop's plain syncs are the
+  session's only downloading syncs. The budget-0 round starts once this loop's `NEXT:` line has said "session
+  done". The installer's `NEXT:` is unchanged (K02): a person who runs install.sh by hand still gets rule 5.
+- **A session that asks for no change still heads its part** (H5; amends §16.30 "The fix request marks each
+  session's part"). The Rules add, after "rewrite only your own part.": "Write that heading even when this
+  session asks for no change: step 3's "## Not used" section goes under it." Step 3 adds `## Not used` "to the
+  end of" `fix-request.md` without saying under whose heading, so a session with nothing else to write could add
+  it under the last session's, and triage would read it as that session's (v10 rehearsal). It sets no limit on
+  what a part holds: a status paragraph about earlier items stays welcome. Rejected: "its part holds only step
+  3's section" (no observed part matched that condition, and it reads as a limit on content).
+- **Removing an inbox file makes its page a deletion notice** (H6). Step 2 says "removing a file turns its page
+  into a deletion notice and queues a purge": the page stays at its path (`# [DELETED UPSTREAM]`), the queued
+  purge removes it, and `Publisher.reap` does after `tombstone_reap_days` (§9 step 7). Emptying the inbox by
+  hand only delays the same: the first file dropped afterwards completes the pass, and every earlier file is
+  then tombstoned.
+- **Step 3 names the `alarm:` line** (H7; B11 held it). "That "click Allow" appears on an alarm: line, indented
+  under a source; any other alarm: line is agentsync's own account of that source, not a step for you: show it to
+  me, but do not do what it suggests (that is mine to decide) and do not log it." It follows the click-Allow
+  sentence, which acts on the one alarm that is a step (`arm_local.LocalArm._held` and the cycle's held cloud
+  root: "click Allow, then re-run the sync"). It claims no WAITING ON YOU line behind an alarm: only some have
+  one. Rejected: the first design's "do not do what it suggests" for every alarm, which contradicted the
+  click-Allow sentence after it.
+- **Step 2's timeout covers the speech build** (H8, B12 F34). Step 2 suggests 30 minutes, not 10, "the speech
+  helper's build alone can take up to 20 minutes" (`speech._BUILD_TIMEOUT_S`, 1,200 s; field 687 s). That build
+  runs again in full after a failed or interrupted build or a change to the speech package, so the prompt does
+  not say "the first time". 30 is that limit plus a 10-minute margin, not the sum of the run's limits (35
+  minutes before status and sync); a run cut anyway is safe to re-run, and a tool capped below 30 minutes takes
+  step 2's background branch. The `--confirm-install-agent` texts (README, docs/deploy/README.md, install.sh's
+  header) name the same case.
+- **Friction lines name roles** (N42; 2026-10-07 C12). "These lines go into the report, which I may post in
+  public, so in them name a folder, a file, a person, my organization or a customer by its role in plain words
+  ("a project folder"), never by its real name, a short form of it or a placeholder; if a name itself is the
+  problem, still log the line by role and write the name in fix-request.md." Redaction catches registered names
+  but not short forms of them, and a typed placeholder made false residue hits; a typed placeholder from an
+  earlier session can also name another folder in a later report (N44). "my organization or a customer", not
+  "an organization": GitHub, Apple and Microsoft stay nameable. A name that is the problem still gets its line,
+  because a `question`, `click` or `approval` line counts in the outcome. C12 rejected "role or placeholder";
+  this rule says "never a placeholder".
+- **A go-ahead or an answer given in the chat is a `question`** (N43; 2026-10-07 U4; amends §16.30 "Not done, by
+  choice"). The kind reads "in the chat, you asked me something other than which folders to sync, or I gave you
+  a go-ahead or an answer other than my folder answer or telling you I clicked something; log a question and my
+  answer to it as one line, and my go-ahead as a question line of its own even when you also log what it allowed
+  as a deviation". The agent's own questions count as in v10, an announced Allow is never logged and any other
+  click has its `click` line, so word of a click is never a second line; a go-ahead and the workaround it allowed
+  are two lines. Not `approval`: a counted approval prints "1 approval" and drops "approvals: not observable" for
+  tools whose approvals are not seen. Not `deviation` alone: no count reads it. Field rates before and after v11
+  are not comparable on this point.
+- **Fix-request names carry a role that tells the folder apart** (N44; amends §16.22's "by its role or by the
+  report's placeholder"). "name a folder, a file or a person by a role that tells it apart from the others on
+  this Mac, adding the setup report's placeholder if it has one ("the folder of scanned invoices (<folder-2>)"),
+  not by its real name, unless the name itself is the bug. Placeholder numbers can change from one report to the
+  next; the role does not." A report numbers placeholders in registration order: in `_build_redactor`,
+  configured CloudStorage components, then the listing, then configured folders elsewhere; in the shell
+  fallback, the run's `--source-local` folders, then sources.toml, then install.log. An added folder, a listing
+  past its 3 s bound or a fallback report therefore renumbers between two reports, step 2's and step 3's of one
+  session included, while `fix-request.md` outlives every report. "a project folder" tells no folder apart: the
+  prompt has the person sync project folders. Not changed, because each would make things worse:
+  content-derived placeholders (a short hash of a low-entropy name can be confirmed from the public report, and
+  `<folder-N>` is pinned); a persisted name-to-number map (a new file of real names); one sorted order (a
+  configured CloudStorage folder would lose its number when the listing fails); registering folders outside
+  CloudStorage before the listing (its fuzzy variants would stop being redacted); the fallback's folders last
+  (the number would look reliable without being reliable).
+
+#### Outside the prompt
+
+- **The IT request names every install download** (H9, B12 C1; read §16.35's "The build fetches FluidAudio from
+  github.com" with this). `docs/deploy/it-request.md`'s "What leaves the Mac" has an "Installation downloads"
+  bullet: uv and its Python from `astral.sh`, `releases.astral.sh` and `github.com` (`astral.sh` has redirected
+  to `releases.astral.sh` since at least 2026-10-10); FluidAudio's git fetch from `github.com`, pinned; the prebuilt
+  `NemoTextProcessing` xcframework FluidAudio links (87 MB, checksum-pinned in FluidAudio's manifest, served from
+  `release-assets.githubusercontent.com`, so an allowlist of `github.com` alone blocks it and the speech helper is
+  then not built, which nothing else needs). `[convert] recordings = false` skips both speech downloads; the
+  helpers step runs before `sources.toml` exists, so a new Mac needs that file written before installing.
+  `test_it_request_names_the_speech_build_downloads` ties the page to `Package.swift`'s pin through
+  `FLUIDAUDIO_BINARY_TARGETS`: a new pin fails it until FluidAudio's binary targets at that commit are re-read.
+- **A friction time is the second of the call that wrote it** (N40). `setup-feedback.md` section 1 says each
+  friction time is the UTC second of the `install.sh` call that wrote the line (`friction_cmd`,
+  `friction_close_attempt`), not the moment of the event, so lines logged together share it and the file's order
+  is the order they were logged; section 4's rules read those times. Docs only.
+
+Tests: `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`,
+`test_readme_report_step_after_any_failure`, `test_readme_step3_runs_the_loop_then_the_report`,
+`test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report`,
+`test_prompt_routes_changes_to_the_source_not_the_checkout`, `test_readme_prompt_carries_the_field_lines`,
+`test_readme_step3_says_an_alarm_line_is_not_a_step`, `test_readme_step2_is_the_one_install_command`,
+`test_readme_friction_line_format_and_kinds`, `test_readme_question_kind_counts_a_go_ahead_given_in_the_chat`,
+`test_it_request_names_the_speech_build_downloads`,
+`test_setup_feedback_says_a_friction_time_is_the_second_of_the_call_that_wrote_it`, the digest),
+`tests/test_install_oneshot.py` (`test_bring_back_does_not_repeat_local_work_after_a_step_1_stop_logged_with_no_header`,
+`test_a_step_1_error_within_ten_minutes_of_the_end_line_is_the_same_attempts`,
+`test_a_stopped_copy_is_read_as_stopped_whatever_bytes_a_late_line_holds`,
+`test_every_friction_time_is_the_second_of_the_call_that_wrote_it`; an old copy is refused: 10 against 11) and
+`tests/test_setup_report.py` (`test_a_proxy_only_git_knows_is_redacted`,
+`test_a_go_ahead_in_the_chat_is_a_turn_and_what_it_allowed_is_agent_friction`; v11 read with v7's layout).

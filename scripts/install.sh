@@ -154,8 +154,9 @@
 #   waits keep one clock for that: a start of pandoc too quick to print a line is counted in the first
 #   interval of status, which follows it (the one part with no line of its own is reading the config for the
 #   pandoc path, 0.1 s as a rule and stopped at 20 s). A whole run with --confirm-install-agent takes the
-#   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout. A stopped run
-#   (SIGTERM, SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
+#   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout (30 minutes while
+#   the speech helper is not built: its build alone can take up to 20 minutes). A stopped run (SIGTERM,
+#   SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
 #   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
 #      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
@@ -240,7 +241,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=10 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=11 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log

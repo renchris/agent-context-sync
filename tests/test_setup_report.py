@@ -2154,24 +2154,27 @@ V9_HAPPY = V8_HAPPY.replace("Prompt: v8", "Prompt: v9")
 whether to add one, and with nobody to ask it goes on."""
 
 V10_HAPPY = V9_HAPPY.replace("Prompt: v9", "Prompt: v10")
-"""Setup prompt v10, this build's: the same steps and rules, three sentences reworded."""
+"""Setup prompt v10: the same steps and rules, three sentences reworded."""
+
+V11_HAPPY = V10_HAPPY.replace("Prompt: v10", "Prompt: v11")
+"""Setup prompt v11, this build's: the same steps and rules, wording only (B13)."""
 
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8, v9, v10 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v11 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
-    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, 10, None, 99)]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7]
+    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, 10, 11, None, 99)]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 10 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 11 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
-    for version in (8, 9, 10):  # none of them moved a step: each gets every rule written for v7
+    for version in (8, 9, 10, 11):  # none of them moved a step: each gets every rule written for v7
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    for version in (7, 8, 9, 10):
+    for version in (7, 8, 9, 10, 11):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
@@ -2391,7 +2394,7 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     assert [run.args for run in in_attempt] == ["--list-folders"]
     assert setup_report._stopped_before_the_list(stopped, []) is True
     assert setup_report._stopped_before_the_list(stopped, in_attempt) is False
-    [current] = setup_report.parse_friction(V10_HAPPY).attempts
+    [current] = setup_report.parse_friction(V11_HAPPY).attempts
     assert setup_report._stopped_before_the_list(current, []) is False, "only the installer's stop counts"
 
 
@@ -2405,7 +2408,7 @@ def test_an_unanswered_folder_question_is_a_deviation_not_a_question(fake_mac: d
         "chosen, stopped to wait for the answer | -\n"
     )
     end = "2026-09-29T10:01:10Z | end | finished\n"
-    write_friction(fake_mac, V10_HAPPY.replace(end, unanswered + end))
+    write_friction(fake_mac, V11_HAPPY.replace(end, unanswered + end))
     _text, summary = summary_of(fake_mac)
     assert "- expected turns: the folder question (step 1; not logged as a question) · " in summary
     assert "- agent friction: 1 deviation, 0 prompt, 0 error (F4); none of these changes" in summary
@@ -2467,7 +2470,7 @@ def test_a_mac_already_set_up_has_no_folder_question_and_says_what_it_kept(
     install run kept and added. With folders already synced the folder question is not a turn the report
     expects or counts, and the Summary says what became of them, in counts."""
     set_up_log(fake_mac, ("", "skipped note=exists kept=2 added=0"))
-    write_friction(fake_mac, V10_HAPPY)
+    write_friction(fake_mac, V11_HAPPY)
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")  # a real Mac: a click is possible
     rc, text, _ = report(tmp_path, fake_mac["config"])
     assert rc == 0
@@ -2548,7 +2551,7 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
     ]
     for listed, installs, question, folders in cases:
         set_up_log(fake_mac, *installs, listed=listed)
-        write_friction(fake_mac, V10_HAPPY)
+        write_friction(fake_mac, V11_HAPPY)
         rc, text, _ = report(tmp_path, fake_mac["config"])
         summary = section(text, "Summary")
         assert rc == 0 and _line(summary, "- expected turns: ").startswith(f"- expected turns: {question} · ")
@@ -2591,7 +2594,7 @@ def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
     for list_step, synced, question in cases:
         runs = setup_report.read_install_runs(set_up_log(fake_mac, kept, listed="", list_step=list_step))
         assert setup_report.synced_before(runs) == synced, list_step
-        write_friction(fake_mac, V10_HAPPY)
+        write_friction(fake_mac, V11_HAPPY)
         rc, text, _ = report(tmp_path, fake_mac["config"])
         summary = section(text, "Summary")
         assert rc == 0 and _line(summary, "- expected turns: ").startswith(
@@ -3159,13 +3162,80 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     assert (attempts(11), attempts(12)) == (1, 2), "the closing line is 10:01:10: ten minutes is the line"
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_proxy_only_git_knows_is_redacted(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """B13 H1 (skeptic C2): since v11 step 1's git stop logs git's error, which names the proxy git used
+    (``Could not resolve proxy: <host>``). A proxy set only in git's config (``~/.gitconfig``, or the
+    checkout's ``.git/config`` under a URL section) was not registered and stood in the report in clear. Only
+    the redacted direction is asserted: the Mac's own /etc/gitconfig is read too."""
+    home = Path.home()
+    gitconfig = "[http]\n\tproxy = http://proxy.fabrikam.invalid:3128\n"
+    (home / ".gitconfig").write_text(gitconfig, encoding="utf-8")
+    checkout = home / "src" / "agent-context-sync" / ".git"
+    checkout.mkdir(parents=True)
+    section = '[http "https://github.com/"]\n\tProxy = "gw.fabrikam-two.invalid:8080" ; corporate\n'
+    (checkout / "config").write_text(section, encoding="utf-8")
+    v6_install_log(fake_mac)
+    lines = (
+        "2026-09-29T10:01:20Z | step 1 | error | git pull: Could not resolve proxy: proxy.fabrikam.invalid"
+        " (exit 1) | -\n"
+        "2026-09-29T10:01:21Z | step 1 | error | git pull: Could not resolve proxy: gw.fabrikam-two.invalid"
+        " (exit 1) | -\n"
+    )
+    write_friction(fake_mac, V11_HAPPY + lines)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "fabrikam" not in text.lower()
+    assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \(exit 1\)", text)) >= 2, text
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_empty_git_proxy_takes_no_line_after_it(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """``git config http.proxy ""`` writes ``proxy =`` with nothing after it. A pattern that let ``=`` reach
+    across the line break took the next line's ``[user]`` as a proxy, whose URL parse raised, and the report
+    fell back to a redactor that knew only the home folder: every folder and the org in clear (B13 lane F
+    review)."""
+    (Path.home() / ".gitconfig").write_text("[http]\n\tproxy = \n[user]\n\tname = X\n", encoding="utf-8")
+    write_friction(fake_mac, V11_HAPPY)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert ORG not in text and not any(folder in text for folder in FOLDERS), "redaction stays on"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_go_ahead_in_the_chat_is_a_turn_and_what_it_allowed_is_agent_friction(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """2026-10-07 U4 (B13 N43): since v11 a go-ahead given in the chat is a question line of its own beside
+    the deviation it allowed: the question is a turn beyond the folder question, the deviation stays agent
+    friction."""
+    v6_install_log(fake_mac)
+    lines = (
+        "2026-09-29T10:00:40Z | step 3 | question | the person gave a go-ahead for the printed fix | -\n"
+        "2026-09-29T10:00:41Z | step 3 | deviation | ran the printed fix, which the prompt does not say | -\n"
+    )
+    happy = V11_HAPPY.replace("Prompt: v11", f"Prompt: v{setup_report.PROMPT_VERSION}")
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", lines, happy))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; "
+        "1 question(s) beyond the folder question)"
+    )
+    assert "- human turns: 2 (2 questions; clicks: none possible; approvals: not observable)" in summary
+    items, agent_side = summary.split("Items that were not one command (attempt 1):", 1)[1].split(
+        "Agent friction (attempt 1; it does not change the outcome by itself):", 1
+    )
+    assert re.findall(r"^- F\d+ · step 3 · (\w+) · ", items, flags=re.MULTILINE) == ["question"]
+    assert re.findall(r"^- F\d+ · step 3 · (\w+) · ", agent_side, flags=re.MULTILINE) == ["deviation"]
+
+
 def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
     fake_mac: dict[str, Path],
 ) -> None:
     """Prompt v10's step 1 stops (no Xcode tools, a git failure) come before ``install.sh --log-start`` and
-    order no line, and step 3 still runs the report. That report judged the attempt that had finished
-    before it and said nothing else. It cannot tell such a session from a report written again by hand,
-    so it says what it read: nothing was started since attempt N finished."""
+    order no line (since v11 they log the failed command as a step 1 error, B13 H1; an old copy, or an agent
+    that does not, still logs nothing), and step 3 still runs the report. That report judged the attempt that
+    had finished before it and said nothing else. It cannot tell such a session from a report written again
+    by hand, so it says what it read: nothing was started since attempt N finished."""
     v6_install_log(fake_mac)
     write_friction(fake_mac, V7_HAPPY)  # its end line is 2026-09-29T10:01:10Z
 
@@ -3348,7 +3418,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
 
     # A later attempt is judged on its own runs: the failed run of the one before does not count against it,
     # and the earlier attempt keeps its outcome on the "earlier:" line.
-    later = V10_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
+    later = V11_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-03T09:00:00Z").replace(
         "2026-09-29T10:01:10Z", "2026-10-03T09:03:00Z"
     )
     log.write_text(log.read_text(encoding="utf-8") + install_run("2026-10-03T09:00:30Z", 0), encoding="utf-8")
@@ -3367,7 +3437,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     text, _red = setup_report.build_report(fake_mac["config"])
     assert "_This section failed: RuntimeError" in section(text, "Summary")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
-    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v10"]
+    assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v11"]
 
 
 def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outcome, list[int | None]]:
@@ -3433,7 +3503,7 @@ def test_a_retry_counts_since_v7_in_an_attempt_with_a_time_and_never_a_list_run(
         install_run("2026-09-29T10:00:00Z", 1, status_failed=True),
         install_run("2026-09-29T10:02:00Z", 0),
     )
-    for happy in (V7_HAPPY, V8_HAPPY, V9_HAPPY, V10_HAPPY):
+    for happy in (V7_HAPPY, V8_HAPPY, V9_HAPPY, V10_HAPPY, V11_HAPPY):
         outcome, retried = judged(tmp_path, happy, *pair)
         assert (outcome.kind, outcome.why[1:], retried) == ("worked with help", (RETRY_WHY,), [1]), happy
     outcome, retried = judged(tmp_path, V6_HAPPY, install_run("2026-09-29T10:00:00Z", 3), pair[1])

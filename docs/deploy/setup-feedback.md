@@ -41,13 +41,14 @@ Without agentsync, `--report-only` writes
 section 2. If the checkout is missing too (step 1 stopped before the clone), there is no installer and no friction
 log, and the agent tells you setup stopped before the code was downloaded. Two stops have no report: a new Mac
 whose agent is waiting for the folder answer of step 1, and a copy of the prompt that step 1 stopped because it
-is not the installer's (since v10 the prompt says so). Without an agent, run
+is not the installer's, by either check: the `--version` line, or the `--log-start` error (the prompt says so
+since v10, and names both checks since v11). Without an agent, run
 step 3's command yourself, and log what happened with `install.sh --log` first (or write `friction.md` in your
 own words).
 
 ## 2. Review (the person who ran the setup)
 
-Redaction is on by default and consistent, so the same value is always the same placeholder:
+Redaction is on by default and consistent within one report, so the same value is always the same placeholder there:
 
 | Placeholder | Replaces |
 |---|---|
@@ -60,7 +61,10 @@ Redaction is on by default and consistent, so the same value is always the same 
 | `(source N)`, `(not in the config, N)` | in the evidence parts only: a configured source id the redaction does not know, by its place in sources.toml; a source id that is in the manifest or the purge queue and no longer in sources.toml |
 
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping
-when the report embeds it, so the agent should not invent its own placeholders. Before sending, read the whole file
+when the report embeds it, and since setup prompt v11 the prompt has the agent name a folder, a file, a person,
+its organization or a customer in a friction line by its role in plain words, never by its real name, a short
+form of it or a placeholder (lines from older sessions stay as written: the log is append-only). Before sending,
+read the whole file
 once. Redaction only covers values agentsync knows about, so a project or customer name it has never seen (inside a
 log line or in the agent's words) is yours to remove. The CLI always redacts.
 
@@ -81,12 +85,23 @@ log line or in the agent's words) is yours to remove. The CLI always redacts.
   them first, and never paste this file into the public form: the public route takes `setup-report.md` alone.
   Section 2 is the whole file, every session's part in the order written: `fix-request.md` is kept from
   session to session and nothing in it is deleted. Since prompt v9 each session writes under a heading of its
-  own, which names the prompt's version and the date and time, and rewrites only its own part. Two sessions
+  own, which names the prompt's version and the date and time, and rewrites only its own part. Since prompt v11
+  that includes a session that asks for no change: its `## Not used` section goes under its own heading. Before
+  v11 such a session could add its `## Not used` with no heading of its own; then the lines from the first
+  difference down are that later session's, not the part whose heading is above them. Two sessions
   of one day are told apart by the time. Do not start at the last session heading: the Mac cannot know what
   was copied back, and a session whose file nobody copied leaves its part above the next session's heading.
   So triage compares section 2 with section 2 of the last bring-back file received from that Mac, finds the
   first line that differs, and reads from the session heading above it down to the end. With no earlier file
   from that Mac, it reads all of section 2 (K23).
+  A placeholder in section 2 is the one the report on the Mac gave when that part was written, which need not
+  be section 1's numbering. A report numbers values in the order it registers them (configured CloudStorage
+  folders, then the CloudStorage listing, then configured folders elsewhere; the shell fallback report: that
+  run's `--source-local` folders, then sources.toml, then install.log), so an added folder, a listing past its
+  3-second bound or a fallback report gives a folder another number, between two sessions or between step 2's
+  and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
+  by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust
+  its number only against section 1 of the file it first arrived in (K34).
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
@@ -108,7 +123,7 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v10` (an attempt an older copy started reports that copy's: `v9`, `v8`, `v7`, `v6`, `v5`) |
+| `prompt_version` | input | the prompt version, `v11` (an attempt an older copy started reports that copy's: `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
@@ -137,7 +152,7 @@ them), not the folder question and not the Allow clicks it announces. The `Attem
 
 | Kind | Meaning | Counts against "fully one command" | Usual fix class |
 |---|---|---|---|
-| `question` | the agent asked the person something other than which folders to sync | yes (v6 never logs the folder question; in a v5 log, the first question in its step 2 is that question) | prompt wording |
+| `question` | in the chat, the agent asked the person something other than which folders to sync, or the person gave a go-ahead or an answer other than the folder answer or word of a click (since v11; an older log may record a go-ahead as a `deviation`, which is not counted) | yes (v6 never logs the folder question; in a v5 log, the first question in its step 2 is that question) | prompt wording; for a go-ahead, the step it allowed (installer automation or agentsync code) |
 | `click` | the person clicked something other than an Allow the prompt announced | yes (v6 never logs the announced Allow clicks, section 5; in a v5 log, the first click in its steps 2 and 3 are those) | installer automation, or unavoidable OS step |
 | `approval` | the agent's tool asked the person to approve a command (only when the agent can see it) | yes: the README's pre-allow rules avoid it | prompt wording (a pre-allow list) |
 | `deviation` | the agent did something the prompt did not say, or worked around a problem | no: agent friction, counted on its own Summary line | prompt wording or installer automation |
@@ -188,7 +203,8 @@ install.log (a `--list-folders` run is not an install run):
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after
-the closing line. Its session's step 1 stopped before `install.sh --log-start` wrote a header, so the report
+the closing line. Its session's step 1 stopped before `install.sh --log-start` wrote a header (since prompt v11
+the Xcode and git stops log that error before the report), so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line (logged after the previous
 attempt finished)". When it is the last attempt it is the one the Summary judges: "failed at step 1". Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
@@ -208,7 +224,7 @@ question in its step 2, its Allow clicks the first click in its steps 2 and 3, a
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
 1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
 three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
-A `Prompt: v8`, `Prompt: v9` or `Prompt: v10` attempt is judged by the same rules: none moved a step. So is every
+A `Prompt: v8`, `Prompt: v9`, `Prompt: v10` or `Prompt: v11` attempt is judged by the same rules: none moved a step. So is every
 later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
 the rules only with its steps.
 
@@ -251,18 +267,18 @@ sentence included. A saved copy is therefore always known by its number. Twice a
 pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
 version, and the installer wrote its own number into the log.
 
-- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v10, <agent>'`. The
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v11, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
   with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
   error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
   from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
-- The version leads the value, and is read in the shape the agent gave it (`Prompt v10: <agent>` and `prompt v10 -
-  <agent>` are v10). The stop message shows no value that passes; its last sentence tells a current copy whose
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v11: <agent>` and `prompt v11 -
+  <agent>` are v11). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
-  `prompt: v7 or older (older than the installer's v10: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v11: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. That run writes no `bring-back.md` (one from the last real session
   stays as it is) and prints no `bring back:` or issue link line. Triage such a report as `known K18`, not as a
@@ -273,7 +289,7 @@ version, and the installer wrote its own number into the log.
   and no Allow click)`. Before 2026-10-07 it said `1 question` and `the folder question (step 1; not logged)`
   there (K28). A question the agent logged is still counted, and an attempt with an `install.sh` run in it
   (the agent listed the folders all the same) is read by the usual rules.
-- A copy newer than the installer (`newer than the installer's v10`) means the checkout on that Mac did not
+- A copy newer than the installer (`newer than the installer's v11`) means the checkout on that Mac did not
   update: look at step 1's `git pull` in the friction log.
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
   the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
@@ -459,7 +475,8 @@ A report written once the table says `yes` for every source shows the finished s
 
 Since prompt v8 the report is not written that early. While files are left, `sync` prints
 `note: sync again: N file(s) in <sources> are still to be read again, ...`. Once the loop's `NEXT:` line has said
-"session done", step 3 runs `agentsync sync --materialise-budget 0`, a sync that downloads nothing, and runs it
+"session done" (the loop runs at least one plain sync, even when the installer's NEXT already said it: the
+installer's sync downloads nothing), step 3 runs `agentsync sync --materialise-budget 0`, a sync that downloads nothing, and runs it
 again while a note starts with `sync again:`, up to 12 times in all, before it writes the report (12 syncs at
 both limits are an hour of re-reads and OCR; listing comes on top). They download nothing because a plain sync
 brings up to 1 GiB a folder each time, and those files have the OCR time first. The note says "sync again" only
@@ -554,7 +571,7 @@ named as "v5b review, its L<n>").
 | K20 | a Mac that already synced two folders was asked which folders to sync again; the tool ran unattended, the question came back unanswered, and the agent stopped and waited as v8's step 1 says, with nothing done (field, 2026-10-07) | prompt wording and installer automation | `install.sh --list-folders` marks the folders the config already syncs; v9's step 1 then asks only whether to add one and goes on when it cannot ask, and step 2 names `install.sh` with no `--source-local`; the report expects no folder question there and says what was kept; `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`, and `tests/test_install_oneshot.py` for the list and the run with no folder |
 | K21 | on a Mac that already ran agentsync, step 2's `install.sh` stopped at status on `[FAIL] docs_repo.permissions` (an `_eval` folder an earlier session's agent had written under its own umask), skipped the sync and named a `chmod` the agent may not run, so the round ended before the loop (field, 2026-10-07) | agentsync code | `add-source` and `init`, which `install.sh` runs before status, make agentsync's own paths owner-only as every sync does (the docs repo's top level, `_eval/`, `topics/`, the cache, the logs); the check's fix names `agentsync sync` when a sync clears what it found and keeps the `chmod` for the rest; `tests/test_install_oneshot.py` for the field layout under the real installer run, `tests/test_cli.py` for the two commands, and `tests/test_cycle.py` for the paths, the bound and a path of another user's |
 | K22 | the report read "fully one command" for an attempt whose first install run had exited 1 on a doctor `[FAIL]` and whose second run came after a fix made by hand: only the last install run was judged, and the issue link said the same (field, 2026-10-07) | agentsync code | since prompt v7 an install run that failed before the attempt's first run that exited 0 makes the outcome "worked with help"; the Summary names it and lists it first under the items that were not one command; a run the agent's tool stopped and a run after the first success do not count; `tests/test_setup_report.py` for the field's log, each order of exits, the earlier attempts and the link |
-| K23 | `fix-request.md` outlives a session and the prompt forbids deleting, so a v8 session appended its request to the v7 one, and after a second report it rewrote its own `## Not used`; neither was in the prompt, and the bring-back carried the earlier round's request again (field, 2026-10-07) | prompt wording | v9's rules say the file is kept from session to session: an earlier session's text stays, each session writes under its own heading (the prompt's version and the date and time, so two sessions of one day differ) and rewrites only its own part; step 3's `## Not used` is one per session. The bring-back still carries the whole file. Triage compares it with the last file received from that Mac and reads from the heading above the first line that differs, not from the last heading: a part nobody copied back sits above that one; `test_prompt_routes_changes_to_the_source_not_the_checkout` |
+| K23 | `fix-request.md` outlives a session and the prompt forbids deleting, so a v8 session appended its request to the v7 one, and after a second report it rewrote its own `## Not used`; neither was in the prompt, and the bring-back carried the earlier round's request again (field, 2026-10-07) | prompt wording | v9's rules say the file is kept from session to session: an earlier session's text stays, each session writes under its own heading (the prompt's version and the date and time, so two sessions of one day differ) and rewrites only its own part; step 3's `## Not used` is one per session. The bring-back still carries the whole file. Triage compares it with the last file received from that Mac and reads from the heading above the first line that differs, not from the last heading: a part nobody copied back sits above that one; v11 (v10 rehearsal, 2026-10-08): a session that asks for no change still writes its heading, and its `## Not used` goes under it; `test_prompt_routes_changes_to_the_source_not_the_checkout` |
 | K24 | step 2 with two `--source-local` printed the `docs repo ...` and `sources: ...` lines once per folder, 16 source ids each time: noise, and an agent could not tell what the second block meant (fix requests, 2026-10-06 and 2026-10-07) | installer automation | `install.sh` prints the first call's `docs repo` line and the last call's `sources:` line; every other line, the error stream and the call's exit status are as they were, and `agentsync add-source` by hand still prints both; `tests/test_install_oneshot.py` for three folders against the real agentsync and for a call that fails |
 | K25 | `fix-request.md` and `local-work/` in `~/agent-context/setup` were readable by group and other: the agent writes them under its own umask, the installer closed only its own three files, `--report-only` changed no mode, and doctor's printed `chmod -R` was the only thing that ever closed them (fix request, 2026-10-07) | installer automation | every `install.sh` run that reaches the setup folder ends by clearing group and other access on all of it, `--report-only` and the two `--log` options included; only the default folder, only the person's own regular files and folders, no symlink followed; `tests/test_install_oneshot.py` for each command, the symlinks, a setup log somewhere else and the dry run |
 | K26 | both installed background jobs read "plist differs" although they ran, and the fix doctor named, `agentsync install-agent`, would have written an interpreter path the launcher refuses: the launcher is built for the tool's `bin/python`, and a tool uv updated in place runs as `bin/python3`, the same file (field, 2026-10-07) | agentsync code | a job names its interpreter by the launcher's own path when that is the running interpreter under another name in the same folder, so doctor and the report compare against it and the refresh is safe; a job the launcher refuses is a doctor warn that says exit 64, and the report and the installer give 64 its meaning; `tests/test_ops_launchd.py`, `tests/test_launcher.py` with the real launcher, `tests/test_ops_doctor.py` and `tests/test_setup_report.py` |
@@ -563,6 +580,10 @@ named as "v5b review, its L<n>").
 | K29 | a first install printed one raw log line, `WARNING agentsync.curate: .../DEPENDS.tsv: missing or empty`, from the status that runs before the first sync; harmless, but a line the prompt does not explain, which an agent may log as friction (v9 rehearsal, 2026-10-07) | agentsync code | while no page is curated a missing or empty `DEPENDS.tsv` is the normal state before the first sync and is logged at debug level; with a curated page it is still a warning; `tests/test_curate.py`, and `tests/test_install_oneshot.py` for a first install's output with the real agentsync |
 | K30 | the last line of a new Mac's setup, `WAITING ON YOU: the baseline questions are a draft: keep about 10 in _eval/questions.md, ...`, named its two files without their folder, and the person who confirms them is not the one who wrote them (v9 rehearsal, 2026-10-07) | agentsync code | the wait names the folder once, `in ~/agent-context/docs/_eval, keep about 10 in questions.md, correct the answers in answers.md, ...` (the docs repo's path from the config, with `~` under the home folder); it still carries no document's name, and the report's Loop line shows `in _eval`, whatever the docs repo's path (one with a space in it left `in Client Alpha/kb docs/_eval` there until the folder was replaced as the loop wrote it); `tests/test_loop.py` and `tests/test_setup_report.py` |
 | K31 | on a Mac with fourteen inbox sources the person had added, step 2's "the folder of each kind = "inbox" source" named fifteen folders as the inbox when read literally; the agent announced only the folder beside the docs repo and logged the wording as a prompt friction line; and its Not used line for `hold` read it as a pause, "No source needed pausing" (field, v9, 2026-10-08). One more is from reading the text, not from that run, which met no folder stop: step 1's "stop and wait for my answer" and step 3's "Then the report, always" disagree at the folder stop of a new Mac (held in the plan since the v9 rehearsal, 2026-10-07) | prompt wording | v10 step 2 names the inbox as the folder named inbox beside the docs repo, one of the `kind = "inbox"` sources, any other being a folder the person added; step 3 names the two cases with no report, the wait for the folder answer in step 1 and a copy that step 1 stopped because it is not the installer's (the second since the v10 rehearsal, 2026-10-08: naming one case left that stop with two orders); the Not used list says `hold (a legal or records hold, not a pause)`; doctor's "drop files you save by hand here" is said of that one folder only; `test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps`, `test_readme_report_step_after_any_failure` |
+| K32 | wording that v10 rehearsals and the fourth bring-back read two ways or found wrong (held in B11 and B12): step 1's Xcode and git stops said "and stop" and logged nothing, so a report written after them could not tell which stop it was; step 3's second no-report case named only one of step 1's two version checks; the finish's "the last NEXT: or WAITING ON YOU: line of the loop" had several candidates, and two agents gave different lines; a re-run whose installer `NEXT:` already said "session done" read as a reason to skip the loop, whose syncs are the only ones that download; "removing a file removes its page" (the page becomes a deletion notice); an indented `alarm:` line had no rule, so every one was logged and its advice read as a step; step 2's 10-minute timeout was shorter than the speech helper's own build limit (field: 687 s) | prompt wording | v11: both step 1 stops go to the report and log the failed command as a step 1 `error` first, when the checkout exists; step 3's second case names both checks ("the --version line" or the command); the finish names the last `NEXT:` line printed before the report, or "none", with every `WAITING ON YOU:` line of the same command under it; step 2's `NEXT:` line does not count toward the loop; the inbox sentence says a deletion notice; an `alarm:` line other than the click-Allow one is shown, not acted on and not logged; step 2 suggests 30 minutes; `test_readme_step1_is_one_command`, `test_readme_report_step_after_any_failure`, `test_readme_step3_runs_the_loop_then_the_report`, `test_readme_prompt_carries_the_field_lines`, `test_readme_step3_says_an_alarm_line_is_not_a_step`, `test_readme_step2_is_the_one_install_command` |
+| K33 | friction lines are the only agent prose in the report's public part, and four short forms of registered names reached them, which redaction does not catch; a typed placeholder made two false residue hits (2026-10-07 C12) | prompt wording | v11 has the agent name a folder, a file, a person, the organization or a customer in a friction line by its role in plain words, never by its real name, a short form of it or a placeholder; a name that is itself the problem goes to `fix-request.md`, and its line is still logged by role; `test_readme_friction_line_format_and_kinds` |
+| K34 | an earlier part's `<folder-N>` in `fix-request.md` can name another folder in section 1: placeholders are numbered per report in registration order, so an added folder, a listing past its 3 s bound or the shell fallback report renumbers them, between sessions and between step 2's and step 3's report of one (b11 C7 skeptic; measured again for B13) | prompt wording | v11 asks for a role that tells the folder apart, with the report's placeholder beside it, and says the numbers can change from one report to the next; triage identifies a folder by the role; `test_prompt_routes_changes_to_the_source_not_the_checkout` |
+| K35 | a go-ahead the person gave in the chat for a printed fix was logged only as a `deviation`, which no count reads, so human turns left it out (2026-10-07 U4) | prompt wording | v11's `question` kind covers a go-ahead or an answer given in the chat, other than the folder answer or word of a click, as a line of its own beside any `deviation` it allowed; `test_readme_question_kind_counts_a_go_ahead_given_in_the_chat` |
 
 ## 5. Unavoidable steps so far
 

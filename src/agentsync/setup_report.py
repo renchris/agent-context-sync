@@ -143,7 +143,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 10
+PROMPT_VERSION = 11
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -160,8 +160,9 @@ PROMPT_STEPS = {
 older reports keep their option; each layout's ``form_step`` maps its steps onto them."""
 FOLDER_QUESTION_STEP = 1
 """The step that asks the one question fully one command allows (which folders to sync). Prompt v6 does not
-log it (its ``question`` kind is "something other than which folders to sync"), so every logged question is
-beyond it; in a v5 log it is the first question logged in v5's step 2."""
+log it (its ``question`` kind is "something other than which folders to sync"; since v11 the kind also covers
+a go-ahead or an answer the person gave in the chat, still not the folder answer), so every logged question
+is beyond it; in a v5 log it is the first question logged in v5's step 2."""
 ALLOW_CLICK_STEPS = (1, 2)
 """Prompt v6's steps whose announced Allow click fully one command allows (the terminal's OneDrive access in
 step 1, agentsync-launcher's in step 2). Prompt v6 does not log them (its ``click`` kind is "something other
@@ -241,14 +242,15 @@ is gone and step 3 runs the sync loop, then the report), v6 and v5. A log is rea
 own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v7 share this module's step
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
 report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
-again) or v10 (three sentences reworded), so they have no entry: :func:`prompt_layout` reads them as v7."""
+again), v10 (three sentences reworded) or v11 (wording only), so they have no entry: :func:`prompt_layout`
+reads them as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8, v9, v10, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8 to v11, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
@@ -1789,8 +1791,43 @@ def _org_of(provider: str) -> str | None:
     return None
 
 
+_GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNORECASE | re.MULTILINE)
+"""A ``proxy = <value>`` line of a git config file. Blanks only, never ``\\s``: an empty ``proxy =`` (git's
+way to switch a proxy off) must not take the next line's first word."""
+
+
+def _install_checkout() -> Path | None:
+    """The checkout this agentsync was installed from (its ``direct_url.json``), or None for a wheel."""
+    with contextlib.suppress(Exception):
+        raw = importlib.metadata.distribution("agentsync").read_text("direct_url.json")
+        info = json.loads(raw or "{}")
+        url = str(info.get("url", ""))
+        if url.startswith("file:") and "dir_info" in info:
+            return Path(unquote(urlsplit(url).path))
+    return None
+
+
+def _git_proxy_urls() -> list[str]:
+    """``proxy`` values in the config files git reads (``http.proxy``, ``http.<url>.proxy``,
+    ``remote.<name>.proxy``), read as files: no git process, since step 1 may have stopped on missing
+    developer tools. Since setup prompt v11 step 1's git stop logs git's error, which names that proxy's host
+    (``Could not resolve proxy: <host>``). The checkouts are the one agentsync was installed from and the one
+    the prompt clones."""
+    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    names = [Path.home() / ".gitconfig", Path(xdg) / "git" / "config", Path("/etc/gitconfig")]
+    for checkout in (_install_checkout(), Path.home() / "src" / "agent-context-sync"):
+        if checkout is not None and checkout / ".git" / "config" not in names:
+            names.append(checkout / ".git" / "config")
+    urls: list[str] = []
+    for name in names:
+        with contextlib.suppress(OSError):
+            urls += _GIT_PROXY_RE.findall(name.read_text(encoding="utf-8", errors="replace"))
+    return urls
+
+
 def _proxy_hosts(r: _Run) -> list[str]:
     urls = [os.environ.get(k, "") for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")]
+    urls += _git_proxy_urls()
     urls += [os.environ.get(k, "") for k in ("HTTP_PROXY", "http_proxy")]
     if r.system_proxy is not None:
         urls += [r.system_proxy.https_proxy or "", r.system_proxy.http_proxy or ""]
@@ -1801,7 +1838,10 @@ def _proxy_hosts(r: _Run) -> list[str]:
     for url in filter(None, (u.strip() for u in urls)):
         if url.lower() in ("direct", "none", "off"):
             continue
-        host = urlsplit(url if "://" in url else f"http://{url}").hostname
+        try:
+            host = urlsplit(url if "://" in url else f"http://{url}").hostname
+        except ValueError:  # not a URL (``[user]``): one bad value must not take the whole redactor down
+            continue
         if host and host not in hosts:
             hosts.append(host)
     return hosts

@@ -397,7 +397,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (10, "063a9b506683a4c5d4d431e2116a3bb31b5bd8629eb727dad35e4c5348efd2a8")
+PROMPT = (11, "9efc4ad0e475d6f6dc51729df427fd956b72ada1776921385960d7a2c153d1db")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -550,6 +550,17 @@ def test_readme_step1_is_one_command() -> None:
     assert "If --list-folders printed no folder paths (only a NEXT: line)" in step1
     assert "ask which to sync" in step1, "the folder question is step 1's, after the list"
     assert _commands(_preamble()) == [FRICTION_LOG_TEMPLATE]
+    # B13 H1: the Xcode and git stops said "and stop" and ordered no line, so a session that stopped there
+    # left nothing the report could read. Since v11 both go to the report and log the failed command first, as
+    # a step 1 error (a step that is not a number has no step column, and no reader opens an attempt on it).
+    report = _report_step()
+    assert f"then paste this prompt again\", and go to step {report}'s report." in step1
+    assert f"(a corporate proxy may need HTTPS_PROXY set) and go to step {report}'s report." in step1
+    assert (
+        "Before going to the report from either of these two stops, log the failed command as a step 1 error"
+        " if ~/src/agent-context-sync exists."
+    ) in step1
+    assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
 
 
 def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
@@ -559,20 +570,33 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     block = " ".join(_one_prompt_block().split())
     assert "Do not edit any file in ~/src/agent-context-sync" in block
     assert "write what and why to ~/agent-context/setup/fix-request.md" in block
-    # The bring-back report (2026-10-06): the fix request comes back unredacted, so it names roles.
+    # The bring-back report (2026-10-06): the fix request comes back unredacted, so it names roles. B13 N44: a
+    # report numbers placeholders in the order it registers values, so an added folder, a listing past its
+    # bound or the shell fallback report gives a folder another number, while fix-request.md outlives the
+    # report it was written against. The role names the folder; the placeholder only sits beside it.
     assert (
-        'In that file, name a folder, a file or a person by its role ("a project folder") or by the setup '
-        "report's placeholder (<folder-1>), not by its real name, unless the name itself is the bug."
+        "In that file, name a folder, a file or a person by a role that tells it apart from the others "
+        "on this Mac, adding the setup report's placeholder if it has one (\"the folder of scanned "
+        'invoices (<folder-2>)"), not by its real name, unless the name itself is the bug. Placeholder '
+        "numbers can change from one report to the next; the role does not."
     ) in block
+    naming = block.split("In that file, ", 1)[1].split(" agentsync never needs", 1)[0]
+    assert "or by the setup report's placeholder" not in naming, "a placeholder alone does not survive"
+    assert "a project folder" not in naming, "every synced folder is one: that role tells none apart"
     # The second bring-back (2026-10-07): the file outlives a session and nothing may be deleted, so a session
     # that found an earlier request could only append to it, and one that ran the report twice rewrote its own
     # "## Not used". The rules give the file its boundary: one part per session, under that session's heading.
     # The heading has the time too: a failed session and the one pasted after it are often the same day's, and
-    # a heading with the date alone would be the same for both.
+    # a heading with the date alone would be the same for both. A session that asks for no change still adds
+    # step 3's "## Not used". Read literally, nothing put that section under the session's own heading, so it
+    # could land under the last session's, and triage would read it as that session's, with the wrong version
+    # and time (v10 rehearsal, 2026-10-08; B13 H5).
     assert (
         "arrives with the next pull. That file is kept from session to session: leave an earlier session's "
         "text as it is, write yours after it under a heading of your own that names this prompt's version "
-        "and the current date and time, and rewrite only your own part. In that file, name a folder"
+        "and the current date and time, and rewrite only your own part. Write that heading even when this "
+        'session asks for no change: step 3\'s "## Not used" section goes under it. In that file, name a '
+        "folder"
     ) in block
     assert "today's date" not in block, "the date alone does not tell two sessions of one day apart"
     assert len(re.findall(r"setup prompt v\d+", block)) == 1, "the heading rule holds no version of its own"
@@ -581,6 +605,9 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert "copy `~/agent-context/bring-back.md` back" in private
     assert "never paste this file into the public form" in private
     assert "Section 2 is the whole file, every session's part in the order written" in private
+    assert "Since prompt v11 that includes a session that asks for no change" in private
+    assert "then the lines from the first difference down are that later session's" in private
+    assert "identify the folder by that role, not by the placeholder's number" in private
     # Where triage starts. Not at the last heading: nothing on the Mac knows what was copied back, so a part
     # whose file nobody copied sits above the next session's heading. The file received last is what is known.
     assert "Do not start at the last session heading: the Mac cannot know what was copied back" in private
@@ -599,7 +626,7 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     )
     assert "still in `~/agent-context/setup/local-work`" in private
     assert "}not repeated: a patch file last written $at," in SCRIPTS[0].read_text(encoding="utf-8")
-    finish = _prompt_steps()[3].rsplit("Finish with three lines", 1)[1]
+    finish = _prompt_steps()[3].rsplit("Finish with:", 1)[1]
     assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
     step3 = _prompt_steps()[3]
     assert 'add a "## Not used" section to the end of ~/agent-context/setup/fix-request.md' in step3
@@ -942,11 +969,22 @@ def test_every_launcher_example_passes_confirm_install_agent() -> None:
 
 def test_readme_step2_is_the_one_install_command() -> None:
     """One command, in its two forms: with a folder to sync or add, and with none (setup prompt v9: a Mac
-    that already syncs folders keeps them, so a re-run names no folder)."""
+    that already syncs folders keeps them, so a re-run names no folder). B13 H8 (B12 F34): its timeout is 30
+    minutes, the speech helper's own build limit (20) plus a margin, since a first build took 687 s."""
     step2 = _prompt_steps()[2]
     assert _commands(step2) == [INSTALL_WITH_FOLDER, INSTALL_SH]
     assert "--confirm-install-agent" not in _one_prompt_block(), "KISS K11b: background sync is optional"
-    assert "10 minutes" in step2 and "run the same command again" in step2, "J11: a timeout and a safe re-run"
+    from agentsync.convert import speech  # noqa: PLC0415
+
+    limit = int(speech._BUILD_TIMEOUT_S) // 60
+    [suggested] = re.findall(r"\((\d+) minutes if you can set it", step2)
+    assert int(suggested) * 60 > speech._BUILD_TIMEOUT_S, (
+        "H8: the suggested timeout outlasts the speech helper's own build limit (field: 687 s)"
+    )
+    assert f"the speech helper's build alone can take up to {limit} minutes" in step2, (
+        "H8: step 2 says why the timeout is long, in the build limit's own number"
+    )
+    assert "run the same command again" in step2, "J11: a safe re-run"
     assert "NEXT:" in step2
     assert (
         "If your tool cannot wait that long in the foreground, run it in the background and read its output"
@@ -956,10 +994,15 @@ def test_readme_step2_is_the_one_install_command() -> None:
 
 def test_readme_step3_runs_the_loop_then_the_report() -> None:
     """KISS K04: step 3 is the loop every session runs (sync, then what NEXT says, until NEXT itself says
-    "session done"; a WAITING ON YOU line is shown, never a stop), then the report, and the finish's three
-    lines. The words it keys on are the loop's own: NEXT's prefix and its "session done", and the WAITING
-    prefix. Each sync gets step 2's long timeout, a non-zero exit with a NEXT line is followed, and the agent
-    is told where the procedure a NEXT line names is written out. No IT request and no second prompt."""
+    "session done"; a WAITING ON YOU line is shown, never a stop), then the report, and the finish. The words
+    it keys on are the loop's own: NEXT's prefix and its "session done", and the WAITING prefix. Each sync
+    gets step 2's long timeout, a non-zero exit with a NEXT line is followed, and the agent is told where the
+    procedure a NEXT line names is written out. No IT request and no second prompt. B13 H3: the finish named
+    "the last NEXT: or WAITING ON YOU: line of the loop", and v10 rehearsal agents read it two ways (the wait
+    alone, or the NEXT with the waits); it now names the last NEXT: line printed before the report (the
+    report's own NEXT excluded), or "none", with every wait the same command printed under it. B13 H4: a
+    re-run's installer NEXT can already say "session done" (loop rules 5, 9 and 10) after step 2's sync,
+    which downloads nothing, so it does not count toward the loop."""
     from agentsync import loop  # noqa: PLC0415
 
     block = _one_prompt_block()
@@ -969,6 +1012,10 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert f"Run `{AGENTSYNC} sync` and do what its NEXT: line says" in step3
     flat = " ".join(step3.split())
     assert 'Repeat until the NEXT: line itself says "session done".' in flat
+    assert (
+        "Step 2's NEXT: line does not count, even when it already said \"session done\": step 2's sync"
+        " downloaded nothing, so run this loop's sync at least once." in flat
+    ), "a re-run's installer NEXT can say 'session done' (rules 5, 9, 10) after a sync that downloads nothing"
     assert "WAITING ON YOU: lines are mine: show them to me, but keep doing what NEXT: says." in flat
     assert (
         "Run each sync like step 2's command: with the longest command timeout your tool allows, or in the"
@@ -997,13 +1044,52 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert loop_source.count("session done") >= 3, (
         "the loop's NEXT says 'session done' where the prompt stops"
     )
-    finish = step3.split("Finish with three lines:", 1)[1]
-    assert "the folders synced (full paths); the last NEXT: or WAITING ON YOU: line of the loop;" in finish
+    finish = step3.split("Finish with:", 1)[1]
+    assert (
+        "the folders synced (full paths); the last NEXT: line printed before the report, or"
+        ' "none", and under it each WAITING ON YOU: line the same command printed;'
+    ) in finish, "one NEXT line, the report's own excluded, and every wait the same command printed"
+    assert "of the loop" not in finish and "three lines" not in step3, "no candidate set, no line count"
     assert "it-request" not in block and "IT request" not in block, "KISS K04: no IT request step"
     assert "--confirm-install-agent" not in block
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     section = readme.split("\n## Set up on a new Mac: one prompt\n", 1)[1].split("\n## ", 1)[0]
     assert section.count("```text\n") == 1 and "Next, on the same Mac" not in readme, "no second prompt"
+
+
+ALARM_SENTENCE = (
+    'That "click Allow" appears on an alarm: line, indented under a source; any other alarm: line is'
+    " agentsync's own account of that source, not a step for you: show it to me, but do not do what it"
+    " suggests (that is mine to decide) and do not log it."
+)
+"""Step 3's sentence on a sync's indented ``alarm:`` line (setup prompt v11, B13 H7)."""
+
+
+def test_readme_step3_says_an_alarm_line_is_not_a_step(capsys: pytest.CaptureFixture[str]) -> None:
+    """B10 rehearsal, B11 held, B13 H7: a sync prints an indented ``alarm:`` line under a source, and the v10
+    prompt named only NEXT:, WAITING ON YOU: and note: lines, so its friction rule had the agent log every
+    alarm, and an alarm's advice (Files and Folders access, accept-deletions, an install re-run) read as a
+    step. One alarm is a step: a listing macOS holds says "click Allow, then re-run the sync"
+    (``arm_local.LocalArm._held``, the cycle's held cloud; tests/test_cycle.py), which the sentence before
+    already handles, so this one excepts it. Most alarms have no wait line, so the sentence claims none."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import CycleMode, CycleReport, PassKind, SourceKind, SourceReport  # noqa: PLC0415
+
+    step3 = _prompt_steps()[3]
+    assert ALARM_SENTENCE in step3
+    assert (
+        step3.index("WAITING ON YOU: lines are mine")
+        < step3.index('If a sync stops on "click Allow"')
+        < step3.index(ALARM_SENTENCE)
+        < step3.index("make one report enough")
+    ), "after the click-Allow sentence it excepts, inside the loop, before the report syncs"
+    assert _commands(ALARM_SENTENCE) == [], "it names no command"
+    src = SourceReport("contoso-projects", SourceKind.LOCAL, PassKind.FULL, False, alarms=("example",))
+    cli._print_report(CycleReport(run_id=1, mode=CycleMode.POLL, sources=(src,), changes=(), commit_sha=None))
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].startswith("  contoso-projects: ") and lines[2] == "    alarm: example", (
+        "a sync prints the alarm indented under its source, as the prompt says"
+    )
 
 
 def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> None:
@@ -1026,7 +1112,7 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
 
     step3 = _prompt_steps()[3]
     said = (
-        'Once the NEXT: line has said "session done", make one report enough: run '
+        'Once this loop\'s NEXT: line has said "session done", make one report enough: run '
         f"`{SYNC_NO_DOWNLOAD}` (a sync that downloads nothing, so the files already on this Mac "
         "get its whole time), and run it again while a note: line of the last one starts with "
         '"sync again:" (files are still being read again; the note counts them) or its NEXT: line asks '
@@ -1039,7 +1125,7 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
     assert 12 * (cycle._REREAD_BUDGET_S + cycle._OCR_BUDGET_S) == 3600, "an hour of re-reads and OCR"
     order = [
         'Repeat until the NEXT: line itself says "session done".',
-        'Once the NEXT: line has said "session done", make one report enough',
+        'Once this loop\'s NEXT: line has said "session done", make one report enough',
         'add a "## Not used" section',
         "Then the report, always",
     ]
@@ -1076,14 +1162,18 @@ def test_readme_report_step_after_any_failure() -> None:
         in text
     )
     # Two stops have no report (v10): step 1's folder question on a new Mac is a wait, not a failure, and a
-    # copy that is not the installer's runs no other step. Every other stop of step 1 is a failure.
+    # copy that is not the installer's runs no other step. Every other stop of step 1 is a failure. Since v11
+    # the second case names both of step 1's version checks, and the first as the line --version printed: at
+    # an Xcode or git stop --version never ran, and those stops end with the report (B13 H2).
     assert (
         "that setup stopped before the code was downloaded). Two cases have no report: while you wait "
-        "for my folder answer in step 1, and when step 1 stops because this prompt is not the installer's. "
+        "for my folder answer in step 1, and when step 1 stops because this prompt is not the installer's "
+        "(either check: the --version line does not end with this prompt's number, or the command says so). "
         "Every other stop still ends with the report. The report works out"
     ) in text
     assert (
-        "or the command says the pasted prompt is not the installer's, stop: this prompt is v10" in steps[1]
+        "or the command says the pasted prompt is not the installer's, stop: this prompt is "
+        f"v{PROMPT[0]}" in steps[1]
     )
     assert _prompt_steps()[1].count("stop and wait for my answer") == 1
     assert "Do not send or upload anything" in text
@@ -1130,6 +1220,11 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert "Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt" in inbox
     assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
     assert "never empty it by hand" in inbox
+    # B13 H6: a removed inbox file's page stays at its path as a deletion notice ([DELETED UPSTREAM], reaped
+    # after tombstone_reap_days; tests/test_e2e.py::test_f_delete_writes_a_tombstone), and only the queued
+    # purge removes it earlier. The v10 sentence said the page was removed.
+    assert "removing a file turns its page into a deletion notice and queues a purge" in inbox
+    assert "removes its page" not in block
     assert 'If a sync stops on "click Allow", a macOS prompt is waiting for me' in _prompt_steps()[3]
     # The bring-back report (2026-10-06). S2: an unanswered folder question is never the agent's to answer.
     # S4: a Mac that already runs agentsync keeps what it has, and its older warnings are not this session's.
@@ -1311,6 +1406,41 @@ def test_readme_friction_line_format_and_kinds() -> None:
     table = _feedback_page().split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
     documented = re.findall(r"`([a-z]+)`", " ".join(re.findall(r"^\| (.+?) \|", table, flags=re.MULTILINE)))
     assert tuple(documented) == FRICTION_KINDS, "setup-feedback.md triages every kind, in the prompt's order"
+    # 2026-10-07 C12 (B13 N42): the friction lines are the only agent prose in the report's public part, and
+    # four short forms of registered names reached it. Roles only: a typed placeholder made both of C12's
+    # false residue hits, and a name that is the problem still gets its line (a question or click there
+    # counts in the outcome).
+    friction = pre.split("Friction log:", 1)[1]
+    assert (
+        "These lines go into the report, which I may post in public, so in them name a folder, a file, a "
+        'person, my organization or a customer by its role in plain words ("a project folder"), never by its '
+        "real name, a short form of it or a placeholder; if a name itself is the problem, still log the line "
+        "by role and write the name in fix-request.md."
+    ) in friction
+    assert "<folder-" not in friction, "C12: an example placeholder in the friction rule invites typed ones"
+
+
+def test_readme_question_kind_counts_a_go_ahead_given_in_the_chat() -> None:
+    """2026-10-07 U4 (B13 N43): the person approved a printed fix in the chat and the agent logged only a
+    deviation, which the report never counts. Since v11 the question kind covers a go-ahead or an answer given
+    in the chat, as a line of its own beside the deviation, but not the folder answer or word of a click,
+    which have their own rules."""
+    listed = _preamble().split("<kind> is one of:", 1)[1].split(". Do not log", 1)[0]
+    [question] = re.findall(r"question \(([^)]*)\)", listed)
+    for words in (
+        "in the chat",
+        "go-ahead",
+        "an answer",
+        "which folders to sync",
+        "my folder answer",
+        "telling you I clicked something",
+        "one line",
+        "a question line of its own",
+        "deviation",
+    ):
+        assert words in question, words
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `question` |")]
+    assert "go-ahead" in row and "click" in row
 
 
 def _fill_line(step: int, kind: str, what: str, fix: str) -> str:
