@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, skill
+from agentsync import cycle as cycle_module
 from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
@@ -307,6 +308,72 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         assert manifest.get_meta("empty_cloud_dirs:work") == ""
 
 
+def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_path: Path) -> None:
+    """N26: while a cloud folder keeps the listing incomplete, files deleted upstream stay mirrored, and the
+    wait counts them (never a path), so the person knows what completing the listing checks. The paste
+    retires none of them: the first complete pass marks them absent, the next removes them as deleted."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    for n in range(6):
+        _write(root / "Planning" / f"plan {n}.txt", f"Plan {n} is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    first = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s)"))
+    assert first.endswith("an excluded folder is not mirrored if it later gains files"), "none missed yet"
+    for n in range(4):
+        (root / "Planning" / f"plan {n}.txt").unlink()
+    run_cycle(config, mode=None)
+    wait = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s)"))
+    assert wait == first + (
+        "; the last walk of work did not list 4 file(s) the mirror still has: once the listing is complete, "
+        "later syncs take out the pages of those still absent, with the usual deletion check"
+    )
+    assert "plan" not in wait.lower() and "Planning" not in wait
+    # A row last listed under an earlier `path` is retired as a scope change, not checked: not counted.
+    with Manifest(config.state_paths.db) as manifest:
+        kept = manifest.get_meta("scope_root:work")
+        manifest.set_meta("scope_root:work", f"99:{root}")
+    assert not any("did not list" in ln for ln in _lines(config))
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_meta("scope_root:work", kept or "")
+    path = config.config_path
+    path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]\n')
+    config = load_config(path)
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+        assert manifest.live_count("work") == 6, "the paste retired none of them"
+        assert manifest.unlisted_count("work") == 4
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.live_count("work") == 2, "absent from two complete passes: removed as deleted"
+        assert manifest.unlisted_count("work") == 0
+
+
+def test_a_pass_that_failed_after_its_walk_counts_no_file_as_not_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """N26: a pass that fails after its walk and before its transaction commits records a FULL run_sources
+    row with its error and stamps no row. Counted against it, every mirrored file reads as not listed."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    for n in range(6):
+        _write(root / "Planning" / f"plan {n}.txt", f"Plan {n} is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    first = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s)"))
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("the classifier failed")
+
+    monkeypatch.setattr(cycle_module, "_classify_pass", fail)
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.last_source_pass("work").error  # type: ignore[union-attr]
+        assert manifest.unlisted_count("work") == 0
+    assert first in _lines(config), "the wait stands, with no count"
+
+
 def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp_path: Path) -> None:
     """A folder usually becomes empty because its files were removed upstream, and while the listing is
     incomplete those deletions are held. Excluding the folder would retire their pages as a scope change:
@@ -334,7 +401,9 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder(s) from the cloud drive too, and later syncs take the "
         "pages out with the usual deletion check; excluding such a folder instead retires its pages at "
-        f"once, with no deletion check and no purge queued. `{BIN} sync -v` names the folders",
+        f"once, with no deletion check and no purge queued. `{BIN} sync -v` names the folders; in all, the "
+        "last walk of work did not list 2 file(s) the mirror still has: once the listing is complete, later "
+        "syncs take out the pages of those still absent, with the usual deletion check",
     ]
     assert not any("Reports" in ln or "2026" in ln for ln in _lines(config))
     # Removed upstream too, the folder no longer stops the listing once the other one is excluded, and the

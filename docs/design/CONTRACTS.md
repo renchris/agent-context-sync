@@ -6053,6 +6053,8 @@ or empty for this case (a source sat incomplete for 900 passes):
     its pages at once, with no deletion check and no purge queued. \`agentsync sync -v\` names the folders`.
     A folder usually became empty because its files were removed upstream, and an exclude edit is a scope
     change: §9 retires what left scope as `retired:scope-change`, past the deletion breaker and with no purge;
+    **amended 2026-10-11, §16.39 N26:** the source's last line of the two ends with the count of the mirrored
+    files its last walk did not list, when there are any;
   - every stored folder is excluded by now (the line was pasted, no sync ran yet): the source is "not fully
     listed" under rule 3, whose step is to sync again;
   - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
@@ -8145,7 +8147,8 @@ costs names times folder levels times globs, and a sync's advice for such a fold
 asked of the checked folders only and in a timed call: asked of every stored name on the report's own thread
 it took 44 s for 5,000 names against 506 globs, past the report's limit and the installer's. When it is
 stopped the line keeps the folders' own facts and says `excluded in sources.toml now: not measured (time
-limit)`.
+limit)`. **Amended 2026-10-11, §16.39 N26:** the line ends with what the source's last walk did not list of
+the files the mirror holds for it.
 
 **Repeat conversions.** One row for each of the last five runs: files converted, of them failed, of them
 the same file from the same bytes as an earlier run, and of those as the run just before (`not recorded`
@@ -10984,6 +10987,42 @@ still tell a stuck holder from repeated slow runs. Amends §9 step 2 (dated line
 (`test_lock_held_warning_names_the_holder_and_repeats_verbatim`), `tests/test_ops_lock.py`
 (`test_second_instance_in_same_process_is_refused`,
 `test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`).
+
+#### N26: the empty-cloud-folder wait and the report count the files the last walk did not list (`agentsync.manifest`, `agentsync.loop`, `agentsync.setup_report`)
+
+`Manifest.unlisted_count(source_id, *, since=0) -> int`: the source's present file rows whose `last_seen_run`
+is below the run of its newest FULL `run_sources` row and at or above `since`. It is 0 when there is no such
+row, or when that row recorded an error (a pass that failed after its walk and before its transaction
+committed has the row and stamped no item, so every file would count).
+
+When that count is above 0, an empty-cloud-folder wait (§16.22) ends with `the last walk of <id> did not list N
+file(s) the mirror still has: once the listing is complete, later syncs take out the pages of those still
+absent, with the usual deletion check`. `since` is the run in manifest meta `scope_root:<id>` (0 when it is
+missing or unreadable; `loop._missed`), because a complete pass retires a row last listed under an earlier
+`path` as a scope change and does not check it. The clause appears once per source, on its last line: on the
+line about folders that held mirrored files as `; in all, ...` when the source has one (removing those folders
+is what completes the listing, and that line's own count is among the N), otherwise on the paste line as
+`; ...`. It gives a count, never a path, and never mentions a purge (one is queued only under
+`gov.purge_on_upstream_delete`). The wait for a folder that could not be listed gets no clause: its advice
+includes an exclude, which retires the rows under it at once.
+
+The setup report's per-source Empty cloud folders line (§16.28) ends, after `... below M of the checked
+folder(s)`, with one of `; its last walk did not list U of the T file(s) the mirror holds for it`, `; no walk
+of it is recorded`, or `; its last walk ended on an error, so the files it did not list are not counted`.
+There is no `since` there: the report states the fact, so the two counts can differ only after a `path`
+change.
+
+Known limit: between an edit to sources.toml and the next sync both counts are against the last walk, as the
+wait's folders are; the next sync rewrites them.
+
+Why: with a listing held incomplete, files deleted upstream stay mirrored and no line said how many
+(rehearsal v10, `unchanged=26` beside `live 30`), so the person pasting the exclude line could not tell what
+completing the listing would check. Amends §16.22 and the report's Empty cloud folders paragraph (dated lines
+there). Tests: `tests/test_loop.py`
+(`test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list`,
+`test_a_pass_that_failed_after_its_walk_counts_no_file_as_not_listed`,
+`test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line`), `tests/test_setup_report.py`
+(`test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

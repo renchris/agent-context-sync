@@ -5332,9 +5332,40 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
         "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them with a link count of 2: no entry by the "
         "folder's own metadata); 1 gone, 0 not readable, 1 not a folder, 1 not checked; 6 of 6 checked; 0 "
         "of the checked folder(s) excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of "
-        "the checked folder(s)"
+        "the checked folder(s); no walk of it is recorded"
     )
     assert part.count("\n- ") == 1, "a source whose walk held none has no line"
+    # N26: the files the mirror holds that the last walk (the newest FULL pass) did not list; no path.
+    seed = Seed(fake_mac["config"])
+    seed.run(2, {})
+    seed.m._db.execute(
+        "INSERT INTO run_sources (run_id, source_id, pass_kind, enumeration_complete, cursor_reset, "
+        "counts_json) VALUES (2, ?, 'full_enumeration', 0, 0, '{}')",
+        (one,),
+    )
+    seed.m._db.execute(
+        "UPDATE items SET last_seen_run = 2 WHERE source_id = ? AND rel_path = ?",
+        (one, "Northwind/Tailspin beside.docx"),
+    )
+    seed.close()
+    walked = status_parts(fake_mac)[1]["Empty cloud folders"]
+    assert walked.rstrip().endswith(
+        "below 1 of the checked folder(s); its last walk did not list 4 of the 5 file(s) the mirror holds "
+        "for it"
+    ), walked
+    # A newer walk that ended on an error may have stamped nothing: not counted against it.
+    seed = Seed(fake_mac["config"])
+    seed.run(3, {})
+    seed.m._db.execute(
+        "INSERT INTO run_sources (run_id, source_id, pass_kind, enumeration_complete, cursor_reset, "
+        "counts_json, error) VALUES (3, ?, 'full_enumeration', 0, 0, '{}', 'RuntimeError: failed')",
+        (one,),
+    )
+    seed.close()
+    failed = status_parts(fake_mac)[1]["Empty cloud folders"]
+    assert failed.rstrip().endswith(
+        "its last walk ended on an error, so the files it did not list are not counted"
+    ), failed
     assert not [p for p in listed if str(root) in p], "no folder of the source was listed"
     cfg = fake_mac["config"]
     cfg.write_text(

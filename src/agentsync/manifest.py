@@ -1846,6 +1846,29 @@ class Manifest:
         ).fetchall()
         return [_item_from_row(r) for r in rows]
 
+    def unlisted_count(self, source_id: str, *, since: int = 0) -> int:
+        """How many of the source's present file rows its newest FULL pass did not list (``last_seen_run``
+        below that pass's run), of those last listed at or after run ``since``: the deletion candidates a
+        first complete listing checks (:meth:`unseen_live` then). A count, never a path.
+
+        0 when no FULL pass is recorded, and when the newest one recorded an error: a pass that failed
+        after its walk but before its transaction committed has a ``run_sources`` row and stamped no row,
+        so every file would count as not listed."""
+        walk = self._db.execute(
+            "SELECT run_id, error FROM run_sources WHERE source_id = ? AND pass_kind = ? "
+            "ORDER BY run_id DESC LIMIT 1",
+            (source_id, PassKind.FULL.value),
+        ).fetchone()
+        if walk is None or walk[1] is not None:
+            return 0
+        states = [s.value for s in _PRESENT_STATES]
+        row = self._db.execute(
+            "SELECT COUNT(*) FROM items WHERE source_id = ? AND is_dir = 0 "
+            f"AND state IN ({', '.join('?' for _ in states)}) AND last_seen_run >= ? AND last_seen_run < ?",
+            (source_id, *states, since, int(walk[0])),
+        ).fetchone()
+        return int(row[0])
+
     def rekey(self, source_id: str, old_id: str, new_id: str) -> None:
         """Safe-save continuity: move the old row's content hashes and outputs to the new stable id, drop
         old.

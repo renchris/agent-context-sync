@@ -4277,6 +4277,26 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             )[0][0]
             held += int(below)
             folders += 1 if below else 0
+        # What a complete listing will check (N26): the files the mirror holds that the last walk, the newest
+        # FULL pass (cycle stamps last_seen_run on every file it lists), did not list. A count, never a path.
+        # A walk that ended on an error may have stamped nothing (Manifest.unlisted_count): not counted.
+        walks = m.rows(
+            "SELECT run_id, error FROM run_sources WHERE source_id = ? AND pass_kind = 'full_enumeration' "
+            "ORDER BY run_id DESC LIMIT 1",
+            (src.id,),
+        )
+        walk = walks[0][0] if walks else None
+        if walk is None:
+            missed = "no walk of it is recorded"
+        elif walks[0][1] is not None:
+            missed = "its last walk ended on an error, so the files it did not list are not counted"
+        else:
+            total, unseen = m.rows(
+                "SELECT COUNT(*), COALESCE(SUM(last_seen_run < ?), 0) FROM items WHERE source_id = ? "
+                "AND is_dir = 0 AND state != 'tombstone'",
+                (int(walk), src.id),
+            )[0]
+            missed = f"its last walk did not list {unseen} of the {total} file(s) the mirror holds for it"
         # The exclude rule costs names x folder levels x globs, and the sync's own advice for these folders
         # is one more glob each: asked of the checked folders only, and stopped like the lstat calls.
         try:
@@ -4294,7 +4314,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
             f"{kinds['materialised']} materialised-and-empty ({no_entry} of them with a link count of 2: no "
             f"entry by the folder's own metadata); {rest}; {len(checked)} of {len(names)} checked; "
-            f"{excluded}; the mirror still holds {held} file(s) below {folders} of the checked folder(s)"
+            f"{excluded}; the mirror still holds {held} file(s) below {folders} of the checked folder(s); "
+            f"{missed}"
         )
     if not out:
         return ["- none: no source's last walk held a zero-child cloud folder as unknown"]
