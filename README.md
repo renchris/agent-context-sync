@@ -254,8 +254,9 @@ about three times that on disk counting the cache and git. The secret scan reads
 
 Speech (the words said in a recording, and which voice said them) is read on the Mac by a third helper, built by
 `scripts/install.sh` right after the media helper (one `speech:` line). Its build fetches the FluidAudio library
-from github.com and can take up to 20 minutes the first time. agentsync never downloads the models: you place two
-folders, under FluidAudio's own names, in the `speech` folder of agentsync's cache
+from github.com and a prebuilt library FluidAudio links (87 MB, from `release-assets.githubusercontent.com`), and
+can take up to 20 minutes the first time. agentsync never downloads the models: you place two folders, under
+FluidAudio's own names, in the `speech` folder of agentsync's cache
 (`~/Library/Caches/agentsync/speech/` unless `[agentsync] cache_dir` says otherwise):
 
 - `parakeet-tdt-0.6b-v3/`, the speech recogniser (483 MB);

@@ -23,6 +23,13 @@ DEPLOY = ROOT / "docs" / "deploy"
 ENTRA = DEPLOY / "entra-app.json"
 PPPC = DEPLOY / "mdm" / "agentsync-pppc.mobileconfig"
 SCRIPTS = (ROOT / "scripts" / "install.sh", ROOT / "scripts" / "tenant-probes.sh")
+SPEECH_PACKAGE = ROOT / "src" / "agentsync" / "convert" / "speech_helper" / "Package.swift"
+FLUIDAUDIO_BINARY_TARGETS = {
+    "04e363c29d9a754022d602d6fe1468ab80a0f705": ("NemoTextProcessing.xcframework.zip", "text-processing-rs"),
+}
+"""FluidAudio's remote binary targets at each commit speech_helper/Package.swift may pin, read from
+FluidAudio's own Package.swift and Package@swift-6.2.swift at that commit (H9). A new pin is a KeyError in
+test_it_request_names_the_speech_build_downloads until someone re-reads them and updates the IT request."""
 
 REDIRECT_URIS = ["http://localhost", "msauth.com.msauth.unsignedapp://auth"]
 """C15 section 1.6: the loopback rung (MSAL uses http://localhost:<port>) and the macOS broker rung (MSAL
@@ -72,6 +79,22 @@ def test_it_request_states_the_manifest_settings() -> None:
     blocks = re.findall(r"```json\n(.*?)```", text, flags=re.DOTALL)
     assert blocks, "it-request.md carries the manifest inline"
     assert blocks[0] == ENTRA.read_text(encoding="utf-8")  # the page says "byte-identical to entra-app.json"
+
+
+def test_it_request_names_the_speech_build_downloads() -> None:
+    """H9 (B12 C1): IT is told every host and binary the speech build fetches, so an allowlist that has only
+    github.com is not a surprise and the third-party binary is not hidden."""
+    text = (DEPLOY / "it-request.md").read_text(encoding="utf-8")
+    section = " ".join(text.split("\n## What leaves the Mac", 1)[1].split("\n## ", 1)[0].split())
+    package = SPEECH_PACKAGE.read_text(encoding="utf-8")
+    m = re.search(r'url: "https://github\.com/([^"/]+/[^"/]+?)\.git",\s*revision: "([0-9a-f]{40})"', package)
+    assert m, "speech_helper/Package.swift pins FluidAudio by URL and revision"
+    repo, revision = m.groups()
+    assert f"`{repo}`" in section and f"`{revision[:7]}`" in section, "the git fetch and its pin"
+    archive, release_repo = FLUIDAUDIO_BINARY_TARGETS[revision]
+    assert f"`{archive}`" in section and release_repo in section, "the prebuilt binary FluidAudio links"
+    assert "`release-assets.githubusercontent.com`" in section, "the host GitHub serves release files from"
+    assert "`[convert] recordings = false`" in section, "how IT turns the build off"
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
