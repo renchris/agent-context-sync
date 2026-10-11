@@ -5068,7 +5068,9 @@ first-sync `note=converted-N-deferred-M[-reread-R]`, else the sync's own line in
 "N of M source(s) listed completely (status: baseline complete) at least once by the time this report
 was written" (status is read when the report runs, after any later sync; a source counts once one
 listing of it was complete since its scope last changed, and a later
-incomplete listing does not clear it). The generated-at, agentsync, install source and took bullets end the Summary under
+incomplete listing does not clear it). **Amended (2026-10-11, §16.40 "The first-sync count names the field it
+counts"):** the clause now reads "N of M source(s) with a complete baseline (status, read when this report was
+written)"; the count is unchanged. The generated-at, agentsync, install source and took bullets end the Summary under
 `RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
 source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
 · on origin/main: yes|no|unknown (as of the checkout's last fetch)`, every git call read-only
@@ -10411,7 +10413,8 @@ environment variable. Plan: `docs/plans/bring-back-ocr.md` section B11.
 - **The first-sync count says when it was read**: the clause ends `N of M source(s) listed completely (status:
   baseline complete) at least once by the time this report was written`. A scope change clears the baseline and
   a later incomplete listing does not, so the count can be lower than what the first sync saw, and it never
-  claims a listing complete now. The pinned words are only appended to.
+  claims a listing complete now. The pinned words are only appended to. **Amended (2026-10-11, §16.40 "The
+  first-sync count names the field it counts"):** reworded; "only appended to" no longer holds.
 
 Not changed, by design: `unexpected N` (§16.36 left it; a group keyed on doctor's check name would call a
 stopped background sync the person's, since `heartbeat.<id>` warns the same way for a stale heartbeat), `in
@@ -10796,6 +10799,16 @@ triage of a report from a Mac with such a v6 attempt sees it move from "failed a
 or "worked with help": that is this fix, not a new event. Tests:
 `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only` and
 `test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0`.
+
+**The first-sync count names the field it counts** (B13 N17, field triage 2026-10-07 U18 and 2026-10-08 D1.h;
+amends §16.14 and §16.37). The clause read "N of M source(s) listed completely (status: baseline complete) at
+least once by the time this report was written". "listed completely" names status's other field (`complete
+yes|no`, the last listing), not the one counted (`baseline complete|INCOMPLETE`), and readers took it as every
+source listed. It now reads "N of M source(s) with a complete baseline (status, read when this report was
+written)". The count is unchanged: the sources status shows `baseline complete`, of those it lists. A baseline is
+set by a complete listing and cleared only by a scope change, so a source showing `baseline complete · complete
+no` has one and is counted, and the words claim nothing about the first sync itself. Test:
+`test_first_sync_doctor_warns_and_it_draft_in_the_summary`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

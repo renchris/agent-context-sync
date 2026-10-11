@@ -759,11 +759,12 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(fake_mac: dict[str,
     draft = fake_mac["home"] / "agent-context" / "it-request-draft.md"
     _text, summary = summary_of(fake_mac, doctor=doctor, status=status)
     assert f"- IT draft: {setup_report.IT_DRAFT} not written (prompt step 4:" in summary, "v5's step 4"
+    # the count names status's field and when it was read; "listed completely" read as all of them (N17)
     assert (
-        "- first sync: done in 34s (install.log) · 1 of 2 source(s) listed completely (status: baseline "
-        "complete)" in summary
+        "- first sync: done in 34s (install.log) · 1 of 2 source(s) with a complete baseline (status, read "
+        "when this report was written)" in summary.splitlines()
     )
-    assert "(status: baseline complete) at least once by the time this report was written" in summary
+    assert "listed completely" not in summary
     assert (
         "- doctor: 0 FAIL, 5 warn (6 checks) · expected 4: launcher.signature, launcher.requirement (ad hoc "
         "launcher); launchd.poll, launchd.reconcile (LaunchAgents not installed yet) · unexpected 1: "
