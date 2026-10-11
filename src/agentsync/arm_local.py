@@ -334,6 +334,7 @@ class _WalkState:
     symlinks: int = 0
     unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
     empty: list[str] = dataclasses.field(default_factory=list)  # zero-child cloud dirs below the root
+    unlisted: list[str] = dataclasses.field(default_factory=list)  # dirs whose listing raised OSError
 
 
 class CallTimedOutError(TimeoutError):
@@ -445,6 +446,22 @@ def in_scope(cfg: SourceConfig, rel_path: str) -> bool:
     return _scope_matcher(cfg)(rel_path)
 
 
+def _warn_unlisted(state: _WalkState, source_id: str) -> None:
+    """One warning a walk for the folders whose listing failed, each with its reason (N28). The per-folder
+    line is info, and the scan's alarm is not logged, so in a background job (which logs at warning) this is
+    the line that brings the reason (privacy grant, file provider, gone) to its log and the setup report."""
+    if not state.unlisted:
+        return
+    unlisted = sorted(state.unlisted)
+    log.warning(
+        "%s: %d folder(s) could not be listed: %s%s",
+        source_id,
+        len(unlisted),
+        ", ".join(f"{d!r} ({state.unknown[d]})" for d in unlisted[:5]),
+        f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else "",
+    )
+
+
 def walk(
     root: Path,
     *,
@@ -462,10 +479,11 @@ def walk(
     ``root``.  Directories are pruned only by ``exclude`` (``include`` applies to files).  Each item carries
     size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
     A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
-    ``unknown_dirs`` and never read as empty.  Raises FileNotFoundError if ``root`` does not exist, and
-    CallTimedOutError when one directory listing does not return within ``listing_timeout_s`` (macOS holds a
-    read until someone clicks Allow on a privacy prompt; every later listing would wait on the same prompt, so
-    the walk stops rather than reading anything as empty).
+    ``unknown_dirs`` and never read as empty; the folders whose listing failed are logged once a walk, at
+    warning, with their reasons (``_warn_unlisted``).  Raises FileNotFoundError if ``root`` does not exist,
+    and CallTimedOutError when one directory listing does not return within ``listing_timeout_s`` (macOS holds
+    a read until someone clicks Allow on a privacy prompt; every later listing would wait on the same prompt,
+    so the walk stops rather than reading anything as empty).
 
     ``known`` (stable_id -> stored H0, from ``Manifest.observation_index``) makes getattrlist conditional:
     a file whose lstat tuple ``(size, mtime_ns, ctime_ns, ino, mode)`` equals its stored row, and whose row
@@ -500,6 +518,7 @@ def walk(
                 name="agentsync-listing",
             )
         except CallTimedOutError:
+            _warn_unlisted(state, source_id)
             raise CallTimedOutError(
                 f"listing {shown!r} did not return within {listing_timeout_s:.0f}s"
             ) from None
@@ -509,7 +528,9 @@ def walk(
             code = errno_mod.errorcode.get(exc.errno or 0, "E?")
             reason = f"{code}: {exc.strerror or exc}"
             state.unknown[shown] = reason
-            log.warning("%s: directory %r is unknown (%s)", source_id, shown, reason)
+            state.unlisted.append(shown)
+            # info, as a zero-child cloud folder: ``_warn_unlisted`` names it with its reason once a walk.
+            log.info("%s: directory %r is unknown (%s)", source_id, shown, reason)
             continue
         state.dirs += 1
         if not entries and _is_cloud_tree(dir_path, cloud_roots):
@@ -595,6 +616,7 @@ def walk(
                 with_gen_count=with_gen_count,
             )
 
+    _warn_unlisted(state, source_id)
     items = _dedupe_hard_links(state, source_id)
     stats = WalkStats(
         files=len(items),

@@ -449,6 +449,70 @@ def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:
     )
 
 
+def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """N28: one WARNING per unreadable folder per poll filled the job's log. The per-folder line is info, as
+    for an empty cloud folder; one warning a walk names each folder whose listing failed, with its reason,
+    even when five empty folders sort before it and fill the alarm's names. The alarm is unchanged."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    for n in "ABCDE":
+        (root / f"Empty {n}").mkdir(parents=True)
+    _write(root / "Zeta" / "b.docx")
+    _write(root / "Shut" / "c.docx")
+    _write(root / "a.docx")
+    denied = f"EACCES: {os.strerror(errno.EACCES)}"
+    with (
+        _chmod(root / "Zeta", 0),
+        _chmod(root / "Shut", 0),
+        caplog.at_level(logging.INFO, logger=al.__name__),
+    ):
+        res = al.LocalArm(_cfg(root)).scan(None, full=True)
+    per_dir = [r for r in caplog.records if " is unknown (" in r.getMessage()]
+    assert len(per_dir) == 2 and {r.levelno for r in per_dir} == {logging.INFO}
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warned == [f"local-test: 2 folder(s) could not be listed: 'Shut' ({denied}), 'Zeta' ({denied})"]
+    (alarm,) = res.alarms
+    names = "'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E' (+2 more)"
+    assert alarm == _TODAY.format(
+        n=7,
+        names=names,
+        advice="grant the agent Files and Folders access for the other folders; for the empty ones, each "
+        "WAITING ON YOU line about local-test says what to do, and agentsync status prints them",
+    )
+
+
+def test_a_held_listing_still_warns_about_the_folders_it_could_not_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """N28: a walk that stops at a held listing still logs, at warning, the folder that failed before it."""
+    root = tmp_path / "root"
+    for name in ("one", "two"):
+        _write(root / name / "x.txt")
+    real = al._list_dir
+    release = threading.Event()
+    failed: list[str] = []
+
+    def flaky(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if path == root:
+            return real(path, dir_dataless=dir_dataless)
+        if not failed:
+            failed.append(path.name)
+            raise OSError(errno.EDEADLK, os.strerror(errno.EDEADLK), str(path))
+        release.wait(5.0)
+        return real(path, dir_dataless=dir_dataless)
+
+    monkeypatch.setattr(al, "_list_dir", flaky)
+    try:
+        with caplog.at_level(logging.WARNING, logger=al.__name__), pytest.raises(al.CallTimedOutError):
+            _walk(root, listing_timeout_s=0.2)
+    finally:
+        release.set()
+    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    edeadlk = f"EDEADLK: {os.strerror(errno.EDEADLK)}"
+    assert warned == [f"s: 1 folder(s) could not be listed: {failed[0]!r} ({edeadlk})"]
+
+
 def test_the_walk_records_its_zero_child_cloud_folders(tmp_path: Path) -> None:
     """Bring-back S11: the folders status names are the ones the walk itself found with zero children in a
     cloud tree (no second listing of the source): under its excludes, never the root, never a folder that is

@@ -6071,7 +6071,9 @@ or empty for this case (a source sat incomplete for 900 passes):
   WAITING ON YOU line about <id>", since a source can have two. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
   `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
-  each pass (logged at warning, printed by `sync -v`, kept in STATE.md).
+  each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
+  that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
+  warning a walk names those folders with their reasons.
 - setup-report: `_redact_lines` replaces the list of an exclude line with `exclude = [<path>]` before the
   Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
   registered nothing, and the line reaches the report through the Loop line, the install.out tail and
@@ -11071,6 +11073,28 @@ root still gets the old alarm's exclude advice, though a root cannot be excluded
 `test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`), `tests/test_loop.py`
 (`test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source`,
 `test_an_inbox_listing_left_incomplete_by_no_empty_folder_promises_nothing`), `tests/test_ops_doctor.py`.
+
+#### N28: a folder the walk cannot list is one warning a walk (`agentsync.arm_local`)
+
+`walk` logs each folder whose listing fails (EPERM or EACCES from the privacy grant, EDEADLK or ETIMEDOUT from
+the file provider, ENOENT for a folder gone mid-walk) at info, as it already does a zero-child cloud folder.
+Once a walk, including a walk stopped by a held listing, it logs one warning naming those folders with their
+reasons, the first five in sorted order and a count of the rest (`_warn_unlisted`): `<id>: N folder(s) could
+not be listed: 'Locked' (EACCES: Permission denied)`, then ` (+K more)`. Empty cloud folders are not in it, so
+five of them sorting first do not push a failed folder out of the line. A background job logs at warning and
+the scan's alarm is not logged (§16.22's "logged at warning" holds only for the alarms of a scan that ends
+early), so this line is the one that brings the reason to the job's log and to the setup report's Recent
+errors, which scrubs the names to `'<path>'` and keeps the reason. The alarm text, `WalkStats`, STATE.md and
+the per-entry `cannot lstat` warning are unchanged.
+
+Why: the per-folder warning repeated on every poll, since a local walk is always a full pass, and filled the
+64 KiB of the job's log that Recent errors reads. Rejected: only lowering the line to info, which leaves no
+line with the reason in a background job's log; and logging the whole alarm with reasons, which names the
+first five unknown folders of any kind (five empty ones hide the failed one) and is longer than the line it
+replaces for one to three folders. Amends §16.22 (dated line there). Tests: `tests/test_arm_local.py`
+(`test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_reason`,
+`test_a_held_listing_still_warns_about_the_folders_it_could_not_list`), `tests/test_setup_report.py`
+(`test_recent_errors_never_carry_an_item_path_or_document_name`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

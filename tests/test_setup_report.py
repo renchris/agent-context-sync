@@ -187,14 +187,24 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
         + "2026-10-05 09:00:02,000 ERROR agentsync.cycle: src-x: read failed: [Errno 89] Operation canceled: "
         "'/Users/someone/Library/CloudStorage/OneDrive-Acme/Clients/Initech Deal/term sheet.docx'\n"
         + "2026-10-05 09:00:03,000 WARNING agentsync.arm_local: src-x: directory 'Mooring Ledger' is unknown "
-        "(EPERM: Operation not permitted)\n",
+        "(EPERM: Operation not permitted)\n"
+        + "2026-10-05 09:00:04,000 WARNING agentsync.arm_local: src-x: 2 folder(s) could not be listed: "
+        "'Harbor Fees' (EPERM: Operation not permitted), 'Pier/Old Slips' (EDEADLK: Resource deadlock "
+        "avoided)\n",
         encoding="utf-8",
     )
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     errors = section(text, "Recent errors")
-    for name in ("Big Bank", "Merger", "Globex", "Northwind", "Initech", "term sheet", "Clients", "Mooring"):
+    for name in (
+        *("Big Bank", "Merger", "Globex", "Northwind", "Initech", "term sheet", "Clients", "Mooring"),
+        *("Harbor", "Pier", "Slips"),
+    ):
         assert name not in text, name
     assert "src-x: directory '<path>' is unknown (EPERM: Operation not permitted)" in errors
+    assert (
+        "src-x: 2 folder(s) could not be listed: '<path>' (EPERM: Operation not permitted), '<path>' "
+        "(EDEADLK: Resource deadlock avoided)"
+    ) in errors
     assert "src-x: <path>: [Errno 89] Operation canceled" in errors
     assert "inbox: <path>: read failed: Operation canceled" in errors
     assert "src-x: read failed: [Errno 89] Operation canceled: '<path>" in errors
