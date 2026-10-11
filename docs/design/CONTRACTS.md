@@ -4960,7 +4960,8 @@ first `start` to its last `end`); install.sh (runs during the attempt, the last 
 install.log); the first sync (install.log's `first-sync` step, and from status how many sources have a complete
 baseline); doctor (FAIL and warn counts, then which warns are expected: `launcher.signature` and
 `launcher.requirement` of an ad hoc launcher, and `launchd.*` "is not installed" while the last install.sh run has
-not really installed the LaunchAgents; every other warn and every FAIL is unexpected); background sync; the IT draft
+not really installed the LaunchAgents; every other warn and every FAIL is unexpected; **amended 2026-10-11, §16.39
+N16:** a warn one of the person's own waits explains is "yours"); background sync; the IT draft
 (`IT_DRAFT`: whether it exists, and which `IT_PERSON_FIELDS` and `IT_ADMIN_FIELDS` are still in the email below
 its first `---` line); a PATH shadow; the redaction count. Then "Items that were not one command": every error,
 deviation, prompt, question, click and approval line of the attempt, in that kind order, the folder question and
@@ -5133,6 +5134,8 @@ steps>, count_queue=False)`, run once in its own pass after Doctor and before th
 and its first `WAITING ON YOU: ` line with a count of the rest (rule 5's NEXT and a held listing's Allow click
 point at one; **amended 2026-10-07, §16.30:** the wait shown is the one the loop stopped on, which is not
 always the first), each passed through `loop_next_text`, which cuts every `~/...` or `/...` path to its last part.
+**Amended 2026-10-11, §16.39 N16:** the hook returns `loop.next_step(...)`'s `NextStep` (`[]` when the state
+cannot be read); the Loop line reads its `lines()`.
 **Amended (2026-10-08, §16.37):** `[; WAITING ON YOU: <the wait the loop stopped on>[; WAITING ON YOU: <each
 other wait, in the loop's order>]]`: every wait is listed, the stopped one first; `(+N more)` is gone, since the
 report's reader cannot run `agentsync status`. A missing hook, a failed or timed-out call or an unreadable state
@@ -5278,7 +5281,9 @@ class ReportHooks:
     """What the report needs from the CLI (this module never imports agentsync.cli)."""
     doctor: Callable[[Config], list[str]] | None = None
     status: Callable[[Config], list[str]] | None = None
-    loop_next: Callable[[Config], list[str]] | None = None  # the loop's NEXT lines (KISS K16b)
+    # loop.NextStep (typed structurally, as the private _LoopStep: the report never imports the loop), or its
+    # NEXT lines (K16b; amended 2026-10-11, §16.39 N16)
+    loop_next: Callable[[Config], _LoopStep | list[str]] | None = None
 
 class Redactor:
     """Known values (home ~, <user>, <name>, <org-N>, <library-N>, <folder-N>, <source-N>, <serial>, <host>,
@@ -5834,6 +5839,7 @@ class NextStep:
     waits: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
     rule: int = 10  # which rule (1-10) set step
+    checks: tuple[str, ...] = ()  # 2026-10-11, §16.39 N16: the doctor checks the waits explain; lines() never prints them
     def lines(self) -> list[str]: ...  # "NEXT: <step>", then "WAITING ON YOU: <wait>"..., then "note: <note>"...
 
 def next_step(config: Config, *, fixes: Sequence[str] = ()) -> NextStep: ...
@@ -10476,6 +10482,8 @@ Not changed, by design: `unexpected N` (§16.36 left it; a group keyed on doctor
 stopped background sync the person's, since `heartbeat.<id>` warns the same way for a stale heartbeat), `in
 _eval` on the Loop line (the Configuration part names the docs repo), the order of `<folder-N>` numbers (the
 order of registration), and the stopped copy's `setup-report.md` (an old copy's own finish line names it).
+**Amended 2026-10-11, §16.39 N16:** `unexpected N` now has a `yours N` group beside it, keyed on the loop's
+waits and on the incomplete-listing detail, which a stale heartbeat never has.
 
 #### Installer (`scripts/install.sh`)
 
@@ -10881,6 +10889,42 @@ reported once, not twice, so `(+N more)` counts paths. In a large repo a loose f
 every sync and by the config step, within the reach §16.29 states. Amends §16.12 (dated line there). Tests:
 `tests/test_cycle.py` (`test_the_permissions_sample_is_not_spent_in_trees_walked_on_their_own`,
 `test_a_cache_folder_above_the_context_folder_does_not_hide_what_is_in_it`).
+
+#### N16: the Summary's doctor line names the person's own waits (`agentsync.setup_report`, `agentsync.loop`, `agentsync.cli`)
+
+Between `expected N: ...` and `unexpected N`, the Summary's doctor line has a third group, printed only when it
+is not empty: `yours N: <check names> (see WAITING ON YOU)`. `NextStep` gains `checks: tuple[str, ...] = ()`.
+`loop.next_step` adds `governance.purge_queue` when it writes the queued-purge wait, and `heartbeat.<id>` when
+it writes a wait for a local source whose listing stops at a held privacy prompt, at an empty cloud folder, or
+at a folder it cannot list. It adds no other check, and `NextStep.lines()` is unchanged, so sync, status and
+STATE.md print what they printed.
+
+The CLI's `ReportHooks.loop_next` returns that `NextStep`, or `[]` when the loop state cannot be read. The Loop
+line reads its lines as before, and a hook that returns lines is still accepted.
+
+A doctor warn is "yours" when its check name is in those `checks` and, for a `heartbeat.<id>` warn, its detail
+starts `enumeration incomplete for `. That check also warns for no successful pass and for a last success
+older than 3 x cadence. No wait explains those, and a background sync that stopped gives them too, so they stay
+"unexpected" even while the source's wait is listed.
+
+The group never reads doctor's notes or fixes, so a report run by hand and one written under install.sh put the
+same warns in it. The report keeps the checks only once the waits are on its Loop line: when the loop hook
+fails or times out, or the Loop line reads `not read`, the group is empty and those warns are "unexpected".
+
+A FAIL is never "yours", and no wait names a `launchd.*` or `config.*` check, so they stay "unexpected" (a
+`launchd.*` warn reads the same for a harmless drift and for a job that exits 64 on every run). "yours" is not
+"expected": the Doctor section still shows the line with its fix or note, and no warn changes the outcome.
+`unexpected N` counts every other warn and every FAIL, so on a Mac with such a wait it drops by the yours
+count while `N warn` stays; compare warn totals, or `yours + unexpected`, across reports.
+
+Why: the report said "yours" in its Doctor section and "unexpected" in its Summary for a wait its own Loop line
+listed two lines above, on every round, which trains a reader to skip the word meant to catch a stopped
+background sync. Amends §16.14 (dated lines there, in K16b and in the `ReportHooks` and `NextStep` blocks) and
+§16.37 (dated line there). Tests: `tests/test_loop.py`
+(`test_checks_name_the_doctor_check_each_wait_explains`), `tests/test_setup_report.py`
+(`test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected`,
+`test_no_yours_group_without_the_loops_checks`, `test_no_yours_group_when_the_loop_line_is_not_read`,
+`test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

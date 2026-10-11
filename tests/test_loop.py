@@ -363,6 +363,8 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
         f"another sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders access, or add "
         "it to that source's exclude in sources.toml"
     )
+    # §16.39 N16: the wait explains that source's heartbeat warn
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
 
 def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(
@@ -399,6 +401,8 @@ def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(
         f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
     ) in lines, lines
     assert not any("exclude it" in line for line in lines), lines
+    # §16.39 N16: the wait explains the heartbeat warn of every source it names
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.alpha", "heartbeat.beta")
     monkeypatch.setattr(arm_local, "_list_dir", real)
     run_cycle(config, mode=None)
     assert not any("privacy prompt" in line for line in _lines(config))
@@ -1004,3 +1008,26 @@ def test_the_breaker_wait_of_an_incomplete_source_asks_for_a_full_listing_first(
         "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone): if they really were deleted, "
         f"run `{BIN} accept-deletions work` once a sync lists work in full"
     ]
+
+
+def test_checks_name_the_doctor_check_each_wait_explains(tmp_path: Path, folder: Path) -> None:
+    """``NextStep.checks`` (§16.39 N16): the doctor check each wait explains, for the setup report's "yours"
+    group; ``lines()`` never prints it. A complete source names none; an empty cloud folder names its
+    source's heartbeat, a queued purge the purge queue; an excluded folder (no wait until the next sync)
+    names nothing."""
+    config = _synced(tmp_path, folder)
+    assert loop.next_step(config, count_queue=False).checks == ()
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(Path.home() / "agent-context", local_source_table("work", root))
+    run_cycle(config, mode=None)
+    step = loop.next_step(config, count_queue=False)
+    assert step.checks == ("heartbeat.work",)
+    assert not any("heartbeat" in ln for ln in step.lines())
+    selector = governance.PurgeSelector(source_id="work", path_glob="*")
+    assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    assert loop.next_step(config, count_queue=False).checks == ("governance.purge_queue", "heartbeat.work")
+    path = config.config_path
+    path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
+    assert loop.next_step(load_config(path), count_queue=False).checks == ("governance.purge_queue",)

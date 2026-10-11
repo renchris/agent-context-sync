@@ -1394,10 +1394,19 @@ def _report_hooks() -> setup_report.ReportHooks:
         fixes[:] = [_fail_step(r) for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
         return doctor.format_results(results).splitlines()
 
+    def loop_next(config: Config) -> loop.NextStep | list[str]:
+        """The loop's NextStep (its ``checks`` group doctor's warns); [] when the state cannot be read, as
+        :func:`loop.next_lines` gives."""
+        try:
+            return loop.next_step(config, fixes=fixes, count_queue=False)
+        except (OSError, AgentSyncError) as exc:
+            _log.warning("next step: cannot read the loop state: %s", exc)
+            return []
+
     return setup_report.ReportHooks(
         doctor=checks,
         status=lambda config: [_loop_line(config), *_guarded("status", lambda: _status_lines(config))],
-        loop_next=lambda config: loop.next_lines(config, fixes=fixes, count_queue=False),
+        loop_next=loop_next,
     )
 
 

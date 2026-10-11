@@ -106,6 +106,8 @@ class NextStep:
     waits: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
     rule: int = 10  # which rule set ``step`` (1-10), for tests and the setup report
+    # the doctor checks the waits explain (the setup report's "yours", §16.39 N16); lines() never prints them
+    checks: tuple[str, ...] = ()
 
     def lines(self) -> list[str]:
         """``NEXT: <step>``, then one ``WAITING ON YOU: …`` line per wait, then one ``note: …`` per note."""
@@ -448,9 +450,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     docs = expand(config.docs_repo)
     waits: list[str] = []
     notes: list[str] = []
+    checks: list[str] = []  # doctor's check for each wait that explains one (NextStep.checks)
 
     def done(step: str, rule: int) -> NextStep:
-        return NextStep(step, tuple(waits), tuple(notes), rule)
+        return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks))
 
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
@@ -458,6 +461,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"{len(queued)} queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
             f"before you run `{BIN} purge --queue` (rewrites history)"
         )
+        checks.append("governance.purge_queue")
 
     # Rule 1: status FAILs.
     live = config.live_sources()
@@ -550,7 +554,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"macOS held the listing of {', '.join(sorted(held))} for a privacy prompt: click Allow on the "
             f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
+        checks.extend(f"heartbeat.{s}" for s in sorted(held))
     for src, below in empty:
+        checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or both follow
         # An empty cloud folder is unknown, never empty, on every pass. The line to paste names only the
         # folders with nothing mirrored below them; one that held mirrored files gets no paste line, since
         # excluding it retires those pages in one pass, past the deletion breaker (as for a held listing).
@@ -577,6 +583,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"or sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and "
             "Folders access, or add it to that source's exclude in sources.toml"
         )
+        checks.extend(f"heartbeat.{s}" for s in sorted(unlisted))
     if blocked:
         waits.append(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "

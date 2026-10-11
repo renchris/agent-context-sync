@@ -6397,3 +6397,122 @@ def test_an_all_zero_re_read_table_is_one_line(
     part = status_parts(fake_mac)[1]["OCR"]
     assert reread_rows(part)[names[1]] == ["no", "0", "0", "0", "0", "0", "no"]
     assert "every count of its table is 0" not in part
+
+
+# ---- §16.39 N16: the Summary's doctor line names the person's own waits -----------------------------------
+
+_INCOMPLETE = "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes (deletions held)"
+
+
+def _yours_step() -> loop.NextStep:
+    """Built per test, so a build without ``NextStep.checks`` fails these tests and not the file."""
+    return loop.NextStep(
+        "nothing to do: session done",
+        waits=("1 empty cloud folder(s) keep the listing of project-x incomplete (deletions held; ...)",),
+        checks=(
+            "governance.purge_queue",
+            "heartbeat.project-x",
+            "heartbeat.project-y",
+            "heartbeat.project-z",
+            "heartbeat.project-w",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        " (fix: agentsync status (its WAITING ON YOU line about project-x says what stops the listing and "
+        "what to do: another sync does not clear it))",
+        " (yours: see WAITING ON YOU)",
+    ],
+    ids=["by-hand", "install.sh"],
+)
+def test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected(
+    fake_mac: dict[str, Path], tail: str
+) -> None:
+    """A warn whose cause a WAITING ON YOU line names is the person's ("yours"), whichever tail doctor gave
+    it. The same heartbeat check warns for a last success past 3 x cadence and for no successful pass, which a
+    stopped background sync also gives: those stay unexpected though the id is in ``checks``, as do a FAIL
+    and every launchd.* warn (C11)."""
+    lines = [
+        "[ok  ] python — fine",
+        _INCOMPLETE + tail,
+        "[warn] governance.purge_queue — 1 purge request(s) queued (confirmed upstream deletions / label "
+        "escalations) (fix: agentsync purge --queue)",
+        "[warn] heartbeat.project-y — last success 2026-10-05T00:00:00Z (327654s ago) > 3 x cadence (2700s) "
+        "(fix: agentsync sync -v)",
+        "[warn] heartbeat.project-z — no successful pass yet (fix: agentsync sync -v)",
+        "[FAIL] heartbeat.project-w — auth: REAUTH_REQUIRED; no Graph cursor advances until you sign in "
+        "again (fix: agentsync login)",
+        "[warn] launchd.poll — every run exits 64 (PROGRAM_REFUSED) (background sync is yours to refresh, "
+        "not a setup step)",
+    ]
+    hooks = setup_report.ReportHooks(doctor=lambda config: lines, loop_next=lambda config: _yours_step())
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert (
+        "- doctor: 1 FAIL, 5 warn (7 checks) · yours 2: heartbeat.project-x, governance.purge_queue (see "
+        "WAITING ON YOU) · unexpected 4: heartbeat.project-y warn, heartbeat.project-z warn, "
+        "heartbeat.project-w FAIL, launchd.poll warn"
+    ) in section(text, "Summary")
+
+
+def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
+    """A hook that gives lines (an older CLI), fails or times out names no check: the warn is unexpected."""
+
+    def slow(config: Config) -> list[str]:
+        time.sleep(setup_report._LOOP_NEXT_S + 1)
+        return []
+
+    def crash(config: Config) -> list[str]:
+        raise OSError("disk gone")
+
+    for hook in (lambda config: _yours_step().lines(), crash, slow):
+        hooks = setup_report.ReportHooks(doctor=lambda config: [_INCOMPLETE], loop_next=hook)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+        summary = section(text, "Summary")
+        assert "yours" not in summary
+        assert "unexpected 1: heartbeat.project-x warn" in summary
+
+
+def test_no_yours_group_when_the_loop_line_is_not_read(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checks are kept only once the waits are on the Loop line: a Loop line that fails after the hook
+    answered shows no wait, so the doctor line must not point at one."""
+
+    def boom(line: str) -> str:
+        raise ValueError("no text")
+
+    monkeypatch.setattr(setup_report, "loop_next_text", boom)
+    hooks = setup_report.ReportHooks(
+        doctor=lambda config: [_INCOMPLETE], loop_next=lambda config: _yours_step()
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    summary = section(text, "Summary")
+    assert "- Loop: not read (ValueError)" in summary
+    assert "yours" not in summary
+    assert "unexpected 1: heartbeat.project-x warn" in summary
+
+
+@pytest.mark.parametrize("hint", ["", "1"], ids=["by-hand", "install.sh"])
+def test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hint: str
+) -> None:
+    """The real doctor text, the real loop and the CLI's hook agree (a drift guard for the detail the report
+    keys on): three incomplete walks of a folder with an empty cloud folder give doctor's incomplete-listing
+    warn, the loop's wait, and a Summary that calls it the person's, by hand and under install.sh alike."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    (root / "Archive 2019").mkdir(parents=True)
+    (root / "note.txt").write_text("The purchase order is approved.\n", encoding="utf-8")
+    cfg = Path.home() / "agent-context" / "sources.toml"
+    assert cli.main(["add-source", str(root), "--config", str(cfg)]) == 0
+    for _ in range(3):
+        cli.main(["sync", "--config", str(cfg)])
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, hint)
+    _rc, text, _ = report(tmp_path, cfg)
+    summary = section(text, "Summary")
+    [line] = [ln for ln in summary.splitlines() if ln.startswith("- doctor: ")]
+    assert "· yours 1: heartbeat.<folder-1> (see WAITING ON YOU) ·" in line
+    assert "heartbeat.<folder-1> warn" not in line
+    assert "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of <folder-1> incomplete" in summary

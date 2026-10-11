@@ -27,7 +27,8 @@ prompt and error lines are counted apart as "agent friction"), human turns (by k
 (from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
 what became of the folder choice (the ``folders:`` line, from the counts install.sh logs; on a Mac that
 already synced folders the folder question is not an expected turn, :func:`synced_before`),
-the first sync, which doctor warns are expected, the IT draft's unfilled fields, and the ``Loop:`` line (KISS
+the first sync, which doctor warns are expected and which are the person's own waits, the IT draft's unfilled
+fields, and the ``Loop:`` line (KISS
 K16b: how far the loop got past the install, :func:`loop_stage`, and its current NEXT line without paths, kept
 apart from the outcome, which judges only the install). The agent's own
 ``Outcome:`` line is shown only as "agent said". The Installer section also embeds the tail of install.sh's
@@ -101,10 +102,10 @@ import tempfile
 import time
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
@@ -564,6 +565,15 @@ _REDACTION_MARK = "\x00redaction-summary\x00"
 _T = TypeVar("_T")
 
 
+class _LoopStep(Protocol):
+    """What the report reads of ``loop.NextStep`` (typed here: the report never imports the loop for it)."""
+
+    @property
+    def checks(self) -> tuple[str, ...]: ...
+
+    def lines(self) -> list[str]: ...
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class ReportHooks:
     """What the report needs from the CLI (injected, so this module never imports ``agentsync.cli``):
@@ -572,7 +582,9 @@ class ReportHooks:
 
     doctor: Callable[[Config], list[str]] | None = None
     status: Callable[[Config], list[str]] | None = None
-    loop_next: Callable[[Config], list[str]] | None = None  # the loop's NEXT lines (KISS K16b), after doctor
+    # loop.NextStep (typed structurally: the report never imports the loop), or its NEXT lines (KISS K16b;
+    # §16.39 N16), after doctor
+    loop_next: Callable[[Config], _LoopStep | list[str]] | None = None
 
 
 def _tokens(value: str) -> list[str]:
@@ -1754,6 +1766,7 @@ class _Facts:
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
+    loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
 
 
 class _Run:
@@ -5171,25 +5184,44 @@ def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
     return text + "; none of these changes the outcome by itself"
 
 
+_LISTING_INCOMPLETE = "enumeration incomplete for "
+"""How doctor's ``heartbeat.<id>`` warn starts when a listing stays incomplete
+(``ops.doctor._check_heartbeat``). The same check also warns for no successful pass and for a last success
+older than 3 x cadence, which no wait explains and which a background sync that stopped gives too: only this
+one can be the person's."""
+
+
+def _yours_warn(name: str, detail: str, checks: Collection[str]) -> bool:
+    """Whether a doctor warn is one of the person's own waits: its check is one the loop's waits explain
+    (``loop.NextStep.checks``) and, for a ``heartbeat.<id>`` warn, its detail is the incomplete listing's.
+    Reads neither doctor's note nor its fix, so a report by hand and one under install.sh agree."""
+    return name in checks and (not name.startswith("heartbeat.") or detail.startswith(_LISTING_INCOMPLETE))
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None:
         return "- doctor: not run (see Doctor)"
     installed = agents_installed(r.install_runs)
     expected: dict[str, list[str]] = {}
+    yours: list[str] = []
     unexpected: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         why = expected_warn(name, detail, agents_installed=installed) if tag == "warn" else None
-        if why is None:
-            unexpected.append(f"{name} {tag}")
-        else:
+        if why is not None:
             expected.setdefault(why, []).append(name)
+        elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
+            yours.append(name)
+        else:
+            unexpected.append(f"{name} {tag}")
     n_expected = sum(len(v) for v in expected.values())
     parts = [f"{d.get('FAIL', 0)} FAIL, {d.get('warn', 0)} warn ({sum(d.values())} checks)"]
     if n_expected:
         parts.append(
             f"expected {n_expected}: " + "; ".join(f"{', '.join(v)} ({k})" for k, v in expected.items())
         )
+    if yours:
+        parts.append(f"yours {len(yours)}: {', '.join(yours)} (see WAITING ON YOU)")
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     return "- doctor: " + " · ".join(parts)
 
@@ -5367,7 +5399,8 @@ def _loop_line(r: _Run) -> str:
     one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
     was written before the one-time re-read finished. The two paths the config puts into these lines, the
     docs repo's ``_eval`` and the config file, are shown without their path (the docs repo's ``_eval``
-    folder, the config file by its name) whatever the path (:func:`_eval_by_name`). Sets ``r.loop_stage``
+    folder, the config file by its name) whatever the path (:func:`_eval_by_name`). Records the loop's
+    ``checks`` for the Summary's doctor line, only once its waits are on this line. Sets ``r.loop_stage``
     for the issue link; :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
@@ -5378,7 +5411,8 @@ def _loop_line(r: _Run) -> str:
         return f"- Loop: {stage}; NEXT: not read (no loop hook)"
     config, next_fn = r.config, r.hooks.loop_next
     try:
-        lines = [_eval_by_name(ln, config) for ln in r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)]
+        got = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
+        lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
         return f"- Loop: {stage}; NEXT: not read ({type(exc).__name__})"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
@@ -5389,6 +5423,8 @@ def _loop_line(r: _Run) -> str:
         text += "".join(f"; {loop_next_text(w)}" for w in (shown, *(w for w in waits if w is not shown)))
     for reread in (ln for ln in lines if ln.startswith("note: ") and "read again" in ln):
         text += f"; {loop_next_text(reread)}"
+    # the checks only once the waits are on the line: a Loop line that reads "not read" shows no wait
+    r.facts.loop_checks = () if isinstance(got, list) else tuple(got.checks)
     return f"- Loop: {stage}; {text}"
 
 
