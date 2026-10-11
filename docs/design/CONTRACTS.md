@@ -9500,7 +9500,7 @@ system.
 | `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again (if the line stays, report it: agentsync status -v prints where the check stopped)`; with no path it starts `run again (...` |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
 | `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
-| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = '<id>', or sign in to the sync client` |
+| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` |
 | `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
 | a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
 
@@ -9520,11 +9520,13 @@ line stopped the run and told the agent nothing could be done. Two changes:
   on a source whose path is a file (`NotADirectoryError`), or on a cloud folder whose sync app stopped
   answering (`EIO`, `ETIMEDOUT`), the error left the check, and the per-source guard replaced the source's
   lines with one `source.<id> — check crashed: ...`. The `.listable` line, whose fix does clear the first
-  case (`point [[source]] id = '<id>' path at a folder`), was lost with them. The sentinel read now ends in
+  case (`point [[source]] id = "<id>" path at a folder`), was lost with them. The sentinel read now ends in
   `except OSError`, with the listable line's Finder fix. The read after it, which decides whether the volume
   line says the folder `is missing`, had the same hole: `Path.exists` raises an I/O error on Python 3.11 to
   3.13 and reads it as "missing" from 3.14. `_is_missing` answers yes only for "no such file" and "not a
   directory", so a folder that cannot be read goes on to the volume read, which reports what it finds.
+  **Amended 2026-10-11, §16.39 N19:** the two fix texts this section quotes (the volume row of the table
+  above and the listable fix in this bullet) read `id = "<id>"`; they read `id = '<id>'`.
 
 **A `launchd.*` FAIL keeps its fix while the agent step is pending** (amends the 2026-09-30 amendment in the
 `agentsync.ops.doctor` section). `_agent_step_pending` replaced the fix of every failed `launchd.*` line with
@@ -10407,7 +10409,8 @@ copy is stopped at step 1 like every older copy (§16.28).
   was not given (the v10 rehearsal). `exclude_advice` takes that path as its third argument. In the
   setup report's Loop line the file is `sources.toml` whatever its path (§16.32, `setup_report._eval_by_name`). The
   `exclude = [...]` value is unchanged and is valid TOML as pasted. doctor's fixes for a source's path or
-  sentinel still write `id = '<id>'`: they name no line to search for.
+  sentinel still write `id = '<id>'`: they name no line to search for. **Amended 2026-10-11, §16.39 N19:**
+  reversed; each of them names its table by that line only, and now writes `id = "<id>"`.
 - **The Not used list glosses hold**: "hold (a legal or records hold, not a pause)".
 - Not changed: the fix-request heading's time carries no zone (§16.30: it marks one session, and nothing parses
   it).
@@ -10832,6 +10835,27 @@ its `mkdir -m 700 -p '~/...'` exited 0 having made a folder named `~` in the wor
 no residue hit. Amends §16.29 "A re-run does not stop on a permission agentsync clears itself" (dated line
 there). Tests: `tests/test_ops_doctor.py` (the state-folder and permissions fixes run under `/bin/sh` as the
 report shows them; the forms), `tests/test_setup_report.py` (the residue rule).
+
+#### N19: doctor's source fixes name the table as sources.toml writes it (`agentsync.ops.doctor`)
+
+The five fixes that name a `[[source]]` table by its id line write `[[source]] id = "<id>"`, as
+`config.local_source_table`, `config.inbox_source_table` and `graph.discover._toml_str` write that line:
+
+- no path configured (`source.<id>`);
+- a missing path (`source.<id>.listable` and `source.<id>.volume`);
+- a path that is not a folder (`source.<id>.listable`);
+- a missing sentinel (`source.<id>.sentinel`);
+- the launcher's canary reports the folder missing (`tcc.<id>`).
+
+The wording is otherwise unchanged. An id matches `^[a-z0-9][a-z0-9-]{0,62}$`, so nothing in it needs escaping.
+
+Why: they wrote Python's `id = '<id>'`. A search of sources.toml for the printed text found nothing, and the
+setup prompt's single-quoted `--log` FIX argument had to rewrite the quote. §16.36 fixed the same for the
+exclude line and left these, on the reason that they name no line to search for; they name their table by
+that line only. Residual: a sources.toml written by hand with a TOML literal string (`id = 'x'`) no longer
+matches the printed text; agentsync writes no such line and no doc shows one. Amends §16.32 (the volume row
+and the listable fix, in place: both state the text a check prints) and §16.36 (dated line there). Tests:
+`tests/test_ops_doctor.py` (`test_a_source_fix_names_the_table_as_sources_toml_writes_it`, two expectations).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

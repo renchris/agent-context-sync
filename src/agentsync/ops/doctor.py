@@ -828,10 +828,10 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     if not src.is_live:
         return [_ok(base, f"{src.state.value}: not checked")]
     if src.path is None:
-        return [_bad(base, "no path configured", fix=f"set path in the [[source]] with id = {src.id!r}")]
+        return [_bad(base, "no path configured", fix=f'set path in the [[source]] with id = "{src.id}"')]
     root = expand(src.path)
     cloud = is_cloud_path(root)
-    missing_fix = f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client"
+    missing_fix = f'fix path in [[source]] id = "{src.id}", or sign in to the sync client'
     # An error with no rule of its own (an I/O error, a sync app that stopped answering) is the person's to
     # look at, so its fix says where: for the listing, and for the sentinel read below.
     sync_app = " and that its sync app is running and signed in" if cloud else ""
@@ -882,7 +882,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
             _bad(
                 f"{base}.listable",
                 f"{root} is not a directory",
-                fix=f"point [[source]] id = {src.id!r} path at a folder",
+                fix=f'point [[source]] id = "{src.id}" path at a folder',
             )
         )
     except PermissionError as exc:
@@ -911,7 +911,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                 _bad(
                     f"{base}.sentinel",
                     f"{target} is missing: every pass would be incomplete (no deletions, no cursor)",
-                    fix=f"restore {target}, or change sentinel in [[source]] id = {src.id!r}",
+                    fix=f'restore {target}, or change sentinel in [[source]] id = "{src.id}"',
                 )
             )
         except PermissionError:
@@ -1281,7 +1281,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
                 _bad(
                     name,
                     f"{root} does not exist (sync client signed out or folder moved)",
-                    fix=f"fix path in [[source]] id = {src.id!r}, or sign in to the sync client",
+                    fix=f'fix path in [[source]] id = "{src.id}", or sign in to the sync client',
                 )
             )
         elif rc == launchd.EXIT_DISCLAIM_UNAVAILABLE:

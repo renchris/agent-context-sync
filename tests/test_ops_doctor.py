@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, gitops, setup_report
-from agentsync.config import Config, parse_config
+from agentsync.config import Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
@@ -553,7 +553,7 @@ def test_the_fail_lines_that_named_no_fix_name_one(
 
     gone = dataclasses.replace(sample_config.sources[0], path=tmp_path / "gone")
     r = by_name(run_checks(dataclasses.replace(sample_config, sources=(gone,))))
-    missing = "fix path in [[source]] id = 'local-fixture', or sign in to the sync client"
+    missing = 'fix path in [[source]] id = "local-fixture", or sign in to the sync client'
     assert (
         r["source.local-fixture.volume"].detail == f"volume UUID not checked: {tmp_path / 'gone'} is missing"
     )
@@ -901,7 +901,7 @@ def test_a_sentinel_the_system_will_not_read_is_its_own_line(
     assert "source.local-fixture" not in r, "no one line for the whole source: each part answered"
     listable = r["source.local-fixture.listable"]
     assert listable.detail == f"{afile} is not a directory"
-    assert listable.fix == "point [[source]] id = 'local-fixture' path at a folder"
+    assert listable.fix == 'point [[source]] id = "local-fixture" path at a folder'
     sentinel = r["source.local-fixture.sentinel"]
     assert (sentinel.ok, sentinel.severity) == (False, Severity.ERROR)
     assert sentinel.detail == f"{afile / '.keep'}: Not a directory"
@@ -1503,6 +1503,51 @@ def _cloud(cfg: Config) -> tuple[Config, Path]:
     (root / "a.docx").write_bytes(b"x")
     src = dataclasses.replace(cfg.sources[0], id="onedrive", path=root, sentinel=None)
     return dataclasses.replace(cfg, sources=(cfg.sources[0], src)), root
+
+
+def test_a_source_fix_names_the_table_as_sources_toml_writes_it(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """§16.39 N19: each fix that names a [[source]] table by its id line quotes the id as sources.toml has
+    it (config.local_source_table, the add-source writer). It printed Python's repr, id = 'x', which a search
+    of the file never found, and which the setup prompt's single-quoted --log FIX had to rewrite."""
+    written = sample_config.config_path.read_text(encoding="utf-8")
+    src = sample_config.sources[0]
+    afile = tmp_path / "afile"
+    afile.write_text("x\n", encoding="utf-8")
+    variants = [
+        dataclasses.replace(src, path=None),
+        dataclasses.replace(src, path=tmp_path / "gone"),
+        dataclasses.replace(src, path=afile, sentinel=None),
+        dataclasses.replace(src, sentinel="nope.txt"),
+    ]
+    fixes: list[tuple[str, str]] = []
+    for v in variants:
+        for r in doctor._check_local_source(sample_config, v, Path(sys.executable)):
+            if not r.ok and r.fix and "[[source]]" in r.fix:
+                fixes.append((r.name, r.fix))
+    _launcher(monkeypatch)
+    cfg, root = _cloud(sample_config)
+    monkeypatch.setattr(doctor, "_launcher_canary", lambda *a: (launchd.EXIT_CANARY_MISSING, ""))
+    t = by_name(run_checks(cfg))["tcc.onedrive"]
+    fixes.append((t.name, t.fix or ""))
+    assert [n for n, _ in fixes] == [
+        "source.local-fixture",
+        "source.local-fixture.listable",
+        "source.local-fixture.sentinel",
+        "source.local-fixture.volume",
+        "source.local-fixture.listable",
+        "source.local-fixture.sentinel",
+        "tcc.onedrive",
+    ]
+    for name, fix in fixes:
+        assert "id = '" not in fix, (name, fix)
+        m = re.search(r'id = "[a-z0-9-]+"', fix)
+        assert m is not None, (name, fix)
+        sid = name.split(".")[1]
+        assert m.group(0) in local_source_table(sid, root), (name, fix)
+        if sid == src.id:
+            assert m.group(0) in written, (name, fix)
 
 
 def test_cloud_source_without_launchagents_is_info_only(sample_config: Config) -> None:
