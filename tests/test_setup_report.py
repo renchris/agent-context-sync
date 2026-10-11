@@ -5467,3 +5467,71 @@ def test_a_folder_name_is_redacted_in_either_unicode_form(
     assert red.redact(line) == unicodedata.normalize(typed, "<folder-1>, <folder-1> and Plans Cafés")
     escaped = unicodedata.normalize("NFD", "Plans\\ Café").replace("\u0301", "\\\u0301")
     assert red.redact(escaped) == "<folder-1>"
+
+
+@pytest.mark.parametrize(
+    ("gecos", "said"),
+    [
+        ("Doe, Jane (Northwind)", "Jane Doe, jane-doe, JaneDoe, doe-jane, DOE_JANE and Northwind"),
+        ("Jane Q. Doe", "Jane Doe, jane-doe, JaneDoe, doe-jane, DOE_JANE and jane-q-doe"),
+        ("Doe, Jane Q. (Northwind)", "Jane Doe, jane-doe, JaneDoe, doe-jane, DOE_JANE and JaneQDoe"),
+        ("Jane Doe, Jr.", "Jane Doe, jane-doe, JaneDoe, doe-jane, DOE_JANE and Doe-Jane"),
+        ("Dr. Jane Doe", "Jane Doe, jane-doe, JaneDoe, doe-jane, DOE_JANE and Doe-Jane"),
+    ],
+    ids=["bracketed", "middle", "comma-middle-bracketed", "suffix", "title"],
+)
+def test_a_bracketed_tail_or_a_middle_part_does_not_hide_the_first_and_last_name(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, gecos: str, said: str
+) -> None:
+    """A directory display name ("Doe, Jane (Northwind)", "Jane Q. Doe"): the names are formed without the
+    bracketed part and the middle part, so "jane-doe" and "JaneDoe" are <name>, and a bracketed word is a lone
+    name without its brackets (rehearsal review, B13 item N8)."""
+
+    class Entry:
+        pw_gecos = gecos
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {said} agreed |"))
+    text, _summary = summary_of(fake_mac)
+    friction = section(text, "Agent friction log")
+    assert "| <name>, <name>, <name>, <name>, <name> and <name> agreed |" in friction, friction
+    assert "jane" not in text.lower() and "Northwind" not in text
+
+
+def test_a_bracketed_tail_that_is_the_organisation_stays_org(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Doe, Jane (Contoso)" on a Mac whose OneDrive is Contoso's: the bracketed word is registered after the
+    organisation, so "contoso-sales" stays <org-N> in all its forms rather than half a lone <name>."""
+
+    class Entry:
+        pw_gecos = f"Doe, Jane ({ORG})"
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(
+        fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {ORG} and {ORG.lower()}-sales agreed |")
+    )
+    text, _summary = summary_of(fake_mac)
+    assert re.search(r"\| <org-\d+> and <org-\d+>-sales agreed \|", section(text, "Agent friction log"))
+    assert ORG.lower() not in text.lower()
+
+
+def test_a_bracketed_part_of_two_letters_stays_a_name(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Jane (JJ) Doe": the bracketed part as written stays a lone name, as before B13 item N8 (which only
+    adds values), and the name without it is fuzzy ("jane-doe")."""
+
+    class Entry:
+        pw_gecos = "Jane (JJ) Doe"
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", "| (JJ) and jane-doe agreed |"))
+    text, _summary = summary_of(fake_mac)
+    assert "| <name> and <name> agreed |" in section(text, "Agent friction log")

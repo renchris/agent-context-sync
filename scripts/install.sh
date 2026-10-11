@@ -838,8 +838,8 @@ report_agentsync() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name tok user mdm line w take u h v g pac seen
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form stays as it is). LC_ALL=C: under a
 	# UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is lost.
@@ -880,6 +880,16 @@ redaction_pairs() {
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}"
 		done
 	}
+	name_forms() { # $@: words, joined by a space, -, _ or nothing; as written, lower and upper case: <name>
+		local s v x
+		for s in ' ' - _ ''; do
+			v=""
+			for x in "$@"; do v="${v:+$v$s}$x"; done
+			add_pair "$v" "<name>" w
+			add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<name>" w
+			add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:lower:]' '[:upper:]')" "<name>" w
+		done
+	}
 	if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then # this account's per-user temp folder links reports
 		add_pair "$(cd "$TMPDIR" && pwd -P)" "<tmp>"
 		add_pair "${TMPDIR%/}" "<tmp>"
@@ -912,12 +922,46 @@ redaction_pairs() {
 			add_pair "$part" "<folder-$n>"
 		done
 	done
+	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
+	# name run together ("janedoe" for "Jane Doe") is <user>, as in the Python report.
+	user="$(id -un 2>/dev/null || true)"
+	[ -z "$user" ] || add_pair "$user" "<user>" w
 	name="$(id -F 2>/dev/null || true)"
 	if [ -n "$name" ]; then
 		add_pair "$name" "<name>"
-		for tok in ${name//,/ }; do # "Doe, Jane": macOS keeps the comma
+		# Every word as written ("(JJ)" too) and without its brackets ("Doe, Jane (Contoso)"): macOS keeps the
+		# comma.
+		read -r -a toks <<<"${name//,/ }"
+		for tok in ${toks[@]+"${toks[@]}"}; do
 			add_pair "$tok" "<name>" w
 		done
+		read -r -a toks <<<"$(printf '%s' "$name" | LC_ALL=C sed 'y/,()[]{}/       /')"
+		for tok in ${toks[@]+"${toks[@]}"}; do
+			tok="${tok%.}"
+			add_pair "${tok#.}" "<name>" w
+		done
+		# Without its bracketed part, in the order the name is said ("Jane Q. Doe" for "Doe, Jane Q."): the
+		# words joined, and every two words in either order, the later of 2 or more characters and the earlier
+		# the first word or of 2 or more, so a suffix ("Jane Doe, Jr.") or a title ("Dr. Jane Doe") hides no
+		# pair; each as written, lower and upper case and joined by a space, -, _ or nothing ("JaneDoe").
+		core="$(printf '%s' "$name" | LC_ALL=C sed 's/[[:space:]]*[([{][^]()[{}]*[])}]//g')"
+		IFS=, read -r -a segs <<<"$core"
+		[ "${#segs[@]}" -lt 2 ] || segs=("${segs[1]}" "${segs[0]}" ${segs[2]+"${segs[@]:2}"})
+		read -r -a toks <<<"${segs[*]-}"
+		words=()
+		for tok in ${toks[@]+"${toks[@]}"}; do
+			tok="${tok%.}"
+			[ -z "${tok#.}" ] || words+=("${tok#.}")
+		done
+		if [ "${#words[@]}" -ge 2 ]; then
+			name_forms "${words[@]}"
+			for ((i = 0; i < ${#words[@]} - 1; i++)); do
+				[ "$i" -eq 0 ] || [ "${#words[i]}" -ge 2 ] || continue
+				for tok in "${words[@]:i+1}"; do
+					[ "${#tok}" -lt 2 ] || { name_forms "${words[i]}" "$tok" && name_forms "$tok" "${words[i]}"; }
+				done
+			done
+		fi
 	fi
 	# A hosted MDM's host can name the company, spelled unlike the OneDrive organisation.
 	mdm="$(with_timeout 5 /usr/bin/profiles status -type enrollment 2>/dev/null </dev/null |
@@ -966,8 +1010,6 @@ redaction_pairs() {
 			done
 		} 2>/dev/null
 	)
-	user="$(id -un 2>/dev/null || true)"
-	[ -z "$user" ] || add_pair "$user" "<user>" w
 }
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
@@ -1132,9 +1174,9 @@ fallback_body() {
 	say ""
 	say "## Redaction"
 	say ""
-	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name (<name>), the"
-	say "organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>), proxy hosts with a dot and the"
-	say "system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage that"
+	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
+	say "(<name>), the organisation after OneDrive- (<org-N>), the MDM server's host (<mdmhost>), proxy hosts with a"
+	say "dot and the system PAC URL after its scheme (<proxy-N>) and the names of the folders under CloudStorage that"
 	say "--source-local, sources.toml or install.log name (<folder-N>). Read the report before sending it: anything"
 	say "else confidential is yours to remove."
 }

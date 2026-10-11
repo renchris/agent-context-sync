@@ -466,6 +466,8 @@ _FUZZY_SEP = r"[ \t_\\-]*"
 install.out's run header and re-run lines): ``Client\\ Alpha`` is ``Client Alpha``."""
 _Q_ESCAPE_RE = re.compile(r"[^A-Za-z0-9]")  # in a word: ``printf %q`` may put a backslash before it
 _CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_NAME_BRACKET_RE = re.compile(r"\s*[(\[{]([^()\[\]{}]*)[)\]}]")
+"""A bracketed part of a full name ("Doe, Jane (Contoso)"): its inner text is group 1."""
 _PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
 _RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+)>"
 _RESIDUE_RE = re.compile(
@@ -1914,6 +1916,7 @@ def _build_redactor(r: _Run) -> Redactor:
     # ("janedoe" for "Jane Doe") would be taken for a variant of the name and shown as <name>.
     with contextlib.suppress(Exception):
         red.add("user", _login_name())
+    tail_words: list[str] = []  # the bracketed part's words, registered last (below)
     with contextlib.suppress(Exception):
         full = _full_name()
         red.add("name", full, fuzzy=True)  # "Jane Doe", "jane-doe", "JaneDoe", "JANE_DOE"
@@ -1934,6 +1937,23 @@ def _build_redactor(r: _Run) -> Redactor:
             if len(part.strip(".,")) >= 3:  # a lone first or last name: its written and upper-case forms
                 red.add("name", part.strip(".,"))
                 red.add("name", part.strip(".,").upper())
+        # A bracketed part ("Doe, Jane (Contoso)", "Jane (JJ) Doe") is a company, team or nickname. Without
+        # it, and in the order the name is said ("Jane Q. Doe" for "Doe, Jane Q."), the name is a fuzzy value
+        # too, and so are its words joined without their dots ("jane-q-doe") and every two of its words in
+        # either order, the later of 2 or more characters and the earlier the first word or of 2 or more: a
+        # bracketed part, a middle part, a suffix ("Jane Doe, Jr.") or a title ("Dr. Jane Doe") does not hide
+        # the first and last name ("JaneDoe", "doe-jane"). The bracketed words come last.
+        tail_words = [w for inner in _NAME_BRACKET_RE.findall(full) for w in inner.replace(",", " ").split()]
+        core = _NAME_BRACKET_RE.sub("", full).strip(" ,")
+        core_segs = [seg.strip() for seg in core.split(",") if seg.strip(" .")]
+        said = [*core_segs[1:2], *core_segs[:1], *core_segs[2:]] if "," in core else [core]
+        words = [w.strip(".,") for seg in said for w in seg.split() if w.strip(".,")]
+        forms = [core, " ".join(words)]
+        for i, first in enumerate(words):
+            for w in words[i + 1 :] if i == 0 or len(first) >= 2 else []:
+                forms += [f"{first} {w}", f"{w} {first}"] if len(w) >= 2 else []
+        for form in dict.fromkeys(forms):
+            red.add("name", form, fuzzy=True)
     with contextlib.suppress(Exception):
         red.add("serial", _serial_number(r.run))
     with contextlib.suppress(Exception):
@@ -2014,6 +2034,12 @@ def _build_redactor(r: _Run) -> Redactor:
     # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
     pac = r.system_proxy.pac_url if r.system_proxy is not None else None
     red.add("proxy", pac.split("://", 1)[-1] if pac else None, ignore_case=True)
+    # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
+    # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
+    for word in (w.strip(".,") for w in tail_words):
+        if len(word) >= 3:
+            red.add("name", word)
+            red.add("name", word.upper())
     with contextlib.suppress(Exception):
         for sha in _docs_commits(r):
             red.add_commit(sha)

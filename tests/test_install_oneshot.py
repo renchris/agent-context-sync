@@ -822,6 +822,57 @@ def test_the_shell_report_redacts_a_full_name_written_last_comma_first(
     assert "Jane" not in text and "Doe" not in text
 
 
+@pytest.mark.parametrize(
+    "full",
+    ["Doe, Jane (Northwind)", "Jane Q. Doe", "Jane Doe, Jr.", "Dr. Jane Doe"],
+    ids=["bracketed", "middle", "suffix", "title"],
+)
+def test_the_shell_report_redacts_the_joined_forms_of_a_display_name(
+    env: dict[str, str], folder: Path, full: str
+) -> None:
+    """A directory display name ("Doe, Jane (Northwind)", "Jane Q. Doe"): the shell fallback forms the joined
+    names without the bracketed and middle parts, as the Python report does, and a bracketed word is a lone
+    name without its brackets."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        f'#!/bin/bash\n[ "$1" = -F ] && {{ echo "{full}"; exit 0; }}\nexec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | jane-doe, JaneDoe, DOE_JANE and Northwind agreed | -\n"
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    text = report_path(env).read_text()
+    said = (
+        "<name>, <name>, <name> and <name> agreed"
+        if "(" in full
+        else "<name>, <name>, <name> and Northwind agreed"
+    )
+    assert said in text
+    assert "jane" not in text.lower()
+
+
+def test_the_shell_report_shows_a_login_that_is_the_name_run_together_as_user(
+    env: dict[str, str], folder: Path
+) -> None:
+    """A login that is the full name run together ("janedoe" for "Jane Doe") is <user>, as in the Python
+    report: the shell's joined name forms hold "janedoe" too, so the login pair comes first. A bracketed part
+    of two letters ("(JJ)") stays a name as written."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        '#!/bin/bash\ncase "$1" in -F) echo "Jane (JJ) Doe"; exit 0 ;; -un) echo janedoe; exit 0 ;; esac\n'
+        'exec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text("Prompt: v4\nF1 | step 3 | clean | 1 | janedoe ran it; (JJ) and JaneDoe agreed | -\n")
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    assert "<user> ran it; <name> and <name> agreed" in report_path(env).read_text()
+
+
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
     cp = install_sh(env, "--source-local", str(tmp_path / "nowhere"))
     assert cp.returncode == 2

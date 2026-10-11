@@ -4960,6 +4960,10 @@ are fuzzy values too, and so is the first part when it has 3 or more characters,
 was kept; a later part of 3 or more characters is a lone name (written and upper-case forms). A first part of 2
 characters ("Li, Jane") is redacted only inside those joined forms, as a second name of 2 always was. The shell
 fallback splits the name at commas as well.
+**Amended (2026-10-11, §16.40):** the name without a bracketed part and its said-order joined forms (every two
+words in either order, the words joined) are fuzzy names too, so a bracketed tail, a middle part, a suffix or a
+title ("Doe, Jane (Contoso)", "Jane Q. Doe", "Jane Doe, Jr.", "Dr. Jane Doe") does not hide `jane-doe`; the shell
+fallback builds the joined forms as well, and emits the login before the name (K9).
 The report's own headings are never redacted. install.sh run ids are shown without their `-<pid>` suffix. The
 Redaction section adds a residue check (capitalised words right next to a name, organisation, library, folder or
 source placeholder in the friction log, to check by hand) and says that unnumbered template placeholders (`<org>`,
@@ -10613,6 +10617,28 @@ match stays on its own line, and does not take the next line's first token (`[us
 that `urlsplit` rejects (`http://[x`) is skipped. Before this, either case made the whole redactor fail, so the
 report fell back to redacting the home folder only. Tests: `test_an_unreadable_proxy_value_keeps_the_redaction` and
 `test_an_empty_git_proxy_takes_no_token_from_the_next_line`.
+
+**A bracketed part or a middle part does not hide the first and last name** (B13 N8; amends the v5 revision's
+2026-10-10 amendment on full names). The registrations from the whole field are unchanged. The name without its
+bracketed part ("Doe, Jane (Contoso)", "Jane (JJ) Doe") adds a fuzzy value, and so do, in the order the name is
+said ("Jane Q. Doe" for "Doe, Jane Q."), its words joined without their dots and every two of its words in either
+order, the later of 2 or more characters and the earlier the first word or of 2 or more: a middle part, a suffix
+("Jane Doe, Jr.", said "Jr. Jane Doe") or a title ("Dr. Jane Doe") no longer hides `jane-doe`, `JaneDoe` or
+`doe-jane`, in either report. (Pairing only the first word with the others left a suffix or a title as the first
+word, so the shell fallback, which has no comma-part forms, printed `jane-doe` in clear for "Jane Doe, Jr.".)
+A bracketed part's words of 3 or more characters, without the brackets, are lone names (written and upper-case
+forms), registered after every other value, so a tail that is the organisation stays `<org-N>` bare and joined
+(`<org-1>-sales`). The shell fallback registers each word as written and without its brackets, leaves the bracketed
+part out of the joined forms the same way and matches those forms as written, lower case and upper case, with a
+space, `-`, `_` or nothing between the words; it matches no other mix of case and does not upper-case a letter
+outside ASCII. The shell fallback now emits the login before the name, so a login that is the name run together
+stays `<user>` (K9); before, the shell had no joined form for it to collide with. Its Redaction paragraph says "the
+full name and its joined forms (`<name>`)". Tests:
+`test_a_bracketed_tail_or_a_middle_part_does_not_hide_the_first_and_last_name`,
+`test_a_bracketed_tail_that_is_the_organisation_stays_org`, `test_a_bracketed_part_of_two_letters_stays_a_name`,
+`test_the_shell_report_redacts_the_joined_forms_of_a_display_name` and
+`test_the_shell_report_shows_a_login_that_is_the_name_run_together_as_user`. Not covered: nested brackets ("Jane
+Doe (Contoso (EU))" keeps the outer part in the core; first plus last is still registered).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
