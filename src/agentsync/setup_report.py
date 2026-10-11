@@ -5243,10 +5243,11 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             and not any(x.started is not None and x.started > end for x in r.install_runs)
         ):
             out.append(
-                f"- note: no attempt was started and no install.sh run began since attempt {att.number} "
-                f"finished at {_iso(end)}, more than 10 minutes before this report, so this report is of "
-                f"attempt {att.number}. A later session whose step 1 command stopped before "
-                "`install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not in it."
+                f"- note: no attempt was started and install.log has no run that began since attempt "
+                f"{att.number} finished at {_iso(end)}, more than 10 minutes before this report "
+                f"(install.log does not log `install.sh --report-only`), so this report is of attempt "
+                f"{att.number}. A later session whose step 1 command stopped before `install.sh --log-start` "
+                "(no Xcode tools, a git failure) and logged nothing is not in it."
             )
     stop = stopping_error(att, runs) if att is not None else None
     if att is not None:

@@ -3407,7 +3407,8 @@ def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
     order no line (since v11 they log the failed command as a step 1 error, B13 H1; an old copy, or an agent
     that does not, still logs nothing), and step 3 still runs the report. That report judged the attempt that
     had finished before it and said nothing else. It cannot tell such a session from a report written again
-    by hand, so it says what it read: nothing was started since attempt N finished."""
+    by hand, so it says what it read: nothing was started since attempt N finished. install.log is what it
+    read, and it does not log ``install.sh --report-only``, the run that writes such a report."""
     v6_install_log(fake_mac)
     write_friction(fake_mac, V7_HAPPY)  # its end line is 2026-09-29T10:01:10Z
 
@@ -3416,19 +3417,23 @@ def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
         text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
         return text, section(text, "Summary")
 
-    note = "- note: no attempt was started and no install.sh run began since attempt 1 finished at "
+    note = "- note: no attempt was started and install.log has no run that began since attempt 1 finished at "
     assert note not in summary_at(5)[1], "within ten minutes it is the same session's report"
     text, summary = summary_at(12)
     assert (
-        f"{note}2026-09-29T10:01:10Z, more than 10 minutes before this report, so this report is of attempt "
-        "1. A later session whose step 1 command stopped before `install.sh --log-start` (no Xcode tools, a "
-        "git failure) and logged nothing is not in it." in summary
+        f"{note}2026-09-29T10:01:10Z, more than 10 minutes before this report (install.log does not log "
+        "`install.sh --report-only`), so this report is of attempt 1. A later session whose step 1 command "
+        "stopped before `install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not "
+        "in it." in summary
+    )
+    assert "no install.sh run began" not in text, (
+        "--report-only writes this report and install.log does not log it"
     )
     assert summary.strip().splitlines()[0].startswith("- **outcome: fully one command**")
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
     assert link["outcome"] == ["Fully one command"], "the outcome and the link are the attempt's, unchanged"
     write_install_log(fake_mac, start="2026-09-29T10:05:00Z", run="20260929T100500Z-7", append=True)
-    assert note not in summary_at(12)[1], "an install.sh run began after the end line"
+    assert note not in summary_at(12)[1], "install.log has a run that began after the end line"
     v6_install_log(fake_mac)
     write_friction(fake_mac, V7_HAPPY + "2026-09-29T10:12:00Z | step 1 | error | git pull exited 1 | -\n")
     summary = summary_at(20)[1]

@@ -10375,7 +10375,11 @@ environment variable. Plan: `docs/plans/bring-back-ocr.md` section B11.
   than the report, and install.log has no run that started after it, the Summary adds, after the prompt line:
   `- note: no attempt was started and no install.sh run began since attempt <N> finished at <end>, more than 10
   minutes before this report, so this report is of attempt <N>. A later session whose step 1 command stopped
-  before `install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not in it.` The prompt's
+  before `install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not in it.`
+  **Amended (2026-10-11, §16.40 "The 'nothing started since' note says install.log"):** the note now says
+  "install.log has no run that began since attempt <N> finished" where it said "no install.sh run began", and
+  adds "(install.log does not log `install.sh --report-only`)" after "before this report"; the condition is
+  unchanged. The prompt's
   Xcode and git stops have said "and stop" since v7 and order no line, and step 3 ends every such stop with the
   report, which judged the attempt that had finished before it and said nothing else. The report cannot tell
   such a session from a report written again by hand (its own evidence line asks for one on an idle Mac), so it
@@ -10735,6 +10739,20 @@ reader counts), and naming the next step from a fixed order (older installers ha
 `test_a_run_cut_off_in_a_step_names_the_last_step_logged`, `test_pid_alive_reads_this_process_and_a_reaped_one`
 and `test_a_run_killed_during_the_helper_builds_reads_as_killed`. Accepted: a reused pid reads as "in use",
 which keeps both readings, as before.
+
+**The "nothing started since" note says install.log** (B13 H17; amends §16.37). The note said "no install.sh
+run began since attempt <N> finished", but the report it sits in is written by `install.sh --report-only` (step 3,
+or by hand), which logs no run in install.log (`log_at` returns under `--report-only`; install.sh's header: "never
+a dry run or --report-only"), so an install.sh run wrote a report saying none began. The condition is install.log's
+runs (a `--list-folders` run counts), so the note now says what it read: `- note: no attempt was started and
+install.log has no run that began since attempt <N> finished at <end>, more than 10 minutes before this report
+(install.log does not log `install.sh --report-only`), so this report is of attempt <N>. A later session whose
+step 1 command stopped before `install.sh --log-start` (no Xcode tools, a git failure) and logged nothing is not
+in it.` The condition, the outcome, the issue link and the installer's output are unchanged; `bring-back.md`
+copies the Summary, so it carries the new words. Rejected: logging `--report-only` in install.log so the old words
+become true. The `--report-only` run that writes the report would then always start after the end line, so the
+note would never fire in either case it exists for, and every install.log reader would see a run with no step.
+Test: `test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
