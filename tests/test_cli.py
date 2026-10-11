@@ -1521,7 +1521,12 @@ def test_status_shows_the_policy_and_a_broken_policy_fails(
     assert f"  exclude_label_ids: {guid}" in out and "  labels_active: true" in out
     assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_OK
     cap = capsys.readouterr()
-    assert cap.out == out and "renamed: run agentsync status" in cap.err
+
+    # the free-space figure moves between the two calls when other work writes to the disk
+    def free(text: str) -> str:
+        return re.sub(r"\d+\.\d GiB", "N GiB", text)
+
+    assert free(cap.out) == free(out) and "renamed: run agentsync status" in cap.err
     (initialised.config_path.parent / "policy.toml").write_text("[policy]\nnope = 1\n", encoding="utf-8")
     assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
