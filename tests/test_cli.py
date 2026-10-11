@@ -1594,10 +1594,13 @@ def test_offboard_is_a_dry_run_unless_confirmed(
 
 
 def test_status_shows_the_policy_and_a_broken_policy_fails(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """KISS K08a: status prints the effective policy; ``policy show`` is a hidden alias of status; a broken
     policy is a FAIL there (rc 1) and still a configuration error for sync."""
+    # the two outputs are compared whole, and the disk lines print free space to 0.1 GiB: other work on the
+    # machine moves the real figure between the two calls
+    monkeypatch.setattr(doctor, "_disk_free", lambda _anchor: 8 << 30)
     cfg = str(initialised.config_path)
     guid = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"
     with initialised.config_path.open("a", encoding="utf-8") as fh:
