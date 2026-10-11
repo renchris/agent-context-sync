@@ -2964,7 +2964,8 @@ def test_loop_stage_and_next_text() -> None:
         'lists them), then run `agentsync add-source "<folder>"` for each, then `agentsync sync`'
     )
     assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
-    # The draft baseline's wait names the docs repo's _eval folder by path: the report keeps its last part.
+    # On its own, loop_next_text keeps the folder's last part; the Loop line names it in words first
+    # (_eval_by_name).
     wait = "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md"
     for folder in ("~/agent-context/docs/_eval", "/Volumes/Work/kb/docs/_eval"):
         assert text(wait.format(folder)) == wait.format("_eval")
@@ -3121,9 +3122,13 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert loop == (
         "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU "
-        "below); session done; WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 "
-        "in questions.md, correct the answers in answers.md, and change both files to status: confirmed"
+        "below); session done; WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval "
+        "folder, keep about 10 in questions.md, correct the answers in answers.md, and change both files to "
+        "status: confirmed"
     ), loop
+    # Path-free but findable: the Configuration part names the docs repo the Summary's words point at.
+    config_part = section(text, "Configuration").splitlines()
+    assert [ln for ln in config_part if ln.startswith("- docs repo: ~/")], text
 
 
 @pytest.mark.parametrize("under_home", [True, False])
@@ -3131,10 +3136,10 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
     fake_mac: dict[str, Path], tmp_path: Path, under_home: bool
 ) -> None:
     """Review of the v9 rehearsal fixes (2026-10-07): the draft baseline's wait names the docs repo's
-    ``_eval`` folder by its path, and the Loop line shows a path as its last part, ``in _eval``. A path was
-    read up to its first space, so a docs repo at "~/Client Alpha/kb docs" left ``in Client Alpha/kb
-    docs/_eval`` in a line that holds no path. The folder is now taken out as the loop wrote it, with the
-    loop's own lines here: under the home folder (``~/...``) and outside it (the full path)."""
+    ``_eval`` folder by its path, and the Loop line names it in words (the docs repo's ``_eval`` folder). A
+    path was read up to its first space, so a docs repo at "~/Client Alpha/kb docs" left ``in Client
+    Alpha/kb docs/_eval`` in a line that holds no path. The folder is now taken out as the loop wrote it,
+    with the loop's own lines here: under the home folder (``~/...``) and outside it (the full path)."""
     docs = (fake_mac["home"] if under_home else tmp_path) / "Client Alpha" / "kb docs"
     cfg = fake_mac["config"]
     cfg.write_text(
@@ -3154,8 +3159,8 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
     text, _red = setup_report.build_report(cfg, hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert line.endswith(
-        f"; {draft.format('_eval')}correct the answers in answers.md, and change both files to status: "
-        "confirmed"
+        f"; {draft.format(setup_report._EVAL_SHOWN)}correct the answers in answers.md, and change both "
+        "files to status: confirmed"
     ), line
     assert "Client" not in line and "kb docs" not in line and "/" not in line.split("; WAITING ON YOU: ")[1]
 
@@ -3246,7 +3251,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     line = loop_line()
     assert re.search(
         r"; NEXT: stop: the operator confirms the baseline questions \(WAITING ON YOU below\); session done; "
-        r"WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions\.md, "
+        r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep about 10 "
+        r"in questions\.md, "
         r"correct the answers in answers\.md, and change both files to status: confirmed; WAITING ON YOU: 1 "
         r"queued purge\(s\): preview with `agentsync purge --queue --dry-run` \(writes nothing\) before you "
         r"run `agentsync purge --queue` \(rewrites history\); WAITING ON YOU: macOS held the listing of "

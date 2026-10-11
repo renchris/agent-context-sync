@@ -9602,7 +9602,8 @@ WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eva
   goes by (§16.30), and nothing in `scripts/install.sh` reads this wait.
 - **In the setup report** the Summary's Loop line passes through `loop_next_text`, which keeps a path's
   last part: `... are a draft: in _eval, keep about 10 in questions.md, ...`. The installer output's tail
-  shows the line as printed, with the report's redaction.
+  shows the line as printed, with the report's redaction. **Amended (2026-10-11, §16.40 "The Summary names the draft baseline's folder in words"):** the Loop line shows
+  `in the docs repo's _eval folder`.
 - **Whatever the docs repo's path.** `loop_next_text` reads a path up to its first space, so on its own it
   made `in Client Alpha/kb docs/_eval` of `in ~/Client Alpha/kb docs/_eval`, and `in Work Disk/kb/docs/_eval`
   of a docs repo on `/Volumes/Work Disk`: part of a path in a line documented to hold none. `_loop_line`
@@ -9611,7 +9612,8 @@ WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eva
   every line the loop hook returns. It was the only path the config put into these lines (**amended
   2026-10-08, §16.36:** the wait for empty cloud folders names the config file by its path, and
   `_eval_by_name` replaces that one the same way: `loop._shown(config.config_path)` becomes `sources.toml`,
-  the file's name). The Config section shows both paths, as before.
+  the file's name). The Config section shows both paths, as before. **Amended (2026-10-11, §16.40 "The Summary names the draft baseline's folder in words"):** the folder becomes
+  `the docs repo's _eval folder` (`setup_report._EVAL_SHOWN`), not `_eval`.
 - **STATE.md** carries the loop's lines (§14, item 13) and is not committed, so no committed file gains a
   path.
 
@@ -9620,7 +9622,9 @@ a docs repo outside the home folder: its full path), `tests/test_setup_report.py
 real sync with a draft: `in _eval`; the same with two more waits before it; `loop_next_text` on the wait
 with a home path and with another; the loop's own lines for a docs repo at `Client Alpha/kb docs`, under
 the home folder and outside it: `in _eval`, and nothing of the path),
-`tests/test_install_oneshot.py` (the stub's wait in the new words).
+`tests/test_install_oneshot.py` (the stub's wait in the new words). **Amended (2026-10-11, §16.40 "The Summary names the draft baseline's folder in words"):** the report's tests
+now expect `in the docs repo's _eval folder` where they expected `in _eval`; `loop_next_text` alone still
+makes `_eval` of the path.
 
 ### 16.34 Meeting recordings: screens (2026-10-07)
 
@@ -10857,6 +10861,18 @@ showed the speech engine nowhere but the agent's friction line; Doctor lists an 
 installer's line is past the 60 lines of install.out the report keeps. A hung speech helper costs the report up
 to 1.5 s more of its 12 s, as a hung media helper does. No command, flag or key. Test:
 `test_the_ocr_part_has_a_speech_line_of_its_own`.
+
+**The Summary names the draft baseline's folder in words** (B13 N18, v9 defect 6, v10 rehearsals; amends §16.32
+"In the setup report" and "Whatever the docs repo's path"). The Loop line read `WAITING ON YOU: the baseline
+questions are a draft: in _eval, keep about 10 in questions.md, ...`: a folder name with nothing to find it by.
+`_eval_by_name` now replaces the folder, as the loop wrote it, with `the docs repo's _eval folder`
+(`_EVAL_SHOWN`), so the line reads `... are a draft: in the docs repo's _eval folder, keep about 10 in
+questions.md, ...`. The line still holds no path (K16b) for any docs repo, and the Configuration part's `- docs
+repo:` line gives the folder. The live wait `agentsync status` prints (`loop.py`) keeps its full path;
+`loop_next_text`, `_WAIT_DRAFT` and `_stopped_wait` are unchanged (the wait's prefix is). Tests:
+`test_a_draft_baseline_shows_its_wait_on_the_loop_line`,
+`test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces` and
+`test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
