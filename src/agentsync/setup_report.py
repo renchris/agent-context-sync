@@ -38,11 +38,11 @@ maintainer would otherwise have to ask this Mac for after reading the report, so
 enough. They are read from the manifest (opened read-only), the purge queue and one ``lstat`` per folder,
 inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only:
 OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`) and the ones
-no converter reads by a fixed list of file types (:func:`_refused_type`), the purge
-queue by reason and day, sources whose folder is inside another's, empty cloud folders by their dataless
-flag, and conversions repeated run after run. Background runs says how an installed plist's arguments
-differ from what this build would write, by class (:func:`argument_roles`), and Installer lists every run
-and the ones with no end line, with whether each one's process is gone.
+no converter reads by a fixed list of file types (:func:`_refused_type`) and an unlisted one by its shape
+(:func:`_refused_shape`), the purge queue by reason and day, sources whose folder is inside another's, empty
+cloud folders by their dataless flag, and conversions repeated run after run. Background runs says how an
+installed plist's arguments differ from what this build would write, by class (:func:`argument_roles`), and
+Installer lists every run and the ones with no end line, with whether each one's process is gone.
 
 Redaction (always on) replaces, consistently (the same value always gets the same placeholder): the home
 path (``~``), the login name (``<user>``), the full name (``<name>``), the organisation, team or account
@@ -3000,6 +3000,44 @@ def _refused_type(reason: str | None) -> str | None:
     return tail if tail in _REFUSED_TYPES else _REFUSED_OTHER
 
 
+_OTHER_SHAPES = (
+    "like a type",
+    "digits only",
+    "with a space",
+    "with a symbol",
+    "too long for a type",
+    "nothing after the dot",
+)
+"""The fixed words an unlisted suffix is counted by (:func:`_refused_shape`), in the order they are printed.
+``like a type`` is one to :data:`_SHAPE_LONG` ASCII letters and digits with a letter among them: the shape
+every listed type has, which a dotted name (``jane.doe``) can have too. The other words are most often a
+piece of a name, a version (``v1.2``) or a copy mark (``.docx~``); a few real types have them as well (a
+split archive's ``.001``, ``.sqlite-wal``)."""
+_SHAPE_LONG = 10  # the longest listed suffix after its dot (.crdownload, .whiteboard); a test pins it
+
+
+def _refused_shape(reason: str | None) -> str | None:
+    """The shape of an unlisted suffix, one of :data:`_OTHER_SHAPES`: what tells a type the list lacks from
+    a piece of a name without printing either. None unless :func:`_refused_type` reads ``other``. Read
+    without casefold, which turns ``ß`` and ``ﬁ`` into ASCII letters; only ASCII case is ignored, as
+    SQLite's ``lower`` does, so suffixes counted as one distinct suffix have one shape."""
+    if _refused_type(reason) != _REFUSED_OTHER:
+        return None
+    tail = " ".join((reason or "").split())[len(_NO_CONVERTER) :]
+    body = tail[1:] if tail.startswith(".") else tail
+    if not body:
+        return "nothing after the dot"
+    if " " in body:
+        return "with a space"
+    if len(body) > _SHAPE_LONG:
+        return "too long for a type"
+    if body.isascii() and body.isdigit():
+        return "digits only"
+    if not (body.isascii() and body.isalnum()):
+        return "with a symbol"
+    return "like a type"
+
+
 def _version_class(version: str | None) -> int:
     """An index into :data:`_VERSION_WORDS` for a converter version: 0 without an engine's identity, 1 for a
     version of the field build of OCR (``+ocr-off`` holds ``+ocr-`` and is no identity), 2 with one."""
@@ -3067,6 +3105,7 @@ class _Mirror:
             conn.set_progress_handler(self._tick, _STEP_TICK)
             conn.create_function("reason_class", 1, quarantine_class, deterministic=True)
             conn.create_function("refused_type", 1, _refused_type, deterministic=True)
+            conn.create_function("refused_shape", 1, _refused_shape, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
             self._conn = conn
         return self._conn
@@ -3728,23 +3767,33 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 def _refused_types(m: _Mirror, labels: _Labels) -> list[str]:
     """One line per source with files no converter reads: how many of each type, most first. The types
     are :func:`_refused_type`'s fixed words; the suffix a row stores never leaves SQLite. ``other`` also
-    says how many different unlisted suffixes it holds, which is how to tell one missing type from many
-    odd names. At most :data:`_TYPES_SHOWN` listed types a source and :data:`_ROWS_SHOWN` sources; what is
-    past either is counted, so each line adds up to that source's ``no converter`` rows in the table."""
-    by_source: dict[str, list[tuple[str, int, int, int]]] = {}
-    for sid, kind, files, online, distinct in m.rows(
-        "SELECT source_id, refused_type(state_reason), COUNT(*), SUM(dataless != 0), "
-        "COUNT(DISTINCT CASE WHEN refused_type(state_reason) = 'other' THEN lower(state_reason) END) "
+    says how many different unlisted suffixes it holds and how many of those have each shape
+    (:func:`_refused_shape`), which is how to tell one missing type from odd names. At most
+    :data:`_TYPES_SHOWN` listed types a source and :data:`_ROWS_SHOWN` sources; what is past either is
+    counted, so each line adds up to that source's ``no converter`` rows in the table."""
+    grouped: dict[tuple[str, str], tuple[list[int], Counter[str]]] = {}
+    for sid, kind, shape, files, online, distinct in m.rows(
+        "SELECT source_id, refused_type(state_reason), refused_shape(state_reason), COUNT(*), "
+        "SUM(dataless != 0), COUNT(DISTINCT CASE WHEN refused_type(state_reason) = 'other' "
+        "THEN lower(state_reason) END) "
         "FROM items WHERE is_dir = 0 AND state != 'tombstone' AND state_reason IS NOT NULL "
-        "AND refused_type(state_reason) IS NOT NULL GROUP BY 1, 2"
+        "AND refused_type(state_reason) IS NOT NULL GROUP BY 1, 2, 3"
     ):
-        found = by_source.setdefault(labels.of(sid), [])
-        found.append((str(kind), int(files), int(online or 0), int(distinct)))
+        sums, shaped = grouped.setdefault((str(sid), str(kind)), ([0, 0, 0], Counter()))
+        sums[0] += int(files)
+        sums[1] += int(online or 0)
+        sums[2] += int(distinct)
+        if shape is not None:  # an `other` group, one per shape: a reason has one shape, so they add up to D
+            shaped[str(shape)] += int(distinct)
+    by_source: dict[str, list[tuple[str, int, int, int, Counter[str]]]] = {}
+    for (sid, kind), (sums, shaped) in grouped.items():
+        by_source.setdefault(labels.of(sid), []).append((kind, sums[0], sums[1], sums[2], shaped))
 
-    def cell(kind: str, files: int, online: int, distinct: int) -> str:
+    def cell(kind: str, files: int, online: int, distinct: int, shapes: Counter[str]) -> str:
         notes = [f"{online} online-only"] if online else []
         if kind == _REFUSED_OTHER:
-            notes.append(f"{distinct} distinct")
+            words = ", ".join(f"{shapes[w]} {w}" for w in _OTHER_SHAPES if shapes[w])
+            notes.append(f"{distinct} distinct: {words}")
         return f"{kind} {files}" + (f" ({', '.join(notes)})" if notes else "")
 
     out: list[str] = []

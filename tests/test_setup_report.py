@@ -4861,7 +4861,7 @@ def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[
     )
     assert [ln for ln in part.splitlines() if ln.startswith("- <")] == [
         "- <folder-2>, no converter by type: .msg 2 (1 online-only) · .mp4 1 · .png 1 · no extension 1 · "
-        "other 3 (1 online-only, 2 distinct)",
+        "other 3 (1 online-only, 2 distinct: 1 like a type, 1 with a space)",
         "- <folder-3>, no converter by type: .zip 1",
     ], "most first, then by name; a deleted file and a file refused for its label are not counted"
     assert {src: sum(found.values()) for src, found in type_counts(part).items()} == table_counts(part)
@@ -4895,11 +4895,92 @@ def test_a_source_with_many_refused_types_shows_the_most_and_counts_the_rest(
     [line] = [ln for ln in part.splitlines() if ln.startswith("- <folder-2>, no converter by type: ")]
     shown = " · ".join(f"{suffix} {2 if n < 3 else 1}" for n, suffix in enumerate(types[:12]))
     assert line == (
-        f"- <folder-2>, no converter by type: {shown} · no extension 1 · other 1 (1 distinct) (+3 file(s) of "
-        "3 more type(s))"
+        f"- <folder-2>, no converter by type: {shown} · no extension 1 · other 1 (1 distinct: 1 like a type) "
+        "(+3 file(s) of 3 more type(s))"
     )
     counts = type_counts(part)["<folder-2>"]
     assert counts["more"] == 3 and sum(counts.values()) == table_counts(part)["<folder-2>"] == 20
+
+
+@pytest.mark.parametrize(
+    ("reason", "shape"),
+    [
+        ("no converter for .wingtip", "like a type"),
+        ("no converter for .WINGTIP2", "like a type"),
+        ("no converter for .doe", "like a type"),
+        ("no converter for .2", "digits only"),
+        ("no converter for .2031", "digits only"),
+        ("no converter for .final draft", "with a space"),
+        ("no converter for .msg and more", "with a space"),
+        ("no converter for .docx~", "with a symbol"),
+        ("no converter for .zürich", "with a symbol"),
+        ("no converter for .tar_old", "with a symbol"),
+        ("no converter for .strauß", "with a symbol"),  # casefold reads it as ss, an ASCII "like a type"
+        ("no converter for .\ufb01le", "with a symbol"),  # the fi ligature, which casefold reads as fi
+        ("no converter for .\uff12\uff10\uff13\uff11", "with a symbol"),  # full-width digits are isdigit
+        ("no converter for ." + "x" * 11, "too long for a type"),
+        ("no converter for ." + "x" * 200, "too long for a type"),
+        ("no converter for .", "nothing after the dot"),
+        ("no converter for .msg", None),
+        ("no converter for files without an extension", None),
+        ("contains a credential", None),
+        (None, None),
+    ],
+)
+def test_an_unlisted_suffix_is_counted_by_its_shape(reason: str | None, shape: str | None) -> None:
+    """Field report 2026-10-08 (D9.f): "other 2 (1 distinct)" could be a type the list lacks or a dotted
+    name, and three rounds did not say which. A fixed shape word tells them apart without printing either."""
+    assert setup_report._refused_shape(reason) == shape
+    assert (shape is not None) is (setup_report._refused_type(reason) == "other"), "every `other` has a shape"
+    assert shape is None or shape in setup_report._OTHER_SHAPES
+
+
+def test_like_a_type_is_as_long_as_the_longest_listed_type() -> None:
+    longest = max(len(t) - 1 for t in setup_report._REFUSED_TYPES if t.count(".") == 1)
+    assert longest == setup_report._SHAPE_LONG, "no listed type would read `too long for a type`"
+
+
+def test_a_source_with_unlisted_suffixes_counts_them_by_shape(fake_mac: dict[str, Path]) -> None:
+    """The shapes count distinct suffixes and add up to D; the files add up to N; no tail is printed."""
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    refused = {"state": "refused", "page": "refused"}
+    seed.item(one, "notes.wingtip", reason="no converter for .wingtip", **refused)
+    seed.item(one, "notes 2.WINGTIP", reason="no converter for .WINGTIP", dataless=True, **refused)
+    seed.item(one, "minutes.final payroll", reason="no converter for .final payroll", **refused)
+    seed.item(one, "budget v1.2", reason="no converter for .2", **refused)
+    seed.item(one, "budget v1.3", reason="no converter for .3", **refused)
+    seed.item(one, "ledger.xlsx~", reason="no converter for .xlsx~", **refused)
+    seed.close()
+    text, parts = status_parts(fake_mac)
+    part = parts["Quarantine by reason"]
+    [line] = [ln for ln in part.splitlines() if ln.startswith("- <folder-2>, no converter by type: ")]
+    assert line == (
+        "- <folder-2>, no converter by type: other 6 (1 online-only, 5 distinct: 1 like a type, 2 digits "
+        "only, 1 with a space, 1 with a symbol)"
+    )
+    assert sum(type_counts(part)["<folder-2>"].values()) == table_counts(part)["<folder-2>"] == 6
+    assert ".final" not in text and "wingtip" not in text.lower() and "xlsx~" not in text
+    assert residue_free(text)
+
+
+def test_the_guides_print_the_shapes_in_the_order_the_report_does() -> None:
+    """Review of B13 N35: setup-feedback.md is the reader's guide to the line, so its examples list the
+    shapes in :data:`setup_report._OTHER_SHAPES` order, the only order the report prints them in."""
+    root = Path(__file__).parents[1]
+    spans = [
+        (page.name, span)
+        for page in (
+            root / "docs" / "deploy" / "setup-feedback.md",
+            root / "docs" / "design" / "CONTRACTS.md",
+        )
+        for span in re.findall(r"distinct: ([^)`]*)\)", " ".join(page.read_text(encoding="utf-8").split()))
+    ]
+    assert len(spans) >= 3, spans
+    for name, span in spans:
+        words = [re.sub(r"^\S+ ", "", piece) for piece in span.split(", ") if piece != "..."]
+        assert set(words) <= set(setup_report._OTHER_SHAPES), (name, span)
+        assert words == sorted(words, key=setup_report._OTHER_SHAPES.index), (name, span)
 
 
 @pytest.mark.parametrize(

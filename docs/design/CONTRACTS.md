@@ -10944,6 +10944,31 @@ shows no job log and no install.out tail, so it has no twin. `docs/deploy/setup-
 were converted. Tests: `test_log_times_in_the_report_are_utc`, and the merge test under the `mac_zone` fixture
 (America/Denver: the CI runners are in UTC, where the conversion changes nothing).
 
+**`other` is counted by shape** (B13 N35, field triage 2026-10-08 D9.f; amends §16.30 "Quarantine names the file
+types no converter reads", whose "Not done: fixed shape words" this does). Three rounds read `other 2 (1 distinct)`
+and could not say whether it was a type the list lacks or a piece of a dotted name. Each unlisted suffix is now
+counted by a fixed shape word (`_refused_shape`, a third SQL function on the read-only connection), read from its
+text after the dot, whitespace collapsed as `_refused_type` reads it but not casefolded (casefold reads `ß` as
+`ss`); only ASCII case is ignored, as SQLite's `lower` that counts D ignores it, so each distinct suffix has one
+shape and the counts add up to D. The words, checked in this order: `nothing after the dot`; `with a space`; `too
+long for a type` (over `_SHAPE_LONG` = 10 characters, the longest listed type's, which a test pins to the list);
+`digits only` (ASCII digits: a version or a date, `v1.2`); `with a symbol` (any character but ASCII letters and
+digits: a copy mark such as `.docx~`, an accent, `_`, a full-width digit); else `like a type` (1 to 10 ASCII
+letters and digits with a letter). The cell reads `other N (O online-only, D distinct: n like a type, n digits
+only, ...)`, shapes in the order `like a type`, `digits only`, `with a space`, `with a symbol`, `too long for a
+type`, `nothing after the dot`, counts of distinct suffixes, zero counts left out, the D = 1 form too. Still one
+statement and one read of `items` (a third GROUP BY column; rows are folded back per source and type in Python).
+`like a type` is the shape every listed type has, and a dotted name can have it too (`jane.doe` gives `.doe`). The
+other shapes are most often a name piece, a version or a copy mark, though a few real types have one (a split
+archive's `.001` is digits only, `.sqlite-wal` has a symbol). No suffix or pattern of one is printed, so the rule
+of §16.28 holds. Limit, as for listed types: a source label spelled like a shape word is replaced by its
+placeholder. The shell fallback has no Quarantine part, so it has no twin. `docs/deploy/setup-feedback.md`'s
+Quarantine row names the words, and its example uses types that have no converter (`.zip`, `.dmg`). Tests:
+`test_an_unlisted_suffix_is_counted_by_its_shape` (20 reasons, `ß`, the `ﬁ` ligature and full-width digits
+among them), `test_like_a_type_is_as_long_as_the_longest_listed_type`,
+`test_a_source_with_unlisted_suffixes_counts_them_by_shape` (six files in four shapes) and the two pins of
+§16.30's tests.
+
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
 Reserved for lane D of B13.
