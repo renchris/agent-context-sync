@@ -64,10 +64,10 @@ Redaction is on by default and consistent within one report, so the same value i
 The "Redaction" section gives the count per kind. The agent's `friction.md` is redacted with the same mapping
 when the report embeds it, and since setup prompt v11 the prompt has the agent name a folder, a file, a person,
 its organization or a customer in a friction line by its role in plain words, never by its real name, a short
-form of it or a placeholder (lines from older sessions stay as written: the log is append-only). Before sending,
-read the whole file
-once. Redaction only covers values agentsync knows about, so a project or customer name it has never seen (inside a
-log line or in the agent's words) is yours to remove. The CLI always redacts.
+form of it or a placeholder (lines from older sessions stay as written: the log is append-only). A name matches in
+either Unicode form, so an accented folder name is the same placeholder however it was typed. Before sending, read
+the whole file once. Redaction only covers values agentsync knows about, so a project or customer name it has never
+seen (inside a log line or in the agent's words) is yours to remove. The CLI always redacts.
 
 ## 3. Send
 

@@ -96,6 +96,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -550,10 +551,21 @@ def _tokens(value: str) -> list[str]:
     return out
 
 
+def _nfc(text: str) -> str:
+    """``text`` in Unicode NFC: the key under which the Redactor knows a value, whichever form it came in."""
+    return unicodedata.normalize("NFC", text)
+
+
+def _forms(value: str) -> list[str]:
+    """``value`` as written and in NFC and NFD, without repeats: a Finder-made folder name is NFD on disk and
+    an agent types it NFC, or the reverse (rehearsal 2026-10-10)."""
+    return list(dict.fromkeys((value, _nfc(value), unicodedata.normalize("NFD", value))))
+
+
 def _norm(text: str) -> str:
-    """``text`` lower-cased without spaces, hyphens, underscores and backslashes (what all variants of a
-    value share)."""
-    return _SEP_RE.sub("", text).lower()
+    """``text`` lower-cased without spaces, hyphens, underscores and backslashes, in NFC (what all variants
+    of a value share; NFC after the backslashes go, since one between a letter and its accent stops NFC)."""
+    return _nfc(_SEP_RE.sub("", text)).lower()
 
 
 def _word_pattern(word: str) -> str:
@@ -617,10 +629,12 @@ class Redactor:
         return f"<{kind}-{self._numbers[kind]}>"
 
     def _known(self, value: str) -> str | None:
+        plain = _nfc(value.replace("\\", ""))  # the shell-escaped form of a fold value
+        value = _nfc(value)
         return (
             self._exact.get(value)
             or self._folded.get(value.lower())
-            or self._folded.get(value.replace("\\", "").lower())  # the shell-escaped form of a fold value
+            or self._folded.get(plain.lower())
             or self._fuzzy.get(_norm(value))
         )
 
@@ -642,10 +656,10 @@ class Redactor:
             self._fuzzy[_norm(value)] = placeholder
             self._literals.append((value, "fuzzy"))
         elif ignore_case or fuzzy:
-            self._folded[value.lower()] = placeholder
+            self._folded[_nfc(value).lower()] = placeholder
             self._literals.append((value, "fold"))
         else:
-            self._exact[value] = placeholder
+            self._exact[_nfc(value)] = placeholder
             self._literals.append((value, "exact"))
         self._regex = None
 
@@ -674,16 +688,20 @@ class Redactor:
             # also matches without its separators: ordered by written length, a folder "A - B - C" came
             # before the id "a-b-c-x" and replaced only its front. The length without separators is the
             # shortest text a value matches, and two values that match at one place differ in it.
-            for value, mode in sorted(self._literals, key=lambda item: (-len(_norm(item[0])), -len(item[0]))):
+            # Each value in every Unicode form (:func:`_forms`); its edges are judged on the NFC form, where
+            # an accented last letter is one letter and not a combining mark.
+            forms = [(form, _nfc(value), mode) for value, mode in self._literals for form in _forms(value)]
+            forms.sort(key=lambda item: (-len(_norm(item[0])), -len(item[0])))
+            for form, edge, mode in forms:
                 if mode == "fuzzy":
-                    body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(value))
+                    body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(form))
                 elif mode == "fold":
-                    body = _word_pattern(value)
+                    body = _word_pattern(form)
                 else:
-                    body = re.escape(value)
-                lead = r"(?<![A-Za-z0-9])" if value[0].isalnum() else ""
-                trail = r"(?![A-Za-z0-9._-])" if value.startswith("/") else r"(?![A-Za-z0-9])"
-                if not value[-1].isalnum() and not value.startswith("/"):
+                    body = re.escape(form)
+                lead = r"(?<![A-Za-z0-9])" if edge[0].isalnum() else ""
+                trail = r"(?![A-Za-z0-9._-])" if edge.startswith("/") else r"(?![A-Za-z0-9])"
+                if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
                 literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
             if literals:

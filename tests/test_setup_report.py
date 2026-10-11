@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -5341,3 +5342,31 @@ def test_an_id_that_starts_as_a_folder_name_does_is_one_placeholder(fake_mac: di
     )
     assert re.search(r"^\| <source-\d+> \| no record \| 1 \|", parts["OCR"], flags=re.MULTILINE)
     assert not re.search(r">-?hr\b", text), "no part of the id is left beside a placeholder"
+
+
+@pytest.mark.parametrize(("on_disk", "typed"), [("NFD", "NFC"), ("NFC", "NFD")])
+def test_a_folder_name_is_redacted_in_either_unicode_form(
+    fake_mac: dict[str, Path], tmp_path: Path, on_disk: str, typed: str
+) -> None:
+    """A Finder-made name is NFD on disk and an agent types it NFC, or the reverse (rehearsal 2026-10-10:
+    "Café Plans" in clear). Below the listing's depth the folder is registered from sources.toml alone, in
+    one form; the other form is the same placeholder."""
+    deep = fake_mac["one"] / "Archive" / unicodedata.normalize(on_disk, "Café Plans")
+    deep.mkdir(parents=True)
+    assert cli.main(["add-source", str(deep), "--config", str(fake_mac["config"])]) == 0
+    said = unicodedata.normalize(typed, "Café Plans")
+    write_friction(fake_mac, f"Prompt: v10\nF1 | step 1 | clean | 1 | picked {said} | -\n")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert re.search(r"picked <folder-\d+>", section(text, "Agent friction log"))
+    for form in ("NFC", "NFD"):
+        assert unicodedata.normalize(form, "Café") not in text, form
+    red = setup_report.Redactor()
+    red.add("folder", unicodedata.normalize("NFD", "Plans Café"), fuzzy=True)
+    red.add("folder", "Plans Café", fuzzy=True)  # the same folder: no second placeholder
+    # An accented last letter is one letter in either form, so a longer word stays whole ("Cafés" written NFD
+    # was cut to "<folder-1>s" when the edge was judged on the combining mark), and every spelling the pattern
+    # takes maps back to the placeholder, an escape between a letter and its accent included.
+    line = unicodedata.normalize(typed, "Plans Café, plans-café and Plans Cafés")
+    assert red.redact(line) == unicodedata.normalize(typed, "<folder-1>, <folder-1> and Plans Cafés")
+    escaped = unicodedata.normalize("NFD", "Plans\\ Café").replace("\u0301", "\\\u0301")
+    assert red.redact(escaped) == "<folder-1>"

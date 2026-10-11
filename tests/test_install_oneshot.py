@@ -3801,3 +3801,34 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
     )
     assert cp.returncode == 0, cp.stderr
     assert cp.stdout == f"MDM server: https://<mdmhost>:443{path}\n"
+
+
+# ---- the shell report redacts a value in either Unicode form (N7) ------------------------------------------
+
+
+@pytest.mark.parametrize("locale", ["en_US.UTF-8", "C"])
+@pytest.mark.parametrize(("on_disk", "typed"), [("NFD", "NFC"), ("NFC", "NFD")])
+def test_the_shell_report_redacts_a_folder_in_either_unicode_form(
+    env: dict[str, str], on_disk: str, typed: str, locale: str
+) -> None:
+    """A Finder-made name is NFD on disk and an agent types it NFC, or the reverse: the shell fallback
+    registers both forms, as the Python report does (rehearsal 2026-10-10: "Café Plans" in clear)."""
+    home = Path(env["HOME"])
+    cafe = (
+        home / "Library" / "CloudStorage" / "OneDrive-Contoso" / unicodedata.normalize(on_disk, "Café Plans")
+    )
+    cafe.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir()
+    cfg.write_text(f'[[source]]\nid = "cafe"\nkind = "local"\npath = "{cafe}"\n', encoding="utf-8")
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir()
+    said = unicodedata.normalize(typed, "Café Plans")
+    friction.write_text(f"Prompt: v10\nF1 | step 1 | clean | 1 | picked {said} | -\n", encoding="utf-8")
+    cp = install_sh({**env, "LC_ALL": locale}, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert "(shell fallback: agentsync is not installed)" in cp.stdout
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "picked <folder-1>" in text.split("\n## Agent friction log\n", 1)[1]
+    for form in ("NFC", "NFD"):
+        assert unicodedata.normalize(form, "Café") not in text, form

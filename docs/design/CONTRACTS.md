@@ -4905,6 +4905,10 @@ names of the folders under CloudStorage that this run's `--source-local`, source
 install.log's `args=` name, so a `--report-only` run, which names no folder, still redacts them.
 **Amended (2026-10-11, §16.40):** that host is `<mdmhost>`, its own kind, in both reports; `<host>` is only
 this Mac's names.
+**Amended (2026-10-11, §16.40):** a registered value matches in either Unicode form. The report knows a value by
+its NFC form and matches it as written, in NFC and in NFD, so a folder Finder named NFD on disk and an agent typed
+NFC (or the reverse) is one placeholder, not two and not in clear. The shell fallback adds the NFC and NFD forms
+(`iconv` `UTF-8-MAC`) of every value it registers that is not printable ASCII; a value that is not UTF-8 adds none.
 
 v5 revision, the friction log (judge findings J1, J2, J4, J5). friction.md is a sequence of attempts. Each starts
 with `Attempt: <UTC ISO-8601>`, then `Prompt: v5` and `Agent: <tool and model id>`, then one line per event,
@@ -10573,6 +10577,17 @@ paragraph names it. The whole host is replaced, and no vendor suffix is kept. A 
 registered keeps that value's placeholder. The kind is one word: a hyphen in a placeholder means a number, and a
 word boundary inside it would let a shorter value (`mdm`, `host`) match there when a line is redacted twice (the
 Summary's item lines are, by `_item_line` and then by the whole report).
+
+**A value matches in either Unicode form** (B13 N7, rehearsal v10fix3: `Café Plans` in clear). A Finder-made name
+is NFD on disk and an agent types it NFC, or the reverse. The Redactor keys every value by its NFC form (`_norm`
+normalises after the backslashes go, since one between a letter and its accent stops composition) and `_compile`
+matches each literal as written, in NFC and in NFD, judging its word edges on the NFC form, where an accented last
+letter is a letter and not a combining mark. One folder seen in both forms is one placeholder. The shell
+fallback's `add_pair` emits the NFC and NFD forms (`/usr/bin/iconv`, `UTF-8-MAC`) of a value that is not
+printable ASCII, after the one length gate on the value as written, so every caller (organisation, folder, full
+name and its tokens) gets both forms. Tests: `test_a_folder_name_is_redacted_in_either_unicode_form` and
+`test_the_shell_report_redacts_a_folder_in_either_unicode_form`. Out of scope: an accent-stripped ASCII spelling
+(`Cafe Plans`, a different word), one string mixing both forms, and a `$'..'` word the shell reader does not decode.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

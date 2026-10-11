@@ -859,12 +859,26 @@ redaction_pairs() {
 			done
 		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null | LC_ALL=C sort -u)
 	fi
-	add_pair() {
-		[ "${#1}" -ge 3 ] || return 0
+	emit_pair() { # VALUE PLACEHOLDER [w]: the pair and its printf %q form
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
 		local q
 		q="$(printf '%q' "$1")"
 		[ "$q" = "$1" ] || printf '%s\t%s\t%s\n' "$q" "$2" "${3:-}"
+	}
+	add_pair() { # VALUE PLACEHOLDER [w]: emit_pair for the value as written, in NFC and in NFD, as the Python
+		# report matches it: a Finder-made name is NFD on disk and an agent types it NFC, or the reverse.
+		# iconv's UTF-8-MAC is macOS's decomposed form; a value that is not UTF-8 adds no other form. Printable
+		# ASCII has one form: listed, not a range, which a UTF-8 locale would collate (no iconv run for it).
+		local v nfc="" nfd="" ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+		ascii+=' !"#$%&'\''()*+,./:;<=>?@[\]^_`{|}~-'
+		[ "${#1}" -ge 3 ] || return 0
+		emit_pair "$@"
+		case "$1" in *[!"$ascii"]*) ;; *) return 0 ;; esac
+		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""
+		nfc="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8-MAC -t UTF-8 2>/dev/null)" || nfc=""
+		for v in "$nfd" "$nfc"; do
+			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}"
+		done
 	}
 	if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then # this account's per-user temp folder links reports
 		add_pair "$(cd "$TMPDIR" && pwd -P)" "<tmp>"
