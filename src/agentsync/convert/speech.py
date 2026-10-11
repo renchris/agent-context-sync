@@ -409,13 +409,34 @@ def engine(cfg: ConvertConfig, cache_dir: Path) -> SpeechEngine | None:
 # ---------------------------------------------------------------------------------------------------------
 
 
+_PROXY_VARS = (
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+"""The shell's proxy variables, which the build's tools get and the helper never does: SwiftPM clones
+FluidAudio with git, which reads them, as step 1's git does (setup prompt step 1 names HTTPS_PROXY)."""
+
+
+def _build_env() -> dict[str, str]:
+    """:func:`ocr._env` plus whichever of :data:`_PROXY_VARS` the shell sets."""
+    env = ocr._env()
+    env.update({key: value for key in _PROXY_VARS if (value := os.environ.get(key))})
+    return env
+
+
 def _step(argv: Sequence[str], *, cwd: Path, deadline: float, what: str) -> str:
     """Run one build tool in the build tree within the build's time; its stdout, or SpeechError."""
     left = deadline - _clock()
     if left <= 0:
         raise SpeechError("the speech helper's build ran out of time")
     try:
-        cp = ocr._run_build(argv, cwd=cwd, timeout=left)
+        cp = ocr._run_build(argv, cwd=cwd, timeout=left, env=_build_env())
     except subprocess.TimeoutExpired:
         raise SpeechError("the speech helper's build ran out of time") from None
     except OSError as exc:

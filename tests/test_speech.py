@@ -500,3 +500,36 @@ def test_a_version_answer_that_is_not_the_expected_json_is_failed(tmp_path: Path
         "failed",
         "the speech helper's --version answer is not the expected JSON",
     )
+
+
+SHELL_PROXY = {
+    "HTTPS_PROXY": "http://proxy.contoso.example:8080",
+    "https_proxy": "http://proxy.contoso.example:8080",
+    "ALL_PROXY": "http://proxy.contoso.example:8080",
+    "NO_PROXY": "intranet.contoso.example",
+}
+
+
+def test_the_build_gives_swiftpm_the_shells_proxy_and_the_helper_never_gets_it(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setup prompt step 1 says a corporate proxy may need HTTPS_PROXY: SwiftPM clones FluidAudio with git,
+    which reads it from the environment.  The build's tools get the shell's proxy variables and nothing else
+    of the shell; the helper keeps the fixed environment."""
+    for key, value in SHELL_PROXY.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("CONTOSO_TOKEN", "not for a compiler")
+    helper_logs_env = SWIFT_OK.replace(
+        "  chmod 755 $out", "  echo 'env > \"$0.env\"' >> $out\n  chmod 755 $out"
+    )
+    script(tools / "swift", 'env > "$0.$1.env"\n' + helper_logs_env)
+    cache = tmp_path / "cache"
+    helper = speech.build(cache)
+    for step in ("package", "build"):
+        seen = dict(ln.split("=", 1) for ln in lines_of(tools / f"swift.{step}.env"))
+        assert {k: seen.get(k) for k in SHELL_PROXY} == SHELL_PROXY, step
+        assert "CONTOSO_TOKEN" not in seen and seen["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin", step
+    place_models(cache / "speech")
+    assert speech.probe(CFG, cache)[0] == "ready"
+    names = {ln.split("=", 1)[0] for ln in lines_of(Path(f"{helper}.env"))}
+    assert "PATH" in names and not set(SHELL_PROXY) & names
