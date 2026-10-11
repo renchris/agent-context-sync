@@ -1978,6 +1978,32 @@ class Manifest:
         )
         return int(cur.rowcount)
 
+    def mark_quarantined_rescreen(
+        self, reason: str, source_ids: Sequence[str], *, only: Iterable[tuple[str, str]] | None = None
+    ) -> tuple[int, list[tuple[str, str]]]:
+        """Queue the file rows of ``source_ids`` quarantined with ``reason`` (and in ``only``, when given)
+        for a re-screen, as ``mark_for_rescreen`` does: hashes forgotten, verdict MAYBE_CHANGED.  Only a row
+        on this Mac is marked; returns the count marked and the (source_id, stable_id) of the online-only
+        rows left as they were (a re-screen never downloads)."""
+        if not source_ids:
+            return 0, []
+        wanted = None if only is None else set(only)
+        rows = self._db.execute(
+            "SELECT source_id, stable_id, dataless FROM items WHERE is_dir = 0 AND state = 'quarantined' "
+            f"AND state_reason = ? AND source_id IN ({', '.join('?' for _ in source_ids)}) "
+            "ORDER BY source_id, stable_id",
+            (reason, *source_ids),
+        ).fetchall()
+        picked = [r for r in rows if wanted is None or (str(r[0]), str(r[1])) in wanted]
+        local = [(str(r[0]), str(r[1])) for r in picked if not r[2]]
+        for sid, stable in local:
+            self._db.execute(
+                "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
+                "canonical_parts = NULL, last_verdict = ? WHERE source_id = ? AND stable_id = ?",
+                (Verdict.MAYBE_CHANGED.value, sid, stable),
+            )
+        return len(local), [(str(r[0]), str(r[1])) for r in picked if r[2]]
+
     def pending_named(self, suffixes: Sequence[str]) -> int:
         """How many rows named with one of ``suffixes`` are pending work (the re-screen backlog)."""
         like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"

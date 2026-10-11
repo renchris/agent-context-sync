@@ -35,6 +35,7 @@ import shutil
 import socket
 import stat
 import struct
+import tempfile
 import threading
 import time
 import unicodedata
@@ -133,6 +134,7 @@ from agentsync.paths import expand
 from agentsync.policy import PolicyConfig
 from agentsync.publish import (
     DELETED_UPSTREAM,
+    PlannedPage,
     Publisher,
     SourceStatus,
     archive_path,
@@ -207,6 +209,20 @@ _SCOPE_ROOT_META = "scope_root:"
 """``scope_root:<source_id>`` holds ``<run>:<path>`` for a local or inbox source: the first run under the
 ``path`` it has now (0: the path it had when this was first recorded)."""
 _RESCREEN_META = "policy_rescreen_pending"
+_SECRET_RULES_META = "secret_rules"
+"""Manifest meta: the JSON ``lints.secret_rules_identity()`` of the last secret-scan re-screen.  When the
+identity this run has differs, the ``contains a credential`` stubs on this Mac are converted and scanned
+again, and every published page is scanned again (``_Cycle._check_secret_rules``)."""
+_SECRET_RESCAN_META = "secret_rescan_pending"
+"""Manifest meta: "1" from the run that found the secret-scan rules moved until a run has scanned every
+published page again (a run that fails before its secret scan leaves it set)."""
+_SECRET_WAITING_META = "secret_rescreen_waiting"
+"""Manifest meta: a JSON list of ``[source_id, stable_id]``, the credential stubs that were online-only when
+the rules moved; each is marked for the re-screen once it is on this Mac again."""
+_SECRET_ONCE_META = "secret_once_credential"
+"""Manifest meta: a JSON list of ``[source_id, stable_id]``, the files that were a ``contains a credential``
+stub at some time.  Each later conversion of one is screened before it is written, by the builtin patterns
+too (``_Cycle._still_credential``), whatever its row says by then."""
 _CHECKPOINT_PENDING_META = "checkpoint_pending"  # KISS K06: the HEAD a held or failed checkpoint retries
 _SEED_PAGE_NAMES = frozenset({"CLAUDE.md", "INDEX.md"})  # under topics/: scaffold files, never curated pages
 _EMPTY_DIRS_META = "empty_cloud_dirs:"
@@ -1432,6 +1448,8 @@ class _Cycle:
         )  # mirror pages + sidecars written this cycle with content (secret scan)
         self.stub_pages: set[str] = set()  # stub pages written this cycle (metadata only: name, path)
         self.sidecar_page: dict[str, str] = {}  # sidecar path -> its page (a hit there stubs the page)
+        self._once: set[tuple[str, str]] | None = None  # ``_once_credential``
+        self._published_pages: set[str] = set()  # the pages (not sidecars) that rescan added, as committed
         self.findings: list[LintFinding] = []
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
@@ -1496,6 +1514,7 @@ class _Cycle:
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
             self._note_roots(fp_changed)
             self._check_policy_change()
+            self._check_secret_rules()
             self.publisher.ensure_scaffold()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
@@ -1519,7 +1538,12 @@ class _Cycle:
                     self._reread_kept,
                 )
             self.lock.beat("secrets")
+            rescan = bool(self.manifest.get_meta(_SECRET_RESCAN_META))
+            if rescan:  # the secret-scan rules moved: every published page is scanned again too
+                self._add_published_pages()
             self._quarantine_secrets()
+            if rescan:
+                self.manifest.set_meta(_SECRET_RESCAN_META, "")
             self._flush_changes(rewrite=True)
             self.lock.beat("curate")
             pre_head, session_pages = self._session_topic_pages()  # before this run's banner rewrites
@@ -1748,6 +1772,153 @@ class _Cycle:
             "",
         ]
 
+    def _check_secret_rules(self) -> None:
+        """Screen again what the secret scan decided under other rules (``lints.secret_rules_identity``).
+
+        When the identity moved since the last re-screen (an update changed a pattern, gitleaks arrived or
+        was upgraded; or no re-screen has run on this install yet), every ``contains a credential`` stub of a
+        local or inbox source that is on this Mac is converted again (hashes forgotten, as a ``[policy]``
+        re-screen does), so the scan decides it anew, and every published page is scanned again in this run
+        (``_add_published_pages``).  An online-only stub waits in ``_SECRET_WAITING_META`` until it is on this
+        Mac again: a re-screen never downloads.  A stub converted again is screened before it is written,
+        by the builtin patterns too (``_still_credential``).  A run that lacks the gitleaks the last
+        re-screen had marks nothing, waiting stubs included, and leaves the stored identity: under
+        launchd's PATH gitleaks may be missing, and the builtin patterns alone must not publish what
+        gitleaks stubbed."""
+        local = [
+            s.id for s in self.config.sources if not s.kind.is_graph and s.state is not SourceState.RETIRED
+        ]
+        current = lints.secret_rules_identity()
+        try:
+            stored = json.loads(self.manifest.get_meta(_SECRET_RULES_META) or "null")
+        except ValueError:
+            stored = None
+        waiting_raw = self.manifest.get_meta(_SECRET_WAITING_META)
+        try:
+            waiting = {(str(a), str(b)) for a, b in json.loads(waiting_raw or "[]")}
+        except (ValueError, TypeError):
+            waiting = set()
+        if isinstance(stored, dict) and stored.get("gitleaks") and not current["gitleaks"]:
+            return  # wait for a run with gitleaks, the waiting stubs too: a scan without it must not decide
+        moved = stored != current
+        if not moved and not waiting:
+            return
+        with self.manifest.transaction():
+            marked, still = (
+                (0, [])
+                if not waiting
+                else self.manifest.mark_quarantined_rescreen(_CREDENTIAL, local, only=waiting)
+            )
+            if moved:
+                more, online = self.manifest.mark_quarantined_rescreen(_CREDENTIAL, local)
+                marked, still = more, sorted(set(still) | set(online))
+                self.manifest.set_meta(_SECRET_RESCAN_META, "1")
+                self.manifest.set_meta(_SECRET_RULES_META, json.dumps(current, sort_keys=True))
+            value = json.dumps([list(p) for p in sorted(still)]) if still else ""
+            if (waiting_raw or "") != value:
+                self.manifest.set_meta(_SECRET_WAITING_META, value)
+        if marked or moved:
+            log.info(
+                "secret-scan rules changed: %d credential stub(s) queued to be screened again, %d "
+                "online-only one(s) wait until they are on this Mac",
+                marked,
+                len(still),
+            )
+
+    def _add_published_pages(self) -> None:
+        """Add every page published before this run, its text sidecars and every stub page to what the
+        secret scan reads (``_check_secret_rules`` found the rules moved).  A page the scan now matches
+        becomes a credential stub, and its earlier text, which is in the docs repo's history, gets a purge;
+        a stub it matches carries the credential in the file's name, and its path is redacted
+        (``_quarantine_secrets``)."""
+        written = self.ok_pages | self.stub_pages
+        for out in self.manifest.iter_outputs():
+            page = out.output_path
+            if out.status is OutputStatus.TOMBSTONE or page in written or not (self.repo / page).is_file():
+                continue
+            if out.status is not OutputStatus.OK:  # a stub: a hit there is in the file's name (_redact)
+                self.stub_pages.add(page)
+                continue
+            self.ok_pages.add(page)
+            self._published_pages.add(page)
+            folder = self.repo / ((page[:-3] if page.endswith(".md") else page) + ".files")
+            if folder.is_dir() and not folder.is_symlink():
+                for f in sorted(folder.iterdir()):
+                    if f.is_file() and f.name.lower().endswith(_TEXT_SIDECARS):
+                        rel = f.relative_to(self.repo).as_posix()
+                        self.ok_pages.add(rel)
+                        self.sidecar_page[rel] = page
+
+    def _still_credential(self, pages: Sequence[PlannedPage]) -> bool:
+        """Whether the planned ``pages`` of a file held back as a credential once (and their text
+        sidecars) hold one, read in the private staging folder before anything reaches the mirror.  The
+        builtin patterns read them even when gitleaks scans: gitleaks replaces them, and misses a plain
+        ``Password: ...`` they caught."""
+        with tempfile.TemporaryDirectory(dir=self.staging) as tmp:
+            root = Path(tmp)
+            rels: list[str] = []
+            for p in pages:
+                for rel, data in ((p.output_path, p.text.encode("utf-8")), *p.sidecars):
+                    if rel.lower().endswith(_TEXT_SIDECARS):
+                        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                        (root / rel).write_bytes(data)
+                        rels.append(rel)
+            return bool(lints.lint_secrets(root, rels, builtin_too=rels))
+
+    def _once_credential(self) -> set[tuple[str, str]]:
+        """The files that were a ``contains a credential`` stub at some time (``_SECRET_ONCE_META``): each
+        (source_id, stable_id), read once a cycle."""
+        if self._once is None:
+            try:
+                raw = json.loads(self.manifest.get_meta(_SECRET_ONCE_META) or "[]")
+                once = {(str(a), str(b)) for a, b in raw}
+            except (ValueError, TypeError):
+                once = set()
+            # a file the manifest has forgotten leaves the record with the next one that joins it
+            self._once = {p for p in once if self.manifest.get_item(*p) is not None}
+        return self._once
+
+    def _remember_credential(self, sid: str, stable: str) -> None:
+        """Record that this file is, or was until now, a credential stub.  The record outlives the stub's
+        reason: a run that cannot read the file (a failed conversion, no OCR helper) writes another stub
+        or part of its text, and the run that reads the rest must still screen it as ``_still_credential``
+        does."""
+        once = self._once_credential()
+        if (sid, stable) in once:
+            return
+        once.add((sid, stable))
+        self.manifest.set_meta(_SECRET_ONCE_META, json.dumps([list(p) for p in sorted(once)]))
+
+    def _rekey_credential(self, sid: str, old: str, new: str) -> None:
+        """A safe-save gave the file a new id (``Manifest.rekey``): its place in the record moves with it.
+        The record is read while the old id still has its row, or the read would drop it as forgotten, and
+        the run that next reads the file would screen it with gitleaks alone."""
+        once = self._once_credential()
+        if (sid, old) not in once:
+            return
+        once.discard((sid, old))
+        once.add((sid, new))
+        self.manifest.set_meta(_SECRET_ONCE_META, json.dumps([list(p) for p in sorted(once)]))
+
+    def _published_credential(self, sid: str, stable: str, prior: Sequence[OutputRow]) -> None:
+        """A page published under earlier secret-scan rules is a credential stub now: drop its cached
+        conversions and queue a purge of its history, as a label escalation does."""
+        removed = self.cache.delete({o.action_key for o in prior if o.action_key})
+        queued = governance.enqueue_purge(
+            self.config.state_paths.root,
+            governance.PurgeSelector(source_id=sid, stable_id=stable),
+            governance.PurgeReason.DLP_REMEDIATION,
+            now=self.now(),
+        )
+        self._acc(self.config.source(sid)).alarms.append(
+            "a published page matches the secret scan's new rules: it is a `contains a credential` stub now; "
+            f"{removed} cached conversion(s) deleted{', purge queued' if queued else ''} "
+            "(run `agentsync purge --queue`)"
+        )
+        log.warning(
+            "%s: a published page of %s matches the secret scan's new rules; purge queued", sid, stable
+        )
+
     def _refuse_vanished_sources(self) -> None:
         """Retirement is an explicit verb, not an absence: a source whose [[source]] block was deleted while
         its pages are still mirrored would keep them ``status: current`` forever.  Refuse (exit 78) and name
@@ -1860,12 +2031,15 @@ class _Cycle:
         """Step 12-13: last-success, heartbeats, finish_run, STATE.md (every cycle, failures included)."""
         now_iso = _iso(self.now())
         hb = self.config.state_paths.heartbeat
+        selected = {src.id for src in self.selected}
         for acc in self.accs.values():
             ok = ok_cycle and not acc.failed and not acc.auth_required and acc.pass_kind is not None
             if ok:
                 self.manifest.set_last_success(acc.src.id, self.run_id)
             if acc.skipped_reason in ("paused", "retired"):
                 continue
+            if acc.src.id not in selected:
+                continue  # only an alarm about a page of it (the published-page rescan): never attempted
             row = self.manifest.get_source(acc.src.id)
             try:
                 write_heartbeat(
@@ -2295,6 +2469,7 @@ class _Cycle:
                         renamed.add(c.stable_id)
                 self.manifest.upsert_observed_many(observations, run_id=self.run_id, existing=rows)
                 for new_id, old_id in pc.safe_saves:
+                    self._rekey_credential(src.id, old_id, new_id)  # before the old id's row goes
                     self.manifest.rekey(src.id, old_id, new_id)
                 scope_root = getattr(arm, "scope_root", None)
                 if src.kind is SourceKind.GRAPH_DRIVE and callable(scope_root):
@@ -3854,11 +4029,25 @@ class _Cycle:
     ) -> None:
         sid, stable = row.source_id, row.stable_id
         prior_ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
+        if quarantine_reason == _CREDENTIAL or (
+            row.state is RowState.QUARANTINED and row.state_reason == _CREDENTIAL
+        ):
+            self._remember_credential(sid, stable)
         try:
             pages = self.publisher.plan_pages(src, row, result)
         except SidecarPathError as exc:
             self._publish_path_stub(src, row, acc, exc)
             return
+        if (
+            result.status is ConversionStatus.OK
+            and quarantine_reason is None
+            and (sid, stable) in self._once_credential()
+            and self._still_credential(pages)
+        ):  # held as a credential once, so screened before a byte is written: the stub, and no page
+            self.cache.delete({result.action_key} if result.action_key else set())
+            log.info("%s/%s: screened again; it still contains a credential", sid, stable)
+            result, quarantine_reason = self._stub(row, ConversionStatus.UNREADABLE, _CREDENTIAL), _CREDENTIAL
+            pages = self.publisher.plan_pages(src, row, result)
         self.changes += self.publisher.write_pages(row, pages, self.run_id)
         if prior_ok and any(p.refusal for p in pages) and quarantine_reason is None:
             self._label_escalation(row, prior_ok)
@@ -3934,8 +4123,16 @@ class _Cycle:
             pages_of = {o.output_path for o in self.manifest.outputs_for(sid, stable)}
             if pages_of and pages_of <= (self.stub_pages - self.ok_pages):
                 self._redact(sid, stable)  # already a stub: the credential is in the name
-            elif self._stub_credential(sid, stable):
+                continue
+            prior = [
+                o
+                for o in self.manifest.outputs_for(sid, stable)
+                if o.status is OutputStatus.OK and o.output_path in self._published_pages
+            ]
+            if self._stub_credential(sid, stable):
                 stubbed.append((sid, stable))
+                if prior:  # published under the earlier rules: its text is in the docs repo's history
+                    self._published_credential(sid, stable, prior)
         stub_paths = sorted(
             o.output_path
             for sid, stable in stubbed

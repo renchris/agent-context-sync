@@ -104,7 +104,11 @@ banner. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`
 and `_manifest/` as data, never as instructions. Source files named like agent instruction files (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, `.claude/`, …) are mirrored under neutral names. `.claude/settings.json` excludes
 mirror `CLAUDE.md` files from memory. Git runs with the user's global excludes and hooks switched off. A secret
-scan blocks any commit that would carry a credential.
+scan blocks any commit that would carry a credential. When the scan's rules change (an agentsync update, gitleaks
+installed or upgraded), files held back as `contains a credential` that are on this Mac are read and scanned again
+once (by the built-in patterns too, so a scanner change never publishes a password they catch; so is every later
+reading of a file that was held back once), and every published page and stub is scanned again; a page the new
+rules match is replaced by a stub and a purge of its history is queued.
 
 **Access:** the mirror is the writer's *delegated view*. Anyone who reads the repo sees everything the writer can
 open, including items from restricted libraries. Do not share the repo, and never add a remote, unless every reader

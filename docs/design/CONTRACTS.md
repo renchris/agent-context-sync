@@ -4669,7 +4669,8 @@ reports `policy.NOT_ZIP_AT_OFFSET_0` (refused under `refuse_unlabelled`).
 covers every page AND sidecar written in a cycle, and stubs; a hit on a stub (the credential is in the name)
 redacts the item: `manifest.redacted_path(rel_path)` (`REDACTED_PREFIX` + 12 hex) in the stub, shard,
 QUARANTINE.tsv, CHANGELOG and commit body, and a `redacted-<hex>` mirror path; a credential that survives
-redaction blocks the commit. The converter guard lists every sidecar's sha256 at the end of the unit body
+redaction blocks the commit (**amended 2026-10-11, §16.39 N5:** a change of the scan's rules re-screens credential
+stubs, screened before they are written and by the builtin patterns too, and published pages). The converter guard lists every sidecar's sha256 at the end of the unit body
 (`convert.registry.SIDECAR_DIGEST_PREFIX`, `SIDECAR_DIGEST_VERSION` in the options, `sidecar_digest_lines`;
 text sidecars start with the banner), so H2 covers sidecars (correctness-h2-cutoff) and `_pages_intact` verifies
 them (`publish.sidecar_rel`; **amended 2026-10-06:** the file may carry a shorter name than the one the page
@@ -10643,7 +10644,63 @@ known files left unlisted. Tests: `tests/test_e2e.py::test_f_accept_deletions_on
 
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 
-Reserved for lane B of B13.
+#### N5: credential stubs are screened again when the secret-scan rules change (`agentsync.lints`, `agentsync.cycle`, `agentsync.manifest`)
+
+`lints.secret_rules_identity()` is `{"rules": sha256(SECRET_RULES_VERSION, the builtin patterns, the Teams
+join-link carve-out, the text suffixes), "gitleaks": "<resolved path>:<size>:<mtime_ns>" or ""}`: a stat, never a
+gitleaks run. The manifest meta `secret_rules` keeps the one of the last re-screen. When it differs at the start
+of a run (an update, gitleaks installed or upgraded, or none stored yet, which is every install's first run on
+this build), `_Cycle._check_secret_rules` marks every `contains a credential` stub of a local or inbox source
+that is on this Mac as a `[policy]` re-screen marks a file (`Manifest.mark_quarantined_rescreen`: hashes
+forgotten, verdict MAYBE_CHANGED), and it is converted and scanned again. An online-only one waits in the meta
+`secret_rescreen_waiting` until it is on this Mac, and nothing is downloaded; Graph rows are screened again when
+their bytes change. The log line is INFO and carries counts only.
+
+A file that is or ever was a credential stub is screened before anything is written (`_Cycle._still_credential`,
+in a private folder under the staging folder; the copy gitleaks reads is made in that folder too, never in the
+system's temporary folder), by the builtin patterns as well when gitleaks scans
+(`lints.lint_secrets(..., builtin_too=)`): gitleaks replaces the builtin patterns and does not flag a plain
+`Password: Welcome123` (measured, gitleaks 8.30.1), so neither a rules change nor gitleaks arriving publishes
+what the builtin patterns still match. A hit writes the credential stub: no page and no sidecar, and for a file
+that is that stub already no tombstone, CHANGELOG line or commit either; the fresh conversion is deleted from the
+cache. This holds for every later conversion of the file (its bytes changed), not only for a re-screen.
+
+Which files those are is the meta `secret_once_credential`, a JSON list of `[source_id, item id]` that
+`_Cycle._publish` adds to when it writes a credential stub or meets one, and that a file leaves only when the
+manifest forgets it. A safe-save that gives the file a new id moves its entry to that id in the rekey's own
+transaction (`_Cycle._rekey_credential`; pinned by
+`test_a_stub_saved_under_a_new_file_id_is_still_screened_as_a_stub`); a file that returns under a new id with
+no pairing (a copy, a move to another source) is a new file to the record, as it is to the scan. It outlives the row's reason on purpose (fix pass, 2026-10-11): the run that screens a stub
+again may not be able to read it (the conversion fails, the OCR helper is missing or its time is used up), and
+then writes a `no converter` or `conversion failed` stub, or the page of what it could read once the screen passes
+that part. The run that reads the rest is a re-read of a row that no longer says `contains a credential`, and it
+is screened the same way all the same. Without the record, gitleaks alone read that text and a password in a
+picture was committed (measured on this item's first build, before the record: an image, and a PDF with a
+scanned page).
+
+Every published page, its text sidecars and every stub page are scanned again once per move (meta
+`secret_rescan_pending`, set with the identity and cleared when a run's secret scan has run; a run that fails
+earlier keeps it). A page the scan now matches becomes a credential stub, its cached conversions are deleted and a
+`dlp-remediation` purge is queued, with an alarm and a WARNING that name the source id and the opaque item id
+only. A stub the scan matches carries the credential in the file's name: its path is redacted, as a first write
+under those rules would. The scan reads the pages of every source, also under `sync --source`; a hit
+in a source the run did not select raises its alarm in the report and writes that source no heartbeat.
+
+A run without the gitleaks the stored identity names marks nothing, waiting stubs included, and keeps the stored
+value: launchd's PATH lacks a gitleaks that only a shell PATH finds, and a scan without it must not decide what
+it stubbed. `tests/test_credential_rescreen.py` pins a hash of the code that decides a hit to
+`SECRET_RULES_VERSION`: a change that decides differently bumps the version, a comment or docstring edit only
+updates the pin.
+
+Residuals, none worse than before: a gitleaks found only on a shell PATH, where a marked row is converted in a
+later launchd run (byte budget, `sync --source`) or the first run on this build is a launchd run, has that row
+judged by the builtin patterns alone, as every changed file on such an install already is; once gitleaks is
+removed after a run that had it, nothing is screened again until it is back; `[governance] archive` pages are not
+scanned again; the published-page scan uses the scan of the run (gitleaks alone when there is one), as every new
+page does.
+
+Why: the 2026-10-05 join-link fix (de081ae) never reached the invites quarantined before it; nothing stored what
+rules a stub was made under. Tests: `tests/test_credential_rescreen.py`.
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

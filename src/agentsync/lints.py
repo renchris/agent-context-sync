@@ -14,7 +14,6 @@ import re
 import secrets
 import shutil
 import subprocess
-import tempfile
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
@@ -432,6 +431,34 @@ def _gitleaks() -> Path | None:
     return next((p for p in _GITLEAKS_CANDIDATES if p.is_file() and os.access(p, os.X_OK)), None)
 
 
+SECRET_RULES_VERSION = 1
+"""Bump when the secret scan decides differently with the same patterns (``_strip_teams_join_pwd``, which
+files are read): ``secret_rules_identity`` carries it, so every install screens its credential stubs again.
+``tests/test_credential_rescreen.py`` pins a hash of the scan's code to this number."""
+
+
+def secret_rules_identity() -> dict[str, str]:
+    """What the secret scan of this run decides by: ``rules``, a digest of the builtin patterns, the Teams
+    join-link carve-out, the text suffixes and ``SECRET_RULES_VERSION``; ``gitleaks``, the resolved path,
+    size and mtime of the gitleaks this run would use ("" for none).  A stat, never a gitleaks run."""
+    doc = {
+        "version": SECRET_RULES_VERSION,
+        "patterns": [[rule, p.pattern, p.flags] for rule, p in SECRET_PATTERNS],
+        "teams": [_TEAMS_JOIN_URL.pattern, _TEAMS_JOIN_PWD.pattern],
+        "suffixes": list(_TEXT_SUFFIXES),
+    }
+    rules = hashlib.sha256(json.dumps(doc, sort_keys=True).encode("utf-8")).hexdigest()
+    exe, found = _gitleaks(), ""
+    if exe is not None:
+        try:
+            real = exe.resolve()
+            st = real.stat()
+            found = f"{real}:{st.st_size}:{st.st_mtime_ns}"
+        except OSError:
+            found = str(exe)
+    return {"rules": rules, "gitleaks": found}
+
+
 def _strip_teams_join_pwd(line: str) -> str:
     """``line`` with only the ``pwd=`` parameter of each Teams join link removed (a meeting invite would
     otherwise be quarantined as ``generic-password``); a lookalike host, Zoom's ``pwd=`` and ``password=``
@@ -459,9 +486,12 @@ def _builtin_secret_scan(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
 
 
 def _gitleaks_scan(exe: Path, repo: Path, paths: Sequence[str]) -> list[LintFinding]:
-    """Scan ``paths`` in one gitleaks run over a hard-linked shadow tree; raises on any gitleaks problem."""
+    """Scan ``paths`` in one gitleaks run over a hard-linked shadow tree; raises on any gitleaks problem.
+    The shadow tree is made in ``repo``'s ``.git``, or in ``repo`` itself when it is no git repository (the
+    private folder of ``_Cycle._still_credential``): never in the system's temporary folder, where a killed
+    run would leave the text of the pages behind."""
     git_dir = repo / ".git"
-    base = git_dir if git_dir.is_dir() and not git_dir.is_symlink() else Path(tempfile.gettempdir())
+    base = git_dir if git_dir.is_dir() and not git_dir.is_symlink() else repo
     token = secrets.token_hex(6)
     scan_dir = base / f"agentsync-secret-scan-{token}"
     report = base / f"agentsync-secret-report-{token}.json"
@@ -528,10 +558,12 @@ def _gitleaks_scan(exe: Path, repo: Path, paths: Sequence[str]) -> list[LintFind
         report.unlink(missing_ok=True)
 
 
-def lint_secrets(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
+def lint_secrets(repo: Path, paths: Sequence[str], *, builtin_too: Sequence[str] = ()) -> list[LintFinding]:
     """SECRET: content secret scan over the given mirror pages; each hit names the page (caller quarantines it
     to an ``UNREADABLE: contains a credential`` stub instead of blocking the whole cycle: blocking=False).
-    Only text files are read (``.md``, ``.txt``, ``.csv``); a binary sidecar such as a keyframe is skipped."""
+    Only text files are read (``.md``, ``.txt``, ``.csv``); a binary sidecar such as a keyframe is skipped.
+    gitleaks replaces the builtin patterns and misses a plain ``Password: ...``; the paths of
+    ``builtin_too`` (a file held back as a credential once) are read by the builtin patterns as well."""
     existing = sorted(
         {
             p
@@ -547,7 +579,9 @@ def lint_secrets(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
     exe = _gitleaks()
     if exe is not None:
         try:
-            return _sorted(_gitleaks_scan(exe, repo.resolve(), existing))
+            found = _gitleaks_scan(exe, repo.resolve(), existing)
+            also = set(builtin_too)
+            return _sorted([*found, *_builtin_secret_scan(repo, [p for p in existing if p in also])])
         except (OSError, ValueError, subprocess.SubprocessError, AgentSyncError) as exc:
             log.warning("gitleaks unusable (%s); falling back to the builtin secret patterns", exc)
     return _sorted(_builtin_secret_scan(repo, existing))
