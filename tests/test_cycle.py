@@ -517,6 +517,80 @@ def test_tightening_follows_no_symlink_and_leaves_the_mirror_walk_to_the_publish
     assert cycle_mod._tighten_own_paths(own_config(tmp_path, tmp_path / "missing")) == 0
 
 
+def test_the_permissions_sample_is_not_spent_in_trees_walked_on_their_own(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§16.39 N30 (triage 2026-10-06): the docs repo's walk counted ``.git/objects`` and ``mirror/`` against
+    its 500 entries, though both are walked again as roots of their own, so in a repo with a few hundred
+    committed pages it stopped before ``_eval/`` and status passed a file group and other could read. A file
+    system lists a folder in an order of its own (APFS and ext4 both by a hash of the name; on APFS ``.git``
+    comes before ``_eval`` and ``topics``, and ``mirror`` after them): the walk here takes the agent's folder
+    last, the order that hid it. The rest of ``.git`` is walked by nothing else, so it stays in the repo's
+    walk."""
+    repo = sample_config.docs_repo
+    for tree in (repo / ".git" / "objects" / "ab", repo / "mirror" / "contoso"):
+        tree.mkdir(parents=True, exist_ok=True)
+        for i in range(doctor._PERM_SAMPLE):
+            (tree / f"page-{i:03d}").write_text("x\n", encoding="utf-8")
+            (tree / f"page-{i:03d}").chmod(0o600)
+    loose = repo / "_eval" / "questions.md"
+    loose.parent.mkdir(mode=0o700)
+    loose.write_text("1. What did Contoso decide?\n", encoding="utf-8")
+    loose.chmod(0o644)
+    walk = os.walk
+
+    def agent_folder_last(top: str, **kwargs: Any) -> Iterator[tuple[str, list[str], list[str]]]:
+        for dirpath, dirnames, filenames in walk(top, **kwargs):
+            dirnames.sort(key=lambda name: name == "_eval")
+            yield dirpath, dirnames, filenames
+
+    monkeypatch.setattr(os, "walk", agent_folder_last)
+    found = permissions(sample_config)
+    assert not found.ok and str(loose) in found.detail and found.fix == SYNC_FIX, found.detail
+    loose.chmod(0o600)
+    head = repo / ".git" / "HEAD"
+    head.chmod(0o644)
+    found = permissions(sample_config)
+    assert not found.ok and str(head) in found.detail and "chmod -R go-rwx" in (found.fix or ""), found.detail
+
+
+def test_a_cache_folder_above_the_context_folder_does_not_hide_what_is_in_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§16.39 N30 (review, 2026-10-11): the context folder (the one that holds sources.toml and the docs
+    repo) is checked for its own mode and never walked. A walk that left it out, as it leaves out a folder
+    walked on its own, looked at nothing beside the docs repo when the cache folder was configured above
+    it, and a saved mail group and other could read passed. The docs repo inside is still left to its own
+    walk: with 500 pages in it listed first, the loose file is reached."""
+    cache = tmp_path / "b"
+    ctx = cache / "agent-context"
+    repo = ctx / "docs"
+    pages = repo / "pages"
+    pages.mkdir(parents=True, mode=0o700)
+    for i in range(doctor._PERM_SAMPLE):
+        (pages / f"page-{i:03d}").write_text("x\n", encoding="utf-8")
+        (pages / f"page-{i:03d}").chmod(0o600)
+    loose = ctx / "inbox" / "mail.eml"
+    loose.parent.mkdir(mode=0o700)
+    loose.write_text("Subject: Contoso bid\n", encoding="utf-8")
+    loose.chmod(0o644)
+    text = config_text(repo, tmp_path / "state", cache, tmp_path / "source")
+    config = parse_config(text, config_path=ctx / "sources.toml")
+    assert config.cache_dir == cache and ctx in config.docs_repo.parents
+    walk = os.walk
+
+    def docs_repo_first(top: str, **kwargs: Any) -> Iterator[tuple[str, list[str], list[str]]]:
+        for dirpath, dirnames, filenames in walk(top, **kwargs):
+            dirnames.sort(key=lambda name: name != "docs")
+            yield dirpath, dirnames, filenames
+
+    monkeypatch.setattr(os, "walk", docs_repo_first)
+    found = permissions(config)
+    assert not found.ok and str(loose) in found.detail, found.detail
+    loose.chmod(0o600)
+    assert permissions(config).ok
+
+
 def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

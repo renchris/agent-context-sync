@@ -4731,7 +4731,8 @@ umask 077 (restored on return); `gitops.ensure_repo` creates the repo (and missi
 `core.sharedRepository=0600`; pages and curate outputs are written 0600 (**amended 2026-10-06, §16.22:** every
 non-dry cycle also makes what an agent wrote owner-only; **amended 2026-10-07, §16.29:** and the cache, the
 logs and the agent-context folder, as `init` and `add-source` now do too); doctor adds `docs_repo.permissions`
-(after `docs_repo.symlinks`), a child-interpreter check inside `launchd.*`, and the CLI adds
+(after `docs_repo.symlinks`; **amended 2026-10-11, §16.39 N30:** the walk of one checked folder leaves a checked
+folder inside it to that folder's own walk), a child-interpreter check inside `launchd.*`, and the CLI adds
 `network.proxy.job` (the LaunchAgent's own proxy resolution). `install-agent` refuses (78) a live Graph config
 whose proxy comes only from the shell environment. `offboard` also handles `launcher-app`, `tcc-grant`
 (`tccutil reset All <id>`), `policy.toml`, inbox folders under ~/agent-context and the uv tool environment and
@@ -10856,6 +10857,30 @@ that line only. Residual: a sources.toml written by hand with a TOML literal str
 matches the printed text; agentsync writes no such line and no doc shows one. Amends §16.32 (the volume row
 and the listable fix, in place: both state the text a check prints) and §16.36 (dated line there). Tests:
 `tests/test_ops_doctor.py` (`test_a_source_fix_names_the_table_as_sources_toml_writes_it`, two expectations).
+
+#### N30: the permission sample is not spent in trees walked on their own (`agentsync.ops.doctor`)
+
+`docs_repo.permissions` walks each folder it checks (the docs repo, its `.git/objects`, its `mirror/`, the
+cache, the logs) and looks at up to 500 entries below each (`_PERM_SAMPLE`). The walk of one of those folders
+no longer counts or enters another of them that lies inside it (`_group_other_readable(root, own_roots)`): the
+docs repo's walk leaves out `.git/objects` and `mirror/`, and a log folder configured inside the docs repo (a
+cache folder there is refused when the config is read); a cache or log folder configured above the docs repo
+leaves the docs repo out. Each is still walked as a root of its own, with its own 500 entries, and that walk
+checks the folder's own mode. The context folder (the one that holds sources.toml and the docs repo) is not
+one of them: only its own mode is read, so a walk that holds it enters it, and a cache or log folder
+configured above it still reports a loose file beside the docs repo. The rest of `.git` (index, refs, logs, config, hooks) stays in the docs repo's walk, because no
+other root covers it; the test pins that. A root spelled through a symlink or with `..` matches no path the
+walk yields and is walked twice, as before.
+
+Why: the docs repo's walk spent its 500 entries inside `.git/objects` (490 entries for 300 committed pages,
+measured) and `mirror/`, so an agent's folder the file system lists after them was never looked at and status
+said `[ok]` over a file group and other could read (triage 2026-10-06). A file system lists a folder in an
+order of its own, so which folders were hidden differed by file system. A loose page in `mirror/` is now
+reported once, not twice, so `(+N more)` counts paths. In a large repo a loose folder outside `_eval/` and
+`topics/` now FAILs with the chmod, as it already did in a small one; those two trees are made owner-only by
+every sync and by the config step, within the reach §16.29 states. Amends §16.12 (dated line there). Tests:
+`tests/test_cycle.py` (`test_the_permissions_sample_is_not_spent_in_trees_walked_on_their_own`,
+`test_a_cache_folder_above_the_context_folder_does_not_hide_what_is_in_it`).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

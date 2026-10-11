@@ -1599,8 +1599,11 @@ def _check_logs(config: Config) -> list[CheckResult]:
 _PERM_SAMPLE = 500  # files per tree whose mode is checked (a bounded walk, newest pages first is not needed)
 
 
-def _group_other_readable(root: Path) -> list[Path]:
-    """``root`` and up to _PERM_SAMPLE entries below it with any group/other permission bit set."""
+def _group_other_readable(root: Path, own_roots: frozenset[Path] = frozenset()) -> list[Path]:
+    """``root`` and up to _PERM_SAMPLE entries below it with any group/other permission bit set.  A folder
+    in ``own_roots`` is walked as a root of its own, so it is neither counted nor entered here: in a docs
+    repo ``.git/objects`` and ``mirror/`` would spend the sample before an agent's folders are reached
+    (CONTRACTS §16.39 N30)."""
     bad: list[Path] = []
     if not root.exists() or root.is_symlink():
         return bad
@@ -1610,6 +1613,7 @@ def _group_other_readable(root: Path) -> list[Path]:
         return bad
     seen = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [d for d in dirnames if Path(dirpath) / d not in own_roots]
         for name in [*dirnames, *filenames]:
             path = Path(dirpath) / name
             try:
@@ -1645,7 +1649,9 @@ def _check_permissions(config: Config) -> list[CheckResult]:
             if ctx.is_dir() and ctx.stat().st_mode & 0o077:
                 bad.append(ctx)
             continue
-        bad += _group_other_readable(root)
+        # The context folder has no walk of its own (only its mode is read above), so a walk that holds it
+        # enters it: left out, a cache or log folder above it would hide everything beside the docs repo.
+        bad += _group_other_readable(root, frozenset(r for r in roots if r != ctx and root in r.parents))
     if bad:
         shown = ", ".join(str(p) for p in bad[:4]) + (f" (+{len(bad) - 4} more)" if len(bad) > 4 else "")
         targets = " ".join(_shell_path(r) for r in roots if r.exists())
