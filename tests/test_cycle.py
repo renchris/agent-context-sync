@@ -2780,6 +2780,32 @@ def test_a_transcript_mirrored_as_plain_text_is_read_again_once_as_turns(
     assert run(sample_config).commit_sha is None and fetched == [vtt], "no file is read a second time"
 
 
+def test_an_internet_shortcut_stub_from_before_its_converter_is_read_once_as_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.url`` refused before ``text-plain`` claimed it is read again, once, with no step of the
+    person's: the page is titled by the file's name and its summary names the link target."""
+    rel = "projects/Contoso Roadmap.url"
+    (local_source_dir / rel).write_bytes(b"[InternetShortcut]\r\nURL=https://contoso.example/roadmap\r\n")
+    with monkeypatch.context() as old:
+        old.setattr(
+            text_mod.PlainTextConverter,
+            "extensions",
+            tuple(e for e in text_mod.PlainTextConverter.extensions if e != ".url"),
+        )
+        assert run(sample_config).exit_code == 0
+        assert _mirror_page(sample_config, rel)[0]["reason"] == "no converter for .url"
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.commit_sha is not None and fetched == [rel]
+    fm, body = _mirror_page(sample_config, rel)
+    assert fm["converter"].startswith("text-plain@") and fm["status"] == "current"
+    assert fm["source_title"] == "Contoso Roadmap.url"
+    assert fm["summary"] == "Internet shortcut to https://contoso.example/roadmap"
+    assert "```ini\n[InternetShortcut]\nURL=https://contoso.example/roadmap\n```" in body
+    assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
+
+
 @pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])
 def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str

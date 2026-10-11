@@ -3507,3 +3507,37 @@ def test_every_body_is_nfc_lf_and_single_trailing_newline(fixture_files: dict[st
 def test_zip_fixture_sanity(fixture_files: dict[str, Path]) -> None:
     for name in ("sample.docx", "sample.xlsx", "sample.pptx"):
         assert zipfile.is_zipfile(fixture_files[name])
+
+
+@pytest.mark.parametrize(
+    ("data", "summary"),
+    [
+        (
+            b"[InternetShortcut]\r\nURL=https://contoso.example/sites/Plan/Roadmap.aspx\r\nIconIndex=0\r\n",
+            "Internet shortcut to https://contoso.example/sites/Plan/Roadmap.aspx",
+        ),
+        (
+            b"[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,11\r\n[internetshortcut]\r\n"
+            b" url = https://contoso.example/a?b=1 \r\n",
+            "Internet shortcut to https://contoso.example/a?b=1",
+        ),
+        (b"[Other]\r\nURL=https://contoso.example/not-this\r\n", "Internet shortcut with no URL"),
+        (
+            b"[InternetShortcut]\r\nURL\r\nURL=https://contoso.example/after-a-bare-key\r\n",
+            "Internet shortcut to https://contoso.example/after-a-bare-key",
+        ),
+    ],
+    ids=["plain", "property-store-first", "no-shortcut-section", "bare-key-line"],
+)
+def test_an_internet_shortcut_is_titled_by_its_name_and_summarised_by_its_target(
+    tmp_path: Path, data: bytes, summary: str
+) -> None:
+    """A ``.url`` is a few lines of INI. Its first line is a section header, so the page takes the file's
+    name as its title (an empty title: ``publish`` uses the name), and the summary names the link target."""
+    u = _one(
+        PlainTextConverter(CFG).convert(
+            _write(tmp_path, "Contoso Roadmap.url", data), name="Contoso Roadmap.url"
+        )
+    )
+    assert u.title == "" and u.summary == summary
+    assert u.body.startswith("```ini\n[") and "\r" not in u.body

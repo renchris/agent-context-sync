@@ -356,6 +356,7 @@ PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pd
 **SUPERSEDED (2026-10-06, §16.26):** with an OCR engine and no label rule, `.png .jpg .jpeg .gif .bmp .tif
 .tiff .webp .heic .heif` → `image-ocr`. With an OCR engine `pandoc-gfm` is two converters: one with the
 engine for `.docx .odt`, one without for `.rtf .html .htm`.
+**SUPERSEDED (2026-10-11, §16.42):** `.url` → `text-plain`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -11213,6 +11214,36 @@ area; a turned picture through the converter, and one stream drawn two ways; a `
 read, and memory running out while it is read; `ocr_pdf_rules` 3) and `tests/test_ocr.py` (the real helper
 reads a picture stored on its side as its two lines). `build_picture_pdf(…, rotate=)` in
 `tests/test_convert_builders.py` writes the page's `/Rotate`.
+
+#### Internet shortcuts (H24)
+
+Amends §7's routing and §16.26's setup-report scrub. `.url` → `text-plain`: the file is fenced as `ini`,
+whole, so `IconFile=` and the like stay visible. The page's title is the file's name (the converter leaves
+the title empty and `publish` fills in the shown name, as for a picture) and its summary is `Internet
+shortcut to <target>` or `Internet shortcut with no URL`. The target is the first `URL=` line with an `=`
+under `[InternetShortcut]`; the section name and the key are matched without case, spaces around either
+are dropped, a line with no `=` is skipped as Windows skips it, and a `URL=` under any other section
+(`[InternetShortcut.W]`, the property-store section) does not count. Output for every other suffix is
+byte for byte what it was, so the emitter version stays 1.0.0; the action key carries the suffix, and a
+refusal is never cached, so no cached entry is stale. An existing `no converter for .url` stub becomes a
+page with no operator step: on this Mac through the re-read pass (the registry's suffixes are part of its
+capabilities), online-only through the work queue under the byte budget. A URL holding a secret is caught
+by the secret scan and the page is a `contains a credential` stub. Like a `.txt`, a `.url` carries no
+sensitivity label, so label exclusions do not apply to it. A shortcut that is not text (NUL bytes: UTF-16
+with no BOM) is a failed conversion, as any such text file is. `.webloc` and `.website` are still refused.
+
+`_PATH_IN_LOG_RE` gains `url`, so a warning that names a shortcut at a source's top is `<path>` in the
+report; routing `.url` without it would put the file's name in Recent errors. It also gains `m4v`, the
+one suffix of the recording converter it lacked (a leak that was there before this item), and
+the per-suffix test now takes `RecordingConverter.extensions` beside the registry's and the image
+converter's (amends §16.26's test list): 36 suffixes. `.url` stays in `_REFUSED_TYPE_LIST`, since a stub
+can be older than its converter.
+
+Tests: `tests/test_convert_formats.py` (a plain shortcut; one with the property-store section first, a
+lower-case section and a spaced key; one with `URL=` only under another section; one with a bare `URL`
+line before the real one), `tests/test_convert_core.py` (the pinned route set), `tests/test_cycle.py` (a
+stub from before the converter is read once as a page, and not again) and `tests/test_setup_report.py`
+(a log line naming a file of each claimed suffix is scrubbed).
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 

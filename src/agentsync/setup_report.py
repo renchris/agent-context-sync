@@ -4771,11 +4771,11 @@ def _background(r: _Run) -> list[str]:
 # 2026-10-05: client folder and file names nested BELOW a configured source (never registered with the
 # Redactor) reached the report through "fetch of <rel_path> failed" lines and inbox .eml names. The extension
 # list holds every suffix a converter claims (tests/test_setup_report.py checks it against the registry and
-# the image converter): a file the cycle reads is a file its log lines can name.
+# the image and recording converters): a file the cycle reads is a file its log lines can name.
 _PATH_IN_LOG_RE = re.compile(
     r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|markdown|csv|tsv|rtf|odt|ods|odp|"
     r"pages|numbers|key|vsdx?|one|html?|json|xml|ya?ml|log|vtt|zip|png|jpe?g|gif|bmp|webp|hei[cf]|tiff?|mp4|"
-    r"mov|m4a|wav)\b",
+    r"mov|m4v|m4a|wav|url)\b",
     re.IGNORECASE,
 )
 _LOG_HEAD_RE = re.compile(

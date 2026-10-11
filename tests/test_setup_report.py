@@ -42,6 +42,7 @@ from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, media, ocr, pdf, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
+from agentsync.convert.recording import RecordingConverter
 from agentsync.convert.registry import Registry
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind
@@ -330,9 +331,15 @@ def test_a_small_step_back_in_the_repeated_hour_keeps_its_reading() -> None:
     ]
 
 
-CONVERTED_SUFFIXES = sorted({*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions})
-"""Every suffix a converter claims: the default registry's, and the image converter's, which the registry
-holds only on a Mac with an OCR engine."""
+CONVERTED_SUFFIXES = sorted(
+    {
+        *Registry.default(ConvertConfig()).extensions(),
+        *ImageConverter.extensions,
+        *RecordingConverter.extensions,
+    }
+)
+"""Every suffix a converter claims: the default registry's, the image converter's, which the registry holds
+only on a Mac with an OCR engine, and the recording converter's, which it holds only with a media helper."""
 LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05 09:00:00,000 WARNING agentsync."
 
 
@@ -340,7 +347,7 @@ LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05 09:00:00,000 WARNING agentsyn
 def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
     """A file at the top of a source has no slash to know it by: its extension is all the scrub has. A file
     the cycle fetches and converts is a file its WARNING lines can name, so every claimed suffix is known."""
-    assert len(CONVERTED_SUFFIXES) == 32 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
+    assert len(CONVERTED_SUFFIXES) == 36 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
         *CONVERTED_SUFFIXES
     }
     for name in (f"Contoso Roadmap{suffix}", f"Fabrikam Org Chart{suffix.upper()}"):

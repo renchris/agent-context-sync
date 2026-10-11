@@ -35,7 +35,9 @@ _FENCE_LANG: dict[str, str] = {
     ".yml": "yaml",
     ".csv": "csv",
     ".tsv": "tsv",
+    ".url": "ini",
 }
+_SHORTCUT_SECTION = "[internetshortcut]"
 
 
 def _suffix(name: str) -> str:
@@ -43,6 +45,20 @@ def _suffix(name: str) -> str:
     low = name.lower()
     dot = low.rfind(".")
     return low[dot:] if dot > 0 else ""
+
+
+def _shortcut_target(lines: list[str]) -> str:
+    """The ``URL=`` value of an internet shortcut's ``[InternetShortcut]`` section, stripped; "" when it has
+    none.  Keys and the section name are matched without case, as Windows reads them."""
+    section = ""
+    for line in lines:
+        text = line.strip()
+        key, eq, value = text.partition("=")
+        if text.startswith("[") and text.endswith("]"):
+            section = text.casefold()
+        elif section == _SHORTCUT_SECTION and eq and key.strip().casefold() == "url":
+            return value.strip()
+    return ""
 
 
 def _parse_delimited(text: str, delimiter: str) -> list[list[str]] | None:
@@ -60,10 +76,12 @@ class PlainTextConverter:
     The body is the text inside a fenced block (``csv``/``tsv`` rendered as a GFM table up to
     max_rows_per_sheet rows).  NUL bytes -> ConversionError (binary).  No file-name heading: the action key
     does not include the name and a rename keeps bodies, so output depends on the bytes and suffix only.
+    A ``.url`` internet shortcut is fenced as ``ini``; its title is left empty so the page takes the file's
+    name, and its summary names the ``URL=`` target.
     """
 
     converter_id = "text-plain"
-    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml")
+    extensions: tuple[str, ...] = (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".url")
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
@@ -106,6 +124,10 @@ class PlainTextConverter:
             first = next((ln.strip() for ln in lines if ln.strip()), "")
             title = first[:120] if first else "Empty text file"
             summary = f"Text ({suffix[1:] or 'no extension'}): {len(lines)} line(s)"
+            if suffix == ".url":
+                target = _shortcut_target(lines)
+                title = ""
+                summary = f"Internet shortcut to {target}" if target else "Internet shortcut with no URL"
         return (
             make_unit(
                 unit_id="whole",

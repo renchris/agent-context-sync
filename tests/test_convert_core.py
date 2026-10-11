@@ -421,7 +421,7 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
         "pptx-python-pptx": (".pptx",),
         "pdf-pypdfium2": (".pdf",),
         "markdown-passthrough": (".md", ".markdown"),
-        "text-plain": (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml"),
+        "text-plain": (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".url"),
         "vtt-turns": (".vtt",),
         "eml-stdlib": (".eml",),
         "teams-month": (".teams.json",),
