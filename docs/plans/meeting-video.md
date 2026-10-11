@@ -304,7 +304,9 @@ CONTRACTS §16.35 and the test file), then wave A of five teammates (*speech*, *
     `<v>` tags are not read as names (R14); the index byte budget is tight with many voices (an hour with 12
     named voices and 30 quiet stretches is 8,679 of 9,000 bytes).
   - F: build the speech helper on the corporate Mac (R8; the SwiftPM fetch passes no proxy variables and relies on
-    `~/.gitconfig`); check the placed model folders match the pinned digests; R11 on a real recording (does the
+    `~/.gitconfig`. B13 H10 (2026-10-11): the git half is fixed, the build's tools now get the shell's proxy
+    variables (`speech._build_env`); the binary artifact still goes through the macOS proxy settings only);
+    check the placed model folders match the pinned digests; R11 on a real recording (does the
     decode noise change a transcript); the Core ML cache in `~/Library/Caches/agentsync-speech/` (57 MB) sits
     outside `cache_dir`, so purge and gc never see it; holes before the first word or after the last are not
     flagged; `test_status_shows_the_policy_and_a_broken_policy_fails` fails under heavy load only (pre-existing).

@@ -10019,6 +10019,10 @@ Command Line Tools)`. The build has a limit of its own, 1,200 s (OCR's is 300 s)
 not descend from the floor (`FluidAudio <7 hex> does not descend from the build floor 04e363c; the speech helper
 is not built`, left beside the helper for `probe`), then `Pin.swift` with the resolved commit, then `swift build
 -c release`. The build fetches FluidAudio from github.com; nothing ever downloads a model.
+(B13 H12, 2026-10-11, §16.42: only the check's own non-zero answer, `git merge-base failed (exit N)`, is the floor
+refusal; a build step a signal stopped says so, `swift build was stopped by SIGKILL (signal 9); scripts/install.sh
+tries the build again on its next run`, and a check that a signal stopped or that does not run keeps its own
+reason.)
 
 - **Models.** The operator places `parakeet-tdt-0.6b-v3/` (`ASR_MODELS`, 483 MB) and `speaker-diarization/`
   (`DIARIZER_MODELS`, 22 MB) in `<cache_dir>/speech/`, FluidAudio's own folder names. `MODEL_FILES` lists what
@@ -10045,8 +10049,9 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
   integer times, start at or before end, a word of a clip not before the clip, a speaker a token. Anything else,
   an embedding among it, is a `SpeechError` (an `OcrError`) whose text holds no path.
 - **Probe states** (`probe(cfg, cache_dir) -> (state, detail)`, never compiles, never raises, takes no digest):
-  `off` whenever the media helper is switched off (its reasons) and `off` with `the speech models are not placed:
-  <folder>/ and <folder>/` when the helper is ready but a folder is missing; `not-built` (`the speech helper is not
+  `off` whenever the media helper is switched off (its reasons) and `off` with `the speech helper is built; the
+  speech models are not placed: <folder>/ and <folder>/` when the helper is ready but a folder is missing (B13 H13,
+  2026-10-11, §16.42: the detail gained "the speech helper is built; "); `not-built` (`the speech helper is not
   built`); `failed` (a build's reason, the helper's trust, or a `--version` whose commit is not `FLUIDAUDIO_PIN`:
   `the speech helper is not built from FluidAudio 04e363c or later; scripts/install.sh rebuilds it`); `ready`
   (`fluidaudio, helper 0.1.0, FluidAudio 04e363c`). `engine(cfg, cache_dir)` is the one place the digests are
@@ -11422,6 +11427,63 @@ Tests: `tests/test_convert_formats.py` (`test_a_drawio_diagram_is_its_shape_text
 (the route set and the counts: 11 converters, 13 with an engine, 11 under a label rule),
 `tests/test_convert_determinism.py` (three diagram inputs) and `tests/test_setup_report.py` (the scrub).
 `build_drawio` and `build_vsdx` in `tests/test_convert_builders.py` write both formats from nothing.
+
+#### The speech line says the helper is built (`convert/speech.py`) (H13)
+
+With the helper built and a model folder missing, the probe's detail is `the speech helper is built; the speech
+models are not placed: <folder>/ and <folder>/`, so the installer's line, doctor and `status` read
+`speech: off (the speech helper is built; the speech models are not placed: ...)`, and each cycle's INFO log
+reads `speech is off: the speech helper is built; ...`. The clause is printed only after `ocr._look` returned a
+helper that exists, passed the trust check and answered `--version` from the pinned FluidAudio commit, so it is
+true whenever it is printed, on a re-run that kept an earlier helper as well. The state stays `off`; the
+installer's exit status, install.log and doctor's severity are unchanged, and no new state word is added. This
+changes the detail that section 16.37 recorded as "unchanged" for B11's ticker: 16.37 is the dated record of
+what v10 printed, this is the current contract. Why: the B11 and B12 rehearsals and the v10 corporate run read
+minutes of `helpers: building the speech helper` ending in `speech: off (...)`, the same word a switched-off run
+prints, and could not tell the build had succeeded.
+
+#### A run a signal stopped names the signal (`convert/ocr.py`, `convert/speech.py`, `convert/pandoc.py`) (H12)
+
+`subprocess` reports a child a signal stopped as the negative signal number. `ocr._ended` reads it at
+`ocr._run_helper`, `ocr._compile`, `speech._step` and pandoc's runner and words it `stopped by SIGKILL (signal
+9)`, the phrase `scripts/install.sh`'s `rc_meaning` uses; a number that names no signal reads `stopped by signal
+N`. A crash's own signal (`ocr._CRASHES`: SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV, SIGSYS) adds the
+line the tool printed on stderr (`ocr._plain`), because that line is why it stopped: `the OCR helper was stopped
+by SIGTRAP (signal 5): main.swift:9: Fatal error: no frames`. Any other signal came from outside and drops what
+the tool printed before it. `speech._step` passes stderr only, never stdout, which is SwiftPM's progress. pandoc
+passes nothing, since its stderr can quote the document: `pandoc was stopped by SIGKILL (signal 9)`. The two
+build sites add the next step: `swift build was stopped by SIGKILL (signal 9); scripts/install.sh tries the build
+again on its next run` and `swiftc, building the OCR helper, was stopped by SIGTERM (signal 15); scripts/install.sh
+tries the build again on its next run`; a helper run adds none, because the next cycle runs it again. The speech
+build's floor check refuses only on the check's own non-zero answer (a reason that starts `git merge-base failed
+(exit `). A check that ran out of time, that a signal stopped, or that does not run (`git merge-base does not
+run: ...`) keeps its own reason. A non-negative exit keeps its wording byte for byte. Why: the v10 rehearsal read
+`speech: not built (swift build failed (exit -9): Building for production...)`, and a killed floor check was
+stored in `<helper>.failed` as "does not descend from the build floor", which was false.
+
+#### The speech build's proxy (`convert/speech.py`; amends section 16.35, which builds as section 16.25 does) (H10)
+
+The speech build's `swift` and `git` run in `ocr._env()` plus whichever of the shell's `HTTPS_PROXY`,
+`HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY` (either case) are set to a non-empty value (`speech._build_env`,
+`speech._PROXY_VARS`). SwiftPM clones FluidAudio with git, which reads them as step 1's git does, and
+`~/.gitconfig` (`http.proxy`) still wins in git. `[network] proxy` and `net.resolve_proxy` are not used.
+FluidAudio's binary artifact is downloaded by SwiftPM itself, which ignores these variables and uses the macOS
+proxy settings, so a Mac whose only route out is a proxy set in the environment still cannot build the helper
+(measured 2026-10-10, Swift 6.2.4: with every proxy variable set and no system proxy, the download went direct).
+`DEVELOPER_DIR`, `GIT_SSL_*`, `SSL_CERT_*`, `CURL_*` and everything else stays dropped. The OCR, media and
+speech helpers, and the OCR and media builds, keep `ocr._env()` and never see a proxy. A failure's reason is
+SwiftPM's first `error:` line and names no proxy host.
+
+#### A cited commit is on the trunk (`tests/test_deploy_pack.py`) (N38)
+
+A hex word in `tests/`, `src/`, `scripts/`, `launcher/`, `probes/`, `README.md` or this file that names a commit
+of this repository names an ancestor of `HEAD`. `test_a_cited_commit_is_on_the_trunk` checks it with
+`git cat-file --batch-check` and `git merge-base --is-ancestor`. A commit the clone does not hold names nothing
+there, so a depth-1 CI checkout asserts nothing; the check bites in the clone that still holds a stale object,
+which is the clone a rebase leaves behind. `docs/plans/` and `docs/research/` are not scanned: they are dated
+records of branch work and name branch commits on purpose. Why: `tests/test_config.py`, `tests/test_publish.py` and `README.md` line 23 each cited the pre-rebase twin of a
+trunk commit, which a fresh clone cannot resolve; they now cite `e49e212`, `a0e0542` and `d3b7883` (same subject,
+same author date, same content at the cited path).
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 
