@@ -345,7 +345,8 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
         assert manifest.live_count("work") == 1
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
-        f"WAITING ON YOU: 2 queued purge(s): run `{BIN} purge --queue`"
+        f"WAITING ON YOU: 2 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"before you run `{BIN} purge --queue` (rewrites history)"
     ], "deleted upstream, not retired: each deletion queued its purge"
 
 
@@ -799,7 +800,8 @@ def test_waits_breaker_and_queued_purges(tmp_path: Path, folder: Path) -> None:
     assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
     assert _lines(config) == [
         f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
-        f"WAITING ON YOU: 1 queued purge(s): run `{BIN} purge --queue`",
+        f"WAITING ON YOU: 1 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"before you run `{BIN} purge --queue` (rewrites history)",
         "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone): if they really were deleted, "
         f"run `{BIN} accept-deletions work`",
     ]
@@ -969,3 +971,15 @@ def test_an_online_only_recording_is_never_over_the_document_budget(tmp_path: Pa
         "note: 1 online-only file(s) in work wait for a later sync's download budget; they do not block the "
         "next step",
     ]
+
+
+def test_the_purge_wait_names_the_preview_before_the_run(tmp_path: Path) -> None:
+    """Bring-back D6.h: the wait is built from the queue's length alone, and a run rewrites history. It
+    names the dry run first, and both commands are ones the CLI parses."""
+    config = _setup(tmp_path)
+    selector = governance.PurgeSelector(source_id="work", path_glob="*")
+    assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
+    (wait,) = [w for w in loop.next_step(config).waits if "queued purge(s)" in w]
+    assert _commands(wait) == ["agentsync purge --queue --dry-run", "agentsync purge --queue"]
+    for command in _commands(wait):
+        _assert_fix_parses(command)

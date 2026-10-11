@@ -802,7 +802,10 @@ def _status_lines(config: Config) -> list[str]:
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
-        out.append(f"queued purges: {len(queued)} (run `{loop.BIN} purge --queue`)")
+        out.append(
+            f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
+            f"`{loop.BIN} purge --queue`)"
+        )
     try:
         cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -1201,7 +1204,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                     False,
                     detail,
                     doctor.Severity.WARN,
-                    fix="agentsync purge --queue",
+                    fix=(
+                        "agentsync purge --queue --dry-run (a preview that writes nothing); "
+                        "then agentsync purge --queue"
+                    ),
                 )
             )
     return out

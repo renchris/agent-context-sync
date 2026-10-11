@@ -324,6 +324,10 @@ def test_sg04_label_escalation_queues_a_purge_and_drops_the_cached_plaintext(
     assert report.exit_code == 0
     assert page_fm(config, "mirror/src/plan.docx.md")["status"] == "refused"
     assert (item_id(config, "plan.docx"), "label-escalation") in queued(config)
+    (alarm,) = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
+    assert alarm.endswith(
+        "purge queued (preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)"
+    )
     cached = [p for p in config.cache_dir.rglob("*") if p.is_file()]
     assert not any(b"SECRETPHRASE-ALPHA" in p.read_bytes() for p in cached)
     reports = governance.run_purge_queue(config, now=NOW)

@@ -78,7 +78,7 @@ depends on them. What that leaves:
 | Fri 2026-10-09, escalation if IT has not replied | (1) Re-send the request with a narrower ask: files-only scopes, or `Sites.Selected` (it-request.md "Minimum sets"). (2) Escalate to the IT manager and the security owner, linking data-governance.md ("nothing leaves the Mac"). (3) Keep the local arm as the production path, since synced libraries cover most of the file scope. Record "Graph arms deferred" in `sources.toml` and revisit on Mon 2026-10-19 | operator | ticket history; `agentsync status` still green on local sources |
 | **Mon 2026-10-12** | Graph arms live: `discover`, paste the tables, first FULL enumeration, then `state = "live"` | operator (agent assists with sources.toml) | `agentsync discover` exits 0 (complete); `agentsync reconcile --source <id>` exits 0; `agentsync status` shows a deltaLink age per Graph source |
 | ongoing: Thu 2026-10-30, Sun 2026-11-29, Tue 2026-12-29 | deltaLink idle-lifetime probe at 30, 60 and 90 days after the first probe run. **Non-blocking:** a 410 only falls back to a full enumeration | operator | `scripts/tenant-probes.sh` → the probe-9 row for that milestone reads `200: still valid` or `410 …` |
-| ongoing, weekly | Queued purges and history bound | operator (records owner for holds) | `agentsync purge --queue`; `agentsync doctor` shows `governance.compaction ok` |
+| ongoing, weekly | Queued purges and history bound | operator (records owner for holds) | `agentsync purge --queue --dry-run`, then `agentsync purge --queue`; `agentsync doctor` shows `governance.compaction ok` |
 
 ## Readiness
 

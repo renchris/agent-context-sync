@@ -263,6 +263,8 @@ _RECORDING_DEADLINE_S = 60.0
 _RECORDING_FLOOR_BPS = 500_000
 """A download's deadline is ``_RECORDING_DEADLINE_S + size / _RECORDING_FLOOR_BPS`` seconds (a 4 Mbit/s
 floor): past it the download is given up as a refusal.  The reconcile job's watchdog is far longer."""
+_PURGE_QUEUE_STEPS = "(preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)"
+"""How an alarm that queued a purge ends (label escalation): the preview first, as the loop's wait says."""
 _RECORDING_NOT_DOWNLOADED = (
     "{path}: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
 )
@@ -1996,7 +1998,8 @@ class _Cycle:
             lines += [
                 "## Queued purges",
                 "",
-                f"- {len(queued)} purge request(s) waiting; run `agentsync purge --queue` (rewrites history)",
+                f"- {len(queued)} purge request(s) waiting; preview with "
+                "`agentsync purge --queue --dry-run`, then run `agentsync purge --queue` (rewrites history)",
                 "",
             ]
         return lines
@@ -3874,7 +3877,7 @@ class _Cycle:
         )
         self._acc(self.config.source(row.source_id)).alarms.append(
             f"label escalation: a published file is now refused by the label policy; {removed} cached "
-            f"conversion(s) deleted{', purge queued' if queued else ''} (run `agentsync purge --queue`)"
+            f"conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
         )
         log.warning("%s: label escalation of %s; purge queued", row.source_id, row.stable_id)
 

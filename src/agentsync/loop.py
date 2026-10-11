@@ -454,7 +454,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
 
     queued = governance.pending_purges(config.state_paths.root)
     if queued:
-        waits.append(f"{len(queued)} queued purge(s): run `{BIN} purge --queue`")
+        waits.append(
+            f"{len(queued)} queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+            f"before you run `{BIN} purge --queue` (rewrites history)"
+        )
 
     # Rule 1: status FAILs.
     live = config.live_sources()

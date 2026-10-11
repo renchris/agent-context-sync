@@ -5725,7 +5725,8 @@ rule wins:
 | 9 | refresh-queue rows plus uncovered mirror pages | `curate` (was `curate-queue`; K09), curate up to `ROWS_PER_SESSION` (10), `sync`; session done |
 | 10 | otherwise | nothing to do; session done |
 
-Operator waits (`WAITING ON YOU:`, collected whatever rule wins): queued purges (`purge --queue`); a tripped
+Operator waits (`WAITING ON YOU:`, collected whatever rule wins): queued purges (`purge --queue`; **amended
+2026-10-11, §16.38:** the wait names `purge --queue --dry-run` first); a tripped
 deletion breaker per source (`accept-deletions SOURCE`); an `_eval` draft to confirm; online-only files larger
 than their source's `max_materialise_bytes` (`materialise --budget BYTES`); online-only files the OS refused to
 download (row `state_reason` `cycle.HYDRATION_REFUSED`, set in the `DatalessRefusedError` branch and cleared when
@@ -8833,7 +8834,7 @@ Not done here, because they are not the report's:
 
 - The wait `N queued purge(s): run ... purge --queue` is built from the queue's length alone, in five texts
   (`agentsync.loop`, two in `agentsync.cli`, two in `agentsync.cycle`). Adding the preview to it changes all
-  five and their pins together.
+  five and their pins together. Done since in §16.38: all five name the preview before the run.
 - `run_purge_queue` runs an entry whose id resolves to a live file. A guard there must keep an entry whose
   row is quarantined or refused: after a file comes back refused, the queued purge is the only thing that
   erases its earlier text from history. Done since in §16.38: an `upstream-deleted` entry whose file is live or
@@ -10512,6 +10513,24 @@ its own write does not put them back. Why: the v10 bring-back's `agentsync purge
 its queued purge waiting in every wait line. Tests: `tests/test_governance.py::
 test_a_purge_by_selector_takes_the_queued_purges_it_did_off_the_queue`,
 `::test_a_purge_leaves_a_queued_purge_it_cannot_stand_in_for`.
+
+#### The purge wait names the preview before the run (`agentsync.loop`, `agentsync.cli`, `agentsync.cycle`; amends §16.20 and §16.30)
+
+Every text that asks the operator to run the purge queue names the preview first. The loop's wait: `N queued
+purge(s): preview with `agentsync purge --queue --dry-run` (writes nothing) before you run `agentsync purge
+--queue` (rewrites history)`. `status`: `queued purges: N (preview with `agentsync purge --queue --dry-run` before
+`agentsync purge --queue`)`. Doctor's `governance.purge_queue` fix: `agentsync purge --queue --dry-run (a preview
+that writes nothing); then agentsync purge --queue`, in the house fix grammar (a command, a parenthesis, then prose
+after `;`). STATE.md's queued-purges line: `- N purge request(s) waiting; preview with `agentsync purge --queue
+--dry-run`, then run `agentsync purge --queue` (rewrites history)`. The label-escalation alarm ends with
+`cycle._PURGE_QUEUE_STEPS`, `(preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)`,
+which any later alarm that queues a purge uses too. Each text keeps its head (`N queued purge(s): `, `queued
+purges: N (`, `- N purge request(s) waiting; `, `label escalation:`), so readers keyed on the prefix are unchanged.
+Why: a run rewrites history and cannot be undone (with `--push`, the remote too); the wait knows only the count,
+while the preview prints each entry's reason and docs paths, and which entries the run keeps queued. Tests:
+`tests/test_loop.py::test_the_purge_wait_names_the_preview_before_the_run` and the pins it moved in
+`tests/test_loop.py`, `tests/test_cli.py`, `tests/test_setup_report.py`, `tests/test_e2e.py` and
+`tests/test_review_fixes.py::test_sg04`.
 
 ### 16.39 Sync, status and doctor fixes (2026-10-11, wave B13 lane B)
 

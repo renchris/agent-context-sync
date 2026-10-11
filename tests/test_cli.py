@@ -1320,7 +1320,10 @@ def test_purge_queue_check_names_no_command_under_no_next_hint(
         return found
 
     by_hand = check()
-    assert by_hand.severity is doctor.Severity.WARN and by_hand.fix == "agentsync purge --queue"
+    assert by_hand.severity is doctor.Severity.WARN and by_hand.fix == (
+        "agentsync purge --queue --dry-run (a preview that writes nothing); then agentsync purge --queue"
+    )
+    _assert_fix_parses(by_hand.fix)
     monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
     quiet = check()
     assert not quiet.ok and quiet.severity is doctor.Severity.WARN and quiet.detail == by_hand.detail
@@ -1689,12 +1692,14 @@ def test_the_doctor_alias_prints_no_status_or_policy_detail(
             monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, env)
         cli.main([*argv, "--config", cfg])
         out = capsys.readouterr().out
-        assert "exclude_label_names" not in out and "(run " not in out, (argv, env)
+        assert "exclude_label_names" not in out and "queued purges: " not in out, (argv, env)
+        assert "(run " not in out, (argv, env)
         assert "[ok  ] " in out and "loop: skill " in out
     monkeypatch.delenv(loop.NO_NEXT_HINT_ENV, raising=False)
     cli.main(["policy", "show", "--config", cfg])
     out = capsys.readouterr().out
-    assert "  exclude_label_names: -" in out and "queued purges: 1 (run `~/.local/bin/agentsync purge" in out
+    assert "  exclude_label_names: -" in out
+    assert "queued purges: 1 (preview with `~/.local/bin/agentsync purge --queue --dry-run` before" in out
 
 
 def test_a_failed_skill_write_is_a_fail(
