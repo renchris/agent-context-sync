@@ -193,6 +193,46 @@ def test_a_build_that_fails_leaves_its_reason_and_names_no_path(tools: Path, tmp
         speech.build(cache)
 
 
+def test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again(tools: Path, tmp_path: Path) -> None:
+    """A step a signal stopped (subprocess's negative return code) is not "exit -9" with whatever the
+    compiler printed last, and a killed floor check is not the floor refusal."""
+    cache = tmp_path / "cache"
+    later = "scripts/install.sh tries the build again on its next run"
+    script(
+        tools / "swift",
+        'case "$1" in package) mkdir -p .build/checkouts/FluidAudio ;; '
+        'build) echo "Building for production..."; echo "error: an earlier line" >&2; kill -KILL $$ ;; esac',
+    )
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == f"swift build was stopped by SIGKILL (signal 9); {later}"
+    assert speech.probe(CFG, cache) == ("failed", str(error.value))
+
+    script(tools / "git", f'case "$3" in rev-parse) echo {FAKE_PIN} ;; merge-base) kill -TERM $$ ;; esac')
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == f"git merge-base was stopped by SIGTERM (signal 15); {later}"
+    script(  # a crash whose own stderr quotes an exit is still a crash: only the reason's start refuses
+        tools / "git",
+        f'case "$3" in rev-parse) echo {FAKE_PIN} ;; '
+        'merge-base) echo "error: it failed (exit 1)" >&2; kill -SEGV $$ ;; esac',
+    )
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert (
+        str(error.value)
+        == f"git merge-base was stopped by SIGSEGV (signal 11): error: it failed (exit 1); {later}"
+    )
+    script(tools / "git", f'case "$3" in rev-parse) echo {FAKE_PIN}; chmod -x "$0" ;; esac')
+    with pytest.raises(SpeechError, match=r"^git merge-base does not run: Permission denied$"):
+        speech.build(cache)  # a check that could not run is not the floor refusal either
+
+    script(tools / "swift", SWIFT_OK)
+    git_answering(tools)
+    assert speech.build(cache).is_file()
+    assert not ocr._marker(ocr._helper_path(cache, speech.SPEECH)).exists()
+
+
 def test_the_build_gets_twenty_minutes_of_its_own(
     tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

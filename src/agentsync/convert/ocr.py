@@ -191,6 +191,24 @@ def _strerror(exc: OSError) -> str:
     return exc.strerror or type(exc).__name__
 
 
+# What a program raises on itself when it crashes (a Swift trap is SIGTRAP, a bad memory access SIGSEGV or
+# SIGBUS): the line it printed says why.  Any other signal came from outside (SIGKILL when macOS is short of
+# memory, SIGTERM), and what the program printed before it did not cause the stop.
+_CRASHES = frozenset({"SIGILL", "SIGTRAP", "SIGABRT", "SIGFPE", "SIGBUS", "SIGSEGV", "SIGSYS"})
+
+
+def _ended(returncode: int, stderr: bytes = b"") -> str:
+    """How a run a signal stopped ended, after "was": ``stopped by SIGKILL (signal 9)``.  ``returncode`` is
+    subprocess's negative signal number.  A crash (:data:`_CRASHES`) also gives the line of ``stderr`` that
+    says why (:func:`_plain`), when it printed one."""
+    try:
+        name = signal.Signals(-returncode).name
+    except ValueError:
+        return f"stopped by signal {-returncode}"
+    said = f": {_plain(stderr)}" if name in _CRASHES and stderr.strip() else ""
+    return f"stopped by {name} (signal {-returncode}){said}"
+
+
 # ---------------------------------------------------------------------------------------------------------
 # running the helper
 # ---------------------------------------------------------------------------------------------------------
@@ -239,6 +257,8 @@ def _run_helper(
         raise kind.error(f"the {kind.name} does not run: {_strerror(exc)}") from None
     if cp.stderr:
         log.debug("%s: %s", kind.name, _plain(cp.stderr))
+    if cp.returncode < 0:
+        raise kind.error(f"the {kind.name} was {_ended(cp.returncode, cp.stderr)}")
     if cp.returncode != 0:
         raise kind.error(f"the {kind.name} exited {cp.returncode}: {_plain(cp.stderr)}")
     return cp.stdout
@@ -634,6 +654,11 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
             )
         except subprocess.TimeoutExpired:
             raise kind.error(f"swiftc ran out of time building the {kind.name}") from None
+        if cp.returncode < 0:
+            raise kind.error(
+                f"swiftc, building the {kind.name}, was {_ended(cp.returncode, cp.stderr)}; "
+                "scripts/install.sh tries the build again on its next run"
+            )
         if cp.returncode != 0 or not built.is_file():
             raise kind.error(
                 f"swiftc did not build the {kind.name} (exit {cp.returncode}): {_plain(cp.stderr)}"

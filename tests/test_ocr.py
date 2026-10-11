@@ -920,6 +920,36 @@ def test_build_names_what_the_developer_tools_lack(tools: Path, tmp_path: Path) 
     assert not (tools / "swiftc.calls").exists()
 
 
+def test_a_helper_or_compiler_killed_by_a_signal_says_so(tools: Path, tmp_path: Path) -> None:
+    """subprocess gives a run a signal stopped as the negative signal number: the reason names the signal,
+    never "exit -9" with whatever the tool printed before it."""
+    assert ocr._ended(-9, b"error: an earlier line\n") == "stopped by SIGKILL (signal 9)"
+    assert ocr._ended(-5) == "stopped by SIGTRAP (signal 5)" and ocr._ended(-99) == "stopped by signal 99"
+    eng = fake_engine(tmp_path / "killed")
+    eng.helper.write_text('#!/bin/sh\necho "error: an earlier line" >&2\nkill -KILL $$\n')
+    with pytest.raises(ocr.OcrError) as error:
+        eng.read([fake_image(tmp_path / "a.png")], work_dir=tmp_path, budget_s=60)
+    assert str(error.value) == "the OCR helper was stopped by SIGKILL (signal 9)"
+    # a crash (a Swift trap is SIGTRAP) keeps the line it printed: that line is why it stopped
+    eng.helper.write_text('#!/bin/sh\necho "main.swift:9: Fatal error: no frames" >&2\nkill -TRAP $$\n')
+    with pytest.raises(ocr.OcrError) as error:
+        eng.read([fake_image(tmp_path / "a.png")], work_dir=tmp_path, budget_s=60)
+    assert (
+        str(error.value)
+        == "the OCR helper was stopped by SIGTRAP (signal 5): main.swift:9: Fatal error: no frames"
+    )
+
+    cache = tmp_path / "cache"
+    script(tools / "swiftc", 'echo "error: an earlier line" >&2\nkill -TERM $$')
+    reason = (
+        "swiftc, building the OCR helper, was stopped by SIGTERM (signal 15); "
+        "scripts/install.sh tries the build again on its next run"
+    )
+    with pytest.raises(ocr.OcrError) as error:
+        ocr.build(cache)
+    assert str(error.value) == reason and ocr.probe(CFG, cache) == ("failed", reason)
+
+
 def test_a_failed_build_leaves_its_reason_until_a_build_works(tools: Path, tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     home = Path.home()

@@ -216,6 +216,15 @@ def test_corrupt_docx_is_a_conversion_error(tmp_path: Path) -> None:
         PandocConverter(CFG).convert(bad, name="bad.docx")
 
 
+def test_a_pandoc_killed_by_a_signal_says_so(tmp_path: Path) -> None:
+    pandoc = tmp_path / "pandoc"
+    pandoc.write_text('#!/bin/sh\n[ "$1" = --version ] && { echo "pandoc 3.1.2"; exit 0; }\nkill -KILL $$\n')
+    pandoc.chmod(0o700)
+    bad = make_zip(tmp_path / "bad.docx", {"word/document.xml": b"<not-closed"})
+    with pytest.raises(ConversionError, match=r"^pandoc was stopped by SIGKILL \(signal 9\)$"):
+        PandocConverter(replace(CFG, pandoc_path=pandoc)).convert(bad, name="bad.docx")
+
+
 def test_configured_pandoc_path_must_exist(tmp_path: Path) -> None:
     conv = PandocConverter(replace(CFG, pandoc_path=tmp_path / "no-such-pandoc"))
     with pytest.raises(ConversionError, match="pandoc_path"):

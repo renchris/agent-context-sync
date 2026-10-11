@@ -420,6 +420,11 @@ def _step(argv: Sequence[str], *, cwd: Path, deadline: float, what: str) -> str:
         raise SpeechError("the speech helper's build ran out of time") from None
     except OSError as exc:
         raise SpeechError(f"{what} does not run: {ocr._strerror(exc)}") from None
+    if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)
+        raise SpeechError(
+            f"{what} was {ocr._ended(cp.returncode, cp.stderr)}; "
+            "scripts/install.sh tries the build again on its next run"
+        )
     if cp.returncode != 0:
         raise SpeechError(f"{what} failed (exit {cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")
     return cp.stdout.decode("utf-8", errors="replace").strip()
@@ -477,7 +482,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
                 what="git merge-base",
             )
         except SpeechError as exc:
-            if "ran out of time" in str(exc):
+            if not str(exc).startswith("git merge-base failed (exit "):  # only the check's own answer refuses
                 raise
             raise SpeechError(
                 f"FluidAudio {resolved[:7]} does not descend from the build floor 04e363c; "
