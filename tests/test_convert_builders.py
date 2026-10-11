@@ -770,3 +770,91 @@ def test_a_built_msg_is_a_compound_file_olefile_reads_back() -> None:
     with olefile.OleFileIO(io.BytesIO(data)) as ole:
         assert ole.openstream("__substg1.0_0037001F").read() == _utf16("Hello")
         assert ole.openstream(["__attach_version1.0_#00000000", "__substg1.0_37010102"]).read() == big
+
+
+DRAWIO_MODEL = (
+    '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+    '<mxCell id="2" value="Contoso API" style="rounded=1;" vertex="1" parent="1"/>'
+    '<mxCell id="3" value="&lt;b&gt;Billing&lt;/b&gt;&lt;br&gt;service" style="html=1;" '
+    'vertex="1" parent="1"/>'
+    '<mxCell id="4" value="calls" edge="1" source="2" target="3" parent="1"/>'
+    '<mxCell id="6" value="nightly" style="edgeLabel;html=1;" vertex="1" parent="4"/>'
+    '<UserObject label="Fabrikam gateway" link="https://contoso.example/gw" id="5">'
+    '<mxCell style="" vertex="1" parent="1"/></UserObject>'
+    '<mxCell id="7" value="# not a heading" vertex="1" parent="1"/>'
+    "</root></mxGraphModel>"
+)
+"""One draw.io page: two plain shapes, an HTML label, an edge with its own and a child label, a UserObject."""
+
+
+def build_drawio(path: Path, *, compressed: bool = False, model: str = DRAWIO_MODEL) -> Path:
+    """A ``.drawio`` with the page ``Overview`` holding ``model`` (compressed: base64 of raw deflate of the
+    URI-encoded XML, as draw.io writes it) and an empty page ``Notes``."""
+    import base64  # noqa: PLC0415
+    import urllib.parse  # noqa: PLC0415
+
+    page = model
+    if compressed:
+        packer = zlib.compressobj(9, zlib.DEFLATED, -15)
+        raw = packer.compress(urllib.parse.quote(model, safe="").encode()) + packer.flush()
+        page = base64.b64encode(raw).decode()
+    path.write_text(
+        f'<mxfile host="app.diagrams.net"><diagram name="Overview" id="a1">{page}</diagram>'
+        '<diagram name="Notes" id="a2"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram>'
+        "</mxfile>",
+        encoding="utf-8",
+    )
+    return path
+
+
+_VISIO_NS = "http://schemas.microsoft.com/office/visio/2012/main"
+_PKG_RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+def build_vsdx(
+    path: Path, *, extra: Mapping[str, bytes] | None = None, root_rels: str = "", absolute: bool = False
+) -> Path:
+    """A minimal Visio package: page ``Site plan`` (a shape, a group with a member holding a field, a
+    connector between two shapes) listed before its background page ``Frame``, whose relationship comes
+    first. ``absolute``: the page relationships name their targets ``/visio/pages/…``, as some writers do."""
+    ns, r = _VISIO_NS, "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    at = "/visio/pages/" if absolute else ""
+    parts: dict[str, bytes] = {
+        "[Content_Types].xml": b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+        "_rels/.rels": (
+            f'<Relationships xmlns="{_PKG_RELS}"><Relationship Id="rId1" '
+            'Type="http://schemas.microsoft.com/visio/2010/relationships/document" '
+            'Target="visio/document.xml"/>'
+            f"{root_rels}</Relationships>"
+        ).encode(),
+        "visio/document.xml": f'<VisioDocument xmlns="{ns}"/>'.encode(),
+        "visio/pages/pages.xml": (
+            f'<Pages xmlns="{ns}" xmlns:r="{r}"><Page ID="0" NameU="Page-1" Name="Site plan">'
+            '<Rel r:id="rId2"/></Page><Page ID="4" NameU="Background-1" Name="Frame" Background="1">'
+            '<Rel r:id="rId1"/></Page></Pages>'
+        ).encode(),
+        "visio/pages/_rels/pages.xml.rels": (
+            f'<Relationships xmlns="{_PKG_RELS}">'
+            '<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/page" '
+            f'Target="{at}page2.xml"/><Relationship Id="rId2" '
+            f'Type="http://schemas.microsoft.com/visio/2010/relationships/page" Target="{at}page1.xml"/>'
+            "</Relationships>"
+        ).encode(),
+        "visio/pages/page1.xml": (
+            f'<PageContents xmlns="{ns}"><Shapes>'
+            '<Shape ID="1"><Text><cp IX="0"/>Contoso router</Text></Shape>'
+            '<Shape ID="2" Type="Group"><Text>Rack A</Text><Shapes><Shape ID="3"><Text><pp IX="0"/>Server '
+            '<fld IX="0">42</fld></Text></Shape></Shapes></Shape><Shape ID="5"><Text>uplink</Text></Shape>'
+            '</Shapes><Connects><Connect FromSheet="5" FromCell="BeginX" ToSheet="1"/>'
+            '<Connect FromSheet="5" FromCell="EndX" ToSheet="3"/></Connects></PageContents>'
+        ).encode(),
+        "visio/pages/page2.xml": (
+            f'<PageContents xmlns="{ns}"><Shapes><Shape ID="1"><Text>Contoso internal</Text></Shape></Shapes>'
+            "</PageContents>"
+        ).encode(),
+        **(extra or {}),
+    }
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as out:
+        for name in sorted(parts):
+            out.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), parts[name])
+    return path

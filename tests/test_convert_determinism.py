@@ -22,9 +22,11 @@ from test_convert_builders import (
     build_commented_pdf,
     build_docx_image,
     build_docx_merged,
+    build_drawio,
     build_pdf,
     build_picture_pdf,
     build_pptx_rich,
+    build_vsdx,
     build_xlsx_rich,
     eml_bytes,
     msg_bytes,
@@ -58,6 +60,9 @@ def extra_inputs(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
         "commented.pdf": build_commented_pdf(d / "commented.pdf"),
         "minutes.odt": pandoc_build("# Minutes\n\ntext\n", "markdown", d / "minutes.odt"),
         "minutes.rtf": pandoc_build("# Minutes\n\ntext\n", "markdown", d / "minutes.rtf"),
+        "flow.drawio": build_drawio(d / "flow.drawio"),
+        "packed.drawio": build_drawio(d / "packed.drawio", compressed=True),
+        "site.vsdx": build_vsdx(d / "site.vsdx"),
     }
     (d / "html.eml").write_bytes(eml_bytes(plain=None, html="<p>Hi <b>there</b></p>"))
     out["html.eml"] = d / "html.eml"

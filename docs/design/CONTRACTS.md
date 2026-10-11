@@ -358,6 +358,7 @@ PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pd
 engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.42):** `.url` → `text-plain`.
 **SUPERSEDED (2026-10-11, §16.42):** with no label rule, `.msg` → `msg-olefile`.
+**SUPERSEDED (2026-10-11, §16.42):** `.drawio .vsdx` → `diagram-stdlib`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -4654,7 +4655,7 @@ file), and `gitops.COMMIT_PATHSPECS` includes it.
 earlier conversions from the cache (`ConverterCache.delete(keys)`) and queues a `LABEL_ESCALATION` purge. The
 manifest meta keeps `policy_fingerprint`; when the effective policy changes, every label-capable file
 (`OOXML_SUFFIXES`, `.pdf`, `.eml`; **amended 2026-10-06, §16.26:** and the image suffixes; **amended
-2026-10-11, §16.42:** and `.msg`) that is
+2026-10-11, §16.42:** and `.msg`; `OOXML_SUFFIXES` gains `.vsdx`) that is
 published or refused by policy is re-screened (content hashes
 forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty (**amended
 2026-10-06:** and not again until the next policy change, §16.23). An OOXML name
@@ -11332,6 +11333,95 @@ under a rule with no purge; a stub from before the converter is read once), `tes
 (the reason class) and `tests/test_convert_determinism.py`. `cfb_bytes` and `msg_bytes` in
 `tests/test_convert_builders.py` write a compound file and a message from nothing; no binary file is
 committed.
+
+#### Diagrams: draw.io and Visio (N47)
+
+Amends §7's routing, §16.6's label-capable list and §16.26's setup-report scrub. Supersedes the refusal of
+`.drawio` and `.vsdx` (2026-10-08 triage D9.d, whose reasons were effort, not harm). `Registry.default`
+routes `.drawio .vsdx` to `diagram-stdlib` (`agentsync.convert.diagram.DiagramConverter`) under any policy
+and with or without an OCR engine: it reads no picture, and a Visio label is read (below), so unlike
+`.msg` it stays registered under a label rule and the `without_ocr` and `without_speech` registries hold
+it too. It uses the standard library only: no new dependency.
+
+- **Page.** One WHOLE unit: per diagram page a `## <page name>` heading (a Visio background page adds
+  ` (background page)`), one `- <text>` line per shape with text in the file's order (a group's members
+  after the group; lines inside a shape joined by ` / `; each line through `_escape_line`), then
+  `Connections:` and one `- <from> -> <to>: <label>` line per connector with a labelled end or a label
+  (`(no text)` for an end without text). A page with no text reads `[no text on this page]`; a diagram
+  with no text at all is the `empty-output` stub. The title is empty, so the page takes the file's name;
+  the summary is `draw.io diagram: N page(s); pages: …` or `Visio drawing: …`. Pictures, shape data,
+  links, layer names and a Visio master's default text are not read (a shape that shows only its master's
+  text is missing); text on a hidden layer is read like any other.
+- **draw.io.** `<mxfile>` with `<diagram>` pages, each a `<mxGraphModel>` or compressed (base64 of raw
+  deflate of the URI-encoded XML), or a bare `<mxGraphModel>`. A shape's text is its `value` (a
+  `UserObject` or `object` wrapper's `label`). A label is HTML only when `html=1` is one of the cell's
+  `;`-separated style items, as draw.io renders it: then `<br>` and block tags (`<div>`, `<p>`, `<li>`,
+  `<tr>` and the like, open or close) are line breaks, table cells are spaces, other tags are dropped and
+  entities decoded; without `html=1` the label is plain text, angle brackets and all. A tag holds no `<`
+  after its first: a `<` with another `<` before its `>` is a character (`p99 < 80ms <b>now</b>` reads
+  `p99 < 80ms now`), which also keeps each tag pattern linear in the label's length (a label of 200,000
+  unclosed `<` is read in well under a second, where rescanning from every `<` took most of a minute). A
+  vertex whose parent is an edge is that edge's label. A cell without an id is no edge's end.
+- **Visio.** `visio/pages/pages.xml` gives the order and names; each page part is found through its
+  relationship, whether its target is relative (`page1.xml`) or absolute (`/visio/pages/page1.xml`). A
+  `Connect` row whose `FromCell` starts `Begin` or `End` gives a connector's ends, and a connector is not
+  listed as a shape; other glue (a callout's control handle, `PinX`) leaves the shape a shape. A shape
+  without an `ID` is no connector's end, and each shape shows its own text whatever its `ID` (two shapes
+  without one, or sharing one, are two lines). A package without `visio/pages/pages.xml` is `conversion
+  failed: not a Visio drawing`.
+- **Bounds.** No XML part is inflated past 32 MiB, no `.drawio` file is read past 128 MiB, and no file's
+  inflated XML passes 128 MiB in all: past any of them the file is a `conversion failed: diagram … too
+  large` stub, which the report counts under `conversion failed` (that prefix is matched before `too
+  large`). Malformed XML, another XML document under the name, or a broken compressed page is a
+  `conversion failed` stub whose reason holds no text of the file: for malformed XML it is `<part> is not
+  well-formed XML: <expat's fixed wording for the error code>: line L, column C`, or `… its encoding is not
+  supported` for an encoding declaration Python cannot decode, never the parser's own message (that can
+  name an undefined entity or the declared encoding). Entity expansion is bounded by expat's
+  amplification limit (a billion-laughs file is a `not well-formed XML` failure); external entities are
+  never fetched.
+- **Labels.** `.vsdx` joins `policy.OOXML_SUFFIXES`, so a Visio drawing is screened like any Office file
+  (an excluded label refuses it, `refuse_unlabelled` refuses an unlabelled one, a name whose bytes are not
+  a ZIP is `not-ooxml`) and, through `cycle._LABEL_CAPABLE`, is re-screened when the policy changes.
+  Routing it without that would convert a drawing the policy excludes, so the two land together.
+  `canonical.OOXML_SUFFIXES` is not changed: a `.vsdx` is hashed by its bytes. A `.drawio` carries no
+  sensitivity label (plain XML, like `.xml`), so label rules do not apply to it.
+- **Report.** `_PATH_IN_LOG_RE` gains `drawio` (`vsdx` was already in it), so a fetch warning naming a
+  diagram at a source's top is `<path>`; the per-suffix scrub test now covers 39 suffixes. Both suffixes
+  stay in `_REFUSED_TYPE_LIST`: a stub can be older than its converter.
+- **Old stubs.** An existing `no converter for .drawio` or `.vsdx` stub becomes a page with no operator
+  step: on this Mac through the re-read pass (§16.27), online-only through the work queue under the byte
+  budget. `.vsd`, `.vsdm`, stencils and templates are still refused.
+
+Version: `1.0.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
+
+##### `agentsync.convert.diagram` — `src/agentsync/convert/diagram.py` — owner: **convert**
+
+```python
+class DiagramConverter:
+    converter_id = "diagram-stdlib"
+    extensions: tuple[str, ...] = (".drawio", ".vsdx")
+
+    def __init__(self, cfg: ConvertConfig) -> None: ...
+    def version(self) -> str: ...
+    def options(self) -> Mapping[str, OptionValue]: ...
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
+```
+
+Tests: `tests/test_convert_formats.py` (`test_a_drawio_diagram_is_its_shape_text_and_connections_per_page`,
+`test_a_drawio_label_reads_as_draw_io_shows_it`,
+`test_a_visio_drawing_is_its_shape_text_and_connections_per_page`,
+`test_a_visio_callout_glued_to_a_shape_stays_a_shape`, `test_a_diagram_that_cannot_be_read_fails_bounded`,
+`test_a_drawio_file_past_the_total_is_not_parsed`,
+`test_a_connector_with_one_end_does_not_borrow_a_shape_without_an_id`,
+`test_a_drawio_html_label_of_unclosed_tags_is_read_in_linear_time`,
+`test_a_drawio_bracket_that_opens_no_tag_is_a_character`,
+`test_a_visio_shape_keeps_its_own_text_whatever_its_id`,
+`test_a_diagram_parse_failure_reason_holds_no_text_of_the_file`), `tests/test_policy.py`
+(`test_a_visio_drawing_is_screened_for_labels_like_any_office_file`), `tests/test_cycle.py`
+(`test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page`), `tests/test_convert_core.py`
+(the route set and the counts: 11 converters, 13 with an engine, 11 under a label rule),
+`tests/test_convert_determinism.py` (three diagram inputs) and `tests/test_setup_report.py` (the scrub).
+`build_drawio` and `build_vsdx` in `tests/test_convert_builders.py` write both formats from nothing.
 
 ### 16.43 Setup prompt v11 (2026-10-11, wave B13 lane F)
 

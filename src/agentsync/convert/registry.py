@@ -190,7 +190,8 @@ class Registry:
         speech: SpeechEngine | None = None,
     ) -> Registry:
         """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, vtt, eml, teams,
-        msg), each behind the policy guard (``policy`` defaults to encryption detection only) and the banner.
+        msg, diagram), each behind the policy guard (``policy`` defaults to encryption detection only) and the
+        banner.
 
         ``.msg`` gets ``msg-olefile`` unless a ``[policy]`` label rule is active: a ``.msg`` carries its label
         in a named MAPI property the screen does not read, so under a rule it stays the ``no converter`` stub
@@ -212,7 +213,8 @@ class Registry:
         checked.  ``without_ocr`` never holds it, so a recording the engines failed on gets the ``no
         converter`` refusal a later read looks for.  With ``speech`` such a registry keeps the one without it
         as ``without_speech``, so a recording the speech engine failed on keeps its screens."""
-        from agentsync.convert.eml import EmlConverter  # noqa: PLC0415 - keep registry import-light
+        from agentsync.convert.diagram import DiagramConverter  # noqa: PLC0415 - keep registry import-light
+        from agentsync.convert.eml import EmlConverter  # noqa: PLC0415
         from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
         from agentsync.convert.pandoc import PandocConverter, _PandocWithoutOcr  # noqa: PLC0415
         from agentsync.convert.pdf import PdfConverter  # noqa: PLC0415
@@ -234,6 +236,7 @@ class Registry:
             VttConverter(cfg),
             EmlConverter(cfg),
             TeamsMonthConverter(cfg),
+            DiagramConverter(cfg),
         ]
         if not content_policy.labels_active:
             from agentsync.convert.msg import MsgConverter  # noqa: PLC0415

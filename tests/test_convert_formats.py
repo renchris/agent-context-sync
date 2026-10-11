@@ -7,12 +7,14 @@ import ctypes
 import datetime as dt
 import functools
 import hashlib
+import html
 import io
 import json
 import logging
 import re
 import struct
 import subprocess
+import time
 import unicodedata
 import zipfile
 import zlib
@@ -33,11 +35,13 @@ from agentsync import cycle as cycle_mod
 from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
+from agentsync.convert import diagram as diagram_mod
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import pptx as pptx_mod
 from agentsync.convert._common import _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
+from agentsync.convert.diagram import DiagramConverter
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.markdown import MarkdownConverter
 from agentsync.convert.msg import NOT_MSG_REASON, MsgConverter
@@ -61,9 +65,11 @@ from test_convert_builders import (
     build_commented_pdf,
     build_docx_image,
     build_docx_merged,
+    build_drawio,
     build_pdf,
     build_picture_pdf,
     build_pptx_rich,
+    build_vsdx,
     build_xlsx_rich,
     cfb_bytes,
     eml_bytes,
@@ -3738,3 +3744,231 @@ def test_an_internet_shortcut_is_titled_by_its_name_and_summarised_by_its_target
     )
     assert u.title == "" and u.summary == summary
     assert u.body.startswith("```ini\n[") and "\r" not in u.body
+
+
+# ---------------------------------------------------------------------------------------------------------
+# diagrams: draw.io and Visio (N47)
+# ---------------------------------------------------------------------------------------------------------
+
+DRAWIO_BODY = (
+    "## Overview\n\n- Contoso API\n- Billing / service\n- Fabrikam gateway\n- \\# not a heading\n\n"
+    "Connections:\n\n- Contoso API -> Billing / service: calls / nightly\n\n"
+    "## Notes\n\n[no text on this page]\n"
+)
+
+
+@pytest.mark.parametrize("compressed", [False, True], ids=["plain", "compressed"])
+def test_a_drawio_diagram_is_its_shape_text_and_connections_per_page(
+    tmp_path: Path, compressed: bool
+) -> None:
+    """A page's shapes in file order, an HTML label as text, an edge's own and child labels, a UserObject's
+    label; a compressed page reads the same. The title is left to the file's name."""
+    src = build_drawio(tmp_path / "Contoso Architecture.drawio", compressed=compressed)
+    u = _one(DiagramConverter(CFG).convert(src, name="Contoso Architecture.drawio"))
+    assert u.body == DRAWIO_BODY
+    assert (u.title, u.summary) == ("", "draw.io diagram: 2 page(s); pages: Overview; Notes")
+
+
+@pytest.mark.parametrize(
+    ("label", "style", "line"),
+    [
+        ("Billing&lt;div&gt;service&lt;/div&gt;", "html=1;", "Billing / service"),
+        (
+            "&lt;table&gt;&lt;tr&gt;&lt;td&gt;Name&lt;/td&gt;&lt;td&gt;Owner&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;",
+            "html=1;",
+            "Name Owner",
+        ),
+        ("a &amp;lt;b&amp;gt; tag", "html=1;", "a <b> tag"),
+        ("latency &lt;50ms, p99 &gt; 80ms", "rounded=1;", "latency <50ms, p99 > 80ms"),
+    ],
+    ids=["div-line", "table-cells", "escaped-html", "plain-angle-brackets"],
+)
+def test_a_drawio_label_reads_as_draw_io_shows_it(tmp_path: Path, label: str, style: str, line: str) -> None:
+    """An HTML label's ``<div>`` lines and table cells stay apart; a label without html=1 is plain text, angle
+    brackets and all, as draw.io shows it."""
+    cell = f'<mxCell id="2" value="{label}" style="{style}" vertex="1" parent="1"/>'
+    model = f"<mxGraphModel><root>{cell}</root></mxGraphModel>"
+    src = build_drawio(tmp_path / "Contoso Labels.drawio", model=model)
+    assert f"## Overview\n\n- {line}\n" in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+
+
+@pytest.mark.parametrize("absolute", [False, True], ids=["relative-targets", "absolute-targets"])
+def test_a_visio_drawing_is_its_shape_text_and_connections_per_page(tmp_path: Path, absolute: bool) -> None:
+    """Pages in pages.xml order (not relationship order), group members after the group, a field's shown
+    value, a connector as a connection, a background page named so; a page found by an absolute target too."""
+    src = build_vsdx(tmp_path / "Contoso Network.vsdx", absolute=absolute)
+    u = _one(DiagramConverter(CFG).convert(src, name="Contoso Network.vsdx"))
+    assert u.body == (
+        "## Site plan\n\n- Contoso router\n- Rack A\n- Server 42\n\nConnections:\n\n"
+        "- Contoso router -> Server 42: uplink\n\n## Frame (background page)\n\n- Contoso internal\n"
+    )
+    assert (u.title, u.summary) == ("", "Visio drawing: 2 page(s); pages: Site plan; Frame")
+
+
+def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
+    """A deflate bomb stops at the part limit; another XML document, a broken page and a non-zip .vsdx fail
+    with what they are; a diagram with no text at all is the empty-output stub."""
+    reg = Registry.default(CFG)
+    bomb = build_drawio(tmp_path / "bomb.drawio", compressed=True, model="A" * (40 * 1024 * 1024))
+    other = _write(tmp_path, "other.drawio", '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    garbled = _write(tmp_path, "garbled.drawio", '<mxfile><diagram name="P">!!!</diagram></mxfile>')
+    blank = build_drawio(tmp_path / "blank.drawio", model="<mxGraphModel><root/></mxGraphModel>")
+    renamed = _write(tmp_path, "renamed.vsdx", b"not a zip")
+    got = {
+        p.name: convert_file(
+            p,
+            name=p.name,
+            content_sha256=hashlib.sha256(p.read_bytes()).hexdigest(),
+            canonical_sha256="c" * 64,
+            registry=reg,
+            cache=ConverterCache(tmp_path / "cache"),
+        )
+        for p in (bomb, other, garbled, blank, renamed)
+    }
+    assert got["bomb.drawio"].status is ConversionStatus.FAILED and "too large" in str(
+        got["bomb.drawio"].reason
+    )
+    assert got["other.drawio"].reason == (
+        "conversion failed: not a draw.io diagram (no <mxfile> or <mxGraphModel> root element)"
+    )
+    assert got["garbled.drawio"].status is ConversionStatus.FAILED
+    assert got["blank.drawio"].reason == policy.EMPTY_OUTPUT_REASON
+    assert got["renamed.vsdx"].reason == policy.NOT_OOXML_REASON
+
+
+def test_a_visio_callout_glued_to_a_shape_stays_a_shape(tmp_path: Path) -> None:
+    """Only BeginX/EndX glue makes a shape a connector: a callout glued by its control handle is a shape."""
+    page = (
+        b'<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main"><Shapes>'
+        b'<Shape ID="1"><Text>Contoso router</Text></Shape>'
+        b'<Shape ID="2"><Text>check the uplink</Text></Shape>'
+        b'</Shapes><Connects><Connect FromSheet="2" FromCell="Controls.Row_1" ToSheet="1" ToCell="PinX"/>'
+        b"</Connects></PageContents>"
+    )
+    src = build_vsdx(tmp_path / "Contoso Callout.vsdx", extra={"visio/pages/page1.xml": page})
+    assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
+        "## Site plan\n\n- Contoso router\n- check the uplink\n\n## Frame"
+    )
+
+
+def test_a_drawio_file_past_the_total_is_not_parsed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The file's own XML counts against the total: a plain .drawio past it fails ``too large`` unread."""
+    src = build_drawio(tmp_path / "Contoso Big.drawio")
+    monkeypatch.setattr(diagram_mod, "_MAX_TOTAL_BYTES", src.stat().st_size)
+    assert "Contoso API" in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    monkeypatch.setattr(diagram_mod, "_MAX_TOTAL_BYTES", src.stat().st_size - 1)
+    with pytest.raises(ConversionError, match="diagram too large"):
+        DiagramConverter(CFG).convert(src, name=src.name)
+
+
+def test_a_connector_with_one_end_does_not_borrow_a_shape_without_an_id(tmp_path: Path) -> None:
+    """An edge glued at one end only says ``(no text)`` for the other, even when a shape carries no id."""
+    model = (
+        '<mxGraphModel><root><mxCell id="2" value="Contoso API" vertex="1" parent="1"/>'
+        '<mxCell value="Loose note" vertex="1" parent="1"/>'
+        '<mxCell id="4" value="calls" edge="1" source="2" parent="1"/></root></mxGraphModel>'
+    )
+    src = build_drawio(tmp_path / "Contoso Loose.drawio", model=model)
+    assert (
+        "\n- Contoso API -> (no text): calls\n"
+        in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    )
+    page = (
+        b'<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main"><Shapes>'
+        b'<Shape ID="1"><Text>Contoso router</Text></Shape><Shape><Text>Loose note</Text></Shape>'
+        b'<Shape ID="5"><Text>uplink</Text></Shape></Shapes><Connects>'
+        b'<Connect FromSheet="5" FromCell="BeginX" ToSheet="1"/></Connects></PageContents>'
+    )
+    src = build_vsdx(tmp_path / "Contoso Loose.vsdx", extra={"visio/pages/page1.xml": page})
+    assert (
+        "\n- Contoso router -> (no text): uplink\n"
+        in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    )
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Contoso " + "<" * 200_000, "Contoso <" + " " * 20_000, "Contoso " + "<br " * 40_000],
+    ids=["open-brackets", "blanks-after-a-bracket", "unclosed-breaks"],
+)
+def test_a_drawio_html_label_of_unclosed_tags_is_read_in_linear_time(tmp_path: Path, label: str) -> None:
+    """A label of ``<`` that never close is read once, not once from every ``<``: each of these took 17 s or
+    more before the tag patterns were linear, and no timeout bounds an in-process converter."""
+    cell = f'<mxCell id="2" value="{html.escape(label)}" style="html=1;" vertex="1" parent="1"/>'
+    src = build_drawio(
+        tmp_path / "Contoso Slow.drawio", model=f"<mxGraphModel><root>{cell}</root></mxGraphModel>"
+    )
+    start = time.monotonic()
+    body = _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    assert time.monotonic() - start < 10
+    assert body.startswith("## Overview\n\n- Contoso ")
+
+
+def test_a_drawio_bracket_that_opens_no_tag_is_a_character(tmp_path: Path) -> None:
+    """In an HTML label a ``<`` with another ``<`` before its ``>`` is text; the tag after it is read."""
+    label = "p99 &lt; 80ms &lt;b&gt;now&lt;/b&gt;"
+    cell = f'<mxCell id="2" value="{label}" style="html=1;" vertex="1" parent="1"/>'
+    src = build_drawio(
+        tmp_path / "Contoso Lt.drawio", model=f"<mxGraphModel><root>{cell}</root></mxGraphModel>"
+    )
+    assert "\n- p99 < 80ms now\n" in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+
+
+@pytest.mark.parametrize(
+    ("shapes", "lines"),
+    [
+        (
+            b"<Shape><Text>Alpha</Text></Shape><Shape><Text>Beta</Text></Shape>"
+            b'<Shape ID="3"><Text>Gamma</Text></Shape>',
+            "- Alpha\n- Beta\n- Gamma\n",
+        ),
+        (
+            b'<Shape ID="1"><Text>Alpha</Text></Shape><Shape ID="1"><Text>Beta</Text></Shape>',
+            "- Alpha\n- Beta\n",
+        ),
+    ],
+    ids=["no-id", "shared-id"],
+)
+def test_a_visio_shape_keeps_its_own_text_whatever_its_id(tmp_path: Path, shapes: bytes, lines: str) -> None:
+    """Shapes without an ID, or sharing one, each show their own text, not the last such shape's."""
+    page = (
+        b'<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main"><Shapes>'
+        + shapes
+        + b"</Shapes></PageContents>"
+    )
+    src = build_vsdx(tmp_path / "Contoso Ids.vsdx", extra={"visio/pages/page1.xml": page})
+    assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
+        f"## Site plan\n\n{lines}\n## Frame"
+    )
+
+
+@pytest.mark.parametrize(
+    ("data", "reason"),
+    [
+        (
+            b'<?xml version="1.0" encoding="x-contoso-secret"?><mxGraphModel/>',
+            "the draw.io file is not well-formed XML: its encoding is not supported",
+        ),
+        (
+            b'<?xml version="1.0" encoding="shift_jis"?><mxGraphModel/>',
+            "the draw.io file is not well-formed XML: its encoding is not supported",
+        ),
+        (
+            b"<!DOCTYPE x [<!ENTITY e SYSTEM 'file:///contoso-secret'>]><mxGraphModel>&e;</mxGraphModel>",
+            r"the draw.io file is not well-formed XML: undefined entity: line 1, column \d+",
+        ),
+        (
+            b"<mxGraphModel><contoso-secret></mxGraphModel>",
+            r"the draw.io file is not well-formed XML: mismatched tag: line 1, column \d+",
+        ),
+    ],
+    ids=["unknown-encoding", "multi-byte-encoding", "external-entity", "mismatched-tag"],
+)
+def test_a_diagram_parse_failure_reason_holds_no_text_of_the_file(
+    tmp_path: Path, data: bytes, reason: str
+) -> None:
+    """The reason is fixed wording and a position: an encoding's name, an entity's and a tag's stay out."""
+    src = _write(tmp_path, "Contoso Broken.drawio", data)
+    with pytest.raises(ConversionError) as err:
+        DiagramConverter(CFG).convert(src, name=src.name)
+    assert re.fullmatch(reason, str(err.value)), str(err.value)

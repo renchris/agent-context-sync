@@ -17,6 +17,7 @@ from agentsync.convert.canonical import canonical_hash
 from agentsync.errors import ConfigError
 from agentsync.model import ConversionStatus, RenderedUnit, UnitKind
 from agentsync.policy import ContainerKind, PolicyConfig, ScreenStatus
+from test_convert_builders import build_vsdx
 
 LABEL = "2096f6a2-d2f7-48be-b329-b73aaa526e5d"  # "Highly Confidential" in the fixtures
 OTHER_LABEL = "cb46c030-1825-4e81-a295-151c039dbf02"
@@ -524,6 +525,31 @@ def test_label_refusal_through_the_default_registry(fixture_files: dict[str, Pat
     # the policy is part of the action key: changing it can never serve a result cached under another policy
     plain = run_convert(base, "sample.docx", Registry.default(CFG), tmp_path / "c")
     assert plain.action_key != ok.action_key and not plain.from_cache
+
+
+@pytest.mark.parametrize("where", ["custom.xml", "LabelInfo"])
+def test_a_visio_drawing_is_screened_for_labels_like_any_office_file(tmp_path: Path, where: str) -> None:
+    """A .vsdx is an Office package and carries a label where the others do: an excluded one is refused before
+    the converter runs, and under refuse_unlabelled an unlabelled drawing is refused too (N47)."""
+    if where == "custom.xml":
+        extra = {"docProps/custom.xml": custom_xml((LABEL, SITE, "Highly Confidential", "true"))}
+        rel = f'<Relationship Id="rIdC" Type="{policy.CUSTOM_PROPS_REL_TYPE}" Target="docProps/custom.xml"/>'
+    else:
+        extra = {"docMetadata/LabelInfo.xml": labelinfo_xml((LABEL, SITE, "1", "0"))}
+        rel = (
+            f'<Relationship Id="rIdL" Type="{policy.LABELINFO_REL_TYPE}" '
+            'Target="/docMetadata/LabelInfo.xml"/>'
+        )
+    labelled = build_vsdx(tmp_path / "Contoso Plan.vsdx", extra=extra, root_rels=rel)
+    plain = build_vsdx(tmp_path / "Contoso Open.vsdx")
+    excluded = Registry.default(CFG, policy=PolicyConfig(exclude_label_ids=(LABEL,)))
+    r = run_convert(labelled, "Contoso Plan.vsdx", excluded, tmp_path / "c")
+    assert r.status is ConversionStatus.REFUSED and "is excluded by [policy]" in str(r.reason)
+    assert run_convert(plain, "Contoso Open.vsdx", excluded, tmp_path / "c").status is ConversionStatus.OK
+    strict = Registry.default(CFG, policy=PolicyConfig(refuse_unlabelled=True))
+    unlabelled = run_convert(plain, "Contoso Open.vsdx", strict, tmp_path / "c")
+    assert unlabelled.status is ConversionStatus.REFUSED and "no sensitivity label" in str(unlabelled.reason)
+    assert run_convert(labelled, "Contoso Plan.vsdx", strict, tmp_path / "c").status is ConversionStatus.OK
 
 
 # ---------------------------------------------------------------------------------------------------------

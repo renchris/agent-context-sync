@@ -36,6 +36,7 @@ from agentsync import curate, gitops, governance, loop, materialise, slug
 from agentsync import cycle as cycle_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
+from agentsync.convert import diagram as diagram_mod
 from agentsync.convert import image as image_mod
 from agentsync.convert import msg as msg_mod
 from agentsync.convert import ocr
@@ -72,7 +73,9 @@ from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
 from test_convert_builders import (
     build_annotated_pdf,
+    build_drawio,
     build_picture_pdf,
+    build_vsdx,
     msg_bytes,
     page_picture,
     pandoc_build,
@@ -2854,6 +2857,32 @@ def test_an_internet_shortcut_stub_from_before_its_converter_is_read_once_as_a_p
     assert fm["summary"] == "Internet shortcut to https://contoso.example/roadmap"
     assert "```ini\n[InternetShortcut]\nURL=https://contoso.example/roadmap\n```" in body
     assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
+
+
+def test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``.drawio`` or ``.vsdx`` mirrored before ``diagram-stdlib`` existed is a ``no converter`` stub. This
+    build reads each again, once, with no operator step, and nothing else (N47)."""
+    rels = ["projects/Contoso Architecture.drawio", "projects/Contoso Network.vsdx"]
+    build_drawio(local_source_dir / rels[0], compressed=True)
+    build_vsdx(local_source_dir / rels[1])
+    with monkeypatch.context() as old:
+        old.setattr(diagram_mod.DiagramConverter, "extensions", ())
+        assert run(sample_config).exit_code == 0
+        assert [_mirror_page(sample_config, rel)[0]["reason"] for rel in rels] == [
+            "no converter for .drawio",
+            "no converter for .vsdx",
+        ]
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.commit_sha is not None and sorted(fetched) == rels
+    fm, body = _mirror_page(sample_config, rels[0])
+    assert (fm["status"], fm["source_title"]) == ("current", "Contoso Architecture.drawio")
+    assert fm["converter"].startswith("diagram-stdlib@1.0.0+") and "\n- Contoso API\n" in body
+    fm, body = _mirror_page(sample_config, rels[1])
+    assert fm["status"] == "current" and "\n- Contoso router -> Server 42: uplink\n" in body
+    assert run(sample_config).commit_sha is None and sorted(fetched) == rels, "no file is read a second time"
 
 
 @pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])
