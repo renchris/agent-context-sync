@@ -11020,7 +11020,8 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   from and of `~/src/agent-context-sync`), read as files with no git process, as `<proxy-N>`: the logged git
   error names that proxy (`Could not resolve proxy: <host>`). At the stop itself the old checkout's code runs
   (the pull failed), so the companion and the proxy rule protect every later report, not that first one. The
-  shell fallback report does not read git's config yet.
+  shell fallback report does not read git's config yet. **Amended (2026-10-11, §16.40):** it does now: its
+  `redaction_pairs` reads the same git config files, its own checkout standing for the installed one.
 - **Step 3's second no-report case names both of step 1's version checks** (H2; amends §16.36 "Step 3 names the
   two stops with no report"). It reads "when step 1 stops because this prompt is not the installer's (either
   check: the --version line does not end with this prompt's number, or the command says so)". In step 1's one
