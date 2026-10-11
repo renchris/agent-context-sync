@@ -1940,7 +1940,9 @@ def _git_proxy_urls() -> list[str]:
     return urls
 
 
-def _proxy_hosts(r: _Run) -> list[str]:
+def _proxy_urls(r: _Run) -> list[str]:
+    """Proxy URLs agentsync itself uses or prints: the environment, the system proxy and its PAC URL, and
+    ``[network] proxy``. Git's own proxies are :func:`_git_proxy_urls`."""
     urls = [os.environ.get(k, "") for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")]
     urls += [os.environ.get(k, "") for k in ("HTTP_PROXY", "http_proxy")]
     if r.system_proxy is not None:
@@ -1948,7 +1950,10 @@ def _proxy_hosts(r: _Run) -> list[str]:
         urls += [r.system_proxy.pac_url or ""]
     if r.config is not None and r.config.network.proxy:
         urls.append(r.config.network.proxy)
-    urls += _git_proxy_urls()  # last: a git-only proxy leaves every other source's <proxy-N> as it was
+    return urls
+
+
+def _proxy_hosts(urls: list[str]) -> list[str]:
     hosts: list[str] = []
     for url in filter(None, (u.strip() for u in urls)):
         if url.lower() in ("direct", "none", "off"):
@@ -2150,12 +2155,15 @@ def _build_redactor(r: _Run) -> Redactor:
     for src in r.config.sources if r.config is not None else ():
         if src.id in cloud_ids or src.id not in _GENERIC_IDS:
             red.add("source", src.id)
-    for host in _proxy_hosts(r):
+    for host in _proxy_hosts(_proxy_urls(r)):
         red.add("proxy", host, ignore_case=True)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
     # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
     pac = r.system_proxy.pac_url if r.system_proxy is not None else None
     red.add("proxy", pac.split("://", 1)[-1] if pac else None, ignore_case=True)
+    # Git's proxies last, after the PAC value: a git-only proxy leaves every other <proxy-N> as it was.
+    for host in _proxy_hosts(_git_proxy_urls()):
+        red.add("proxy", host, ignore_case=True)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
     for word in (w.strip(".,") for w in tail_words):

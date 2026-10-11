@@ -1831,18 +1831,23 @@ def test_an_mdm_host_with_no_dot_is_not_registered(
     assert "- MDM enrollment (" in section(text, "Environment")
 
 
+@pytest.mark.parametrize("git_proxy", [False, True])
 def test_a_pac_url_is_redacted_after_its_scheme(
-    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, git_proxy: bool
 ) -> None:
     """A cloud proxy's PAC path can carry the customer's domain (``/<domain>/proxy.pac``): the PAC URL after
     its scheme is one proxy value, so a quote without the scheme is covered too, and the bare host keeps its
-    own placeholder (B13 H19)."""
+    own placeholder (B13 H19). Git's proxies are registered after it, so a git-only proxy leaves its number
+    as it was."""
     pac = "https://pac.cloudproxy.example/fabrikam.com/proxy.pac"
     for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(
         net, "system_proxy", lambda runner=None: net.SystemProxy(pac_enabled=True, pac_url=pac)
     )
+    if git_proxy:
+        with (Path.home() / ".gitconfig").open("a", encoding="utf-8") as f:
+            f.write("[http]\n\tproxy = http://gitproxy.fabrikam.example:3128\n")
     write_install_log(fake_mac)
     quote = f"| PAC {pac} on host pac.cloudproxy.example, typed {pac.split('://', 1)[1]} |"
     write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", quote))
@@ -1853,6 +1858,7 @@ def test_a_pac_url_is_redacted_after_its_scheme(
     friction = section(text, "Agent friction log")
     m = re.search(r"\| PAC https://(<proxy-\d+>) on host (<proxy-\d+>), typed (<proxy-\d+>) \|", friction)
     assert m and m.group(1) == m.group(3) != m.group(2), friction
+    assert (m.group(2), m.group(1)) == ("<proxy-1>", "<proxy-2>"), friction
 
 
 @pytest.mark.parametrize("where", ["home", "xdg", "checkout"])

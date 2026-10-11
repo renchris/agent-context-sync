@@ -10647,8 +10647,8 @@ config files git reads (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`, `/etc/git
 the installed checkout, the one `direct_url.json` names, and of the checkout the prompt clones,
 `~/src/agent-context-sync`), read as files with no git process, because a git error logged at step 1 names git's
 proxy (`Could not resolve proxy: <host>`) and step 1 may have stopped with no git. One reader,
-`_git_proxy_urls`, serves this and §16.43's H1; its values come after every other proxy source, so a git-only
-proxy leaves the other sources' `<proxy-N>` numbers as they were. The shell fallback's `redaction_pairs`
+`_git_proxy_urls`, serves this and §16.43's H1; its values are registered after every other proxy value, the PAC
+URL after its scheme included, so a git-only proxy leaves the other `<proxy-N>` numbers as they were. The shell fallback's `redaction_pairs`
 registers the same PAC value, the PAC URL's host and the host of every proxy URL that has a dot (scutil, the
 proxy environment variables, `[network] proxy` and the same git config files, its own checkout standing for the
 installed one), cutting the path before the userinfo, as `urlsplit` does. Redaction only grows. Tests:
