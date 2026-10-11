@@ -5024,7 +5024,9 @@ section and the Summary say "<a> NEXT: line(s) in <r> run(s) (exactly one per in
 other instruction-like line(s) (...) in the last <n> line(s) of install.out", <r> being the lines read that are
 install.sh's `# run=<id> <UTC> install.sh <arguments>` header (the "in <r> run(s)" is left out when there is none);
 with no file, "No installer output at <path>". **Amended (2026-10-07, §16.30):** the lines counted start at the
-first header line read, so `NEXT:` lines and runs are counted over the same whole runs.
+first header line read, so `NEXT:` lines and runs are counted over the same whole runs. **Amended (2026-10-11,
+§16.40 "A v6 install-step error is resolved as v7's, and the Summary's installer output is this attempt's"):** when earlier attempts' runs were read, the Summary's line counts the latest attempt's runs only and says
+how many it left out; the section's line is unchanged.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -5972,7 +5974,8 @@ In v7 step 2 runs one command, install.sh, and starts no background job: for a v
 one, read as v7) an install-step error is resolved by any install run of the attempt that ended rc 0. The line
 stays on the agent friction line. Unchanged: a last install run that did not end rc 0 is "failed at step 2"
 before any friction line is read; a v7 step-1 error still needs a run started after it; v6 (its step 2 also
-started background sync) and v5 keep their rules. install.sh prints the link from the report's last line, so the
+started background sync) and v5 keep their rules. **Amended (2026-10-11, §16.40 "A v6 install-step error is resolved as v7's, and the Summary's installer output is this attempt's"):** v6 now resolves an
+install-step error as v7 does; v5 keeps its rule. install.sh prints the link from the report's last line, so the
 printed link and the Summary's outcome are the same value.
 
 **setup-report: two wording fixes.** The Redaction section's "Residue check: N capitalised or joined word(s)"
@@ -8659,7 +8662,8 @@ looked for in every line read.
 
 Not changed: the counts cover every run read, not only this attempt's. Most of the field's `11 fix:` lines
 were printed by older installers in earlier attempts; the tail under Installer shows what the last run
-printed.
+printed. **Amended (2026-10-11, §16.40 "A v6 install-step error is resolved as v7's, and the Summary's installer output is this attempt's"):** the Summary's line now counts the latest attempt's runs; the Installer
+section's line still counts every run read.
 
 Tests: `tests/test_setup_report.py` (three runs whose first is cut by the 64 KiB read: 2 `NEXT:` in 2 runs,
 the first run's `fix:` line left out, the line count from the first header, the note, and the embedded tail
@@ -10769,6 +10773,29 @@ installed nothing. An install run that logged `commit=-` (a checkout on a Mac wi
 `commit -`. That is why the rule is not "the last start line with a commit", which would show an older run's
 commit as the last one's. The label `last install.sh run` stays. Test:
 `test_install_source_skips_a_run_that_read_no_commit`.
+
+**A v6 install-step error is resolved as v7's, and the Summary's installer output is this attempt's** (B13
+H21, v10 E3.b and E3.h; amends §16.14, §16.22 and §16.30). `stopping_error` resolves an install-step error of a v6
+attempt by any install run of the attempt that ended rc 0, whenever the line was logged, as since §16.22 for v7.
+§16.22 kept v6's rule because its step 2 also started background sync. But that was the one install.sh command,
+whose exit 0 required the background job to be running (`--confirm-install-agent`: in every installer a v6 copy
+could reach step 2 with, `35c2b5f` to `7c4fbf2`, anything short of a running background job exits 1, or 3 while
+Allow is pending; since v8 the installer stops a v6 copy at step 1), and v6 after K11b started none. A step 2
+`error` an agent logged after a successful install therefore read "failed at step 2" in every later report from a
+Mac with such an attempt. A step 1 error still needs a run started at or after it; v5 keeps its `end`-line rule;
+`retried_runs` stays v7-only. The Summary's `installer output:` line counts from the first install.out header
+(`# run=<id>`) whose id is a run of the latest attempt (`runs_for_attempt`), when that attempt has a time: the
+attempt's runs are the file's last, so "in the last <n> line(s)" still holds, and the line adds "(this attempt's
+runs only: the <k> earlier run(s) read are not counted; the Installer section counts them)". No run of the
+attempt in what was read: "- installer output: no run of this attempt in the last <n> line(s) of install.out (the
+Installer section counts the <r> earlier run(s) read)". With no friction log, an attempt with no time, no header
+read, no run in install.log (nothing then says when the runs read happened), or every run read the attempt's, the
+line is as before. The Installer section's line still counts every whole run read. `_OUT_RUN_RE` captures the run
+id, `_Facts.out_counted` keeps the lines counted, and `_installer_output_line` writes the Summary's line. The next
+triage of a report from a Mac with such a v6 attempt sees it move from "failed at step 2" to "fully one command"
+or "worked with help": that is this fix, not a new event. Tests:
+`test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only` and
+`test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

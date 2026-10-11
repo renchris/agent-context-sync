@@ -2257,6 +2257,62 @@ def test_friction_prose_gets_the_same_redaction(fake_mac: dict[str, Path]) -> No
 # ---- setup prompt v6: install.sh --log-start / --log / --log-end, L3, L6-L10 ------------------------------
 
 
+def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only(
+    fake_mac: dict[str, Path],
+) -> None:
+    """v10 E3.b: install.out holds every run, earlier attempts' too, and a reader took the three ``fix:``
+    lines in the Summary (one per install run read) as this attempt's. Every other Summary line is the
+    latest attempt's, so this one counts from the attempt's first run header and says how many earlier runs
+    it left out. The Installer section still counts every whole run read (B13 H21)."""
+    old, new = "20261001T100000Z-11", "20261009T100100Z-22"
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)
+    write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
+    first = V6_HAPPY.replace("2026-09-29T", "2026-10-01T")
+    second = V10_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-09T09:59:00Z").replace(
+        "2026-09-29T10:01:10Z", "2026-10-09T10:02:00Z"
+    )
+    write_friction(fake_mac, first + second)
+
+    def block(run: str, fixes: int) -> list[str]:
+        return [
+            f"# run={run} {run[:4]}-{run[4:6]}-{run[6:8]}T10:00:00Z install.sh --source-local x",
+            "what the installer printed",
+            "and more of it",
+            *["[warn] launchd.poll — com.agentsync.poll is not installed (fix: agentsync install-agent)"]
+            * fixes,
+            "NEXT: done",
+        ]
+
+    out = fake_mac["setup"] / "install.out"
+    out.write_text("\n".join([*block(old, 2), *block(new, 1)]) + "\n", encoding="utf-8")
+    whole = (
+        "2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 3 other "
+        "instruction-like line(s) (3 fix:) in the last 11 line(s) of install.out"
+    )
+    text, summary = summary_of(fake_mac)
+    assert f"Installer output: {whole}." in section(text, "Installer")
+    assert (
+        "- installer output: 1 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected) and 1 "
+        "other instruction-like line(s) (1 fix:) in the last 5 line(s) of install.out (this attempt's runs "
+        "only: the 1 earlier run(s) read are not counted; the Installer section counts them)\n" in summary
+    )
+    write_friction(fake_mac, first)  # attempt 1 is the latest and owns both runs
+    _text, summary = summary_of(fake_mac)
+    assert f"- installer output: {whole}\n" in summary and "this attempt's runs only" not in summary
+    (fake_mac["setup"] / "install.log").write_text("", encoding="utf-8")  # no run to tell them apart by
+    _text, summary = summary_of(fake_mac)
+    assert f"- installer output: {whole}\n" in summary and "no run of this attempt" not in summary
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)
+    write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
+    write_friction(fake_mac, first + second)
+    out.write_text("\n".join(block(old, 2)) + "\n", encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- installer output: no run of this attempt in the last 6 line(s) of install.out (the Installer "
+        "section counts the 1 earlier run(s) read)\n" in summary
+    )
+
+
 V6_HAPPY = (
     "Attempt: 2026-09-29T09:58:00Z\n"
     "Prompt: v6\n"
@@ -2396,7 +2452,7 @@ V8_BUSY_LINES = (
     "2026-09-29T10:01:00Z | step 3 | deviation | wrote the questions in three parts | -\n"
 )
 """Lines that meet each rule keyed on the prompt version: a question and a click beyond the expected turns,
-and a step 2 error logged after install.sh exited 0, which is agent friction since v7 and stopped a v6 run."""
+and a step 2 error logged after install.sh exited 0, which is agent friction (v6 and v7 alike)."""
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -3244,8 +3300,13 @@ def test_v7_announces_one_allow_click_in_step_1(
     assert "steps 1 and 2" not in summary
 
 
-def test_v6_an_error_stops_the_run_unless_a_later_install_run_succeeded(fake_mac: dict[str, Path]) -> None:
-    """v6 logs no step ends: install.log's later successful run of that step resolves an error (L-series)."""
+def test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0(
+    fake_mac: dict[str, Path],
+) -> None:
+    """v6 logs no step ends: install.log's successful install run resolves an error (L-series). Its step 2 is
+    the one install.sh command, as v7's (with ``--confirm-install-agent`` it ends 0 only once the background
+    job runs), so a step 2 error logged after that run ended 0 is agent friction too (B13 H21; v10 E3.h: the
+    field Mac's v6 attempt read "failed at step 2" in every later report)."""
     v6_install_log(fake_mac)
     early = _insert_before(
         "2026-09-29T10:01:10Z | end",
@@ -3260,16 +3321,41 @@ def test_v6_an_error_stops_the_run_unless_a_later_install_run_succeeded(fake_mac
     )
     late = _insert_before(
         "2026-09-29T10:01:10Z | end",
-        "2026-09-29T10:01:00Z | step 2 | error | background sync did not start (exit 3) | -\n",
+        "2026-09-29T10:01:00Z | step 2 | error | Exit 0, no failure: a made-up complaint | -\n",
         V6_HAPPY,
     )
     write_friction(fake_mac, late)
     text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: failed at step 2** (computed: install.sh exit 0; step 2 logged an error (F4) and did "
-        "not finish: no later install.sh run of that step ended rc 0 and no later step before the report)"
+        "- **outcome: fully one command** (computed: install.sh exit 0; no turn beyond the unavoidable ones)"
     )
-    assert "outcome=Failed%20at%20step%202%20%28install%20and%20start%29" in text.splitlines()[-1]
+    assert (
+        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); none of these changes the outcome" in summary
+    )
+    assert parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)["outcome"] == ["Fully one command"]
+    [attempt] = setup_report.parse_friction(late).attempts
+    assert attempt.layout is setup_report.PROMPT_LAYOUTS[6]
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    assert setup_report.stopping_error(attempt, runs) is None
+    assert setup_report.stopping_error(attempt, [r for r in runs if r.list_only]) is attempt.events[0], (
+        "only an install run resolves it"
+    )
+    [step_1] = setup_report.parse_friction(late.replace("| step 2 | error |", "| step 1 | error |")).attempts
+    assert setup_report.stopping_error(step_1, runs) is step_1.events[0], (
+        "a step 1 error still needs a run started after it"
+    )
+    v6_install_log(fake_mac, rc=1)
+    assert (
+        summary_of(fake_mac)[1]
+        .strip()
+        .startswith("- **outcome: failed at step 2** (computed: install.sh exited 1")
+    ), "a failed install is still a failed step 2"
+    # The field shape: that v6 attempt, then a v10 attempt the next day.
+    v6_install_log(fake_mac)
+    write_install_log(fake_mac, start="2026-09-30T10:00:00Z", run="20260930T100000Z-77", append=True)
+    write_friction(fake_mac, late + V10_HAPPY.replace("2026-09-29T", "2026-09-30T"))
+    _text, summary = summary_of(fake_mac)
+    assert "- attempt: 2 of 2 (earlier: attempt 1 fully one command)" in summary
     (fake_mac["setup"] / "install.log").write_text(LIST_RUN, encoding="utf-8")
     write_friction(
         fake_mac,
@@ -3510,7 +3596,7 @@ def test_v7_a_step_2_error_logged_after_the_install_ended_0_is_agent_friction(
     """Field report 2026-10-06: v7's step 2 is the one install.sh command. The agent logged its lines in a
     batch after that command exited 0, one of them a step 2 ``error`` that said "Exit 0, no failure", and
     the outcome read "failed at step 2". Any install run of the attempt that ended 0 resolves it; the
-    Summary and the issue link agree."""
+    Summary and the issue link agree. v6 the same since B13."""
     v6_install_log(fake_mac)
     batch = (
         "2026-09-29T10:01:00Z | step 2 | prompt | the prompt does not say what a second run prints | say it\n"

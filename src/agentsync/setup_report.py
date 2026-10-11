@@ -542,7 +542,7 @@ _INSTRUCTION_RES = (
     ("fix:", re.compile(r"\bfix:")),
     ("run:", re.compile(r"(?:^\s*|\()run:")),
 )
-_OUT_RUN_RE = re.compile(r"^# run=\S+ ")  # install.out's header line of each run
+_OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each run, with its run id
 _CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?")  # install.log's note
 _CONVERTED_LINE_RE = re.compile(  # sync's last line
     r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b)?"
@@ -1269,12 +1269,13 @@ def _unresolved_error(attempt: Attempt) -> FrictionEvent | None:
 def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> FrictionEvent | None:
     """The last error that stopped the run: logged in a step before the report step (v6: 3, v5: 5) and before
     the attempt's closing line, with no later event of a later step before the report (the prompt's "log it
-    and go to step 3") and not resolved. v5 resolves it with a later ``end`` of its step; v6 (no step lines)
-    with a later install.sh run in ``runs`` that ended rc 0: any such run for a step-1 error (a
-    ``--list-folders`` re-run, or the install run that step 2 starts), an install run for an error of the
-    install step. Since v7 the install step is the one install.sh command, so any install run of the attempt
-    that ended rc 0 resolves its error, whenever the line was logged: an agent logs after the command
-    returns."""
+    and go to step 3") and not resolved. v5 resolves it with a later ``end`` of its step. v6 and later (no
+    step lines) resolve it with an install.sh run in ``runs`` that ended rc 0. For a step-1 error, that is any
+    such run started at or after the line (a ``--list-folders`` re-run, or the install run that step 2
+    starts). For an error of the install step, it is any install run of the attempt, whenever the line was
+    logged. The install step is the one install.sh command in v6 as in v7 (with v6's
+    ``--confirm-install-agent`` it ends 0 only once the background job runs), and an agent logs after the
+    command returns."""
     layout = attempt.layout
     events = _run_events(attempt)
     last_step = layout.report_step
@@ -1289,7 +1290,7 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
             done = [r for r in runs if r.rc == 0]
             if e.step >= layout.install_step:
                 done = install_runs_only(done)
-            if layout.version < 7 or e.step < layout.install_step:
+            if e.step < layout.install_step:
                 at = e.at
                 done = [r for r in done if at is not None and r.started is not None and r.started >= at]
             resolved = resolved or bool(done)
@@ -1734,6 +1735,9 @@ class _Facts:
     shadow: str | None = None
     # (per kind, lines counted, runs among them, lines read before the first run header: not counted)
     instructions: tuple[Counter[str], int, int, int] | None = None
+    # the install.out lines counted (from the first run header read), so the Summary can keep the latest
+    # attempt's runs
+    out_counted: list[str] = dataclasses.field(default_factory=list)
     # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
     first_sync: tuple[int, int, int] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
@@ -2489,6 +2493,38 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0) 
     )
 
 
+def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
+    """The Summary's ``installer output:`` line: the Installer section's counts, kept to the latest attempt's
+    runs when the attempt has a time (as the install.sh line is). install.out holds every run, earlier
+    attempts' too, and the attempt's runs are its last, so the count starts at the first header of one of
+    them: the lines counted stay "the last N line(s)". Unchanged when every run read is the attempt's."""
+    assert r.facts.instructions is not None
+    counts, read, total, cut = r.facts.instructions
+    whole = f"- installer output: {_instruction_text(counts, read, total, cut)}"
+    if not scoped or not total or not r.install_runs:  # nothing to tell runs apart by
+        return whole
+    lines = r.facts.out_counted
+    ids = {run.run_id for run in runs}
+    start = next(
+        (i for i, ln in enumerate(lines) if (m := _OUT_RUN_RE.match(ln)) is not None and m.group(1) in ids),
+        None,
+    )
+    if start is None:
+        return (
+            f"- installer output: no run of this attempt in the last {read} line(s) of install.out (the "
+            f"Installer section counts the {total} earlier run(s) read)"
+        )
+    if start == 0:
+        return whole
+    mine = lines[start:]
+    k = sum(1 for ln in mine if _OUT_RUN_RE.match(ln))
+    text = _instruction_text(instruction_counts(mine), len(mine), k)
+    return (
+        f"- installer output: {text} (this attempt's runs only: the {total - k} earlier run(s) read are not "
+        "counted; the Installer section counts them)"
+    )
+
+
 def _installer_output(r: _Run) -> list[str]:
     path = install_out_path(r.install_log)
     try:
@@ -2508,6 +2544,7 @@ def _installer_output(r: _Run) -> list[str]:
     counts = instruction_counts(counted)
     runs = sum(1 for ln in counted if _OUT_RUN_RE.match(ln))
     r.facts.instructions = (counts, len(counted), runs, first)
+    r.facts.out_counted = counted
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:
         r.facts.first_sync = (
@@ -5281,7 +5318,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     if folders is not None:
         out.append(folders)
     if r.facts.instructions is not None:
-        out.append(f"- installer output: {_instruction_text(*r.facts.instructions)}")
+        out.append(_installer_output_line(r, runs, scoped=att is not None and att.begin is not None))
     out.append(_first_sync_line(r, runs))
     out.append(_doctor_line(r, runs))
     if run_type == "simulated launchd" or r.facts.launchd_simulated:
