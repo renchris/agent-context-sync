@@ -27,7 +27,7 @@ import pytest
 
 from agentsync import arm_local, cli, convert, cycle, governance, loop, materialise, net, policy, setup_report
 from agentsync.config import Config, ConvertConfig, load_config
-from agentsync.convert import image, media, ocr, pdf
+from agentsync.convert import image, media, ocr, pdf, speech
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.registry import Registry
@@ -4194,6 +4194,9 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
         "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- label rule in [policy]: off" in parts["OCR"]
     )
     assert "- helper: off (AGENTSYNC_OCR=0)\n- media helper: off (" in parts["OCR"], "by Doctor's media probe"
+    assert re.search(r"^- media helper: off \(.*\)\n- speech: off \(", parts["OCR"], re.MULTILINE), (
+        "Doctor's speech probe"
+    )
     assert "- images: 0 file(s)\n" in parts["OCR"] and "- OCR time: no run is recorded" in parts["OCR"]
     assert parts["Quarantine by reason"].strip() == "- no file is quarantined or refused"
     assert parts["Purge queue"].strip() == "- no purge is queued"
@@ -5159,6 +5162,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
 
     monkeypatch.setattr(ocr, "probe", hung)
     monkeypatch.setattr(media, "probe", hung)
+    monkeypatch.setattr(speech, "probe", hung)
     monkeypatch.setattr(setup_report, "_PROBE_S", 0.3)
     try:
         text, parts = status_parts(fake_mac)
@@ -5166,6 +5170,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         release.set()
     assert "- helper: did not answer within 0.3s (a built helper's `--version`;" in parts["OCR"]
     assert "- media helper: did not answer within 0.3s\n" in parts["OCR"], "the media helper waits the same"
+    assert "- speech: did not answer within 0.3s\n" in parts["OCR"], "the speech helper waits the same"
     assert (
         "The helper did not say whether it is ready (its line above; Doctor's ocr line does)." in parts["OCR"]
     )
@@ -5188,11 +5193,39 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
 
     monkeypatch.setattr(ocr, "probe", slow)
     monkeypatch.setattr(media, "probe", lambda _convert, _cache_dir: ("ready", "media helper 0.1.0"))
+    monkeypatch.setattr(speech, "probe", lambda _convert, _cache_dir: ("ready", "fluidaudio, helper 0.1.0"))
     text, parts = status_parts(fake_mac)
     assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
-    assert "- media helper: ready (media helper 0.1.0)\n- label rule in [policy]: off\n" in parts["OCR"]
+    assert (
+        "- media helper: ready (media helper 0.1.0)\n- speech: ready (fluidaudio, helper 0.1.0)\n"
+        "- label rule in [policy]: off\n"
+    ) in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
     assert "- images: 8 file(s): page 2" in parts["OCR"]
+
+
+def test_the_ocr_part_has_a_speech_line_of_its_own(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Doctor lists an ok speech check by name only and the installer's line is past the install.out tail, so
+    the 2026-10-10 report showed speech nowhere but a friction line (B12 E3.e)."""
+    off = "the speech models are not placed: model-a/ and model-b/"
+    monkeypatch.setattr(media, "probe", lambda _convert, _cache_dir: ("ready", "media helper 0.1.0"))
+    monkeypatch.setattr(speech, "probe", lambda _convert, _cache_dir: ("off", off))
+    _text, parts = status_parts(fake_mac)
+    assert f"- media helper: ready (media helper 0.1.0)\n- speech: off ({off})\n- label rule" in parts["OCR"]
+    monkeypatch.setattr(
+        speech, "probe", lambda _convert, _cache_dir: ("not-built", "the speech helper is not built")
+    )
+    _text, parts = status_parts(fake_mac)
+    assert "- speech: not built (the speech helper is not built)\n" in parts["OCR"]
+
+    def broken(_convert: ConvertConfig, _cache_dir: Path) -> tuple[str, str]:
+        raise RuntimeError("Contoso")
+
+    monkeypatch.setattr(speech, "probe", broken)
+    text, parts = status_parts(fake_mac)
+    assert "- speech: not measured (RuntimeError)\n- label rule" in parts["OCR"] and "Contoso" not in text
 
 
 def test_a_statement_that_runs_past_the_time_is_stopped(fake_mac: dict[str, Path]) -> None:

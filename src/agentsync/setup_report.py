@@ -2831,10 +2831,10 @@ budget. A part with no time left prints :data:`NOT_MEASURED`. The OCR probe is n
 (:data:`_PROBE_S`)."""
 NOT_MEASURED = "not measured (time limit)"
 _PROBE_S = 1.5
-"""The seconds the OCR part waits for ``convert.ocr.probe``, and then for ``convert.media.probe``, beside
-:data:`EVIDENCE_BUDGET_S`. The two probes are the only things the evidence starts a program for (a built
-helper's ``--version``, which a cycle gives 5 s), so a helper that hangs costs this much and nothing of what
-the manifest parts have."""
+"""The seconds the OCR part waits for ``convert.ocr.probe``, then for ``convert.media.probe`` and then for
+``convert.speech.probe``, beside :data:`EVIDENCE_BUDGET_S`. The three probes are the only things the evidence
+starts a program for (a built helper's ``--version``, which a cycle gives 5 s), so a helper that hangs costs
+this much and nothing of what the manifest parts have."""
 EVIDENCE_TITLES = (
     "OCR",
     "Quarantine by reason",
@@ -3226,12 +3226,33 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 # ---- OCR ------------------------------------------------------------------------------------------------
 
 
+def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, str]) -> str:
+    """``- <label>: <state> (<detail>)`` from ``agentsync.convert.<module>.probe``, the call Doctor's check of
+    the same name makes, with a wait of its own (:data:`_PROBE_S`, not counted: ``_Mirror.not_counted``).
+    Never raises."""
+    config = cast(Config, r.config)
+    room = r.remaining() - _RESERVE_S
+    started = time.monotonic()
+    try:
+        probe = importlib.import_module(f"agentsync.convert.{module}").probe  # lazy, as in _ocr_helper
+        found, detail = r.call(lambda: probe(config.convert, config.cache_dir), timeout=_PROBE_S)
+        return f"- {label}: {words.get(str(found), 'unknown state')} ({_shorten(str(detail), 200)})"
+    except TimeoutError:
+        late = NOT_MEASURED if room < _PROBE_S else f"did not answer within {_PROBE_S:.1f}s"
+        return f"- {label}: {late}"
+    except Exception as exc:
+        return f"- {label}: not measured ({type(exc).__name__})"
+    finally:
+        m.not_counted(time.monotonic() - started)
+
+
 def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
     """The probe's state and detail (``convert.ocr.probe``: it looks, compiles nothing and stamps nothing;
     the one program it may start is a built helper's ``--version``), and whether a label rule is on.
-    Then the media helper that reads recordings, by the probe Doctor's media check calls
-    (``convert.media.probe``, which looks the same way): one line, with a wait of its own.
-    Returns the three lines, the OCR state ("" when the probe gave none) and whether a label rule is on:
+    Then the media helper that reads recordings and the speech engine that hears them, by the probes Doctor's
+    media and speech checks call (``convert.media.probe``, ``convert.speech.probe``, which look the same way):
+    one line each, each with a wait of its own (:func:`_helper_line`).
+    Returns the four lines, the OCR state ("" when the probe gave none) and whether a label rule is on:
     the file counts after it are worded by them. Never raises.
 
     The probe has :data:`_PROBE_S` of its own, and the time it takes is not the manifest parts'
@@ -3261,20 +3282,8 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
         out = [f"- helper: not measured ({type(exc).__name__})"]
     finally:
         m.not_counted(time.monotonic() - started)
-    room = r.remaining() - _RESERVE_S
-    started = time.monotonic()
-    try:
-        from agentsync.convert import media  # noqa: PLC0415 - lazy, as above
-
-        found, detail = r.call(lambda: media.probe(config.convert, config.cache_dir), timeout=_PROBE_S)
-        out.append(f"- media helper: {words.get(str(found), 'unknown state')} ({_shorten(str(detail), 200)})")
-    except TimeoutError:
-        late = NOT_MEASURED if room < _PROBE_S else f"did not answer within {_PROBE_S:.1f}s"
-        out.append(f"- media helper: {late}")
-    except Exception as exc:
-        out.append(f"- media helper: not measured ({type(exc).__name__})")
-    finally:
-        m.not_counted(time.monotonic() - started)
+    out.append(_helper_line(r, m, "media helper", "media", words))
+    out.append(_helper_line(r, m, "speech", "speech", words))
     try:
         from agentsync import policy  # noqa: PLC0415 - lazy, as above
 

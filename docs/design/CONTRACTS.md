@@ -7952,7 +7952,8 @@ queue is read through `governance.pending_purges`.
 
 **Bounded.** The six parts share `EVIDENCE_BUDGET_S`, counted from the first and never past the report's own
 deadline less its reserve. The OCR probe is not counted in it, and neither is the media helper's after it
-(`convert.media.probe`, the call Doctor's media check makes): they are the only things the evidence starts a
+(`convert.media.probe`, the call Doctor's media check makes; **Amended (2026-10-11, §16.40 "The OCR part has a speech line"):** nor the speech engine's,
+`convert.speech.probe`, the call Doctor's speech check makes): they are the only things the evidence starts a
 program for (a built helper's `--version`), so each waits `_PROBE_S` (1.5 s) of its own and the shared
 deadline moves on by what it took (`_Mirror.not_counted`). Run inside the shared time, a helper that hung
 left its own line and every manifest block after it as `NOT_MEASURED`, on the Mac the OCR evidence is wanted
@@ -8014,7 +8015,8 @@ decides before a word inside the text does.
 
 - `- helper: ready | off | not built | failed (<the probe's detail>)`, or `did not answer within 1.5s`, then
   `- media helper:` with the same words for the helper that reads recordings, then whether a label rule is
-  on (under one no image is read, §16.26).
+  on (under one no image is read, §16.26). **Amended (2026-10-11, §16.40 "The OCR part has a speech line"):** `- speech:` with the same words for the
+  speech engine (§16.35) follows `- media helper:`.
 - Images (the suffixes of `ImageConverter.extensions`) by outcome: `page`, `no-text stub`, `not-readable
   stub`, `not-on-this-Mac stub` (the `no converter` refusal of an image that is not on this Mac),
   `no-converter stub on this Mac`, `deferred on this Mac`, `deferred online-only`, `not converted yet`,
@@ -10845,6 +10847,16 @@ reads `- sync:`, as that second run printed; the `- install.sh:` line beside it 
 step stays `first-sync`, and the `- install.sh:` step list, the outcome text and install.sh's error texts still
 name it so. `docs/deploy/setup-feedback.md` lists both forms. Test:
 `test_the_first_sync_line_says_sync_when_the_config_existed`.
+
+**The OCR part has a speech line** (B13 H18, B12 E3.e; amends §16.28). `- speech: <state> (<detail>)` follows
+`- media helper:`, in the same words (`ready`, `off`, `not built`, `failed`, `did not answer within 1.5s`, `not
+measured (...)`), from `convert.speech.probe`, the call Doctor's speech check makes, with its own `_PROBE_S`
+(1.5 s) wait that is not counted against the evidence parts (`_Mirror.not_counted`). The media and speech lines
+share `_helper_line`. The label is `speech`, as the installer and Doctor print it. Why: the 2026-10-10 report
+showed the speech engine nowhere but the agent's friction line; Doctor lists an ok `speech` by name only, and the
+installer's line is past the 60 lines of install.out the report keeps. A hung speech helper costs the report up
+to 1.5 s more of its 12 s, as a hung media helper does. No command, flag or key. Test:
+`test_the_ocr_part_has_a_speech_line_of_its_own`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
