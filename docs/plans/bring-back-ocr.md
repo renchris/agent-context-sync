@@ -149,8 +149,9 @@ Not exercised by a sandbox: File Provider behavior, the macOS privacy prompt, la
 corporate network. A third-round surprise would come from there.
 
 Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
-is not read; a picture drawn rotated is read as stored; image types outside the raster table are stubs; a long
-scan past the time limit converts without OCR.
+is not read; a picture the page shows on its side (turned on purpose to fit) is read on its side (B13 N45 reads a
+picture the way up the page shows it); image types outside the raster table are stubs; a long scan past the time
+limit converts without OCR.
 
 Open operator decisions (filed, each with a default that keeps what is built): empty cloud folders
 (`71d3e66ef726`) and online-only images (`085fac870dd6`).
@@ -441,6 +442,24 @@ the notes into this plan. After A to F land, a rehearsal session plays v11 on th
 | D installer | H11 H15 H16 N6 N12 N21 N41 | install.sh outside redaction | next |
 | E converters, speech | H10 H12 H13 H24 N38 N45 N46 N47 | convert/, pyproject.toml | next2 |
 | F prompt v11 | H1 to H9 N40 N42 N43 N44 | README.md prompt block, test_deploy_pack.py, docs/deploy/ | next3 |
+
+Landed (2026-10-11), every item built, none left as not-built; each lane's note in
+`~/.cache/agentsync-bring-back/b13/lanes/<lane>.md` lists per item the sha and the test that fails without it:
+
+| Lane | Landed on main | Gate and CI |
+|---|---|---|
+| F | `645b607`, `aed2fbd`, `76439e7`, `b479a00` (prompt v11) | green |
+| A | `b479a00..a406dbc`, 9 commits; `a406dbc` steadies a trunk test that read free disk space | green |
+| C | `a406dbc..e3cf983`, 26 commits | green |
+| D | `e3cf983..cd506e5`, 7 commits | green (ci on `f46fd53`, which contains them) |
+| E | `5b8330a..f46fd53`, 9 commits | green |
+
+Learnings: every review caught at least one real defect in its own lane (A: two purge fixes interacting in a queue
+run; C: a git-config regex that read the next section's header as a proxy; F: an empty git proxy registered as a
+redaction value). Six lanes pushing to one trunk cost each later lane a rebase and a second gate; a lane silent
+for an hour inside its push call was re-running the gate after losing the race, not stuck. Under the ruling the
+lanes' "stated, not built" notes are captured items too: they go to the next round with the v11 rehearsal's and a
+cross-lane review's findings, until a round finds nothing new.
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
