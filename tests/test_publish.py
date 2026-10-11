@@ -318,7 +318,7 @@ def test_current_topics_seed_is_not_listed_as_an_earlier_one() -> None:
     assert "refresh queue" not in TOPICS_CLAUDE_MD  # KISS K09b
 
 
-# The topics/CLAUDE.md seed as of KISS K09b (1dba99c), byte for byte: the one K07 replaced with the pointer.
+# The topics/CLAUDE.md seed as of KISS K09b (a0e0542), byte for byte: the one K07 replaced with the pointer.
 _K09B_TOPICS_SEED = """\
 # docs/topics — curated synthesis
 

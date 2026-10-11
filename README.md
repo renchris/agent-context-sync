@@ -20,7 +20,7 @@ whether that change costs anything. Git carries the result, so "what changed sin
 > inbox arms, the SQLite manifest with the H0/H1/H2 classifier, converters with a write-once cache, `docs/mirror/` with
 > one git commit per cycle, the Graph drive, mail and Teams arms, the curation map with its STALE lint, and a
 > single-writer LaunchAgent. It was built and measured on this Mac, including runs against a live OneDrive File
-> Provider mount: a no-op cycle over the live OneDrive source fell from 12.9 s to 0.51 s in commit `209bc80`.
+> Provider mount: a no-op cycle over the live OneDrive source fell from 12.9 s to 0.51 s in commit `d3b7883`.
 >
 > - **Works with zero IT involvement:** a `local` source over the OneDrive sync folder, plus a manual `inbox`
 >   ([day 1](docs/deploy/README.md#day-1-with-zero-it-involvement)). [Install](#install) needs no admin rights.

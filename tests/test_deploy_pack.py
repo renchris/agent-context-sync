@@ -2206,3 +2206,46 @@ def test_it_request_placeholders_are_in_its_top_table() -> None:
     assert "`agentsync it-request --out ~/agent-context/it-request-draft.md`" in top
     flat_top = " ".join(top.split()).replace("**CORRECTED", "\0").split("\0", 1)[0]
     assert "one-prompt setup writes" not in flat_top, "KISS K04: setup prompt v7 runs no it-request"
+
+
+# ---- commits the tree cites --------------------------------------------------------------------------------
+
+_CITING = ("tests", "src", "scripts", "launcher", "probes", "README.md", "docs/design/CONTRACTS.md")
+"""Where a cited commit is a pointer the reader follows.  docs/plans and docs/research are left out on
+purpose: they are dated records of branch work and name branch commits as such."""
+
+
+def _git(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args], input=stdin, capture_output=True, text=True, check=False
+    )
+
+
+def test_a_cited_commit_is_on_the_trunk() -> None:
+    """B13 N38: three files cited the pre-rebase twin of a commit, an object that lives only in the clone the
+    rebase ran in, so ``git show <sha>`` failed everywhere else.  Every hex word in the citing files that
+    names a commit of this repository names an ancestor of HEAD.  A commit this clone does not hold names
+    nothing here (a depth-1 CI checkout, another project's pin), so the check bites in the clone that still
+    holds the stale twin, which is the one a rebase leaves behind."""
+    if _git("rev-parse", "--git-dir").returncode != 0:
+        pytest.skip("not a git checkout")
+    cited: dict[str, set[str]] = {}
+    for name in _git("ls-files", "-z", "--", *_CITING).stdout.split("\0"):
+        try:
+            text = (ROOT / name).read_text(encoding="utf-8") if name else ""
+        except (OSError, UnicodeDecodeError):
+            continue
+        for word in re.findall(r"(?<![0-9A-Za-z])[0-9a-f]{7,40}(?![0-9A-Za-z])", text):
+            cited.setdefault(word, set()).add(name)
+    assert cited, "the citing files hold hex words (the scan found none, so it is broken)"
+    words = sorted(cited)
+    answers = _git("cat-file", "--batch-check", stdin="".join(f"{w}^{{commit}}\n" for w in words))
+    rows = answers.stdout.splitlines()
+    assert len(rows) == len(words), answers.stderr
+    off_trunk = []
+    for word, row in zip(words, rows, strict=True):
+        sha, _, kind = row.partition(" ")
+        if not kind.startswith("commit ") or _git("merge-base", "--is-ancestor", sha, "HEAD").returncode != 1:
+            continue
+        off_trunk.append(f"{word} in {', '.join(sorted(cited[word]))}")
+    assert off_trunk == []

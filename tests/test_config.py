@@ -195,7 +195,7 @@ max_rows_per_sheet = 5000
 # channel_id = "19:...@thread.tacv2"
 """
 """The sources.toml template before KISS K15 (2026-10-04), verbatim (``_TEMPLATE`` in
-``git show 1fa2e72^:src/agentsync/config.py``): every older config started as this text, so line 22 is the
+``git show e49e212^:src/agentsync/config.py``): every older config started as this text, so line 22 is the
 line their status WARN names."""
 
 
