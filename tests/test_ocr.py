@@ -12,6 +12,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shlex
+import signal
 import stat
 import subprocess
 import sys
@@ -792,6 +794,43 @@ def loose_umask() -> Iterator[None]:
         os.umask(previous)
 
 
+def compiling(pidfile: Path) -> str:
+    """A stub tool body that starts a "compiler" in a session of its own, which writes its pid, and stops it
+    on SIGINT only, as swiftc and SwiftPM do (measured: their compilers outlive a SIGTERM or SIGKILL).  On
+    SIGINT it writes a line before it stops the compiler: a tool whose output has no reader left dies of
+    SIGPIPE there.  The trap is set before the compiler starts, so a SIGINT never finds it unset."""
+    child = (
+        "import os, sys, time; os.setsid(); open(sys.argv[1] + '.tmp', 'w').write(str(os.getpid())); "
+        "os.replace(sys.argv[1] + '.tmp', sys.argv[1]); time.sleep(300)"
+    )
+    return (
+        "trap 'echo \"error: build cancelled\" >&2; kill $!; exit 130' INT\n"
+        f"{shlex.quote(sys.executable)} -c {shlex.quote(child)} {shlex.quote(str(pidfile))} &\n"
+        "wait $!\n"
+    )
+
+
+def compiler_pid(pidfile: Path, proc: subprocess.Popen[bytes] | None = None) -> int:
+    deadline = time.monotonic() + 30
+    while not pidfile.exists():
+        assert (proc is None or proc.poll() is None) and time.monotonic() < deadline, "no compiler started"
+        time.sleep(0.05)
+    return int(pidfile.read_text())
+
+
+def gone(pid: int, within: float = 10.0) -> bool:
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    with contextlib.suppress(ProcessLookupError):
+        os.kill(pid, signal.SIGKILL)  # the test leaves nothing running either way
+    return False
+
+
 @pytest.fixture
 def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Stub developer tools: ``xcode-select -p`` names a folder, ``xcrun`` finds ``swiftc`` and an SDK, and
@@ -915,19 +954,49 @@ def test_a_failed_build_leaves_its_reason_until_a_build_works(tools: Path, tmp_p
 def test_a_build_that_hangs_is_stopped_and_recorded(
     tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    real_run = subprocess.run
-
-    def run(argv: list[str], **kw: Any) -> Any:
-        if Path(argv[0]).name == "swiftc":
-            raise subprocess.TimeoutExpired(argv, kw["timeout"])
-        return real_run(argv, **kw)
-
-    monkeypatch.setattr(subprocess, "run", run)
+    """Out of time, swiftc is told to stop with SIGINT, which also stops its compiler; SIGKILL left it
+    running."""
+    pidfile = tmp_path / "compiler.pid"
+    script(tools / "swiftc", compiling(pidfile))
+    monkeypatch.setattr(ocr, "_BUILD_TIMEOUT_S", 1.0)
     with pytest.raises(ocr.OcrError) as error:
         ocr.build(tmp_path)
     assert str(error.value) == "swiftc ran out of time building the OCR helper"
     assert ocr.probe(CFG, tmp_path) == ("failed", "swiftc ran out of time building the OCR helper")
     assert [p.name for p in (tmp_path / "ocr").iterdir()] == [ocr._marker(ocr._helper_path(tmp_path)).name]
+    assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
+
+
+@pytest.mark.parametrize(
+    "sig", [signal.SIGTERM, signal.SIGKILL, signal.SIGHUP, signal.SIGINT], ids=lambda s: s.name
+)
+def test_a_stop_of_the_whole_process_group_leaves_no_compiler_running(
+    tools: Path, tmp_path: Path, sig: signal.Signals
+) -> None:
+    """A coding tool's timeout stops install.sh's whole process group (bring-back B12 E1.d).  The build tool
+    runs outside it, and a watcher stops it with SIGINT once the build's process is gone."""
+    pidfile = tmp_path / "compiler.pid"
+    script(tools / "swiftc", compiling(pidfile))
+    code = (
+        "from pathlib import Path\nfrom agentsync.convert import ocr\n"
+        f"ocr._XCODE_SELECT = {str(tools / 'xcode-select')!r}\nocr._XCRUN = {str(tools / 'xcrun')!r}\n"
+        f"ocr.build(Path({str(tmp_path / 'cache')!r}))\n"
+    )
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # its own group stands for install.sh's
+    )
+    try:
+        compiler = compiler_pid(pidfile, proc)
+        os.killpg(proc.pid, sig)
+        proc.wait(timeout=30)
+        assert gone(compiler), f"the compiler outlived a {sig.name} to the build's process group"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
 
 
 def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp_path: Path) -> None:

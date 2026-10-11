@@ -6468,7 +6468,9 @@ note=not-requested`. While the helpers build, the step prints `helpers: still ru
 15 s from a ticker beside the builds (**amended, end of §16.37:** a ticker beside each build, `helpers:
 building the <OCR|media|speech> helper, still running, <N>s`). The builds stay in the foreground, so a run
 stopped by a signal to its own process lets the build under way finish before it exits, and the re-run its
-NEXT line names never meets a second build in the same SwiftPM tree.
+NEXT line names never meets a second build in the same SwiftPM tree (**amended 2026-10-11, B13 (§16.41):** a stop
+of the whole process group, even SIGKILL, stops the build tool and its compilers within seconds, so that re-run
+does not meet one either).
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -10448,7 +10450,8 @@ order of registration), and the stopped copy's `setup-report.md` (an old copy's 
   build and in `on_exit` (see the last part of this section). The builds stay in the foreground, so a signal
   to the installer's own pid lets the build under way finish before the run exits, and the re-run its `NEXT:`
   names never meets a second build in the same SwiftPM tree (a backgrounded build was measured to outlive the
-  installer).
+  installer) (**amended 2026-10-11, B13 (§16.41):** a stop of the whole process group, even SIGKILL, stops the
+  build tool and its compilers within seconds, so that re-run does not meet one either).
 
 #### Sync and status around deletions and re-reads (`agentsync.cycle`, `agentsync.cli`, `agentsync.manifest`)
 
@@ -11041,6 +11044,33 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     lock file, none created; a free lock held while uv runs; a crash marker kept; a bad
     `AGENTSYNC_REINSTALL_WAIT_SECONDS` is a usage error) and `tests/test_ops_lock.py`
     (`test_describe_names_an_empty_body_held_by_install_sh`).
+- **A stop of the installer's whole process group stops the helper builds' compilers** (`ocr._run_build`, used
+  by `ocr._compile` and `speech._step`).
+  - Each build tool (swiftc, and for the speech helper swift package resolve, git and swift build) runs outside
+    install.sh's process group, in the group of a watcher (/bin/sh, `ocr._WATCH`). The tool joins that group as
+    it starts (`process_group=` the watcher's pid), so no pid is handed over.
+  - The watcher ignores SIGINT itself and sends its group SIGINT when the build's Python process ends before
+    the tool does: killed by any signal (SIGKILL too) or interrupted. Out of time, Python itself sends the tool
+    SIGINT, and the group SIGKILL `_STOP_S` (10 s) later; TimeoutExpired is raised as before, and a tool that
+    does not start still raises OSError.
+  - The tool's output goes to unlinked temporary files, not pipes, read back once it ends.
+  - Why: swiftc and SwiftPM start each compiler (and SwiftPM each git) in a process group of their own and stop
+    them on SIGINT only. A group SIGTERM (a coding tool's timeout) left swift-driver and swift-frontend running
+    for about 2 minutes, and the re-run compiled the same module beside them (B12 E1.d). It also left the
+    resolve step's `git clone` running. The build's own time limit left them as well, because
+    subprocess.run's SIGKILL reaches only the tool. Both tools die of SIGPIPE, so a pipe with no reader would
+    kill the tool before the SIGINT reached it.
+  - Not chosen: forwarding SIGINT from a Python signal handler (under SIGKILL the tool would run the rest of
+    the build outside the stopped group); an exec wrapper (a tool that does not start would no longer raise
+    OSError); a watcher that is told the tool's pid (Python can die before it writes the pid, and under load
+    that gap was measured at milliseconds).
+  - install.sh is unchanged: a signal to its pid alone still lets the build under way finish. No install.log,
+    report or CLI line changes; status, doctor and sync never reach `_run_build`.
+  - Tests: `tests/test_ocr.py` (`test_a_build_that_hangs_is_stopped_and_recorded`,
+    `test_a_stop_of_the_whole_process_group_leaves_no_compiler_running` for SIGTERM, SIGKILL, SIGHUP and SIGINT,
+    with a stub whose "compiler" outlives anything but SIGINT and which writes a line on SIGINT),
+    `tests/test_speech.py` (`test_a_speech_build_out_of_time_leaves_no_compiler_running`) and
+    `tests/test_ops_doctor.py` (`_run_build` among the names doctor must never reach).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

@@ -415,15 +415,7 @@ def _step(argv: Sequence[str], *, cwd: Path, deadline: float, what: str) -> str:
     if left <= 0:
         raise SpeechError("the speech helper's build ran out of time")
     try:
-        cp = subprocess.run(
-            list(argv),
-            cwd=cwd,
-            env=ocr._env(),
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=left,
-            check=False,
-        )
+        cp = ocr._run_build(argv, cwd=cwd, timeout=left)
     except subprocess.TimeoutExpired:
         raise SpeechError("the speech helper's build ran out of time") from None
     except OSError as exc:

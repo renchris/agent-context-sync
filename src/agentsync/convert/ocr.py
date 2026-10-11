@@ -35,6 +35,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -521,6 +522,82 @@ def _tool(argv: Sequence[str]) -> str:
     return cp.stdout.decode("utf-8", errors="replace").strip() if cp.returncode == 0 else ""
 
 
+_STOP_S = 10.0  # how long a build tool told to stop (SIGINT) gets before SIGKILL; SwiftPM took about 2 s
+# The watcher leads the process group the build tool joins.  It ignores SIGINT itself and waits for one line.
+# Unless that line is "done", the build's Python process ended while the tool ran (killed or interrupted): it
+# stops its group, the tool, the one way that also stops the tool's compilers.
+_WATCH = 'trap "" INT; read -r said; [ "$said" = done ] || kill -INT 0 2>/dev/null'
+
+
+def _run_build(
+    argv: Sequence[str], *, cwd: Path, timeout: float, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[bytes]:
+    """Run one build tool (swiftc; swift package resolve, git and swift build for the speech helper) as
+    ``subprocess.run(argv, capture_output=True, timeout=...)`` does, but so that nothing it starts outlives
+    this process.  swiftc and SwiftPM start each compiler (and SwiftPM each git) in a process group of its
+    own and stop them on SIGINT only: a SIGTERM or SIGKILL leaves them running (a coding tool that stops
+    install.sh's whole process group, bring-back B12 E1.d).  So the tool runs outside that group, in the
+    group of a watcher (``_WATCH``) that sends its group SIGINT when this process ends before the tool has:
+    killed by any signal or interrupted.  The tool joins that group as it starts, so no pid is handed over
+    (a Ctrl-C in the milliseconds Popen takes still leaves it unwatched), and the group is the watcher's
+    while the watcher runs, so the signal reaches no other process.  The tool's output goes to unlinked
+    temporary files, not pipes: both tools die of SIGPIPE, and a line written after this process died would
+    end the tool before the SIGINT reached it.  Out of time, this process sends the tool SIGINT, then its
+    group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.
+    A tool that does not start raises OSError as before."""
+    env = _env() if env is None else env
+    r, w = os.pipe()
+    try:
+        watcher = subprocess.Popen(
+            ["/bin/sh", "-c", _WATCH],
+            stdin=r,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            process_group=0,
+        )
+    except BaseException:
+        os.close(w)
+        raise
+    finally:
+        os.close(r)
+    proc: subprocess.Popen[bytes] | None = None
+    try:
+        with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+            proc = subprocess.Popen(
+                list(argv),
+                cwd=cwd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=err,
+                process_group=watcher.pid,
+            )
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.send_signal(signal.SIGINT)
+                try:
+                    proc.wait(timeout=_STOP_S)
+                except subprocess.TimeoutExpired:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(watcher.pid, signal.SIGKILL)
+                    proc.wait()
+                raise
+            out.seek(0)
+            err.seek(0)
+            return subprocess.CompletedProcess(list(argv), proc.returncode, out.read(), err.read())
+    finally:
+        ended = proc is None or proc.returncode is not None
+        if ended:
+            with contextlib.suppress(OSError):
+                os.write(w, b"done\n")
+        os.close(w)
+        if ended:  # else this process is being stopped: the watcher outlives it on purpose
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                watcher.wait(timeout=5)
+
+
 def _own_folder(folder: Path, kind: Helper = _OCR) -> None:
     """Create ``<cache_dir>/<kind.folder>`` owner-only, or tighten it: it holds a program this process will
     run."""
@@ -550,14 +627,10 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
         (Path(tmp) / "main.swift").write_bytes(kind.source())
         log.info("building the on-device %s", kind.name)
         try:  # relative names, so a compiler message names main.swift and not the cache folder
-            cp = subprocess.run(
+            cp = _run_build(
                 [swiftc, *_build_flags(), "-sdk", sdk, "-o", built.name, "main.swift"],
-                cwd=tmp,
-                env=_env(),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
+                cwd=Path(tmp),
                 timeout=_BUILD_TIMEOUT_S,
-                check=False,
             )
         except subprocess.TimeoutExpired:
             raise kind.error(f"swiftc ran out of time building the {kind.name}") from None

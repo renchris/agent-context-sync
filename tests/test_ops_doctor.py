@@ -1872,7 +1872,7 @@ def test_media_not_built_is_an_info_line_and_doctor_never_builds(
         pytest.fail(f"doctor reached a helper build: {args}")
 
     for module, names in (
-        (ocr, ("build", "_build", "_compile", "_tool", "_run_helper")),
+        (ocr, ("build", "_build", "_compile", "_tool", "_run_build", "_run_helper")),
         (media, ("build",)),
     ):
         for name in names:

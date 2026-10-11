@@ -24,7 +24,7 @@ from agentsync.config import ConvertConfig
 from agentsync.convert import ocr, speech
 from agentsync.convert.speech import Segment, SpeechEngine, SpeechError, Word
 from speech_kit import FAKE_PIN, calls, fake_speech, pcm, place_models
-from test_ocr import loose_umask, mode, script
+from test_ocr import compiler_pid, compiling, gone, loose_umask, mode, script
 
 CFG = ConvertConfig()
 DAY = 24 * 3600
@@ -203,6 +203,22 @@ def test_the_build_gets_twenty_minutes_of_its_own(
     monkeypatch.setattr(speech, "_clock", clock)
     with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
         speech.build(tmp_path / "cache")
+
+
+def test_a_speech_build_out_of_time_leaves_no_compiler_running(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pidfile = tmp_path / "compiler.pid"
+    script(
+        tools / "swift",
+        'case "$1" in package) mkdir -p .build/checkouts/FluidAudio ;; build)\n'
+        + compiling(pidfile)
+        + ";; esac",
+    )
+    monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
+    with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
+        speech.build(tmp_path / "cache")
+    assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
 
 
 def test_probe_and_status_never_compile_and_take_no_digest(

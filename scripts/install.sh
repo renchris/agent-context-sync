@@ -167,7 +167,8 @@
 #   10-minute command timeout (30 minutes while the speech helper is not built: its build alone can take up to
 #   20 minutes). A re-run may spend up to 2 minutes of the first sync's time in step 2, waiting for a
 #   background sync the first sync would otherwise wait for. A stopped run (SIGTERM, SIGINT, SIGHUP) still logs
-#   its end (rc 143, 130, 129), writes the report and prints NEXT:.
+#   its end (rc 143, 130, 129), writes the report and prints NEXT:. A stop of the whole process group during
+#   step 3 also stops the helper builds' compilers within seconds.
 #   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
 #      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
