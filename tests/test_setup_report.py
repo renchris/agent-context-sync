@@ -6316,3 +6316,49 @@ def test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install
     _n32_runs(seed, [(1740, "02:30:00", 6)])
     seed.close()
     assert "began, at least 6 read(s) again by 1 other run(s) (the newest is run 1740;" in _n32_line(fake_mac)
+
+
+def test_an_all_zero_re_read_table_is_one_line(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A finished re-read printed one row per source of ``yes`` and six zeros (field reports 2026-10-08 and
+    2026-10-10: 16 such rows). The table is one line then, which names the sources its rows named, and comes
+    back the moment any row says something."""
+    cfg = fake_mac["config"]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    seed = Seed(cfg)
+    ids = seed.ids()
+    now = "c0ffee11" + "0" * 56
+    for source in ids:
+        seed.m.set_meta("reread:" + source, json.dumps([{"done": True, "for": now, "tried": []}]))
+    seed.run(6, {"converted": 0, "ocr_ms": 900, "ocr_budget_s": 180, "reread_for": int(now[:8], 16)})
+    seed.close()
+    finished = status_parts(fake_mac)[1]["OCR"]
+    assert reread_rows(finished) == {} and "| source | scan finished |" not in finished
+    # One count above 0 brings every row back, so the row says which source.
+    seed = Seed(cfg)
+    seed.m.set_meta(
+        "reread:" + ids[1], json.dumps([{"done": True, "for": now, "tried": [], "failed": {"x": 1}}])
+    )
+    seed.close()
+    part = status_parts(fake_mac)[1]["OCR"]
+    names = list(reread_rows(part))
+    assert len(names) == len(ids) and "every count of its table is 0" not in part
+    assert (
+        f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record "
+        f"({', '.join(names)}), and every count of its table is 0, so the table is left out: no file from "
+        "before OCR is left on this Mac for a re-read (of the field build or not), none failed once, none "
+        "was given up under this or another engine or version, and none was being read when a cycle died. "
+        "`Finished` is for what run 6 looked for, the newest run that says so (it had an engine). The files "
+        "a re-read would look at are images with the no-converter stub, scanned PDFs whose stub says OCR was "
+        "not run and documents whose page has no OCR identity or is the field build's.\n" in finished
+    )
+    # A scan that is not finished keeps the table too, with every count 0.
+    seed = Seed(cfg)
+    seed.m.set_meta("reread:" + ids[1], json.dumps([{"done": False, "for": now, "tried": []}]))
+    seed.close()
+    part = status_parts(fake_mac)[1]["OCR"]
+    assert reread_rows(part)[names[1]] == ["no", "0", "0", "0", "0", "0", "no"]
+    assert "every count of its table is 0" not in part

@@ -8057,7 +8057,8 @@ decides before a word inside the text does.
     second column goes by had no engine, the lead adds that a finished scan says nothing of OCR.
   - **A label rule.** Under one there is no image converter, so the images are left out of the count and
     the lead says so.
-  A Graph source has no row, and nothing of it is counted: a re-read never downloads.
+  A Graph source has no row, and nothing of it is counted: a re-read never downloads. (**amended 2026-10-11,
+  §16.40:** when every row would read `yes` and six zeros, one line names the sources and stands for the table.)
 - Time, from the run records above: how many of the last 200 runs had an engine, used up the cycle's OCR
   time, or ended with the helper not working; the files the newest run that had an engine left waiting; the
   sums of every `ocr_*` and `reread*` key; and one row for each of the last five runs that had an engine
@@ -10968,6 +10969,22 @@ Quarantine row names the words, and its example uses types that have no converte
 among them), `test_like_a_type_is_as_long_as_the_longest_listed_type`,
 `test_a_source_with_unlisted_suffixes_counts_them_by_shape` (six files in four shapes) and the two pins of
 §16.30's tests.
+
+**An all-zero re-read table is one line** (B13 N37, field triage 2026-10-08 D8.d; amends §16.28's "Re-read, per
+local or inbox source" bullet). The last two field reports printed 16 rows of `yes`, 0, 0, 0, 0, 0, `no`. When
+every row would read that, the finished state, `_reread_finished` prints one line in place of the lead and the
+table: `- re-read, per source: finished in all N local or inbox source(s) with a record (<labels>), and every
+count of its table is 0, so the table is left out: no file from before OCR is left on this Mac for a re-read (of
+the field build or not), none failed once, none was given up under this or another engine or version, and none was
+being read when a cycle died.`, then the lead's sentences on the run the scan goes by (and whether it had an
+engine, or "as last recorded" when no run says), on the helper, on the kinds of file counted and on a label rule.
+The line names the sources the rows named, the same `labels.of` strings (at most 40, then "and K more"), so a
+source with no record stays visible by its absence. Any other value in any row (`no`, `not started`, `no record`,
+a count above 0, `reading when a cycle died: yes`) prints the full table, since its rows say which source; the
+table's lead is unchanged byte for byte. No command, flag, config key or environment variable is added. The shell
+fallback has no OCR part, so it has no twin. `docs/deploy/setup-feedback.md` names the line in its OCR row and in
+the finished-state sentences. Test: `test_an_all_zero_re_read_table_is_one_line` (all finished; one `failed once`
+brings every row back; an unfinished scan with every count 0 keeps the table).
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 

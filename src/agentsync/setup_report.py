@@ -3573,9 +3573,21 @@ def _reread_lines(
     kinds = [
         *([] if label_rule else ["images with the no-converter stub"]),
         "scanned PDFs whose stub says OCR was not run",
-        "documents whose page has no OCR identity or is the field build's (fourth column)",
+        "documents whose page has no OCR identity or is the field build's",
     ]
     counted = f"{', '.join(kinds[:-1])} and {kinds[-1]}"
+    if all(row[1:] == ("yes", 0, 0, 0, 0, 0, "no") for row in rows):
+        return [
+            _reread_finished(
+                [str(row[0]) for row in rows],
+                runs,
+                looked=looked,
+                state=state,
+                counted=counted,
+                label_rule=label_rule,
+            )
+        ]
+    counted += " (fourth column)"
     if state == "ready":
         third = f"The third column is the report's own count of files a re-read would look at: {counted}."
     else:
@@ -3600,6 +3612,55 @@ def _reread_lines(
         *_table(header, rows),
         *_lines(lambda: _failed_once(m, labels, once)),
     ]
+
+
+def _reread_finished(
+    sources: list[str],
+    runs: list[_RunRow],
+    *,
+    looked: _RunRow | None,
+    state: str,
+    counted: str,
+    label_rule: bool,
+) -> str:
+    """The re-read table when every row of it reads ``yes``, 0, 0, 0, 0, 0, ``no``: one line that says so,
+    names the sources its rows named (``sources``, their labels) and keeps what the table's lead says of the
+    run it goes by, the helper and a label rule. A source whose scan is not finished, or any count above 0,
+    keeps the table: its rows say which source."""
+    named = ", ".join(sources[:_ROWS_SHOWN])
+    if len(sources) > _ROWS_SHOWN:
+        named += f" and {len(sources) - _ROWS_SHOWN} more"
+    if looked is None:
+        scan = (
+            f"{f'None of the last {len(runs)} run(s) says' if runs else 'No run is recorded that says'} what "
+            "its re-read looked for (a run of this build that reaches a local source does), so `finished` is "
+            "as last recorded, by whichever build wrote the record."
+        )
+    else:
+        had = (
+            "an engine" if "ocr_ms" in looked.counts else "no engine, so a finished scan says nothing of OCR"
+        )
+        scan = (
+            f"`Finished` is for what run {looked.run_id} looked for, the newest run that says so (it had "
+            f"{had})."
+        )
+    if state == "ready":
+        files = f"The files a re-read would look at are {counted}."
+    else:
+        why = (
+            "The helper is not ready (its line above), so a cycle has no engine."
+            if state
+            else "The helper did not say whether it is ready (its line above; Doctor's ocr line does)."
+        )
+        files = f"{why} The files from before OCR that a re-read looks at with an engine are {counted}."
+    rule = " A label rule is on, so no image is read and none is counted." if label_rule else ""
+    return (
+        f"- re-read, per source: finished in all {len(sources)} local or inbox source(s) with a record "
+        f"({named}), and every count of its table is 0, so the table is left out: no file from before OCR "
+        "is left on this Mac for a re-read (of the field build or not), none failed once, none was given up "
+        f"under this or another engine or version, and none was being read when a cycle died. {scan} "
+        f"{files}{rule}"
+    )
 
 
 _ROW_NOW = (
