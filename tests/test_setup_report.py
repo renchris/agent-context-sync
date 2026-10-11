@@ -2072,6 +2072,35 @@ def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
     )
 
 
+def test_the_report_install_sh_writes_at_its_exit_expects_one_next_line_fewer(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """install.sh writes the report at its exit and prints that run's NEXT: line after it (N21): its header
+    is read, its NEXT: is not. It names the run (AGENTSYNC_REPORT_RUN), and when that is the last run counted
+    the line says one fewer is expected. An earlier run named (capture failed) or none: as before."""
+    write_install_log(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text(
+        "\n".join([*out_run(1, 5), *out_run(2, 5)[:-1]]) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setenv(setup_report.REPORT_RUN_ENV, "20260922T100000Z-4242")
+    pending = (
+        "1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected; the run writing this "
+        "report prints its NEXT: after the report, so 1 expected here) and 2 other instruction-like line(s) "
+        "(2 fix:) in the last 15 line(s) of install.out"
+    )
+    text, summary = summary_of(fake_mac)
+    assert f"- installer output: {pending}\n" in summary + "\n"
+    assert f"Installer output: {pending}." in section(text, "Installer")
+    today = (
+        "1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 2 other "
+        "instruction-like line(s) (2 fix:) in the last 15 line(s) of install.out"
+    )
+    for named in ("20260921T100000Z-4242", ""):
+        monkeypatch.setenv(setup_report.REPORT_RUN_ENV, named)
+        _text, summary = summary_of(fake_mac)
+        assert f"- installer output: {today}\n" in summary + "\n", named
+
+
 def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

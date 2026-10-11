@@ -191,3 +191,61 @@ def test_install_without_the_flag_ends_on_the_real_loops_next(tmp_path: Path) ->
     nexts = [line for line in out + cp.stderr.splitlines() if "NEXT:" in line]
     assert nexts == [out[-1]]
     assert "exclude_label_names" not in cp.stdout + cp.stderr, "the closing status's detail is never printed"
+
+
+REAL_REPORT = """#!/bin/bash
+case "$1" in
+  setup-report) exec "$REAL_PYTHON" -m agentsync "$@" ;;
+esac
+exec "$STUB_INNER" "$@"
+"""
+
+
+def test_the_report_of_each_install_run_expects_its_own_next_line_after_it(tmp_path: Path) -> None:
+    """N21: install.sh writes the report at its exit, before its own NEXT: line. The real setup-report reads
+    that run's header and not its NEXT:, and says one fewer is expected; --report-only (no header of its own)
+    counts every run's. Every run still prints exactly one NEXT:."""
+    env = _env(tmp_path)
+    env["STUB_AGENTSYNC"] = _exe(tmp_path / "agentsync-real-report", REAL_REPORT)
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "FY26 Projects"
+    folder.mkdir(parents=True)
+    (folder / "notes.txt").write_text("The purchase order is approved.\n", encoding="utf-8")
+    wheel = tmp_path / "dist" / "agentsync-0.1.0-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_text("")
+
+    def run(*args: str) -> str:
+        cp = subprocess.run(
+            [BASH32, str(INSTALL_SH), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        report = (home / "agent-context" / "setup-report.md").read_text(encoding="utf-8")
+        return next(ln for ln in report.splitlines() if ln.startswith("- installer output: "))
+
+    install = (str(wheel), "--source-local", str(folder), "--confirm-install-agent")
+    first = run(*install)
+    assert first.startswith(
+        "- installer output: 0 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected; the "
+        "run writing this report prints its NEXT: after the report, so 0 expected here) and "
+    ), first
+    second = run(*install)
+    assert second.startswith(
+        "- installer output: 1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected; the "
+        "run writing this report prints its NEXT: after the report, so 1 expected here) and "
+    ), second
+    bring_back = (home / "agent-context" / "bring-back.md").read_text(encoding="utf-8")
+    assert second in bring_back.splitlines(), "the bring-back file carries the same line"
+    last = run("--report-only")
+    assert last.startswith(
+        "- installer output: 2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and "
+    ), last
+    out = (home / "agent-context" / "setup" / "install.out").read_text(encoding="utf-8").splitlines()
+    assert sum(ln.startswith("# run=") for ln in out) == 2
+    assert sum(ln.startswith("NEXT:") for ln in out) == 2

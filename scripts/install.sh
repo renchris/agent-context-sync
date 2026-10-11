@@ -190,7 +190,9 @@
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of
 # its own), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
-# then say the agent step below installs the LaunchAgents instead of naming a command).
+# then say the agent step below installs the LaunchAgents instead of naming a command). Step 9's setup-report
+# gets AGENTSYNC_REPORT_RUN=<this run's id>: the run's NEXT: line comes after the report, which counts it as
+# still to come.
 #
 # Setup prompt: SETUP_PROMPT_COMPAT (below) is the N of "setup prompt vN" in README.md ("Set up on a new Mac:
 # one prompt"), whose step 1 requires `install.sh --version` to print exactly that number and hands it to
@@ -1376,7 +1378,7 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	step_start report
 	bin="$(report_agentsync || true)"
 	if [ -n "$bin" ]; then
-		out="$(with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
+		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
 		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
 			say "report: $REPORT_PATH (agentsync setup-report)"
 			step_end "done" 0 agentsync

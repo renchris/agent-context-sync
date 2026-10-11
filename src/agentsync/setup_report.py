@@ -284,6 +284,9 @@ IT_ADMIN_FIELDS = ("<it-owner>", "<tenant-id>", "<app-client-id>")
 """docs/deploy/it-request.md placeholders IT fills."""
 SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
 """Where ``scripts/install.sh`` appends its per-step log (default ``~/agent-context/setup/install.log``)."""
+REPORT_RUN_ENV = "AGENTSYNC_REPORT_RUN"
+"""The run id of the ``scripts/install.sh`` run writing this report at its exit: that run's ``NEXT:`` line is
+printed after the report."""
 INSTALL_OUT_NAME = "install.out"
 """scripts/install.sh's copy of what each run printed (what the agent saw), next to install.log."""
 INSTALL_OUT_TAIL = 60
@@ -1738,8 +1741,9 @@ class _Facts:
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
-    # (per kind, lines counted, runs among them, lines read before the first run header: not counted)
-    instructions: tuple[Counter[str], int, int, int] | None = None
+    # (per kind, lines counted, runs among them, lines read before the first run header: not counted, and
+    # whether the last run counted is the install.sh run writing this report: its NEXT: comes after it)
+    instructions: tuple[Counter[str], int, int, int, bool] | None = None
     # the install.out lines counted (from the first run header read), so the Summary can keep the latest
     # attempt's runs
     out_counted: list[str] = dataclasses.field(default_factory=list)
@@ -2498,15 +2502,20 @@ def install_out_path(log: Path | None = None) -> Path:
     return (log if log is not None else default_setup_log()).parent / INSTALL_OUT_NAME
 
 
-def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0) -> str:
+def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, pending: bool = False) -> str:
     """The counts of ``read`` lines of install.out, which hold ``runs`` run headers. ``cut``: the lines read
-    before the first header, which are the end of a run whose start was not read and are not counted."""
+    before the first header, which are the end of a run whose start was not read and are not counted.
+    ``pending``: the last run counted is the install.sh run writing this report, whose ``NEXT:`` line comes
+    after the report, so one fewer is expected."""
     others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
     in_runs = f" in {runs} run(s)" if runs else ""
     whole = f" (whole runs only: the {cut} line(s) read before the first run header are not counted)"
+    due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
     return (
-        f"{counts['NEXT:']} NEXT: line(s){in_runs} (exactly one per install.sh run is expected) and "
+        f"{counts['NEXT:']} NEXT: line(s){in_runs} (exactly one per install.sh run is expected"
+        + (due if pending else "")
+        + ") and "
         f"{other_total} other instruction-like line(s)"
         + (f" ({', '.join(others)})" if others else "")
         + f" in the last {read} line(s) of install.out"
@@ -2520,8 +2529,8 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     attempts' too, and the attempt's runs are its last, so the count starts at the first header of one of
     them: the lines counted stay "the last N line(s)". Unchanged when every run read is the attempt's."""
     assert r.facts.instructions is not None
-    counts, read, total, cut = r.facts.instructions
-    whole = f"- installer output: {_instruction_text(counts, read, total, cut)}"
+    counts, read, total, cut, pending = r.facts.instructions
+    whole = f"- installer output: {_instruction_text(counts, read, total, cut, pending)}"
     if not scoped or not total or not r.install_runs:  # nothing to tell runs apart by
         return whole
     lines = r.facts.out_counted
@@ -2539,7 +2548,7 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
         return whole
     mine = lines[start:]
     k = sum(1 for ln in mine if _OUT_RUN_RE.match(ln))
-    text = _instruction_text(instruction_counts(mine), len(mine), k)
+    text = _instruction_text(instruction_counts(mine), len(mine), k, pending=pending)
     return (
         f"- installer output: {text} (this attempt's runs only: the {total - k} earlier run(s) read are not "
         "counted; the Installer section counts them)"
@@ -2564,7 +2573,9 @@ def _installer_output(r: _Run) -> list[str]:
     counted = lines[first:]
     counts = instruction_counts(counted)
     runs = sum(1 for ln in counted if _OUT_RUN_RE.match(ln))
-    r.facts.instructions = (counts, len(counted), runs, first)
+    heads = [m.group(1) for m in map(_OUT_RUN_RE.match, counted) if m is not None]
+    me = os.environ.get(REPORT_RUN_ENV, "").strip()
+    r.facts.instructions = (counts, len(counted), runs, first, bool(me) and bool(heads) and heads[-1] == me)
     r.facts.out_counted = counted
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:

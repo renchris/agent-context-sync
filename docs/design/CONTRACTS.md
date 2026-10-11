@@ -5029,6 +5029,9 @@ with no file, "No installer output at <path>". **Amended (2026-10-07, §16.30):*
 first header line read, so `NEXT:` lines and runs are counted over the same whole runs. **Amended (2026-10-11,
 §16.40 "A v6 install-step error is resolved as v7's, and the Summary's installer output is this attempt's"):** when earlier attempts' runs were read, the Summary's line counts the latest attempt's runs only and says
 how many it left out; the section's line is unchanged.
+**Amended (2026-10-11, §16.41 "The report install.sh writes at its own exit counts its own run's `NEXT:` as
+still to come"):** when the last header counted is the run writing the report, the parenthesis adds that its
+`NEXT:` comes after the report.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -11071,6 +11074,30 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     with a stub whose "compiler" outlives anything but SIGINT and which writes a line on SIGINT),
     `tests/test_speech.py` (`test_a_speech_build_out_of_time_leaves_no_compiler_running`) and
     `tests/test_ops_doctor.py` (`_run_build` among the names doctor must never reach).
+- **The report install.sh writes at its own exit counts its own run's `NEXT:` as still to come** (amends
+  §16.14 K17; `scripts/install.sh`, `agentsync.setup_report`).
+  - `on_exit` writes the report (`write_report`) before it prints the run's `NEXT:` line, and the run's
+    `# run=<id>` header is already in install.out, so the count read one `NEXT:` short ("1 NEXT: line(s) in 2
+    run(s)" after two clean runs), in the Summary, the Installer section and bring-back.md's copy of it.
+  - install.sh hands step 9's `agentsync setup-report` call `AGENTSYNC_REPORT_RUN=<RUN_ID>` as a prefix
+    assignment inside the report's command substitution (never exported to install.sh; no other agentsync call
+    sees it, though `with_timeout`'s watchdog subshell inherits it; the dry run is unchanged).
+    `REPORT_RUN_ENV` names it in `agentsync.setup_report`; `_OUT_RUN_RE` captures the header's id.
+  - When the last header among the lines counted carries that id, `_Facts.instructions` gets a fifth field,
+    `pending`, and `_instruction_text` reads `<a> NEXT: line(s) in <r> run(s) (exactly one per install.sh run
+    is expected; the run writing this report prints its NEXT: after the report, so <r-1> expected here) and
+    ...`. Otherwise the text is byte-identical to before: `--report-only` (its id has no header), a run whose
+    capture failed (the last header is an earlier run's), no header read, a report run by hand, an older
+    agentsync (ignores the variable) or an older install.sh (sets none). The shell fallback report does not
+    count install.out and is unchanged. The id is compared, never printed.
+  - Not chosen: inferring the writing run from install.log (a `--no-report` run leaves the same shape and did
+    print its `NEXT:`); passing the id only when a `NEXT:` is due (only an unexpected errexit leaves it empty,
+    and there is no seam to test it).
+  - Tests: `tests/test_setup_report.py`
+    (`test_the_report_install_sh_writes_at_its_exit_expects_one_next_line_fewer`: the id of the last run, of
+    an earlier run, and none) and `tests/test_install_next_line.py`
+    (`test_the_report_of_each_install_run_expects_its_own_next_line_after_it`: the real setup-report through
+    install.sh, two install runs and `--report-only`; bring-back.md carries the same line).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 
