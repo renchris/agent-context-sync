@@ -384,6 +384,12 @@ group and other inside `~/agent-context/setup`, and no check looks in that folde
 Triage: a report whose fix request says files in `setup/` are readable by others, from a build with this
 fix, means a file there belongs to another user or the folder is a symlink: the walk leaves both alone.
 
+On a re-run, step 2 waits for a background sync before it reinstalls agentsync, at most 2 minutes
+([CONTRACTS §16.41](../design/CONTRACTS.md), "The reinstall holds the background sync's lock"). The lines are
+`agentsync: a background sync is running; ...` and
+`agentsync: reinstalling after the background sync ends, still running, <N>s`. A poll that exits 75 at that
+time was skipped on purpose: the reinstall held its lock, and launchd starts the next at its interval.
+
 ### A check that ran out of time
 
 The rehearsal of prompt v9 (three sandbox homes, the real installer, 2026-10-07) found one thing that would

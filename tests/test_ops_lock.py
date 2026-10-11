@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -380,6 +381,24 @@ def test_is_held_and_describe(tmp_path: Path) -> None:
     assert SingleWriterLock.is_held(path) is False
     path.write_text("junk")
     assert "unparseable" in SingleWriterLock.describe(path)
+
+
+def test_describe_names_an_empty_body_held_by_install_sh(tmp_path: Path) -> None:
+    """install.sh's reinstall holds the lock through /usr/bin/lockf (a read-only fd, LOCK_EX) and writes no
+    body: the holder is unrecorded, not a corrupt lock (N6)."""
+    path = tmp_path / "agentsync.lock"
+    path.write_text("")
+    path.chmod(0o600)
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        text = SingleWriterLock.describe(path)
+        assert "install.sh" in text and "unparseable" not in text, text
+        with pytest.raises(LockHeldError, match="unrecorded holder"):
+            SingleWriterLock(path, "poll").acquire()
+    finally:
+        os.close(fd)
+    assert path.read_text() == ""
 
 
 # ------------------------------------------------------------------------------------------------ heartbeat

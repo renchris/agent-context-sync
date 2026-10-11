@@ -94,7 +94,16 @@
 #   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
 #   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
 #      trust store for TLS; UV_TOOL_BIN_DIR pinned to ~/.local/bin, so the binary sits where the guides say);
-#      skipped when the last install came from this same clean checkout commit
+#      skipped when the last install came from this same clean checkout commit. With --force, uv rebuilds the
+#      tool environment the background sync runs from: the package, its interpreter and the bundled pandoc
+#      are missing for a moment, and a cycle already running meets a new build. So the reinstall holds that
+#      sync's single-writer lock: <state_dir>/agentsync.lock of the config, read by the tool being replaced,
+#      held with /usr/bin/lockf, which writes nothing in it.
+#      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s; 0 never waits),
+#      with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines. A background
+#      sync that starts meanwhile is skipped (exit 75), and launchd starts the next at its interval. A sync
+#      still running after the wait, or a lock lockf cannot take, leaves the reinstall as it was: not waited
+#      for
 #   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
 #      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
@@ -148,15 +157,17 @@
 #      "background sync: running (...)" and leaves that run converting in the background. A job without
 #      canaries waits for an exit 0. While macOS waits for Allow (TCC_PENDING in the launcher log, or exit
 #      79) it prints one "ACTION:" line and starts the job again after each attempt.
-#   The helper builds (step 3: "helpers: building the <OCR|media|speech> helper, still running, <N>s"), steps
-#   5, 6 and 8 and the closing status (see NEXT below) print a progress line at least every 15 s, so a coding
-#   tool that stops a command which has printed nothing for a while does not stop this one. Step 5's two
-#   waits keep one clock for that: a start of pandoc too quick to print a line is counted in the first
-#   interval of status, which follows it (the one part with no line of its own is reading the config for the
-#   pandoc path, 0.1 s as a rule and stopped at 20 s). A whole run with --confirm-install-agent takes the
-#   first sync's time plus at most the 3-minute wait: give it a 10-minute command timeout (30 minutes while
-#   the speech helper is not built: its build alone can take up to 20 minutes). A stopped run (SIGTERM,
-#   SIGINT, SIGHUP) still logs its end (rc 143, 130, 129), writes the report and prints NEXT:.
+#   Step 2's reinstall under a background sync's lock, the helper builds (step 3: "helpers: building the
+#   <OCR|media|speech> helper, still running, <N>s"), steps 5, 6 and 8 and the closing status (see NEXT below)
+#   print a progress line at least every 15 s, so a coding tool that stops a command which has printed nothing
+#   for a while does not stop this one. Step 5's two waits keep one clock for that: a start of pandoc too
+#   quick to print a line is counted in the first interval of status, which follows it (the one part with no
+#   line of its own is reading the config for the pandoc path, 0.1 s as a rule and stopped at 20 s). A whole
+#   run with --confirm-install-agent takes the first sync's time plus at most the 3-minute wait: give it a
+#   10-minute command timeout (30 minutes while the speech helper is not built: its build alone can take up to
+#   20 minutes). A re-run may spend up to 2 minutes of the first sync's time in step 2, waiting for a
+#   background sync the first sync would otherwise wait for. A stopped run (SIGTERM, SIGINT, SIGHUP) still logs
+#   its end (rc 143, 130, 129), writes the report and prints NEXT:.
 #   9. report, at every exit after the arguments are read (failures and usage errors too) except in a dry run
 #      or a --list-folders run: agentsync setup-report --out $AGENTSYNC_SETUP_REPORT (default
 #      ~/agent-context/setup-report.md); when agentsync is missing or that fails, a shell report with the
@@ -512,7 +523,9 @@ SIMULATE=0
 LAUNCHCTL="${AGENTSYNC_LAUNCHCTL:-/bin/launchctl}"
 WAIT_SECONDS="${AGENTSYNC_WAIT_SECONDS:-180}"
 WAIT_POLL="${AGENTSYNC_WAIT_POLL_SECONDS:-3}"
-# a progress line at least this often in the helper builds and steps 5, 6 and 8
+REINSTALL_WAIT="${AGENTSYNC_REINSTALL_WAIT_SECONDS:-120}" # step 2's wait for a running background sync
+LOCKF="/usr/bin/lockf"
+# a progress line at least this often in step 2's wait, the helper builds and steps 5, 6 and 8
 PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}"
 LIST_TIMEOUT="${AGENTSYNC_LIST_TIMEOUT:-90}"
 LIST_TOTAL="${AGENTSYNC_LIST_TOTAL_SECONDS:-100}"
@@ -684,17 +697,18 @@ with_progress() {
 	wait "$pid" || rc=$?
 	return "$rc"
 }
-# Print "helpers: building the WHAT, still running, <N>s" every $PROGRESS_EVERY s until killed, for the helper
-# build the caller runs in the foreground meanwhile (a stopped run still lets the one under way end before it
-# exits, so a re-run never meets a second build in the same tree). It names the helper: the speech helper's
-# first build takes minutes after the OCR and media lines said ready, and ends in "speech: off" while its
-# models are not placed. TICKER is its pid; on_exit kills it too.
+# Print "LINE, still running, <N>s" every $PROGRESS_EVERY s until killed, for the command the caller runs in
+# the foreground meanwhile (a stopped run still lets the one under way end before it exits, so a re-run never
+# meets a second build in the same tree, or a second reinstall). A helper build's LINE names the helper
+# ("helpers: building the speech helper"): the speech helper's first build takes minutes after the OCR and
+# media lines said ready, and ends in "speech: off" while its models are not placed. TICKER is its pid;
+# on_exit kills it too.
 # The sleep holds no output open, so a killed ticker never keeps a reader of this run's output waiting.
 TICKER=""
-ticker() { # WHAT
+ticker() { # LINE
 	local t0=$SECONDS
 	while sleep "$PROGRESS_EVERY" >/dev/null 2>&1 && kill -0 "$$" 2>/dev/null; do
-		say "helpers: building the $1, still running, $((SECONDS - t0))s"
+		say "$1, still running, $((SECONDS - t0))s"
 	done
 }
 
@@ -1722,6 +1736,9 @@ fi
 case "$WAIT_SECONDS" in
 '' | *[!0-9]*) usage_error "AGENTSYNC_WAIT_SECONDS must be a whole number of seconds: $WAIT_SECONDS" ;;
 esac
+case "$REINSTALL_WAIT" in
+'' | *[!0-9]*) usage_error "AGENTSYNC_REINSTALL_WAIT_SECONDS must be a whole number of seconds: $REINSTALL_WAIT" ;;
+esac
 case "$PROGRESS_SECONDS" in
 '' | 0 | *[!0-9]*) usage_error "AGENTSYNC_PROGRESS_SECONDS must be a whole number of seconds: $PROGRESS_SECONDS" ;;
 esac
@@ -1818,13 +1835,54 @@ fi
 # uv tool install, without uv's "`~/.local/bin` is not on your PATH ... uv tool update-shell" hint: this setup
 # calls agentsync by its full path and must not send anyone to edit a shell profile (the final note says so).
 uv_filter() { sed -e '/is not on your PATH/d' -e '/update-shell/d'; }
+uv_run() { { "$@" </dev/null 2>&1 1>&3 3>&- | uv_filter >&2; } 3>&1; } # COMMAND...: its status (pipefail)
+# The single-writer lock the background sync takes (<state_dir>/agentsync.lock), read by the tool about to be
+# replaced from this run's config. Empty without that tool or config, or when it cannot say: a background job
+# starts that interpreter on that config, so none can be running agentsync then.
+sync_lock() {
+	local py="$TOOL_DIR/agentsync/bin/python"
+	[ -x "$py" ] && [ -f "$CONFIG" ] || return 0
+	with_timeout 20 "$py" -I -c '
+import sys
+from pathlib import Path
+from agentsync.config import load_config
+
+print(load_config(Path(sys.argv[1])).state_paths.lock)
+' "$CONFIG" 2>/dev/null || true
+}
+# The reinstall under the background sync's lock (see step 2 in the header). lockf takes the flock(2) lock the
+# sync takes, keeps the file (-k), never creates one (-n: no lock file, no sync ever ran there), and writes
+# nothing in it, so the next sync finds no body to break. Its own exit codes (64, 69, 71, 73, 75) mean it did
+# not start uv, which never exits with those: then uv runs as before, not waited for. The probe's own error
+# line is dropped (lockf prints it whatever -s says), so a lock it cannot open is reported once, by the call
+# that runs uv.
 uv_tool_install() {
-	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE")
+	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE") lock busy=0 rc=0
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$UV" "${args[@]}"
 		return 0
 	fi
-	{ "$UV" "${args[@]}" </dev/null 2>&1 1>&3 3>&- | uv_filter >&2; } 3>&1 # uv's status (pipefail)
+	lock="$(sync_lock)"
+	if [ -n "$lock" ] && [ -f "$lock" ] && [ ! -L "$lock" ] && [ -x "$LOCKF" ]; then
+		"$LOCKF" -k -n -s -t 0 "$lock" /usr/bin/true 2>/dev/null || busy=$?
+		if [ "$busy" -eq 75 ]; then
+			say "agentsync: a background sync is running; the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
+			ticker "agentsync: reinstalling after the background sync ends" &
+		else # a sync that starts after this probe is waited for too, so a line still comes
+			ticker "agentsync: reinstalling" &
+		fi
+		TICKER=$!
+		uv_run "$LOCKF" -k -n -s -t "$REINSTALL_WAIT" "$lock" "$UV" "${args[@]}" || rc=$?
+		kill "$TICKER" 2>/dev/null || true
+		TICKER=""
+		case "$rc" in
+		64 | 69 | 71 | 73 | 75) ;;
+		*) return "$rc" ;;
+		esac
+		[ "$rc" -ne 75 ] ||
+			say "agentsync: the background sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
+	fi
+	uv_run "$UV" "${args[@]}"
 }
 step_start agentsync
 BIN_DIR="$HOME/.local/bin"
@@ -1947,7 +2005,7 @@ if have_devtools; then
 		# the media line and the speech line say they were the speech helper's build.
 		build_helper() { # MODULE WHAT FALLBACK
 			local line
-			ticker "$2" &
+			ticker "helpers: building the $2" &
 			TICKER=$!
 			line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m "agentsync.convert.$1" </dev/null 2>/dev/null | head -n 1)" || true
 			kill "$TICKER" 2>/dev/null || true

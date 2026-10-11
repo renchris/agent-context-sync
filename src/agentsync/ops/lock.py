@@ -1,10 +1,11 @@
 """Single-writer ``flock`` lock and the outward liveness heartbeat (owner: ops).
 
 The lock (design 4.7, CONTRACTS §14.2) is ``flock(LOCK_EX|LOCK_NB)`` on ``<state_dir>/agentsync.lock``; the
-kernel drops it when the holder dies, so a *held* lock always names a live process.  The file body
-``<pid> <boot_time> <iso8601> <label>`` exists for the other case: a body still present when the lock is
-free means the previous holder died mid-cycle (a clean release truncates it first), so its scope is unknown
-and the next pass must be a FULL enumeration.
+kernel drops it when the holder dies, so a *held* lock always names a live process (install.sh's reinstall
+holds it through /usr/bin/lockf and writes no body: then the body is empty, or a crashed holder's).  The
+file body ``<pid> <boot_time> <iso8601> <label>`` exists for the other case: a body still present when the
+lock is free means the previous holder died mid-cycle (a clean release truncates it first), so its scope is
+unknown and the next pass must be a FULL enumeration.
 
 Next to the lock sits a holder sidecar ``agentsync.lock.json`` (pid, host, boot_time, label, started_at,
 last_beat_at, stage), rewritten atomically on acquire and on every :meth:`SingleWriterLock.beat`, removed on
@@ -216,8 +217,11 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     """Human description of a lock holder for LockHeldError and doctor."""
     info = LockInfo.parse(body)
     if info is None:
-        text = body.strip() or "<empty body>"
-        return f"{text!r} (unparseable lock body)"
+        if not body.strip():  # held with no body: install.sh's reinstall (lockf), a probe, a starting cycle
+            return (
+                "an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)"
+            )
+        return f"{body.strip()!r} (unparseable lock body)"
     out = f"pid {info.pid} ({info.label}) since {info.started_at}"
     if holder is not None and holder.get("pid") == info.pid:
         host = holder.get("host")

@@ -11005,6 +11005,42 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
   `write_fallback_report`, only when the shell fallback writes the report, so a report agentsync writes runs no
   git for it. A real run still names its SOURCE, and its install.log start line is unchanged (`read_commit` is
   the same code moved).
+- **The reinstall holds the background sync's lock** (`scripts/install.sh`, `agentsync.ops.lock`).
+  - Step 2 runs `uv tool install` under `/usr/bin/lockf -k -n -s -t $AGENTSYNC_REINSTALL_WAIT_SECONDS
+    <state_dir>/agentsync.lock` (default 120 s; 0 never waits), the flock(2) lock the sync takes. The lock path
+    is read by the tool being replaced from the run's config (`sync_lock`, the `status_pandoc` pattern; a
+    custom `[agentsync] state_dir` is honored). Without that tool, that config or that lock file (or with a
+    symlinked lock, or no lockf) there is no lock and the run is today's, byte for byte.
+  - A probe (`lockf -t 0 ... /usr/bin/true`, its own error line dropped) finds a running sync: then one line
+    `agentsync: a background sync is running; the reinstall waits for it to end (at most <N>s)` and a ticker
+    `agentsync: reinstalling after the background sync ends, still running, <N>s` at least every 15 s;
+    otherwise the ticker reads `agentsync: reinstalling, still running, <N>s` (once the locked reinstall
+    passes about 15 s). lockf and uv run in the foreground and the ticker beside them, as the helper builds do;
+    `ticker` now takes the whole line, and the helper lines are byte-identical.
+  - A background sync that starts meanwhile meets the held lock and exits 75 (skipped; launchd starts the next
+    at its interval). lockf's own exit codes (64, 69, 71, 73, 75) mean it did not start uv, which never exits
+    with them: then uv runs unlocked as before, after `agentsync: the background sync is still running after
+    <N>s; reinstalling without waiting longer` when the wait ran out. A signalled uv (lockf 70) stays a failure.
+  - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
+    lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
+    FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as
+    the holder. This is harmless and lasts at most the wait.
+  - `_describe_holder` (`agentsync.ops.lock`): a held lock with an empty body (the reinstall, an `is_held`
+    probe, a cycle between flock and its write) reads `an unrecorded holder (install.sh while it reinstalls
+    agentsync, or a check for an instant)`, not `'<empty body>' (unparseable lock body)`; a non-empty body
+    that does not parse keeps the old text. The module docstring says so.
+  - The setup log is unchanged: `step=agentsync seconds=N` carries the wait. The header's run-time sentence
+    says a re-run may spend up to 2 minutes of the first sync's time in step 2 (the first sync would
+    otherwise wait up to 600 s for the same sync).
+  - Why: with `--force`, uv removes and recreates the tool environment (uv 0.12.17, measured 2026-10-11:
+    `bin/python`, the package and the bundled pandoc missing for 0.26 to 0.66 s of a 1.3 s reinstall, then a
+    new build under any cycle still running) while a job may run from it (2026-10-08 U7; v10 E3).
+  - Residuals: a cycle longer than the wait still meets the rebuild (today's behavior, said in one line); a
+    job that starts inside the rebuild can fail at exec or import before it takes the lock (exit 1, as today).
+  - Tests: `tests/test_install_oneshot.py` (the wait, released on the first tick; a wait that runs out; no
+    lock file, none created; a free lock held while uv runs; a crash marker kept; a bad
+    `AGENTSYNC_REINSTALL_WAIT_SECONDS` is a usage error) and `tests/test_ops_lock.py`
+    (`test_describe_names_an_empty_body_held_by_install_sh`).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

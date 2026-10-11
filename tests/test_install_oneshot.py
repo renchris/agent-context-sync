@@ -26,6 +26,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 from collections.abc import Iterable
@@ -38,6 +39,7 @@ from agentsync import setup_report
 from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.ops import doctor
+from agentsync.ops.lock import SingleWriterLock
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -73,6 +75,12 @@ STUB_UV = """#!/bin/bash
 echo "uv $*" >> "$STUB_LOG"
 echo "UV_TOOL_BIN_DIR=${UV_TOOL_BIN_DIR:-}" >> "$STUB_LOG.uv"
 if [ "$1 $2" = "tool install" ]; then
+  if [ -n "${STUB_SYNC_LOCK:-}" ]; then  # what a sync starting now would meet, and whether the test let go
+    { [ -e "$STUB_SYNC_LOCK.released" ] && echo released=yes || echo released=no
+      "$STUB_PY" -c 'import sys; from pathlib import Path
+from agentsync.ops.lock import SingleWriterLock as S
+print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_LOG.lock"
+  fi
   if [ -n "${STUB_UV_INSTALL_RC:-}" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
   fi
@@ -3595,6 +3603,9 @@ def test_first_sync_note_carries_the_read_again_count(env: dict[str, str], folde
 # ---- the on-device OCR helper is built in the helpers step -------------------------------------------------
 
 STUB_TOOL_PYTHON = """#!/bin/bash
+case "$*" in  # the lock path step 2 asks for, unlogged: the other tests' python call counts stay as they were
+*state_paths.lock*) [ -z "${STUB_SYNC_LOCK:-}" ] || printf '%s\\n' "$STUB_SYNC_LOCK"; exit 0 ;;
+esac
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
 case "$*" in
 *agentsync.convert.media*) err="${STUB_MEDIA_ERR:-}" out="${STUB_MEDIA_OUT:-}" rc="${STUB_MEDIA_RC:-0}" ;;
@@ -4145,3 +4156,156 @@ def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
     for h in hosts:
         assert f"{h}.fabrikam" not in text, h
     assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \|", text)) == len(hosts), text
+
+
+# ---- step 2 holds the background sync's lock (N6) ----------------------------------------------------------
+
+REINSTALL_TICK = r"agentsync: reinstalling after the background sync ends, still running, \d+s"
+
+
+def _held_sync(env: dict[str, str]) -> tuple[dict[str, str], Path]:
+    """A re-run's setting: the tool and its config exist, and the tool names <state_dir>/agentsync.lock."""
+    home = Path(env["HOME"])
+    tool_py = home / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text("# stub\n")
+    lock = home / "Library" / "Application Support" / "agentsync" / "agentsync.lock"
+    lock.parent.mkdir(parents=True)
+    return {**env, "STUB_SYNC_LOCK": str(lock), "STUB_PY": sys.executable}, lock
+
+
+def _step_seconds(env: dict[str, str], step: str) -> int:
+    [secs] = [int(m) for ln in install_log(env) for m in re.findall(rf"step={step} seconds=(\d+) ", ln)]
+    return secs
+
+
+def _lock_log(env: dict[str, str]) -> list[str]:
+    return Path(env["STUB_LOG"] + ".lock").read_text().splitlines()
+
+
+def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """With --force uv rebuilds the tool environment the background sync runs from (2026-10-08 U7): the
+    reinstall waits for a running sync, with progress lines, and holds the sync's lock while uv runs, so a
+    sync starting then is skipped (exit 75).  The lock's body stays empty: the next sync breaks no stale lock.
+    The test lets go once the first progress line is out, not after a fixed sleep."""
+    e, lock = _held_sync(env)
+    e = {**e, "AGENTSYNC_PROGRESS_SECONDS": "1", "AGENTSYNC_REINSTALL_WAIT_SECONDS": "60"}
+    held = SingleWriterLock(lock, "poll")
+    held.acquire()
+    early: list[str] = []
+    proc: subprocess.Popen[str] | None = None
+    try:
+        try:
+            proc = subprocess.Popen(
+                [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=e,
+                stdin=subprocess.DEVNULL,
+            )
+            assert proc.stdout is not None
+            deadline = time.monotonic() + 50
+            for raw in proc.stdout:
+                early.append(raw.rstrip("\n"))
+                if re.fullmatch(REINSTALL_TICK, early[-1]) or time.monotonic() > deadline:
+                    break
+            Path(f"{lock}.released").touch()  # before the release: uv can only start after it
+        finally:
+            held.release()
+        # The rest is read through the same text wrapper (communicate would read the raw fd and drop what
+        # the wrapper already buffered); the timer keeps communicate's 120 s bound.
+        killer = threading.Timer(120, proc.kill)
+        killer.start()
+        try:
+            rest = proc.stdout.read()
+        finally:
+            killer.cancel()
+        proc.wait(timeout=10)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    lines = early + rest.splitlines()
+    out = "\n".join(lines)
+    assert proc.returncode == 0, out
+    assert "agentsync: a background sync is running; the reinstall waits for it to end (at most 60s)" in lines
+    ticks = [ln for ln in lines if ln.startswith("agentsync: reinstalling")]
+    assert ticks and all(re.fullmatch(REINSTALL_TICK, t) for t in ticks), out
+    assert "still running after" not in out
+    assert _lock_log(e) == ["released=yes", "held=True"]
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
+    assert _step_seconds(e, "agentsync") >= 1
+    assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    e, lock = _held_sync(env)
+    e = {**e, "AGENTSYNC_REINSTALL_WAIT_SECONDS": "1"}
+    with SingleWriterLock(lock, "reconcile"):
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        "agentsync: the background sync is still running after 1s; reinstalling without waiting longer"
+        in (cp.stdout.splitlines())
+    )
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
+    assert ("agentsync", "done", "0", "") in steps(install_log(e))
+
+
+def test_no_lock_file_means_no_wait_and_none_is_created(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    e, lock = _held_sync(env)
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not [ln for ln in cp.stdout.splitlines() if "background sync" in ln or "reinstalling" in ln]
+    assert not lock.exists()
+    assert _lock_log(e) == ["released=no", "held=False"]
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
+
+
+def test_a_free_lock_file_is_held_while_uv_runs_without_a_wait_line(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The common re-run: no sync running, the lock file free.  uv still runs under the lock, so a sync that
+    starts during the rebuild is skipped, and nothing says a sync was waited for."""
+    e, lock = _held_sync(env)
+    lock.write_text("")
+    lock.chmod(0o600)
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not [ln for ln in cp.stdout.splitlines() if "background sync" in ln]
+    assert _lock_log(e) == ["released=no", "held=True"]
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
+    assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_stale_body_is_kept_for_the_next_sync(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """A crashed cycle's body survives the reinstall (lockf writes nothing), so the next sync still breaks
+    it and runs FULL passes."""
+    e, lock = _held_sync(env)
+    body = "99999 1 2026-10-10T00:00:00Z poll\n"
+    lock.write_text(body)
+    lock.chmod(0o600)
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert _lock_log(e) == ["released=no", "held=True"]
+    assert lock.read_text() == body
+    nxt = SingleWriterLock(lock, "poll")
+    try:
+        assert nxt.acquire().broke_stale
+    finally:
+        nxt.release()
+
+
+def test_a_bad_reinstall_wait_is_a_usage_error(env: dict[str, str]) -> None:
+    cp = install_sh({**env, "AGENTSYNC_REINSTALL_WAIT_SECONDS": "2m"})
+    assert cp.returncode == 2 and "AGENTSYNC_REINSTALL_WAIT_SECONDS must be a whole number" in cp.stderr
