@@ -2407,6 +2407,64 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         assert line.startswith("- first sync: done in 9s (install.log) · converted ") and want in line, line
 
 
+def _n25_run(minute: int, config: str | None, first_sync: str) -> str:
+    """One install.sh run in install.log: its start, uv, the config step (none when ``config`` is None),
+    status, first-sync and end lines."""
+    at, run = f"2026-09-29T09:{minute:02d}:00Z", f"20260929T09{minute:02d}00Z-{4200 + minute}"
+    lines = [
+        f"{at} run={run} start install.sh compat=6 commit=0123456789ab kind=checkout source=- "
+        "launchd=simulated args=--source-local x",
+        f"{at} run={run} step=uv seconds=0 rc=0 result=skipped note=present",
+        *([f"{at} run={run} step=config {config}"] if config is not None else []),
+        f"{at} run={run} step=status seconds=1 rc=0 result=done",
+        f"{at} run={run} step=first-sync {first_sync}",
+        f"{at} run={run} end rc={80 if 'rc=80' in first_sync else 0} seconds=20",
+    ]
+    return "".join(f"{line}\n" for line in lines)
+
+
+_N25_DONE = "seconds=9 rc=0 result=done note=converted-6-deferred-0"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+@pytest.mark.parametrize(
+    ("runs", "want"),
+    [
+        ([(59, "seconds=0 rc=0 result=done note=created kept=0 added=1", _N25_DONE)], "first sync"),
+        ([(59, "seconds=0 rc=0 result=done note=add-source kept=2 added=0", _N25_DONE)], "sync"),
+        ([(59, "seconds=0 rc=0 result=skipped note=exists kept=2 added=0", _N25_DONE)], "sync"),
+        ([(59, None, _N25_DONE)], "first sync"),
+        (
+            [
+                (
+                    58,
+                    "seconds=0 rc=0 result=done note=created kept=0 added=1",
+                    "seconds=3 rc=80 result=failed",
+                ),
+                (59, "seconds=0 rc=0 result=skipped note=exists kept=1 added=0", _N25_DONE),
+            ],
+            "sync",
+        ),
+    ],
+    ids=["created", "add-source", "exists", "no-config-step", "created-then-exists"],
+)
+def test_the_first_sync_line_says_sync_when_the_config_existed(
+    fake_mac: dict[str, Path], tmp_path: Path, runs: list[tuple[int, str | None, str]], want: str
+) -> None:
+    """install.sh says ``sync:`` rather than ``first sync:`` when sources.toml was there before its run (its
+    config step logs ``add-source`` or ``exists``), and the Summary's line now says the same, from the run
+    whose first-sync step it reads (N25). ``created``, or no config step, keeps ``first sync``."""
+    write_friction(fake_mac, V6_HAPPY)
+    log = "".join(_n25_run(minute, config, sync) for minute, config, sync in runs)
+    (fake_mac["setup"] / "install.log").write_text(log, encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    lines = [
+        ln for ln in section(text, "Summary").splitlines() if ln.startswith(("- first sync: ", "- sync: "))
+    ]
+    assert len(lines) == 1, lines
+    assert lines[0].startswith(f"- {want}: done in 9s (install.log) · converted 6, deferred 0 "), lines[0]
+
+
 V7_HAPPY = V6_HAPPY.replace("Prompt: v6", "Prompt: v7")
 """Setup prompt v7 run through with nothing to log (KISS K04/K16b): the same header and closing line as v6."""
 

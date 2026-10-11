@@ -5010,11 +5010,16 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     (the step's ``converted-N-deferred-M[-reread-R]`` note, else the sync's own "converted N, deferred M
     online-only[, read again R]" line in install.out), and how many sources status says have a complete
     baseline (``baseline complete``: one listing complete since the source's scope last changed), read when
-    the report runs."""
+    the report runs. Labelled ``sync`` when that run's config step says sources.toml already existed (note
+    ``add-source`` or ``exists``), as install.sh's lines say since 2026-10-06."""
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     parts: list[str] = []
     counts: tuple[int, int, int] | None = None
+    label = "first sync"
     if pool:
+        config = pool[-1].step("config") or {}
+        if config.get("note") in ("add-source", "exists"):  # sources.toml was there before that run
+            label = "sync"
         v = pool[-1].step("first-sync") or {}
         text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
         if v.get("rc", "0") not in ("0", ""):
@@ -5043,7 +5048,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if pool:
         parts += _reread_since(r, pool[-1])
-    return "- first sync: " + " · ".join(parts)
+    return f"- {label}: " + " · ".join(parts)
 
 
 def _reread_since(r: _Run, run: InstallRun) -> list[str]:

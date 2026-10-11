@@ -4951,7 +4951,8 @@ deviation, prompt, question, click and approval line of the attempt, in that kin
 the Allow clicks marked "(expected)", redacted before they are shortened. The run type (`compute_run_type`) is
 "simulated launchd" when the attempt's last install.sh run says `launchd=simulated`, else "sandbox" when HOME (or
 what it resolves to) is under one of `SANDBOX_HOMES` (/tmp, /private/tmp, /var/folders, /private/var/folders),
-else "real".
+else "real". **Amended (2026-10-11, §16.40 "The first-sync line says `sync:` after a config that already existed"):** the first-sync line is labelled `sync`
+after a config that already existed.
 
 v5 revision, redaction (J6, J21). Folder, library, organisation and full-name values are registered `fuzzy`: they
 also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
@@ -6090,7 +6091,8 @@ opened by its name from a descriptor on the folder that holds it, not by its ful
 
 - On a Mac whose sources.toml already existed, step 6's lines start `sync:` instead of `first sync:` (the
   command line, the progress line, the converted/deferred summary, "skipped, lock busy"). install.log's step is
-  still `first-sync`, and the report's `- first sync:` line and the error texts are unchanged.
+  still `first-sync`, and the report's `- first sync:` line and the error texts are unchanged. **Amended
+  (2026-10-11, §16.40 "The first-sync line says `sync:` after a config that already existed"):** the report's line now follows the config step.
 - When the agent step is skipped as `not-requested` and `~/Library/LaunchAgents/com.agentsync.poll.plist`
   exists, one line: `background sync: already installed by an earlier run (com.agentsync.poll); this run left
   it as it is, and ~/.local/bin/agentsync install-agent refreshes it`. Only the plist is tested: no `launchctl`
@@ -8288,7 +8290,7 @@ change:
 | 1 uv, 2 agentsync | as in any run: the tool is installed again from this checkout unless the last install was this same clean commit |
 | 3 launcher, helpers | launcher skipped (`not-requested`); the `helpers` step builds the OCR helper when developer tools exist, as in any run |
 | 4 config | `agentsync init`: it keeps every source and ensures the inbox. `sources.toml` is byte for byte what it was. `config: <path> exists (inbox ensured)`, logged `skipped`, note `exists` |
-| 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:` |
+| 5 status, 6 sync | both run: the config has a source other than the inbox (`HAVE_SOURCES`). The sync's lines say `sync:`, not `first sync:`, and so does the report's Summary line (**Amended (2026-10-11, §16.40)**) |
 | 9 report, `NEXT:` | the report is written, the run ends on the loop's `NEXT:` and exits 0 |
 
 One thing was added. Step 4 now says what became of the folder choice, in counts and no names:
@@ -10833,6 +10835,16 @@ and syncs typed in a terminal are recorded alike: see the OCR part)`.
 Why: the v10 report's clause read `converted 0, deferred 0` while a poll during the helpers step had read 17
 files again, and only the OCR part showed it. No command, flag or key. `docs/deploy/setup-feedback.md` has a
 `first sync:` row. Test: `test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install`.
+
+**The first-sync line says `sync:` after a config that already existed** (B13 N25, v10 E3-verifier; amends
+§16.22). The Summary's line starts `- sync:` when the install run whose first-sync step it reads logged its config
+step with note `add-source` or `exists` (sources.toml existed before that run), as install.sh's own lines do since
+2026-10-06 (§16.22); else `- first sync:` (note `created`, no config step, or no run). The label and the numbers
+come from the same run. A run that created the config and whose sync failed, followed by a run that found it,
+reads `- sync:`, as that second run printed; the `- install.sh:` line beside it shows both runs. The install.log
+step stays `first-sync`, and the `- install.sh:` step list, the outcome text and install.sh's error texts still
+name it so. `docs/deploy/setup-feedback.md` lists both forms. Test:
+`test_the_first_sync_line_says_sync_when_the_config_existed`.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
