@@ -228,11 +228,27 @@ def test_recent_errors_merge_a_line_repeated_in_a_row(fake_mac: dict[str, Path],
     assert "09:05:00,000" not in errors and "Mooring" not in text and "Harbor" not in text
     assert "09:15:00,000 WARNING agentsync.arm_local: src-b: directory '<path>' has no children\n" in errors
     assert "09:20:00,000 WARNING agentsync.arm_local: src-a: directory '<path>' has no children\n" in errors
-    assert "The last 5 of 5 WARNING/ERROR line(s) in " in errors
+    assert "The last 5 of 5 WARNING/ERROR line(s) in " in errors and "KiB" not in errors
     assert (
         "(8 as logged: lines in a row that read the same here are shown once, with their count and last time)"
         in errors
     )
+
+
+def test_recent_errors_name_their_window(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """Bring-back 2026-10-10 (C4): the count is of the lines read, the last 64 KiB of each log file, so a
+    count that fell between two reports read as a change in the Mac. When a file is longer than that, the
+    heading says so (a shorter one keeps the plain heading: the merge test above)."""
+    log = fake_mac["logs"] / "com.agentsync.poll.err.log"
+    line = "2026-10-05 09:00:{:02d},000 WARNING agentsync.cycle: src-a: poll {} unstable\n"
+    log.write_text("".join(line.format(i % 60, i) for i in range(3000)), encoding="utf-8")
+    assert log.stat().st_size > setup_report._TAIL_BYTES
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    errors = section(text, "Recent errors")
+    window = r"The last 40 of (\d+) WARNING/ERROR line\(s\) in the last 64 KiB of each log file in "
+    head = re.search(window, errors)
+    assert head and int(head[1]) == len(setup_report._tail(log)), errors[:300]
+    assert "poll 2999 unstable" in errors
 
 
 CONVERTED_SUFFIXES = sorted({*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions})

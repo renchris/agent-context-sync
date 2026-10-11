@@ -1844,13 +1844,19 @@ def _fence(lines: Iterable[str]) -> list[str]:
     return ["~~~text", *body, "~~~"] if body else ["_(none)_"]
 
 
-def _tail(path: Path, limit: int = _TAIL_BYTES) -> list[str]:
+def _tail_cut(path: Path, limit: int = _TAIL_BYTES) -> tuple[list[str], bool]:
+    """``path``'s last ``limit`` bytes as lines (the first, partial one dropped when the file is longer)
+    and whether it is longer: one open file answers both, so a rotation in between cannot split them."""
     with path.open("rb") as fh:
         size = fh.seek(0, os.SEEK_END)
         fh.seek(max(0, size - limit))
         data = fh.read(limit)
     lines = data.decode("utf-8", errors="replace").splitlines()
-    return lines[1:] if size > limit else lines
+    return (lines[1:], True) if size > limit else (lines, False)
+
+
+def _tail(path: Path, limit: int = _TAIL_BYTES) -> list[str]:
+    return _tail_cut(path, limit)[0]
 
 
 def _plist_version(app: str) -> str | None:
@@ -4722,12 +4728,15 @@ def _recent_errors(r: _Run) -> list[str]:
     hits: list[str] = []
     problems: list[str] = []
     lines = 0
+    longer_any = False  # a file longer than _TAIL_BYTES: the count is of the lines read, not of the whole log
     for path in files:
         try:
-            own = [ln for ln in _tail(path) if _LEVEL_RE.search(ln)]
+            read, longer = _tail_cut(path)
+            own = [ln for ln in read if _LEVEL_RE.search(ln)]
         except OSError as exc:
             problems.append(f"- {path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
             continue
+        longer_any |= longer
         lines += len(own)
         # Merged per file, over the matching lines only, after the scrub and before redaction: a launcher
         # line between two repeats does not split them, lines that differ only in an item's path or quoted
@@ -4742,9 +4751,10 @@ def _recent_errors(r: _Run) -> list[str]:
         if lines != len(hits)
         else ""
     )
+    window = f" in the last {_TAIL_BYTES // 1024} KiB of each log file" if longer_any else ""
     head = (
-        f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s) in {log_dir}"
-        f"{merged} (item paths and document names shown as <path>):"
+        f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s){window}"
+        f" in {log_dir}{merged} (item paths and document names shown as <path>):"
     )
     return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
 

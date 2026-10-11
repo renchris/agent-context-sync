@@ -10911,6 +10911,20 @@ always found. Only a date, a line number and fixed words reach the report, never
 flag or key. Tests: `test_first_difference_matches_a_filled_draft_and_names_a_changed_line` and
 `test_first_sync_doctor_warns_and_it_draft_in_the_summary`.
 
+**Recent errors names its window** (B13 H22, bring-back 2026-10-10 C4). The report reads the last 64 KiB of each
+file in the log directory (`_TAIL_BYTES`; the rotated `.log.1` and `.log.2` included, each on its own), so its count
+is of the lines read, not of the whole log. When any file was longer than that, the heading says `The last <n> of
+<m> WARNING/ERROR line(s) in the last 64 KiB of each log file in <log dir> ...`; otherwise it is unchanged. Whether
+a file was cut comes from the same open file as its lines (`_tail_cut`), so a rotation in between cannot split the
+two. Reading whole logs is not built: a job log holds up to 24 MiB (8 MiB, rotated twice), and filtering,
+scrubbing and merging took about 0.9 to 2.2 s per 8 MiB of warning lines, depending on the lines (two
+measurements), inside a 12 s budget that Doctor shares. A whole-log count would not be stable either: each rotation
+deletes `.log.2`, so the count drops by up to a third with nothing wrong. The shell fallback's Recent errors reads
+install.log's `result=failed` lines in full, so it has no window and no twin. `docs/deploy/setup-feedback.md`'s
+table says "log entries (repeats in a row shown once), read from the last 64 KiB of each log file". Tests:
+`test_recent_errors_name_their_window` (a 3000-line log over 64 KiB names the window and counts the lines read) and
+`test_recent_errors_merge_a_line_repeated_in_a_row` (a short log does not).
+
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
 Reserved for lane D of B13.
