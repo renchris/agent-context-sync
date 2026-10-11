@@ -8572,7 +8572,9 @@ now depends on the paths the check found (`cycle._sync_leaves`, private):
   core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
   that is neither a file nor a folder, one of another user's (only its owner may change a mode), or one its
   owner may not read. No sync clears it, so the FAIL stays, the fix is the person's, and a setup run still
-  stops there (step 5, exit 1, no sync).
+  stops there (step 5, exit 1, no sync). **Amended 2026-10-11, §16.39 N11:** each path in that fix is one
+  shell word, `~/'<rest>'` below the home folder and `'<path>'` elsewhere, so it runs when copied from a
+  report.
 - The read bit is in the rule because the sync changes a mode through a descriptor, and opening one takes it
   (review, 2026-10-07). A file at 0044 or a folder at 0333 got the sync as its fix, the sync left it with
   its warning, and the next status printed the same line. The chmod needs no read bit and clears both.
@@ -10802,6 +10804,34 @@ inside the cycle's 120 s re-read budget and the three-in-a-row stop. Every later
 file does the same, which is what a new engine or floor already did. Amends §16.27 (two dated lines there).
 Tests: `tests/test_cycle.py` (the digest follows bytes and names, not mtimes or compiled caches; a folder that
 cannot be listed still gives one; two files given up are read again, once, under another build).
+
+#### N11: a doctor fix names a home path as `~/'<rest>'` (`agentsync.ops.doctor`, `agentsync.setup_report`)
+
+The rule covers the eleven places where a doctor fix wrote a path in single quotes: the state folder's
+`mkdir`, "move ... aside", `chown` and `chmod 700`, the `chmod 600` of its files, a source folder's
+`chmod u+rx`, the `--canary` argument, the plist in `launchctl bootstrap`, the log truncation, and the
+`docs_repo.permissions` `chmod` and `git -C`. There a path below the home folder is written `~/'<rest>'` (`ops.doctor._shell_path`; the home folder itself is `~`), and any other path stays
+`'<path>'`. The home folder is the one `HOME` gives or the one it resolves to, the two forms the setup report
+registers; a home folder that does not resolve (a symlink loop) is taken as spelled. The quoted part is the raw
+path, so the report's redaction finds every name in it as before, and these fixes no longer carry the login
+name. A path that holds `'` breaks the quoting, as it did before.
+
+Every other path in doctor's output is as it was, absolute and unquoted, and a report still redacts its home
+folder to `~`: the detail of every check, and the fixes that wrote a path without quotes. Those are the
+config file to delete, the docs repo in `mkdir -p`, "move ... aside", `git -C ... rm --cached` and "the real
+directory", the folder to open in Finder, the sentinel to restore, the volume to free space on, the log folder
+to read a crash in, the launcher path that begins the canary command, and the Full Disk Access fix, whose
+path is pasted into Finder. Most of them are prose, not a command; the docs repo's `mkdir -p` and `git -C`
+copied from a report run with `~` expanded and break only on a space in the path, as before.
+
+Why: both setup reports redact the home folder to `~`, and no shell expands a tilde inside quotes. The
+`docs_repo.permissions` fix copied from a report failed with `chmod: ~/agent-context: No such file or directory`
+(field report 2026-10-06, row 9). Measured in the design: the state folder's mode fix failed the same way, and
+its `mkdir -m 700 -p '~/...'` exited 0 having made a folder named `~` in the working directory.
+`setup_report.residue()`'s home-container rule accepts the quote after `~/`, so `~/'Development/<folder-1>'` is
+no residue hit. Amends §16.29 "A re-run does not stop on a permission agentsync clears itself" (dated line
+there). Tests: `tests/test_ops_doctor.py` (the state-folder and permissions fixes run under `/bin/sh` as the
+report shows them; the forms), `tests/test_setup_report.py` (the residue rule).
 
 ### 16.40 Setup report fixes (2026-10-11, wave B13 lane C)
 

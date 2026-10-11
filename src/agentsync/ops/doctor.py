@@ -9,6 +9,7 @@ time. Every FAIL names a fix: scripts/install.sh tells its reader so.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import enum
 import errno
@@ -418,6 +419,27 @@ def _bad(name: str, detail: str, severity: Severity = Severity.ERROR, fix: str |
     return CheckResult(name=name, ok=False, detail=detail, severity=severity, fix=fix)
 
 
+def _shell_path(path: Path | str) -> str:
+    """``path`` as one shell word for a fix: ``~/'<rest>'`` below the home folder (as HOME gives it, or
+    resolved), ``~`` for the home folder itself, ``'<path>'`` anywhere else. Both setup reports redact the
+    home folder to ``~``, and inside quotes (``'~/...'``) no shell expands it (CONTRACTS §16.39 N11). The
+    quoted part is the raw path, so the report's redaction still finds every name in it."""
+    p = str(path)
+    home = Path.home()
+    forms = {str(home)}
+    with contextlib.suppress(OSError, RuntimeError):  # a home folder that does not resolve (a symlink loop)
+        forms.add(str(home.resolve()))
+    for form in sorted(forms, key=len, reverse=True):
+        h = form.rstrip("/")
+        if not h:  # HOME=/ : every path would be "below" it
+            continue
+        if p == h:
+            return "~"
+        if p.startswith(h + "/"):
+            return f"~/'{p[len(h) + 1 :]}'"
+    return f"'{p}'"
+
+
 def _again_fix(fallback: str | None = None) -> str:
     """The fix for a check that ran out of time: run again as it is, and what to do when the same line
     comes back.  Under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) the run is the command its ``NEXT:``
@@ -746,12 +768,12 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 "state_dir",
                 f"{root} does not exist; the first sync creates it",
                 Severity.WARN,
-                fix=f"mkdir -m 700 -p '{root}'",
+                fix=f"mkdir -m 700 -p {_shell_path(root)}",
             )
         )
         return out
     if not stat.S_ISDIR(st.st_mode):
-        out.append(_bad("state_dir", f"{root} is not a directory", fix=f"move '{root}' aside"))
+        out.append(_bad("state_dir", f"{root} is not a directory", fix=f"move {_shell_path(root)} aside"))
         return out
     mode = stat.S_IMODE(st.st_mode)
     if st.st_uid != os.getuid():
@@ -759,7 +781,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             _bad(
                 "state_dir",
                 f"{root} is owned by uid {st.st_uid}, not {os.getuid()}",
-                fix=f"sudo chown -R {os.getuid()} '{root}'",
+                fix=f"sudo chown -R {os.getuid()} {_shell_path(root)}",
             )
         )
     elif mode != 0o700:
@@ -767,7 +789,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             _bad(
                 "state_dir",
                 f"{root} has mode {mode:04o}; cursors and tokens need 0700",
-                fix=f"chmod 700 '{root}'",
+                fix=f"chmod 700 {_shell_path(root)}",
             )
         )
     else:
@@ -789,7 +811,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         if m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
     if loose:
-        paths = " ".join(f"'{root / n.split(' ')[0]}'" for n in loose)
+        paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in loose)
         out.append(
             _bad("state_dir.files", f"readable by others: {', '.join(loose)}", fix=f"chmod 600 {paths}")
         )
@@ -873,7 +895,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                 )
             )
         else:
-            out.append(_bad(f"{base}.listable", f"{root}: permission denied", fix=f"chmod u+rx '{root}'"))
+            out.append(
+                _bad(f"{base}.listable", f"{root}: permission denied", fix=f"chmod u+rx {_shell_path(root)}")
+            )
     except OSError as exc:
         out.append(_bad(f"{base}.listable", f"{root}: {exc.strerror or exc}", fix=look_fix))
 
@@ -1275,7 +1299,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
                     name,
                     f"launcher canary exited {rc}: {line or 'no output'}",
                     Severity.WARN,
-                    fix=f"{exe} --canary-only --canary '{root}'",
+                    fix=f"{exe} --canary-only --canary {_shell_path(root)}",
                 )
             )
     return out
@@ -1387,7 +1411,11 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
     loaded = _is_loaded(spec.label)
     if not loaded:
         problems.append(
-            (Severity.WARN, "installed but not loaded", f"launchctl bootstrap gui/{os.getuid()} '{path}'")
+            (
+                Severity.WARN,
+                "installed but not loaded",
+                f"launchctl bootstrap gui/{os.getuid()} {_shell_path(path)}",
+            )
         )
     if not problems:
         interval = installed.get("StartInterval")
@@ -1558,7 +1586,12 @@ def _check_logs(config: Config) -> list[CheckResult]:
     if big:
         names = ", ".join(f"{p.name} ({s // 1024**2} MiB)" for p, s in big)
         return [
-            _bad("logs", f"large logs: {names}", Severity.WARN, fix="; ".join(f": > '{p}'" for p, _ in big))
+            _bad(
+                "logs",
+                f"large logs: {names}",
+                Severity.WARN,
+                fix="; ".join(f": > {_shell_path(p)}" for p, _ in big),
+            )
         ]
     return [_ok("logs", f"{len(files)} log file(s) in {log_dir}")]
 
@@ -1615,12 +1648,12 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         bad += _group_other_readable(root)
     if bad:
         shown = ", ".join(str(p) for p in bad[:4]) + (f" (+{len(bad) - 4} more)" if len(bad) > 4 else "")
-        targets = " ".join(f"'{r}'" for r in roots if r.exists())
+        targets = " ".join(_shell_path(r) for r in roots if r.exists())
         # A sync makes agentsync's own paths owner-only, and a setup agent may run it; the chmod is the
         # person's, for a path a sync leaves (in mirror/ or .git, or another user's).
         fix = "agentsync sync (it makes these owner-only)"
         if _sync_leaves(config, bad):
-            fix = f"chmod -R go-rwx {targets}; git -C '{repo}' config core.sharedRepository 0600"
+            fix = f"chmod -R go-rwx {targets}; git -C {_shell_path(repo)} config core.sharedRepository 0600"
         return [_bad("docs_repo.permissions", f"group/other can read tenant data: {shown}", fix=fix)]
     return [_ok("docs_repo.permissions", "docs repo, cache and logs are owner-only")]
 

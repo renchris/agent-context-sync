@@ -23,14 +23,14 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, gitops
+from agentsync import cli, gitops, setup_report
 from agentsync.config import Config, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
-from conftest import fails_without_a_fix
+from conftest import config_text, fails_without_a_fix
 from media_kit import fake_media
 from speech_kit import fake_speech, place_models
 from test_ocr import write_fake
@@ -669,6 +669,109 @@ def test_state_dir_missing(sample_config: Config, tmp_path: Path) -> None:
     assert not r["state_dir"].ok and r["state_dir"].severity is Severity.WARN
     assert "mkdir -m 700" in (r["state_dir"].fix or "")
     assert "state_dir.files" not in r
+
+
+def _as_the_report_shows(fix: str) -> str:
+    """``fix`` after the setup report's redaction of the home folder (``setup_report._build_redactor``)."""
+    red = setup_report.Redactor()
+    home = Path.home()
+    for h in sorted({str(home), str(home.resolve())}, key=len, reverse=True):
+        red.add("home", h)
+    return red.redact(fix)
+
+
+def _run_fix(shown: str, work: Path) -> subprocess.CompletedProcess[str]:
+    work.mkdir(exist_ok=True)
+    return subprocess.run(["/bin/sh", "-c", shown], cwd=work, capture_output=True, text=True, check=False)
+
+
+def test_a_state_dir_fix_under_home_runs_as_the_report_shows_it(
+    sample_config: Config, tmp_path: Path
+) -> None:
+    """§16.39 N11: the report redacts the home folder to ``~``; inside quotes no shell expands it, so the
+    mode fix failed and the mkdir made a folder named ``~`` in the working directory."""
+    state = Path.home() / "Library" / "Application Support" / "agentsync"
+    cfg = dataclasses.replace(sample_config, state_dir=state)
+    work = tmp_path / "work"
+
+    [missing] = doctor._check_state_dir(cfg)
+    assert (
+        missing.severity is Severity.WARN
+        and missing.fix == "mkdir -m 700 -p ~/'Library/Application Support/agentsync'"
+    )
+    shown = _as_the_report_shows(missing.fix)
+    assert shown == missing.fix, "the fix names no home folder, so the report leaves it as it is"
+    assert _run_fix(shown, work).returncode == 0
+    assert state.is_dir() and state.stat().st_mode & 0o777 == 0o700
+    assert not (work / "~").exists()
+
+    state.chmod(0o755)
+    loose = doctor._check_state_dir(cfg)[0]
+    assert not loose.ok and loose.fix == "chmod 700 ~/'Library/Application Support/agentsync'"
+    done = _run_fix(_as_the_report_shows(loose.fix), work)
+    assert done.returncode == 0, done.stderr
+    assert state.stat().st_mode & 0o777 == 0o700
+
+
+def test_shell_path_forms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    home = Path.home()
+    assert doctor._shell_path(home) == "~"
+    assert doctor._shell_path(home / "a b" / "c") == "~/'a b/c'"
+    assert doctor._shell_path("/Volumes/X y") == "'/Volumes/X y'"
+    assert doctor._shell_path(f"{home}x/y") == f"'{home}x/y'", "a sibling whose name starts with the home's"
+    # HOME is a symlink: a path spelled either way is below it. Under tmp_path, which pytest resolved.
+    real, link = tmp_path / "real", tmp_path / "link"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", f"{link}/")
+    assert doctor._shell_path(real / "docs" / "x") == "~/'docs/x'"
+    assert doctor._shell_path(link / "docs" / "x") == "~/'docs/x'"
+    assert doctor._shell_path(link) == "~"
+    # A home folder that does not resolve costs no check its result.
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    monkeypatch.setenv("HOME", str(loop))
+    assert doctor._shell_path(loop / "x") == "~/'x'"
+    assert doctor._shell_path(tmp_path / "x") == f"'{tmp_path / 'x'}'"
+    monkeypatch.setenv("HOME", "/")
+    assert doctor._shell_path("/etc/x") == "'/etc/x'"
+
+
+def test_the_permissions_fix_under_home_runs_as_the_report_shows_it(tmp_path: Path) -> None:
+    """§16.39 N11, the field case (2026-10-06 row 9): the chmod and the git config of a docs repo below the
+    home folder, pasted from the report."""
+    ctx = Path.home() / "agent-context"
+    repo = ctx / "docs"
+    repo.mkdir(parents=True)
+    ctx.chmod(0o700)
+    repo.chmod(0o700)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    page = repo / "mirror" / "x" / "page.md"  # inside mirror/: no sync walks it, so the fix is the chmod
+    page.parent.mkdir(parents=True)
+    page.write_text("Contoso\n", encoding="utf-8")
+    page.chmod(0o644)
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    text = config_text(repo, state, tmp_path / "cache", tmp_path / "source")
+    cfg = parse_config(text, config_path=ctx / "sources.toml")
+
+    [found] = doctor._check_permissions(cfg)
+    assert not found.ok and found.fix is not None
+    assert found.fix.startswith("chmod -R go-rwx ~/'agent-context' ~/'agent-context/docs' ")
+    assert found.fix.endswith("; git -C ~/'agent-context/docs' config core.sharedRepository 0600")
+    assert str(Path.home()) not in found.fix
+    work = tmp_path / "work"
+    done = _run_fix(_as_the_report_shows(found.fix), work)
+    assert done.returncode == 0, done.stderr
+    assert page.stat().st_mode & 0o777 == 0o600
+    shared = subprocess.run(
+        ["git", "-C", str(repo), "config", "core.sharedRepository"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert shared.stdout.strip() == "0600"
+    assert not (work / "~").exists()
 
 
 def test_state_db_modes(sample_config: Config) -> None:
