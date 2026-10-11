@@ -602,6 +602,19 @@ git_head_file() {
 	[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) printf '%s' "$head" | cut -c1-12 ;;
 	esac
 }
+# COMMIT and DIRTY from the checkout $1; both stay as they are when git cannot say.
+read_commit() {
+	local c
+	c="$(checkout_commit "$1")"
+	case "$c" in
+	"") ;;
+	*" dirty "*)
+		COMMIT="${c%% *}-dirty" # "-dirty" keeps a changed tree from ever matching the install stamp
+		DIRTY="${c##* }"
+		;;
+	*) COMMIT="$c" ;;
+	esac
+}
 show_version() { # the compat line last: step 1 of the setup prompt reads the last line of its output
 	local c
 	if [ -e "$repo/.git" ]; then
@@ -1230,7 +1243,16 @@ scrub_exclude_lists() {
 		-e 's/exclude = \[".*$/exclude = [<path>]/'
 }
 write_fallback_report() { # RC WHY
-	local dir tmp friction
+	local dir tmp friction c
+	# --report-only reads no SOURCE: its Summary names this installer's checkout, as --version does. Only here,
+	# so a report agentsync writes runs no git.
+	if [ "$REPORT_ONLY" -eq 1 ] && [ -e "$repo/.git" ]; then
+		read_commit "$repo"
+		if [ "$COMMIT" = "-" ]; then
+			c="$(git_head_file "$repo")"
+			[ -z "$c" ] || COMMIT="$c (local changes not checked)"
+		fi
+	fi
 	dir="$(dirname "$REPORT_PATH")"
 	(
 		umask 077
@@ -1746,15 +1768,7 @@ for f in ${SOURCE_LOCALS[@]+"${SOURCE_LOCALS[@]}"}; do
 done
 
 if [ "$SOURCE_KIND" = "checkout" ] && [ "$DRY_RUN" -eq 0 ] && [ -e "$SOURCE/.git" ]; then
-	c="$(checkout_commit "$SOURCE")"
-	case "$c" in
-	"") ;;
-	*" dirty "*)
-		COMMIT="${c%% *}-dirty" # "-dirty" keeps a changed tree from ever matching the install stamp
-		DIRTY="${c##* }"
-		;;
-	*) COMMIT="$c" ;;
-	esac
+	read_commit "$SOURCE"
 fi
 log_start
 

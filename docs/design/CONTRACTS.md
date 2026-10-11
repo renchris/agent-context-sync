@@ -10998,6 +10998,13 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
   v10 rehearsal's old-copy scenario). `_PROMPT_STOP_RE` (`agentsync.setup_report`) reads only as far as the
   reason, and the awk readers in install.sh (`friction_attempt_stopped`, `friction_earlier_end`) look for
   the fixed mark before it, so a line an earlier installer wrote, without the code, is read the same.
+- **`--report-only` names the installer's own commit.** Under `install.sh --report-only` the shell fallback
+  report's Summary names the installer's own checkout (`source commit <sha>`; `<sha>-dirty tree=<fp>` with
+  local changes; `<sha> (local changes not checked)` when git cannot run), as `--version` does. Before, it said
+  `source commit -`, because that run never reads its SOURCE. The commit is read inside
+  `write_fallback_report`, only when the shell fallback writes the report, so a report agentsync writes runs no
+  git for it. A real run still names its SOURCE, and its install.log start line is unchanged (`read_commit` is
+  the same code moved).
 
 ### 16.42 Converters and speech (2026-10-11, wave B13 lane E)
 

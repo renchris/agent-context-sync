@@ -1479,6 +1479,56 @@ def test_install_log_start_line_names_the_diff_of_a_dirty_source(env: dict[str, 
     assert index.stat().st_mtime_ns == before, "install.sh ran git read-only (GIT_OPTIONAL_LOCKS=0)"
 
 
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], tmp_path: Path) -> None:
+    """--report-only stops before the run reads its SOURCE, so the shell fallback's Summary said
+    "source commit -" (B12 held, H16). It names this installer's checkout, as --version does."""
+    src = tmp_path / "checkout"
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    git = _git_checkout(src)
+    sha = subprocess.run(
+        [*git, "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    def summary(extra: dict[str, str] | None = None) -> str:
+        cp = subprocess.run(
+            [BASH32, str(src / "scripts" / "install.sh"), "--report-only"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**env, **(extra or {})},
+            stdin=subprocess.DEVNULL,
+            timeout=120,
+        )
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        assert "(shell fallback: agentsync is not installed)" in cp.stdout
+        [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+        return line
+
+    assert summary() == f"- install.sh: setup-prompt-compat {COMPAT}, source commit {sha}, exit 0 (ok)"
+    with (src / "scripts" / "install.sh").open("a") as fh:
+        fh.write("# a local change\n")
+    assert f"source commit {sha}-dirty tree={_fingerprint(git)}," in summary()
+    no_tools = {"DEVELOPER_DIR": str(tmp_path / "none")}
+    assert f"source commit {sha} (local changes not checked)," in summary(no_tools)
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    trace = tmp_path / "git.trace"
+    cp = subprocess.run(
+        [BASH32, str(src / "scripts" / "install.sh"), "--report-only"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**env, "GIT_TRACE": str(trace)},
+        stdin=subprocess.DEVNULL,
+        timeout=120,
+    )
+    assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout + cp.stderr
+    assert not trace.exists(), "a report agentsync writes runs no git"
+
+
 # ---- --list-folders (J9) -----------------------------------------------------------------------------------
 
 
