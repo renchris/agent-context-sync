@@ -11986,7 +11986,8 @@ it too. It uses the standard library only: no new dependency.
   text (§16.48 "PDF pictures and diagrams"); text on a hidden layer is read like any other.
 - **draw.io.** `<mxfile>` with `<diagram>` pages, each a `<mxGraphModel>` or compressed (base64 of raw
   deflate of the URI-encoded XML), or a bare `<mxGraphModel>`. A shape's text is its `value` (a
-  `UserObject` or `object` wrapper's `label`). A label is HTML only when `html=1` is one of the cell's
+  `UserObject` or `object` wrapper's `label`, its `%name%` placeholders filled in when the wrapper says
+  `placeholders="1"`: §16.48 "PDF pictures and diagrams"). A label is HTML only when `html=1` is one of the cell's
   `;`-separated style items, as draw.io renders it: then `<br>` and block tags (`<div>`, `<p>`, `<li>`,
   `<tr>` and the like, open or close) are line breaks, table cells are spaces, other tags are dropped and
   entities decoded; without `html=1` the label is plain text, angle brackets and all. A tag holds no `<`
@@ -12030,7 +12031,10 @@ the extensions tuple below); it was refused here.
 Amended 2026-10-11 by §16.48 (R86, part b): a Visio shape with no `<Text>` shows its master shape's text
 ("Page" said a master's default text was not read); the version below is `1.1.0`.
 
-Version: `1.1.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
+Amended 2026-10-11 by §16.48 (R86, part d): a draw.io object with `placeholders="1"` has its label's
+`%name%` placeholders filled in ("draw.io" read the label as written); the version below is `1.2.0`.
+
+Version: `1.2.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
 
 ##### `agentsync.convert.diagram` — `src/agentsync/convert/diagram.py` — owner: **convert**
 
@@ -13138,6 +13142,48 @@ instance, an empty `<Text/>`, own text, a group instance's members by `MasterSha
 top-level shapes, an unknown master and a connector named by master text;
 `test_a_visio_master_is_read_only_when_needed_and_within_the_caps`) and `tests/test_cycle.py`
 (`test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page`, the version read from the module).
+
+**A draw.io placeholder shows its value (R86, part d; amends §16.42 "Diagrams: draw.io and Visio",
+"draw.io").** A draw.io object can show its data in its label: `<object label="Owner: %owner%"
+owner="Contoso Ops" placeholders="1">` shows `Owner: Contoso Ops`, and was read as `Owner: %owner%`. The
+rules are draw.io's own (`Graph.getLabel` and `Graph.replacePlaceholders` in its `Graph.js`), measured from
+its source:
+
+- Only an `object` or `UserObject` wrapper with `placeholders="1"` and no `placeholder` attribute is filled
+  in; without it (or with `placeholders="0"`) every `%…%` stays as written. A bare `mxCell` holds no data,
+  so its `value` is never filled in, whatever attributes it carries.
+- A placeholder is draw.io's pattern `%(date\{.*\}|[^%{}"'=;]+)%`. Its name is looked up in the object's
+  own attributes, then in each object around it in turn (its container, its layer, the diagram's root
+  object `id="0"`, by `parent`), the nearest that has the attribute giving the value (an empty one
+  included). `%id%` is the cell's id.
+- Left as written: draw.io's own variables (`%page%`, `%pagenumber%`, `%pagecount%`, `%date%`, `%time%`,
+  `%timestamp%`, `%date{…}%`, `%filename%` and the like, which depend on when and where draw.io shows the
+  page), a shape's `%width%` and `%height%` and an edge's `%length%` (measured from the drawing),
+  `%label%`, `%tooltip%`, and any name nothing defines.
+- A `%` just before a placeholder keeps it: `%%owner%` shows `%owner%`. That is the only escape: `%%`
+  elsewhere stays `%%` (`50%% done` is not a placeholder), as in draw.io. The spec's "`%%` is a literal
+  percent" was corrected to this by reading draw.io's source.
+- It is done on the label as written, before an HTML label (`html=1`) has its tags and entities read, so
+  an expanded value is read like the rest of the label (`A &amp; B` reads `A & B`, a `<br>` in a value is
+  a line break); a plain label keeps the value as it is.
+- Edges are filled in like shapes, and an edge's ends are named by the filled-in text.
+
+Both steps are linear in the file: draw.io's pattern ends a `%date{` at the last `}%` on its line, which is
+found once a line rather than once for every `%date{` (the pattern itself took about 100 seconds over
+100,000 unclosed `%date{`), and the cells are walked once as their `parent` tree, each attribute name keeping
+the values of the objects around the cell, so a lookup costs the same however deep the cell is (walking
+to the root for each placeholder did not finish in 5 minutes for 20,000 nested containers). A cell in a
+`parent` loop sees only its own attributes. A label without `placeholders="1"` reads exactly as before, but
+a drawing with one now reads differently, so the converter's version is `1.2.0+python-<x.y.z>` and a cached
+reading is not reused; a page already published keeps its reading until its file changes.
+
+Tests: `tests/test_convert_formats.py` (`test_a_drawio_placeholder_is_expanded_as_draw_io_shows_it`: filled
+in, no `placeholders`, `placeholders="0"`, a `placeholder` attribute, the built-ins, the geometry names, an
+unknown and an empty value, the `%` escape, `%id%`, an HTML label and a plain one;
+`test_a_drawio_placeholder_is_found_on_the_object_then_its_containers`, a container, a layer, the root, an
+edge and a bare `mxCell`; `test_a_drawio_placeholder_label_is_read_in_linear_time`;
+`test_a_drawio_placeholder_in_a_deep_container_is_looked_up_once`; §16.42's
+`test_a_drawio_diagram_is_its_shape_text_and_connections_per_page` still passes).
 
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 

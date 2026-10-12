@@ -4257,6 +4257,131 @@ def test_a_drawio_bracket_that_opens_no_tag_is_a_character(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize(
+    ("attrs", "style", "line"),
+    [
+        ('label="Owner: %owner%" owner="Contoso Ops" placeholders="1"', "", "Owner: Contoso Ops"),
+        ('label="Owner: %owner%" owner="Contoso Ops"', "", "Owner: %owner%"),
+        ('label="Owner: %owner%" owner="Contoso Ops" placeholders="0"', "", "Owner: %owner%"),
+        ('label="Owner: %owner%" owner="Contoso Ops" placeholders="1" placeholder="1"', "", "Owner: %owner%"),
+        (
+            'label="%page% of %pagecount%, %pagenumber%, %date%, %date{yyyy}%, %filename%, %label%, '
+            '%tooltip%" placeholders="1"',
+            "",
+            "%page% of %pagecount%, %pagenumber%, %date%, %date{yyyy}%, %filename%, %label%, %tooltip%",
+        ),
+        ('label="%width% by %height%" width="9" height="4" placeholders="1"', "", "%width% by %height%"),
+        ('label="%missing% and %owner%" owner="" placeholders="1"', "", "%missing% and"),
+        (
+            'label="%%owner% is 50%% done; %owner%%owner%" owner="Ops" placeholders="1"',
+            "",
+            "%owner% is 50%% done; OpsOps",
+        ),
+        ('label="cell %id%" placeholders="1"', "", "cell 2"),
+        (
+            'label="&lt;b&gt;%owner%&lt;/b&gt;&lt;br&gt;%site%" owner="A &amp;amp; B" '
+            'site="Contoso&lt;br&gt;West" placeholders="1"',
+            "html=1;",
+            "A & B / Contoso / West",
+        ),
+        ('label="%owner%" owner="&lt;b&gt;Ops&lt;/b&gt;" placeholders="1"', "", "<b>Ops</b>"),
+    ],
+    ids=[
+        "expanded",
+        "no-placeholders",
+        "placeholders-0",
+        "placeholder-attribute",
+        "built-ins",
+        "geometry",
+        "unknown-and-empty",
+        "escaped-percent",
+        "id",
+        "html-after-expansion",
+        "plain-value",
+    ],
+)
+def test_a_drawio_placeholder_is_expanded_as_draw_io_shows_it(
+    tmp_path: Path, attrs: str, style: str, line: str
+) -> None:
+    """``%name%`` is the object's attribute only when the object says ``placeholders="1"``; draw.io's
+    built-ins and unknown names stay as written, ``%`` before a placeholder keeps it literal, and an HTML
+    label is expanded before its tags are read, so an expanded value reads like the rest of the label."""
+    cell = f'<object id="2" {attrs}><mxCell style="{style}" vertex="1" parent="1"/></object>'
+    src = build_drawio(
+        tmp_path / "Contoso Data.drawio", model=f"<mxGraphModel><root>{cell}</root></mxGraphModel>"
+    )
+    assert f"## Overview\n\n- {line}\n" in _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+
+
+@pytest.mark.parametrize(
+    ("label", "line"),
+    [
+        ("%date{" * 100_000 + "%owner%", "%date{" * 100_000 + "Ops"),
+        ("%" + "a" * 300_000, "%" + "a" * 300_000),
+        (
+            "%date{yyyy}% %owner% %date{x}% %owner%&#10;%date{}%owner%",
+            "%date{yyyy}% %owner% %date{x}% Ops / %date{}%owner%",
+        ),
+    ],
+    ids=["unclosed-dates", "unclosed-name", "a-date-runs-to-its-lines-last-close"],
+)
+def test_a_drawio_placeholder_label_is_read_in_linear_time(tmp_path: Path, label: str, line: str) -> None:
+    """draw.io's pattern ends ``%date{…}%`` at the last ``}%`` on its line; that is found once a line, so a
+    label of 100,000 unclosed ``%date{`` (about 100 s by the pattern itself) is read at once."""
+    cell = f'<object id="2" label="{label}" owner="Ops" placeholders="1"><mxCell vertex="1" parent="1"/>'
+    cell += "</object>"
+    src = build_drawio(
+        tmp_path / "Contoso Dates.drawio", model=f"<mxGraphModel><root>{cell}</root></mxGraphModel>"
+    )
+    start = time.monotonic()
+    body = _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    assert time.monotonic() - start < 10
+    assert f"## Overview\n\n- {line}\n" in body
+
+
+def test_a_drawio_placeholder_in_a_deep_container_is_looked_up_once(tmp_path: Path) -> None:
+    """Containers nested 20,000 deep, each with a name none of them has and one only the root has: each
+    placeholder is one lookup, not a walk to the root (about 200 million steps in all)."""
+    depth = 20_000
+    cells = "".join(
+        f'<object id="c{i}" label="%n{i}% %team%" placeholders="1">'
+        f'<mxCell vertex="1" parent="c{i - 1}"/></object>'
+        for i in range(1, depth + 1)
+    )
+    model = (
+        f'<mxGraphModel><root><object id="c0" team="Contoso"><mxCell/></object>{cells}</root></mxGraphModel>'
+    )
+    src = build_drawio(tmp_path / "Contoso Deep.drawio", model=model)
+    start = time.monotonic()
+    body = _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    assert time.monotonic() - start < 10
+    assert body.startswith("## Overview\n\n" + "".join(f"- %n{i}% Contoso\n" for i in range(1, depth + 1)))
+
+
+def test_a_drawio_placeholder_is_found_on_the_object_then_its_containers(tmp_path: Path) -> None:
+    """A name the object lacks is taken from the nearest container, layer or the diagram's root that has it;
+    an edge's label is expanded too; a plain ``mxCell`` holds no data, so its ``%name%`` stays."""
+    model = (
+        '<mxGraphModel><root><object id="0" team="Contoso Platform" region="Global"><mxCell/></object>'
+        '<object id="1" label="Layer" region="East"><mxCell parent="0"/></object>'
+        '<object id="g" label="West wing" region="West" placeholders="1"><mxCell style="group" vertex="1" '
+        'parent="1"/></object>'
+        '<object id="2" label="%owner% (%team%, %region%)" owner="Contoso Ops" placeholders="1">'
+        '<mxCell vertex="1" parent="g"/></object>'
+        '<object id="3" label="%team% in %region%" placeholders="1"><mxCell vertex="1" parent="1"/></object>'
+        '<mxCell id="4" value="%team%" placeholders="1" vertex="1" parent="1"/>'
+        '<object id="5" label="%protocol% to %region%" protocol="HTTPS" placeholders="1">'
+        '<mxCell edge="1" source="2" target="3" parent="1"/></object>'
+        "</root></mxGraphModel>"
+    )
+    src = build_drawio(tmp_path / "Contoso Nested.drawio", model=model)
+    assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
+        "## Overview\n\n- West wing\n- Contoso Ops (Contoso Platform, West)\n- Contoso Platform in East\n"
+        "- %team%\n\nConnections:\n\n"
+        "- Contoso Ops (Contoso Platform, West) -> Contoso Platform in East: HTTPS to East\n\n## Notes"
+    )
+
+
+@pytest.mark.parametrize(
     ("shapes", "lines"),
     [
         (

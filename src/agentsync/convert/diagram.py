@@ -4,11 +4,13 @@
 One WHOLE unit: per page a ``## <page name>`` heading, the text of each shape that has text (one line, in the
 file's order), then ``Connections:`` with one ``- <from> -> <to>: <label>`` line per connector that has a
 labelled end or a label of its own.  A Visio shape with no ``<Text>`` of its own shows its master shape's
-text (``visio/masters``; an empty ``<Text/>`` stays empty).  Pictures, shape data, links and layer names are
-not read; text on a hidden layer is read like any other.  The title is left empty, so the page takes
-the file's name; the summary counts pages and names them.  No XML part is inflated past ``_MAX_PART_BYTES``
-and no file is read past ``_MAX_TOTAL_BYTES`` of XML in all, so a deflate bomb or an oversized file is a
-``conversion failed: diagram … too large`` stub, never a hang.
+text (``visio/masters``; an empty ``<Text/>`` stays empty).  A draw.io label's ``%name%`` placeholders are
+filled in as draw.io shows them: only for an object with ``placeholders="1"``, from its own attributes or its
+containers', draw.io's own variables (``%page%``, ``%date%`` …) and unknown names left as written.  Pictures,
+shape data, links and layer names are not read; text on a hidden layer is read like any other.  The title is
+left empty, so the page takes the file's name; the summary counts pages and names them.  No XML part is
+inflated past ``_MAX_PART_BYTES`` and no file is read past ``_MAX_TOTAL_BYTES`` of XML in all, so a deflate
+bomb or an oversized file is a ``conversion failed: diagram … too large`` stub, never a hang.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import re
 import urllib.parse
 import zipfile
 import zlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -40,7 +42,8 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 
-_EMITTER_VERSION = "1.1.0"  # 1.1.0: a Visio shape without text of its own shows its master's
+# 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders
+_EMITTER_VERSION = "1.2.0"
 _MAX_PART_BYTES = 32 * 1024 * 1024
 _MAX_TOTAL_BYTES = 128 * 1024 * 1024
 _V = "{http://schemas.microsoft.com/office/visio/2012/main}"
@@ -56,6 +59,8 @@ _BREAK_RE = re.compile(
 _CELL_RE = re.compile(r"<\s*(?:/\s*)?t[dh]\b[^<>]*>", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^<>]*>")
 _WS_RE = re.compile("[ \t\f\v\u00a0]+")
+_PLACEHOLDER_NAME_RE = re.compile(r"[^%{}\"'=;]*")  # a name in draw.io's Graph.placeholderPattern
+_JS_LINE_END_RE = re.compile("[\n\r\u2028\u2029]")  # where JavaScript's ``.`` stops
 _LINE_SEPS = str.maketrans({"\r": "\n", "\u2028": "\n", "\u2029": "\n", "\x0b": "\n"})
 
 
@@ -124,24 +129,118 @@ def _inflate_diagram(text: str, budget: _Budget) -> bytes:
     return urllib.parse.unquote(data.decode("latin-1"), encoding="utf-8", errors="replace").encode("utf-8")
 
 
-def _drawio_label(el: ET.Element, cell: ET.Element) -> str:
+def _placeholders(label: str) -> Iterator[tuple[int, int]]:
+    """Where draw.io's ``Graph.placeholderPattern`` matches, in order, as (start, end): ``%`` and a name of
+    no ``%{}"'=;`` and ``%``, or ``%date{``, anything and ``}%``.  Found in linear time: that ``date{…}`` is
+    greedy, so it runs to the last ``}%`` on its line (JavaScript's ``.`` stops at a line break), looked up
+    once a line, where the pattern itself rescans the line from every ``%date{``."""
+    line_end, closing = -1, -1  # the current line's end, and its last "}%" (-1: none)
+    s = label.find("%")
+    while s >= 0:
+        end = 0
+        if label.startswith("date{", s + 1):
+            if s > line_end:
+                m = _JS_LINE_END_RE.search(label, s)
+                line_end = len(label) if m is None else m.start()
+                closing = label.rfind("}%", s + 6, line_end)
+            if closing >= s + 6:
+                end = closing + 2
+        else:
+            name = _PLACEHOLDER_NAME_RE.match(label, s + 1)
+            j = s + 1 if name is None else name.end()
+            if j > s + 1 and label.startswith("%", j):
+                end = j + 1
+        if end:
+            yield s, end
+        s = label.find("%", end or s + 1)
+
+
+def _expand(label: str, cid: str, shape: bool, lookup: Callable[[str], str | None]) -> str:
+    """draw.io's ``Graph.replacePlaceholders`` as far as a file shows it: each ``%name%`` is ``lookup(name)``
+    (the attribute of the cell's object, else of its nearest container, layer or root object that has it), or
+    stays as written when there is none.  ``%id%`` is the cell's id.  draw.io's own variables (``%page%``,
+    ``%pagenumber%``, ``%date%``, ``%date{…}%``, ``%filename%`` …), a shape's ``%width%``/``%height%`` and
+    ``%length%`` (measured from the drawing) and ``%label%``/``%tooltip%`` stay as written, as does a
+    placeholder with a ``%`` just before it, less that ``%`` (``%%owner%`` shows ``%owner%``)."""
+    out: list[str] = []
+    last = 0
+    for start, end in _placeholders(label):
+        val, name = label[start:end], label[start + 1 : end - 1]
+        if val in ("%label%", "%tooltip%"):
+            continue
+        value: str | None = None
+        if start > last and label[start - 1] == "%":
+            value = val[1:]
+        elif name == "id":
+            value = cid or None
+        elif "{" in name or name.startswith("length") or (shape and name.startswith(("width", "height"))):
+            value = None
+        else:
+            value = lookup(name)
+        out.append(label[last:start] + (val if value is None else value))
+        last = end
+    out.append(label[last:])
+    return "".join(out)
+
+
+def _drawio_label(el: ET.Element, cid: str, cell: ET.Element, lookup: Callable[[str], str | None]) -> str:
     label = el.get("label") if el is not cell else cell.get("value")
     if not label:
         return ""
+    # draw.io fills in %name% only for an object that asks for it (placeholders="1") and has no placeholder
+    # attribute, on the label as written: an HTML label's tags are read after, values and all
+    if el is not cell and el.get("placeholders") == "1" and el.get("placeholder") is None:
+        label = _expand(label, cid, cell.get("vertex") == "1", lookup)
     # draw.io renders a label as HTML only when the cell's style says html=1; otherwise ``<`` is a character
     html_label = "html=1" in (cell.get("style") or "").split(";")
     return _one_line(_html_text(label) if html_label else label)
 
 
+def _drawio_labels(found: list[tuple[str, ET.Element, ET.Element]]) -> list[str]:
+    """Each cell's text.  The cells are walked once as the tree their ``parent`` attributes make, each
+    attribute name keeping a stack of the values the objects around the cell give it, nearest last, so a
+    placeholder costs one lookup however deep its cell is.  A cell in a ``parent`` loop sees only its own."""
+    first: dict[str, int] = {}
+    for i, (cid, _, _) in enumerate(found):
+        if cid:
+            first.setdefault(cid, i)
+    children: list[list[int]] = [[] for _ in found]
+    roots: list[int] = []
+    for i, (_, _, cell) in enumerate(found):
+        parent = first.get(cell.get("parent") or "")
+        (roots if parent is None else children[parent]).append(i)
+    held: dict[str, list[str]] = {}
+    labels: list[str | None] = [None] * len(found)
+    stack = [(i, False) for i in reversed(roots)]
+    while stack:
+        i, leaving = stack.pop()
+        cid, el, cell = found[i]
+        own = el.attrib if el is not cell else {}  # only an object wrapper holds data
+        if leaving:
+            for k in own:
+                held[k].pop()
+            continue
+        for k, v in own.items():
+            held.setdefault(k, []).append(v)
+        labels[i] = _drawio_label(el, cid, cell, lambda k: held[k][-1] if held.get(k) else None)
+        stack.append((i, True))
+        stack.extend((c, False) for c in reversed(children[i]))
+    return [
+        _drawio_label(el, cid, cell, el.attrib.get if el is not cell else lambda _k: None) if t is None else t
+        for t, (cid, el, cell) in zip(labels, found, strict=True)
+    ]
+
+
 def _drawio_page(name: str, model: ET.Element) -> _Page:
     page = _Page(name)
     root = model.find("root")
-    cells: list[tuple[str, ET.Element, str]] = []  # (id, mxCell, text)
+    # (id, element: an object wrapper or the mxCell itself, mxCell)
+    found: list[tuple[str, ET.Element, ET.Element]] = []
     for el in [] if root is None else list(root):
         cell = el if el.tag == "mxCell" else el.find("mxCell")
-        if cell is None:
-            continue
-        cells.append((el.get("id") or cell.get("id") or "", cell, _drawio_label(el, cell)))
+        if cell is not None:
+            found.append((el.get("id") or cell.get("id") or "", el, cell))
+    cells = [(cid, cell, t) for (cid, _, cell), t in zip(found, _drawio_labels(found), strict=True)]
     text = {cid: t for cid, _, t in cells if cid}  # a cell without an id is no edge's end
     edges = {cid for cid, cell, _ in cells if cell.get("edge") == "1"}
     edge_labels: dict[str, list[str]] = {}
