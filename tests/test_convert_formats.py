@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import datetime as dt
+import errno
 import functools
 import hashlib
 import html
@@ -3807,6 +3808,28 @@ def test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached(
     monkeypatch.setattr(ConverterCache, "put", lambda _self, result: put.append(result) or True)
     result = _msg_result(tmp_path, msg_bytes())
     assert result.status is ConversionStatus.FAILED and not put
+
+
+def test_a_full_disk_while_an_html_body_is_copied_for_pandoc_fails_the_pass_and_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The temporary copy pandoc reads an HTML body from is written to the disk, not read from the file: a
+    full disk there says nothing about the message.  FAILED, nothing cached; once there is space the same
+    message converts."""
+    real = pandoc_mod.tempfile.TemporaryDirectory
+
+    def full_disk(*args: Any, **kwargs: Any) -> Any:
+        if str(kwargs.get("prefix", "")).startswith("agentsync-pandoc-html-"):
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real(*args, **kwargs)
+
+    data = msg_bytes(plain=None, html="<p>Hello</p>")
+    monkeypatch.setattr(pandoc_mod.tempfile, "TemporaryDirectory", full_disk)
+    result = _msg_result(tmp_path, data)
+    assert result.status is ConversionStatus.FAILED, result.reason
+    monkeypatch.undo()
+    again = _msg_result(tmp_path, data)
+    assert (again.status, again.from_cache) == (ConversionStatus.OK, False)
 
 
 def test_a_msg_with_an_encrypted_office_attachment_is_encrypted_office(tmp_path: Path) -> None:

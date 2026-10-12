@@ -397,11 +397,20 @@ class _PandocRunner:
         return unicodedata.normalize("NFC", text.replace("\r\n", "\n")), said
 
     def html_to_gfm(self, html: str) -> str:
-        """Convert an HTML fragment/document (already decoded) to GFM text."""
-        with tempfile.TemporaryDirectory(prefix="agentsync-pandoc-html-") as tmp:
-            src = Path(tmp) / "in.html"
-            src.write_text(html, encoding="utf-8")
-            return self.to_gfm(src, "html")
+        """Convert an HTML fragment/document (already decoded) to GFM text.
+
+        The HTML is copied to a temporary file for pandoc.  An ``OSError`` there (a full disk, an
+        unwritable temporary folder) is the machine's, not the document's: it is a ConversionError, so a
+        caller that settles what it cannot read (``msg``) fails the pass instead."""
+        try:
+            with tempfile.TemporaryDirectory(prefix="agentsync-pandoc-html-") as tmp:
+                src = Path(tmp) / "in.html"
+                src.write_text(html, encoding="utf-8")
+                return self.to_gfm(src, "html")
+        except OSError as exc:
+            raise ConversionError(
+                f"cannot write pandoc's temporary files: {exc.strerror or type(exc).__name__}"
+            ) from exc
 
 
 def _pandoc_options(runner: _PandocRunner) -> dict[str, OptionValue]:

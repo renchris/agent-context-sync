@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from agentsync.config import ConvertConfig
-from agentsync.convert import image, pdf
+from agentsync.convert import image, msg, pdf
 from agentsync.convert._common import _cap_body, _emitter, _escape_line
 from agentsync.convert.base import estimate_tokens, make_unit, options_hash, rendered_sha256
 from agentsync.convert.cache import KEY_SCHEMA_VERSION, ConverterCache, action_key
@@ -616,6 +616,19 @@ def test_an_image_page_or_stub_from_the_field_emitter_is_outdated_and_one_from_t
         assert _outdated(reg, "a.png", produced) and _outdated(reg, "a.heic", produced, "any stub"), produced
     for produced in (conv.version(), "2.0.0", "2.0.1+x", "3.0.0", "1.0.0rc1", "unavailable", ""):
         assert not _outdated(reg, "a.png", produced) and not _outdated(reg, "a.png", produced, "a stub")
+
+
+def test_a_msg_stub_with_an_exception_type_in_its_reason_is_outdated_and_no_other_msg_result_is() -> None:
+    """Emitter 1.0.0 of the .msg converter settled a damaged message as ``not-msg (…): <exception type>``
+    (and a MemoryError as one).  An unchanged file is never converted again, so only a rule reads those
+    rows again; the reasons a re-read writes have no suffix, which ends the rule after one re-read."""
+    reg = Registry.default(ConvertConfig())
+    conv = reg.for_name("a.msg").inner  # type: ignore[union-attr]
+    for exc in ("ValueError", "MemoryError", "OleFileError"):
+        assert _outdated(reg, "a.msg", "1.0.0+x", f"{msg.NOT_MSG_REASON}: {exc}"), exc
+        assert _outdated(reg, "a.msg", conv.version(), f"{msg.NOT_MSG_REASON}: {exc}"), exc
+    for reason in (msg.NOT_MSG_REASON, msg.DAMAGED_MSG_REASON, "encrypted-office", "empty output", None):
+        assert not _outdated(reg, "a.msg", "1.0.0+x", reason), reason
 
 
 def test_a_stub_is_outdated_only_when_it_is_the_no_text_stub_of_a_pdf() -> None:

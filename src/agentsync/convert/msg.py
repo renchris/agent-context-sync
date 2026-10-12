@@ -210,6 +210,13 @@ class MsgConverter:
             "max_page_bytes": self._cfg.max_page_bytes,
         }
 
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True for a stub emitter 1.0.0 settled as ``not-msg (…): <exception type>`` (a damaged message,
+        or a MemoryError): an unchanged file is never converted again, so only this reads it again.  No
+        reason this emitter writes has the suffix, so the rule ends after one re-read.  ``produced`` is
+        not asked: the suffix alone names the emitter that wrote it."""
+        return reason is not None and reason.startswith(NOT_MSG_REASON + ": ")
+
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
         try:

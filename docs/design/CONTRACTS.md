@@ -7488,7 +7488,7 @@ downloaded. ("Once" is the section's name from its first build, in which one fai
 see "A bounded number of times".)
 
 **The converter decides what is outdated** (`agentsync.convert`). The cycle holds no list of converters,
-suffixes or versions. Four converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
+suffixes or versions. Five converters answer `outdated(produced: str, reason: str | None = None) -> bool`:
 is what this converter made of a file under version `produced` worth reading the file again for? `reason` is
 None for a page, else the reason of the stub the file got. The method is not part of the `Converter`
 protocol: the cycle looks for it behind the guard (`_GuardedConverter.inner`), and a converter without one
@@ -7506,6 +7506,10 @@ never asks for a re-read.
   `image._REREAD_BELOW = "2.0.0"`. Emitter 1.0.0 was the field build's: it wrote the file's name into the
   page (another file's name where two share their bytes) and made a `current` page of every image with no
   text in it. `ImageConverter.outdated_key` is `2.0.0<2.0.0`.
+- `MsgConverter.outdated`: true for a stub (never a page) whose reason starts `not-msg (not an Outlook
+  message): `, the `<exception type>` form only emitter 1.0.0 wrote for a damaged message or a
+  `MemoryError` (§16.48 R36). No reason a later emitter writes has that suffix, so the rule ends after one
+  re-read; `produced` is not asked.
 - **The field build's versions** (`image._field_build`, `image._FIELD_MARKS`). One Mac mirrored with a
   build of OCR that was never on main. Its document versions end in `+ocr-off` when it had no engine and
   otherwise in an identity that holds `+helper-` and `+macos-`; its pages can hold a helper's failure text
@@ -7526,6 +7530,9 @@ never asks for a re-read.
 - `NO_CONVERTER_PREFIX = "no converter for "` (`agentsync.convert`) is how the reason of a file no converter
   claims starts. `convert_file` and `publish`'s stub both use it, and the cycle finds such stubs by it. The
   reasons read as before.
+
+Amended 2026-10-11 by §16.48 (R36): five converters answer `outdated`, not four; `MsgConverter.outdated`
+reads again a `.msg` stub settled as `not-msg (…): <exception type>`.
 
 **Which files** (`cycle._reread_source`, at the end of the source's work queue in `_sync_source`, so new and
 changed files had the cycle's OCR time first). A local or inbox source only.
@@ -11929,8 +11936,9 @@ does not start with the compound-file magic, or that has no root properties stre
 reading past the root properties stream raises, is `DAMAGED_MSG_REASON` (`damaged-msg (a compound file that
 cannot be read as an Outlook message)`); the exception's class is logged at info, never written into the
 reason. `MemoryError` is not a fact about the file: it fails the pass (FAILED, not cached, read again) and
-is never either reason. `setup_report.quarantine_class` reports `not-msg` as `not the type its name says`
-and `damaged-msg` as `damaged`. `policy.sniff_container` scans the whole compound file, never a
+is never either reason; nor is an `OSError` writing pandoc's temporary copy of an HTML body (a full disk),
+which `_PandocRunner.html_to_gfm` raises as a `ConversionError`. `setup_report.quarantine_class` reports
+`not-msg` as `not the type its name says` and `damaged-msg` as `damaged`. `policy.sniff_container` scans the whole compound file, never a
 name in it, so a `.msg` that carries an encrypted Office attachment (or the stream name `EncryptedPackage`
 anywhere in its bytes, a body that quotes it included) is `encrypted-office` as a whole, before the
 converter runs; the same attachment in an `.eml` is base64 and is only listed. That screen is shared by
@@ -11938,7 +11946,7 @@ every compound format and is not narrowed for `.msg`.
 
 Amended 2026-10-11 by §16.48 (R36, R55): a compound file that cannot be read is `damaged-msg` with no
 exception type in it, not `not-msg: <exception type>`; `MemoryError` fails the pass instead of settling as
-`not-msg`.
+`not-msg`, and so does an `OSError` writing pandoc's temporary copy of an HTML body.
 
 `.msg` stays out of `slug.STRIP_SUFFIXES`: the page keeps the path of the stub it replaces. An existing
 `no converter for .msg` stub becomes a page with no operator step: on this Mac through the re-read pass
@@ -11951,8 +11959,9 @@ with the PIL licence (HPND) for the parts taken from PIL's OleFileIO, both permi
 unless asked. Its wheel also installs a Python 2 `olefile/olefile2.py` and a top-level `OleFileIO_PL`
 shim; neither is imported. Version: `1.0.1+olefile-<v>+python-<v>+pandoc-<v>`; options as `eml-stdlib`.
 
-Amended 2026-10-11 by §16.48 (R36): the emitter version is 1.0.1 (was 1.0.0), so a cached `not-msg: <exception
-type>` result is read again and takes the new reason.
+Amended 2026-10-11 by §16.48 (R36): the emitter version is 1.0.1 (was 1.0.0), which moves the action key, so
+the same bytes are converted anew the next time they are converted. A version change reads nothing again by
+itself: a settled `not-msg (…): <exception type>` row is read again because `MsgConverter.outdated` names it.
 
 ##### `agentsync.convert.msg` — `src/agentsync/convert/msg.py` — owner: **convert**
 
@@ -12951,9 +12960,15 @@ exception type; the type goes to the `agentsync.convert.msg` log at info (`<name
 be read: <type>`), so the diagnostic survives. The wording says "a compound file" because a file olefile
 cannot open may be a damaged `.doc` or `.xls`. `NOT_MSG_REASON` stays for the two certain cases (no
 compound-file magic; no root properties stream). `setup_report.quarantine_class` maps `damaged-msg` to the
-new class `damaged`, tried before `not-msg`; a row settled before this change keeps its old reason (and
-`not the type its name says`) until it is read again. The emitter version is 1.0.1, so cached results are
-read again. Tests: `tests/test_convert_formats.py`
+new class `damaged`, tried before `not-msg`. The emitter version is 1.0.1, which moves the action key, but
+a version change reads nothing again by itself (§16.27): an unchanged file is never converted again. So
+`MsgConverter.outdated` (§16.27's list) is true for a stub whose reason starts `not-msg (not an Outlook
+message): `, the suffixed form only emitter 1.0.0 wrote, and the re-read pass reads each such row once (a
+row settled as `: MemoryError` included). What the re-read writes has no suffix, so the rule ends there.
+Until that re-read a row keeps its old reason and `not the type its name says`. Tests:
+`tests/test_convert_core.py`
+(`test_a_msg_stub_with_an_exception_type_in_its_reason_is_outdated_and_no_other_msg_result_is`),
+`tests/test_convert_formats.py`
 (`test_a_compound_file_olefile_cannot_open_is_damaged_not_a_python_class`,
 `test_a_message_whose_body_cannot_be_read_is_damaged`, `test_not_a_message_is_a_settled_unreadable_stub`),
 `tests/test_setup_report.py` (`test_a_reason_is_reported_as_one_of_the_fixed_classes`) and
@@ -12964,9 +12979,13 @@ read again. Tests: `tests/test_convert_formats.py`
 the file and settled it as an UNREADABLE stub, cached. It is now re-raised at both (the olefile open and the
 read), and `convert_file` makes it FAILED, uncached, read again on a later pass, as every other converter
 does (§16.42 N45). `OSError` is not carved out: olefile reports format damage as `OSError`, so it stays a
-settled `damaged-msg`; the one plausibly transient `OSError`, the 8-byte head read, was already a
-`ConversionError`. Tests: `tests/test_convert_formats.py`
-(`test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached`, the open and the read).
+settled `damaged-msg`. The machine's `OSError`s inside a read are not: the 8-byte head read was already a
+`ConversionError`, and `_PandocRunner.html_to_gfm` now raises one, `cannot write pandoc's temporary files:
+<strerror>`, for an `OSError` writing the temporary copy of an HTML body (a full disk, an unwritable
+temporary folder). Before, that reached the broad clause and a healthy message was cached as damaged. The
+change is shared by `.eml`, Teams and `.html` pages, which made such an error FAILED already. Tests:
+`tests/test_convert_formats.py` (`test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached`, the open
+and the read; `test_a_full_disk_while_an_html_body_is_copied_for_pandoc_fails_the_pass_and_is_not_cached`).
 
 #### The speech build and the build watcher
 
