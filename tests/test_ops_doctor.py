@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, gitops, setup_report
+from agentsync import cli, gitops, lints, setup_report
 from agentsync.config import Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.manifest import Manifest
@@ -1391,6 +1391,31 @@ def test_launchd_unreadable_plist(sample_config: Config) -> None:
     path.write_bytes(b"garbage")
     r = by_name(run_checks(sample_config))["launchd.poll"]
     assert not r.ok and "not a readable plist" in r.detail
+
+
+def test_a_gitleaks_only_this_shell_finds_is_a_warn_until_a_shell_run_records_it(
+    sample_config: Config, fakes: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R75: launchd's PATH does not reach a ``go install`` or MacPorts gitleaks, so background syncs
+    would scan with the builtin patterns alone; a run from the shell records the path and clears it."""
+    bin_dir = tmp_path / "shell-bin"
+    bin_dir.mkdir()
+    exe = bin_dir / "gitleaks"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(lints, "_GITLEAKS_CANDIDATES", ())
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    optional = by_name(run_checks(sample_config))["gitleaks"]
+    assert (
+        optional.severity is Severity.INFO and optional.fix is None
+    )  # no LaunchAgent: background is optional
+    install_agents(sample_config, fakes["loaded"])  # type: ignore[arg-type]
+    r = by_name(run_checks(sample_config))["gitleaks"]
+    assert not r.ok and r.severity is Severity.WARN
+    assert r.detail.startswith(f"{exe} is on this shell's PATH only: a background run would not find it")
+    assert r.fix == "agentsync sync (a run from this shell records where gitleaks is)"
+    lints.remember_gitleaks()
+    assert "gitleaks" not in by_name(run_checks(sample_config))
 
 
 # ------------------------------------------------------------------------------------------------ lock

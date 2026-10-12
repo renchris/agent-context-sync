@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import inspect
 import json
+import os
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -216,6 +217,21 @@ def test_a_change_to_the_scan_code_bumps_the_rules_version() -> None:
         "the secret scan's code changed: if it decides differently now, bump lints.SECRET_RULES_VERSION; "
         "then set _SCAN_CODE_SHA to " + digest
     )
+
+
+def test_a_sync_from_the_shell_records_the_gitleaks_its_path_finds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R75: the next LaunchAgent run, whose PATH is launchd's, uses the gitleaks this run's PATH found."""
+    config, _ = make_env(tmp_path)
+    bin_dir = tmp_path / "shell-bin"
+    bin_dir.mkdir()
+    exe = bin_dir / "gitleaks"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    assert run(config).exit_code == 0
+    assert lints.recorded_gitleaks() == exe
 
 
 PASSWORD_PAGE = "Contoso VPN\nUsername: jdoe\nPassword: Welcome123\n"

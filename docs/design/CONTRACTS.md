@@ -10815,6 +10815,12 @@ it stubbed. `tests/test_credential_rescreen.py` pins a hash of the code that dec
 `SECRET_RULES_VERSION`: a change that decides differently bumps the version, a comment or docstring edit only
 updates the pin.
 
+**Amended 2026-10-12, §16.45 R75:** a run from the shell records the gitleaks its PATH finds
+(`lints.remember_gitleaks`, in `agentsync sync` and `agentsync install-agent`), and a LaunchAgent run uses that
+one (`lints.gitleaks_lookup` tries `lints.recorded_gitleaks` before PATH and the fixed places, which now include
+`/opt/local/bin`, `~/.local/bin` and `~/go/bin`). Both kinds of run read the record first, so the identity does
+not move between them; the shell-PATH residual below holds only until the first such run from the shell.
+
 Residuals, none worse than before: a gitleaks found only on a shell PATH, where a marked row is converted in a
 later launchd run (byte budget, `sync --source`) or the first run on this build is a launchd run, has that row
 judged by the builtin patterns alone, as every changed file on such an install already is; once gitleaks is

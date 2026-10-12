@@ -28,6 +28,8 @@ from agentsync.frontmatter import (
     validate_mirror_frontmatter,
 )
 from agentsync.model import LintFinding, PageStatus
+from agentsync.ops.launchd import LAUNCHD_PATH
+from agentsync.paths import default_state_dir
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +88,18 @@ _PIPELINE_FILES = ("INDEX.md", "CHANGELOG.md", "DEPENDS.tsv")
 _TEXT_SUFFIXES = (".md", ".txt", ".csv")
 """The page and sidecar files the token lint and the secret scan read; a keyframe's JPEG bytes can spell
 ``PWd=`` (spec S10), and its scan would stub the whole recording for good."""
-_GITLEAKS_CANDIDATES = (Path("/opt/homebrew/bin/gitleaks"), Path("/usr/local/bin/gitleaks"))
+_GITLEAKS_CANDIDATES = (
+    Path("/opt/homebrew/bin/gitleaks"),
+    Path("/usr/local/bin/gitleaks"),
+    Path("/opt/local/bin/gitleaks"),
+    Path("~/.local/bin/gitleaks"),
+    Path("~/go/bin/gitleaks"),
+)
+"""Where gitleaks is looked for after the recorded path and PATH: Homebrew (Apple silicon, Intel), MacPorts,
+``pipx``/``uv tool`` and ``go install``.  A LaunchAgent run's PATH is launchd's minimal one."""
+_GITLEAKS_RECORD = "gitleaks-path"
+"""The file in the default state dir that holds the gitleaks path a run from the person's shell found
+(``remember_gitleaks``)."""
 _GITLEAKS_TIMEOUT_S = 300.0
 
 
@@ -424,11 +437,64 @@ def lint_no_tokens(
     return _sorted(findings)
 
 
-def _gitleaks() -> Path | None:
-    found = shutil.which("gitleaks")
+def _executable(path: Path) -> bool:
+    return path.is_absolute() and path.is_file() and os.access(path, os.X_OK)
+
+
+def _gitleaks_record() -> Path:
+    return default_state_dir() / _GITLEAKS_RECORD
+
+
+def recorded_gitleaks() -> Path | None:
+    """The gitleaks path ``remember_gitleaks`` recorded, when it is still an executable file."""
+    try:
+        recorded = Path(_gitleaks_record().read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return recorded if _executable(recorded) else None
+
+
+def gitleaks_lookup(path: str | None = None) -> Path | None:
+    """The gitleaks a run whose PATH is ``path`` (None: this process's) uses: the recorded path, then PATH,
+    then the fixed candidates.  The record comes first so that a shell run and a LaunchAgent run use the
+    same gitleaks, and ``secret_rules_identity`` does not move between them."""
+    recorded = recorded_gitleaks()
+    if recorded is not None:
+        return recorded
+    found = shutil.which("gitleaks", path=path)
     if found:
         return Path(found)
-    return next((p for p in _GITLEAKS_CANDIDATES if p.is_file() and os.access(p, os.X_OK)), None)
+    return next((p.expanduser() for p in _GITLEAKS_CANDIDATES if _executable(p.expanduser())), None)
+
+
+def _gitleaks() -> Path | None:
+    return gitleaks_lookup()
+
+
+def remember_gitleaks() -> None:
+    """Record the gitleaks this process's PATH finds, for LaunchAgent runs, whose PATH is launchd's minimal
+    one (a ``go install`` or MacPorts gitleaks is on the person's PATH only).  The path is ``which``'s, not
+    the resolved one, so an upgrade keeps it.  A LaunchAgent run records nothing; a failure to write is a
+    warning."""
+    if os.environ.get("PATH", "") == LAUNCHD_PATH:
+        return
+    found = shutil.which("gitleaks")
+    if not found or not _executable(Path(found)):
+        return
+    record = _gitleaks_record()
+    try:
+        if record.read_text(encoding="utf-8").strip() == found:
+            return
+    except (OSError, ValueError):
+        pass
+    tmp = record.with_name(f".{record.name}.{os.getpid()}")
+    try:
+        record.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp.write_text(found + "\n", encoding="utf-8")
+        tmp.replace(record)
+    except OSError as exc:
+        log.warning("could not record where gitleaks is (%s): background runs may not find it", exc)
+        tmp.unlink(missing_ok=True)
 
 
 SECRET_RULES_VERSION = 1

@@ -1564,6 +1564,7 @@ class _Cycle:
                 self.manifest.set_meta(_SCOPE_CHANGE_META + sid, str(self.run_id))
             self._note_roots(fp_changed)
             self._check_policy_change()
+            lints.remember_gitleaks()  # before the identity: a LaunchAgent run then uses this run's gitleaks
             self._check_secret_rules()
             self.publisher.ensure_scaffold()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making

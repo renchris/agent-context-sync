@@ -14,6 +14,7 @@ import pytest
 from agentsync import gitops, lints, slug
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.model import LintFinding, PageStatus, RenderedUnit, UnitKind
+from agentsync.ops.launchd import LAUNCHD_PATH
 from conftest import copy_docs_repo
 
 # ---------------------------------------------------------------------------------------------------------
@@ -493,6 +494,60 @@ def test_gitleaks_failure_falls_back_to_builtin(
     write(repo, "mirror/src/leak.md", page(f"# creds\n\n{AWS_KEY}\n"))
     [finding] = lints.lint_secrets(repo, ["mirror/src/leak.md"])
     assert "builtin" in finding.message
+
+
+def _shell_only_gitleaks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A gitleaks in a bin folder only the person's shell PATH names (``go install``, MacPorts, ~/bin)."""
+    bin_dir = tmp_path / "shell-bin"
+    bin_dir.mkdir()
+    exe = bin_dir / "gitleaks"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(lints, "_GITLEAKS_CANDIDATES", ())
+    monkeypatch.setenv("PATH", f"{bin_dir}:{LAUNCHD_PATH}")
+    return exe
+
+
+def test_a_launchd_run_uses_the_gitleaks_a_shell_run_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R75: launchd's PATH is /usr/bin:/bin:/usr/sbin:/sbin, so a run from the shell records the gitleaks
+    its PATH finds, and a LaunchAgent run uses that one, with the same rules identity (no rescan between)."""
+    exe = _shell_only_gitleaks(tmp_path, monkeypatch)
+    shell_identity = lints.secret_rules_identity()
+    lints.remember_gitleaks()
+    assert lints.secret_rules_identity() == shell_identity
+    monkeypatch.setenv("PATH", LAUNCHD_PATH)
+    assert lints._gitleaks() == exe
+    assert lints.secret_rules_identity() == shell_identity
+    assert shell_identity["gitleaks"].startswith(f"{exe.resolve()}:")
+
+
+def test_a_launchd_run_records_nothing_and_a_stale_record_is_passed_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exe = _shell_only_gitleaks(tmp_path, monkeypatch)
+    monkeypatch.setenv("PATH", LAUNCHD_PATH)
+    lints.remember_gitleaks()
+    assert lints.recorded_gitleaks() is None and lints._gitleaks() is None
+    monkeypatch.setenv("PATH", f"{exe.parent}:{LAUNCHD_PATH}")
+    lints.remember_gitleaks()
+    exe.unlink()
+    monkeypatch.setenv("PATH", LAUNCHD_PATH)
+    assert lints.recorded_gitleaks() is None and lints._gitleaks() is None
+
+
+def test_a_go_install_gitleaks_is_found_on_launchds_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 R75: the fixed places include MacPorts, ~/.local/bin and ~/go/bin, below this run's home folder."""
+    exe = Path.home() / "go" / "bin" / "gitleaks"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    monkeypatch.setattr(
+        lints, "_GITLEAKS_CANDIDATES", tuple(p for p in lints._GITLEAKS_CANDIDATES if "~" in str(p))
+    )
+    monkeypatch.setenv("PATH", LAUNCHD_PATH)
+    assert lints._gitleaks() == exe
 
 
 # ---- index budget ------------------------------------------------------------------------------------------

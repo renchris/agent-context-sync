@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig, canonical_source_root
@@ -1519,6 +1520,24 @@ def _agent_yours(result: CheckResult) -> CheckResult:
     return CheckResult(result.name, result.ok, result.detail, result.severity, note=_AGENT_YOURS_NOTE)
 
 
+def _check_gitleaks(config: Config) -> list[CheckResult]:
+    """Whether a LaunchAgent run finds the gitleaks this process's PATH does (by the path a run from the
+    person's shell records, launchd's PATH or the fixed places, ``lints.gitleaks_lookup``): WARN when it
+    would not, so background syncs would scan with the builtin patterns alone; no line otherwise.  INFO
+    with no fix when no LaunchAgent is installed (KISS K11a)."""
+    found = shutil.which("gitleaks")
+    if found is None or lints.gitleaks_lookup(path=launchd.LAUNCHD_PATH) is not None:
+        return []
+    result = _bad(
+        "gitleaks",
+        f"{found} is on this shell's PATH only: a background run would not find it and would scan for "
+        "credentials with the builtin patterns alone",
+        Severity.WARN,
+        fix="agentsync sync (a run from this shell records where gitleaks is)",
+    )
+    return [result if agents_wanted(config) else _optional(result)]
+
+
 def _check_lock(config: Config) -> list[CheckResult]:
     """Who holds the single-writer lock, whether it is silent, and whether a crash left it stale."""
     path = config.state_paths.lock
@@ -1813,6 +1832,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("launcher", _check_launcher),
     ("tcc", _check_tcc_access),
     ("launchd", _check_launchd),
+    ("gitleaks", _check_gitleaks),
     ("lock", _check_lock),
     ("heartbeat", _check_heartbeat),
     ("logs", _check_logs),

@@ -1748,6 +1748,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
     specs = (launchd.poll_spec(config), launchd.reconcile_spec(config))  # ConfigError -> exit 78
     for line in governance.apply_time_machine_exclusions(config):
         _out(f"time machine: {line}")
+    lints.remember_gitleaks()  # launchd's PATH may not reach the gitleaks this shell's does
     for spec in specs:
         path = launchd.install(spec)
         _out(f"installed {spec.label} every {spec.start_interval_s}s -> {path}")
