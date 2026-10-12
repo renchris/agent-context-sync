@@ -55,15 +55,33 @@ Third-party strings (file names, mail subjects: ``Bearer bonds``, ``reset-token=
 sync;
 the cycle also passes the actual cursor values (``known_secrets``), which are matched literally."""
 
+_HINT = "(?:{})".format(
+    "|".join(
+        rf"{o}(?:[^{o}{c}\s]*\s[^{o}{c}]*|[a-z_-]*){c}"
+        for o, c in (("\\(", "\\)"), ("<", ">"), ("\\[", "\\]"), ("\\{", "\\}"))
+    )
+)
+"""A bracketed hint where a password's value would be: prose, which holds a space (``(minimum 8 characters)``,
+``<your password>``), or one placeholder word (``{password}``, ``[redacted]``).  The part before the first
+space holds none, so a long line with no closing bracket is read once, not once per space."""
+_MASK = r"[*x.•-]+[,;:!?)\]}>\"']*(?!\S)"
+"""A masked value (``********``, ``XXXXXXXX``, ``••••••``), trailing punctuation allowed (``********,``)."""
+
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
     ("azure-conn-string", re.compile(r"AccountKey=[A-Za-z0-9+/=]{40,}")),
-    ("generic-password", re.compile(r"(?i)\b(?:password|pwd)\s*[=:]\s*\S{6,}")),
+    (
+        "generic-password",
+        re.compile(rf"(?i)\b(?:password|pwd)\s*[=:]\s*(?:{_HINT}\s*)?(?!{_HINT})(?!{_MASK})\S{{6,}}"),
+    ),
     ("slack-token", re.compile(r"\bxox[abprs]-[0-9A-Za-z-]{10,}\b")),
     ("github-token", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,}\b")),
 )
-"""Built-in content secret scan; gitleaks is used instead when on PATH (``lint_secrets`` prefers it)."""
+"""Built-in content secret scan: it reads every page ``lint_secrets`` scans, and gitleaks, when there is
+one, reads them as well (gitleaks misses a plain ``Password: Welcome123``).  ``generic-password`` passes over
+a bracketed hint (``_HINT``) and a masked value (``_MASK``); a bracketed value that is neither
+(``(Welcome123)``, ``<S3cr3t!x>``) is a hit, and so is a value after a hint (``(min 8 chars) Welcome123``)."""
 
 _TEAMS_JOIN_URL = re.compile(
     r"(?i)(?<![^\s\"'<>(\[])https?://"
@@ -497,7 +515,7 @@ def remember_gitleaks() -> None:
         tmp.unlink(missing_ok=True)
 
 
-SECRET_RULES_VERSION = 1
+SECRET_RULES_VERSION = 2
 """Bump when the secret scan decides differently with the same patterns (``_strip_teams_join_pwd``, which
 files are read): ``secret_rules_identity`` carries it, so every install screens its credential stubs again.
 ``tests/test_credential_rescreen.py`` pins a hash of the scan's code to this number."""
@@ -624,12 +642,12 @@ def _gitleaks_scan(exe: Path, repo: Path, paths: Sequence[str]) -> list[LintFind
         report.unlink(missing_ok=True)
 
 
-def lint_secrets(repo: Path, paths: Sequence[str], *, builtin_too: Sequence[str] = ()) -> list[LintFinding]:
+def lint_secrets(repo: Path, paths: Sequence[str]) -> list[LintFinding]:
     """SECRET: content secret scan over the given mirror pages; each hit names the page (caller quarantines it
     to an ``UNREADABLE: contains a credential`` stub instead of blocking the whole cycle: blocking=False).
     Only text files are read (``.md``, ``.txt``, ``.csv``); a binary sidecar such as a keyframe is skipped.
-    gitleaks replaces the builtin patterns and misses a plain ``Password: ...``; the paths of
-    ``builtin_too`` (a file held back as a credential once) are read by the builtin patterns as well."""
+    The builtin patterns read every file, and gitleaks, when there is one, reads them as well: it misses a
+    plain ``Password: ...`` the builtin patterns catch.  A page both flag has two findings and one stub."""
     existing = sorted(
         {
             p
@@ -642,15 +660,14 @@ def lint_secrets(repo: Path, paths: Sequence[str], *, builtin_too: Sequence[str]
     )
     if not existing:
         return []
+    builtin = _builtin_secret_scan(repo, existing)
     exe = _gitleaks()
     if exe is not None:
         try:
-            found = _gitleaks_scan(exe, repo.resolve(), existing)
-            also = set(builtin_too)
-            return _sorted([*found, *_builtin_secret_scan(repo, [p for p in existing if p in also])])
+            return _sorted([*_gitleaks_scan(exe, repo.resolve(), existing), *builtin])
         except (OSError, ValueError, subprocess.SubprocessError, AgentSyncError) as exc:
-            log.warning("gitleaks unusable (%s); falling back to the builtin secret patterns", exc)
-    return _sorted(_builtin_secret_scan(repo, existing))
+            log.warning("gitleaks unusable (%s); the builtin secret patterns alone scanned", exc)
+    return _sorted(builtin)
 
 
 def lint_index_budget(repo: Path) -> list[LintFinding]:

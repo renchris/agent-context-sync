@@ -10828,6 +10828,16 @@ removed after a run that had it, nothing is screened again until it is back; `[g
 scanned again; the published-page scan uses the scan of the run (gitleaks alone when there is one), as every new
 page does.
 
+**Amended 2026-10-12, §16.45 R76:** the "new id is a new file to the scan" and "gitleaks alone when there is
+one" residuals are gone. `lints.lint_secrets` runs the builtin patterns over every page it scans, and gitleaks
+beside them when there is one (`builtin_too=` is removed: every page is read that way now), so a copy, a move to
+another source or a delete-then-recreate of a stubbed file, and any new page with a plain `Password: ...`, is a
+credential stub on a Mac with gitleaks too. `generic-password` passes over a bracketed hint, which holds a
+space (`(minimum 8 characters)`, `<your password>`) or is one placeholder word (`{password}`, `[redacted]`), and
+over a value of mask characters only (`*`, `x`, `.`, `•`, `-`; trailing punctuation allowed); a bracketed value
+that is neither (`(Welcome123)`, `<S3cr3t!x>`) and a value after a hint are hits. `SECRET_RULES_VERSION` is 2,
+so every install scans its published pages once more under both changes.
+
 Why: the 2026-10-05 join-link fix (de081ae) never reached the invites quarantined before it; nothing stored what
 rules a stub was made under. Tests: `tests/test_credential_rescreen.py`.
 

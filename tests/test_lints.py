@@ -453,13 +453,49 @@ def test_builtin_secret_scan_ignores_teams_join_pwd(
     assert [("generic-password" in f.message) for f in found] == ([True] if flagged else [])
 
 
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("Password: Welcome123", True),
+        ("pwd=Abc12345", True),
+        ("PASSWORD = xxxyyy12", True),
+        ('password: "(Contoso)2026"', True),
+        ("Password: (Welcome123)", True),
+        ("Password: [Welcome123]", True),
+        ("pwd=<S3cr3t!x>", True),
+        ("password={Welcome123}", True),
+        ("Password: (min 8 chars) Welcome123", True),
+        ("Password: (minimum 8 characters)", False),
+        ("Password: [hidden]", False),
+        ("Password: ********,", False),
+        ("Password: <your password>", False),
+        ("pwd=[redacted]", False),
+        ("Password: {password}", False),
+        ("Password: ********", False),
+        ("Password: XXXXXXXX", False),
+        ("password=••••••••", False),
+        ("Password: ......", False),
+        ("Password: -------- (hidden)", False),
+    ],
+)
+def test_the_password_pattern_passes_over_placeholders_and_masks(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """B13 R76: prose that names a password field (a bracketed hint, a masked value) is no credential; a
+    bracketed value that is neither, or a value after a hint, is."""
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)
+    write(repo, "mirror/src/howto.md", page(f"# Sign-in\n\n{line}\n"))
+    found = lints.lint_secrets(repo, ["mirror/src/howto.md"])
+    assert [("generic-password" in f.message) for f in found] == ([True] if flagged else [])
+
+
 def test_a_jpeg_sidecar_is_not_read_by_the_secret_scan_or_the_token_lint(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """spec S10: a keyframe's bytes can spell a password assignment; only pages and ``.txt``, ``.md`` and
     ``.csv`` sidecars are read, so the same bytes in a text sidecar still hit."""
     monkeypatch.setattr(lints, "_gitleaks", lambda: None)
-    frame = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\nPWd=xxxxxx\n" + f"access_token={QUERY_TOKEN}\n".encode()
+    frame = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\nPWd=Spring26\n" + f"access_token={QUERY_TOKEN}\n".encode()
     folder = repo / "mirror/src/weekly-sync.mp4.d/01-t000000.files"
     folder.mkdir(parents=True)
     (folder / "t000148.jpg").write_bytes(frame)
@@ -479,8 +515,8 @@ def test_gitleaks_secret_scan(repo: Path) -> None:
     write(repo, "mirror/src/leak.md", page(f"# creds\n\ngithub_token = {GH_TOKEN}\n"))
     write(repo, "mirror/src/sub dir/clean.md", page())
     found = lints.lint_secrets(repo, ["mirror/src/leak.md", "mirror/src/sub dir/clean.md"])
-    assert [f.path for f in found] == ["mirror/src/leak.md"]
-    assert "(gitleaks)" in found[0].message and GH_TOKEN not in found[0].message
+    assert {f.path for f in found} == {"mirror/src/leak.md"}  # gitleaks and the builtin patterns: one page
+    assert any("(gitleaks)" in f.message for f in found) and all(GH_TOKEN not in f.message for f in found)
     assert not list((repo / ".git").glob("agentsync-secret-*"))
 
 

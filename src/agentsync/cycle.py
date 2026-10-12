@@ -1902,9 +1902,8 @@ class _Cycle:
 
     def _still_credential(self, pages: Sequence[PlannedPage]) -> bool:
         """Whether the planned ``pages`` of a file held back as a credential once (and their text
-        sidecars) hold one, read in the private staging folder before anything reaches the mirror.  The
-        builtin patterns read them even when gitleaks scans: gitleaks replaces them, and misses a plain
-        ``Password: ...`` they caught."""
+        sidecars) hold one, read in the private staging folder before anything reaches the mirror, by the
+        builtin patterns and gitleaks alike (``lints.lint_secrets``)."""
         with tempfile.TemporaryDirectory(dir=self.staging) as tmp:
             root = Path(tmp)
             rels: list[str] = []
@@ -1914,7 +1913,7 @@ class _Cycle:
                         (root / rel).parent.mkdir(parents=True, exist_ok=True)
                         (root / rel).write_bytes(data)
                         rels.append(rel)
-            return bool(lints.lint_secrets(root, rels, builtin_too=rels))
+            return bool(lints.lint_secrets(root, rels))
 
     def _once_credential(self) -> set[tuple[str, str]]:
         """The files that were a ``contains a credential`` stub at some time (``_SECRET_ONCE_META``): each

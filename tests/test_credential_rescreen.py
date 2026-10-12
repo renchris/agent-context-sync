@@ -196,7 +196,7 @@ def test_the_rules_identity_moves_with_a_pattern_the_version_and_gitleaks(
     assert lints.secret_rules_identity()["gitleaks"].startswith(str(exe.resolve()))
 
 
-_SCAN_CODE_SHA = "759c3ff1f7965427426cc386558096426fd68b70a161b57fe52d6e03d22c63d4"
+_SCAN_CODE_SHA = "aacd4ee4dc5903f0e9b508ac32903385df9bfc542696161918b927c7b79f969a"
 """sha256 of the source of the functions that decide a secret-scan hit.  A change there that decides
 differently with the same patterns must bump ``lints.SECRET_RULES_VERSION`` (every install then screens its
 credential stubs again); a change that decides the same (a comment, a docstring) only updates this pin."""
@@ -249,16 +249,46 @@ def _blind_gitleaks(mp: pytest.MonkeyPatch, tmp_path: Path) -> None:
     mp.setattr(lints, "_gitleaks_scan", scan)
 
 
-def test_the_builtin_patterns_read_the_named_paths_when_gitleaks_scans(
+def test_the_builtin_patterns_read_every_page_when_gitleaks_scans(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """B13 R76: gitleaks misses a plain password, so the builtin patterns read every page beside it."""
     (tmp_path / "vpn.md").write_text(PASSWORD_PAGE, encoding="utf-8")
     (tmp_path / "other.md").write_text(PASSWORD_PAGE, encoding="utf-8")
     assert [f.path for f in lints.lint_secrets(tmp_path, ["vpn.md"])] == ["vpn.md"]  # builtin catches it
     _blind_gitleaks(monkeypatch, tmp_path)
-    assert lints.lint_secrets(tmp_path, ["vpn.md", "other.md"]) == []  # gitleaks replaces the builtin scan
-    both = lints.lint_secrets(tmp_path, ["vpn.md", "other.md"], builtin_too=["vpn.md"])
-    assert [(f.path, "generic-password" in f.message) for f in both] == [("vpn.md", True)]
+    both = lints.lint_secrets(tmp_path, ["vpn.md", "other.md"])
+    assert [(f.path, "generic-password" in f.message) for f in both] == [("other.md", True), ("vpn.md", True)]
+
+
+def test_a_new_file_with_a_password_gitleaks_misses_is_a_credential_stub(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R76: a file never stubbed before, on a Mac with gitleaks, is read by the builtin patterns too."""
+    config, src = make_env(tmp_path)
+    _blind_gitleaks(monkeypatch, tmp_path)
+    (src / "vpn.txt").write_text(PASSWORD_PAGE, encoding="utf-8")
+    assert run(config).exit_code == 0
+    assert _state(config, "vpn.txt") == (RowState.QUARANTINED, "contains a credential")
+    assert not committed_blobs_containing(config.docs_repo, b"Welcome123")
+
+
+def test_a_copy_of_a_credential_stub_under_a_new_name_is_a_stub_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R76: a copy is a new file id, which the once-a-credential record does not name; the scan of
+    every new page still holds it, once gitleaks has arrived."""
+    config, src = make_env(tmp_path)
+    (src / "vpn.txt").write_text(PASSWORD_PAGE, encoding="utf-8")
+    assert run(config).exit_code == 0  # the builtin patterns: no gitleaks yet
+    stub = (RowState.QUARANTINED, "contains a credential")
+    assert _state(config, "vpn.txt") == stub
+    _blind_gitleaks(monkeypatch, tmp_path)
+    (src / "vpn-copy.txt").write_text(PASSWORD_PAGE, encoding="utf-8")
+    assert run(config).exit_code == 0
+    assert item_id(config, "vpn-copy.txt") != item_id(config, "vpn.txt")
+    assert _state(config, "vpn-copy.txt") == stub and _state(config, "vpn.txt") == stub
+    assert not committed_blobs_containing(config.docs_repo, b"Welcome123")
 
 
 @pytest.mark.parametrize("first_run_on_build", [False, True])
@@ -563,7 +593,7 @@ def test_gitleaks_reads_the_pre_write_screen_inside_its_private_folder(
 
     monkeypatch.setattr(lints, "_gitleaks", lambda: exe)
     monkeypatch.setattr(lints.subprocess, "run", spy)
-    hits = lints.lint_secrets(root, ["vpn.md"], builtin_too=["vpn.md"])
+    hits = lints.lint_secrets(root, ["vpn.md"])
     assert [f.path for f in hits] == ["vpn.md"]
     assert [d.parent for d in scanned] == [root.resolve()]
     assert sorted(f.name for f in root.iterdir()) == ["vpn.md"]  # and it is gone afterwards
