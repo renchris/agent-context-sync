@@ -469,7 +469,7 @@ reads :func:`report_words`, which holds these and every word of the report's sta
 word left off was over-redacted, and that gives the name back). install.sh's ``joined_word`` holds this list.
 """
 
-_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
+_REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
 
 
 @functools.cache
@@ -489,7 +489,7 @@ def report_words() -> frozenset[str]:
         loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
-                words.update(_WORD_RE.findall(node.value))
+                words.update(_REPORT_WORD_RE.findall(node.value))
     return frozenset(words)
 
 
@@ -975,7 +975,9 @@ class Redactor:
                 if (
                     mode == "context"
                 ):  # "OneDrive-Link", "link.sharepoint.com"; never "link" or "Link" in prose
-                    after = "(?:(?<=Drive-)|(?<=Drive - )|(?<=Libraries-)|(?<=Box-))"
+                    # after any app's name (OneDrive-, SharedLibraries-, Box-, Egnyte-), and "OneDrive - " as
+                    # written, shell-escaped (install.log's args) or URL-encoded
+                    after = r"(?:(?<=[A-Za-z0-9]-)|(?<=Drive - )|(?<=Drive\\ -\\ )|(?<=Drive%20-%20))"
                     domain = r"(?=(?:-my)?\.sharepoint\.com|\.onmicrosoft\.com)"
                     literals.append(f"(?i:{after}{body}(?![A-Za-z0-9])|(?<![A-Za-z0-9.-]){body}{domain})")
                     continue
@@ -2489,6 +2491,8 @@ def _build_redactor(r: _Run) -> Redactor:
         tenant = r.config.graph.tenant
         if tenant and "." in tenant:
             orgs.append(tenant.split(".", 1)[0])
+            if not tenant.lower().endswith(".onmicrosoft.com"):  # a custom domain: whole, so a word-named
+                red.add("org", tenant, ignore_case=True)  # organisation's domain never prints (F42)
         for src in r.config.sources:
             if src.site:
                 host, _, site_path = src.site.partition(":")

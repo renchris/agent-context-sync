@@ -489,8 +489,8 @@ NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
 # a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
 # called on every line first, keeps the open attempt's prompt number PV, agent AG and latest time LT, and is 1
-# for a step 1 error that states "prompt vN, <agent>:" words another session's: after an Attempt: or Prompt:
-# header (HD) always, since a prefixed line is written only before --log-start, so after a header it is
+# for a step 1 error that states "prompt vN, <agent>:" words another session's: after any header line
+# parse_friction keeps (Prompt, Agent, Outcome, Run: HD, which an Attempt: line clears) always, since a prefixed line is written only before --log-start, so after a header it is
 # always another session's (B13 round 5 F23); after a header-less attempt, a version or agent that differs
 # from its words, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
 # restate(LINE) gives an attempt a step 1 error opened the words that line states.
@@ -522,16 +522,17 @@ FRICTION_AWK='
 		}
 		function restate(line) { HD = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
-			if (line ~ /^Attempt:/) { SEEN = 1; HD = 1; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
+			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
 			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; HD = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
+			if (line ~ /^[-* ]*(Outcome|Run):/) { SEEN = 1; HD = 1; return 0 }
 			if (line ~ /^[-* ]*Agent:/) { # a no-break space around it goes, as parse_friction strips the value
-				SEEN = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
+				SEEN = 1; HD = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
 				if (AG == "") AG = agent_key(a); return 0
 			}
 			if (line !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/) return 0
 			new = 0
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
-			else if (line ~ s1 && (PV != "" || AG != "") && stated(line)) {
+			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) {
 				if (HD || (PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
 			}
 			if (new) { HD = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
@@ -610,7 +611,8 @@ repo="$(cd "$here/.." && pwd)"
 # %q, which would write it as \~, a path that never expands (B13 round 4 Q7), and so does the slash after it:
 # bash expands a ~ only before an unquoted /, and %q writes a name with a byte it finds unprintable (an accent
 # under C, a curly apostrophe) as $'..', which would hold the slash (B13 round 5 F53).
-SELF="$here/$(basename "${BASH_SOURCE[0]}")"
+SELF_FILE="$here/$(basename "${BASH_SOURCE[0]}")" # the file itself, which report_word reads
+SELF="$SELF_FILE"
 # shellcheck disable=SC2088 # the ~ is printed, for the reader's shell to expand
 case "$SELF" in
 "$HOME"/*) SELF='~/'"$(printf '%q' "${SELF#"$HOME"/}")" ;;
@@ -1029,7 +1031,7 @@ report_word() {
 	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '/^[[:space:]]*#/ { next }
 		{ sub(/[[:space:]]#[[:space:]].*$/, ""); n = split($0, a, /[^A-Za-z]+/)
 			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1 }
-		END { for (k in w) printf "%s ", k }' "$SELF" 2>/dev/null || true) "
+		END { for (k in w) printf "%s ", k }' "$SELF_FILE" 2>/dev/null || true) "
 	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac
 	return 1
 }
@@ -1233,18 +1235,25 @@ redaction_pairs() {
 			case "$org" in
 			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
 			esac
+			low="$(recase lower "$org")"
+			if [ "${org#* }" = "$org" ] && report_word "$low"; then
+				# a word the report prints ("Link"): in each entry's own name (and its %q form) and the domains
+				# only, never the word in the report's own sentences (B13 round 5 F42, F55), as setup_report's
+				# context mode. Every entry gets its pair; only the number is shared (OneDrive-X, -SharedLibraries-X)
+				x="$(printf '%s' "$orgs_seen" | O="$org" LC_ALL=C awk -F '\t' '$1 == ENVIRON["O"] && NF == 2 { print $2; exit }')"
+				if [ -z "$x" ]; then
+					n=$((n + 1))
+					x="$n"
+					orgs_seen+="$org	$n"$'\n'"$org"$'\n'
+					for c in .sharepoint.com -my.sharepoint.com .onmicrosoft.com; do add_pair "$low$c" "<org-$n>$c"; done
+				fi
+				add_pair "$e" "${e%"$org"}<org-$x>"
+				continue
+			fi
 			case "$orgs_seen" in *$'\n'"$org"$'\n'*) continue ;; esac
 			orgs_seen+="$org"$'\n'
 			n=$((n + 1))
-			low="$(recase lower "$org")"
-			if [ "${org#* }" = "$org" ] && report_word "$low"; then
-				# a word the report prints ("Link"): in the entry's name and its domains only, never the word in
-				# the report's own sentences (B13 round 5 F42, F55), as setup_report's context mode
-				add_pair "$e" "${e%"$org"}<org-$n>"
-				for x in .sharepoint.com -my.sharepoint.com .onmicrosoft.com; do add_pair "$low$x" "<org-$n>$x"; done
-			else
-				add_pair "$org" "<org-$n>"
-			fi
+			add_pair "$org" "<org-$n>"
 		done
 	fi
 	n=0
@@ -1816,6 +1825,18 @@ fallback_redaction() {
 	say "folder), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
 	say "bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or an"
 	say "accent (<path>). Read the report before sending it: anything else confidential is yours to remove."
+	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
+	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5).
+	local v p
+	while IFS=$'\t' read -r v p _; do
+		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
+		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
+		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
+		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
+		say "placeholder stands in the report's own text it can be read back. Send this report privately"
+		say "(docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue."
+		break
+	done < <(redaction_pairs 2>/dev/null || true)
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).
@@ -2013,11 +2034,12 @@ source_excludes_line() { # CONFIG
 				if (length(g) > 2 && substr(g, 1, 1) == "/" && substr(g, length(g)) == "/") folders++
 			}
 		}
+		function closes(text) { gsub(/"([^"\\]|\\.)*"|\047[^\047]*\047/, "", text); return text ~ /\]/ } # outside quotes
 		/^[[:space:]]*\[\[source\]\]/ { flush(); open = 1; n++; kind = "local"; extra = 0; folders = 0; inlist = 0; next }
 		/^[[:space:]]*\[/ { flush(); inlist = 0; next }
 		open && /^[[:space:]]*kind[[:space:]]*=/ { kind = $0; sub(/^[^=]*=[[:space:]]*["\047]?/, "", kind); sub(/["\047].*$/, "", kind) }
-		open && /^[[:space:]]*exclude[[:space:]]*=/ { line = $0; sub(/^[^=]*=/, "", line); take(line); inlist = (line !~ /\]/); next }
-		open && inlist { take($0); if ($0 ~ /\]/) inlist = 0 }
+		open && /^[[:space:]]*exclude[[:space:]]*=/ { line = $0; sub(/^[^=]*=/, "", line); take(line); inlist = !closes(line); next }
+		open && inlist { take($0); if (closes($0)) inlist = 0 }
 		END {
 			flush()
 			if (out == "") { print "- source excludes beyond agentsync\047s own: none"; exit }

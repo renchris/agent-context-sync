@@ -1231,6 +1231,16 @@ def test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own(env: 
         "source(s) (globs not shown; an excluded folder is not mirrored if it later gains files)\n" in text
     ), text
     assert "Empty Subfolder" not in text and "*.bak" not in text
+    # a hand-written list over several lines, with a bracket inside a glob
+    config.write_text(
+        '[[source]]\nid = "a"\nkind = "local"\npath = "/x"\n'
+        'exclude = [\n  "[Tt]emp/",\n  "/Empty Subfolder/",\n]\n',
+        encoding="utf-8",
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    assert "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob(s)) (globs" in report_path(
+        env
+    ).read_text(encoding="utf-8")
     config.write_text('[[source]]\nid = "a"\nkind = "local"\npath = "/x"\n', encoding="utf-8")
     assert install_sh(env, "--report-only").returncode == 0
     assert "- source excludes beyond agentsync's own: none\n" in report_path(env).read_text(encoding="utf-8")
@@ -1284,8 +1294,22 @@ def test_the_shell_report_leaves_any_report_word_a_name_spells_alone(
         "| -\n",
         encoding="utf-8",
     )
-    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
-    assert cp.returncode == 1
+    # Run from under HOME, as a real install is (~/src/...): the script's own path there is shown as ~/...,
+    # which no awk can open, and report_word must read the file itself (a reviewer's finding)
+    copy = Path(env["HOME"]) / "src" / "agent-context-sync" / "scripts" / "install.sh"
+    copy.parent.mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, copy)
+    shutil.copy2(INSTALL_SH.parents[1] / "pyproject.toml", copy.parents[1] / "pyproject.toml")
+    cp = subprocess.run(
+        [BASH32, str(copy), "--source-local", str(folder)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={**env, "STUB_UV_INSTALL_RC": "2"},
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 1, cp.stderr
     text = report_path(env).read_text(encoding="utf-8")
     assert "the install log; INSTALL; <name>, <name>, <name> agreed" in text, text
 
@@ -1305,17 +1329,42 @@ def test_the_shell_report_keeps_the_word_a_one_word_organisation_spells(
         entry.symlink_to(cloud / "OneDrive-Contoso")
     else:
         entry.mkdir()
+    (cloud / "OneDrive-SharedLibraries-Link").mkdir()  # one organisation, two entries: each gets its pair
     friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
     friction.parent.mkdir(parents=True)
     friction.write_text(
-        "Prompt: v4\nF1 | step 3 | clean | 1 | OneDrive-Link and link.sharepoint.com; the Link button | -\n",
+        "Prompt: v4\nF1 | step 3 | clean | 1 | OneDrive-Link and link.sharepoint.com; the Link button; "
+        "OneDrive-SharedLibraries-Link | -\n",
         encoding="utf-8",
     )
     cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(team))
     assert cp.returncode == 1
     text = report_path(env).read_text(encoding="utf-8")
     assert "Contoso" not in text and "OneDrive-Link" not in text and "link.sharepoint.com" not in text
-    assert "OneDrive-<org-2> and <org-2>.sharepoint.com; the Link button" in text, text
+    assert (
+        "OneDrive-<org-2> and <org-2>.sharepoint.com; the Link button; OneDrive-SharedLibraries-<org-2>"
+        in text
+    ), text
+    assert "Private only:" not in text, "matched only in its names, it never stands in the report's text"
+
+
+def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env: dict[str, str]) -> None:
+    """B13 round 5 F92 in the shell report: a folder named like a word the report prints ("Status") is
+    replaced where its placeholder reads back as the word, so the Redaction part says to send it privately."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    plain = cloud / "OneDrive-Contoso" / "Q3 Launch"
+    plain.mkdir(parents=True)
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(plain)).returncode == 1
+    assert "Private only:" not in report_path(env).read_text(encoding="utf-8")
+    word = cloud / "OneDrive-Contoso" / "Status"
+    word.mkdir()
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(word)).returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    assert (
+        "Private only: one of your folder or organisation names is also a word this report prints, so where "
+        "its\n" in text
+    ), text
+    assert "(docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue." in text
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
@@ -1966,6 +2015,48 @@ def test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions(
     patch = _keep_patch(env, written)
     sent = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
     assert _local_work(env) == (_not_repeated(patch, written) if ended else sent)
+
+
+def _awk_attempts(log: str) -> int:
+    """How many attempts install.sh's FRICTION_AWK opens in ``log``: one per ``Attempt:`` line (or one for a
+    log that starts without one) and one per line its track() calls another session's."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [body] = re.findall(r"^FRICTION_AWK='(.*?)'$", script, re.MULTILINE | re.DOTALL)
+    [s1] = re.findall(r"^STEP1_ERROR_RE='([^']*)'$", script, re.MULTILINE)
+    program = body + "{ n += track($0) } END { print n }"
+    cp = subprocess.run(
+        ["/usr/bin/awk", "-v", "gap=600", "-v", f"s1={s1}", program],
+        input=log,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+    )
+    lines = log.splitlines()
+    return (
+        int(cp.stdout)
+        + sum(ln.startswith("Attempt:") for ln in lines)
+        + (not lines[0].startswith("Attempt:"))
+    )
+
+
+def test_the_installer_and_the_report_split_the_same_attempts_after_any_header() -> None:
+    """B13 round 5 F23 (a reviewer's finding): parse_friction counts every header line it keeps (Prompt,
+    Agent, Outcome, Run), and a Prompt: line with no number; install.sh's awk set its header flag on
+    Attempt: and Prompt: only and tested it after the version and agent. Each log gives both the same
+    attempts."""
+    err = "| step 1 | error | prompt v12, Claude Code: git pull failed | -\n"
+    logs = [
+        f"2026-10-06T10:00:00Z {err}Agent: Claude Code\n2026-10-06T10:02:00Z {err}",
+        f"2026-10-06T10:00:00Z {err}Outcome: stopped\n2026-10-06T10:02:00Z {err}",
+        f"2026-10-06T10:00:00Z {err}- Run: 1\n2026-10-06T10:02:00Z {err}",
+        f"Attempt: 2026-10-06T10:00:00Z\nPrompt: the one in the README\n2026-10-06T10:01:00Z {err}",
+        f"Attempt: 2026-10-06T10:00:00Z\n2026-10-06T10:01:00Z {err}",
+        f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\nAgent: Claude Code\n2026-10-06T10:00:30Z {err}",
+        f"2026-10-06T10:00:00Z {err}2026-10-06T10:00:30Z {err}",
+    ]
+    for log in logs:
+        assert _awk_attempts(log) == len(setup_report.parse_friction(log).attempts), log
 
 
 def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:

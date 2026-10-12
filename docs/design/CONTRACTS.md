@@ -14612,14 +14612,16 @@ before `--log-start`, which writes the `Attempt:`, `Prompt:` and `Agent:` header
 never writes one. A prefixed step 1 error therefore starts a new header-less attempt whenever the open attempt has a
 header (or an `Attempt:` line), whatever the gap and in the same words (probes P8: a finished attempt, the error 2
 minutes on; P3b: an open one, 30 seconds on). The version, agent and gap rules now apply only after a header-less
-attempt with stated words. In awk, `track()` sets `HD` on an `Attempt:` or `Prompt:` line, a stated line after it
-is new, and `restate()` and a new attempt clear it, matching Python's empty header for a header-less attempt; so
+attempt with stated words. In awk, `track()` sets `HD` on every header line Python keeps (`Prompt:`, `Agent:`,
+`Outcome:`, `Run:`, a `Prompt:` with no number included), an `Attempt:` line, `restate()` and a new attempt clear it
+(Python's empty header), and a stated line after it is new; so
 `friction_earlier_end` prints the finished attempt's end time and section 3 does not send its patch again. Tests:
 `test_a_prefixed_step_1_error_after_a_finished_attempt_is_reported_as_its_own`,
 `test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line`,
 `test_a_header_less_step_1_error_states_its_prompt_and_agent`,
 `test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions`,
-`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`.
+`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`,
+`test_the_installer_and_the_report_split_the_same_attempts_after_any_header`.
 
 **F14: bring-back.md fences each file it embeds.** In install.sh's `write_bring_back`, the setup report
 (section 1) and fix-request.md (section 2) each sit inside a tilde fence with the info string `markdown`, and the
@@ -14650,23 +14652,27 @@ report's text gains is in it with no list to keep. "In Stall" now leaves `instal
 `INSTALL` alone and still redacts `InStall`, `in-stall` and `In Stall`; a non-word join (`janedoe`) is redacted as
 before. The bare one-case join is the dictionary word, so leaving it reveals nothing (Q72's reasoning). install.sh's
 `name_forms` reads `report_word`: `joined_word` (still equal to `_JOINED_WORDS`) or a word on install.sh's own lines
-that are not comments. Tests: `test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone`,
+that are not comments, read from the file itself (`SELF_FILE`; `SELF` is the display form, `~/...` under the home). Tests: `test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone`,
 `test_the_shell_report_leaves_any_report_word_a_name_spells_alone`, `test_the_shell_joined_word_list_is_the_reports`.
 
 **F42, F55: a one-word organisation that is a report word is matched only in folder and domain names.** Amends
 §16.46 "Kept as they are" (dated line there). Every CloudStorage entry, symlinks and non-folders included, and every
 configured path's provider still registers its organisation, so nothing that might name the tenant prints (Q33's
 symlink note and the Environment line print every entry). When the organisation is one word and in
-`report_words()` (`Link`, `Data`, `Status`), the Redactor registers it in a `context` mode: matched only after
-`Drive-`, `Drive - `, `Libraries-` or `Box-` (`OneDrive-<org-N>`, `OneDrive-SharedLibraries-<org-N>`) or before
+`report_words()` (`Link`, `Data`, `Status`), the Redactor registers it in a `context` mode: matched only after any
+app's name and a hyphen (`OneDrive-<org-N>`, `OneDrive-SharedLibraries-<org-N>`, `Egnyte-<org-N>`), after
+`Drive - ` as written, shell-escaped (`Drive\ -\ `, install.log's arguments) or URL-encoded, or before
 `.sharepoint.com`, `-my.sharepoint.com` or `.onmicrosoft.com`; never the bare word, so `a link's own attributes`,
-`link count` and `issue link` keep their words. Any other organisation (`Contoso`) is matched as before. The shell
-report registers such an organisation as the whole entry name (`OneDrive-<org-N>`) and its three lower-case
-domains instead of the bare word. Not built: matching it "as a separator-bounded part of a longer joined name",
+`link count` and `issue link` keep their words. A custom-domain `graph.tenant` (not `.onmicrosoft.com`) is also
+registered whole, so its domain never prints. Any other organisation (`Contoso`) is matched as before. The shell
+report registers each entry of such an organisation by its whole name (and its `%q` form; an organisation in two
+entries shares one number and both entries get their pair) and its three lower-case domains, instead of the bare
+word. Not built: matching it "as a separator-bounded part of a longer joined name",
 which would also match hyphenated prose. F42 and F55 describe one defect and are built once. Tests:
 `test_a_one_word_organisation_that_is_a_report_word_is_matched_only_in_folder_and_domain_names`,
 `test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words`,
-`test_the_shell_report_keeps_the_word_a_one_word_organisation_spells`.
+`test_the_shell_report_keeps_the_word_a_one_word_organisation_spells`,
+`test_the_shell_report_sends_a_report_with_a_word_named_folder_privately` (F92's shell half).
 
 **F92: a folder named like a report word sends the report privately.** Amends §16.46 "Kept as they are" and its
 R135 line (dated lines there). A one-word folder, library or organisation value in `report_words()` matched
@@ -14676,7 +14682,9 @@ anywhere has a placeholder that reads back as the word where it stands in the re
 word this report prints, so where its placeholder stands in the report's own text it can be read back.` and its
 `Send it:` line reads `privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the link
 on the last line: a public issue would show that name.` An organisation in `context` mode (F42) never lands in
-fixed text and never raises it; the `Read the report before sending it` caveat is unchanged. The full fix, redaction
+fixed text and never raises it; the `Read the report before sending it` caveat is unchanged. The shell report's
+Redaction part adds its own `Private only: ...` lines when a one-word folder or organisation pair is a
+`report_word`. The full fix, redaction
 at interpolation, is a broad change to `_redact_lines`' callers and is not built. The finder's "Send it" example
 was not reproducible (that sentence is appended unredacted), and its org `Link` test is replaced by a folder
 `Status`, since F42 keeps a word-named organisation out of fixed text. Test:

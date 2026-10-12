@@ -424,6 +424,7 @@ def test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone() -> No
     words = setup_report.report_words()
     assert words >= setup_report._JOINED_WORDS and words >= {"install", "content", "agentsync", "issue"}
     assert "janedoe" not in words and "contoso" not in words, "a docstring's example is not the report's text"
+    assert "abel" not in words and "feedback" in words, "whole words only, a hyphenated one too"
     red = setup_report.Redactor()
     red.add("name", "In Stall", fuzzy=True)
     assert red.redact("install.sh exited 0; the install log; INSTALL; InStall in-stall In Stall") == (
@@ -461,6 +462,10 @@ def test_a_one_word_organisation_that_is_a_report_word_is_matched_only_in_folder
         == "<org-1> <org-1> <org-1> <org-1>.sharepoint.com"
     )
     assert not red.word_named_shown, "matched only in a name, the placeholder reads back as nothing"
+    # any app's name, and "OneDrive - " as install.log's %q and a URL write it
+    assert red.redact("Egnyte-Link; OneDrive\\ -\\ Link; OneDrive%20-%20Link") == (
+        "Egnyte-<org-2>; OneDrive\\ -\\ <org-2>; OneDrive%20-%20<org-2>"
+    )
 
 
 @pytest.mark.parametrize("link", [True, False], ids=["symlink", "folder"])
@@ -476,8 +481,11 @@ def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
         (cloud / "OneDrive-Fabrikam").symlink_to(cloud / f"OneDrive-{ORG}")
     else:
         entry.mkdir()
-    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[graph]\ntenant = "link.com"\n', encoding="utf-8")
+    text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     assert ORG not in text and "Fabrikam" not in text and "OneDrive-Link" not in text
+    assert "link.com" not in text, "a custom-domain tenant is registered whole"
     env = section(text, "Environment")
     assert "OneDrive-<org-" in env
     if link:
