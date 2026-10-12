@@ -631,6 +631,33 @@ def _owner_only(tree: Path) -> None:
         tree.chmod(0o700)
 
 
+_SHARED_CONFIG = ("Library/org.swift.swiftpm/configuration", ".swiftpm/configuration")
+"""Where SwiftPM keeps the person's shared configuration, under HOME, in the order it reads them."""
+_SHARED_FILES = ("mirrors.json", "registries.json")
+
+
+def _shared_config(config: Path) -> None:
+    """Copy the person's shared ``mirrors.json`` and ``registries.json`` into the build's ``--config-path``
+    folder, every build: that flag replaces the shared configuration folder outright (measured on Swift
+    6.2.4: a mirror there resolved under its own --config-path and was "not found" under another), so a Mac
+    that reaches GitHub only through a SwiftPM mirror or registry could not build.  A file gone from the
+    shared folder is gone from the copy.  The folder is found from HOME, so a rehearsal that sets HOME never
+    reads the real ~/Library.  The copy is owner-only, since a mirror's url can carry a token; one that
+    cannot be read or written is skipped."""
+    with contextlib.suppress(OSError):
+        config.mkdir(mode=0o700, exist_ok=True)
+    for name in _SHARED_FILES:
+        copy = config / name
+        with contextlib.suppress(OSError):
+            copy.unlink(missing_ok=True)
+            for folder in _SHARED_CONFIG:
+                source = Path.home() / folder / name
+                if source.is_file():
+                    shutil.copyfile(source, copy)
+                    copy.chmod(0o600)
+                    break
+
+
 def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     """Build the packaged SwiftPM package into ``helper``: resolve, refuse a FluidAudio checkout older than
     the floor, write ``Pin.swift``, build release.  The tree ``<folder>/build`` is kept (a rebuild is then
@@ -653,6 +680,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     spm = helper.parent / _SWIFTPM
     try:
         spm.mkdir(mode=0o700, exist_ok=True)
+        _shared_config(spm / "config")
         places = [
             arg for what in ("cache", "config", "security") for arg in (f"--{what}-path", str(spm / what))
         ]

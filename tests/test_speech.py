@@ -630,6 +630,36 @@ def test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree(
     assert loose == [], "a failed build leaves SwiftPM's folder owner-only too"
 
 
+def test_the_persons_swiftpm_mirrors_and_registries_reach_the_build_and_leave_with_them(
+    tools: Path, tmp_path: Path
+) -> None:
+    """B13 Q53: --config-path replaces SwiftPM's shared configuration folder outright (measured on Swift
+    6.2.4), so since R90 a Mac that reaches GitHub only through a SwiftPM mirror could not build.  The
+    person's shared mirrors.json and registries.json are copied in, owner-only, every build, from the folder
+    SwiftPM reads first (found from HOME); one removed from the shared folder is removed from the copy."""
+    library = Path.home() / "Library" / "org.swift.swiftpm" / "configuration"
+    dotted = Path.home() / ".swiftpm" / "configuration"
+    library.mkdir(parents=True)
+    dotted.mkdir(parents=True)
+    mirrors = b'{"object": [{"mirror": "https://artifacts.contoso.example/FluidAudio.git"}], "version": 1}\n'
+    (library / "mirrors.json").write_bytes(mirrors)
+    (dotted / "mirrors.json").write_bytes(b'{"object": [], "version": 1}\n')
+    (dotted / "registries.json").write_bytes(b'{"registries": {}, "version": 1}\n')
+    cache = tmp_path / "cache"
+    config = cache / "speech" / "swiftpm" / "config"
+    with loose_umask():
+        speech.build(cache)
+    assert (config / "mirrors.json").read_bytes() == mirrors, "SwiftPM's own order: ~/Library first"
+    assert (config / "registries.json").read_bytes() == b'{"registries": {}, "version": 1}\n'
+    assert mode(config / "mirrors.json") == mode(config / "registries.json") == 0o600
+
+    (library / "mirrors.json").unlink()
+    (dotted / "mirrors.json").unlink()
+    ocr._helper_path(cache, speech.SPEECH).unlink()
+    speech.build(cache)
+    assert sorted(p.name for p in config.iterdir()) == ["registries.json"], "a removed mirror stays removed"
+
+
 FLUIDAUDIO_NEMO = {
     "04e363c29d9a754022d602d6fe1468ab80a0f705": (
         "https://github.com/FluidInference/text-processing-rs/releases/download/v0.3.1/"
