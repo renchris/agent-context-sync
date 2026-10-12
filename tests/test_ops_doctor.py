@@ -762,6 +762,62 @@ def test_shell_path_forms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     assert doctor._shell_path("/etc/x") == "'/etc/x'"
 
 
+@pytest.mark.parametrize("shell", ["sh", "bash", "zsh", "dash"])
+def test_shell_path_quotes_by_content_and_every_shell_reads_the_path_back(shell: str, tmp_path: Path) -> None:
+    """§16.45 R78: a path with a ``'`` ended ``~/'<rest>'`` early. Such a path is ``~/"<rest>"`` when it has
+    none of ``!$`\"``, else each ``'`` is spliced; sh, bash, zsh and dash each read every form back as the
+    exact path."""
+    exe = shutil.which(shell)
+    if exe is None:
+        pytest.skip(f"{shell} is not installed")
+    home = Path.home()
+    assert doctor._shell_path(home / "Contoso Docs" / "notes") == "~/'Contoso Docs/notes'"
+    assert doctor._shell_path(home / "Contoso's Docs" / "notes") == '~/"Contoso\'s Docs/notes"'
+    assert doctor._shell_path(home / "Contoso's $Docs") == "~/'Contoso'\\''s $Docs'"
+    paths = [
+        home / "Contoso Docs" / "notes",
+        home / "Contoso's Docs" / "notes",
+        home / "Contoso's $Docs" / "x",
+        home / 'Fabrikam\'s "Q" !`a`\\b',
+        tmp_path / "Project Alpha's notes",
+        tmp_path / "Project Alpha's $notes",
+    ]
+    argv = [exe, "-f", "-c"] if shell == "zsh" else [exe, "-c"]
+    for path in paths:
+        form = doctor._shell_path(path)
+        done = subprocess.run(
+            [*argv, f"printf '%s' {form}"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "HOME": str(home)},
+            check=False,
+        )
+        assert done.returncode == 0 and done.stdout == str(path), (form, done.stdout, done.stderr)
+
+
+def test_docs_repo_fixes_quote_the_path(sample_config: Config) -> None:
+    """§16.45 R78: the docs repo fixes print the path as one shell word; ``mkdir -p`` then makes that folder,
+    not one folder per word."""
+    ro = Path.home() / "ro"
+    ro.mkdir()
+    repo = ro / "Contoso's Docs" / "docs"
+    ro.chmod(0o500)
+    try:
+        r = by_name(doctor._check_docs_repo(dataclasses.replace(sample_config, docs_repo=repo)))[
+            "docs_repo.git"
+        ]
+    finally:
+        ro.chmod(0o700)
+    assert r.fix == 'mkdir -p ~/"ro/Contoso\'s Docs/docs"'
+    done = subprocess.run(["sh", "-c", r.fix], capture_output=True, text=True, cwd=Path.home(), check=False)
+    assert done.returncode == 0 and repo.is_dir(), done.stderr
+    shutil.rmtree(ro / "Contoso's Docs")
+    repo.parent.mkdir()
+    repo.write_text("")
+    r = by_name(doctor._check_docs_repo(dataclasses.replace(sample_config, docs_repo=repo)))["docs_repo.git"]
+    assert r.fix == 'move ~/"ro/Contoso\'s Docs/docs" aside'
+
+
 def test_the_permissions_fix_under_home_runs_as_the_report_shows_it(tmp_path: Path) -> None:
     """§16.39 N11, the field case (2026-10-06 row 9): the chmod and the git config of a docs repo below the
     home folder, pasted from the report."""

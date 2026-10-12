@@ -4452,6 +4452,9 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert setup_report.residue("fix: chmod -R go-rwx ~/'Development/<folder-1>/docs'") == [], (
         "a doctor fix writes a home path as ~/'<rest>' (§16.39 N11)"
     )
+    assert setup_report.residue('fix: mkdir -p ~/"Development/<folder-1>/docs"') == [], (
+        'a path with a \' is written ~/"<rest>" (§16.45 R78)'
+    )
     assert setup_report.residue("~/Development/Acme/<folder-1> and <folder-2> Development") == [
         "Acme",
         "Development",

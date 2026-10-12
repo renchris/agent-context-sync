@@ -510,10 +510,11 @@ _RESIDUE_RE = re.compile(
 space (``abc-<folder-1>``: a leftover piece of a longer name; of ``alpha-beta-<folder-1>`` only ``beta``)."""
 _USER_HOME_RE = re.compile(r"(?<![\w.-])/Users/<user>/")  # a login's home in a redacted path: like ~/
 _HOME_CONTAINER_RE = re.compile(
-    rf"(?<![\w.-])~/'?(?:(?:{'|'.join(sorted(_GENERIC_HOME_DIRS))})/)+", re.IGNORECASE
+    rf"(?<![\w.-])~/[\"']?(?:(?:{'|'.join(sorted(_GENERIC_HOME_DIRS))})/)+", re.IGNORECASE
 )
 """``~/Development/``, ``~/Projects/Work/``: the home with the folders below it that name no project. A
-quote may follow ``~/``: a doctor fix writes a home path as ``~/'<rest>'`` (CONTRACTS §16.39 N11)."""
+quote may follow ``~/``: a doctor fix writes a home path as ``~/'<rest>'`` (CONTRACTS §16.39 N11), or as
+``~/"<rest>"`` when the path holds a ``'`` (§16.45 R78)."""
 _PATH_COMPONENTS = frozenset(
     {"Users", "Library", "Application", "Support", "CloudStorage", "Volumes", "Applications"}
 )

@@ -421,11 +421,18 @@ def _bad(name: str, detail: str, severity: Severity = Severity.ERROR, fix: str |
     return CheckResult(name=name, ok=False, detail=detail, severity=severity, fix=fix)
 
 
+# Special inside double quotes (``!`` too: history expansion in an interactive bash, zsh or tcsh).
+_DOUBLE_QUOTE_SPECIAL = frozenset('!$`\\"')
+
+
 def _shell_path(path: Path | str) -> str:
     """``path`` as one shell word for a fix: ``~/'<rest>'`` below the home folder (as HOME gives it, or
     resolved), ``~`` for the home folder itself, ``'<path>'`` anywhere else. Both setup reports redact the
     home folder to ``~``, and inside quotes (``'~/...'``) no shell expands it (CONTRACTS §16.39 N11). The
-    quoted part is the raw path, so the report's redaction still finds every name in it."""
+    quoted part is the raw path, so the report's redaction still finds every name in it. A path with a
+    ``'`` is quoted by what it holds (§16.45 R78): ``~/"<rest>"`` (or ``"<path>"``) when it has none of
+    ``!$`\\"``, still the raw path in one piece; else each ``'`` is spliced as ``'\\''``, which splits a name
+    holding one for the redaction."""
     p = str(path)
     home = Path.home()
     forms = {str(home)}
@@ -438,8 +445,17 @@ def _shell_path(path: Path | str) -> str:
         if p == h:
             return "~"
         if p.startswith(h + "/"):
-            return f"~/'{p[len(h) + 1 :]}'"
-    return f"'{p}'"
+            return "~/" + _quoted(p[len(h) + 1 :])
+    return _quoted(p)
+
+
+def _quoted(text: str) -> str:
+    """``text`` as one quoted shell word, by what it holds (:func:`_shell_path`)."""
+    if "'" not in text:
+        return f"'{text}'"
+    if not _DOUBLE_QUOTE_SPECIAL.intersection(text):
+        return f'"{text}"'
+    return "'" + text.replace("'", "'\\''") + "'"
 
 
 def _again_fix(fallback: str | None = None) -> str:
@@ -710,11 +726,17 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
                 _bad(
                     "docs_repo.git",
                     f"{repo} does not exist and {anchor} is not writable",
-                    fix=f"mkdir -p {repo}",
+                    fix=f"mkdir -p {_shell_path(repo)}",
                 )
             )
     elif not repo.is_dir():
-        out.append(_bad("docs_repo.git", f"{repo} exists but is not a directory", fix=f"move {repo} aside"))
+        out.append(
+            _bad(
+                "docs_repo.git",
+                f"{repo} exists but is not a directory",
+                fix=f"move {_shell_path(repo)} aside",
+            )
+        )
     elif (repo / ".git").exists():
         is_git = True
         out.append(_ok("docs_repo.git", f"{repo} is a git repository"))
@@ -758,7 +780,10 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
                     _bad(
                         "docs_repo.symlinks",
                         f"{len(links)} tracked symlink(s): {shown}",
-                        fix=f"git -C {repo} rm --cached <path> for each, and replace them with real files",
+                        fix=(
+                            f"git -C {_shell_path(repo)} rm --cached <path> for each, and replace them with "
+                            "real files"
+                        ),
                     )
                 )
             else:
@@ -871,7 +896,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                     f"{base}.listable",
                     f"{root} lists 0 entries ({why})",
                     Severity.WARN,
-                    fix=f"open {root} in Finder once; if still empty: {_fda_fix(image)}" if cloud else None,
+                    fix=f"open {_shell_path(root)} in Finder once; if still empty: {_fda_fix(image)}"
+                    if cloud
+                    else None,
                 )
             )
         else:
