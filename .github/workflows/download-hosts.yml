@@ -1,0 +1,30 @@
+name: download-hosts
+
+# Follows the real redirect chains of the installer's downloads and checks that docs/deploy/it-request.md still
+# names every host they reach (scripts/download_hosts.py; B13 round 2 R119). tests/test_deploy_pack.py reads only
+# repository text, so a vendor that moves its downloads (GitHub's move of release files from
+# objects.githubusercontent.com to release-assets.githubusercontent.com) would leave the page and the test green.
+# It reads the network, so it is not part of the gate in CLAUDE.md and runs on no push: weekly and on demand, and a
+# failure shows red on the Actions page without blocking anything. GitHub turns off a scheduled workflow after 60
+# days with no repository activity; run it by hand (gh workflow run download-hosts.yml) after a quiet spell.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  hosts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.17"
+      - name: follow the download chains
+        run: python3 -I scripts/download_hosts.py

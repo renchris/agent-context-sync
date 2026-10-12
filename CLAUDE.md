@@ -22,6 +22,9 @@ npm run diagrams:check
 make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 ```
 
+`.github/workflows/download-hosts.yml` is not in this list: it follows the installer's live download redirects
+weekly, so the network, not a commit, decides its result.
+
 pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on a busy 10-core machine against 11
 serial. Every
 test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a new

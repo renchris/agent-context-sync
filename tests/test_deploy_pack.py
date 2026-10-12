@@ -5,6 +5,7 @@ item 7 asks for the manifest check; the rest keeps the pack an IT admin receives
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import itertools
 import json
 import os
@@ -95,6 +96,74 @@ def test_it_request_names_the_speech_build_downloads() -> None:
     assert f"`{archive}`" in section and release_repo in section, "the prebuilt binary FluidAudio links"
     assert "`release-assets.githubusercontent.com`" in section, "the host GitHub serves release files from"
     assert "`[convert] recordings = false`" in section, "how IT turns the build off"
+
+
+def _download_hosts() -> Any:
+    spec = importlib.util.spec_from_file_location("download_hosts", ROOT / "scripts" / "download_hosts.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> None:
+    """B13 round 2 R119: the test above reads only repository text, so if GitHub moved its release files
+    again (it moved them from objects.githubusercontent.com to release-assets.githubusercontent.com), the
+    page and the test would agree and stay green. scripts/download_hosts.py follows the real redirect chains
+    in a weekly workflow outside the gate. Here, offline: it reads the same section, builds the release URL
+    the speech build fetches, and flags a chain that ends off the named host or passes an unnamed one."""
+    hosts = _download_hosts()
+    text = (DEPLOY / "it-request.md").read_text(encoding="utf-8")
+    bullet = hosts.downloads_bullet(text)
+    assert hosts.named_hosts(bullet) == {
+        "astral.sh",
+        "releases.astral.sh",
+        "github.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "release-assets.githubusercontent.com",
+    }
+    package = SPEECH_PACKAGE.read_text(encoding="utf-8")
+    [revision] = re.findall(r'revision: "([0-9a-f]{40})"', package)
+    archive, release_repo = FLUIDAUDIO_BINARY_TARGETS[revision]
+    url, end = hosts.release_file(bullet)
+    assert url.startswith(f"https://github.com/FluidInference/{release_repo}/releases/download/v")
+    assert url.endswith(f"/{archive}") and end == "release-assets.githubusercontent.com"
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert hosts.uv_installer_url(script) == "https://astral.sh/uv/install.sh"
+    installer = (
+        'if [ -n "${UV_DOWNLOAD_URL:-}" ]; then\n    ARTIFACT_DOWNLOAD_URLS="$UV_DOWNLOAD_URL"\nelse\n'
+        '    ARTIFACT_DOWNLOAD_URLS="https://releases.astral.sh/github/uv/releases/download/0.13.0 '
+        'https://github.com/astral-sh/uv/releases/download/0.13.0"\nfi\n'
+    )
+    assert hosts.uv_binary_urls(installer) == [
+        f"https://releases.astral.sh/github/uv/releases/download/0.13.0/{hosts.UV_ASSET}",
+        f"https://github.com/astral-sh/uv/releases/download/0.13.0/{hosts.UV_ASSET}",
+    ], "the installer's own default, not an override variable"
+    named = hosts.named_hosts(bullet)
+    chains = {
+        url: [url, "https://objects.githubusercontent.com/x"],
+        "https://astral.sh/uv/install.sh": [
+            "https://astral.sh/uv/install.sh",
+            "https://cdn.example.net/i.sh",
+        ],
+        "https://pypi.org/simple/pip/": ["https://pypi.org/simple/pip/"],
+    }
+    steps = [("release", url, end), ("uv installer", "https://astral.sh/uv/install.sh", None)]
+    steps.append(("PyPI", "https://pypi.org/simple/pip/", None))
+    problems = hosts.check(steps, named, follow=chains.__getitem__)
+    assert len(problems) == 3, problems
+    assert problems[0].startswith("release now ends on objects.githubusercontent.com")
+    assert "objects.githubusercontent.com, which it-request.md does not name" in problems[1]
+    assert "uv installer passes cdn.example.net" in problems[2]
+    workflow = (ROOT / ".github" / "workflows" / "download-hosts.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+    assert "schedule:" in trigger and "workflow_dispatch:" in trigger and "push" not in trigger
+    assert "run: python3 -I scripts/download_hosts.py" in workflow
+    guide = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    gate = guide.split("### Gate", 1)[1].split("```", 2)[1]
+    assert "download_hosts" not in gate, "it reads the network: not in the gate"
+    assert "`.github/workflows/download-hosts.yml` is not in this list" in guide
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
