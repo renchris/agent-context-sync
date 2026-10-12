@@ -13488,3 +13488,27 @@ the current version (`test_setup_feedback_shows_the_current_prompt_version`).
 would make a value's number depend on which other values a report mentions, a new cause of renumbering in every
 report, and the issue link, the Redaction legend and `fix-request.md` would no longer match the report text. N44's
 role-first naming already covers renumbering whatever its cause.
+
+### 16.50 Round 4: purge (2026-10-12, wave B13 round 4 lane A)
+
+Reserved for round 4 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 4").
+
+### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
+
+Reserved for round 4 lane B of B13.
+
+### 16.52 Round 4: setup report (2026-10-12, wave B13 round 4 lane RA)
+
+Reserved for round 4 lane RA of B13.
+
+### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
+
+Reserved for round 4 lane RB of B13.
+
+### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
+
+Reserved for round 4 lane E of B13.
+
+### 16.55 Round 4: setup prompt v13 and docs (2026-10-12, wave B13 round 4 lane P)
+
+Reserved for round 4 lane P of B13.

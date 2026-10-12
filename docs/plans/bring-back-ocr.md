@@ -524,6 +524,42 @@ held lock plus the converters; an empty folder in a marked File Provider folder)
 build what survives; stop when a round confirms nothing new. Script to adapt: the round-2 workflow
 (`wf_97bc35ac-295`, args `{head}`); its rehearsal text names v11 and must say v12.
 
+### B13 round 4: v12 rehearsal, cross-lane review, harvest (2026-10-12)
+
+Scope (frozen): loop until dry. Each round rehearses the current prompt on the landed tip, reviews the previous
+round's diff in four areas and harvests the previous lanes' not-built and adjacent items; every finding is verified
+by a skeptic; each confirmed finding is built in a dispatched lane (account next3) or carries a measured not-built
+reason; repeat until a round confirms nothing new. Only then is the operator told to paste the prompt, once the
+README block on origin/main carries that version.
+
+Run `wf_500eacc6-451` on `5c8c3e18` (98 agents, 0 errors): six rehearsals (new Mac; field-state Mac from `4a42af9`;
+v11 and v10 copies refused; failing `git pull`; reinstall under a held lock plus every converter including `.potx`;
+an empty folder in a provider folder marked as a File Provider domain, with and without the marker, through a
+symlink and under `/tmp`), four reviewers of `9db6ce3..5c8c3e18`, one harvest. Every rehearsal passed its
+expectations with no name, login or host name in any report, and no finding costs the person a turn. 87 findings, 85
+confirmed (15 wrong, 70 small), 2 refuted; 13 carry the verifier's "a fix makes things worse". Three need prompt text
+(Q8, Q24, Q25), so the next prompt is v13. Reports and per-item specs: `~/.cache/agentsync-bring-back/b13/round4/`
+(`items/Q<n>.md`, lane map `lanes.json`). Note for round 5: the shared fixture tree
+`/tmp/agentsync-rehearsal-fixtures/tree` had lost its files; the rehearsals restored copies from round 2's sandboxes.
+
+Locus: the find-and-verify round runs as a Workflow on the lead (ultracode); builds are S, one dispatched session per
+lane in its own worktree, landing itself through `/ship`. Lead succession point: after all lanes land, with this
+section as the bridge.
+
+Round 4 lanes (dispatched sessions on next3, CONTRACTS §16.50 to §16.55; common brief `lanes/COMMON3.md`):
+
+| Lane | Count | Area |
+|---|---|---|
+| A | 7 | purge, governance, contracts test |
+| B | 17 | doctor, loop, paths, arm_local, publish, lints, skill |
+| RA | 17 | setup_report.py |
+| RB | 16 | install.sh (step 2 order, the shell report, the reinstall wait) |
+| E | 12 | converters, speech, OCR watcher, test infrastructure |
+| P | 14 | prompt v13, README, docs/deploy, older CONTRACTS lines |
+
+The lead built Q85 (the lane briefs warn against `git stash` and the words check-names flags) and Q86 (round 3's
+scratch folders, landed worktrees and merged branches; the three branches not on main go to the operator).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
