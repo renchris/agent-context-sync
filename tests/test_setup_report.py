@@ -1830,6 +1830,9 @@ def test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alo
         red.add("name", form, fuzzy=True)
     assert red.redact("LiJo li_jo lijo LIJO") == "<name> <name> <name> <name>", "no report word: as before"
     red = setup_report.Redactor()
+    red.add("folder", "Set Up", fuzzy=True)
+    assert red.redact("setup SetUp Set Up") == "setup <folder-1> <folder-1>", "any fuzzy kind"
+    red = setup_report.Redactor()
     for form in ("Ho, Me", "Ho Me", "Me Ho"):
         red.add("name", form, fuzzy=True)
     red.add("folder", "Home", fuzzy=True)  # registered after the name: a folder of its own, in every case
@@ -3772,7 +3775,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     ), line
     assert line.index("macOS held") < line.index("queued purge") and setup_report._WAIT_NAMED not in line
 
-    # A draft baseline: rule 5's NEXT says the wait is below, and the loop prints that wait last.
+    # A draft baseline: rule 5's NEXT points at the waits (see the WAITING ON YOU lines) without saying where
+    # they are, and the loop prints the draft wait last.
     evals = expand(config.docs_repo) / "_eval"
     evals.mkdir(parents=True, exist_ok=True)
     (evals / "questions.md").write_text("status: draft\n\n1. Who approved it?\n", encoding="utf-8")
@@ -4875,9 +4879,7 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
     assert headings == list(setup_report.SECTION_TITLES), "sub-headings: the ## headings are as they were"
     status = section(text, "Status")
     assert re.findall(r"^### (.+)$", status, flags=re.MULTILINE) == list(setup_report.EVIDENCE_TITLES)
-    assert (
-        "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- label rule in [policy]: off" in parts["OCR"]
-    )
+    assert "- helper: off (AGENTSYNC_OCR=0)" in parts["OCR"] and "- [policy] label rule: off" in parts["OCR"]
     assert "- helper: off (AGENTSYNC_OCR=0)\n- media helper: off (" in parts["OCR"], "by Doctor's media probe"
     assert re.search(r"^- media helper: off \(.*\)\n- speech: off \(", parts["OCR"], re.MULTILINE), (
         "Doctor's speech probe"
@@ -5281,7 +5283,7 @@ def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
         + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
         encoding="utf-8",
     )
-    assert "- label rule in [policy]: on (no image is read under one)\n" in status_parts(fake_mac)[1]["OCR"]
+    assert "- [policy] label rule: on (no image is read under one)\n" in status_parts(fake_mac)[1]["OCR"]
 
 
 def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
@@ -5911,8 +5913,8 @@ def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Pa
     part = status_parts(fake_mac)[1]["Empty cloud folders"]
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
     assert line.split(": ", 1)[1] == (
-        "1 unknown: 0 dataless, 1 materialised-and-empty (1 of them with a link count of 2: no entry by the "
-        "folder's own metadata); 1 of 1 checked; none of them excluded in sources.toml now; the mirror holds "
+        "1 unknown: 0 dataless, 1 materialised-and-empty (1 of them still empty on this Mac, by their link "
+        "count of 2); 1 of 1 checked; none of them excluded in sources.toml now; the mirror holds "
         "no file below them; no walk of it is recorded"
     ), line
     assert "0 gone" not in line and "0 of the checked" not in line and "0 file(s)" not in line
@@ -5958,8 +5960,8 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     )
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
     assert line.split(": ", 1)[1] == (
-        "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them with a link count of 2: no entry by the "
-        "folder's own metadata); 1 gone, 1 not a folder, 1 not checked; 6 of 6 checked; none of them "
+        "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them still empty on this Mac, by their link "
+        "count of 2); 1 gone, 1 not a folder, 1 not checked; 6 of 6 checked; none of them "
         "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s); no "
         "walk of it is recorded"
     )
@@ -6126,7 +6128,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         "The helper did not say whether it is ready (its line above; Doctor's ocr line does)." in parts["OCR"]
     )
     assert "The helper is not ready" not in parts["OCR"]
-    assert "- label rule in [policy]: off\n" in parts["OCR"] and "too late" not in text
+    assert "- [policy] label rule: off\n" in parts["OCR"] and "too late" not in text
     assert "not measured" not in section(text, "Status"), "fixed words: a second report would say the same"
     assert (
         "- images: 8 file(s): 2 with a page" in parts["OCR"]
@@ -6150,7 +6152,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     assert "- helper: ready (paper-vision revision 2, helper 0.3.0)\n" in parts["OCR"]
     assert (
         "- media helper: ready (media helper 0.1.0)\n- speech: ready (fluidaudio, helper 0.1.0)\n"
-        "- label rule in [policy]: off\n"
+        "- [policy] label rule: off\n"
     ) in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
     assert "- images: 8 file(s): 2 with a page" in parts["OCR"]
@@ -6165,7 +6167,8 @@ def test_the_ocr_part_has_a_speech_line_of_its_own(
     monkeypatch.setattr(media, "probe", lambda _convert, _cache_dir: ("ready", "media helper 0.1.0"))
     monkeypatch.setattr(speech, "probe", lambda _convert, _cache_dir: ("off", off))
     _text, parts = status_parts(fake_mac)
-    assert f"- media helper: ready (media helper 0.1.0)\n- speech: off ({off})\n- label rule" in parts["OCR"]
+    head = f"- media helper: ready (media helper 0.1.0)\n- speech: off ({off})\n- [policy] label rule"
+    assert head in parts["OCR"]
     monkeypatch.setattr(
         speech, "probe", lambda _convert, _cache_dir: ("not-built", "the speech helper is not built")
     )
@@ -6177,7 +6180,8 @@ def test_the_ocr_part_has_a_speech_line_of_its_own(
 
     monkeypatch.setattr(speech, "probe", broken)
     text, parts = status_parts(fake_mac)
-    assert "- speech: not measured (RuntimeError)\n- label rule" in parts["OCR"] and "Contoso" not in text
+    assert "- speech: not measured (RuntimeError)\n- [policy] label rule" in parts["OCR"]
+    assert "Contoso" not in text
 
 
 def test_a_statement_that_runs_past_the_time_is_stopped(fake_mac: dict[str, Path]) -> None:
@@ -6742,7 +6746,7 @@ def test_environment_says_what_the_secret_scan_can_use(
         "none": "builtin patterns only (no gitleaks found)",
         "both": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks; shell and background runs)",
         "shell only": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks) in this shell only; "
-        "background runs use the builtin patterns alone (fix: agentsync sync from this shell)",
+        "background runs use the builtin patterns alone (fix: ~/.local/bin/agentsync sync from this shell)",
         "version fails": "builtin patterns + gitleaks (version unknown) (~/.local/bin/gitleaks; shell and "
         "background runs)",
     }[case]
@@ -6779,20 +6783,25 @@ def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str
 def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: dict[str, Path]) -> None:
     """Whether the folder named like the agent's product is only listed or also a source's folder decides
     whether the Agent: line is readable. The count says which, with no name."""
-    line = "- folders named only with a coding agent's product words: "
+    line = "- folders whose name is made only of coding-agent product words: "
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
-    assert line + "0 listed under ~/Library/CloudStorage (a listed one keeps" in section(
-        text, "Configuration"
-    )
-    assert ", 0 of the configured source folders (a configured one is" in section(text, "Configuration")
+    conf = section(text, "Configuration")
+    assert (
+        line + "0 under ~/Library/CloudStorage, which this report does not redact, so the product name in "
+        "the friction log's Agent: line stays as written; 0 of the configured source folders, which are "
+        "redacted to <folder-N> like any other\n"
+    ) in conf, conf
+    assert "keeps its name" not in conf and "a placeholder like any other" not in conf
+    # The line gives no example: a product word is a folder name a source can have, and a redacted example
+    # in fixed text gives that name back.
     cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
     (cloud / "Copilot").mkdir()
     (cloud / "GitHub Copilot").mkdir()
     assert cli.main(["add-source", str(cloud / "GitHub Copilot"), "--config", str(fake_mac["config"])]) == 0
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     conf = section(text, "Configuration")
-    assert line + "2 listed under ~/Library/CloudStorage" in conf
-    assert ", 1 of the configured source folders" in conf
+    assert line + "2 under ~/Library/CloudStorage, which" in conf, "GitHub Copilot, two product words, counts"
+    assert "; 1 of the configured source folders, which" in conf
 
 
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:

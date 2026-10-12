@@ -14490,7 +14490,37 @@ alike. Test: `test_a_home_through_a_link_lists_nothing_inside_the_cloud_tree_at_
 
 ### 16.58 Round 5: setup report (2026-10-12, wave B13 round 5 lane RA)
 
-Reserved for round 5 lane RA of B13.
+Wave B13 round 5, lane RA: 25 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in
+`round5/lanes.json`), each built to its verifier's corrected fix with a test that fails without it, or left with a
+measured reason. Where an item amends an older section, the amendment is stated here and the older text is read
+with it.
+
+**F4: the coding-agent folder line says what happens.** Amends §16.52's Configuration line: `- folders whose name
+is made only of coding-agent product words: N under ~/Library/CloudStorage, which this report does not redact, so
+the product name in the friction log's Agent: line stays as written; M of the configured source folders, which are
+redacted to <folder-N> like any other`, or `could not list ~/Library/CloudStorage` for the count. The line gives no
+example product word: such a word is a folder name a source can have, and the redacted example would give it back
+(F92). Test: `test_configuration_counts_the_folders_named_like_a_coding_agent`.
+
+**F31: one wording for the label rule.** The OCR part's line is `- [policy] label rule: on (no image is read under
+one)`, `off` or `not read (<Exc>)`, the Configuration line's words (Q31), with the OCR part's own suffix kept.
+Tests: the OCR part tests that pin it.
+
+**F48: the empty-folder link-count clause.** `M materialised-and-empty (K of them still empty on this Mac, by their
+link count of 2)`: what the walk found empty and is still empty now, by one lstat. Test: the Empty cloud folders
+tests.
+
+**F57 (with F83): the secret-scan fix names the full path.** Amends Q81 (§16.52), read with Q49 (§16.51) and Q12:
+`(fix: ~/.local/bin/agentsync sync from this shell)`, built from `skill.AGENTSYNC_BIN`. F83's other half,
+`governance.KEPT_PURGES`, is lane A's (§16.56). Test: `test_environment_says_what_the_secret_scan_can_use`.
+
+**F61: the joined-word rule covers every fuzzy kind.** Amends Q72 (§16.52): the rule applies to any fuzzy value of
+two or more words (name, folder, library or organisation), as the code always did; it is not limited to a full
+name. install.sh's `name_forms` applies it to the full name only, because its folder and organisation pairs are
+matched only as written and never matched the run-together lower-case word. Test:
+`test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alone` (a folder `Set Up`).
+
+**F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)
 

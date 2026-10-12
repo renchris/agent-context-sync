@@ -71,8 +71,9 @@ and the system PAC URL after its scheme (``<proxy-N>``) and this account's tempo
 ``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable; any other dotless host is matched bare.
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
 CamelCase variants, in NFC, NFD, mixed or unaccented spelling, and the shell-escaped form install.sh logs its
-arguments in (``Client\\ Alpha``). A full name's joined form that spells a word the report prints
-(:data:`_JOINED_WORDS`: "Ho, Me" is "home") is matched with a separator or a CamelCase boundary only. A
+arguments in (``Client\\ Alpha``). A folder, library, organisation or full-name value of two or more words
+whose joined form spells a word the report prints (:data:`_JOINED_WORDS`: "Ho, Me" is "home") is matched
+with a separator or a CamelCase boundary only. A
 placeholder already in the text (any numbered kind, the unnumbered kinds, ``<path>`` and the IT template
 fields: :data:`_HELD_RE`) is left whole on a second pass, and this repository's own ``github.com`` locator is
 kept whole, so a full name that matches its owner does not cut the issue link. A
@@ -458,7 +459,8 @@ _JOINED_WORD_LIST = """
 _JOINED_WORDS = frozenset(_JOINED_WORD_LIST.split())
 """Lower-case words of 4 to 6 letters that the report's own lines and an agent's sentences print (every such
 word its static text uses 8 or more times, and the common short words "home", "main", "done", "login" ...),
-which two or more short parts of a full name can spell run together ("Ho, Me" is "home"). Such a joined form
+which two or more short words of a fuzzy value (a full name, folder, library or organisation) can spell run
+together ("Ho, Me" is "home"). Such a joined form
 is matched with a separator or a CamelCase boundary only ("Ho Me", "ho_me", "HoMe"), never as the bare word
 in one case, which is the same text as the word: "home", "HOME" and "Home" stay (B13 round 4 Q72). Leaving a
 word off only keeps the old over-redaction. install.sh's ``joined_word`` holds the same list."""
@@ -2713,7 +2715,7 @@ def _environment(r: _Run) -> list[str]:
             elif shell is not None:
                 text = (
                     f"builtin patterns + {ver} ({shell}) in this shell only; background runs use the builtin "
-                    "patterns alone (fix: agentsync sync from this shell)"
+                    f"patterns alone (fix: {AGENTSYNC_BIN} sync from this shell)"
                 )
             else:
                 text = f"builtin patterns + {ver} ({bg}) in background runs only; this shell has none"
@@ -3142,10 +3144,15 @@ def _configuration(r: _Run) -> list[str]:
     if r.agent_named is not None:
         listed, configured = r.agent_named
         out.append(
-            "- folders named only with a coding agent's product words: "
-            + ("not listed" if listed is None else f"{listed} listed under ~/Library/CloudStorage")
-            + f" (a listed one keeps its name, so the Agent: line stays readable), {configured} of the "
-            "configured source folders (a configured one is a placeholder like any other)"
+            "- folders whose name is made only of coding-agent product words: "
+            + (
+                "could not list ~/Library/CloudStorage"
+                if listed is None
+                else f"{listed} under ~/Library/CloudStorage, which this report does not redact, so the "
+                "product name in the friction log's Agent: line stays as written"
+            )
+            + f"; {configured} of the configured source folders, which are redacted to <folder-N> like any "
+            "other"
         )
     return out
 
@@ -3812,9 +3819,9 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
         from agentsync import policy  # noqa: PLC0415 - lazy, as above
 
         active = bool(policy.load_policy(config).labels_active)
-        out.append(f"- label rule in [policy]: {'on (no image is read under one)' if active else 'off'}")
+        out.append(f"- [policy] label rule: {'on (no image is read under one)' if active else 'off'}")
     except Exception as exc:
-        out.append(f"- label rule in [policy]: not read ({type(exc).__name__})")
+        out.append(f"- [policy] label rule: not read ({type(exc).__name__})")
     return out, state, active
 
 
@@ -4665,8 +4672,8 @@ def _folder_facts(paths: Sequence[Path | None]) -> list[tuple[str, bool]]:
     """(what the folder is, its link count is 2) per path, from one ``lstat`` each: ``dataless`` when the
     folder itself carries SF_DATALESS (its child list is not on this Mac), ``materialised`` when it does
     not, else ``gone``, ``not readable``, ``not a folder`` or ``not checked``. No folder is listed, so
-    nothing is downloaded and no child list is fetched. A link count of 2 is a folder with no entry by its
-    own metadata (APFS counts 2 plus one per entry)."""
+    nothing is downloaded and no child list is fetched. A link count of 2 is a folder whose own metadata says
+    it holds no entry (APFS counts 2 plus one per entry)."""
     from agentsync.materialise import is_dataless  # noqa: PLC0415
 
     out: list[tuple[str, bool]] = []
@@ -4788,8 +4795,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         out.append(
             f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
-            f"{kinds['materialised']} materialised-and-empty ({no_entry} of them with a link count of 2: no "
-            f"entry by the folder's own metadata); {rest}{len(checked)} of {len(names)} checked; "
+            f"{kinds['materialised']} materialised-and-empty ({no_entry} of them still empty on this "
+            f"Mac, by their link count of 2); {rest}{len(checked)} of {len(names)} checked; "
             f"{excluded}; {holds}; {missed}"
         )
     if not out:
