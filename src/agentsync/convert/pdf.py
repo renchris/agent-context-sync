@@ -976,8 +976,9 @@ class PdfConverter:
 
         Never when ``produced`` cannot be read as a version or names an emitter newer than the running one.
         A re-read writes under the running emitter, so for the floor the answer about what it wrote is
-        always no.  It can still write a version without an engine (the engine failed on the file): the
-        cycle remembers each file it has read again and does not ask about it twice."""
+        always no.  It can still write a version without an engine (the engine failed on the file), which
+        this still calls outdated: the cycle counts the failure, reads the file once more in a later cycle,
+        and gives it up after ``_REREAD_ATTEMPTS`` failed cycles (its ``tried``)."""
         if reason not in (None, _NO_TEXT):
             return False
         emitter, running = _emitter(produced), _emitter(_EMITTER_VERSION)
