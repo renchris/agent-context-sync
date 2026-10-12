@@ -4515,12 +4515,22 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     log.write_text(both, encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert (
-        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 of them after its end line "
+        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 install run after its end line "
         "(2026-09-29T10:01:10Z); the last exit 0 after 19s" in summary
     ), summary
     [time] = [ln for ln in summary.splitlines() if ln.startswith("- time: ")]
     assert time.endswith("install 19s; after its end line: install 19s"), time
     assert "install 19s + 19s" not in time and "during this attempt" not in summary
+    # Each kind counted apart: a --list-folders run after the end line is not an install run's
+    later_list = LIST_RUN.replace("2026-09-29T09:58:05Z", "2026-09-29T10:06:00Z").replace(
+        "095805Z", "100600Z"
+    )
+    log.write_text(LIST_RUN + install_run("2026-09-29T09:59:00Z", 0) + later_list, encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- install.sh: 1 install run (+2 --list-folders) for this attempt, 1 --list-folders run after its "
+        "end line (2026-09-29T10:01:10Z); the last exit 0" in summary
+    ), summary
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -4599,7 +4609,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
         "by itself" in summary
     )
     assert (  # B13 round 5 F37: the run that ended 0 began after the end line, and the line says so
-        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 of them after its end line "
+        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 install run after its end line "
         "(2026-09-29T10:01:10Z); the last exit 0" in summary
     )
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
@@ -7448,6 +7458,7 @@ def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_o
         + " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it "
         "still is)",
         "[warn] heartbeat.project-z — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
+        "[warn] launchd.poll — com.agentsync.poll is not installed (installed by the agent step below)",
         "first sync: converted 1, deferred 0 online-only",
         "[warn] heartbeat.project-y — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
         "NEXT: done",
@@ -7463,7 +7474,20 @@ def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_o
         "heartbeat.project-x"
     ), line
     assert "project-q" not in line and "project-y" not in line and line.count("project-z") == 1
-    assert "cleared" not in line
+    assert "cleared" not in line and "launchd.poll" not in line, "the run's agent step installs it later"
+    # No first sync in that run: "before its first sync" would mean nothing, so nothing is named
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)
+    write_install_log(
+        fake_mac,
+        start="2026-10-09T10:01:00Z",
+        run=new,
+        append=True,
+        first_sync="seconds=0 rc=0 result=skipped",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert "install.sh's doctor" not in section(text, "Summary")
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)
+    write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
     still.append(_INCOMPLETE)  # the report's doctor gives it too: nothing more to say
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- doctor: ")]

@@ -5883,6 +5883,8 @@ def _install_doctor_only(
     if not installs or not r.facts.out_counted:
         return None
     last = installs[-1]
+    if (last.step("first-sync") or {}).get("result") != "done":  # no first sync: "before" it means nothing
+        return None
     lines = r.facts.out_counted
     start = next((i for i, ln in enumerate(lines) if ln.startswith(f"# run={last.run_id} ")), None)
     if start is None:
@@ -5895,8 +5897,17 @@ def _install_doctor_only(
             break
         m = _DOCTOR_TAG_RE.match(text)
         found = (m.group(1), m.group(2)) if m is not None else None
-        if found is not None and found[0] in ("warn", "FAIL") and found[1] not in now and found not in named:
-            named.append(found)
+        if found is None or found[0] not in ("warn", "FAIL") or found[1] in now or found in named:
+            continue
+        # A LaunchAgent the same run's agent step installs later, or any warn the report reads as expected
+        # before the agents are installed, is no difference to name
+        detail = text.split(" — ", 1)[1] if " — " in text else text
+        if found[0] == "warn" and (
+            detail.endswith(_DOCTOR_NOTES[1])
+            or expected_warn(found[1], detail, agents_installed=False) is not None
+        ):
+            continue
+        named.append(found)
     return (last, named) if named else None
 
 
@@ -6189,8 +6200,12 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
     where = f"{len(installs)} install run{'' if len(installs) == 1 else 's'}"
     after = _after_end(pool, end) if scoped else []
     where += f" (+{lists} --list-folders)" if lists else ""
-    if after:
-        where += f" for this attempt, {len(after)} of them after its end line ({_iso(end)})"
+    if after:  # each kind counted apart, so the count cannot point at a run of the other kind
+        late = len(install_runs_only(after))
+        kinds = [f"{late} install run{'' if late == 1 else 's'}"] if late else []
+        if len(after) > late:
+            kinds.append(f"{len(after) - late} --list-folders run{'' if len(after) - late == 1 else 's'}")
+        where += f" for this attempt, {' and '.join(kinds)} after its end line ({_iso(end)})"
     elif scoped:
         where += " during this attempt"
     if not installs:

@@ -14564,8 +14564,8 @@ unchanged. Test: `test_the_summary_counts_the_installer_output_of_the_latest_att
 `install.sh: N install run(s) ... during this attempt`) and the time clause: `runs_for_attempt` and every outcome,
 retry, first-sync and issue-link input are unchanged (the operator's `--confirm-install-agent` exit 3 then 0 is
 still judged with the attempt). When some of the attempt's runs began after its latest `end | finished` line, the
-install line reads `N install run(s) (+L --list-folders) for this attempt, K of them after its end line (<time>)`
-instead of `during this attempt`, and the time clause sums only the runs inside it into the step times and adds
+install line reads `N install run(s) (+L --list-folders) for this attempt, K install run(s) [and J --list-folders
+run(s)] after its end line (<time>)` (each kind counted apart) instead of `during this attempt`, and the time clause sums only the runs inside it into the step times and adds
 `after its end line: install Ns` (or `--list-folders Ns`), so no run is summed beside a session time that does not
 cover it. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
 `test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
@@ -14586,7 +14586,10 @@ report's own doctor does not report add `· install.sh's doctor before its first
 one: <check>, ...`, and the counts are labelled `(K checks, run when this report was written)`. It states the
 difference and never a cause ("cleared by its first sync" is not provable: a `--report-only` report can follow
 later syncs or an `exclude-empty`). An older run's warns, warns after the sync line and a check the report's doctor
-still gives (already under `yours` or `unexpected`) are not named; with none, the line is unchanged. Test:
+still gives (already under `yours` or `unexpected`) are not named, nor a warn the report reads as expected before
+the agents are installed (a LaunchAgent the same run's agent step installs: `(installed by the agent step
+below)`); a run whose first sync did not run (`result` not `done`) names nothing; with none, the line is
+unchanged. Test:
 `test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_one_does_not`.
 
 **F52: an alarm that names agentsync's full path keeps its words.** Amends the install.out tail and Recent
