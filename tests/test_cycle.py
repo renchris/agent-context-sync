@@ -44,6 +44,7 @@ from agentsync.convert import msg as msg_mod
 from agentsync.convert import ocr
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
+from agentsync.convert import pptx as pptx_mod
 from agentsync.convert import recording as recording_mod
 from agentsync.convert import text as text_mod
 from agentsync.convert import vtt as vtt_mod
@@ -77,6 +78,7 @@ from test_convert_builders import (
     build_annotated_pdf,
     build_drawio,
     build_picture_pdf,
+    build_potx,
     build_vsdx,
     msg_bytes,
     page_picture,
@@ -1244,13 +1246,13 @@ def test_the_stub_of_an_online_only_file_nothing_converts_is_published_once(
     """A file no converter claims is refused from its name, so an online-only one never gets a content hash
     and is pending work in every pass. The stub it has is left as it is: the next pass writes nothing and
     commits nothing. Renamed, it still gets the stub of its new path."""
-    rel = "projects/Contoso Deck Template.potx"
+    rel = "projects/Contoso Deck.pot"
     template = local_source_dir / rel
     template.write_bytes(b"not read")
     _mark_online_only(monkeypatch, template)
     assert run(sample_config).commit_sha is not None
     stub = slug.mirror_rel_path(SID, rel)
-    assert page(sample_config.docs_repo, stub)[0]["reason"] == "no converter for .potx"
+    assert page(sample_config.docs_repo, stub)[0]["reason"] == "no converter for .pot"
 
     def settled() -> tuple[Any, ...]:
         row = _file_rows(sample_config)[rel]
@@ -1259,7 +1261,7 @@ def test_the_stub_of_an_online_only_file_nothing_converts_is_published_once(
         return row.state, row.state_reason, row.last_verdict, row.content_sha256, out.built_run
 
     first = settled()
-    assert first[:4] == (RowState.REFUSED, "no converter for .potx", Verdict.REFUSED, None)
+    assert first[:4] == (RowState.REFUSED, "no converter for .pot", Verdict.REFUSED, None)
     written: list[str] = []
     real = Publisher.write_pages
 
@@ -1271,7 +1273,7 @@ def test_the_stub_of_an_online_only_file_nothing_converts_is_published_once(
     second = run(sample_config)
     assert (second.exit_code, second.commit_sha, second.changes, written) == (0, None, (), [])
     assert settled() == first
-    moved = "projects/Contoso Template.potx"
+    moved = "projects/Contoso Template.pot"
     template.rename(local_source_dir / moved)
     third = run(sample_config)
     assert third.commit_sha is not None and written == [moved]
@@ -3035,6 +3037,26 @@ def test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page(
     fm, body = _mirror_page(sample_config, rels[1])
     assert fm["status"] == "current" and "\n- Contoso router -> Server 42: uplink\n" in body
     assert run(sample_config).commit_sha is None and sorted(fetched) == rels, "no file is read a second time"
+
+
+def test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_as_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A PowerPoint template mirrored as ``no converter for .potx`` is read again, once, with no step of the
+    person's, now that the deck converter claims ``.potx`` (R85)."""
+    rel = "projects/Contoso Board Template.potx"
+    build_potx(local_source_dir / rel)
+    with monkeypatch.context() as old:
+        old.setattr(pptx_mod.PptxConverter, "extensions", (".pptx",))
+        assert run(sample_config).exit_code == 0
+        assert _mirror_page(sample_config, rel)[0]["reason"] == "no converter for .potx"
+    fetched = _fetches(monkeypatch)
+    again = run(sample_config)
+    assert again.commit_sha is not None and fetched == [rel]
+    fm, body = _mirror_page(sample_config, rel)
+    assert (fm["status"], fm["source_title"]) == ("current", "Contoso Quarterly Template")
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "## Contoso Quarterly Template" in body
+    assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
 
 
 @pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])

@@ -480,6 +480,29 @@ def build_pptx_rich(path: Path) -> Path:
     return path
 
 
+PPTX_MAIN = "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
+POTX_MAIN = "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
+
+
+def build_potx(path: Path, title: str = "Contoso Quarterly Template") -> Path:
+    """A PowerPoint template: a one-slide deck whose main part has the template content type, as PowerPoint
+    saves a ``.potx`` (python-pptx refuses to open it as it is)."""
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    assert slide.shapes.title is not None
+    slide.shapes.title.text = title
+    deck = io.BytesIO()
+    prs.save(deck)
+    with zipfile.ZipFile(deck) as zin, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                assert PPTX_MAIN.encode() in data
+                data = data.replace(PPTX_MAIN.encode(), POTX_MAIN.encode())
+            zout.writestr(info, data)
+    return path
+
+
 def eml_bytes(
     *,
     subject: str = "Hello",

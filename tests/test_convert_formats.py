@@ -71,6 +71,7 @@ from test_convert_builders import (
     build_drawio,
     build_pdf,
     build_picture_pdf,
+    build_potx,
     build_pptx_rich,
     build_vsdx,
     build_xlsx_rich,
@@ -457,6 +458,28 @@ def test_pptx_unreadable_and_corrupt(tmp_path: Path) -> None:
         PptxConverter(CFG).convert(ole_encrypted(tmp_path / "e.pptx"), name="e.pptx")
     with pytest.raises(ConversionError):
         PptxConverter(CFG).convert(make_zip(tmp_path / "c.pptx", {"x": b"y"}), name="c.pptx")
+
+
+def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
+    """R85: python-pptx refuses a template's main content type, so the converter rewrites it in memory to the
+    deck's and reads the template's slides. A ``.pptx`` carrying the template type keeps the deck path (and
+    python-pptx's error); a ``.potx`` saved with the deck type needs no rewrite; a broken one still fails."""
+    conv = Registry.default(CFG).for_name("Contoso Quarterly.POTX")
+    assert conv is not None and conv.converter_id == PptxConverter.converter_id
+    template = build_potx(tmp_path / "Contoso Quarterly.potx")
+    before = template.read_bytes()
+    for name in ("Contoso Quarterly.potx", "Contoso Quarterly.POTX"):
+        u = _one(PptxConverter(CFG).convert(template, name=name))
+        assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
+        assert u.summary.startswith("Presentation: 1 slide(s)")
+    assert template.read_bytes() == before, "the rewrite is in memory; the staged file is not touched"
+    with pytest.raises(ConversionError, match="is not a PowerPoint file"):
+        PptxConverter(CFG).convert(template, name="Contoso Quarterly.pptx")
+    deck_typed = tmp_path / "Contoso Deck Typed.potx"
+    deck_typed.write_bytes(build_pptx_rich(tmp_path / "rich.pptx").read_bytes())
+    assert "## Numbers" in _one(PptxConverter(CFG).convert(deck_typed, name=deck_typed.name)).body
+    with pytest.raises(ConversionError):
+        PptxConverter(CFG).convert(make_zip(tmp_path / "c.potx", {"x": b"y"}), name="c.potx")
 
 
 # ---------------------------------------------------------------------------------------------------------

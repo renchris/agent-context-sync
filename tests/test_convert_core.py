@@ -418,7 +418,7 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
     routes = {
         "pandoc-gfm": (".docx", ".odt", ".rtf", ".html", ".htm"),
         "xlsx-openpyxl": (".xlsx", ".xlsm"),
-        "pptx-python-pptx": (".pptx",),
+        "pptx-python-pptx": (".pptx", ".potx"),
         "pdf-pypdfium2": (".pdf",),
         "markdown-passthrough": (".md", ".markdown"),
         "text-plain": (".txt", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".url"),
@@ -482,7 +482,7 @@ def test_a_registry_with_an_engine_keeps_the_one_without() -> None:
     assert _identity(twin) == _identity(plain) and twin.extensions() == plain.extensions()
     # The suffixes whose files the engine reads something in.  Every other suffix goes to a converter with
     # the version and the options it has without an engine, so nothing about its files changes.
-    reading = {".docx", ".odt", ".pptx", ".pdf"}
+    reading = {".docx", ".odt", ".pptx", ".potx", ".pdf"}
     for ext in plain.extensions():
         was, now = plain.for_name(f"x{ext}"), reg.for_name(f"x{ext}")
         assert was is not None and now is not None and now.converter_id == was.converter_id, ext

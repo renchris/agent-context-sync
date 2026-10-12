@@ -350,7 +350,7 @@ label refusals start with `refused: `, empty output is `empty-output (…)`). To
 `convert.convert_file` is the only entry point the cycle uses. Routing by lower-case suffix
 (`Registry.default`): `.docx .odt .rtf .html .htm` → `pandoc-gfm` (the **pypandoc_binary bundled pandoc by absolute
 path**, measured 3.9 here; `[convert] pandoc_path` overrides); `.xlsx .xlsm` → `xlsx-openpyxl` (index + per-sheet
-units, streaming summary above 20 MB); `.pptx` → `pptx-python-pptx`; `.pdf` → `pdf-pdfminer` (page anchors;
+units, streaming summary above 20 MB); `.pptx .potx` → `pptx-python-pptx`; `.pdf` → `pdf-pdfminer` (page anchors;
 PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pdf-pypdfium2`;** `.md .markdown` → `markdown-passthrough`; `.txt .csv .tsv .log .vtt .json .xml .yaml
 .yml` → `text-plain`; `.eml` → `eml-stdlib`; `.teams.json` → `teams-month`. Anything else → REFUSED stub.
 **SUPERSEDED (2026-10-06, §16.26):** with an OCR engine and no label rule, `.png .jpg .jpeg .gif .bmp .tif
@@ -363,6 +363,9 @@ engine for `.docx .odt`, one without for `.rtf .html .htm`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
+
+Amended 2026-10-11 by §16.48 (R85): `.potx` routes to `pptx-python-pptx`, read as a deck (was a REFUSED
+`no converter for .potx` stub).
 
 ## 8. Classifier (design §4.3)
 
@@ -2436,7 +2439,7 @@ class PptxConverter:
     GFM, speaker notes under ``### Notes:``.  Pictures become ``[image: <alt text>]`` lines.
     """
     converter_id = "pptx-python-pptx"
-    extensions: tuple[str, ...] = (".pptx",)
+    extensions: tuple[str, ...] = (".pptx", ".potx")  # AMENDED 2026-10-11 by §16.48 (R85): was (".pptx",)
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
@@ -8155,9 +8158,10 @@ Amended 2026-10-11 by §16.48 (R36): the class `damaged`, between `empty` and `n
   Graph item's `dataless` column is 0 and no image is downloaded for OCR (`_Cycle._no_converter`), so a Graph
   source's image is counted as not on this Mac by its source's kind; by the column alone its stub was a
   `no-converter stub on this Mac`.
-- PDF, deck, Word and OpenDocument files with a page, by whether its converter version has an engine's
-  identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache row's of
-  the page's action key, else the output row's, as in `Manifest.reread_candidates`.
+- PDF, deck, deck template, Word and OpenDocument files with a page, by whether its converter version has an
+  engine's identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache
+  row's of the page's action key, else the output row's, as in `Manifest.reread_candidates`.
+  Amended 2026-10-11 by §16.48 (R85): a line for deck templates (`.potx`), which the deck converter reads.
 - Scanned PDFs with a stub, by the three reasons, and the engine identities found on pages with their page
   counts (an identity is printed only when it is `ocr-` and plain tokens).
 - Re-read, per local or inbox source, from manifest meta `reread:<source id>`: whether the scan is
@@ -13074,6 +13078,41 @@ prefixed reason. Tests:
 `policy.label_decision` and `policy.screen_item_label`) and `tests/test_e2e.py`
 (`test_label_policy_refuses_a_labelled_file_and_converts_the_rest`, which now splits the body at `did not
 convert`).
+
+**A PowerPoint template is read as a deck (R85).** Amends §7's routing and the `PptxConverter` stub of
+`agentsync.convert.pptx`. A `.potx` was the `no converter for .potx` stub, kept on the reasoning (D9.b of
+`docs/research/corporate-bring-back-2026-10-08.md`) that python-pptx raises on a template, so routing it
+would turn a quiet stub into a failed conversion. That holds only for routing it as it is: python-pptx
+refuses the template main content type (`…presentationml.template.main+xml`), not the parts. So
+`PptxConverter.extensions` is `(".pptx", ".potx")`, and for a name ending `.potx` (any case) `convert`, after
+`_check_ooxml_container`, copies every zip member into memory and rewrites that type to the deck's
+(`…presentationml.presentation.main+xml`) in `[Content_Types].xml` only (`pptx._template_as_deck`); the
+staged file is not touched. A `.potx` whose content types do not carry the template type is opened as it is,
+and python-pptx's own error stands; a broken zip is still a `ConversionError`; a `.pptx` keeps the old path,
+so one carrying the template type still fails. `.pptm` needs nothing: python-pptx accepts the macro main
+type. The label screen is unchanged (`.potx` was already in `policy.OOXML_SUFFIXES` and
+`cycle._LABEL_CAPABLE`). The emitter version stays 1.0.0: the action key is the converter's id, version,
+options and the file's hash, none of which a new suffix moves, so no `.pptx` page is converted again. A
+`.potx` stub is read once by the existing `no converter` re-read, as a suffix that has a converter now.
+`setup_report._REFUSED_TYPE_LIST` keeps `.potx` (a stub can be older than its converter) and moves it to the
+group of suffixes a converter reads. The cost is a second in-memory copy of the package while it opens;
+python-pptx holds every part in memory anyway. Tests: `tests/test_convert_formats.py`
+(`test_a_potx_template_is_read_as_a_deck`: lower and upper case, the staged bytes unchanged, a `.pptx`
+with the template type, a `.potx` with the deck type, a broken zip), `tests/test_cycle.py`
+(`test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_as_a_page`;
+`test_the_stub_of_an_online_only_file_nothing_converts_is_published_once` now uses `Contoso Deck.pot`, a
+suffix nothing claims), `tests/test_convert_core.py` (`test_default_registry_routes_exactly_the_contract_set`;
+`test_a_registry_with_an_engine_keeps_the_one_without`, `.potx` among the suffixes OCR reads in) and
+`tests/test_setup_report.py`
+(`test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own`, `.potx` in `_OCR_DOCUMENTS`;
+`test_a_log_line_never_names_a_file_a_converter_reads`, now 40 suffixes).
+
+The report follows the new suffix in two more places, both pinned to the registry by those tests.
+`_PATH_IN_LOG_RE` gains `potx`: a file the cycle fetches is a file its warnings can name, so a template at a
+source's top is `<path>` in the report, as every claimed suffix is. `_OCR_DOCUMENTS` gains `.potx` as
+`deck template`: with an engine the deck converter reads a template's pictures, so the OCR part prints
+`- deck template (.potx) files with a page: ...` under the deck line, and such pages count among the files
+from before OCR, as a deck's do.
 
 #### The speech build and the build watcher
 

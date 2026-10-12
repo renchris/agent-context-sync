@@ -3105,7 +3105,13 @@ _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".w
 _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
 """``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
 while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33)."""
-_OCR_DOCUMENTS = {".pdf": "PDF", ".pptx": "deck", ".docx": "Word", ".odt": "OpenDocument"}
+_OCR_DOCUMENTS = {
+    ".pdf": "PDF",
+    ".pptx": "deck",
+    ".potx": "deck template",
+    ".docx": "Word",
+    ".odt": "OpenDocument",
+}
 """The suffixes of the documents a converter reads pictures or page images in when it has an engine."""
 _OCR_MARK = "+ocr-"  # in a converter version: an engine's identity follows (``OcrEngine.identity``)
 _FIELD_MARKS = ("+ocr-off", "+helper-", "+macos-")  # versions of the field build of OCR (CONTRACTS 16.27)
@@ -3180,12 +3186,12 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
 _NO_CONVERTER = "no converter for "  # convert.NO_CONVERTER_PREFIX: a suffix follows, or _NO_EXTENSION
 _NO_EXTENSION = "files without an extension"  # what convert.convert_file writes for a name with no suffix
 _REFUSED_TYPE_LIST = """
-    .csv .docx .eml .htm .html .json .log .markdown .md .odt .pdf .pptx .rtf .teams.json .tsv .txt .vtt .xlsm
-    .xlsx .xml .yaml .yml
+    .csv .docx .eml .htm .html .json .log .markdown .md .odt .pdf .potx .pptx .rtf .teams.json .tsv .txt .vtt
+    .xlsm .xlsx .xml .yaml .yml
     .bmp .gif .heic .heif .jpeg .jpg .png .tif .tiff .webp
     .ai .avif .cr2 .dng .drawio .dwg .dxf .emf .eps .fig .ico .indd .jfif .jpe .nef .psd .raw .sketch .svg
     .wmf .xcf
-    .doc .docm .dot .dotm .dotx .mpp .mpt .odf .odg .odp .ods .one .onepkg .onetoc2 .oxps .pot .potm .potx
+    .doc .docm .dot .dotm .dotx .mpp .mpt .odf .odg .odp .ods .one .onepkg .onetoc2 .oxps .pot .potm
     .pps .ppsm .ppsx .ppt .pptm .pub .thmx .vsd .vsdm .vsdx .vss .vst .vstx .xls .xlsb .xlt .xltm .xltx .xlw
     .xps
     .key .numbers .pages
@@ -5050,7 +5056,7 @@ def _background(r: _Run) -> list[str]:
 # list holds every suffix a converter claims (tests/test_setup_report.py checks it against the registry and
 # the image and recording converters): a file the cycle reads is a file its log lines can name.
 _PATH_IN_LOG_RE = re.compile(
-    r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|markdown|csv|tsv|rtf|odt|ods|odp|"
+    r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|potx|pdf|eml|msg|txt|md|markdown|csv|tsv|rtf|odt|ods|odp|"
     r"pages|numbers|key|vsd[xm]?|one|html?|json|xml|ya?ml|log|vtt|zip|png|jpe?g|gif|bmp|webp|hei[cf]|tiff?|mp4|"
     r"mov|m4v|m4a|wav|url|drawio)\b",
     re.IGNORECASE,

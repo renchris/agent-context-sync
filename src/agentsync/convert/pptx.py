@@ -328,6 +328,34 @@ def _shape_blocks(
     return blocks
 
 
+_CONTENT_TYPES = "[Content_Types].xml"
+_TEMPLATE_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
+_DECK_MAIN = b"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
+
+
+def _template_as_deck(src: Path) -> io.BytesIO | None:
+    """The package of a PowerPoint template (``.potx``) with its main part typed as a deck's, in memory.
+
+    python-pptx opens only the deck, macro-deck and slideshow main types and raises on a template's, though
+    the parts are the same.  Every member is copied as it is and only ``[Content_Types].xml`` changes.  None
+    when that part does not carry the template type: the file is opened as it is and python-pptx's own
+    error stands."""
+    with zipfile.ZipFile(src) as zin:
+        try:
+            types = zin.read(_CONTENT_TYPES)
+        except KeyError:
+            return None
+        if _TEMPLATE_MAIN not in types:
+            return None
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zout:
+            for info in zin.infolist():
+                deck = info.filename == _CONTENT_TYPES
+                zout.writestr(info, types.replace(_TEMPLATE_MAIN, _DECK_MAIN) if deck else zin.read(info))
+    buffer.seek(0)
+    return buffer
+
+
 class PptxConverter:
     """Python-pptx emitter: one WHOLE unit with slide anchors.
 
@@ -340,7 +368,7 @@ class PptxConverter:
     """
 
     converter_id = "pptx-python-pptx"
-    extensions: tuple[str, ...] = (".pptx",)
+    extensions: tuple[str, ...] = (".pptx", ".potx")  # a template is read as a deck (_template_as_deck)
 
     def __init__(self, cfg: ConvertConfig, ocr: OcrEngine | None = None) -> None:
         """Bind converter options from config, and the cycle's OCR engine when there is one."""
@@ -382,7 +410,8 @@ class PptxConverter:
         from pptx import Presentation  # noqa: PLC0415 - heavy import, only when a deck is converted
 
         try:
-            prs = Presentation(str(src))
+            template = _template_as_deck(src) if name.lower().endswith(".potx") else None
+            prs = Presentation(template if template is not None else str(src))
         except (zipfile.BadZipFile, KeyError, ValueError, OSError) as exc:
             raise ConversionError(f"python-pptx cannot read the deck: {type(exc).__name__}: {exc}") from exc
         except Exception as exc:  # PackageNotFoundError, lxml XMLSyntaxError
