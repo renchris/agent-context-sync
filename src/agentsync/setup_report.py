@@ -5682,10 +5682,13 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- friction (attempt {att.number}): {len(att.events)} event line(s): {_kind_counts(att)}{extra}"
         )
         timing = []
-        wall = att.wall_seconds()
-        timing.append(
-            f"session {_secs(wall)} (first to last timestamp)" if wall is not None else "session: no times"
-        )
+        wall, stamps = att.wall_seconds(), att.timestamps()
+        if wall is not None:
+            timing.append(f"session {_secs(wall)} (first to last timestamp)")
+        elif stamps:  # one time is no duration, but it is a time (B13 round 3 R26)
+            timing.append(f"session: one timestamp ({_iso(stamps[0])}), no duration")
+        else:
+            timing.append("session: no times")
         steps = [f"{n} {_secs(t)}" for n, t in att.step_seconds() if t is not None]
         if steps:
             timing.append("steps (start to end): " + " · ".join(steps))

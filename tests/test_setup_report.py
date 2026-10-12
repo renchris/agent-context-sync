@@ -716,6 +716,21 @@ def test_approvals_are_counted_or_not_observable_by_tool(fake_mac: dict[str, Pat
     assert "approvals: not observable" in line, line
 
 
+def test_an_attempt_with_one_timestamp_says_so_on_its_time_line(fake_mac: dict[str, Path]) -> None:
+    """A header-less attempt whose one event line is dated has a time and no duration: "no times" was false
+    (B13 round 2 R26). An attempt with no time at all keeps "no times"."""
+    write_install_log(fake_mac)
+    write_friction(
+        fake_mac,
+        V5_HAPPY + "2026-10-11T23:19:51Z | step 1 | error | git pull failed (exit 1) | -\n",
+    )
+    _text, summary = summary_of(fake_mac)
+    assert "- time: session: one timestamp (2026-10-11T23:19:51Z), no duration" in summary, summary
+    write_friction(fake_mac, "Prompt: v4\nOutcome: in progress\nF1 | step 4 | failed | 3 | stub | -\n")
+    _text, summary = summary_of(fake_mac)
+    assert "- time: session: no times" in summary, summary
+
+
 def test_installer_failure_is_failed_at_step_3(fake_mac: dict[str, Path]) -> None:
     write_install_log(
         fake_mac, rc=1, first_sync="seconds=9 rc=1 result=failed", agent="seconds=0 rc=0 result=skipped"
