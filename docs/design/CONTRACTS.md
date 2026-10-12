@@ -13609,7 +13609,98 @@ Reserved for round 4 lane B of B13.
 
 ### 16.52 Round 4: setup report (2026-10-12, wave B13 round 4 lane RA)
 
-Reserved for round 4 lane RA of B13.
+Wave B13 round 4, lane RA: 17 items (`~/.cache/agentsync-bring-back/b13/round4/items/Q<n>.md`, lanes in
+`round4/lanes.json`), each built to its verifier's corrected fix with a test that fails without it. Items that
+describe one defect from several finders are built once: Q3 and Q66 (the unreadable-class list); Q22, Q38 and Q67
+(a step 1 error on the friction log's first line). Where an item amends an older section, the amendment is stated
+here and the older text is read with it. No item is left unbuilt.
+
+**Q1: the first-sync clause names the file its split came from.** When install.log's note gives the counts and
+install.out's sync line gives the unreadable/failed split, the clause's source tag reads `(install.log; the
+unreadable/failed split: install.out)`, or `install.out's last sync line` for a borrowed earlier run (matched only
+by an equal converted count). The inner `(of the converted: U unreadable, F failed)` words are §16.45 R2's,
+unchanged. Test: `test_first_sync_clause_carries_the_read_again_count`.
+
+**Q3, Q66: the unreadable-file note names its classes as examples.** Repeat conversions' note reads `under the
+class its stub names (such as "encrypted", "damaged", "not the type its name says", "empty", "image not readable",
+"too large", a "no text" class or "other"), never "conversion failed"`, rendered from
+`setup_report._UNREADABLE_CLASSES`. Amends the class list of §16.45 R2, its dated line in the Repeat conversions
+contract and the `converted_unreadable` row: "such as", not a closed list. A test runs every reason a converter
+raises `UnreadableSourceError` with through `quarantine_class` and holds each class in that constant:
+`test_every_unreadable_reason_is_a_class_the_repeat_conversions_note_names`.
+
+**Q4, Q30: the images line puts each count first, and names a label-withheld image.** Amends the images-by-outcome
+list of the OCR part (§16.40): each cell is `<count> <outcome>`, as the document lines are; the outcome `page` is
+now `with a page`; and `withheld-by-label-rule stub` (class `withheld by label rule`, on this Mac or away) comes
+before `failed` and `other stub`. Test: `test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part`.
+
+**Q12: the Loop line keeps `~/.local/bin/agentsync` whole.** Amends K16b ("cuts every path to its last part") and
+the R12 bullet ("the Loop line keeps stripping paths"): every path except agentsync's own fixed
+`~/.local/bin/agentsync` (`loop.BIN`, `skill.AGENTSYNC_BIN`), which holds no name, matches doctor's fixes and the
+status lines in the same report, and stays runnable when ~/.local/bin is not on PATH. An absolute agentsync path is
+still cut. Tests: `test_loop_stage_and_next_text`'s assertions and the Loop line tests.
+
+**Q13: the Loop line says when it moved the wait its NEXT names.** Amends §16.30 and §16.37: the wait the loop
+stopped on still comes first; when the command printed it after others, a fixed clause precedes them, `; the
+command prints that one after the N wait(s) that follow, in their order:` (or `the first K of the N`). The line is
+unchanged when the orders match. Tests: `test_an_exclude_line_never_carries_its_folder_names_into_the_report`,
+`test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
+
+**Q17: the Empty cloud folders line says its zeros in words.** Amends the Empty cloud folders line: the head `N
+unknown: D dataless, M materialised-and-empty (...)` and `C of N checked` always show; a kind with no folder
+(gone, not readable, not a folder, not checked) is left out; `none of them excluded in sources.toml now` and `the
+mirror holds no file below them` replace the zero counts. Test: `test_empty_cloud_folders_part_says_its_zeros_in_words`.
+
+**Q21, Q22, Q38, Q67: a step 1 error's stated words.** `parse_friction` reads the `prompt vN, <agent>:` words of a
+step 1 error that is the friction log's first line, as it does for a header-less attempt after a finished one;
+a first line of another step or kind is never read that way. A step 1 error with those words also starts its own
+attempt, end line or not, when its version or agent (casefolded, spaces collapsed, quotes dropped) differs from
+the open attempt's header or stated words, or it comes more than `_NEW_SESSION_GAP` after the attempt's latest time
+(its `Attempt:` line or any event). Such an attempt is labelled `no Attempt: line (a session that stopped before
+install.sh --log-start)` (first line) or `(logged after the previous attempt, which has no end line, by another
+session)`, and the Summary gives its note in place of the stale WARNING; a log of `F<n>` lines is still `v4
+format`. install.sh's `friction_attempt_stopped` and `friction_earlier_end` follow the same rule in awk
+(`track`, `restate` in `FRICTION_AWK`). Tests: `test_a_header_less_step_1_error_states_its_prompt_and_agent`,
+`test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line`,
+`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`.
+
+**Q31: Configuration says whether a label rule is on.** A line after `[network] proxy`: `- [policy] label rule:
+off`, or `on (I excluded id(s), N name(s), refuse_unlabelled=true|false)`, with `; policy.toml beside
+sources.toml: yes` when that file exists, and `not read (<exception type>)` when the policy does not load. Counts
+only: never a label's name, its id or the policy's fingerprint. Test:
+`test_configuration_says_a_label_rule_is_on_in_counts_only`.
+
+**Q33: a CloudStorage entry reads as the walk reads it.** `_domain_text` lstats first, as `arm_local._is_domain`
+does: a symlink is `a symlink: read as a File Provider domain (a link's own attributes say nothing about its
+target)`, an entry that is not a folder `not a folder: read as a File Provider domain (the empty-folder rule
+stands)`, and an unreadable one adds `read as a domain (the empty-folder rule stands)`; a link's target is never
+printed. The count names links and other entries apart: `listable, P provider folder(s) and L symlink(s) and O
+other entry(ies)`. Test: `test_environment_says_whether_each_provider_folder_is_a_file_provider_domain`.
+
+**Q41: the module docstring's redaction paragraph** names the LaunchAgent's proxy, the generic dotless host replaced
+only inside a URL, the unaccented spellings, the joined-word rule (Q72), the held placeholders and the kept
+repository locator; setup-feedback.md's `<proxy-N>` row says the same. Test:
+`test_the_module_docstring_describes_the_redaction_the_code_does`.
+
+**Q72: a short name's joined form that spells a report word.** Amends §16.46 "Kept as they are" (R141): besides
+keeping parts under 3 letters, a fuzzy name form of two or more words whose joined letters are in
+`setup_report._JOINED_WORDS` (the report's static 4-to-6-letter words used 8 or more times, plus common short ones
+such as home, main, done and login) is matched with a separator or a CamelCase boundary only, in its own literal
+mode, so a later folder or organisation spelled the same is still registered under its own kind. Given up: the
+name run together in one case, the same text as the word. install.sh's `joined_word` holds the same list (a test
+keeps them equal) and `name_forms` drops that join's lower- and upper-case pairs, keeping a CamelCase one. Tests:
+`test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alone`,
+`test_the_shell_joined_word_list_is_the_reports`,
+`test_the_shell_report_leaves_a_report_word_a_short_name_spells_alone`.
+
+**Q81: the Environment says what the secret scan can use.** `- secret scan: builtin patterns only (no gitleaks
+found)`, or `builtin patterns + gitleaks <version> (<path>; shell and background runs)`, or `... in this shell
+only; background runs use the builtin patterns alone (fix: agentsync sync from this shell)`, by the two lookups
+doctor makes (`lints.gitleaks_lookup()` and with `launchd.LAUNCHD_PATH`), then `; last re-screen: with gitleaks |
+builtin patterns only | none recorded` from the manifest's `secret_rules` meta: what ran, apart from what is
+available. The shell report adds `- gitleaks: <path>` or `not found (builtin patterns only)`. Tests:
+`test_environment_says_what_the_secret_scan_can_use`,
+`test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use`.
 
 ### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
 
