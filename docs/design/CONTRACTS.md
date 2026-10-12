@@ -12212,7 +12212,11 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   `<folder-N>` is pinned); a persisted name-to-number map (a new file of real names); one sorted order (a
   configured CloudStorage folder would lose its number when the listing fails); registering folders outside
   CloudStorage before the listing (its fuzzy variants would stop being redacted); the fallback's folders last
-  (the number would look reliable without being reliable).
+  (the number would look reliable without being reliable). **Amended (2026-10-11, §16.46 R135):** `<org-N>`
+  differs between the two reports as well: the shell fallback numbers every CloudStorage entry in glob order,
+  a repeat included, and never reads `graph.tenant` or SharePoint site hosts. A one-word organisation is
+  redacted as a whole word wherever it stands (`Microsoft` in `Microsoft Graph`) on purpose, since that fails
+  closed; no common-word exemption is made.
 
 #### Outside the prompt
 
@@ -12630,7 +12634,100 @@ it); the wait's paste line stays the one step, and in a plain folder the turn no
 
 ### 16.46 Round 3: report redaction (2026-10-11, wave B13 round 3 lane RA)
 
-Reserved for round 3 lane RA of B13.
+Both reports redact alike, and every change below is made in both: `agentsync setup-report`
+(`setup_report.Redactor`, `_build_redactor`) and the shell fallback (`scripts/install.sh`'s `redaction_pairs`,
+`redact_stream`). Tests: `tests/test_report_redaction.py`, which runs each case through both.
+
+#### This repository's own locator is kept whole (R3, R10, R20, R39)
+
+On a Mac whose full name run together is this repository's public owner, the name's joined forms turned
+every copy of the issue link and the source URL in the report body into `github.com/<name>/agent-context-sync`
+and counted a name; only the last line, written after redaction, kept it. Both redactors now keep
+`github.com/` or `github.com:` and the owner/repo of `ISSUE_URL` (any case, `.git` optional, followed by no
+word character or hyphen) as one piece: `Redactor`'s first alternative (with a leading `git@`), and a held
+piece in `redact_stream` built from `ISSUE_URL`. Only that owner's: a fork's owner, another host's copy and the
+joined name anywhere else stay `<name>`. Holding the bare owner word, or dropping the joined name form, would
+leak the name wherever else it is written run together, so neither is done.
+
+#### A second pass leaves a placeholder whole (R69)
+
+The Summary's item lines are redacted twice and a friction log can hold an earlier report's placeholders: a
+registered value spelled like a placeholder's word (a folder `Host`, `Folder 1`) turned `<host>` into
+`<<folder-1>>`. `Redactor` now tries a placeholder's shape first and keeps it uncounted: a numbered kind with
+any number or `N`, an unnumbered kind, `<path>` and the IT request's template fields, the set
+`redact_stream` already held. No other bracketed word is held: `<contoso>` with `contoso` registered is
+`<<org-1>>`, and a folder named `<Draft>` is matched whole. Holding every `<word>` shape would let a
+registered value through inside angle brackets.
+
+#### Unicode case boundaries and accents (R70, R115)
+
+`_tokens` splits a fuzzy value at Unicode case boundaries and skips combining marks, so `CaféPlans` and
+`MonÉtude` cover `Café Plans`, `mon-étude` and their NFD spellings; every ASCII split is as before. Each
+accented letter of a value matches in NFC, in NFD or without its accent, never the front of an accented letter
+(NFD `Cafés` is not cut), and the Redactor keys values without accents (`_bare`), so `Cafe Resume`, `Café
+Résumé` and text mixing the two forms share one placeholder. An exact value (a lone name part) gets the same,
+with its case kept. An accented value registered after its unaccented spelling keeps that placeholder and is
+matched as written too. The shell registers each value's accent-stripped form (combining marks U+0300 to
+U+036F). Text that mixes NFC and NFD letters is matched by the Python report only: the shell matches literal
+bytes, and a value with k accents would need 2^k pairs; normalising the report instead would need `iconv`,
+which stops at a byte that is not UTF-8. The shell registers no CamelCase forms, so R70 has no shell twin.
+
+#### Every part of a full name (R71, R72, R73)
+
+A hyphenated part (`Jean-Luc`) is registered whole and in pieces; an all-capitals part (`DOE`, `LI`) also
+capitalised; a two-letter part in each form `short_name` / `_short_word` allows, starting with a capital as
+written (a particle such as `de` names no one, in any case). Brackets are stripped innermost first until none
+is left (`Jane Doe (Northwind (EU))`), and every pass's words are lone names, written, upper-case and, when
+all capitals, capitalised. The shell splits at hyphens as well as commas; upper-cases with `tr` in UTF-8
+(`ÅL` for `Ål`; byte-wise where the text is not UTF-8), since bash 3.2 has no `${x^^}`; registers two-letter
+forms through `add_forms` (`add_pair` without its 3-character floor, so with their NFC, NFD and `%q` forms); and
+its joined forms gain the capitalised words (`Jane Li` for `LI, JANE`).
+
+#### A name logged under UTF-8 and reported under C (R111)
+
+bash 3.2's `printf %q` writes `Café Notes` as `Café\ Notes` under UTF-8 and as `$'Caf\303\251 Notes'` under C.
+The shell now also registers a non-ASCII value's UTF-8 `%q` form, and a loose `--source-local` word's, with the
+locale set inside the command substitution (bash 3.2 ignores a prefix assignment for a builtin). The C form
+needs no pair: `redact_stream` makes every `$'..'` word `<path>` first.
+
+#### Proxies (R4, R27, R42, R67, R68)
+
+- A proxy host with no dot that is one of the report's own words (`_GENERIC_PROXY_HOSTS`, the shell's
+  `generic_proxy_host`: proxy, wpad, localhost and the like) is matched only where a URL names it: after `//` or
+  `@`, or before `:<port>`. `HTTPS_PROXY`, `network.proxy` and "Could not resolve proxy:" stay. Any other host
+  with no dot (`contosogw`) can name the company and is matched bare, as git and curl print it; the shell, which
+  skipped every dotless host, now does both (pair flag `t`: not followed by a word character, dot or hyphen).
+- The Environment line ends `· proxy in git's config: set (git uses it before HTTPS_PROXY)` or `not set`, from
+  `_git_proxy_urls`; the shell prints `- proxy in git's config: …` from the same files (`git_proxy_values`). Set
+  or not set only, never the host.
+- The shell fallback prints `- system proxy (scutil --proxy): manual HTTPS yes|no · PAC yes|no · WPAD yes|no`
+  from the Enable flags, as `net.py` reads them (a host key can stay while its flag is 0), or `unknown`.
+- The LaunchAgent's own proxy, which doctor's `network.proxy.job` line prints where it differs from this
+  shell's, is registered: a `ReportHooks.job_proxy` hook (`cli._job_proxy_urls`: `launchctl getenv` for the URL
+  variables, never NO_PROXY, then the plist's), called under the report's budget, last so it renumbers no other
+  `<proxy-N>`. The shell reads `launchctl getenv` for the same variables.
+
+#### The report's own words
+
+- The Redaction section's "Send it" sentence names only the issue-form fields the last line's link fills,
+  read from the link (`issue_link_fields`, against `ISSUE_FIELD_LABELS`, which a test keeps equal to
+  `.github/ISSUE_TEMPLATE/setup-report.yml`); a link that fills none opens a blank "Setup report" issue form (R23).
+- The shell legend says "a name every OneDrive or Google Drive has, such as Documents, only where it stands as a
+  whole word" and "every word bash wrote in its dollar-quote form, which install.log uses for a name with a
+  curly apostrophe, an en dash or an accent" (R7).
+- `test_headings_redaction_and_runtime` asserts `<library-1>` from install.log's args in the Installer section,
+  not from Doctor, which a loaded machine timed out (R45).
+
+#### Kept as they are (R135, R141)
+
+- A one-word organisation is redacted as a whole word wherever it stands (`Microsoft` in `Microsoft Graph`),
+  and the shell numbers `<org-N>` in its own order: both fail closed. A common-word exemption would print a
+  tenant named like a common word; matching the shell's order would still not match Python's numbers (the
+  shell never reads `graph.tenant` or SharePoint hosts), and partly matching numbers would look reliable
+  without being so (N44, amended).
+- A short name's joined forms over-redact report words ("Ho, Me" turns "home" into `<name>`). Dropping parts
+  under 3 letters from the joined forms reopens the leak of `LiJo`, `li_jo` and a listed-word part (`Me` in
+  `Ho Me`), which the joined forms alone cover (§16.40 H20).
 
 ### 16.47 Round 3: setup report and installer (2026-10-11, wave B13 round 3 lane RB)
 
