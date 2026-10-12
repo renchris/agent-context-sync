@@ -499,24 +499,33 @@ FRICTION_AWK='
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
 		}
-		function agent_key(a) { # setup_report._agent_key: casefolded, quotes dropped, spaces collapsed
+		function agent_key(a) { # setup_report._agent_key: ASCII lower case, quotes dropped (curly ones too), blanks collapsed
+			gsub("\342\200[\230\231\234\235]", " ", a)
 			a = tolower(a); gsub("[\"\047*]", " ", a); gsub("[ \t]+", " ", a); sub("^ ", "", a); sub(" $", "", a)
 			return a
 		}
-		function stated(line,    w) { # sets SV and SA from "prompt vN, <agent>:" at the start of the what-text
-			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w); sub("^[\"\047 \t]*", "", w)
+		function stated(line,    w, a, c) { # sets SV and SA from "prompt vN, <agent>:" at the start of the what-text
+			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w)
+			while (match(w, "^([\"\047 \t]|\342\200[\230\231])")) w = substr(w, RLENGTH + 1)
 			if (tolower(substr(w, 1, 8)) != "prompt v" || !match(substr(w, 9), "^[0-9][0-9]?[0-9]?")) return 0
 			SV = substr(w, 9, RLENGTH) + 0; w = substr(w, 9 + RLENGTH)
 			if (!match(w, "^[ ,:;-]+")) return 0
 			w = substr(w, RLENGTH + 1)
 			if (!match(w, "^[^: \t][^:]*:")) return 0
-			SA = agent_key(substr(w, 1, RLENGTH - 1)); return 1
+			a = substr(w, 1, RLENGTH - 1); sub("[ \t]+$", "", a)
+			# _STEP1_STATED_RE reads at most 100 characters of agent: UTF-8 ones, so continuation bytes do not count
+			c = a; gsub("[\200-\277]", "", c)
+			if (length(c) > 100) return 0
+			SA = agent_key(a); return 1
 		}
 		function restate(line) { PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
 			if (line ~ /^Attempt:/) { SEEN = 1; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
 			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
-			if (line ~ /^[-* ]*Agent:/) { SEEN = 1; a = line; sub("^[-* ]*Agent:", "", a); if (AG == "") AG = agent_key(a); return 0 }
+			if (line ~ /^[-* ]*Agent:/) { # a no-break space around it goes, as parse_friction strips the value
+				SEEN = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
+				if (AG == "") AG = agent_key(a); return 0
+			}
 			if (line !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/) return 0
 			new = 0
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }

@@ -3912,7 +3912,7 @@ def _backdate(env: dict[str, str], minutes: int) -> None:
 def _stopped_in_the_report(env: dict[str, str]) -> bool:
     """Whether the attempt ``agentsync setup-report`` judges (the log's last one) is one ``--log-start``
     stopped: what the Summary of that report is about."""
-    latest = setup_report.parse_friction(friction_path(env).read_text()).latest
+    latest = setup_report.parse_friction(friction_path(env).read_text(encoding="utf-8")).latest
     assert latest is not None
     return any("install.sh --log-start: the pasted setup prompt is" in e.what for e in latest.events)
 
@@ -4115,6 +4115,11 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         "stopped | copy the prompt again\n"
     )
     end = "2026-10-06T16:42:00Z | end | finished\n"
+    contoso = stop.replace("Agent: x", "Agent: Contoso Agent")
+
+    def late(what: str) -> str:
+        return f"2026-10-06T16:44:00Z | step 1 | error | {what} | -\n"
+
     logs = {
         "the stop alone": stop + end,
         "a stop an older installer left open": stop,
@@ -4149,11 +4154,29 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         "the stopped session's own words": stop
         + end
         + "2026-10-06T16:44:00Z | step 1 | error | prompt v7, X: git pull exited 1 | -\n",
+        # B13 round 5 F54: both read the line at ASCII, and both drop curly quotes and cap the agent
+        "its own agent in curly quotes": contoso + end + late("prompt v7, \u201cContoso Agent\u201d: x"),
+        "a v13 line in curly single quotes": stop + end + late("\u2018prompt v13, Contoso Agent: x\u2019"),
+        "an accented capital in the header, small in the line": stop.replace("Agent: x", "Agent: \u00c9quipe")
+        + end
+        + late("prompt v7, \u00e9quipe: x"),
+        "a no-break space in the agent": contoso + end + late("prompt v7, Contoso\u00a0Agent: x"),
+        "an agent over 100 characters at v12": stop + end + late("prompt v12, " + "Contoso " * 13 + ": x"),
+        "an agent of 100 accented characters at v12": stop
+        + end
+        + late("prompt v12, " + "\u00e9" * 100 + ": x"),
+        "a version in Arabic-Indic digits": stop + end + late("prompt v\u0661\u0662, Contoso Agent: x"),
+        "a no-break space after the header's agent": stop.replace("Agent: x", "Agent: Contoso Agent\u00a0")
+        + end
+        + late("prompt v7, Contoso Agent: x"),
+        "a header version in Arabic-Indic digits": contoso.replace("Prompt: v7 or older", "Prompt: v\u0667")
+        + end
+        + late("prompt v12, Contoso Agent: x"),
     }
     answers = {}
     for name, text in logs.items():
         friction_path(env).parent.mkdir(parents=True, exist_ok=True)
-        friction_path(env).write_text(text)
+        friction_path(env).write_text(text, encoding="utf-8")
         said = last_line(install_sh(env, "--report-only")).startswith(STOPPED_NEXT)
         assert said == _stopped_in_the_report(env), name
         answers[name] = said
@@ -4165,6 +4188,10 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         "a current attempt after it",
         "a v12 paste two minutes after the stop",
         "another agent's line, the version the same",
+        "a v13 line in curly single quotes",
+        "an accented capital in the header, small in the line",
+        "a no-break space in the agent",
+        "an agent of 100 accented characters at v12",
     ]
 
 

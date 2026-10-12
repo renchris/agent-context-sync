@@ -1182,20 +1182,24 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
 
 
 def _agent_key(agent: str) -> str:
-    """An agent's words as :func:`parse_friction` compares them: casefolded, quotes dropped, spaces
-    collapsed."""
-    return " ".join(re.sub("[\"'\u2018\u2019\u201c\u201d*]", " ", agent).casefold().split())
+    """An agent's words as :func:`parse_friction` compares them: ASCII letters in lower case, quotes (curly
+    ones too) dropped, blanks and tabs collapsed: what install.sh's awk reads in the C locale, so the
+    installer's NEXT and this report judge the same attempt (B13 round 5 F54)."""
+    dropped = re.sub("[\"'\u2018\u2019\u201c\u201d*]", " ", agent)
+    lowered = re.sub("[A-Z]+", lambda m: m.group().lower(), dropped)
+    return re.sub("[ \t]+", " ", lowered).strip(" ")
 
 
 _STEP1_STATED_RE = re.compile(
     r"[\s'\"\u2018\u2019]*prompt v(\d{1,3})(?![\d\w])[ ,:;-]+([^:\s][^:]{0,99}?)\s*:[\s'\"\u2018\u2019]*",
-    re.IGNORECASE,
+    re.IGNORECASE | re.ASCII,
 )
 """How a step 1 error line starts its what-text since setup prompt v12 (``prompt v12, <agent>:``, the words
 step 1 gives ``--log-start``, then a colon): the line a session logs when step 1 stops before ``--log-start``
 writes the attempt's header, so the report still knows that session's prompt version and agent. It reads the
 version as ``--log-start`` does (any of `` ,:;-`` after the number), tolerates quotes an agent kept around the
-words, and ends the agent at its first colon (the prompt says to write none inside it)."""
+words, and ends the agent at its first colon (the prompt says to write none inside it). ASCII classes, as
+install.sh's awk reads the line in the C locale (B13 round 5 F54)."""
 
 
 def parse_friction(text: str) -> Friction:
@@ -1239,7 +1243,7 @@ def parse_friction(text: str) -> Friction:
         if stated is None or not (header or prior):
             return False
         said = header.get("Prompt") or prior.get("Prompt", "")
-        version = re.search(r"\bv?(\d{1,3})\b", said)
+        version = re.search(r"\bv?(\d{1,3})\b", said, re.ASCII)  # ASCII digits, as install.sh's awk (F54)
         if version is not None and int(version.group(1)) != int(stated.group(1)):
             return True
         agent = header.get("Agent") or prior.get("Agent", "")
