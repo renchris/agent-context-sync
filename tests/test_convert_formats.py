@@ -37,11 +37,12 @@ from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
 from agentsync.convert import diagram as diagram_mod
+from agentsync.convert import eml as eml_mod
 from agentsync.convert import msg as msg_mod
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import pptx as pptx_mod
-from agentsync.convert._common import _headings, _open_fence
+from agentsync.convert._common import _emitter, _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.diagram import DiagramConverter
 from agentsync.convert.eml import EmlConverter
@@ -3814,6 +3815,22 @@ def test_a_msg_that_holds_mime_text_is_read_as_an_eml(tmp_path: Path, data: byte
     eml = _one(EmlConverter(CFG).convert(_write(tmp_path, "m.eml", data), name="m.eml"))
     assert (u.title, u.body, u.summary) == (eml.title, eml.body, eml.summary)
     assert "| From | Ann Contoso <ann@contoso.example> |" in u.body and "Hello Bob." in u.body
+
+
+def test_a_mime_msg_page_is_rendered_again_when_the_eml_emitter_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ``.eml`` converter renders a MIME ``.msg``'s page, so its emitter is in the ``.msg`` converter's
+    version: a new ``.eml`` emitter is a new action key, never the old page from the cache.  The emitter the
+    re-read floor goes by (the leading three numbers) stays the ``.msg`` one."""
+    first = _msg_result(tmp_path, MIME_MSG)
+    assert (first.status, first.from_cache) == (ConversionStatus.OK, False), first.reason
+    assert _msg_result(tmp_path, MIME_MSG).from_cache
+    monkeypatch.setattr(eml_mod, "_EMITTER_VERSION", "9.9.9")
+    again = _msg_result(tmp_path, MIME_MSG)
+    assert (again.status, again.from_cache) == (ConversionStatus.OK, False), again.reason
+    assert "+eml-9.9.9" in again.converter_version and "+eml-9.9.9" not in first.converter_version
+    assert _emitter(again.converter_version) == _emitter(msg_mod._EMITTER_VERSION)
 
 
 @pytest.mark.parametrize(

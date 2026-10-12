@@ -11975,11 +11975,15 @@ built: a `.msg` label reader, a compressed-RTF reader, and opening attached mess
 olefile (`olefile>=0.47,<1`, locked at 0.47) is pure Python with no dependency of its own: BSD-2-Clause,
 with the PIL licence (HPND) for the parts taken from PIL's OleFileIO, both permissive. It logs nothing
 unless asked. Its wheel also installs a Python 2 `olefile/olefile2.py` and a top-level `OleFileIO_PL`
-shim; neither is imported. Version: `1.0.1+olefile-<v>+python-<v>+pandoc-<v>`; options as `eml-stdlib`.
+shim; neither is imported. Version: `1.0.1+olefile-<v>+python-<v>+pandoc-<v>+eml-<v>`, the last the `.eml`
+emitter, which renders a `.msg` that holds MIME text; options as `eml-stdlib`.
 
 Amended 2026-10-11 by §16.48 (R36): the emitter version is 1.0.1 (was 1.0.0), which moves the action key, so
 the same bytes are converted anew the next time they are converted. A version change reads nothing again by
 itself: a settled `not-msg (…): <exception type>` row is read again because `MsgConverter.outdated` names it.
+
+Amended 2026-10-11 by §16.48 (R87): the version ends `+eml-<the .eml emitter>` (was `…+pandoc-<v>`), so a new
+`.eml` emitter is a new action key for a MIME `.msg` page and its `converter:` stamp names the renderer.
 
 ##### `agentsync.convert.msg` — `src/agentsync/convert/msg.py` — owner: **convert**
 
@@ -11992,7 +11996,7 @@ class MsgConverter:
     extensions: tuple[str, ...] = (".msg",)
 
     def __init__(self, cfg: ConvertConfig) -> None: ...
-    def version(self) -> str: ...
+    def version(self) -> str: ...  # emitter+olefile+python+pandoc+eml-<the .eml emitter>
     def options(self) -> Mapping[str, OptionValue]: ...
     @property
     def outdated_key(self) -> str: ...
@@ -13019,8 +13023,12 @@ looks for a header block from the very first line: header lines (`[!-9;-~]+:` th
 end of the line) or folded continuations of them, ended by a blank line, with at least one of From,
 Subject, Date, Message-ID or MIME-Version. When it finds one the file is converted by `EmlConverter` (the
 same page an `.eml` of those bytes gets, under `msg-olefile`'s id and version); otherwise it stays
-`not-msg`. The gate is strict because `EmlConverter` makes a page of almost anything: a zip or a binary
-file fails at its first line. The window is 64 KiB, not the 8 KiB the finding sketched, because a message
+`not-msg`. That version ends `+eml-<the .eml emitter>`: the `.eml` renderer makes the page, so a new `.eml`
+emitter is a new action key (a cached MIME `.msg` page is rendered again, as an `.eml` of the same bytes is)
+and the page's `converter:` stamp says which `.eml` renderer made it. `_emitter` reads only the leading
+three numbers, so `outdated` and the re-read floor still go by the `.msg` emitter. The gate is strict
+because `EmlConverter` makes a page of almost anything: a zip or a binary file fails at its first line. The
+window is 64 KiB, not the 8 KiB the finding sketched, because a message
 routed through many servers can carry more than 8 KiB of headers. The label path does not change:
 `MsgConverter` stays unregistered under a `[policy]` label rule (plan D8), so such a file is still the `no
 converter for .msg` stub there. `policy.read_labels` picks the `.eml` label reader by name only, so if MIME
@@ -13030,9 +13038,11 @@ is also true for a plain `not-msg` stub from an emitter below `msg._REREAD_BELOW
 `MsgConverter.outdated_key` (`1.0.1<1.0.1`) puts the floor in what the cycle remembers having looked for.
 Each such row is read once; one that is no message stays `not-msg` under 1.0.1 and is not read again.
 Tests: `tests/test_convert_formats.py` (`test_a_msg_that_holds_mime_text_is_read_as_an_eml`, CRLF and LF;
+`test_a_mime_msg_page_is_rendered_again_when_the_eml_emitter_moves`;
 `test_not_a_message_is_a_settled_unreadable_stub`, a zip, binary, a late header, no mail header, a broken
 block, no blank line, a blank first line; `test_under_a_label_rule_a_msg_is_the_no_converter_stub`, a MIME
-`.msg` under each rule), `tests/test_convert_core.py`
+`.msg` under each rule, against a control in its own cache that converts the same bytes to a page),
+`tests/test_convert_core.py`
 (`test_a_not_msg_stub_from_before_mime_text_was_read_is_outdated_and_one_from_now_is_not`) and
 `tests/test_cycle.py` (`test_a_mime_msg_settled_as_not_msg_by_emitter_1_0_0_is_read_once_as_a_page`).
 

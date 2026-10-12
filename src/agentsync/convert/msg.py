@@ -29,6 +29,7 @@ from pathlib import Path
 import olefile
 
 from agentsync.config import ConvertConfig
+from agentsync.convert import eml
 from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
@@ -232,10 +233,11 @@ class MsgConverter:
         self._eml = EmlConverter(cfg)  # a .msg that holds MIME text (``_rfc822_head``)
 
     def version(self) -> str:
-        """Version as run (emitter + olefile + python + pandoc)."""
+        """Version as run (emitter + olefile + python + pandoc + the ``.eml`` emitter, which renders a
+        ``.msg`` that holds MIME text: a new one is a new action key for that page)."""
         return (
             f"{_EMITTER_VERSION}+olefile-{olefile.__version__}+python-{_python_version()}"
-            f"+pandoc-{self._pandoc.version()}"
+            f"+pandoc-{self._pandoc.version()}+eml-{eml._EMITTER_VERSION}"
         )
 
     def options(self) -> Mapping[str, OptionValue]:
