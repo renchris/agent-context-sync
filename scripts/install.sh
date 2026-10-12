@@ -932,8 +932,11 @@ git_proxy_values() {
 		[ -z "${repo:-}" ] || checkout_git_configs "$repo"
 		checkout_git_configs "$HOME/src/agent-context-sync"
 	} | while IFS= read -r g; do
+		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
+		# LaunchAgent's proxies after it went unread).
 		[ ! -f "$g" ] ||
-			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g"
+			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g" ||
+			true
 	done 2>/dev/null
 }
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
@@ -1191,6 +1194,8 @@ redaction_pairs() {
 		case "$u" in pac=*)
 			u="${u#pac=}"
 			pac="${u#*://}"
+			# A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only.
+			case "$pac" in */*) ;; *) ! generic_proxy_host "${pac%%:*}" || pac="" ;; esac
 			;;
 		esac
 		h="${u#*://}"

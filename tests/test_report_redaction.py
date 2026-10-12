@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli, setup_report
+from agentsync import cli, net, setup_report
 from test_install_oneshot import (  # noqa: F401  (fixture)
     BASH32,
     INSTALL_SH,
@@ -575,3 +575,61 @@ def test_the_send_it_sentence_names_only_the_fields_the_link_fills(
     assert setup_report.issue_link_fields(setup_report.ISSUE_URL) == []
     blank = setup_report._redaction_section(setup_report.Redactor(), [], [])
     assert 'Send it: the link on the last line opens a blank "Setup report" issue form;' in "\n".join(blank)
+
+
+def test_a_word_registered_after_a_url_only_proxy_host_is_still_redacted() -> None:
+    """A generic proxy host (``http://gateway:8080``) was kept with the bare values, so a later value spelled
+    the same (the bracketed word of "Doe, Jane (Gateway)") counted as known and printed in clear (second
+    review of R42, R67)."""
+    red = setup_report.Redactor()
+    setup_report._add_proxy_host(red, "gateway")
+    red.add("name", "Gateway")
+    red.add("name", "GATEWAY")
+    text = "works at Gateway GATEWAY via http://gateway:8080; network.gateway"
+    assert red.redact(text) == "works at <name> <name> via http://<proxy-1>:8080; network.gateway"
+
+
+def test_a_pac_url_that_is_only_a_generic_host_is_matched_inside_a_url(
+    fake_mac: dict[str, Path],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A PAC URL ``http://proxy`` was registered as a bare value after its scheme: "proxy" again turned the
+    report's own words into placeholders (second review of R42, R67)."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(
+        net, "system_proxy", lambda runner=None: net.SystemProxy(pac_enabled=True, pac_url="http://proxy")
+    )
+    write_install_log(fake_mac)
+    write_friction(fake_mac, _proxy_friction("proxy"))
+    text, _summary = summary_of(fake_mac)
+    assert "<<" not in text and GIT_ERROR.format(h="proxy") in text
+    assert "HTTPS_PROXY/ALL_PROXY set in this shell" in section(text, "Environment")
+
+
+def test_the_shell_report_keeps_its_words_beside_a_pac_named_proxy(env: dict[str, str]) -> None:  # noqa: F811
+    _scutil(env, "  ProxyAutoConfigEnable : 1\n  ProxyAutoConfigURLString : http://proxy\n")
+    friction = f"Prompt: v10\nF1 | step 1 | error | {GIT_ERROR.format(h='proxy')} | -\n"
+    text = _shell_report(env, friction, HTTPS_PROXY="http://proxy:8080")
+    assert "- proxy environment: yes (set: HTTPS_PROXY)" in text
+    assert f"| {GIT_ERROR.format(h='proxy')} |" in text, text
+
+
+def test_an_unreadable_git_config_leaves_the_launchagents_proxy_redacted(
+    env: dict[str, str],  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    """Under set -e a failed read of ~/.gitconfig ended the proxy list early, so the LaunchAgent's proxy after
+    it was never registered (second review of R68)."""
+    job = "http://jobproxy.fabrikam.example:8080"
+    stub = _write_exe(
+        tmp_path / "launchctl-getenv",
+        f'#!/bin/bash\n[ "$1 $2" = "getenv HTTPS_PROXY" ] && {{ echo {job}; exit 0; }}\nexit 64\n',
+    )
+    gitconfig = Path(env["HOME"]) / ".gitconfig"
+    gitconfig.write_text("[http]\n\tproxy = http://gw.fabrikam.example:3128\n")
+    gitconfig.chmod(0)
+    friction = f"Prompt: v10\nF1 | step 1 | clean | 1 | the LaunchAgent resolves {job} | -\n"
+    text = _shell_report(env, friction, AGENTSYNC_LAUNCHCTL=str(stub))
+    gitconfig.chmod(0o600)
+    assert "fabrikam" not in text, text

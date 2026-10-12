@@ -707,6 +707,9 @@ class Redactor:
         self._exact: dict[str, str] = {}  # _bare(value) -> placeholder (case-sensitive kinds)
         self._folded: dict[str, str] = {}  # _bare(value).lower() -> placeholder (case-insensitive kinds)
         self._fuzzy: dict[str, str] = {}  # _norm(value) -> placeholder (normalization-aware kinds)
+        # _bare(value).lower() -> placeholder of a host matched only inside a URL (``add(url=True)``): apart,
+        # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
+        self._url_hosts: dict[str, str] = {}
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
         self._pattern_values: dict[tuple[str, str], str] = {}
@@ -792,14 +795,19 @@ class Redactor:
             _bare(value) == _nfc(value) or any(_nfc(v) == _nfc(value) for v, _mode in self._literals)
         ):
             return
+        if url and _bare(value).lower() in self._url_hosts:
+            return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
         if fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy.setdefault(_norm(value), placeholder)
             self._literals.append((value, "fuzzy"))
-        elif ignore_case or fuzzy or url:
+        elif url:
+            self._url_hosts[_bare(value).lower()] = placeholder
+            self._literals.append((value, "url"))
+        elif ignore_case or fuzzy:
             self._folded.setdefault(_bare(value).lower(), placeholder)
-            self._literals.append((value, "url" if url else "fold"))
+            self._literals.append((value, "fold"))
         else:
             self._exact.setdefault(_bare(value), placeholder)
             self._literals.append((value, "exact"))
@@ -890,7 +898,7 @@ class Redactor:
         elif groups.get("hash") is not None:
             placeholder = self._pattern("hash", text)
         else:
-            placeholder = self._known(text) or text
+            placeholder = self._known(text) or self._url_hosts.get(_bare(text).lower()) or text
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
@@ -2337,7 +2345,10 @@ def _build_redactor(r: _Run) -> Redactor:
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
     # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
     pac = r.system_proxy.pac_url if r.system_proxy is not None else None
-    red.add("proxy", pac.split("://", 1)[-1] if pac else None, ignore_case=True)
+    # A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only (above).
+    pac_value = pac.split("://", 1)[-1] if pac else None
+    if pac_value and ("/" in pac_value or pac_value.split(":")[0].lower() not in _GENERIC_PROXY_HOSTS):
+        red.add("proxy", pac_value, ignore_case=True)
     # Git's proxies last, after the PAC value: a git-only proxy leaves every other <proxy-N> as it was.
     for host in _proxy_hosts(_git_proxy_urls()):
         _add_proxy_host(red, host)
@@ -6055,7 +6066,7 @@ def _redaction_section(
         if hits
         else "Residue check: no capitalised or joined word next to a placeholder in this report."
     )
-    names = ", ".join(filled[:-1]) + (" and " if len(filled) > 1 else "") + (filled[-1] if filled else "")
+    names = " and ".join(filled) if len(filled) < 3 else ", ".join(filled[:-1]) + ", and " + filled[-1]
     opens = (
         f'a new "Setup report" issue with the {names} field{"s" if len(filled) > 1 else ""} filled in '
         "(nothing else)"
