@@ -824,7 +824,7 @@ def test_label_policy_refuses_a_labelled_file_and_converts_the_rest(
     assert report.exit_code == 0, report
     assert counts(report).get(Verdict.REFUSED) == 1
     fm, body = page(config.docs_repo, mirror("projects/board-pack.docx.md"))
-    assert fm["status"] == "refused" and "Highly Confidential" not in body.split("refused:")[0]
+    assert fm["status"] == "refused" and "Highly Confidential" not in body.split("did not convert")[0]
     assert "excluded by [policy]" in body and "Kickoff" not in body
     fm_ok, body_ok = page(config.docs_repo, mirror("projects/sample.docx.md"))
     assert fm_ok["status"] != "refused" and len(body_ok) > 200  # the same content, unlabelled, converts

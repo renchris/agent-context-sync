@@ -13059,6 +13059,22 @@ Test: `tests/test_convert_formats.py`
 (`test_an_attached_message_is_listed_under_its_display_name_else_its_subject_dot_msg`: 0x3001, the subject
 fallback and the numbered one; `test_msg_headers_body_attachments_like_an_eml` keeps `Original.msg`).
 
+**A label refusal says refused once (R35).** Every label refusal reason starts with `policy.REFUSED_PREFIX`
+(`refused: `), and `Publisher._plan_stub` built the stub's summary as `<status>: <reason>`, so a labelled
+file's summary read `refused: refused: sensitivity label ... is excluded by [policy]` and its body `did not
+convert this source: refused: ...`. That held for all four label refusals (an excluded label, an unreadable
+label, no label, an excluded item label). The prefix stays in the reason, because it is what makes a stub a
+refusal: `policy.is_refusal_reason` picks the refused stub and its content-policy body, the manifest's
+refusal query matches `state_reason LIKE 'refused: %'`, and the setup report classes the prefix as `label
+policy`. `_plan_stub` drops it only where it renders: the summary is `refused: sensitivity label ... is
+excluded by [policy]` and the body `agentsync did not convert this source: sensitivity label ... is excluded
+by [policy].` The frontmatter `reason`, the planned page's refusal and `_sync/QUARANTINE.tsv` keep the
+prefixed reason. Tests:
+`tests/test_publish.py` (`test_label_refusal_stub_says_refused_once`, the four refusals from
+`policy.label_decision` and `policy.screen_item_label`) and `tests/test_e2e.py`
+(`test_label_policy_refuses_a_labelled_file_and_converts_the_rest`, which now splits the body at `did not
+convert`).
+
 #### The speech build and the build watcher
 
 The speech build trusts the shell's CA (R84). `speech._build_env` is `ocr._env()` plus the non-empty values of

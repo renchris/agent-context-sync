@@ -1063,6 +1063,9 @@ class Publisher:
                 "conversion failed" if status is ConversionStatus.FAILED else "conversion produced no units"
             )
         reason = _one_line(result.reason or "") or default
+        # The stored reason keeps "refused: " (QUARANTINE.tsv, the refusal queries and the setup report read
+        # it); the summary and body already say refused, so they show the rest of it once.
+        shown = reason.removeprefix(policy.REFUSED_PREFIX) if refusal else reason
         title = _one_line(self._shown_name(item), 200) or self._shown_path(
             item.source_id, item.stable_id, item.rel_path
         )
@@ -1092,7 +1095,7 @@ class Publisher:
             )
         elif refusal:
             text_lines = (
-                f"agentsync did not convert this source: {reason}.\n"
+                f"agentsync did not convert this source: {shown}.\n"
                 "Its content is deliberately not in docs/ (content policy); this page holds metadata only. "
                 "The source exists: it is refused, not absent. See `_sync/QUARANTINE.tsv`.\n"
             )
@@ -1122,7 +1125,7 @@ class Publisher:
             ),
             reason=reason,
             source_title=title,
-            summary=f"{page_status.value}: {reason}",
+            summary=f"{page_status.value}: {shown}",
             tokens_estimate=math.ceil(len(body) / 4),
         )
         text = render_mirror_page(_with_trust(fm), body)

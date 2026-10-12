@@ -509,6 +509,40 @@ def test_plan_stub_pages(
     assert_pages_valid(env)
 
 
+_SECRET_LABEL = policy.SensitivityLabel(
+    label_id="11111111-2222-3333-4444-555555555555", site_id=None, name="Contoso Secret", origin="custom.xml"
+)
+_STRICT = policy.PolicyConfig(exclude_label_names=("Contoso Secret",), refuse_unlabelled=True)
+
+
+@pytest.mark.parametrize(
+    "screening",
+    [
+        policy.label_decision(policy.LabelReadout(capable=True, labels=(_SECRET_LABEL,)), _STRICT),
+        policy.label_decision(policy.LabelReadout(capable=True, error="bad custom.xml"), _STRICT),
+        policy.label_decision(policy.LabelReadout(capable=True), _STRICT),
+        policy.screen_item_label("Contoso Secret", _STRICT),
+    ],
+    ids=["label-excluded", "label-unreadable", "unlabelled", "item-label"],
+)
+def test_label_refusal_stub_says_refused_once(env: Env, screening: policy.Screening | None) -> None:
+    """R35: a label refusal's reason keeps its "refused: " prefix (the stored reason, QUARANTINE.tsv and the
+    refusal queries read it), but the stub's summary and body show it once, not "refused: refused: ..."."""
+    assert screening is not None and screening.reason.startswith(policy.REFUSED_PREFIX)
+    item = env.observe("vol:1", "odd/file.vsdx")
+    [p] = env.pub.plan_pages(
+        env.config.source("src"), item, result(status=ConversionStatus.REFUSED, reason=screening.reason)
+    )
+    fm, body = parse_mirror_page(p.text)
+    shown = screening.reason.removeprefix(policy.REFUSED_PREFIX)
+    assert fm.status is PageStatus.REFUSED and p.status is OutputStatus.REFUSED
+    assert fm.reason == screening.reason and p.refusal == screening.reason
+    assert fm.summary == f"refused: {shown}" and "refused: refused:" not in p.text
+    assert f"agentsync did not convert this source: {shown}.\n" in body
+    env.pub.write_pages(item, [p], env.run_id)
+    assert_pages_valid(env)
+
+
 # ---- writing -----------------------------------------------------------------------------------------------
 
 
