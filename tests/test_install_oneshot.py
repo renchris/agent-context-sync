@@ -3182,11 +3182,10 @@ def test_no_shell_profile_advice_and_no_uv_path_hint(env: dict[str, str], folder
     assert "Installed 1 executable: agentsync" in cp.stderr, "uv's other output passes through"
     for stray in ("not on your PATH", "update-shell", "shell profile", "export PATH"):
         assert stray not in out, stray
-    agentsync = f"{env['HOME']}/.local/bin/agentsync"
     assert (
         f"note: {env['HOME']}/.local/bin is not on PATH; nothing to change: this setup and its NEXT lines "
-        f"use the full path {agentsync}"
-    ) in cp.stdout
+        "call agentsync by its full path, ~/.local/bin/agentsync"
+    ) in cp.stdout, "the form the NEXT lines print (B13 round 5 F51)"
     code = [ln for ln in INSTALL_SH.read_text().splitlines() if not ln.lstrip().startswith("#")]
     assert not [ln for ln in code if "shell profile" in ln], "no printed line advises a shell profile edit"
 

@@ -3188,7 +3188,7 @@ fi
 
 case ":$PATH:" in
 *":$BIN_DIR:"*) ;;
-*) say "note: $BIN_DIR is not on PATH; nothing to change: this setup and its NEXT lines use the full path $AGENTSYNC" ;;
+*) say "note: $BIN_DIR is not on PATH; nothing to change: this setup and its NEXT lines call agentsync by its full path, ~/.local/bin/agentsync" ;;
 esac
 
 # ------------------------------------------------------------------------------------------------ next step
