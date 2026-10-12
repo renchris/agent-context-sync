@@ -10837,6 +10837,14 @@ space (`(minimum 8 characters)`, `<your password>`) or is one placeholder word (
 over a value of mask characters only (`*`, `x`, `.`, `•`, `-`; trailing punctuation allowed); a bracketed value
 that is neither (`(Welcome123)`, `<S3cr3t!x>`) and a value after a hint are hits. `SECRET_RULES_VERSION` is 2,
 so every install scans its published pages once more under both changes.
+**Amended 2026-10-12, §16.45 R74:** `[governance] archive` pages are scanned again too (the residual above is
+closed). The rescan also reads every `archive/` page whose frontmatter says `status: archived`, with the text
+sidecars under its `.files/` folder, symlinks skipped (`_Cycle._add_archive_pages`). They are no output rows and
+never become a stub: a hit deletes the copy and its sidecars, rewrites the item's mirror tombstone without the line
+naming the copy when that tombstone is still there, deletes the item's cached conversions and queues a
+`dlp-remediation` purge named by the copy's own frontmatter ids, with the same alarm head and WARNING
+(`_Cycle._archived_credential`). Test:
+`test_an_archive_page_the_new_rules_match_is_deleted_and_queues_a_purge`.
 
 Why: the 2026-10-05 join-link fix (de081ae) never reached the invites quarantined before it; nothing stored what
 rules a stub was made under. Tests: `tests/test_credential_rescreen.py`.

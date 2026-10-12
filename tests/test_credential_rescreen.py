@@ -249,6 +249,41 @@ def test_a_key_the_edit_brings_in_the_run_the_rules_move_is_a_stub_with_no_purge
     assert not committed_blobs_containing(config.docs_repo, AWS_KEY.encode())
 
 
+def test_an_archive_page_the_new_rules_match_is_deleted_and_queues_a_purge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R74: the ``archive/`` copy of a deleted page ([governance] archive) is scanned again when the rules
+    move.  A hit deletes the copy and its sidecars, the tombstone stops naming it, and a purge of the item's
+    history is queued, named by the archive page's own ids."""
+    config, src = make_env(tmp_path)
+    with config.config_path.open("a", encoding="utf-8") as fh:
+        fh.write("\n[governance]\narchive = true\n")
+    repo = config.docs_repo
+    page, kept = "mirror/src/keys.txt.md", "archive/src/keys.txt.md"
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+        (src / "keys.txt").unlink()
+        for _ in range(2):  # a local file must be absent from two complete passes
+            run(config)
+        assert (repo / kept).is_file() and f"kept, searchable, at {kept}" in (repo / page).read_text("utf-8")
+        (repo / "archive/src/keys.txt.files").mkdir()  # a text sidecar goes with its page
+        (repo / "archive/src/keys.txt.files/notes.txt").write_text("rotate quarterly\n", encoding="utf-8")
+        git(repo, "add", "archive")
+        git(repo, "commit", "-q", "-m", "sidecar")
+    durable = page_fm(config, kept)["stable_id"]
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert not (repo / kept).exists() and not (repo / "archive/src/keys.txt.files").exists()
+    assert git(repo, "ls-files", "--", "archive").strip() == ""
+    assert "kept, searchable" not in (repo / page).read_text(encoding="utf-8")
+    assert queued(config) == [(durable, "dlp-remediation")]
+    alarms = [a for s in again.sources for a in s.alarms]
+    hit = [a for a in alarms if a.startswith("a published page matches the secret scan's new rules")]
+    assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) and "keys" not in a for a in hit)
+
+
 def test_the_rules_identity_moves_with_a_pattern_the_version_and_gitleaks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

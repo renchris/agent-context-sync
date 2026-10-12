@@ -119,6 +119,7 @@ from agentsync.model import (
     LintFinding,
     MirrorChange,
     OutputStatus,
+    PageStatus,
     PassKind,
     RemoteHashes,
     RowState,
@@ -135,6 +136,7 @@ from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read
 from agentsync.paths import expand
 from agentsync.policy import PolicyConfig
 from agentsync.publish import (
+    ARCHIVE_DIR,
     DELETED_UPSTREAM,
     PlannedPage,
     Publisher,
@@ -299,6 +301,7 @@ _PURGE_QUEUE_STEPS = "(preview with `agentsync purge --queue --dry-run` before `
 _RECORDING_NOT_DOWNLOADED = (
     "{path}: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
 )
+_NOW_A_STUB = "it is a `contains a credential` stub now"
 _TEXT_SIDECARS = (".txt", ".md", ".csv")
 """The sidecars the secret scan reads (spec S10 rule 2): a keyframe's bytes are never scanned as text."""
 
@@ -1501,6 +1504,8 @@ class _Cycle:
         self._once: set[tuple[str, str]] | None = None  # ``_once_credential``
         self._published_pages: set[str] = set()  # the pages (not sidecars) that rescan added, as committed
         self._history_hits: set[tuple[str, str]] = set()  # rescan: rewritten items whose HEAD text hits
+        self.archive_pages: set[str] = set()  # rescan: archive/ pages and their sidecars (no output rows)
+        self._archive_ids: dict[str, tuple[str, str]] = {}  # archive/ page -> its frontmatter's ids
         self.findings: list[LintFinding] = []
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
@@ -1901,6 +1906,40 @@ class _Cycle:
                         rel = f.relative_to(self.repo).as_posix()
                         self.ok_pages.add(rel)
                         self.sidecar_page[rel] = page
+        self._add_archive_pages()
+
+    def _add_archive_pages(self) -> None:
+        """Add the ``archive/`` copies of deleted pages (``[governance] archive``) to the rescan: every page
+        whose frontmatter says ``status: archived``, with the text sidecars under its ``.files/`` folder;
+        symlinks are skipped.  They are no output rows, so they stay out of ``ok_pages``: a hit deletes the
+        copy and queues a purge (``_archived_credential``), never a stub of an item its source deleted."""
+        root = self.config.layout.archive
+        if root.is_symlink() or not root.is_dir():
+            return
+        for top, _dirs, files in os.walk(root):  # a linked folder is listed, never entered
+            for name in sorted(files):
+                path = Path(top) / name
+                if not name.endswith(".md") or path.is_symlink() or not path.is_file():
+                    continue
+                try:
+                    fm = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))[0]
+                except (OSError, FrontmatterError):
+                    continue
+                sid, stable = fm.get("source_id"), fm.get("stable_id")
+                if fm.get("status") != PageStatus.ARCHIVED.value or not sid or not stable:
+                    continue
+                page = path.relative_to(self.repo).as_posix()
+                self.archive_pages.add(page)
+                self._archive_ids[page] = (str(sid), str(stable))
+                folder = self.repo / (page[:-3] + ".files")
+                if not folder.is_dir() or folder.is_symlink():
+                    continue
+                for sub, _subdirs, names in os.walk(folder):
+                    for f in (Path(sub) / n for n in sorted(names)):
+                        if f.is_file() and not f.is_symlink() and f.name.lower().endswith(_TEXT_SIDECARS):
+                            rel = f.relative_to(self.repo).as_posix()
+                            self.archive_pages.add(rel)
+                            self.sidecar_page[rel] = page
 
     def _scan_rewritten_history(self, written: set[str]) -> None:
         """Scan the committed text of the pages this run rewrote (``written``), as HEAD holds it, under the
@@ -2030,9 +2069,12 @@ class _Cycle:
         once.add((sid, new))
         self.manifest.set_meta(_SECRET_ONCE_META, json.dumps([list(p) for p in sorted(once)]))
 
-    def _published_credential(self, sid: str, stable: str, prior: Sequence[OutputRow]) -> None:
-        """A page published under earlier secret-scan rules is a credential stub now: drop its cached
-        conversions and queue a purge of its history, as a label escalation does."""
+    def _published_credential(
+        self, sid: str, stable: str, prior: Sequence[OutputRow], *, now_is: str = _NOW_A_STUB
+    ) -> None:
+        """A page published under earlier secret-scan rules is a credential stub now (``now_is`` says what
+        it is when that is not so): drop its cached conversions and queue a purge of its history, as a label
+        escalation does."""
         removed = self.cache.delete({o.action_key for o in prior if o.action_key})
         queued = governance.enqueue_purge(
             self.config.state_paths.root,
@@ -2040,13 +2082,35 @@ class _Cycle:
             governance.PurgeReason.DLP_REMEDIATION,
             now=self.now(),
         )
-        self._acc(self.config.source(sid)).alarms.append(
-            "a published page matches the secret scan's new rules: it is a `contains a credential` stub now; "
-            f"{removed} cached conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
-        )
+        with contextlib.suppress(ConfigError):  # an archive copy can outlive its source's block
+            self._acc(self.config.source(sid)).alarms.append(
+                f"a published page matches the secret scan's new rules: {now_is}; {removed} cached "
+                f"conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
+            )
         log.warning(
             "%s: a published page of %s matches the secret scan's new rules; purge queued", sid, stable
         )
+
+    def _archived_credential(self, page: str) -> None:
+        """The ``archive/`` copy ``page`` of a deleted page matches the secret scan's new rules: delete it
+        and its sidecars, stop its tombstone naming it, and queue a purge of the item's history, named by
+        the copy's own ids (the tombstone row may be reaped already; an archive copy never is)."""
+        sid, durable = self._archive_ids[page]
+        stable = self.manifest.resolve_alias(sid, durable) or durable
+        if self.publisher.remove_archive_copy(page):
+            self.changes.append(MirrorChange(ChangeOp.DELETED, page, sid, stable))
+        mirror = "mirror/" + page[len(ARCHIVE_DIR) + 1 :]
+        out = self.manifest.output_by_path(mirror)
+        if out is not None and out.status is OutputStatus.TOMBSTONE:
+            new = self.publisher.unarchive_tombstone(out)
+            if new is not None:
+                rows = self.manifest.outputs_for(out.source_id, out.stable_id)
+                self.manifest.replace_outputs(
+                    out.source_id, out.stable_id, [new if o.output_path == mirror else o for o in rows]
+                )
+                self.changes.append(MirrorChange(ChangeOp.MODIFIED, mirror, out.source_id, out.stable_id))
+        rows = self.manifest.outputs_for(sid, stable)
+        self._published_credential(sid, durable, rows, now_is="its archive/ copy is deleted")
 
     def _refuse_vanished_sources(self) -> None:
         """Retirement is an explicit verb, not an absence: a source whose [[source]] block was deleted while
@@ -4279,12 +4343,16 @@ class _Cycle:
         from the item's metadata (its file name / mail subject), so the item's path is redacted everywhere
         it would be committed (stub, shard, QUARANTINE.tsv, CHANGELOG, commit body) and its page moves to a
         hashed name.  A credential that survives even that blocks the commit."""
-        pages = sorted(p for p in self.ok_pages | self.stub_pages if (self.repo / p).is_file())
+        scanned = self.ok_pages | self.stub_pages | self.archive_pages
+        pages = sorted(p for p in scanned if (self.repo / p).is_file())
         if not pages:
             return
         hits = lints.lint_secrets(self.repo, pages)
         self.findings += hits
         hit_pages = sorted({self.sidecar_page.get(h.path, h.path) for h in hits})
+        for page in (p for p in hit_pages if p in self._archive_ids):
+            self._archived_credential(page)
+        hit_pages = [p for p in hit_pages if p not in self.archive_pages]
         stubbed: list[tuple[str, str]] = []
         for sid, stable in _owners(self.manifest, hit_pages):
             pages_of = {o.output_path for o in self.manifest.outputs_for(sid, stable)}

@@ -1262,6 +1262,45 @@ class Publisher:
         self._sync_sidecars(dest, sidecars)
         return True
 
+    def remove_archive_copy(self, page: str) -> bool:
+        """Delete the ``archive/`` page ``page`` and its sidecars (the secret scan's new rules match it);
+        False when there was no page."""
+        if not page.startswith(f"{ARCHIVE_DIR}/"):
+            raise PublishError(f"{page}: not under {ARCHIVE_DIR}/")
+        path = self._abs(page)
+        found = path.is_file() and not path.is_symlink()
+        if found:
+            path.unlink()
+        self._sync_sidecars(page, ())
+        self._prune_empty_dirs(path.parent)
+        return found
+
+    def unarchive_tombstone(self, out: OutputRow) -> OutputRow | None:
+        """Render the tombstone page of ``out`` again without the line naming its ``archive/`` copy, which
+        was deleted (``remove_archive_copy``); the updated row, or None when there is no tombstone to
+        rewrite or it named no copy."""
+        row = self._manifest.get_tombstone(out.output_path)
+        current = self._read_text(out.output_path)
+        if row is None or current is None:
+            return None
+        try:
+            fm = parse_mirror_page(current)[0]
+        except FrontmatterError:
+            return None
+        text = render_tombstone(
+            row,
+            title=fm.source_title or "",
+            source_kind=fm.source_kind,
+            source_path=fm.source_path,
+            durable_id=fm.stable_id,
+        )
+        if text == current:
+            return None
+        self._write_text(out.output_path, text)
+        return dataclasses.replace(
+            out, rendered_sha256=_sha256_text(split_frontmatter(text)[1]), page_sha256=_sha256_text(text)
+        )
+
     def write_pages(self, item: ItemRow, pages: Sequence[PlannedPage], run_id: int) -> list[MirrorChange]:
         """Write pages + sidecars, replace the item's ``outputs`` rows, tombstone units that disappeared
         (reason ``unit-removed``), remove the old files when the item was renamed (op R); return changes.
