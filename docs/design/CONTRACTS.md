@@ -14192,7 +14192,119 @@ Reserved for round 5 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 5
 
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
-Reserved for round 5 lane B of B13.
+Wave B13 round 5, lane B: 18 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in
+`round5/lanes.json`), each built to its verifier's corrected fix with a test that fails without it. Four pairs
+describe one defect and are built once: F1 and F47, F3 and F50, F10 and F41, F12 and F45. Where this section
+gives a line's new words, it supersedes the quotes of the old words in §16.22, §16.39 N27, §16.51 Q71 and Q74.
+
+**F1, F47: the draft wait asks for no count it cannot know (`agentsync.loop`).** The skill drafts fewer than 15
+questions for a small mirror and the operator then keeps all of them, so the draft baseline's wait reads `... in
+<_eval>, keep up to about 10 in questions.md (all of them if there are fewer), correct the answers in answers.md,
+and change both files to status: confirmed`. No count is read: the file holds what is left after the operator's
+cuts, not what was drafted, and is edited by hand. The prefix `WAITING ON YOU: the baseline questions are a draft`
+and the `in <path>, ` part are unchanged, so `setup_report._WAIT_DRAFT` and `_eval_by_name` still apply. Test:
+`test_a_small_draft_is_not_asked_to_keep_ten`.
+
+**F10, F41: rule 5 names one wait line or more (`agentsync.loop`, `agentsync.setup_report`).** Rule 5's NEXT
+reads `(see the WAITING ON YOU line)` over one wait and `(see the WAITING ON YOU lines)` over two or more, from
+the waits it was built with; still no place word (install.sh prints the waits above the NEXT, status below,
+§16.51 Q74). `setup_report._WAIT_NAMED` is the shared prefix `(see the WAITING ON YOU line`, matched as a
+substring by `_stopped_wait`, so both forms, and an earlier agentsync's `lines)` in a kept install.out, still pick
+the draft. Test: `test_rule_5_names_one_wait_line_or_more_by_their_count`.
+
+**F43: the empty-folder wait names the command that lists its folders (`agentsync.loop`).** Since §16.51 Q71 the
+wait names `exclude-empty` and no folder, and status prints no folder of the source, so the wait now adds
+`` `~/.local/bin/agentsync sync -v` names the folder(s)`` after the exclude-empty sentence, as the gone line
+does. The wait keeps a count and never a path (STATE.md and the setup report carry it). Test:
+`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`.
+
+**F65: one rule for exclude-empty and its wait (`agentsync.loop`, `agentsync.cli`).** `loop._excludable(manifest,
+src, below)` splits the empty folders with no mirrored file below them into those `exclude-empty` excludes and
+those whose `/<path>/` glob would also prune a folder holding mirrored files (a `[` is written as `?`), which the
+command leaves. `_cmd_exclude_empty` and `next_step` both use it (`_folders_holding_files` moved to loop). A
+colliding folder gets its own wait: `N empty cloud folder(s) in <id> have a [ in the name, so an exclude of one
+would also match a folder whose files are mirrored (...): rename or remove the empty folder(s) in the cloud drive;
+`~/.local/bin/agentsync sync -v` names them`. It never names exclude-empty, which would leave the folder and the
+wait for good. The `size` tail goes on the last empty-folder line, as before. `_empty_dirs` and
+`empty_cloud_folders_held` are unchanged. Test: `test_a_folder_whose_glob_would_match_a_folder_with_files_is_left`.
+
+**F11, F44: the empty-folder alarm counts its waits and names status by its path (`agentsync.arm_local`).** Each
+empty folder lands on exactly one wait (clear, colliding or gone), so with one folder the alarm reads `the
+WAITING ON YOU line about <id> says what to do, and `~/.local/bin/agentsync status` prints it`; with two or more
+it keeps `each WAITING ON YOU line about <id> ... prints them`. The mixed-cause branch (`for the empty one(s), ...`)
+follows the same rule. Status is named by `skill.AGENTSYNC_BIN`, as §16.51 Q49 requires of every alarm that names
+a command. doctor's heartbeat fix keeps `each WAITING ON YOU line about <id>`, which is true for any count. Tests:
+`test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`,
+`test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`.
+
+**F2: the tcc ok line names no LaunchAgent that is not there (`agentsync.ops.doctor`).** When `agents_wanted` is
+false (no plist, no pending agent step) the line reads `cloud roots were listed with this terminal's privacy
+grants; background sync is not installed: if it is turned on, its LaunchAgents run <launcher>, which needs its
+own grants`. Otherwise it keeps `... the LaunchAgent runs <launcher> and needs its own (the launcher and tcc.*
+lines below report it)`. With no launcher found, `<launcher>` is `the signed launcher (agentsync-launcher)`,
+never the interpreter: a cloud root always requires the launcher. Tests:
+`test_cloud_source_without_sentinel_and_tcc_note`,
+`test_the_tcc_note_names_the_lines_below_when_background_sync_is_wanted`.
+
+**F3, F50: the sentinel ok line says what agentsync holds back (`agentsync.ops.doctor`).** The line reads `no
+sentinel configured (optional: agentsync already holds back deletions under a cloud folder that is empty or
+cannot be listed)`, with agentsync as the subject (the folder read as holding deletions). Outside a File Provider
+domain (`arm_local._is_domain` false for the provider folder, the walk's own `in_domain` test, which also treats
+a missing provider folder as a domain) the walk reads an empty folder as empty, so the line ends `that cannot be
+listed)`. Tests: `test_cloud_source_without_sentinel_and_tcc_note`,
+`test_a_plain_provider_folder_holds_back_deletions_only_for_a_folder_it_cannot_list`.
+
+**F69: a Graph delta pass is no incomplete listing (`agentsync.cycle`, `agentsync.ops.doctor`).** Each Graph arm
+reports `enumeration_complete` true only on a FULL pass, and the heartbeat counted every DELTA as incomplete, so a
+healthy Graph source warned after three deltas with `sync -v` (another delta) as a fix that could not clear it.
+For the heartbeat's `consecutive_incomplete` alone, `_after` passes a Graph DELTA pass as listed: provider
+tombstones apply on it and absence checks run only on FULL passes, so it holds nothing back. The manifest's
+flag and the classifier are unchanged; a FULL pass that stops short still counts. doctor's warn and ok lines say
+`deletions held` for a local or inbox source and `files missing from the listing are kept while deletions Graph
+reports still apply` for a Graph one (`doctor._held`); a Graph source's fix is `~/.local/bin/agentsync reconcile --source
+<id> (a full pass that lists all of <id> clears this)`. Tests:
+`test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok`, `test_heartbeat_incomplete_fix_by_source_kind`.
+
+**F34: one parenthesis per subject on the sync line (`agentsync.cli`, `agentsync.setup_report`).** With the Q28
+clause (`read again R (F of them read for the first time, also counted above)`) the unreadable split follows as
+`; of the converted: U unreadable, F failed`, never a second parenthesis beside the first; without it the split
+stays ` (of the converted: ...)`. `setup_report._CONVERTED_LINE_RE` reads both, and an earlier sync's
+two-parenthesis line, which the old pattern lost after the Q28 clause (the Summary dropped the split). The line
+still has one bare `converted` token. Tests:
+`test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`,
+`test_the_converted_line_parses_with_the_read_again_clause_in_either_form`.
+
+**F35: a re-screen is counted apart (`agentsync.cycle`, `agentsync.model`, `agentsync.cli`).** A [policy] or
+secret-rule change forgets the hashes of files already converted (`mark_for_rescreen`,
+`mark_quarantined_rescreen`), and the converter runs on the same bytes; that file stays in N (the Repeat
+conversions table reads N) and is counted again. `_after_fetch` calls a conversion a re-screen when it is no
+capability re-read, the row's stored `content_sha256` was None, the row is no no-converter stub, and it has an
+output other than `skipped-dataless` or `tombstone` (a page made from read bytes). The run tally carries
+`rescreened` and `rescreened_unchanged` (its page came out the same), and `CycleReport` the same two. The sync
+line ends `; re-screened S for a rule change (also counted above, K of them unchanged)`, after every parsed
+clause and with no bare `converted`, `deferred` or `read again`, so install.sh's `SYNC_SUMMARY_RE`, its awk and
+`_CONVERTED_LINE_RE` read the line as before. Test: `test_a_policy_rescreen_is_counted_apart_on_the_sync_line`.
+
+**F12, F45: the report's Doctor section points at its Loop line (`agentsync.ops.doctor`, `agentsync.cli`).**
+`doctor._LISTING_YOURS_NOTE` (`... the WAITING ON YOU lines at the end of this run say whether it still is`) stays
+for install.sh's terminal output. The setup report has no end of its run (`--report-only` prints no wait), so
+`cli._report_hooks`'s doctor hook swaps in `doctor.LISTING_YOURS_REPORT_NOTE`: `held at its last walk: the
+Summary's Loop line says whether a WAITING ON YOU line still holds it`. It promises no line (the report's doctor
+calls a local listing yours by the source's kind) and has no parentheses. `setup_report._yours_warn` reads no
+note, so the Summary's grouping is unchanged. Tests: `test_the_report_doctor_never_points_at_the_end_of_its_run`,
+`test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected`.
+
+**F49: the added source line names the stored path (`agentsync.cli`).** A folder typed through a link (or `/tmp`
+for `/private/tmp`) is stored resolved; `added source '<id>' to <config> (<typed>, stored as <stored>):` names
+both when they differ, as the inbox line does (§16.51 Q36). The config path, the colon before the table and the
+`added source '<id>'` prefix that install.sh's `add_source_filter` passes are unchanged. Test:
+`test_the_added_source_line_names_the_stored_path_beside_the_typed_one`.
+
+**F96: both forms of the cloud root stop the config-load walk (`agentsync.config`).** The same defect as lane P's
+F89, whose fix landed first (c820e3a3, §16.61): `canonical_source_root` stops at either form of
+`paths.cloud_storage_roots()`. Lane B adds the test F96's verifier asked for: with a home reached through a link,
+no `is_symlink` (an lstat) lands inside either form of the root, for the `~` form and the stored resolved one
+alike. Test: `test_a_home_through_a_link_lists_nothing_inside_the_cloud_tree_at_config_load`.
 
 ### 16.58 Round 5: setup report (2026-10-12, wave B13 round 5 lane RA)
 
