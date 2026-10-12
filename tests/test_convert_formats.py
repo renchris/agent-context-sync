@@ -4033,11 +4033,49 @@ def test_a_full_disk_while_an_html_body_is_copied_for_pandoc_fails_the_pass_and_
 
 def test_a_msg_with_an_encrypted_office_attachment_is_encrypted_office(tmp_path: Path) -> None:
     """The encryption screen reads the whole compound file, never a name in it: a protected Office file
-    inside a message refuses the message, where the same attachment in an .eml (base64) is only listed."""
+    inside a message refuses the message, where the same attachment in an .eml (base64) is only listed
+    (``test_a_mime_message_with_an_encrypted_office_attachment_only_lists_it``)."""
     locked = cfb_bytes({"EncryptionInfo": b"\x04\x00\x04\x00", "EncryptedPackage": b"\0" * 64})
     office = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     result = _msg_result(tmp_path, msg_bytes(attachments=(("Contoso plan.docx", locked, office),)))
     assert (result.status, result.reason) == (ConversionStatus.UNREADABLE, policy.ENCRYPTED_OFFICE_REASON)
+
+
+@pytest.mark.parametrize(
+    "rule", [None, PolicyConfig(exclude_label_names=("Secret",))], ids=["no-rule", "rule"]
+)
+@pytest.mark.parametrize("name", ["x.eml", "x.msg"])
+def test_a_mime_message_with_an_encrypted_office_attachment_only_lists_it(
+    tmp_path: Path, name: str, rule: PolicyConfig | None
+) -> None:
+    """B13 round 5 F98: as data-governance.md says, an .eml, or a .msg that holds MIME text, carrying a
+    protected Office attachment (base64) is converted, with the attachment listed by name, size and sha256;
+    only an Outlook-format (binary) .msg is the encrypted-office stub, because the screen reads its whole
+    compound file.  With a label rule the .msg is read by msg-mime."""
+    locked = cfb_bytes({"EncryptionInfo": b"\x04\x00\x04\x00", "EncryptedPackage": b"\0" * 64})
+    message = EmailMessage()
+    message["From"] = "Contoso Planning <planning@contoso.example>"
+    message["To"] = "team@contoso.example"
+    message["Subject"] = "Q3 plan"
+    message["Date"] = "Mon, 14 Sep 2026 09:00:00 +0000"
+    message.set_content("The plan is attached.")
+    office = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    maintype, subtype = office.split("/")
+    message.add_attachment(locked, maintype=maintype, subtype=subtype, filename="Contoso plan.docx")
+    registry = Registry.default(CFG) if rule is None else Registry.default(CFG, policy=rule)
+    result = convert_file(
+        _write(tmp_path, name, message.as_bytes()),
+        name=name,
+        content_sha256="0" * 64,
+        canonical_sha256="0" * 64,
+        registry=registry,
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+    assert (result.status, result.reason) == (ConversionStatus.OK, None)
+    expected = {"x.eml": "eml-stdlib", "x.msg": "msg-olefile" if rule is None else "msg-mime"}[name]
+    assert result.converter_id == expected
+    row = f"| Contoso plan.docx | {office} | {len(locked)} | {hashlib.sha256(locked).hexdigest()} |"
+    assert any(line.endswith(row) for line in result.units[0].body.splitlines()), result.units[0].body
 
 
 def test_msg_dates_and_ids_survive_a_rebuild(tmp_path: Path) -> None:
