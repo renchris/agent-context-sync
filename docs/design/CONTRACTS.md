@@ -10354,8 +10354,10 @@ commit would be rewritten; every other dry run says "up to N commit(s)". `run_pu
 after every purge that verified, holding the entries kept so far (held, failed, not verified) and those not yet
 tried, and once more after the last entry. A run that stops part-way on anything but a `GovernanceError`
 therefore leaves no entry whose purge verified; the entry in flight stays in the file, so a rerun tries it again.
-A dry run writes nothing. Tests: `tests/test_governance.py` (a dry run that names nothing; a queue run that stops
-part-way).
+A dry run writes nothing. **Amended (2026-10-11, §16.38 "A purge by selector takes the queue entries it did off
+the queue"):** after a verified purge, the entries kept so far also drop the ones that purge covered (`_covers`),
+so the run's own write does not put them back; an entry this run already reported as `stays queued:` is kept.
+Tests: `tests/test_governance.py` (a dry run that names nothing; a queue run that stops part-way).
 
 #### setup-report: what the v9 report could not say (`agentsync.setup_report`)
 
@@ -10502,6 +10504,9 @@ _eval` on the Loop line (the Configuration part names the docs repo), the order 
 order of registration), and the stopped copy's `setup-report.md` (an old copy's own finish line names it).
 **Amended 2026-10-11, §16.39 N16:** `unexpected N` now has a `yours N` group beside it, keyed on the loop's
 waits and on the incomplete-listing detail, which a stale heartbeat never has.
+**Amended (2026-10-11, §16.40 "The Summary names the draft baseline's folder in words"):** the Loop line no
+longer reads `in _eval`. `_eval_by_name` writes `in the docs repo's _eval folder` (`_EVAL_SHOWN`); the line
+still holds no path, and the live `agentsync status` wait keeps the full path.
 
 #### Installer (`scripts/install.sh`)
 
@@ -11367,7 +11372,8 @@ to 1.5 s more of its 12 s, as a hung media helper does. No command, flag or key.
 `test_the_ocr_part_has_a_speech_line_of_its_own`.
 
 **The Summary names the draft baseline's folder in words** (B13 N18, v9 defect 6, v10 rehearsals; amends §16.32
-"In the setup report" and "Whatever the docs repo's path"). The Loop line read `WAITING ON YOU: the baseline
+"In the setup report" and "Whatever the docs repo's path", and, by a dated line added 2026-10-11 (§16.49, R61),
+§16.37's "Not changed, by design"). The Loop line read `WAITING ON YOU: the baseline
 questions are a draft: in _eval, keep about 10 in questions.md, ...`: a folder name with nothing to find it by.
 `_eval_by_name` now replaces the folder, as the loop wrote it, with `the docs repo's _eval folder`
 (`_EVAL_SHOWN`), so the line reads `... are a draft: in the docs repo's _eval folder, keep about 10 in
@@ -11978,7 +11984,10 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   from and of `~/src/agent-context-sync`), read as files with no git process, as `<proxy-N>`: the logged git
   error names that proxy (`Could not resolve proxy: <host>`). At the stop itself the old checkout's code runs
   (the pull failed), so the companion and the proxy rule protect every later report, not that first one. The
-  shell fallback report does not read git's config yet.
+  shell fallback report does not read git's config yet. **SUPERSEDED (2026-10-11, §16.40):** the shell
+  fallback's `redaction_pairs` reads the same git config files (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`,
+  `/etc/gitconfig`, its own checkout's `.git/config` and `~/src/agent-context-sync/.git/config`) and registers
+  each proxy host with a dot.
 - **Step 3's second no-report case names both of step 1's version checks** (H2; amends §16.36 "Step 3 names the
   two stops with no report"). It reads "when step 1 stops because this prompt is not the installer's (either
   check: the --version line does not end with this prompt's number, or the command says so)". In step 1's one
@@ -12022,8 +12031,9 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
 - **Step 2's timeout covers the speech build** (H8, B12 F34). Step 2 suggests 30 minutes, not 10, "the speech
   helper's build alone can take up to 20 minutes" (`speech._BUILD_TIMEOUT_S`, 1,200 s; field 687 s). That build
   runs again in full after a failed or interrupted build or a change to the speech package, so the prompt does
-  not say "the first time". 30 is that limit plus a 10-minute margin, not the sum of the run's limits (35
-  minutes before status and sync); a run cut anyway is safe to re-run, and a tool capped below 30 minutes takes
+  not say "the first time". 30 is that limit plus a 10-minute margin, not the sum of the run's limits (37
+  minutes before status and sync, with step 2's 2-minute wait for a running background sync; **amended
+  2026-10-11, §16.49, R65:** it read 35, from before that wait); a run cut anyway is safe to re-run, and a tool capped below 30 minutes takes
   step 2's background branch. The `--confirm-install-agent` texts (README, docs/deploy/README.md, install.sh's
   header) name the same case.
 - **Friction lines name roles** (N42; 2026-10-07 C12). "These lines go into the report, which I may post in
