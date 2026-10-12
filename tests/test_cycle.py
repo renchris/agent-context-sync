@@ -34,8 +34,9 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from agentsync import arm_local as al
-from agentsync import curate, gitops, governance, loop, materialise, slug
+from agentsync import curate, gitops, governance, lints, loop, materialise, slug
 from agentsync import cycle as cycle_mod
+from agentsync import publish as publish_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
 from agentsync.convert import _common as convert_common
@@ -61,6 +62,7 @@ from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
 from agentsync.model import (
+    ChangeOp,
     CycleMode,
     CycleReport,
     PassKind,
@@ -73,6 +75,7 @@ from agentsync.model import (
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout
+from agentsync.policy import UNTRUSTED_BANNER
 from agentsync.publish import Publisher, sidecar_rel
 from conftest import config_text
 from test_convert_builders import (
@@ -1338,6 +1341,59 @@ def _path_stub(config: Config, rel: str) -> bool:
     )
 
 
+@pytest.mark.parametrize("rules_moved", [False, True])
+def test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, rules_moved: bool
+) -> None:
+    """B13 round 5 F94: the one-time stub re-render (Q75) skipped credential and path stubs, though their page
+    is made from the name, the path, the reason and the hashes alone, as any other stub's; so one published
+    before a rendering change kept it.  Each is rebuilt from its own page now: one rewrite each, no byte of
+    the file read, no state moved, the secret never written; then nothing.  ``rules_moved``: the secret-scan
+    rules moved in the same run, which re-screens the credential stub and clears its row's hashes first."""
+    import agentsync.policy as content_policy  # noqa: PLC0415
+
+    class _OldPolicy:  # a publisher whose banner text differs: a rendering before this one
+        UNTRUSTED_BANNER = "> [UNTRUSTED CONTENT] Third-party data mirrored by agentsync (an older wording)."
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(content_policy, name)
+
+    monkeypatch.setattr(lints, "_gitleaks", lambda: None)  # the builtin rules, whatever this Mac has
+    keys = "projects/Contoso keys.txt"
+    (local_source_dir / keys).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    _capped_at(local_source_dir, CRAMPED)
+    with monkeypatch.context() as old:
+        old.setattr(publish_mod, "policy", _OldPolicy())
+        assert run(sample_config).exit_code == 0
+    stubs = {rel: slug.mirror_rel_path(SID, rel) for rel in (keys, CRAMPED)}
+    before = {rel: (r.state, r.state_reason) for rel, r in _file_rows(sample_config).items() if rel in stubs}
+    assert before[keys] == (RowState.QUARANTINED, "contains a credential") and _path_stub(
+        sample_config, CRAMPED
+    )
+    hashes = {rel: page(sample_config.docs_repo, at)[0].get("content_sha256") for rel, at in stubs.items()}
+    assert not page(sample_config.docs_repo, stubs[keys])[1].startswith(UNTRUSTED_BANNER)
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+        if rules_moved:
+            m.set_meta(cycle_mod._SECRET_RULES_META, "")
+    fetched = _fetches(monkeypatch)
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert fetched == ([keys] if rules_moved else []), "only the re-screen reads the credential file"
+    assert sorted((c.op, c.path) for c in report.changes) == sorted(
+        (ChangeOp.MODIFIED, str(at)) for at in stubs.values()
+    )
+    for rel, at in stubs.items():
+        fm, body = page(sample_config.docs_repo, at)
+        assert body.startswith(UNTRUSTED_BANNER), rel
+        assert fm.get("content_sha256") == hashes[rel], "the page's own hashes are kept"
+    after = {rel: (r.state, r.state_reason) for rel, r in _file_rows(sample_config).items() if rel in stubs}
+    assert after == before, "no state or reason moves"
+    assert not committed_blobs_containing(sample_config.docs_repo, AWS_KEY.encode())
+    fetched.clear()
+    assert run(sample_config).commit_sha is None and fetched == []
+
+
 def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantined_item(
     sample_config: Config, local_source_dir: Path
 ) -> None:
@@ -2361,13 +2417,19 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
         fm, body = _mirror_page(labelled, rel)
         assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
         assert "Renewal is in March." not in body and "The price is agreed." not in body
-        # The page says why: the rule, not a missing converter; the stored reason is unchanged (R33).
-        assert "a [policy] label rule is set and the label of a .msg file cannot be read" in body
+        # The page says why: the rule, not a missing converter; the stored reason is unchanged (R33). It is
+        # a binary .msg whose label cannot be read, or one not on this Mac: msg-mime reads a MIME one's
+        # (B13 round 5 F33, F73).
+        assert (
+            "a [policy] label rule is set and the label of a binary (Outlook-format) .msg file, or of a .msg "
+            "not on this Mac, cannot be read" in body
+        )
         assert "Save the message as .eml to have it converted" in body and "it is unreadable" not in body
         assert fm["summary"] == (
-            "refused: withheld by label rule: the label of a .msg file cannot be read; "
-            "save it as .eml to have it converted"
+            "refused: withheld by label rule: the label of a binary (Outlook-format) .msg file, or of a .msg "
+            "not on this Mac, cannot be read; save it as .eml to have it converted"
         ), "B13 round 4 Q27: not 'no converter for .msg', which hid the route from an agent reading summary:"
+        assert fm["converter"] == "none@0", "B13 round 5 F36: nothing converted it"
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
@@ -2410,8 +2472,57 @@ def test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files
         fm, body = _mirror_page(labelled, rel)
         assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
         assert "Save the message as .eml to have it converted" in body and "Not for the page." not in body
+        # B13 round 5 F36: msg-mime's refusal settles the rows, and the page names no converter.
+        assert fm["converter"] == "none@0" and "options_hash" not in fm
     fetched.clear()
     assert run(labelled).exit_code == 0 and fetched == [], "a settled stub is not read again"
+
+
+@pytest.mark.parametrize("made_by", ["none", "msg-mime"])
+def test_a_binary_msg_stub_from_an_older_rendering_is_rendered_again_once_under_a_label_rule(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, made_by: str
+) -> None:
+    """B13 round 5 F63, F74: the one-time stub re-render (Q75) skipped every ``no converter for .msg`` stub
+    once msg-mime claims .msg under a label rule (``_no_converter`` is None then), and the re-read that
+    follows only moves its key, so a stub from an older rendering kept it for good, unlike a fresh install's.
+    It is rebuilt from its stored reason and output row now: one rewrite, banner first, the withheld summary,
+    whether the stub was made before msg-mime (its row says "none", and the re-read still settles it) or by
+    msg-mime itself (no byte is read); then nothing."""
+    rel = "projects/Contoso note.msg"
+    (local_source_dir / rel).write_bytes(msg_bytes(plain="Not for the page.\n"))
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    with monkeypatch.context() as old:  # the rendering before the withheld wording (R33, Q27)
+        old.setattr(publish_mod, "label_withheld_suffixes", frozenset)
+        if made_by == "none":
+            old.setattr(msg_mod.MsgMimeConverter, "extensions", ())
+        assert run(labelled).exit_code == 0
+    fm, body = _mirror_page(labelled, rel)
+    assert fm["reason"] == "no converter for .msg" and "withheld" not in fm["summary"]
+    with Manifest(labelled.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "2")  # an install that re-rendered for rendering 2
+    fetched = _fetches(monkeypatch)
+    report = run(labelled)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert [(c.op, c.path) for c in report.changes] == [
+        (ChangeOp.MODIFIED, str(slug.mirror_rel_path(SID, rel)))
+    ]
+    assert fetched == ([rel] if made_by == "none" else []), (
+        "only Q78's re-read of a stub from before msg-mime"
+    )
+    fm, body = _mirror_page(labelled, rel)
+    assert body.startswith(UNTRUSTED_BANNER) and "Not for the page." not in body
+    assert fm["summary"].startswith("refused: withheld by label rule: the label of a binary (Outlook-format)")
+    assert (fm["status"], fm["reason"], fm["converter"]) == ("refused", "no converter for .msg", "none@0")
+    with Manifest(labelled.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish_mod.STUB_RENDER)
+        row = next(r for r in m.iter_items(SID) if r.rel_path == rel)
+        [out] = m.outputs_for(SID, row.stable_id)
+    assert (row.state, out.converter_id) == (RowState.REFUSED, "msg-mime"), "settled: not read again"
+    fetched.clear()
+    assert run(labelled).commit_sha is None and fetched == []
+    with Manifest(labelled.state_paths.db) as m:  # a later rendering finds the page as this one left it
+        m.set_meta(cycle_mod._STUB_RENDER_META, "2")
+    assert run(labelled).commit_sha is None and fetched == []
 
 
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(

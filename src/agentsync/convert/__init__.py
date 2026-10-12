@@ -19,8 +19,10 @@ NO_CONVERTER_PREFIX = "no converter for "
 """How the reason of a file no converter claims starts (``convert_file``; the stub ``publish`` writes for
 such a file says the same).  The cycle goes by it to find the files a converter registered since can read."""
 
-_NO_CONVERTER_ID = "none"
-_NO_CONVERTER_VERSION = "0"
+NO_CONVERTER_ID = "none"
+NO_CONVERTER_VERSION = "0"
+"""The converter id and version of a ``no converter`` refusal (and of the page of a withheld file, which
+nothing converted: ``publish``)."""
 _REASON_MAX = 300
 
 
@@ -133,12 +135,12 @@ def convert_file(
         opts = options_hash({})
         return _result(
             ConversionStatus.REFUSED,
-            converter_id=_NO_CONVERTER_ID,
-            version=_NO_CONVERTER_VERSION,
+            converter_id=NO_CONVERTER_ID,
+            version=NO_CONVERTER_VERSION,
             opts_hash=opts,
             key=action_key(
-                converter_id=_NO_CONVERTER_ID,
-                converter_version=_NO_CONVERTER_VERSION,
+                converter_id=NO_CONVERTER_ID,
+                converter_version=NO_CONVERTER_VERSION,
                 options_hash=opts,
                 canonical_sha256=canonical_sha256,
             ),
@@ -308,4 +310,12 @@ def double_conversion_differs(src: Path, *, name: str, registry: Registry) -> bo
     return first != second
 
 
-__all__ = ["NO_CONVERTER_PREFIX", "ConverterCache", "Registry", "convert_file", "double_conversion_differs"]
+__all__ = [
+    "NO_CONVERTER_ID",
+    "NO_CONVERTER_PREFIX",
+    "NO_CONVERTER_VERSION",
+    "ConverterCache",
+    "Registry",
+    "convert_file",
+    "double_conversion_differs",
+]

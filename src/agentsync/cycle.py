@@ -67,7 +67,15 @@ from agentsync.classifier import (
 )
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import RETIRE_ADVICE, BreakerConfig, Config, SourceConfig, canonical_source_root
-from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr, speech
+from agentsync.convert import (
+    NO_CONVERTER_ID,
+    NO_CONVERTER_PREFIX,
+    NO_CONVERTER_VERSION,
+    convert_file,
+    media,
+    ocr,
+    speech,
+)
 from agentsync.convert import _common as convert_common
 from agentsync.convert import recording as recording_mod
 from agentsync.convert.base import Converter
@@ -1838,11 +1846,13 @@ class _Cycle:
 
         Only a stub rebuilt without a byte of its file: a refused or unreadable stub from its own page (its
         ``reason:``, which holds the full text, and what it says of the read that made it; the row's cut
-        reason when the page has none), a ``no converter`` stub from its name. Never a credential stub, a
-        path stub or a redacted item: their text depends on more than the reason. A page
-        is written only where the plan differs from the intact page there (as ``_stub_stands`` compares);
-        no verdict or count moves. The meta key is written after the last row, so an interrupted run tries
-        again, and only on a run that covers every live source."""
+        reason when the page has none), a credential or path stub among them (B13 round 5 F94: their page is
+        made from the name, the path, the reason and the hashes alone, as any other stub's), and a ``no
+        converter`` stub from its name, or from its stored reason and output row once a converter claims the
+        name (B13 round 5 F63). Never a redacted item, whose page is not its stub's. A page is written only
+        where the plan differs from the intact page there (as ``_stub_stands`` compares); no verdict or
+        count moves. The meta key is written after the last row, so an interrupted run tries again, and only
+        on a run that covers every live source."""
         if self.manifest.get_meta(_STUB_RENDER_META) == str(STUB_RENDER):
             return
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
@@ -1879,15 +1889,38 @@ class _Cycle:
         if self.manifest.is_redacted(row.source_id, row.stable_id):
             return None
         reason = row.state_reason or ""
-        if reason.startswith((_CREDENTIAL, _SIDECAR_PATH)):
-            return None
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
         stub = OutputStatus.REFUSED if row.state is RowState.REFUSED else OutputStatus.QUARANTINED
         if len(live) != 1 or live[0].status is not stub or not _pages_intact(self.repo, outs):
             return None
         if _no_converter_stub(row):
-            return self._no_converter(src, row)  # None once a converter claims it: the re-read reads it
+            named = self._no_converter(src, row)
+            if named is not None and named.converter_id == (live[0].converter_id or named.converter_id):
+                return named
+            # A converter claims the name now (msg-mime claims .msg under a label rule, B13 round 4 Q78), or
+            # the stub's row names the one that refused the file itself: rebuilt from the stored reason and
+            # the row, never None, so every rendering reaches it (B13 round 5 F63, F74). The row's converter
+            # stays: "none" is what the re-read that reads the file looks for, and msg-mime is what settles a
+            # binary .msg once that re-read has refused it.
+            # The page's own hashes: a stub made from the name has none, though a re-read stored the row's
+            # since, and a later rendering must not differ from this one by them alone.
+            try:
+                fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, FrontmatterError):
+                return None
+            out = live[0]
+            return ConversionResult(
+                status=ConversionStatus.REFUSED,
+                converter_id=out.converter_id or NO_CONVERTER_ID,
+                converter_version=out.converter_version or NO_CONVERTER_VERSION,
+                options_hash=out.options_hash or "",
+                action_key=out.action_key or "",
+                content_sha256=fm.content_sha256 or "",
+                canonical_sha256=fm.canonical_sha256 or "",
+                units=(),
+                reason=reason,
+            )
         try:
             fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, FrontmatterError):

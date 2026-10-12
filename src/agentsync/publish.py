@@ -31,7 +31,7 @@ from typing import Any
 
 from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root
-from agentsync.convert import NO_CONVERTER_PREFIX
+from agentsync.convert import NO_CONVERTER_ID, NO_CONVERTER_PREFIX, NO_CONVERTER_VERSION
 from agentsync.convert.registry import label_withheld_suffixes, sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
@@ -299,12 +299,13 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
-STUB_RENDER = 2
+STUB_RENDER = 3
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
 2: the banner before the heading, a withheld file's summary, no ``refused: refused:`` (B13 round 4 Q9, Q27,
-Q75)."""
+Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, and a withheld stub names no
+converter (B13 round 5 F33, F36)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
@@ -1078,9 +1079,10 @@ class Publisher:
         )
         label = "REFUSED" if page_status is PageStatus.REFUSED else "UNREADABLE"
         suffix = Path(item.name).suffix.lower()
-        # A .msg or an image has no converter while a label rule is on, because its label cannot be read: the
-        # stored reason stays "no converter for <suffix>" (re-reads and stub identity key on it, and no label
-        # escalation fires), and only the words say why (B13 round 3 R33).
+        # A binary .msg or an image gets no conversion while a label rule is on, because its label cannot be
+        # read (a .msg that holds MIME text is read as an .eml, B13 round 4 Q78): the stored reason stays "no
+        # converter for <suffix>" (re-reads and stub identity key on it, and no label escalation fires), and
+        # only the words say why (B13 round 3 R33).
         withheld = (
             status is ConversionStatus.REFUSED
             and not refusal
@@ -1094,7 +1096,15 @@ class Publisher:
             # The summary says it too (B13 round 4 Q27): the mirror's CLAUDE.md has agents read summary: to
             # decide whether to open a page, and "no converter for .msg" there hid the route. The status, and
             # so the "refused: " prefix, stays.
-            summary_text = f"withheld by label rule: the label of a {suffix} file cannot be read; " + (
+            # msg-mime reads the label of a .msg that holds MIME text, so a .msg gets here when it is a binary
+            # one, or one not on this Mac, which is not downloaded to tell (B13 round 5 F33, F73): the words
+            # say which .msg cannot be read.
+            kind = (
+                "binary (Outlook-format) .msg file, or of a .msg not on this Mac,"
+                if suffix == ".msg"
+                else f"{suffix} file"
+            )
+            summary_text = f"withheld by label rule: the label of a {kind} cannot be read; " + (
                 "save it as .eml to have it converted"
                 if suffix == ".msg"
                 else "export it as a PDF to have it converted"
@@ -1106,7 +1116,7 @@ class Publisher:
             )
             text_lines = (
                 f"agentsync did not convert this source: a [policy] label rule is set and the label of a "
-                f"{suffix} file cannot be read, so its content is withheld (content policy). {route}\n"
+                f"{kind} cannot be read, so its content is withheld (content policy). {route}\n"
                 "The source exists: it is withheld, not absent. See `_sync/QUARANTINE.tsv`.\n"
             )
         elif refusal:
@@ -1124,6 +1134,16 @@ class Publisher:
         body = f"{policy.UNTRUSTED_BANNER}\n\n# [{label}] {title}\n\n{text_lines}"  # banner first (Q9)
         h2 = _sha256_text(body)
         has_converter = bool(result.converter_id) and bool(result.converter_version)
+        # A withheld file was converted by nothing, whichever converter's refusal settles its rows (msg-mime
+        # gives a binary .msg the no-converter refusal, B13 round 4 Q78): the page says so, as a withheld
+        # image's does, and the output row keeps the converter that settles it (B13 round 5 F36).
+        shown_converter = (
+            f"{NO_CONVERTER_ID}@{NO_CONVERTER_VERSION}"
+            if withheld
+            else f"{result.converter_id}@{result.converter_version}"
+            if has_converter
+            else None
+        )
         fm = MirrorFrontmatter(
             **self._provenance(source, item),
             status=page_status,
@@ -1132,11 +1152,12 @@ class Publisher:
             if HEX64_RE.match(result.canonical_sha256 or "")
             else None,
             rendered_sha256=h2,
-            converter=f"{result.converter_id}@{result.converter_version}" if has_converter else None,
+            converter=shown_converter,
             options_hash=(
                 result.options_hash
                 if (result.options_hash or "").startswith("sha256:")
                 and HEX64_RE.match(result.options_hash[7:])
+                and not withheld
                 else None
             ),
             reason=reason,
