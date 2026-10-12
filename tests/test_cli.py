@@ -638,7 +638,7 @@ def test_curate_old_names_are_hidden_aliases(initialised: Config, capsys: pytest
         assert cli.main([old, "--config", cfg]) == cli.EXIT_OK, old
         got = capsys.readouterr()
         assert got.out == want.out and "UNCOVERED\t" in got.out, old
-        assert got.err == want.err + "renamed: run agentsync curate\n", old
+        assert got.err == want.err + "renamed: run ~/.local/bin/agentsync curate\n", old
         assert f"    {old} " not in usage, old
 
 
@@ -792,7 +792,9 @@ def test_config_errors_exit_78(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert cli.main(["sync", "--config", str(tmp_path / "missing.toml")]) == cli.EXIT_CONFIG
     bad = tmp_path / "bad.toml"
     bad.write_text("[agentsync]\nnope = 1\n", encoding="utf-8")
-    assert "run `agentsync add-source <folder>` to create it" in capsys.readouterr().err  # KISS K14
+    assert (
+        "run `~/.local/bin/agentsync add-source <folder>` to create it" in capsys.readouterr().err
+    )  # KISS K14
     assert cli.main(["status", "--config", str(bad)]) == cli.EXIT_CONFIG
     assert "configuration error" in capsys.readouterr().err
 
@@ -1048,7 +1050,8 @@ def test_reconcile_accept_deletions_needs_a_source(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.main(["reconcile", "--accept-deletions", "--config", str(initialised.config_path)]) == 2
-    assert "agentsync accept-deletions SOURCE" in capsys.readouterr().err
+    # B13 round 5 F95: by the binary's full path (~/.local/bin is not on PATH)
+    assert "run ~/.local/bin/agentsync accept-deletions SOURCE" in capsys.readouterr().err
 
 
 def test_accept_deletions_clears_a_tripped_breaker(
@@ -1171,7 +1174,7 @@ def test_doctor_runs(initialised: Config, capsys: pytest.CaptureFixture[str]) ->
     rc = cli.main(["doctor", "--config", str(initialised.config_path)])
     cap = capsys.readouterr()
     assert "[ok  ] git" in cap.out and "launchd.poll" in cap.out
-    assert cap.out.startswith("NEXT: ") and "renamed: run agentsync status" in cap.err
+    assert cap.out.startswith("NEXT: ") and "renamed: run ~/.local/bin/agentsync status" in cap.err
     assert rc in (cli.EXIT_OK, cli.EXIT_FAILED)
 
 
@@ -1915,7 +1918,7 @@ def test_status_shows_the_policy_and_a_broken_policy_fails(
     def free(text: str) -> str:
         return re.sub(r"\d+\.\d GiB", "N GiB", text)
 
-    assert free(cap.out) == free(out) and "renamed: run agentsync status" in cap.err
+    assert free(cap.out) == free(out) and "renamed: run ~/.local/bin/agentsync status" in cap.err
     (initialised.config_path.parent / "policy.toml").write_text("[policy]\nnope = 1\n", encoding="utf-8")
     assert cli.main(["policy", "show", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
@@ -2157,7 +2160,9 @@ def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
     assert cli.main(["init", "--config", str(cfg)]) == 0
     skill.write_skill(load_config(cfg).docs_repo)
     init_out = capsys.readouterr().out.splitlines()
-    assert init_out[-1] == "sources: none yet besides the inbox (run agentsync add-source <folder>)"
+    assert (
+        init_out[-1] == "sources: none yet besides the inbox (run ~/.local/bin/agentsync add-source <folder>)"
+    )
     rc, out = _status(str(cfg), capsys)
     assert rc == cli.EXIT_OK and not any(ln.startswith("[FAIL]") for ln in out)
     assert out[0].startswith("NEXT: no folder is synced yet: ") and "add-source" in out[0]

@@ -356,7 +356,7 @@ EXIT_MEANINGS = {
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
     75: "skipped: another cycle held the lock; launchd retries",
-    77: "sign-in required (agentsync graph login)",
+    77: f"sign-in required ({AGENTSYNC_BIN} graph login)",
     78: "configuration invalid (sources.toml or policy.toml)",
     79: "TCC_PENDING: the launcher waited for the Allow prompt and timed out",
     80: "TCC_DENIED: access to the synced folder was denied",
@@ -3218,7 +3218,8 @@ def _doctor(r: _Run) -> list[str]:
         else ""
     )
     return [
-        summary + " (run without the Graph network probe and the TCC canary: `agentsync status` runs them). "
+        summary + " (run without the Graph network probe and the TCC canary: "
+        f"`{AGENTSYNC_BIN} status` runs them). "
         f"Only the lines that are not ok:{note}",
         "",
         *_fence(shown),
@@ -5226,7 +5227,7 @@ def _background(r: _Run) -> list[str]:
             if has_plist:
                 line = (
                     f"plist present · NOT loaded (launchctl print exited {rc}; "
-                    "`agentsync install-agent` loads it)"
+                    f"`{AGENTSYNC_BIN} install-agent` loads it)"
                 )
                 short = "plist present but not loaded"
             else:
@@ -5261,7 +5262,7 @@ def _background(r: _Run) -> list[str]:
         if not has_plist:
             out.append(
                 f"- {label}: loaded, but the plist is absent (removed without `launchctl bootout`; "
-                f"`agentsync install-agent` repairs it) · {state}"
+                f"`{AGENTSYNC_BIN} install-agent` repairs it) · {state}"
             )
             r.facts.background.append(f"{suffix} loaded without its plist")
             continue
@@ -5914,7 +5915,7 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     writes now (:func:`agentsync.it_request.first_difference`): an earlier agentsync wrote it, or it was
     edited there. Only a date, a line number and fixed words reach the report, never the draft's text."""
     path = expand(IT_DRAFT)
-    command = f"agentsync it-request --out {IT_DRAFT}"
+    command = f"{AGENTSYNC_BIN} it-request --out {IT_DRAFT}"
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
@@ -6204,7 +6205,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append(
             f'- WARNING: attempt {att.number} has no "end | finished" line ({closer}), so this report may be '
             f"stale: it was written before prompt step {step}, or the agent stopped early. Run "
-            f"`agentsync setup-report` again after step {step}."
+            f"`{AGENTSYNC_BIN} setup-report` again after step {step}."
         )
     elif att is not None and att.finished:
         end = max((e.at for e in att.events if e.kind == "finished" and e.at is not None), default=None)

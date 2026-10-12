@@ -458,7 +458,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     if report.broke_stale_lock:
         _out("  note: a stale lock from a dead run was broken; every source ran a full pass")
     if report.auth_required:
-        _out("  sign-in required: run `agentsync graph login` (errors above name any IT action)")
+        _out(f"  sign-in required: run `{loop.BIN} graph login` (errors above name any IT action)")
     _print_checkpoint(report)
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
@@ -591,7 +591,7 @@ def _ensure_setup(config: Config) -> int:
         _out(f"sources: {', '.join(s.id for s in config.sources)}")
     else:  # the inbox alone is not a source to sync (KISS K05): point at the one verb that adds one
         besides = " besides the inbox" if config.sources else ""
-        _out(f"sources: none yet{besides} (run agentsync add-source <folder>)")
+        _out(f"sources: none yet{besides} (run {loop.BIN} add-source <folder>)")
     return EXIT_FAILED if findings else EXIT_OK
 
 
@@ -725,7 +725,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 def _cmd_reconcile(args: argparse.Namespace) -> int:
     config = _config(args)
     if args.accept_deletions and not args.source:
-        _err("--accept-deletions needs a source: run agentsync accept-deletions SOURCE")
+        _err(f"--accept-deletions needs a source: run {loop.BIN} accept-deletions SOURCE")
         return EXIT_USAGE
     accept = tuple(args.source) if args.accept_deletions else ()
     return _run(
@@ -1113,7 +1113,7 @@ def _cmd_status_renamed(args: argparse.Namespace) -> int:
     ``doctor`` prints only the NEXT, loop and check lines, as the old doctor did; ``policy show`` keeps the
     policy detail."""
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
-        _err("renamed: run agentsync status")
+        _err(f"renamed: run {loop.BIN} status")
     return _cmd_status(args, brief=args.command == "doctor")
 
 
@@ -1267,7 +1267,7 @@ def _network_checks(config: Config, *, offline: bool = False) -> list[doctor.Che
                 _check(
                     "network.graph",
                     False,
-                    "not probed (setup-report makes no network calls; `agentsync status` probes it)",
+                    f"not probed (setup-report makes no network calls; `{loop.BIN} status` probes it)",
                     doctor.Severity.INFO,
                 )
             )
@@ -1770,7 +1770,7 @@ def _cmd_curate(args: argparse.Namespace) -> int:
 
 def _cmd_curate_renamed(args: argparse.Namespace) -> int:
     """Hidden aliases (KISS K09): curate-queue, lint and refresh-queue run curate under their old names."""
-    _err("renamed: run agentsync curate")
+    _err(f"renamed: run {loop.BIN} curate")
     return _cmd_curate(args)
 
 
@@ -1792,7 +1792,7 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
     created = curate.adopt_pages(expand(args.src_dir), config.layout, datetime.now(UTC).date().isoformat())
     for rel in created:
         _out(f"adopted {rel}")
-    _out(f"{len(created)} page(s) adopted; the next `agentsync sync` commits them")
+    _out(f"{len(created)} page(s) adopted; the next `{loop.BIN} sync` commits them")
     return EXIT_OK
 
 
@@ -1902,7 +1902,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
             "interpreter, whose user-writable uv tool environment is inside the trust boundary: prefer this "
             "grant to Full Disk Access / a PPPC SystemPolicyAllFiles payload"
         )
-    _out("check: agentsync status (it names the File Provider target)")
+    _out(f"check: {loop.BIN} status (it names the File Provider target)")
     return EXIT_OK
 
 
@@ -2106,7 +2106,7 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(f"sign-in blocked ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''}): {exc}")
         return EXIT_REAUTH
     except AuthRequiredError as exc:
-        _err(f"sign-in required: {exc} — run `agentsync graph login`")
+        _err(f"sign-in required: {exc} — run `{loop.BIN} graph login`")
         return EXIT_REAUTH
     except ManifestSchemaError as exc:
         _err(f"manifest: {exc}")

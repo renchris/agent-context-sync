@@ -30,6 +30,7 @@ from agentsync.paths import (
     is_under,
 )
 from agentsync.policy import PolicyConfig, parse_policy_table
+from agentsync.skill import AGENTSYNC_BIN
 
 SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
@@ -642,7 +643,7 @@ def load_config(path: Path | None = None) -> Config:
     try:
         text = p.read_text(encoding="utf-8")
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `agentsync add-source <folder>` to create it") from None
+        raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     return parse_config(text, config_path=p)
@@ -725,7 +726,7 @@ def append_to_config(config_path: Path, table: str) -> Config:
         text = target.read_text(encoding="utf-8")
         mode = target.stat().st_mode & 0o777
     except FileNotFoundError:
-        raise ConfigError(f"{p}: not found; run `agentsync add-source <folder>` to create it") from None
+        raise ConfigError(f"{p}: not found; run `{AGENTSYNC_BIN} add-source <folder>` to create it") from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
     if text and not text.endswith("\n"):

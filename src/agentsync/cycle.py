@@ -276,12 +276,19 @@ under, committed before the read, so its pieces are found when the row holds no 
 _NEW_BYTES = frozenset({Verdict.CREATED, Verdict.CHANGED, Verdict.MAYBE_CHANGED})
 """The verdicts of a row whose bytes may not be the ones its pages were made from."""
 _RECORDING_STOPPED = (
-    "reading this recording stopped or failed in two syncs; run agentsync materialise on it from a terminal "
-    "to read it"
+    "reading this recording stopped or failed in two syncs; run "
+    f"{skill.AGENTSYNC_BIN} materialise on it from a terminal to read it"
 )
 """The stub of a recording whose read was killed, timed out or failed in two cycles (spec O13).  Fixed
 wording: it names no file.  Its stored pieces are kept, so ``agentsync materialise PATH`` resumes from
 them."""
+_RECORDING_STOPPED_OLD = (
+    "reading this recording stopped or failed in two syncs; run agentsync materialise on it from a terminal "
+    "to read it"
+)
+""":data:`_RECORDING_STOPPED` before it named the binary by its full path (B13 round 5 F95): the quarantine
+reason a row stored then, still read as a stopped recording."""
+_RECORDING_STOPPED_REASONS = (_RECORDING_STOPPED, _RECORDING_STOPPED_OLD)
 _MEDIA_DOWN = (
     "the media helper stopped working in this sync (it does not answer --version); recordings wait and are "
     "read once it works: run scripts/install.sh again"
@@ -943,7 +950,9 @@ def _tighten_own_paths(config: Config) -> int:
     if changed:
         log.info("cleared group/other access on %d of agentsync's own path(s)", changed)
     if failed:
-        log.warning("%d path(s) could not be made owner-only (agentsync status names them)", failed)
+        log.warning(
+            "%d path(s) could not be made owner-only (%s status names them)", failed, skill.AGENTSYNC_BIN
+        )
     return changed
 
 
@@ -3672,7 +3681,7 @@ class _Cycle:
                 if staged:
                     keep.add(staged)
                 if sha and (
-                    row.state_reason in (RECORDING_WAITS, _RECORDING_STOPPED)
+                    row.state_reason in (RECORDING_WAITS, *_RECORDING_STOPPED_REASONS)
                     or _no_converter_stub(row)
                     or row.last_verdict is Verdict.DEFERRED
                 ):
@@ -4283,7 +4292,7 @@ class _Cycle:
         ``no converter`` stub the stub path read in part), and ``materialise PATH`` reads what it names."""
         return self._in_recording_pass and (
             bool(self.forced_paths)
-            or row.state_reason in (RECORDING_WAITS, _RECORDING_STOPPED)
+            or row.state_reason in (RECORDING_WAITS, *_RECORDING_STOPPED_REASONS)
             or _no_converter_stub(row)
         )
 

@@ -63,6 +63,7 @@ from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
+from agentsync.skill import AGENTSYNC_BIN
 from agentsync.tm_exclude import TM_EXCLUDE_XATTR
 from agentsync.tm_exclude import has_xattr as _has_xattr
 from agentsync.tm_exclude import set_exclusion as _set_tm_exclusion
@@ -2445,7 +2446,7 @@ def partition_purges(
 
 KEPT_PURGES = (
     "upstream deletion(s) stay queued while their file is listed again; once the file is gone, they wait for "
-    "`agentsync purge --queue` like any queued purge"
+    f"`{AGENTSYNC_BIN} purge --queue` like any queued purge"
 )
 """The note after the count of kept entries (:func:`partition_purges`) in the loop, status, doctor and
 STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait until their file is

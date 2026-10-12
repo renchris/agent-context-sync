@@ -14227,8 +14227,8 @@ wording; for one file that read "their pages ... deletion notices" under a line 
 alarm now reads `N file(s) absent from this complete pass: their page(s) become deletion notice(s) only if still
 absent next pass`, the removing alarm `N file(s) still absent from this complete pass: their page(s) are now
 deletion notice(s) (deleted upstream; purge queued)`, and the re-read alarm of the same family `... could not be
-converted; their page(s) are kept as they were`. This amends the text quoted in §16.12 (status), §16.37, §16.39, §16.45
-R105, §16.51 Q16 and the §16.27 re-read table row; the counts are unchanged. Tests: `tests/test_cli.py`
+converted; their page(s) are kept as they were`. This amends the text quoted in §16.12 (status), §16.37, §16.39,
+§16.45 R105, §16.51 Q16 and the §16.27 re-read table row; the counts are unchanged. Tests: `tests/test_cli.py`
 (`test_the_sync_line_counts_a_removed_file_of_several_pages_as_one_file`, a three-page workbook removed;
 `test_the_sync_line_tells_the_marking_pass_from_the_removing_pass`,
 `test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass`), `tests/test_cycle.py` (the
@@ -14268,6 +14268,41 @@ when that key differs, so the gap between the two reads ends in the refusal path
 than a lost edit. Tests: `tests/test_exclude_empty.py` (`test_an_exclude_edited_during_the_lock_wait_is_kept`,
 `test_a_source_removed_or_a_config_broken_during_the_lock_wait_is_reported`,
 `test_the_write_refuses_an_exclude_changed_since_it_was_read`).
+
+**F66, F95: printed commands name the binary by its full path, past cli.py and doctor** (`agentsync.governance`,
+`agentsync.cycle`, `agentsync.setup_report`, `agentsync.cli`, `agentsync.config`, `agentsync.graph.auth`,
+`agentsync.graph.discover`). §16.51 Q49 moved doctor's fixes and cycle's alarms to the full path, but round 4 added
+bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync purge --queue` on the queued line and
+`agentsync purge --queue` in `KEPT_PURGES` right under it; without `~/.local/bin` on PATH the bare form is
+`command not found`. F66 and F95 describe one defect and are built once. Every text below that a person is told to run now names
+`skill.AGENTSYNC_BIN` (`loop.BIN` in cli.py):
+- `governance.KEPT_PURGES`, the §16 stub's and §16.44 and §16.50 Q45's quoted text: `` ...they wait for
+  `~/.local/bin/agentsync purge --queue` like any queued purge ``.
+- `cycle._RECORDING_STOPPED` (§16.34's stub text, also the stored quarantine reason): `... run
+  ~/.local/bin/agentsync materialise on it from a terminal to read it`. The old text stays matched
+  (`_RECORDING_STOPPED_OLD`, in `_RECORDING_STOPPED_REASONS` at both places a reason is compared), so a row given up
+  before this still reads as a stopped recording; its published stub keeps the old words until it is read again.
+  Cycle's owner-only log line names `<bin> status`.
+- `setup_report`: exit 77's meaning (`<bin> graph login`), the doctor block's `<bin> status` runs them, the two
+  launchd lines' `<bin> install-agent`, the stale-report warning's `<bin> setup-report`, and the IT draft's
+  `<bin> it-request --out ...` (the line and its run-again text). Q81's secret-scan fix at `(fix: agentsync sync from
+  this shell)` is round 5 lane RA's (F57, F83) and is not changed here.
+- cli.py's sign-in lines (`<bin> graph login`), `renamed: run <bin> status|curate`, `sources: none yet ... (run <bin>
+  add-source <folder>)`, `reconcile --accept-deletions` without a source (`run <bin> accept-deletions SOURCE`),
+  adopt's `the next <bin> sync`, the File Provider `check: <bin> status` and setup-report's
+  `<bin> status probes it`; config's missing-file error (`run <bin> add-source <folder>`); graph.auth's Entra and
+  device-code error texts (`<bin> graph login`, `<bin> login`, `<bin> logout`); discover's 401 advice.
+Left as they are: docstrings, comments, the `--help` epilog and help strings (read, not pasted), and the comment line
+at the top of the sources.toml template. Q49's scope now covers these modules. Tests: `tests/test_governance.py`
+(`test_kept_purges_note_names_the_run_that_clears_them`), `tests/test_cycle.py`
+(`test_a_recording_given_up_under_either_stub_text_is_read_in_the_recording_pass`,
+`test_a_recording_given_up_under_either_stub_text_keeps_its_pieces_at_the_prune`,
+`test_a_piece_stopped_in_two_cycles_settles_as_a_stub_on_both_paths`), `tests/test_setup_report.py`
+(`test_first_sync_doctor_warns_and_it_draft_in_the_summary`), `tests/test_cli.py`
+(`test_curate_old_names_are_hidden_aliases`, `test_config_errors_exit_78`, `test_reconcile_accept_deletions_needs_a_source`,
+`test_status_with_no_folder_source_is_a_next_line_and_exit_0`), `tests/test_config.py`
+(`test_load_config_missing_file_names_add_source`).
+
 
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 

@@ -285,7 +285,7 @@ def test_sample_config_fixture(sample_config: Config, local_source_dir: Path) ->
 
 
 def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match=r"run `agentsync add-source <folder>` to create it"):
+    with pytest.raises(ConfigError, match=r"run `~/\.local/bin/agentsync add-source <folder>` to create it"):
         load_config(tmp_path / "nope.toml")
 
 

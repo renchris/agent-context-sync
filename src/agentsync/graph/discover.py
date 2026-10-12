@@ -38,6 +38,7 @@ from agentsync.graph.client import GraphClient, JsonObject
 from agentsync.graph.drive import DiscoveredScope, _obj, _opt_str, _quote_segment, _site_param
 from agentsync.graph.teams import _CHATS_TEAM_ID
 from agentsync.model import SourceKind
+from agentsync.skill import AGENTSYNC_BIN
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def it_action(endpoint: str, status: int, code: str = "") -> str:
     scope = _SCOPE_FOR.get(family, "the scope this endpoint needs")
     if status == 401:
         return (
-            "sign in again (agentsync login); if 401 persists after a fresh sign-in, ask IT whether a "
+            f"sign in again ({AGENTSYNC_BIN} login); if 401 persists after a fresh sign-in, ask IT whether a "
             "Conditional Access / token-protection policy blocks this client (C15 section 8 probe 4)"
         )
     if status == 403:

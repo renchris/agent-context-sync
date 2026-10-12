@@ -24,6 +24,7 @@ import tomllib
 import zlib
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import ANY
 
@@ -4463,7 +4464,10 @@ def test_a_piece_stopped_in_two_cycles_settles_as_a_stub_on_both_paths(
     fm, body = _recording_page(config, "meetings/first.mp4")
     row = _row(config, "meetings/first.mp4")
     assert row.state is RowState.QUARANTINED and row.state_reason == cycle_mod._RECORDING_STOPPED
-    assert fm["status"] == "unreadable" and "run agentsync materialise on it from a terminal" in body
+    assert (
+        fm["status"] == "unreadable"
+        and "run ~/.local/bin/agentsync materialise on it from a terminal" in body
+    )
     assert "first.mp4" not in cycle_mod._RECORDING_STOPPED and _pieces_of(config, first).is_dir()
     assert _progress(config, "meetings/first.mp4") == "" and row.last_verdict is Verdict.QUARANTINED
     # the stub path: a ``no converter`` stub made without a media helper, killed in two cycles
@@ -4503,6 +4507,45 @@ def test_materialise_path_resumes_a_recording_given_up_after_two_kills_from_its_
     row = _row(config, MEETING)
     assert row.state is RowState.LIVE and row.state_reason is None and _record(config) == {}
     assert _recording_page(config, MEETING)[0]["status"] == "current"
+
+
+@pytest.mark.parametrize("stored", ["now", "before"])
+def test_a_recording_given_up_under_either_stub_text_is_read_in_the_recording_pass(stored: str) -> None:
+    """B13 round 5 F95: the stopped recording's stub and quarantine reason name the binary by its full path
+    now. A row given up before that stores the old text; it is still a stopped recording, which the recording
+    pass reads from its stored hash all the same (as the piece store's prune keeps its pieces)."""
+    assert "run ~/.local/bin/agentsync materialise on it" in cycle_mod._RECORDING_STOPPED
+    reason = cycle_mod._RECORDING_STOPPED if stored == "now" else cycle_mod._RECORDING_STOPPED_OLD
+    row = SimpleNamespace(state=RowState.QUARANTINED, state_reason=reason)
+    pass_ = SimpleNamespace(_in_recording_pass=True, forced_paths={})
+    assert cycle_mod._Cycle._reads_anyway(pass_, row)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("stored", ["now", "before"])
+def test_a_recording_given_up_under_either_stub_text_keeps_its_pieces_at_the_prune(stored: str) -> None:
+    """B13 round 5 F95: the other place a stopped recording's reason is compared, the piece store's prune,
+    keeps the pieces under its stored hash for either text."""
+    reason = cycle_mod._RECORDING_STOPPED if stored == "now" else cycle_mod._RECORDING_STOPPED_OLD
+    sha, kept = "a" * 64, set[str]()
+    row = SimpleNamespace(
+        stable_id="1",
+        name="Contoso weekly sync.mp4",
+        canonical_sha256=sha,
+        state=RowState.QUARANTINED,
+        state_reason=reason,
+        last_verdict=Verdict.QUARANTINED,
+    )
+    pass_ = SimpleNamespace(
+        _recording_suffixes=lambda: {".mp4"},
+        pieces=SimpleNamespace(pending=lambda: [sha], prune=lambda keep: kept.update(keep) or 0),
+        config=SimpleNamespace(sources=[SimpleNamespace(id=SID)]),
+        _recording_load=lambda _sid: SimpleNamespace(staged={}),
+        manifest=SimpleNamespace(iter_items=lambda _sid, states: [row]),
+        _recording=lambda _name: True,
+        _save_recording=lambda _sid: None,
+    )
+    cycle_mod._Cycle._prune_pieces(pass_)  # type: ignore[arg-type]
+    assert kept == {sha}
 
 
 def test_a_cycle_killed_in_a_recording_loses_no_other_row(tmp_path: Path, meetings: Path, rec: Rec) -> None:

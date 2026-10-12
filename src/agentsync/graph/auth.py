@@ -61,6 +61,10 @@ from agentsync.errors import AuthError, AuthRequiredError, ConfigError
 from agentsync.graph import errors as _gerr
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.paths import is_cloud_path
+from agentsync.skill import AGENTSYNC_BIN
+
+_LOGIN = f"{AGENTSYNC_BIN} graph login"
+"""The sign-in command the Entra error texts name, by the binary's full path (B13 round 5 F95)."""
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +159,7 @@ AADSTS_STATES: Mapping[str, str] = {
 """AADSTS code -> pipeline state (C15 §1.5 table, plus codes the implementation also meets). Never retried."""
 
 _BROKER_HOW = (
-    "sign in with `agentsync graph login` on an Intune-enrolled Apple Silicon Mac with Company Portal "
+    f"sign in with `{AGENTSYNC_BIN} graph login` on an Intune-enrolled Apple Silicon Mac with Company Portal "
     "installed, so the Microsoft Enterprise SSO broker presents the device identity; browser and device-code "
     "sign-in cannot prove device state"
 )
@@ -216,22 +220,22 @@ _AADSTS_ACTIONS: Mapping[str, str] = {
         f"profile, then {_BROKER_HOW}"
     ),
     "AADSTS135011": "the device is disabled in Entra ID. IT action: re-enable this Mac's device object",
-    "AADSTS50076": "multi-factor authentication is required: sign in again with `agentsync graph login`",
-    "AADSTS50078": "multi-factor authentication expired: sign in again with `agentsync graph login`",
-    "AADSTS50079": "you must register for multi-factor authentication, then run `agentsync graph login`",
-    "AADSTS70043": "the sign-in frequency policy ended the session: run `agentsync graph login` again",
+    "AADSTS50076": f"multi-factor authentication is required: sign in again with `{_LOGIN}`",
+    "AADSTS50078": f"multi-factor authentication expired: sign in again with `{_LOGIN}`",
+    "AADSTS50079": f"you must register for multi-factor authentication, then run `{_LOGIN}`",
+    "AADSTS70043": f"the sign-in frequency policy ended the session: run `{_LOGIN}` again",
     "AADSTS50173": "the refresh token was revoked (password change or admin revocation): sign in again",
-    "AADSTS700082": "the refresh token expired from inactivity: sign in again with `agentsync graph login`",
-    "AADSTS65004": "you declined the consent prompt; run `agentsync graph login` again to accept it",
+    "AADSTS700082": f"the refresh token expired from inactivity: sign in again with `{_LOGIN}`",
+    "AADSTS65004": f"you declined the consent prompt; run `{_LOGIN}` again to accept it",
 }
 
 _CONSENT_CODES = frozenset({"AADSTS65001", "AADSTS90094", "AADSTS90095"})
 
 _DEVICE_FLOW_ERRORS: Mapping[str, str] = {
     "authorization_declined": "the sign-in was declined in the browser",
-    "expired_token": "the device code expired before sign-in completed; run `agentsync login` again",
-    "code_expired": "the device code expired before sign-in completed; run `agentsync login` again",
-    "bad_verification_code": "the device code was not recognised; run `agentsync login` again",
+    "expired_token": f"the device code expired before sign-in completed; run `{AGENTSYNC_BIN} login` again",
+    "code_expired": f"the device code expired before sign-in completed; run `{AGENTSYNC_BIN} login` again",
+    "bad_verification_code": f"the device code was not recognised; run `{AGENTSYNC_BIN} login` again",
 }
 
 
@@ -544,7 +548,7 @@ def _open_persistence(settings: AuthSettings) -> tuple[Any, str]:
         if fallback.is_file():
             logger.warning(
                 "a plaintext fallback token cache still exists at %s while the Keychain holds one; "
-                "`agentsync logout` removes both",
+                f"`{AGENTSYNC_BIN} logout` removes both",
                 fallback,
             )
     return keychain, _BACKEND_KEYCHAIN
@@ -828,7 +832,7 @@ class MsalAuth:
         if not self._settings.allow_device_code:
             raise AuthError(
                 "device-code sign-in is off: it cannot satisfy device-based Conditional Access and many "
-                "tenants block it. Use `agentsync graph login` (broker, then browser), or set [graph] "
+                f"tenants block it. Use `{AGENTSYNC_BIN} graph login` (broker, then browser), or set [graph] "
                 "allow_device_code = true if IT allows it"
             )
         return self._device_code(emit)
@@ -897,13 +901,14 @@ class MsalAuth:
         )
         if not accounts:
             raise AuthRequiredError(
-                "REAUTH_REQUIRED: no signed-in account in the token cache; run `agentsync login`"
+                f"REAUTH_REQUIRED: no signed-in account in the token cache; run `{AGENTSYNC_BIN} login`"
             )
         if len(accounts) > 1:
             logger.warning(
-                "%d accounts in the token cache; using %s (run `agentsync login` to keep only one)",
+                "%d accounts in the token cache; using %s (run `%s login` to keep only one)",
                 len(accounts),
                 accounts[0].get("username"),
+                AGENTSYNC_BIN,
             )
         return accounts[0]
 
@@ -912,7 +917,7 @@ class MsalAuth:
         cached = self._cached_accounts()
         if not cached:  # answer offline: no account means a human must sign in
             raise AuthRequiredError(
-                "REAUTH_REQUIRED: no signed-in account in the token cache; run `agentsync login`"
+                f"REAUTH_REQUIRED: no signed-in account in the token cache; run `{AGENTSYNC_BIN} login`"
             )
         use_broker = cached[0].get("account_source") == "broker"
         if use_broker:
@@ -920,7 +925,7 @@ class MsalAuth:
             if reason is not None:
                 raise AuthRequiredError(
                     "REAUTH_REQUIRED: the cached account was signed in through the broker, which is "
-                    f"unavailable now ({reason}); run `agentsync graph login`"
+                    f"unavailable now ({reason}); run `{AGENTSYNC_BIN} graph login`"
                 )
         app = self._app(broker=use_broker)
         account = self._select_account(app)
@@ -941,7 +946,8 @@ class MsalAuth:
             raise AuthError(f"token refresh failed ({type(exc).__name__}); will retry next cycle") from None
         if not result:
             raise AuthRequiredError(
-                "REAUTH_REQUIRED: no usable refresh token for the cached account; run `agentsync login`"
+                "REAUTH_REQUIRED: no usable refresh token for the cached account; run "
+                f"`{AGENTSYNC_BIN} login`"
             )
         if "access_token" in result:
             self._last_token_source = str(result.get("token_source") or "") or None

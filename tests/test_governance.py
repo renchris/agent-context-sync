@@ -837,7 +837,8 @@ def test_kept_purges_note_names_the_run_that_clears_them() -> None:
     gone"; nothing runs them, the rewrite runs only from `purge --queue`, and then the wait returns."""
     assert "on their own" not in gv.KEPT_PURGES
     assert gv.KEPT_PURGES.endswith(
-        "once the file is gone, they wait for `agentsync purge --queue` like any queued purge"
+        # B13 round 5 F66/F95: by the binary's full path, as the queued-purge line beside it (Q49)
+        "once the file is gone, they wait for `~/.local/bin/agentsync purge --queue` like any queued purge"
     )
 
 

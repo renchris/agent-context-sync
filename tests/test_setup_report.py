@@ -971,7 +971,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
         "<requester-upn>, <team>, <wanted-by>); 3 left for IT" in summary
     )
     # no date = in its Filled line: the file's date; and its email is not what it-request writes (N29)
-    command = f"agentsync it-request --out {setup_report.IT_DRAFT}"
+    command = f"~/.local/bin/agentsync it-request --out {setup_report.IT_DRAFT}"
     assert f"3 left for IT; file last changed 2026-10-01; differs from what `{command}` writes now" in summary
     for raw in RAW:
         assert raw not in text, raw
@@ -6405,8 +6405,9 @@ def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_m
         in bg
     )
     assert "- com.agentsync.reconcile: the installed plist is what this build would write\n" in bg
+    # the fix commands name the binary by its full path (B13 round 5 F95), which holds no installed value
     for raw in (*SECRET_NAMES, "FOURTH", "Coffee", "Payroll", "python3", "/bin"):
-        assert raw not in bg, raw
+        assert raw not in bg.replace(setup_report.AGENTSYNC_BIN, ""), raw
     # An interpreter that is a link to this build's is the same file under another name.
     link = home / "Tailspin" / "bin" / "python3"
     link.parent.mkdir(parents=True)
