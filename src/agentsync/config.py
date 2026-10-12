@@ -17,9 +17,9 @@ from typing import Any
 from agentsync.errors import ConfigError
 from agentsync.model import SourceKind, SourceState
 from agentsync.paths import (
-    CLOUD_STORAGE_ROOT,
     DocsLayout,
     StatePaths,
+    cloud_storage_roots,
     default_cache_dir,
     default_config_path,
     default_docs_repo,
@@ -382,13 +382,16 @@ def canonical_source_root(path: Path, _depth: int = 0) -> Path:
 
     ``~/OneDrive - Contoso`` (the link OneDrive creates) becomes ``~/Library/CloudStorage/OneDrive-Contoso``
     so every File Provider safeguard applies, while nothing inside a File Provider tree is touched at config
-    load (an lstat there may need a TCC grant; the launcher's canary runs first)."""
-    cloud = expand(CLOUD_STORAGE_ROOT)
+    load (an lstat there may need a TCC grant; the launcher's canary runs first). The walk stops at either
+    form of :func:`~agentsync.paths.cloud_storage_roots`: under a home reached through a link (``/tmp`` is
+    ``/private/tmp``) the first link resolves the home, and the lexical root alone would never match again,
+    so the walk read the links inside the tree and followed one out of it (B13 round 5 F89)."""
+    clouds = cloud_storage_roots()
     parts = path.parts
     current = Path(parts[0])
     for n, part in enumerate(parts[1:], start=1):
         candidate = current / part
-        if is_under(current, cloud) or candidate == cloud:
+        if any(is_under(current, r) or candidate == r for r in clouds):
             return Path(candidate, *parts[n + 1 :])
         try:
             if candidate.is_symlink() and _depth < 40:

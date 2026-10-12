@@ -1029,6 +1029,31 @@ def test_symlinked_cloud_root_is_resolved_to_the_file_provider_path() -> None:
     assert launchd.tcc_protected(resolved)
 
 
+def test_a_link_inside_the_cloud_tree_is_not_followed_under_a_linked_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F89: under a home reached through a link (a sandbox or test home: ``/tmp`` is
+    ``/private/tmp``), the walk resolved the home's link first, so the lexical ``~/Library/CloudStorage``
+    never matched again: it read every link inside the File Provider tree and followed one out of it, and the
+    source stopped being a cloud path. It stops at either form of ``cloud_storage_roots()``."""
+    real = Path.home()
+    linked_home = tmp_path / "linked-home"
+    linked_home.symlink_to(real)
+    monkeypatch.setenv("HOME", str(linked_home))
+    provider = real / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    provider.mkdir(parents=True)
+    (real / "elsewhere" / "Projects").mkdir(parents=True)
+    (provider / "linked").symlink_to(real / "elsewhere")
+    (real / "OneDrive - Contoso").symlink_to(linked_home / "Library" / "CloudStorage" / "OneDrive-Contoso")
+    for given in (
+        linked_home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "linked" / "Projects",
+        linked_home / "OneDrive - Contoso" / "linked" / "Projects",
+    ):
+        kept = canonical_source_root(given)
+        assert any(paths.is_under(kept, r) for r in paths.cloud_storage_roots()), kept
+        assert paths.is_cloud_path(kept) and kept.parts[-2:] == ("linked", "Projects")
+
+
 def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

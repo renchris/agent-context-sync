@@ -13680,7 +13680,9 @@ on it. `paths.cloud_relative(path)` gives the path relative to the root that hol
 `launchd.tcc_prompt_text` takes the provider folder from it: widening `is_cloud_path` alone made it raise
 `ValueError` from `relative_to`. `tcc_protected` reads Documents, Desktop, Downloads and Mobile Documents by the
 resolved home too. `config.canonical_source_root` stays lexical. Test:
-`test_a_home_reached_through_a_symlink_keeps_a_resolved_cloud_source_cloud`.
+`test_a_home_reached_through_a_symlink_keeps_a_resolved_cloud_source_cloud`. **Amended 2026-10-12, §16.61 F89:**
+`canonical_source_root` stops at either form of `cloud_storage_roots()`, so under a linked home it no longer reads
+the links inside a File Provider tree.
 
 **Q11: the empty-folder wait names each thing (`agentsync.loop`).** `N empty cloud folder(s) keep the listing of
 <id> incomplete: an empty folder in a cloud folder is expected and loses nothing, but while the listing is
@@ -14230,3 +14232,12 @@ alone fails the branch, the commit and the patch exist; the prompt now says "do 
 last step, the pull, failed, since my changes are already kept". Running step 1 again on the now clean tree reaches
 the git stop and cannot loop. Test: `tests/test_deploy_pack.py` (`test_readme_keeps_local_work_then_runs_step_1_again`,
 which also runs the command against an origin that is gone).
+
+**The cloud root stops the link walk in either form** (F89; amends §16.51 Q34/Q46 by a dated line).
+`config.canonical_source_root` stopped at the lexical `~/Library/CloudStorage` only. Under a home reached through a
+link (`/tmp` is `/private/tmp`, as in a sandbox or test home) the walk resolves the home's link first and recurses on
+the resolved path, which the lexical root never matches again, so it read every link inside the File Provider tree
+and followed one out of it: the source stopped being a cloud path. It now stops at either form of
+`paths.cloud_storage_roots()`, which resolves only `~/Library/CloudStorage` and its ancestors, so §16.12's "up to,
+never inside" holds again. A real `/Users/<name>` home, whose resolved root is the lexical one, is unchanged. Test:
+`tests/test_review_fixes.py` (`test_a_link_inside_the_cloud_tree_is_not_followed_under_a_linked_home`).
