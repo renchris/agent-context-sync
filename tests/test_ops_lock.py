@@ -199,14 +199,20 @@ def test_second_instance_in_same_process_is_refused(tmp_path: Path) -> None:
 
 def test_a_holder_with_no_lock_body_yet_is_named_as_unidentified(tmp_path: Path) -> None:
     """N24: between a holder's flock and its body write (or its truncate and unlock) the body is empty; the
-    CLI's WARNING then names an unidentified holder, the same text at every such skip."""
+    CLI's WARNING then names an unidentified holder, the same text at every such skip. B13 round 2 R62: the
+    body is also empty for the whole of install.sh's reinstall (lockf writes none), and the WARNING called it
+    an unidentified holder while the stderr line of the same skip named the reinstall. Both now read the
+    same fixed words; a body that does not parse keeps its own."""
     path = tmp_path / "agentsync.lock"
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         with pytest.raises(LockHeldError) as ei:
             SingleWriterLock(path, "poll").acquire()
-        assert ei.value.who == "an unidentified holder (empty lock body)"
+        assert ei.value.who == (
+            "an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)"
+        )
+        assert str(ei.value) == f"lock held: {ei.value.who}", "the stderr line and the WARNING agree"
         os.pwrite(fd, b"not a lock body\n", 0)
         with pytest.raises(LockHeldError) as ei:
             SingleWriterLock(path, "poll").acquire()

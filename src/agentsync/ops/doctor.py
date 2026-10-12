@@ -1500,7 +1500,8 @@ def _check_lock(config: Config) -> list[CheckResult]:
                     fix=f"if that process is hung: kill {pid}" if isinstance(pid, int) else None,
                 )
             ]
-        return [_ok("lock", f"held by {desc} (a cycle is running)")]
+        # an empty body is install.sh's reinstall or a probe as often as a starting cycle: no cycle is named
+        return [_ok("lock", f"held by {desc} (a cycle is running)" if body else f"held by {desc}")]
     if body:
         return [
             _bad(

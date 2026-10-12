@@ -382,6 +382,8 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
 2. `SingleWriterLock(state_paths.lock, label).acquire()` — `LockHeldError` → CLI exit 75 "skipped: lock held";
    `broke_stale=True` forces FULL passes this cycle.
    **Amended (2026-10-11, §16.39 N24):** the logged WARNING is `skipped: lock held by <label>`.
+   **Amended (2026-10-11, §16.49, R62):** a holder that wrote no body (install.sh's reinstall, a probe) is named
+   `an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)` there.
    **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
    exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
    truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
@@ -10981,6 +10983,16 @@ stderr line `skipped: lock held (lock held: <full holder>)`, which has no level 
 `LockHeldError(holder, *, who=None)`: `who` defaults to `holder`, and `str(exc)` and `.holder` are as before.
 The interactive wait's re-raise carries `who` through and no longer doubles the `lock held:` prefix. No
 command, flag, option or key is added.
+**Amended (2026-10-11, §16.49, B13 round 2 R62):** the body is also empty for the whole of install.sh's
+reinstall, which holds the lock through lockf (§16.41 "The reinstall holds the background sync's lock") for up to
+its 120 s wait plus the uv run, and for an `is_held` probe. §16.41 N6 changed the stderr line for an empty body to
+`an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)`, so the stderr line
+is no longer unchanged there. `<who>` for an empty body is now those same fixed words, so the WARNING reads
+`skipped: lock held by an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an
+instant)`; a body that does not parse keeps `an unidentified holder (unparseable lock body)`. The text is still
+a constant, so Recent errors still merges it (one new entry once, when the text changed). doctor's lock line
+adds `(a cycle is running)` only when the held lock has a body: with none it reads `held by an unrecorded
+holder (...)`.
 
 Why the label alone: the setup report's Recent errors keeps only lines with a level word, so the holder was
 on a line it drops, and it merges only lines that read the same after their time (§16.36). The beat and its

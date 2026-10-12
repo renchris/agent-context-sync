@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import errno
+import fcntl
 import os
 import plistlib
 import re
@@ -1293,6 +1294,18 @@ def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> 
     finally:
         lk.release()
     assert by_name(run_checks(sample_config))["lock"].detail == "free"
+    # B13 round 2 R62: install.sh's reinstall holds the lock through lockf with no body, and doctor said "held
+    # by an unrecorded holder (install.sh while it reinstalls agentsync, ...) (a cycle is running)".
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        r = by_name(run_checks(sample_config))["lock"]
+        assert r.ok and r.detail == (
+            "held by an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an "
+            "instant)"
+        )
+    finally:
+        os.close(fd)
     lock_path.write_text(LockInfo(99999, boot_time(), "2026-09-29T10:00:00Z", "poll").render() + "\n")
     r = by_name(run_checks(sample_config))["lock"]
     assert not r.ok and "without releasing" in r.detail and "FULL" in r.detail
