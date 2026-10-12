@@ -3651,6 +3651,30 @@ def test_msg_headers_body_attachments_like_an_eml(tmp_path: Path) -> None:
     )
 
 
+def test_an_attached_message_is_listed_under_its_display_name_else_its_subject_dot_msg(
+    tmp_path: Path,
+) -> None:
+    """R56: Outlook sets an attached message's display name (0x3001) to its subject, and a name (0x3707,
+    0x3704, 0x3001) is listed as it is, with no ``.msg`` added; ``<its subject>.msg`` is the fallback when
+    the storage has no name, and ``attached-message-N.msg`` when the message has no subject either."""
+    inner = {
+        "__properties_version1.0": b"\0" * 24,
+        "__substg1.0_0037001F": "Contoso kickoff".encode("utf-16-le"),
+    }
+    nameless = {"__properties_version1.0": b"\0" * 24}
+    data = msg_bytes(
+        attachments=(("", inner, ""), ("", inner, ""), ("", nameless, "")),
+        display_names={0: "Contoso kickoff"},
+    )
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "a.msg", data), name="a.msg"))
+    for row in (
+        "| 1 | Contoso kickoff | application/vnd.ms-outlook | - | - |",
+        "| 2 | Contoso kickoff.msg | application/vnd.ms-outlook | - | - |",
+        "| 3 | attached-message-3.msg | application/vnd.ms-outlook | - | - |",
+    ):
+        assert row in u.body, row
+
+
 def test_msg_from_is_who_the_message_was_sent_for_as_an_eml_from_header_is(tmp_path: Path) -> None:
     """A shared mailbox's mail is sent by a person on its behalf: From names the mailbox, as the .eml does."""
     data = msg_bytes(representing=("Contoso Finance", "finance@contoso.example"))

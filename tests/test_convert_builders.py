@@ -712,10 +712,13 @@ def msg_bytes(
     attachments: tuple[MsgAttachment, ...] = (),
     sent: dt.datetime = dt.datetime(2026, 9, 14, 9, 12, tzinfo=dt.UTC),
     representing: tuple[str, str] | None = None,
+    display_names: Mapping[int, str] | None = None,
 ) -> bytes:
     """An Outlook .msg (MS-OXMSG, Unicode properties), the shape of ``eml_bytes``: one To, one Cc recipient.
 
-    The sender is Jane Doe; ``representing`` is the (name, address) the message was sent on behalf of."""
+    The sender is Jane Doe; ``representing`` is the (name, address) the message was sent on behalf of.
+    ``display_names`` maps an attachment's index to its display name (0x3001), which Outlook sets on an
+    attached message to that message's subject."""
     filetime = int((sent - dt.datetime(1601, 1, 1, tzinfo=dt.UTC)).total_seconds() * 10**7)
     s: dict[str, bytes] = {
         "__properties_version1.0": _msg_props(32, {0x0039: (0x0040, filetime)}),
@@ -758,6 +761,8 @@ def msg_bytes(
             s[a + "__substg1.0_3707001F"] = _utf16(filename)
         if ctype:
             s[a + "__substg1.0_370E001F"] = _utf16(ctype)
+        if display_names and i in display_names:
+            s[a + "__substg1.0_3001001F"] = _utf16(display_names[i])
     return cfb_bytes(s)
 
 

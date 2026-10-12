@@ -11925,8 +11925,10 @@ UTF-16; a narrow string is decoded by the message code page 0x3FFD and the HTML 
 page 0x3FDE (each falling back to the other, then to `_decode_text`), with the Windows ids Python has no
 `cpN` codec for mapped by hand; text is NFC. Attachments are listed in storage order by name (0x3707, else
 0x3704, else 0x3001), type (0x370E, else `application/octet-stream`), size and sha256, never converted. An
-attached message (method 5, or an object storage that holds a properties stream) is listed as `<its
-subject>.msg`, `application/vnd.ms-outlook`, size and sha256 `-`, and never opened further; any other
+attached message (method 5, or an object storage that holds a properties stream) is listed under its name
+(0x3707, else 0x3704, else 0x3001, which Outlook sets to the attached message's subject), else `<its
+subject>.msg`, else `attached-message-N.msg`, as `application/vnd.ms-outlook`, size and sha256 `-`, and
+never opened further; any other
 object storage (an embedded OLE object, method 6) is listed under its own name and type with size and
 sha256 `-`. The summary is `Email from <From>, <Date>: <subject>; N attachment(s)`.
 
@@ -11959,6 +11961,10 @@ exception type in it, not `not-msg: <exception type>`; `MemoryError` fails the p
 
 Amended 2026-10-11 by §16.48 (R87): a `.msg` that starts with an RFC 822 header block is read as an `.eml`,
 not `not-msg`.
+
+Amended 2026-10-11 by §16.48 (R56): an attached message is listed under its name when it has one (0x3001 is
+its subject in a file Outlook wrote), with no `.msg` added; `<its subject>.msg` and `attached-message-N.msg`
+are the fallbacks (was: always `<its subject>.msg`).
 
 `.msg` stays out of `slug.STRIP_SUFFIXES`: the page keeps the path of the stub it replaces. An existing
 `no converter for .msg` stub becomes a page with no operator step: on this Mac through the re-read pass
@@ -13029,6 +13035,19 @@ block, no blank line, a blank first line; `test_under_a_label_rule_a_msg_is_the_
 `.msg` under each rule), `tests/test_convert_core.py`
 (`test_a_not_msg_stub_from_before_mime_text_was_read_is_outdated_and_one_from_now_is_not`) and
 `tests/test_cycle.py` (`test_a_mime_msg_settled_as_not_msg_by_emitter_1_0_0_is_read_once_as_a_page`).
+
+**An attached message is listed under its name (R56).** Amends §16.42 N46. §16.42 said an attached message
+is listed as `<its subject>.msg`, but the row's name comes from 0x3707, else 0x3704, else 0x3001, and
+Outlook sets 0x3001 on a method-5 attachment to the attached message's subject; so a file Outlook wrote
+lists `Contoso kickoff`, not `Contoso kickoff.msg`. `<its subject>.msg` is only the fallback for a storage
+with no name, and `attached-message-N.msg` the one after it, which §16.42 left out. The contract is
+reworded to the code; the code is unchanged. Appending `.msg` to a name was not built: a name ending
+`.rpmsg` would become `.rpmsg.msg` and slip past the IRM name check in `_refuse_protected`, and a suffix test by
+`Path.suffix` misreads a dotted subject. Only the listed name is at stake: the type, size, sha256 and the
+protection screen do not depend on it. `msg_bytes` takes `display_names` (attachment index to 0x3001).
+Test: `tests/test_convert_formats.py`
+(`test_an_attached_message_is_listed_under_its_display_name_else_its_subject_dot_msg`: 0x3001, the subject
+fallback and the numbered one; `test_msg_headers_body_attachments_like_an_eml` keeps `Original.msg`).
 
 #### The speech build and the build watcher
 
