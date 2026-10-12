@@ -3853,7 +3853,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
         return text, section(text, "Summary"), section(text, "Agent friction log"), link
 
-    _text, summary, fr, link = report(V11_HAPPY + stop)
+    _text, summary, fr, link = report(V12_HAPPY + stop)
     assert "- prompt: v12 (from the step 1 error line) · run: " in summary
     assert summary.split(" · agent: ", 1)[1].startswith(agent)
     assert "approvals: not observable" in summary, "the stated agent's tool does not show approvals"
@@ -3862,9 +3862,24 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     assert f"prompt v12 (from the step 1 error line), agent {agent}" in fr
     assert link["prompt_version"] == ["v12"] and link["agent"] == [agent]
     assert "v12" in link["title"][0]
-    parsed = setup_report.parse_friction(V11_HAPPY + stop).attempts
+    parsed = setup_report.parse_friction(V12_HAPPY + stop).attempts
     assert parsed[0].stated == {} and parsed[1].header == {}, "the derived words are not a header"
     assert parsed[1].events[0].what == "git pull exited 1" and parsed[1].version == 12
+    # Read as --log-start reads its value: any of " ,:;-" after the number. Quotes an agent kept around the
+    # words (the friction rule has it write a curly quote inside its single quotes) and no space after the
+    # colon are no reason to lose them. The agent ends at its first colon: the prompt says to write none.
+    said = f"prompt v12, {agent}: git pull exited 1"
+    for written, agent_said, what in (
+        ("prompt v12 - Claude Code: git pull exited 1", "Claude Code", "git pull exited 1"),
+        ("prompt v12, Claude Code:git pull exited 1", "Claude Code", "git pull exited 1"),
+        ("\u2019prompt v12, Claude Code: \u2019 git pull exited 1", "Claude Code", "git pull exited 1"),
+        ("Prompt v12, Claude Code: git: exit 128", "Claude Code", "git: exit 128"),
+    ):
+        [_first, later] = setup_report.parse_friction(V12_HAPPY + stop.replace(said, written)).attempts
+        assert (later.said("Prompt"), later.said("Agent"), later.events[0].what) == ("v12", agent_said, what)
+    for written in ("prompt v12: git pull exited 1", "prompt v123x, Claude Code: x"):
+        [_first, later] = setup_report.parse_friction(V12_HAPPY + stop.replace(said, written)).attempts
+        assert later.stated == {} and later.events[0].what == written, written
 
     _text, summary, fr, link = report(V11_HAPPY + stop.replace(f"prompt v12, {agent}: ", ""))
     assert "- prompt: not stated · run: " in summary and " · agent: not stated" in summary

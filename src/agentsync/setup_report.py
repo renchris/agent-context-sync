@@ -1020,10 +1020,15 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
     return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
 
 
-_STEP1_STATED_RE = re.compile(r"prompt v(\d{1,3}), ([^:]{1,100}): ", re.IGNORECASE)
-"""How a step 1 error line starts its what-text since setup prompt v12 (``prompt v12, <agent>: ``, the words
-step 1 gives ``--log-start``): the line a session logs when step 1 stops before ``--log-start`` writes the
-attempt's header, so the report still knows that session's prompt version and agent."""
+_STEP1_STATED_RE = re.compile(
+    r"[\s'\"\u2018\u2019]*prompt v(\d{1,3})(?![\d\w])[ ,:;-]+([^:\s][^:]{0,99}?)\s*:[\s'\"\u2018\u2019]*",
+    re.IGNORECASE,
+)
+"""How a step 1 error line starts its what-text since setup prompt v12 (``prompt v12, <agent>:``, the words
+step 1 gives ``--log-start``, then a colon): the line a session logs when step 1 stops before ``--log-start``
+writes the attempt's header, so the report still knows that session's prompt version and agent. It reads the
+version as ``--log-start`` does (any of `` ,:;-`` after the number), tolerates quotes an agent kept around the
+words, and ends the agent at its first colon (the prompt says to write none inside it)."""
 
 
 def parse_friction(text: str) -> Friction:

@@ -151,11 +151,19 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
     }
     steps = [("release", url, end), ("uv installer", "https://astral.sh/uv/install.sh", None)]
     steps.append(("PyPI", "https://pypi.org/simple/pip/", None))
-    problems = hosts.check(steps, named, follow=chains.__getitem__)
-    assert len(problems) == 3, problems
-    assert problems[0].startswith("release now ends on objects.githubusercontent.com")
-    assert "objects.githubusercontent.com, which it-request.md does not name" in problems[1]
-    assert "uv installer passes cdn.example.net" in problems[2]
+    steps.insert(0, ("Python 3.11", "https://releases.astral.sh/py.tar.gz", None))
+
+    def follow(link: str) -> list[str]:
+        if link.endswith("py.tar.gz"):
+            raise RuntimeError("curl exit 6: Could not resolve host: releases.astral.sh")
+        return chains[link]
+
+    problems = hosts.check(steps, named, follow=follow)
+    assert len(problems) == 4, problems
+    assert problems[0].startswith("Python 3.11 could not be followed (curl exit 6: Could not resolve host")
+    assert problems[1].startswith("release now ends on objects.githubusercontent.com")
+    assert "objects.githubusercontent.com, which it-request.md does not name" in problems[2]
+    assert "uv installer passes cdn.example.net" in problems[3], "a failed chain leaves the others checked"
     workflow = (ROOT / ".github" / "workflows" / "download-hosts.yml").read_text(encoding="utf-8")
     trigger = workflow.split("\non:\n", 1)[1].split("\n\n", 1)[0]
     assert "schedule:" in trigger and "workflow_dispatch:" in trigger and "push" not in trigger
@@ -466,7 +474,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (12, "0abbd071062fa82278c76282670f666837639e4a542cb26928243ab44272caa7")
+PROMPT = (12, "a6cdcb0f734d38240c20612b35ebfb724598ed3bf7ec4f2d9de2eef7964969ed")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -641,16 +649,14 @@ def test_readme_step1_is_one_command() -> None:
     # session from a terminal where git reaches GitHub, then pastes the prompt again.
     assert (
         'If git failed any other way, show me its error and tell me: "Once git can reach GitHub from a '
-        'terminal, start a new session from that terminal and paste this prompt again"'
+        "terminal (a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in "
+        "git's own settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may "
+        "point at a network this Mac is not on), start a new session from that terminal and paste this "
+        f"prompt again\", and go to step {report}'s report."
     ) in flat
     # R29: git's own http.proxy comes before HTTPS_PROXY (measured: with both set, git used the config value),
     # so a hint naming only HTTPS_PROXY pointed the wrong way when git's error names a proxy. The setting is
     # named for the agent to read; the prompt does not tell it to change ~/.gitconfig.
-    assert (
-        "(a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in git's own "
-        "settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may point at a "
-        f"network this Mac is not on), and go to step {report}'s report."
-    ) in flat
     assert "~/.gitconfig" not in step1 and "git config --global" not in step1
     # R32: "either of these two stops" came right after three cases, the middle one a recovery, not a stop.
     # R25: the line a session logs here is the only one it writes before --log-start, so it carries the
@@ -658,7 +664,7 @@ def test_readme_step1_is_one_command() -> None:
     assert (
         "Before going to the report from the Xcode stop or the other-git-failure stop above, log the failed "
         "command as a step 1 error if ~/src/agent-context-sync exists, starting its what-text with "
-        f"'{START_AGENT}: ' (the same words as in step 1's command, then a colon)."
+        f"{START_AGENT} and a colon (the same words as in step 1's command; write no colon inside <agent>)."
     ) in flat
     assert "either of these two stops" not in flat
     assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
@@ -1178,10 +1184,10 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert (
         "the folders this Mac syncs, as full paths (those step 1's list marked [synced] and those step 2"
         ' added; if step 1 stopped before its list, the kind = "local" sources in'
-        ' ~/agent-context/sources.toml; never the inbox or another kind = "inbox" folder), saying which ones'
-        ' this session added, or "none: this Mac syncs no folder" (if setup stopped before step 2, say at'
-        ' which step); the last NEXT: line printed before the report, or "none", and under it each WAITING'
-        " ON YOU: line the same command printed;"
+        " ~/agent-context/sources.toml that are not paused or retired; never the inbox or another kind ="
+        ' "inbox" folder), saying which ones this session added, or "none: this Mac syncs no folder" (if'
+        " setup stopped before step 2, say at which step); the last NEXT: line printed before the report,"
+        ' or "none", and under it each WAITING ON YOU: line the same command printed;'
     ) in " ".join(finish.split()), (
         "one NEXT line, the report's own excluded, and every wait the same command printed"
     )

@@ -342,15 +342,15 @@ the name in fix-request.md.
    `git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update' && git -C ~/src/agent-context-sync format-patch -q -1 -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync switch main && git -C ~/src/agent-context-sync pull --ff-only`
    then tell me the branch name (my changes are safe on it, and copied as a patch to
    ~/agent-context/setup/local-work) and run step 1's command again. If git failed any
-   other way, show me its error and tell me: "Once git can reach GitHub from a terminal, start a new session
-   from that terminal and paste this prompt again" (a corporate proxy may need HTTPS_PROXY set there; if the
-   error names a proxy, the one in git's own settings, which git config --get http.proxy prints, comes before
-   HTTPS_PROXY and may point at a network this Mac is not on), and go to step 3's report. Before going to the
+   other way, show me its error and tell me: "Once git can reach GitHub from a terminal (a corporate proxy may
+   need HTTPS_PROXY set there; if the error names a proxy, the one in git's own settings, which git config
+   --get http.proxy prints, comes before HTTPS_PROXY and may point at a network this Mac is not on), start a
+   new session from that terminal and paste this prompt again", and go to step 3's report. Before going to the
    report from the Xcode stop or the other-git-failure stop above, log the failed command as a step 1 error if
-   ~/src/agent-context-sync exists, starting its what-text with 'prompt v12, <agent>: ' (the same words as in
-   step 1's command, then a colon). If --version does not end with "setup-prompt-compat 12", or the command
-   says the pasted prompt is not the installer's, stop: this prompt
-   is v12, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
+   ~/src/agent-context-sync exists, starting its what-text with prompt v12, <agent> and a colon (the same words
+   as in step 1's command; write no colon inside <agent>). If --version does not end with
+   "setup-prompt-compat 12", or the command says the pasted prompt is not the installer's, stop: this prompt is
+   v12, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
    of the Source above. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
@@ -423,11 +423,12 @@ the name in fix-request.md.
    The report works out the outcome, times and run type itself, redacts names, and its last lines are an issue link
    and a NEXT: line. Do not send or upload anything. Finish with: the folders this Mac syncs, as full paths
    (those step 1's list marked [synced] and those step 2 added; if step 1 stopped before its list, the
-   kind = "local" sources in ~/agent-context/sources.toml; never the inbox or another kind = "inbox" folder),
-   saying which ones this session added, or "none: this Mac syncs no folder" (if setup stopped before step 2,
-   say at which step); the last NEXT: line printed before the report, or "none", and under it each WAITING ON YOU: line the same command
-   printed; and ~/agent-context/bring-back.md, the one file I review and copy back (the redacted report, then
-   your fix request and the patch of any work step 1 kept).
+   kind = "local" sources in ~/agent-context/sources.toml that are not paused or retired; never the inbox or
+   another kind = "inbox" folder), saying which ones this session added, or "none: this Mac syncs no folder"
+   (if setup stopped before step 2, say at which step); the last NEXT: line printed before the report, or
+   "none", and under it each WAITING ON YOU: line the same command printed; and ~/agent-context/bring-back.md,
+   the one file I review and copy back (the redacted report, then your fix request and the patch of any work
+   step 1 kept).
 ```
 
 <details>

@@ -5156,7 +5156,8 @@ exists (v7 has no IT request step). **Amended (2026-10-07, §16.28 "Setup prompt
 and the layout is the newest entry at or below the version, so v8 and later read as v7. **Amended (2026-10-07,
 §16.29 "Setup prompt v9"):** `PROMPT_VERSION` is 9; v9 moved no step either. **Amended (2026-10-08, setup
 prompt v10):** `PROMPT_VERSION` is 10; v10 reworded three sentences and moved no step. **Amended (2026-10-11, §16.43):**
-`PROMPT_VERSION` is 11; v11 changed wording only and moved no step. **Redaction.**
+`PROMPT_VERSION` is 11; v11 changed wording only and moved no step. **Amended (2026-10-11, §16.49):**
+`PROMPT_VERSION` is 12; v12 changed wording only and moved no step. **Redaction.**
 `build_report` has no `redact` argument: the report is always redacted.
 
 ```python
@@ -5169,7 +5170,7 @@ FRICTION_KINDS = ("question", "click", "approval", "deviation", "error", "prompt
 STEP_KINDS = ("start", "end")  # v5's step brackets: still read and counted
 TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")  # agent friction: never the outcome by itself (revision 2)
-PROMPT_VERSION = 11  # v11 (10 in §16.36; 9 in §16.29; 8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
+PROMPT_VERSION = 12  # v12 (11 in §16.43; 10 in §16.36; 9 in §16.29; 8 in §16.28; 7 since KISS K16b; was 6): this build's prompt, install.sh's SETUP_PROMPT_COMPAT
 PROMPT_STEPS: dict[int, str]  # the form's options, v6's: 1 preflight · 2 install and start · 3 IT request and report · 4 finish
 FOLDER_QUESTION_STEP = 1  # v6: asked in step 1, not logged
 ALLOW_CLICK_STEPS = (1, 2)  # v6: announced in steps 1 and 2, not logged
@@ -12138,10 +12139,11 @@ with v7's rules. Every other lane of round 3 said it had no prompt words, so v12
 
 **Step 1's git stop** (R22, R29, R32). It read "show me its error (a corporate proxy may need HTTPS_PROXY set)
 and go to step 3's report", and nothing told the person what to do once git works. It now reads: show me its
-error and tell me "Once git can reach GitHub from a terminal, start a new session from that terminal and paste
-this prompt again" (a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in
-git's own settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may point at a
-network this Mac is not on), and go to step 3's report.
+error and tell me "Once git can reach GitHub from a terminal (a corporate proxy may need HTTPS_PROXY set there;
+if the error names a proxy, the one in git's own settings, which git config --get http.proxy prints, comes
+before HTTPS_PROXY and may point at a network this Mac is not on), start a new session from that terminal and
+paste this prompt again", and go to step 3's report. The hint is inside the quoted words, so it reaches the
+person.
 - A new session, not the same one: HTTPS_PROXY must be in the environment of the shell the agent runs, and the
   rules forbid editing the shell profile.
 - git's `http.proxy` wins over the environment (measured with both set: git used the config value). The setting
@@ -12154,9 +12156,11 @@ network this Mac is not on), and go to step 3's report.
 
 **The step 1 error names the prompt and the agent** (R25). That line is the only one a session writes when step 1
 stops before `--log-start`, so its attempt had no header and the Summary, the friction log section and the issue
-link said `not stated`. Step 1 now has the line's what-text start with `'prompt v12, <agent>: '` ("the same words
-as in step 1's command, then a colon"; the block names `--log-start` once, in the command). `parse_friction` reads
-`prompt vN, <agent>: ` (`_STEP1_STATED_RE`, case-insensitive, agent up to 100 characters with no colon) only on the
+link said `not stated`. Step 1 now has the line's what-text start "with prompt v12, <agent> and a colon (the same
+words as in step 1's command; write no colon inside <agent>)": no quotes, which the friction rule would have the
+agent write as `’`, and the block names `--log-start` once, in the command. `parse_friction` reads that prefix
+(`_STEP1_STATED_RE`: case-insensitive, any of ` ,:;-` after the number as `--log-start` accepts, quotes around
+it tolerated, the agent up to 100 characters and ending at its first colon) only on the
 step 1 error that starts a header-less attempt (more than 10 minutes after a finished attempt's end line), puts it
 in `Attempt.stated`, and keeps the rest as the line's what-text. `Attempt.said(key)` reads the header first, then
 `stated`; `Attempt.version`, `_prompt_version`, the Summary's `agent:` and `prompt:` (marked `(from the step 1
@@ -12182,8 +12186,9 @@ lands, has two parts, in this order. First, add a "## Not used" section ...; ski
 
 **The finish** (R11, R30): "the folders this Mac syncs, as full paths (those step 1's list marked [synced] and
 those step 2 added; if step 1 stopped before its list, the kind = "local" sources in
-~/agent-context/sources.toml; never the inbox or another kind = "inbox" folder), saying which ones this session
-added, or "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step)". The folders are
+~/agent-context/sources.toml that are not paused or retired; never the inbox or another kind = "inbox" folder),
+saying which ones this session added, or "none: this Mac syncs no folder" (if setup stopped before step 2, say
+at which step)". The folders are
 the ones install.sh counts (`synced_folders`: live `kind = "local"` sources), the same N step 1 and step 2 print.
 "Every source folder in sources.toml" was not used: it would add the inbox and the person's own inbox folders.
 
@@ -12204,7 +12209,8 @@ lock with a body. Tests: `tests/test_ops_lock.py` (`test_a_holder_with_no_lock_b
 build's release file, uv's installer, uv itself (the installer's default `ARTIFACT_DOWNLOAD_URLS`), the Python
 3.11 uv installs and PyPI with curl HEAD requests, one hop at a time, and fails when the release file ends off the
 host it-request.md names for release files or any hop passes a host the "Installation downloads" bullet does not
-name. `.github/workflows/download-hosts.yml` runs it weekly and on `workflow_dispatch`, never on a push; it is
+name. A server that refuses HEAD is asked for one byte; a chain curl cannot follow is a problem line with curl's
+message, and the other chains are still checked. `.github/workflows/download-hosts.yml` runs it weekly and on `workflow_dispatch`, never on a push; it is
 outside the gate (CLAUDE.md says why). Test: `tests/test_deploy_pack.py`
 (`test_a_weekly_check_follows_the_download_hosts_the_it_request_names`, offline).
 
