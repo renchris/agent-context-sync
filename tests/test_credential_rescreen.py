@@ -18,10 +18,11 @@ from openpyxl import Workbook
 
 from agentsync import arm_local, cli, cycle, governance, lints
 from agentsync import materialise as mat
+from agentsync.convert import pdf as pdf_mod
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, LintFinding, RowState
 from agentsync.ops.lock import read_heartbeat
-from test_convert_builders import build_picture_pdf, page_picture, shade_engine
+from test_convert_builders import build_annotated_pdf, build_picture_pdf, page_picture, shade_engine
 from test_convert_image import picture
 from test_ocr import fake_engine
 from test_review_fixes import (
@@ -177,6 +178,75 @@ def test_a_published_page_the_new_rules_match_becomes_a_stub_and_queues_a_purge(
     hit = [a for a in alarms if a.startswith("a published page matches the secret scan's new rules")]
     # B13 R46/R47/R57: the alarm that queued a purge ends with the preview first (§16.38)
     assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) for a in hit)
+
+
+def _without_aws(mp: pytest.MonkeyPatch) -> None:
+    """Earlier rules: the aws-access-key pattern is not one of them."""
+    mp.setattr(lints, "SECRET_PATTERNS", tuple(r for r in lints.SECRET_PATTERNS if r[0] != "aws-access-key"))
+
+
+def _purged_with_alarm(config, report, name: str) -> None:  # type: ignore[no-untyped-def]
+    assert queued(config) == [(item_id(config, name), "dlp-remediation")]
+    alarms = [a for s in report.sources for a in s.alarms]
+    assert any(a.startswith("a published page matches the secret scan's new rules") for a in alarms)
+
+
+def test_a_page_edited_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R48: the run that rewrites a page is the run whose rules moved; the committed text, which the new
+    rules match, is read from HEAD, so its purge is queued although the page is not read as published."""
+    config, src = make_env(tmp_path)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\nrotated by Fabrikam ops\n", encoding="utf-8")
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert page_fm(config, "mirror/src/keys.txt.md")["reason"] == "contains a credential"
+    _purged_with_alarm(config, again, "keys.txt")
+
+
+def test_a_page_read_again_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R48: an update usually moves the rules and an emitter at once, so the rescan run reads the file
+    again (CONTRACTS 16.27) and rewrites its page; the committed page still gets its purge."""
+    config, src = make_env(tmp_path)
+    note = "/Subtype /Text /Rect [400 700 420 720] /T (Roe, John) /Contents (Check the key)"
+    build_annotated_pdf(src / "keys.pdf", [([f"deploy key {AWS_KEY}"], [note])])
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        mp.setattr(pdf_mod, "_EMITTER_VERSION", "2.0.0")
+        mp.setattr(pdf_mod, "_render_comments", lambda _found: [])
+        run(config)
+    assert _state(config, "keys.pdf") == (RowState.LIVE, None)
+    assert committed_blobs_containing(config.docs_repo, AWS_KEY.encode())
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert page_fm(config, "mirror/src/keys.pdf.md")["reason"] == "contains a credential"
+    _purged_with_alarm(config, again, "keys.pdf")
+
+
+def test_a_key_the_edit_brings_in_the_run_the_rules_move_is_a_stub_with_no_purge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R48: the committed text is clean and the edit brings the key: the page is a stub, but no history
+    holds the key, so no purge is queued and no purge alarm is raised."""
+    config, src = make_env(tmp_path)
+    (src / "keys.txt").write_text("deploy key to come\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert page_fm(config, "mirror/src/keys.txt.md")["reason"] == "contains a credential"
+    assert queued(config) == []
+    alarms = [a for s in again.sources for a in s.alarms]
+    assert not any(a.startswith("a published page matches the secret scan's new rules") for a in alarms)
+    assert not committed_blobs_containing(config.docs_repo, AWS_KEY.encode())
 
 
 def test_the_rules_identity_moves_with_a_pattern_the_version_and_gitleaks(

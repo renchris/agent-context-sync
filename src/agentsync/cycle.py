@@ -1500,6 +1500,7 @@ class _Cycle:
         self.sidecar_page: dict[str, str] = {}  # sidecar path -> its page (a hit there stubs the page)
         self._once: set[tuple[str, str]] | None = None  # ``_once_credential``
         self._published_pages: set[str] = set()  # the pages (not sidecars) that rescan added, as committed
+        self._history_hits: set[tuple[str, str]] = set()  # rescan: rewritten items whose HEAD text hits
         self.findings: list[LintFinding] = []
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
@@ -1883,6 +1884,7 @@ class _Cycle:
         a stub it matches carries the credential in the file's name, and its path is redacted
         (``_quarantine_secrets``)."""
         written = self.ok_pages | self.stub_pages
+        self._scan_rewritten_history(written)
         for out in self.manifest.iter_outputs():
             page = out.output_path
             if out.status is OutputStatus.TOMBSTONE or page in written or not (self.repo / page).is_file():
@@ -1899,6 +1901,51 @@ class _Cycle:
                         rel = f.relative_to(self.repo).as_posix()
                         self.ok_pages.add(rel)
                         self.sidecar_page[rel] = page
+
+    def _scan_rewritten_history(self, written: set[str]) -> None:
+        """Scan the committed text of the pages this run rewrote (``written``), as HEAD holds it, under the
+        rules that moved: an edit or a re-read in the run the rules moved rewrites the page, and its earlier
+        text, read under the earlier rules, is in the docs repo's history.  The paths are the pages written
+        and every path this run's changes name (a rename's earlier path included), with the text sidecars
+        HEAD holds under each page; the blobs are read into the private staging folder, never the docs
+        repo.  An item whose committed text hits is recorded in ``_history_hits``, and gets the purge when
+        its page is stubbed (``_quarantine_secrets``); one whose key the run brought in gets a stub alone."""
+        if gitops.head_sha(self.repo) is None:
+            return
+        owner: dict[str, tuple[str, str]] = {}
+        for page in sorted(written):
+            out = None if page in self.sidecar_page else self.manifest.output_by_path(page)
+            if out is not None:
+                owner[page] = (out.source_id, out.stable_id)
+        for c in self.changes:
+            for path in (c.path, c.prev_path):
+                if path:
+                    owner.setdefault(path, (c.source_id, c.stable_id))
+        if not owner:
+            return
+        tops = sorted({p.split("/", 1)[0] for p in owner})
+        listed = gitops.run_git(
+            self.repo, "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", *(f":(literal){t}" for t in tops)
+        ).stdout
+        folders = {(p[:-3] if p.endswith(".md") else p) + ".files/": p for p in owner}
+        blobs: dict[str, tuple[str, str]] = {}
+        for rel in (r for r in listed.split("\0") if r.lower().endswith(_TEXT_SIDECARS)):
+            if rel in owner:
+                blobs[rel] = owner[rel]
+            elif "/" in rel and (of := folders.get(rel.rsplit("/", 1)[0] + "/")) is not None:
+                blobs[rel] = owner[of]
+        if not blobs:
+            return
+        with tempfile.TemporaryDirectory(dir=self.staging) as tmp:
+            root = Path(tmp)
+            for rel in sorted(blobs):
+                data = gitops.file_at(self.repo, "HEAD", rel)
+                if data is not None:
+                    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (root / rel).write_bytes(data)
+            self._history_hits = {
+                blobs[h.path] for h in lints.lint_secrets(root, sorted(blobs)) if h.path in blobs
+            }
 
     def _still_credential(self, pages: Sequence[PlannedPage]) -> bool:
         """Whether the planned ``pages`` of a file held back as a credential once (and their text
@@ -4244,15 +4291,13 @@ class _Cycle:
             if pages_of and pages_of <= (self.stub_pages - self.ok_pages):
                 self._redact(sid, stable)  # already a stub: the credential is in the name
                 continue
-            prior = [
-                o
-                for o in self.manifest.outputs_for(sid, stable)
-                if o.status is OutputStatus.OK and o.output_path in self._published_pages
-            ]
+            ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
+            prior = [o for o in ok if o.output_path in self._published_pages]
+            rewritten = (sid, stable) in self._history_hits  # rewritten this run; its committed text hits
             if self._stub_credential(sid, stable):
                 stubbed.append((sid, stable))
-                if prior:  # published under the earlier rules: its text is in the docs repo's history
-                    self._published_credential(sid, stable, prior)
+                if prior or rewritten:  # published under the earlier rules: its text is in the repo's history
+                    self._published_credential(sid, stable, ok if rewritten else prior)
         stub_paths = sorted(
             o.output_path
             for sid, stable in stubbed
