@@ -2213,6 +2213,36 @@ def test_a_checkout_under_home_is_named_with_a_tilde(env: dict[str, str]) -> Non
     assert run.returncode == 0 and f"setup-prompt-compat {COMPAT}" in run.stdout, run.stdout + run.stderr
 
 
+@pytest.mark.parametrize("parent", ["Développement", "Contoso\u2019s files", "My files"])
+def test_a_tilde_command_runs_whatever_bytes_the_checkout_path_holds(
+    env: dict[str, str], parent: str
+) -> None:
+    """B13 round 5 F53: %q writes a name with a byte it finds unprintable (an accent under C, a curly
+    apostrophe) as $'..', and "~$'/...'" holds the slash inside the quotes, where bash 3.2 does not expand
+    the ~: every NEXT and re-run command of such a checkout failed. The slash stays outside the quoting."""
+    home = Path(env["HOME"])
+    (home / parent).mkdir()
+    (home / parent / "agent-context-sync").symlink_to(REPO)
+    (_cloud(env) / "OneDrive-Contoso" / "Project Alpha").mkdir(parents=True)
+    script = home / parent / "agent-context-sync" / "scripts" / "install.sh"
+    cp = subprocess.run(
+        [BASH32, str(script), "--list-folders"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    command = last_line(cp).split("then run: ", 1)[1].split(" --source-local ", 1)[0]
+    assert command.startswith("~/"), command
+    run = subprocess.run(
+        [BASH32, "-c", f"{command} --version"], capture_output=True, text=True, check=False, env=env
+    )
+    assert run.returncode == 0 and f"setup-prompt-compat {COMPAT}" in run.stdout, (command, run.stderr)
+
+
 def test_list_folders_caps_the_list_at_200(env: dict[str, str]) -> None:
     lib = _cloud(env) / "OneDrive-Contoso"
     for i in range(205):

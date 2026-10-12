@@ -545,10 +545,13 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 # This script, for the commands NEXT and re-run lines name: ~/... under this home, as the README's approval
 # rules write it (Bash(~/src/agent-context-sync/scripts/install.sh *)), else absolute. The ~ stays outside
-# %q, which would write it as \~, a path that never expands (B13 round 4 Q7).
+# %q, which would write it as \~, a path that never expands (B13 round 4 Q7), and so does the slash after it:
+# bash expands a ~ only before an unquoted /, and %q writes a name with a byte it finds unprintable (an accent
+# under C, a curly apostrophe) as $'..', which would hold the slash (B13 round 5 F53).
 SELF="$here/$(basename "${BASH_SOURCE[0]}")"
+# shellcheck disable=SC2088 # the ~ is printed, for the reader's shell to expand
 case "$SELF" in
-"$HOME"/*) SELF='~'"$(printf '%q' "${SELF#"$HOME"}")" ;;
+"$HOME"/*) SELF='~/'"$(printf '%q' "${SELF#"$HOME"/}")" ;;
 *) SELF="$(printf '%q' "$SELF")" ;;
 esac
 
