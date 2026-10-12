@@ -11262,7 +11262,8 @@ per-run status (`no end line (<state>)`), the Summary's `- install.sh:` line and
 has no end line (<state>; last failed step <step>)`; the outcome kind and step are unchanged). The bullet under
 `Runs with no end line` reads `- run <id>: started <t>, <state>; the last of its N step line(s) is <step
 (result)>, and nothing after it is logged (a step's line is written when the step ends, so a step under way has
-none)`, or `it has no step line (...)`. It never says a run reached a step: the step under way when a run stops
+none)`, or `it has no step line (...)`. (**amended 2026-10-11, §16.47 R107:** `the last of its N step lines is`
+for two or more, and `its only step line is <step (result)>` for one.) It never says a run reached a step: the step under way when a run stops
 has no line, and the run reported as having "reached launcher" was in `helpers` (v10 E1 run B1). install.log's
 format is unchanged. Rejected: an end line written for the dead run by the next run (it would invent an exit
 that `retried_runs` and the seconds total count), a line at each step's start (it doubles the step lines every

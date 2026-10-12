@@ -6037,6 +6037,25 @@ def test_argument_roles_follow_the_shape_launchd_writes() -> None:
     assert roles([]) == [] and roles([7, "--mode"]) == ["interpreter", "other"]
 
 
+def test_a_run_with_one_step_line_and_no_end_line_says_its_only_step_line(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One step line reads "its only step line is", not "the last of its 1 step line(s)" (B13 round 2
+    R107)."""
+    monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)
+    run = "20261011T100000Z-777"
+    (fake_mac["setup"] / "install.log").write_text(
+        f"2026-10-11T10:00:00Z run={run} start install.sh compat=11 commit=0123456789ab kind=checkout "
+        "source=- args=\n"
+        f"2026-10-11T10:00:00Z run={run} step=uv seconds=0 rc=0 result=skipped note=present\n",
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    inst = section(text, "Installer").split("<details>", 1)[0]
+    assert "; its only step line is uv (skipped), and nothing after it is logged (a step's line" in inst, inst
+    assert "step line(s)" not in inst
+
+
 def test_installer_lists_every_run_and_the_ones_with_no_end_line(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -6075,7 +6094,7 @@ def test_installer_lists_every_run_and_the_ones_with_no_end_line(
     assert "Runs with no end line (stopped early, or still running): 1\n" in inst
     assert (
         "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, its process is gone: killed, or the Mac "
-        "restarted; the last of its 2 step line(s) is agentsync (failed, rc 1), and nothing after it is "
+        "restarted; the last of its 2 step lines is agentsync (failed, rc 1), and nothing after it is "
         "logged (a step's line is written when the step ends, so a step under way has none)\n" in inst
     )
     assert " reached " not in inst
@@ -6125,7 +6144,7 @@ def test_a_run_with_no_end_line_says_whether_its_process_is_gone(
     assert f"run 20261010T043017Z: no end line ({state})\n" in inst
     assert (
         f"- run 20261010T043017Z (the newest run): started 2026-10-10T04:30:17Z, {state}; the last of its 3 "
-        "step line(s) is launcher (skipped), and nothing after it is logged (a step's line is written when "
+        "step lines is launcher (skipped), and nothing after it is logged (a step's line is written when "
         "the step ends, so a step under way has none)\n" in inst
     )
     assert f"- install.sh: 2 install runs; the last no end line ({state}) (uv 0s" in summary
@@ -6167,7 +6186,7 @@ def test_a_run_cut_off_in_a_step_names_the_last_step_logged(
     assert "reached launcher" not in inst and "-4243" not in inst and "-4244" not in inst
     assert (
         "- run 20261010T043017Z: started 2026-10-10T04:30:17Z, its process is gone: killed, or the Mac "
-        "restarted; the last of its 3 step line(s) is launcher (skipped), and nothing after it is logged (a "
+        "restarted; the last of its 3 step lines is launcher (skipped), and nothing after it is logged (a "
         "step's line is written when the step ends, so a step under way has none)\n" in inst
     )
     assert (

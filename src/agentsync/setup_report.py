@@ -2720,12 +2720,13 @@ def _run_list(runs: Sequence[InstallRun]) -> list[str]:
     ]
     for run in open_runs[-_RUNS_LISTED:]:
         newest = " (the newest run)" if run is runs[-1] else ""
-        logged = (
-            f"the last of its {len(run.steps)} step line(s) is {_reached(run)}, and nothing after it is "
-            "logged"
-            if run.steps
-            else "it has no step line"
-        )
+        if not run.steps:
+            logged = "it has no step line"
+        elif len(run.steps) == 1:  # "the last of its 1 step line" (B13 round 3 R107)
+            logged = f"its only step line is {_reached(run)}, and nothing after it is logged"
+        else:
+            logged = f"the last of its {len(run.steps)} step lines is {_reached(run)}"
+            logged += ", and nothing after it is logged"
         out.append(
             f"- run {run.display_id}{newest}: started {_iso(run.started)}, {_open_state(run)}; {logged} "
             "(a step's line is written when the step ends, so a step under way has none)"
