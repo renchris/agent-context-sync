@@ -83,6 +83,12 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 _LISTING_YOURS_NOTE = (
     "held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is"
 )
+# The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
+# prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's
+# doctor calls a local listing yours by the source's kind, not by the loop's waits (B13 round 5 F12, F45).
+LISTING_YOURS_REPORT_NOTE = (
+    "held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it"
+)
 
 # The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
 # macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start.

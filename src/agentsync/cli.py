@@ -1542,6 +1542,13 @@ def _report_hooks() -> setup_report.ReportHooks:
     def checks(config: Config) -> list[str]:
         results = _status_checks(config, offline=True)
         fixes[:] = [_fail_step(r) for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
+        # The report has no "end of this run": its own note (B13 round 5 F12, F45).
+        results = [
+            dataclasses.replace(r, note=doctor.LISTING_YOURS_REPORT_NOTE)
+            if r.note == doctor._LISTING_YOURS_NOTE
+            else r
+            for r in results
+        ]
         return doctor.format_results(results).splitlines()
 
     def loop_next(config: Config) -> loop.NextStep | list[str]:

@@ -7171,8 +7171,9 @@ def _yours_step() -> loop.NextStep:
         " (fix: each WAITING ON YOU line about project-x says what stops the listing and what to do: "
         "another sync does not clear it)",
         " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is)",
+        " (held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)",
     ],
-    ids=["by-hand", "install.sh"],
+    ids=["by-hand", "install.sh", "report"],
 )
 def test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected(
     fake_mac: dict[str, Path], tail: str
@@ -7201,6 +7202,33 @@ def test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected(
         "WAITING ON YOU) · unexpected 4: heartbeat.project-y warn, heartbeat.project-z warn, "
         "heartbeat.project-w FAIL, launchd.poll warn"
     ) in section(text, "Summary")
+
+
+def test_the_report_doctor_never_points_at_the_end_of_its_run(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F12, F45: install.sh's doctor note points at the WAITING ON YOU lines at the end of its
+    run; the report has no such end (``--report-only`` prints no wait), so its Doctor section gets its own
+    note, which points at the Summary's Loop line and promises no line. Other notes pass through."""
+    held = doctor.CheckResult(
+        "heartbeat.project-x",
+        False,
+        "enumeration incomplete for 4 consecutive passes (deletions held)",
+        doctor.Severity.WARN,
+        note=doctor._LISTING_YOURS_NOTE,
+    )
+    agent = doctor.CheckResult(
+        "launchd.poll", False, "every run exits 64", doctor.Severity.WARN, note=doctor._AGENT_YOURS_NOTE
+    )
+    monkeypatch.setattr(cli, "_status_checks", lambda config, offline: [held, agent])
+    lines = [" ".join(ln.split()) for ln in cli._report_hooks().doctor(load_config(fake_mac["config"]))]
+    assert lines == [
+        "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes (deletions held) "
+        f"({doctor.LISTING_YOURS_REPORT_NOTE})",
+        f"[warn] launchd.poll — every run exits 64 ({doctor._AGENT_YOURS_NOTE})",
+    ]
+    assert not any("end of this run" in line for line in lines)
+    assert "(" not in doctor.LISTING_YOURS_REPORT_NOTE, "the report's fix parser strips one level"
 
 
 def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
