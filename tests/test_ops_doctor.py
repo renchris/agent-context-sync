@@ -1531,7 +1531,23 @@ def _beat(cfg: Config, **kw: object) -> None:
 def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     name = "heartbeat.local-fixture"
     _beat(sample_config)
-    assert by_name(run_checks(sample_config))[name].ok
+    r = by_name(run_checks(sample_config))[name]
+    assert r.ok and "incomplete" not in r.detail
+
+    # B13 round 4 Q14/Q35: below the threshold the line stays ok, but an incomplete pass is named; it sets
+    # last_success_at too, so a bare "last success" read as a clean pass beside a WAITING ON YOU line.
+    sample_config.state_paths.heartbeat.unlink()
+    for n in (1, 2):
+        _beat(sample_config, enumeration_complete=False)
+        r = by_name(run_checks(sample_config))[name]
+        assert r.ok and r.severity is Severity.INFO and r.fix is None
+        assert r.detail.startswith("last success ")
+        assert r.detail.endswith(
+            f"; listing incomplete for the last {n} pass(es), deletions held, a warn after 3"
+        )
+    _beat(sample_config)
+    r = by_name(run_checks(sample_config))[name]
+    assert r.ok and "incomplete" not in r.detail
 
     old = (datetime.now(UTC) - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     sample_config.state_paths.heartbeat.unlink()

@@ -1672,7 +1672,16 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
             else:
                 out.append(_bad(name, detail, Severity.WARN, fix=_incomplete_fix(src, yours=yours)))
         else:
-            out.append(_ok(name, f"last success {last} ({age}s ago, {entry.get('pass_kind')})"))
+            detail = f"last success {last} ({age}s ago, {entry.get('pass_kind')})"
+            # Below the threshold the line stays ok (one incomplete pass is normal for an inbox while a file
+            # is still being written), but it says what the heartbeat holds: an incomplete pass sets
+            # last_success_at too, and the loop may already print a WAITING ON YOU line about this source.
+            if isinstance(incomplete, int) and incomplete > 0:
+                detail += (
+                    f"; listing incomplete for the last {incomplete} pass(es), deletions held, "
+                    f"a warn after {_INCOMPLETE_RUNS}"
+                )
+            out.append(_ok(name, detail))
     return out
 
 
