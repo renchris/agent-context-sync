@@ -5585,6 +5585,11 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         split = r.facts.first_sync_unreadable
         if split is not None and split[0] == converted and split[1]:
             reread += f" (of the converted: {split[1]} unreadable, {split[2]} failed)"
+            # Name the file the split came from: install.log's note carries none (B13 round 4 Q1). A borrowed
+            # run is matched to install.out's last sync line only by an equal converted count: say which line
+            if source.startswith("install.log"):
+                line = "install.out's last sync line" if borrowed else "install.out"
+                source += f"; the unreadable/failed split: {line}"
         parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline

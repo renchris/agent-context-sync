@@ -2717,7 +2717,9 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         (  # §16.45 R2: install.log's note has no breakdown; install.out's line of the same sync does
             "note=converted-3-deferred-0",
             "first sync: converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)",
-            "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed) (install.log)",
+            # B13 round 4 Q1: the source tag names install.out for the split, which install.log's note lacks
+            "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed) "
+            "(install.log; the unreadable/failed split: install.out)",
         ),
     ):
         v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done {note}".rstrip())
