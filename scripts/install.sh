@@ -1232,7 +1232,7 @@ fallback_body() {
 	else
 		say "- python3: only the /usr/bin stub (no developer tools; not run)"
 	fi
-	[ ! -d "$HOME/.local/share/uv/python" ] || say "- uv-managed Pythons: $(find "$HOME/.local/share/uv/python" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+	[ ! -d "$HOME/.local/share/uv/python" ] || say "- uv-managed Pythons: $(find "$HOME/.local/share/uv/python" -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
 	v="$(report_agentsync)"
 	say "- agentsync: ${v:-not installed}"
 	v=""

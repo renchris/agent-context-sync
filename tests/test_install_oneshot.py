@@ -809,6 +809,19 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
         assert full_name not in text
 
 
+def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[str, str]) -> None:
+    """uv keeps a hidden ``.temp`` folder, a ``.lock`` file and minor-version links beside its Pythons: one
+    installed Python reads 1, not 2 (B13 round 2 R5)."""
+    store = Path(env["HOME"]) / ".local" / "share" / "uv" / "python"
+    (store / "cpython-3.11.17-macos-aarch64-none").mkdir(parents=True)
+    (store / ".temp").mkdir()
+    (store / ".lock").write_text("")
+    (store / "cpython-3.11-macos-aarch64-none").symlink_to(store / "cpython-3.11.17-macos-aarch64-none")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert "- uv-managed Pythons: 1\n" in report_path(env).read_text()
+
+
 def test_the_shell_report_redacts_a_full_name_written_last_comma_first(
     env: dict[str, str], folder: Path
 ) -> None:
