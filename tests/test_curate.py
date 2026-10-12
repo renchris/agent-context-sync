@@ -1603,14 +1603,15 @@ def test_the_citation_lint_is_never_part_of_generate_depends_or_the_checkpoint(l
 def test_the_citation_lint_survives_hostile_pages_and_units(layout: DocsLayout, tmp_path: Path) -> None:
     """Linear time on a 100 KB row or line; no read of a FIFO or through a symlink; a source YAML cannot
     parse is skipped; a bool is no unit index; an rN that does not exist has no fallback; only a real NOTE
-    line continues a state."""
+    line continues a state.  Linear time is measured in this process's CPU time, which load stretches far
+    less than the wall clock, so the hostile-input checks run on every Mac (B13 round 4 Q82)."""
     entries = recording(layout)
-    start = time.monotonic()
+    start = time.process_time()
     assert set(cite_codes(layout, PAGE.replace(D1, D1 + "\n| D2 | " + '"|' * 50_000 + " |"), entries)) == {
         "CITE-MISSING"
     }
     assert cite_codes(layout, PAGE + "\n" + "Line. " * 17_000 + "\n", entries) == []
-    assert time.monotonic() - start < 1
+    assert time.process_time() - start < 1
     looped = "mirror/onedrive/recordings/looped.md"
     (layout.root / looped).write_text("---\npart: &a [*a]\n---\nbody\n", encoding="utf-8")
     assert cite_codes(layout, PAGE, [*entries, (looped, H, "corroborating")]) == []

@@ -2894,7 +2894,7 @@ V8_BUSY_LINES = (
 and a step 2 error logged after install.sh exited 0, which is agent friction (v6 and v7 alike)."""
 
 
-@pytest.mark.usefixtures("clean_doctor")
+@pytest.mark.usefixtures("clean_doctor", "roomy_budget")
 def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_the_copy(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -7184,6 +7184,7 @@ def test_no_yours_group_when_the_loop_line_is_not_read(
     assert "unexpected 1: heartbeat.project-x warn" in summary
 
 
+@pytest.mark.usefixtures("roomy_budget")
 @pytest.mark.parametrize("hint", ["", "1"], ids=["by-hand", "install.sh"])
 def test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hint: str

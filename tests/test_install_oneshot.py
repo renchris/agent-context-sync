@@ -3691,10 +3691,13 @@ def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
     assert (friction_path(env).stat().st_mode & 0o777) == 0o600
 
 
+@pytest.mark.timing
 def test_friction_options_are_fast(env: dict[str, str]) -> None:
-    """The friction options do almost nothing: measured in the CPU time bash and its children use, which a
-    loaded Mac does not stretch as it stretches the wall clock (B13 round 2 R98). That they start no uv,
-    agentsync or launchctl is test_friction_options_touch_nothing_else's."""
+    """The friction options do almost nothing: measured in the CPU time bash and its children use (B13 round
+    2 R98), which a loaded Mac stretches less than the wall clock but still stretches: at 20 to 70 runnable
+    processes per core it measured 0.27 to 0.43 s against the 0.2 s bound, so it is a ``timing`` test (B13
+    round 4 Q59). That they start no uv, agentsync or launchctl is
+    test_friction_options_touch_nothing_else's."""
     for argv in (["--log-start", started("a")], ["--log", "2", "approval", "x", "-"]):
         best = min(_cpu(env, argv) for _ in range(3))
         assert best < 0.2, f"{argv[0]} used {best:.3f}s of CPU"

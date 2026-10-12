@@ -972,13 +972,15 @@ def test_a_held_root_read_ends_in_the_same_click_allow_pass(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Field N8 review: the root's own metadata reads (lstat, volume UUID) share the listings' time limit, so
-    a prompt holding them ends in the click-Allow pass instead of a sync that never returns."""
+    a prompt holding them ends in the click-Allow pass instead of a sync that never returns.  The read is held
+    for two minutes and the sync must end within one: a gap no loaded Mac closes (B13 round 4 Q82; held for
+    5 s against a 4 s bound, it failed at 50 to 70 runnable processes per core)."""
     assert run(sample_config).commit_sha is not None
     release = threading.Event()
     real = al.volume_uuid
 
     def held(path: Path) -> str:
-        release.wait(5.0)
+        release.wait(120.0)
         return real(path)
 
     monkeypatch.setattr(al, "volume_uuid", held)
@@ -988,7 +990,7 @@ def test_a_held_root_read_ends_in_the_same_click_allow_pass(
         report = run(sample_config)
     finally:
         release.set()
-    assert time.monotonic() - started < 4.0
+    assert time.monotonic() - started < 60.0, "the sync waited out the held read"
     src = report.sources[0]
     assert not src.enumeration_complete and any("click Allow" in a for a in src.alarms), src.alarms
     assert not any(c.op.value == "D" for c in report.changes), report.changes
