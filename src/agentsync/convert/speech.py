@@ -38,7 +38,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -457,16 +457,76 @@ def _build_env() -> dict[str, str]:
     return {**ocr._env(), **_shell((*_PROXY_VARS, *_CA_VARS))}
 
 
-def _curl_env() -> dict[str, str]:
-    """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl.  A shell that
-    trusts the inspecting CA through git alone (GIT_SSL_CAINFO, which curl ignores) has that bundle passed
-    to curl as CURL_CA_BUNDLE, unless the shell names a bundle of curl's own: the seed's curl then trusts
-    what step 1's git trusts (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an empty file fails with
-    exit 77, at /etc/ssl/cert.pem it fetches)."""
+_GIT_URL = "https://github.com"
+"""The host whose settings :func:`_git_config` reads: FluidAudio's clone and its binary artifact's download
+both start there."""
+_GIT_SETTINGS = ("http.sslcainfo", "http.sslcapath", "http.sslbackend", "http.proxy")
+"""The git settings the seed's curl follows, as ``git config`` names them.  http.sslVerify is never read:
+verification is never turned off."""
+
+
+def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
+    """git's own values of :data:`_GIT_SETTINGS` for :data:`_GIT_URL`, as the build's git reads its config
+    files: one ``git config --type=path --get-urlmatch http <url>``, so a url-scoped
+    ``[http "https://github.com"]`` value counts and a ``~`` path is expanded (``--type=path`` changes no
+    value that does not start with ``~``; measured with Xcode's git 2.50.1).  Nothing set (git exits 1), a
+    git that does not run and the build's time running out all read as nothing set."""
+    left = deadline - _clock()
+    if left <= 0:
+        return {}
+    try:
+        cp = subprocess.run(
+            [git, "config", "--type=path", "--get-urlmatch", "http", _GIT_URL],
+            cwd=cwd,
+            env=_build_env(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=min(left, ocr._TOOL_TIMEOUT_S),
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if cp.returncode != 0:
+        return {}
+    found: dict[str, str] = {}
+    for line in cp.stdout.decode("utf-8", errors="replace").splitlines():
+        key, _, value = line.partition(" ")
+        if key.lower() in _GIT_SETTINGS and value.strip():
+            found[key.lower()] = value.strip()
+    return found
+
+
+def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
+    """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl, which trusts and
+    routes as step 1's git does, from the environment and from git's config files (``git_config``, from
+    :func:`_git_config`), with git's precedence:
+
+    * The bundle git trusts (GIT_SSL_CAINFO, else http.sslCAInfo; curl reads neither) becomes CURL_CA_BUNDLE,
+      unless the shell names a bundle of curl's own (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an
+      empty file fails with exit 77, at /etc/ssl/cert.pem it fetches).
+    * The CA folder git trusts (GIT_SSL_CAPATH, else http.sslCAPath) becomes SSL_CERT_DIR, unless the shell
+      sets one.  A CA folder adds to the bundle curl uses (measured with /usr/bin/curl 8.7.1 and LibreSSL: a
+      server signed by a CA in a hashed folder fetched with SSL_CERT_DIR at that folder beside
+      /etc/ssl/cert.pem, and exited 60 with GIT_SSL_CAPATH alone; github.com still fetched with SSL_CERT_DIR
+      at that folder or at one that does not exist).  Under CURL_SSL_BACKEND=secure-transport curl ignores
+      it, as before.
+    * http.sslBackend becomes CURL_SSL_BACKEND unless the shell sets it.
+    * git's http.proxy wins over the environment's proxy, as it does in git, so it becomes HTTPS_PROXY and
+      https_proxy (curl reads the lower-case one first); in the environment, not on argv, where ``ps`` would
+      show a proxy's credentials."""
     env = {**_build_env(), **_shell(_CURL_CA_VARS)}
-    cainfo = env.get("GIT_SSL_CAINFO")
+    cainfo = env.get("GIT_SSL_CAINFO") or git_config.get("http.sslcainfo")
     if cainfo and "CURL_CA_BUNDLE" not in env and "SSL_CERT_FILE" not in env:
         env["CURL_CA_BUNDLE"] = cainfo
+    capath = env.get("GIT_SSL_CAPATH") or git_config.get("http.sslcapath")
+    if capath and "SSL_CERT_DIR" not in env:
+        env["SSL_CERT_DIR"] = capath
+    backend = git_config.get("http.sslbackend")
+    if backend and "CURL_SSL_BACKEND" not in env:
+        env["CURL_SSL_BACKEND"] = backend
+    proxy = git_config.get("http.proxy")
+    if proxy:
+        env["HTTPS_PROXY"] = env["https_proxy"] = proxy
     return env
 
 
@@ -515,9 +575,10 @@ def _artifact_name(url: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "_", url)
 
 
-def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
-    """Behind a proxy set in the environment, put FluidAudio's binary artifact where SwiftPM looks before it
-    downloads (it then prints "Fetched ... from cache"): curl, which reads the proxy and CA variables, fetches
+def _seed(artifacts: Path, *, git: str, cwd: Path, deadline: float) -> None:
+    """Behind a proxy set in the environment or in git's config (``git``, the build's), put FluidAudio's
+    binary artifact where SwiftPM looks before it downloads (it then prints "Fetched ... from cache"): curl,
+    which trusts and routes as git does (:func:`_curl_env`), fetches
     :data:`NEMO_URL` to a temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
     place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
     the checksum again either way.  A run stopped mid-fetch by SIGTERM or SIGKILL never reaches the
@@ -527,7 +588,10 @@ def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
             with contextlib.suppress(OSError):
                 stale.unlink()
     final = artifacts / _artifact_name(NEMO_URL)
-    if not _shell(_PROXIES) or final.exists():
+    if final.exists():
+        return
+    git_config = _git_config(git, cwd=cwd, deadline=deadline)
+    if not _shell(_PROXIES) and "http.proxy" not in git_config:
         return
     try:
         artifacts.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -542,7 +606,7 @@ def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
             cwd=cwd,
             deadline=deadline,
             what="curl",
-            env=_curl_env(),
+            env=_curl_env(git_config),
         )
         if _file_sha(temporary) != NEMO_SHA256:
             log.info("the NemoTextProcessing artifact fetched through the proxy has the wrong checksum")
@@ -598,7 +662,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         pin = tree / "Sources" / _TARGET / "Pin.swift"
         pin.unlink(missing_ok=True)
         log.info("building the on-device %s (FluidAudio from github.com; up to 20 minutes)", kind.name)
-        _seed(spm / "cache" / "artifacts", cwd=tree, deadline=deadline)
+        _seed(spm / "cache" / "artifacts", git=git, cwd=tree, deadline=deadline)
         _step(
             [swift, "package", *places, "resolve"], cwd=tree, deadline=deadline, what="swift package resolve"
         )

@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -156,6 +157,7 @@ def test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everythi
     ]
     checkout = folder / "build" / ".build" / "checkouts" / "FluidAudio"
     assert lines_of(tools / "git.calls") == [
+        "config --type=path --get-urlmatch http https://github.com",  # the seed: no proxy in git's config
         f"-C {checkout} rev-parse HEAD",
         f"-C {checkout} merge-base --is-ancestor {speech.FLUIDAUDIO_FLOOR} {FAKE_PIN}",
     ]
@@ -757,6 +759,7 @@ def test_the_seeds_curl_trusts_the_shells_ca_and_swiftpm_and_git_never_see_curls
     for key, value in {**CURL_CA, **SHELL_CA, "GIT_SSL_NO_VERIFY": "1"}.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("SSL_CERT_DIR", "")
+    monkeypatch.delenv("GIT_SSL_CAPATH")  # else it is curl's SSL_CERT_DIR (B13 Q79)
     cache = tmp_path / "cache"
     assert speech.build(cache).is_file()
     seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
@@ -800,6 +803,106 @@ def test_a_ca_only_git_trusts_is_the_seeds_curl_bundle_unless_curl_has_its_own(
     for tool in ("swift", "git"):
         tool_seen = {ln.split("=", 1)[0] for ln in lines_of(tools / f"{tool}.env")}
         assert "CURL_CA_BUNDLE" not in tool_seen, tool
+
+
+@pytest.mark.parametrize(
+    ("own", "folder"),
+    [
+        ({}, "/Users/contoso/certs"),
+        ({"SSL_CERT_DIR": "/Users/contoso/curl-certs"}, "/Users/contoso/curl-certs"),
+    ],
+)
+def test_a_ca_folder_only_git_trusts_is_the_seeds_curl_folder_unless_curl_has_its_own(
+    curl: Path,
+    tools: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    own: dict[str, str],
+    folder: str,
+) -> None:
+    """B13 Q79: curl ignores GIT_SSL_CAPATH (measured, exit 60), so a shell that trusts the inspecting CA
+    through a hashed CA folder given only to git cloned FluidAudio and failed the seed's verification.  curl
+    gets that folder as SSL_CERT_DIR, which adds to its bundle, unless the shell sets one; swift and git
+    never see SSL_CERT_DIR."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    monkeypatch.setenv("GIT_SSL_CAPATH", "/Users/contoso/certs")
+    for key, value in own.items():
+        monkeypatch.setenv(key, value)
+    assert speech.build(tmp_path / "cache").is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    assert seen.get("SSL_CERT_DIR") == folder
+    for tool in ("swift", "git"):
+        tool_seen = {ln.split("=", 1)[0] for ln in lines_of(tools / f"{tool}.env")}
+        assert "SSL_CERT_DIR" not in tool_seen, tool
+
+
+def real_git_config(tools: Path) -> None:
+    """The stub git answers ``config`` as the real git does, from HOME's .gitconfig."""
+    real = shutil.which("git")
+    assert real is not None
+    answer = f'case "$3" in rev-parse) echo {FAKE_PIN} ;; merge-base) exit 0 ;; esac'  # as git_answering
+    script(tools / "git", f'if [ "$1" = config ]; then exec {real} "$@"; fi\n{answer}')
+
+
+def test_the_seed_trusts_and_routes_as_gits_own_config_does(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 Q52: git reads its CA, CA folder, TLS backend and proxy from its config files as well as the
+    environment, and SwiftPM's git clones with them; the seed's curl reads none of them.  So a proxy kept only
+    in ~/.gitconfig fetched nothing, and a CA kept only there failed the seed's verification.  The seed now
+    reads git's settings for github.com (url-scoped ones count, ``~`` expanded) and gives them to curl with
+    git's precedence: the config's proxy wins over the environment's, in curl's environment, never argv."""
+    home = Path.home()
+    (home / ".gitconfig").write_text(
+        "[http]\n\tsslCAInfo = ~/contoso-ca.pem\n\tsslCAPath = ~/contoso-certs\n\tsslBackend = openssl\n"
+        '[http "https://github.com"]\n\tproxy = http://seed:secret@proxy.contoso.example:3128\n'
+        '[http "https://intranet.contoso.example"]\n\tproxy = http://wrong.contoso.example:1\n'
+    )
+    real_git_config(tools)
+    monkeypatch.setenv("https_proxy", "http://env-proxy.contoso.example:8080")
+    cache = tmp_path / "cache"
+    assert speech.build(cache).is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    proxy = "http://seed:secret@proxy.contoso.example:3128"
+    assert (seen.get("HTTPS_PROXY"), seen.get("https_proxy")) == (proxy, proxy), "git's config wins"
+    assert seen.get("CURL_CA_BUNDLE") == f"{home}/contoso-ca.pem"
+    assert seen.get("SSL_CERT_DIR") == f"{home}/contoso-certs"
+    assert seen.get("CURL_SSL_BACKEND") == "openssl"
+    [call] = lines_of(curl.with_name("curl.calls"))
+    assert "secret" not in call, "the proxy's credentials are not on argv"
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    assert (artifacts / NEMO_CACHE_NAME).read_bytes() == PAYLOAD
+
+
+def test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the_configs(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 Q52: with no proxy in the environment the seed used to fetch nothing; a proxy url-scoped to
+    github.com in git's config is enough now.  The shell's GIT_SSL_CAINFO wins over http.sslCAInfo and the
+    shell's CURL_SSL_BACKEND over http.sslBackend, as in git."""
+    (Path.home() / ".gitconfig").write_text(
+        "[http]\n\tsslCAInfo = ~/contoso-ca.pem\n\tsslBackend = openssl\n"
+        '[http "https://github.com"]\n\tproxy = proxy.contoso.example:3128\n'
+    )
+    real_git_config(tools)
+    monkeypatch.setenv("GIT_SSL_CAINFO", SHELL_CA["GIT_SSL_CAINFO"])
+    monkeypatch.setenv("CURL_SSL_BACKEND", "secure-transport")
+    assert speech.build(tmp_path / "cache").is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    assert seen.get("HTTPS_PROXY") == "proxy.contoso.example:3128"
+    assert seen.get("CURL_CA_BUNDLE") == SHELL_CA["GIT_SSL_CAINFO"]
+    assert seen.get("CURL_SSL_BACKEND") == "secure-transport"
+    assert "SSL_CERT_DIR" not in seen
+
+
+def test_without_a_proxy_in_the_shell_or_gits_config_nothing_is_fetched(
+    curl: Path, tools: Path, tmp_path: Path
+) -> None:
+    """A proxy git keeps for another host only is no proxy for github.com."""
+    (Path.home() / ".gitconfig").write_text('[http "https://intranet.contoso.example"]\n\tproxy = p:1\n')
+    real_git_config(tools)
+    assert speech.build(tmp_path / "cache").is_file()
+    assert not curl.with_name("curl.calls").exists()
 
 
 @pytest.mark.parametrize("state", ["fetches", "no proxy", "already seeded"])
