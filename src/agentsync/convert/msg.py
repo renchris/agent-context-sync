@@ -4,7 +4,8 @@ The page has the shape of an ``.eml`` page (``eml.py``): the header table, the p
 body through pandoc -> gfm), then the attachments listed by name, type, size and sha256, never converted.
 From is the sent-representing party (what an ``.eml``'s From header holds), else the sender.
 A rich-text-only body is not read (no RTF decompressor is shipped): the page says so.  An S/MIME-encrypted
-or IRM-protected message is UNREADABLE; a file that is not an Outlook message is UNREADABLE (``not-msg``).
+or IRM-protected message is UNREADABLE; a file that is not an Outlook message is UNREADABLE (``not-msg``),
+and a compound file that cannot be read as one is UNREADABLE (``damaged-msg``). A MemoryError fails the pass.
 
 Never registered under a ``[policy]`` label rule (plan D8, as for images): a ``.msg`` can carry a sensitivity
 label in a named MAPI property that the policy screen does not read, so a rule fails closed.
@@ -15,6 +16,7 @@ from __future__ import annotations
 import codecs
 import datetime as dt
 import hashlib
+import logging
 import struct
 import unicodedata
 from collections.abc import Mapping
@@ -39,8 +41,11 @@ from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 
-_EMITTER_VERSION = "1.0.0"
+log = logging.getLogger(__name__)
+
+_EMITTER_VERSION = "1.0.1"
 NOT_MSG_REASON = "not-msg (not an Outlook message)"
+DAMAGED_MSG_REASON = "damaged-msg (a compound file that cannot be read as an Outlook message)"
 _PROPS = "__properties_version1.0"
 _SUBSTG = "__substg1.0_"
 _ATTACH = "__attach_version1.0_#"
@@ -216,14 +221,18 @@ class MsgConverter:
             raise UnreadableSourceError(NOT_MSG_REASON)
         try:
             ole = olefile.OleFileIO(str(src))
+        except MemoryError:  # not a fact about the file: the pass fails and the file is read again
+            raise
         except Exception as exc:  # olefile raises OSError, OleFileError, struct.error, IndexError ...
-            raise UnreadableSourceError(f"{NOT_MSG_REASON}: {type(exc).__name__}") from exc
+            log.info("%s: the Outlook file cannot be read: %s", name, type(exc).__name__)
+            raise UnreadableSourceError(DAMAGED_MSG_REASON) from exc
         try:
             return self._convert(ole)
-        except (UnreadableSourceError, ConversionError):
+        except (UnreadableSourceError, ConversionError, MemoryError):
             raise
         except Exception as exc:  # a broken chain or directory inside a valid header: settled, not retried
-            raise UnreadableSourceError(f"{NOT_MSG_REASON}: {type(exc).__name__}") from exc
+            log.info("%s: the Outlook file cannot be read: %s", name, type(exc).__name__)
+            raise UnreadableSourceError(DAMAGED_MSG_REASON) from exc
         finally:
             ole.close()
 

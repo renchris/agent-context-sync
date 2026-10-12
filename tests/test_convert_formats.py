@@ -36,6 +36,7 @@ from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, convert_file, image, ocr
 from agentsync.convert import diagram as diagram_mod
+from agentsync.convert import msg as msg_mod
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import pptx as pptx_mod
@@ -3746,14 +3747,66 @@ def test_signed_msg_is_read(tmp_path: Path) -> None:
     "data",
     [
         b"From: someone\n\nnot a compound file\n",  # an .eml saved under a .msg name
-        bytes.fromhex("D0CF11E0A1B11AE1") + b"\0" * 504,  # a compound-file header and nothing behind it
         cfb_bytes({"WordDocument": b"\0" * 64}),  # a compound file that is not a message (.doc renamed)
     ],
-    ids=["an eml", "a bare header", "a word document"],
+    ids=["an eml", "a word document"],
 )
 def test_not_a_message_is_a_settled_unreadable_stub(tmp_path: Path, data: bytes) -> None:
     result = _msg_result(tmp_path, data)
-    assert result.status is ConversionStatus.UNREADABLE and (result.reason or "").startswith(NOT_MSG_REASON)
+    assert result.status is ConversionStatus.UNREADABLE and result.reason == NOT_MSG_REASON
+
+
+@pytest.mark.parametrize(
+    "zeros",
+    [504, 600],  # a compound-file header and nothing behind it; one with a part-sector tail
+    ids=["a bare header", "a header and a ragged tail"],
+)
+def test_a_compound_file_olefile_cannot_open_is_damaged_not_a_python_class(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, zeros: int
+) -> None:
+    """A file with the compound-file magic that olefile cannot open is of unknown type, so it is not called
+    "not an Outlook message"; the exception's class goes to the log, never into the person-facing reason."""
+    caplog.set_level(logging.DEBUG, logger="agentsync.convert.msg")
+    result = _msg_result(tmp_path, bytes.fromhex("D0CF11E0A1B11AE1") + b"\0" * zeros)
+    assert result.status is ConversionStatus.UNREADABLE and result.reason == msg_mod.DAMAGED_MSG_REASON
+    assert "Error" not in (result.reason or "")
+    logged = [r.getMessage() for r in caplog.records if r.name == "agentsync.convert.msg"]
+    assert logged == ["x.msg: the Outlook file cannot be read: ValueError"]
+
+
+def test_a_message_whose_body_cannot_be_read_is_damaged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Past the root properties stream the file is an Outlook message: a broken chain inside it is damage."""
+
+    def broken(*_args: object) -> None:
+        raise struct.error("unpack requires a buffer of 8 bytes")
+
+    monkeypatch.setattr(MsgConverter, "_attachments", broken)
+    caplog.set_level(logging.DEBUG, logger="agentsync.convert.msg")
+    result = _msg_result(tmp_path, msg_bytes())
+    assert result.status is ConversionStatus.UNREADABLE and result.reason == msg_mod.DAMAGED_MSG_REASON
+    logged = [r.getMessage() for r in caplog.records if r.name == "agentsync.convert.msg"]
+    assert logged == ["x.msg: the Outlook file cannot be read: error"]
+
+
+@pytest.mark.parametrize("where", ["open", "read"])
+def test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """MemoryError is not a fact about the file: FAILED, nothing cached, read again on a later pass."""
+
+    def no_memory(*_args: object, **_kwargs: object) -> None:
+        raise MemoryError
+
+    if where == "open":
+        monkeypatch.setattr(msg_mod.olefile, "OleFileIO", no_memory)
+    else:
+        monkeypatch.setattr(MsgConverter, "_convert", no_memory)
+    put: list[ConversionResult] = []
+    monkeypatch.setattr(ConverterCache, "put", lambda _self, result: put.append(result) or True)
+    result = _msg_result(tmp_path, msg_bytes())
+    assert result.status is ConversionStatus.FAILED and not put
 
 
 def test_a_msg_with_an_encrypted_office_attachment_is_encrypted_office(tmp_path: Path) -> None:

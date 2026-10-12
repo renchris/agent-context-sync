@@ -5388,6 +5388,7 @@ REASONS = {
     policy.NOT_OOXML_REASON: "not the type its name says",
     msg.NOT_MSG_REASON: "not the type its name says",
     f"{msg.NOT_MSG_REASON}: OleFileError": "not the type its name says",
+    msg.DAMAGED_MSG_REASON: "damaged",
     cycle.HYDRATION_REFUSED: "download refused by the OS",
     None: "no reason recorded",
     "  ": "no reason recorded",

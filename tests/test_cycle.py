@@ -2341,7 +2341,7 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     open_config = config_with(tmp_path, local_source_dir)
     assert run(open_config).exit_code == 0
     fm, body = _mirror_page(open_config, KICKOFF_MSG)
-    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.0+olefile-")
+    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.1+olefile-")
     assert fm["source_title"] == "Contoso kickoff recap" and "Renewal is in March." in body
     labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
     late = "projects/Contoso renewal.msg"

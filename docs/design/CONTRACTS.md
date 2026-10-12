@@ -8121,7 +8121,11 @@ decides before a word inside the text does.
 | `no text in image`, `image not readable` | the image stubs of §16.26 |
 | `encrypted` | holds `encrypted`, `password-protected` or `IRM-protected` |
 | `empty`, `not the type its name says` | `empty-output`, `empty PDF`; `not-ooxml` |
+| `damaged` | starts `damaged-msg` (`msg.DAMAGED_MSG_REASON`), tried before `not-msg` |
 | `no reason recorded`, `other` | no text; anything else |
+
+Amended 2026-10-11 by §16.48 (R36): the class `damaged`, between `empty` and `not the type its name says` in
+`QUARANTINE_CLASSES`.
 
 **OCR.**
 
@@ -11920,14 +11924,21 @@ type the screen reads is the storage's own 0x370E tag as `Message.get_content_ty
 cut at the first `;`, stripped, lower case. It is read for every attachment storage, also one listed as
 `application/vnd.ms-outlook` because it is marked method 5. No `smime-type` parameter is read from a
 `.msg`, so a PKCS #7 part outside the signed class fails closed. A file that
-does not start with the compound-file magic, that olefile cannot open, that has no root properties
-stream (a `.doc` renamed), or whose reading raises anything, is `NOT_MSG_REASON` (`not-msg (not an Outlook
-message)`, then `: <exception type>` when there was one). `setup_report.quarantine_class` reports
-`not-msg` as `not the type its name says`. `policy.sniff_container` scans the whole compound file, never a
+does not start with the compound-file magic, or that has no root properties stream (a `.doc` renamed), is
+`NOT_MSG_REASON` (`not-msg (not an Outlook message)`). A compound file that olefile cannot open, or whose
+reading past the root properties stream raises, is `DAMAGED_MSG_REASON` (`damaged-msg (a compound file that
+cannot be read as an Outlook message)`); the exception's class is logged at info, never written into the
+reason. `MemoryError` is not a fact about the file: it fails the pass (FAILED, not cached, read again) and
+is never either reason. `setup_report.quarantine_class` reports `not-msg` as `not the type its name says`
+and `damaged-msg` as `damaged`. `policy.sniff_container` scans the whole compound file, never a
 name in it, so a `.msg` that carries an encrypted Office attachment (or the stream name `EncryptedPackage`
 anywhere in its bytes, a body that quotes it included) is `encrypted-office` as a whole, before the
 converter runs; the same attachment in an `.eml` is base64 and is only listed. That screen is shared by
 every compound format and is not narrowed for `.msg`.
+
+Amended 2026-10-11 by §16.48 (R36, R55): a compound file that cannot be read is `damaged-msg` with no
+exception type in it, not `not-msg: <exception type>`; `MemoryError` fails the pass instead of settling as
+`not-msg`.
 
 `.msg` stays out of `slug.STRIP_SUFFIXES`: the page keeps the path of the stub it replaces. An existing
 `no converter for .msg` stub becomes a page with no operator step: on this Mac through the re-read pass
@@ -11938,12 +11949,16 @@ built: a `.msg` label reader, a compressed-RTF reader, and opening attached mess
 olefile (`olefile>=0.47,<1`, locked at 0.47) is pure Python with no dependency of its own: BSD-2-Clause,
 with the PIL licence (HPND) for the parts taken from PIL's OleFileIO, both permissive. It logs nothing
 unless asked. Its wheel also installs a Python 2 `olefile/olefile2.py` and a top-level `OleFileIO_PL`
-shim; neither is imported. Version: `1.0.0+olefile-<v>+python-<v>+pandoc-<v>`; options as `eml-stdlib`.
+shim; neither is imported. Version: `1.0.1+olefile-<v>+python-<v>+pandoc-<v>`; options as `eml-stdlib`.
+
+Amended 2026-10-11 by §16.48 (R36): the emitter version is 1.0.1 (was 1.0.0), so a cached `not-msg: <exception
+type>` result is read again and takes the new reason.
 
 ##### `agentsync.convert.msg` — `src/agentsync/convert/msg.py` — owner: **convert**
 
 ```python
 NOT_MSG_REASON = "not-msg (not an Outlook message)"
+DAMAGED_MSG_REASON = "damaged-msg (a compound file that cannot be read as an Outlook message)"
 
 class MsgConverter:
     converter_id = "msg-olefile"
@@ -11958,13 +11973,16 @@ class MsgConverter:
 Tests: `tests/test_convert_formats.py` (headers, body and the four kinds of attachment; From for a shared
 mailbox; an HTML-only and a rich-text-only body; a narrow string in a code page Python does not name;
 each protected kind, a type that carries a parameter and one on a method-5 storage, and a signed message
-read; three files that are not messages; an encrypted Office
-attachment; equal output on a rebuild; the stub under each label rule), `tests/test_convert_core.py` (the
+read; two files that are not messages; three damaged ones; a MemoryError at the open and the read; an
+encrypted Office attachment; equal output on a rebuild; the stub under each label rule), `tests/test_convert_core.py` (the
 route set, the counts, no `.msg` converter under a rule), `tests/test_cycle.py` (a page becomes the stub
 under a rule with no purge; a stub from before the converter is read once), `tests/test_setup_report.py`
 (the reason class) and `tests/test_convert_determinism.py`. `cfb_bytes` and `msg_bytes` in
 `tests/test_convert_builders.py` write a compound file and a message from nothing; no binary file is
 committed.
+
+Amended 2026-10-11 by §16.48 (R36, R55): the tests list two files that are not messages (was three), three
+damaged ones and a MemoryError at the open and at the read.
 
 #### Diagrams: draw.io and Visio (N47)
 
@@ -12924,7 +12942,31 @@ Amends §16.42 where each part says so; items are the round 2 harvest's (`docs/p
 
 #### Outlook messages and decks
 
-Track 1 text goes here.
+**A damaged `.msg` is called damaged (R36; R13 is the same defect).** Amends §16.42 N46 and §16.28's
+`quarantine_class` table. A compound file olefile cannot open, or a message whose reading raises past its
+root properties stream, was `not-msg (not an Outlook message): <exception type>`: a Python class name in
+the person's text, and a claim that an Outlook message with a broken chain is not one. It is now
+`DAMAGED_MSG_REASON`, `damaged-msg (a compound file that cannot be read as an Outlook message)`, with no
+exception type; the type goes to the `agentsync.convert.msg` log at info (`<name>: the Outlook file cannot
+be read: <type>`), so the diagnostic survives. The wording says "a compound file" because a file olefile
+cannot open may be a damaged `.doc` or `.xls`. `NOT_MSG_REASON` stays for the two certain cases (no
+compound-file magic; no root properties stream). `setup_report.quarantine_class` maps `damaged-msg` to the
+new class `damaged`, tried before `not-msg`; a row settled before this change keeps its old reason (and
+`not the type its name says`) until it is read again. The emitter version is 1.0.1, so cached results are
+read again. Tests: `tests/test_convert_formats.py`
+(`test_a_compound_file_olefile_cannot_open_is_damaged_not_a_python_class`,
+`test_a_message_whose_body_cannot_be_read_is_damaged`, `test_not_a_message_is_a_settled_unreadable_stub`),
+`tests/test_setup_report.py` (`test_a_reason_is_reported_as_one_of_the_fixed_classes`) and
+`tests/test_cycle.py` (`test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub`, the version).
+
+**A MemoryError while reading a `.msg` fails the pass (R55).** Amends §16.42 N46. `MemoryError` subclasses
+`Exception`, so the two broad `except Exception` clauses of `MsgConverter.convert` took it for a fact about
+the file and settled it as an UNREADABLE stub, cached. It is now re-raised at both (the olefile open and the
+read), and `convert_file` makes it FAILED, uncached, read again on a later pass, as every other converter
+does (§16.42 N45). `OSError` is not carved out: olefile reports format damage as `OSError`, so it stays a
+settled `damaged-msg`; the one plausibly transient `OSError`, the 8-byte head read, was already a
+`ConversionError`. Tests: `tests/test_convert_formats.py`
+(`test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached`, the open and the read).
 
 #### The speech build and the build watcher
 

@@ -3092,6 +3092,7 @@ QUARANTINE_CLASSES = (
     "conversion failed",
     "path too long",
     "empty",
+    "damaged",
     "not the type its name says",
     "download refused by the OS",
     "no reason recorded",
@@ -3169,6 +3170,8 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
         return "encrypted"
     if text.startswith(("empty-output", "empty pdf")):
         return "empty"
+    if text.startswith("damaged-msg"):
+        return "damaged"
     if text.startswith(("not-ooxml", "not a zip", "not-msg")):
         return "not the type its name says"
     return "other"
