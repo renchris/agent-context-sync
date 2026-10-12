@@ -560,6 +560,30 @@ Round 4 lanes (dispatched sessions on next3, CONTRACTS §16.50 to §16.55; commo
 The lead built Q85 (the lane briefs warn against `git stash` and the words check-names flags) and Q86 (round 3's
 scratch folders, landed worktrees and merged branches; the three branches not on main go to the operator).
 
+### B13 round 4 landed (2026-10-12)
+
+All six lanes landed with CI green and none left an item not built; each lane note
+`~/.cache/agentsync-bring-back/b13/lanes/r4-<lane>.md` lists per item the sha and the test that fails without it.
+Prompt v13 is on main (lane P, `c09e66d8`).
+
+| Lane | Landed | Note |
+|---|---|---|
+| P | `ffb42632..c09e66d8`, 3 commits | a new test fails CONTRACTS text that cites a test name that does not exist |
+| A | `92e31ba9`..`a74d7e7f`, 6 commits | |
+| RA | `3ff4e315..5d8195a6` | |
+| E | `5d8195a6..4f61520e` | Q52 and Q79 built once |
+| RB | `f70183ac..c9a5d359`, 10 commits | |
+| B | `c9a5d359..645f54e5`, 16 commits | adds a hidden `exclude-empty <source>` command, named by the empty-folder wait (R1's turn on a real File Provider domain) |
+
+Learnings: a lane's `git push` stopped at an "ask" permission prompt (the push line held a variable the check
+could not read) and waited for the operator's Yes in its pane. Lane A's backup-branch cleanup deleted five other
+sessions' `ship/backup-*` branches (refs are shared across worktrees); it recreated them at the same shas. The fire
+gate (payload-lint F3) now needs the lead's registry name (`cc-notify <slug>-<pane>`) in each brief on kitty, not
+the bare pane number.
+
+Round 5: the round 4 workflow again on `645f54e5` with prompt v13 (run `wf_565db0bd-e51`, outputs
+`~/.cache/agentsync-bring-back/b13/round5/`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
