@@ -2325,6 +2325,11 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
         # With an engine, the rule is why: the page says so and names the PDF route (B13 round 2 R33).
         assert f"a [policy] label rule is set and the label of a {suffix} file cannot be read" in body
         assert "Export it as a PDF to have it converted" in body
+        # B13 round 4 Q27: the summary, which agents read to decide whether to open a page, says it too.
+        assert fm["summary"] == (
+            f"refused: withheld by label rule: the label of a {suffix} file cannot be read; "
+            "export it as a PDF to have it converted"
+        )
     assert len(reads(engine.helper)) == 1, "the helper is not run under a label rule"
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:
@@ -2360,6 +2365,10 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
         # The page says why: the rule, not a missing converter; the stored reason is unchanged (R33).
         assert "a [policy] label rule is set and the label of a .msg file cannot be read" in body
         assert "Save the message as .eml to have it converted" in body and "it is unreadable" not in body
+        assert fm["summary"] == (
+            "refused: withheld by label rule: the label of a .msg file cannot be read; "
+            "save it as .eml to have it converted"
+        ), "B13 round 4 Q27: not 'no converter for .msg', which hid the route from an agent reading summary:"
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""

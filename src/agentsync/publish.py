@@ -1083,7 +1083,16 @@ class Publisher:
             and suffix in label_withheld_suffixes()
             and (suffix == ".msg" or self.images_readable)
         )
+        summary_text = shown
         if withheld:
+            # The summary says it too (B13 round 4 Q27): the mirror's CLAUDE.md has agents read summary: to
+            # decide whether to open a page, and "no converter for .msg" there hid the route. The status, and
+            # so the "refused: " prefix, stays.
+            summary_text = f"withheld by label rule: the label of a {suffix} file cannot be read; " + (
+                "save it as .eml to have it converted"
+                if suffix == ".msg"
+                else "export it as a PDF to have it converted"
+            )
             route = (
                 "Save the message as .eml to have it converted: an .eml's label is read."
                 if suffix == ".msg"
@@ -1126,7 +1135,7 @@ class Publisher:
             ),
             reason=reason,
             source_title=title,
-            summary=f"{page_status.value}: {shown}",
+            summary=f"{page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),
         )
         text = render_mirror_page(_with_trust(fm), body)
