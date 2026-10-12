@@ -214,7 +214,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add(
         "accept-deletions",
-        "the deletion is real: clear SOURCE's tripped deletion breaker and apply its removals",
+        "the deletion is real: clear SOURCE's tripped deletion breaker and apply its removals (a pass "
+        "that does not list SOURCE in full applies none and keeps the breaker)",
         _cmd_accept_deletions,
     )
     p.add_argument("source", metavar="SOURCE", help="the source id the breaker tripped on")

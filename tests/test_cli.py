@@ -1379,6 +1379,45 @@ def test_purge_headline_spells_the_cache_count(
     assert ("rewritten" in head) is not dry_run
 
 
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_purge_marks_a_taken_path_after_its_path_line(
+    dry_run: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 R94: a path another file's live page holds now is printed as a ``taken:`` line right after its
+    ``path:`` line, in the preview as in the run, so the operator reads it as a page that stays."""
+    rep = governance.PurgeReport(
+        selector="stable-id",
+        reason=governance.PurgeReason.UPSTREAM_DELETED,
+        dry_run=dry_run,
+        items=(("contoso", "x"),),
+        docs_paths=("mirror/contoso/plan.md",),
+        taken_paths=("mirror/contoso/plan.md",),
+        blobs_targeted=1,
+        cache_entries_removed=0,
+    )
+    cli._print_purge(rep)
+    lines = capsys.readouterr().out.splitlines()
+    taken = (
+        "  taken: mirror/contoso/plan.md (another file's live page is there now: its manifest row and index "
+        "lines stay)"
+    )
+    assert lines.count(taken) == 1
+    assert lines.index(taken) > lines.index("  path: mirror/contoso/plan.md")
+
+
+def test_accept_deletions_help_says_an_incomplete_pass_applies_none(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 R54: the command list's line for ``accept-deletions`` says what its docstring and the incomplete
+    alarm say: the removals apply only after a pass that lists the source in full."""
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    out = " ".join(capsys.readouterr().out.split())
+    assert (
+        "apply its removals (a pass that does not list SOURCE in full applies none and keeps the breaker)"
+        in out
+    )
+
+
 def test_purge_removes_every_blob_and_the_item_never_comes_back(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1576,6 +1615,34 @@ def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits
     assert "  note: also did the queued erasure-request purge of the same item: taken off the queue" in out
     assert out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
     assert governance.pending_purges(initialised.state_paths.root) == []
+
+
+def test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewed(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 R52: the preview counts an entry the run would keep queued (an upstream deletion of a live file) as
+    the run does: not previewed, still queued."""
+    cfg = _synced(initialised)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(
+        initialised.state_paths.root, selector, governance.PurgeReason.UPSTREAM_DELETED
+    )
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "  note: stays queued: " in out
+    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+
+
+def test_setup_feedback_reads_the_purge_preview_last_line_as_the_cli_prints_it() -> None:
+    """B13 R58: the reviewer's guide quotes the preview's and the run's last lines as cli._cmd_purge prints
+    them, and says the preview's queued count is the whole queue (a preview leaves it as it is)."""
+    page = " ".join((Path(__file__).parents[1] / "docs/deploy/setup-feedback.md").read_text("utf-8").split())
+    assert "the last line counts what stays queued" not in page
+    assert "`N queued purge(s) previewed (dry run, nothing written); M queued`" in page
+    assert "M is every queued entry" in page
+    assert "`N queued purge(s) run; M still queued`" in page
 
 
 def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(
