@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib
 import inspect
 import pkgutil
+import re
 from pathlib import Path
 
 import pytest
@@ -343,3 +345,58 @@ def test_inbox_writer_contract_matches_the_arm() -> None:
     for rule in ("rename it into place", "Keep names stable", "One file per unit", "mirror, not a queue"):
         assert rule in contract, rule
     assert "Never set `quiescence_s = 0` in a shared inbox" in contract
+
+
+def _dataclass_stubs(text: str) -> dict[tuple[str, str], list[str]]:
+    """The first stub of each class in the python blocks under a ``#### `agentsync.<mod>``` header (the §16
+    module sections), with the names of its ``    name: type`` lines in order.  A later partial block (an
+    amendment that repeats a class to add a field) is not the stub and is skipped."""
+    stubs: dict[tuple[str, str], list[str]] = {}
+    seen: set[str] = set()
+    module: str | None = None
+    in_fence = in_block = in_doc = False
+    current: list[str] | None = None
+    for line in text.splitlines():
+        if line.startswith("```"):
+            # any fence opens and closes: a `# comment` in a toml or text block is not a heading
+            in_fence, current = not in_fence, None
+            in_block = in_fence and line.strip() == "```python" and module is not None
+            continue
+        if not in_fence:
+            header = re.match(r"#### `(agentsync(?:\.\w+)+)`", line)
+            if header or re.match(r"#{1,4} ", line):
+                module = header.group(1) if header else None
+            continue
+        if not in_block:
+            continue
+        if in_doc:
+            in_doc = '"""' not in line
+            continue
+        cls = re.match(r"class (\w+)\b", line)
+        if cls:
+            current = None if cls.group(1) in seen else stubs.setdefault((module or "", cls.group(1)), [])
+            seen.add(cls.group(1))
+        elif line and not line.startswith(" "):
+            current = None
+        elif current is not None and line.strip().startswith('"""'):
+            in_doc = line.strip().count('"""') == 1
+        elif current is not None and (field := re.match(r"    (\w+): ", line)):
+            current.append(field.group(1))
+    return stubs
+
+
+def test_dataclass_stubs_list_the_code_fields() -> None:
+    """Q87 (B13 round 4): the contract checked that each public name appears, not a dataclass stub's fields,
+    so `PurgeReport` lacked `not_run` from §16.38 to §16.45 and `Suppressions` and `GovernanceConfig` were
+    still short of fields added only in prose. Each module section's stub lists the code's fields, in
+    order."""
+    stubs = _dataclass_stubs(CONTRACTS.read_text(encoding="utf-8"))
+    checked = []
+    for (module_name, cls_name), fields in stubs.items():
+        cls = getattr(importlib.import_module(module_name), cls_name, None)
+        if cls is None or not dataclasses.is_dataclass(cls):
+            continue
+        checked.append(cls_name)
+        assert fields == [f.name for f in dataclasses.fields(cls)], f"{module_name}.{cls_name}"
+    assert {"PurgeReport", "Suppressions", "GovernanceConfig", "ProxySettings"} <= set(checked)
+    assert len(checked) >= 21

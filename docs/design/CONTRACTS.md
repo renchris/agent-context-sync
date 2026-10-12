@@ -4305,6 +4305,7 @@ class GovernanceConfig:
     hold_reason: str | None = None
     hold_owner: str | None = None
     purge_on_upstream_delete: bool = True
+    archive: bool = False
 
 class GovernanceError(AgentSyncError):
     """A purge, compaction, hold or offboarding step was refused or failed; the message says why."""
@@ -4403,6 +4404,8 @@ class Suppressions:
     """Items and source-path globs that were purged for a reason other than upstream deletion."""
     items: frozenset[tuple[str, str]] = frozenset()
     globs: tuple[tuple[str, str], ...] = ()
+    paths: frozenset[tuple[str, str]] = frozenset()
+    canonical: frozenset[str] = frozenset()
     def matches(self, source_id: str, stable_id: str, rel_path: str) -> bool:
         """True when this item must not be synced again."""
 
@@ -13567,6 +13570,15 @@ left something still prints NOT VERIFIED. Tests: `tests/test_governance.py`
 `test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again`), `tests/test_cli.py`
 (`test_purge_queue_skips_a_held_source_and_keeps_it_queued`,
 `test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run`).
+
+**Q87: a dataclass stub lists the code's fields** (`docs/design/CONTRACTS.md`, `tests/test_contracts.py`). The
+contract test checked that each public name appears somewhere, not a stub's fields, so `PurgeReport` lacked
+`not_run` from §16.38 until §16.44 R64, and two stubs were still short: `Suppressions` of `paths` and `canonical`
+(added in prose, §16.12), and `GovernanceConfig` of `archive` (added by a partial block, §16.18). Both stubs now carry
+those fields. The first stub of each class in the python blocks under a ``#### `agentsync.<mod>` `` header must list
+`dataclasses.fields()` of the class, in order; a later partial block that repeats a class to add a field is not the
+stub. There is no allowlist: a field added in code is added to its stub in the same commit. Tests:
+`tests/test_contracts.py::test_dataclass_stubs_list_the_code_fields`.
 
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
