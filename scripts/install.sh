@@ -1132,15 +1132,39 @@ redaction_pairs() {
 			printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" \
 				"${HTTP_PROXY:-}" "${http_proxy:-}"
 			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
-			# The files setup_report._git_proxy_urls reads: the global ones and the checkouts' .git/config, this
-			# script's (the one agentsync is installed from) and the one the prompt clones.
-			for g in "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig \
-				"${repo:-/nonexistent}/.git/config" "$HOME/src/agent-context-sync/.git/config"; do
+			# The files setup_report._git_proxy_urls reads: the global ones and the repository config of two
+			# checkouts (checkout_git_configs, a linked worktree too): the one holding this script, which
+			# agentsync is installed from, and the one the prompt clones. No apostrophe in a comment here: bash
+			# 3.2 reads one inside this process substitution as a quote.
+			{
+				printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
+				[ -z "${repo:-}" ] || checkout_git_configs "$repo"
+				checkout_git_configs "$HOME/src/agent-context-sync"
+			} | while IFS= read -r g; do
 				[ ! -f "$g" ] ||
 					LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#]*\).*/\1/p' "$g"
 			done
 		} 2>/dev/null
 	)
+}
+# The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
+# reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
+# ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
+# names the common dir (relative to the git dir). No git process: step 1 may have stopped without the tools.
+checkout_git_configs() { # DIR
+	local dot="$1/.git" gd c=""
+	if [ -d "$dot" ]; then
+		gd="$dot"
+	elif [ -f "$dot" ]; then
+		gd="$(LC_ALL=C sed -n '1s/^gitdir:[[:space:]]*//p' "$dot" 2>/dev/null)"
+		[ -n "$gd" ] || return 0
+		case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
+	else
+		return 0
+	fi
+	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1p' "$gd/commondir" 2>/dev/null)"
+	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
+	printf '%s\n' "$c/config" "$gd/config.worktree"
 }
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.

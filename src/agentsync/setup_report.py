@@ -1981,18 +1981,46 @@ _GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNOREC
 way to switch a proxy off) must not take the next line's first word."""
 
 
+def _checkout_git_configs(checkout: Path) -> list[Path]:
+    """The repository config files git reads for ``checkout``, read as files: ``<common dir>/config`` and the
+    per-worktree ``<git dir>/config.worktree``. ``.git`` is the git dir, or a file whose ``gitdir: <path>``
+    names it (a linked worktree, a submodule; a relative path is from the checkout), and its ``commondir``
+    file, when there is one, names the common dir (relative to the git dir). A ``.git`` file that cannot be
+    read gives ``.git/config``, which then cannot be read either (B13 round 3 R110)."""
+    dot = checkout / ".git"
+    gitdir = dot
+    if not dot.is_dir():
+        try:
+            first = dot.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+        except (OSError, IndexError):
+            return [dot / "config"]
+        if not first.startswith("gitdir:"):
+            return [dot / "config"]
+        named = Path(first.removeprefix("gitdir:").strip())
+        gitdir = named if named.is_absolute() else checkout / named
+    common = gitdir
+    with contextlib.suppress(OSError, IndexError):
+        named = Path(
+            (gitdir / "commondir").read_text(encoding="utf-8", errors="replace").splitlines()[0].strip()
+        )
+        common = named if named.is_absolute() else gitdir / named
+    return [common / "config", gitdir / "config.worktree"]
+
+
 def _git_proxy_urls() -> list[str]:
     """``proxy`` values in the config files git reads (``http.proxy``, ``http.<url>.proxy``,
     ``remote.<name>.proxy``): ``~/.gitconfig``, ``$XDG_CONFIG_HOME/git/config``, ``/etc/gitconfig`` and
-    the ``.git/config`` of two checkouts, the one agentsync was installed from (``direct_url.json``) and the
-    one the prompt clones. Read as files, with no git process: step 1 may have stopped on missing developer
-    tools. Since setup prompt v11 step 1's git stop logs git's error, which names that proxy's host (``Could
-    not resolve proxy: <host>``). ``scripts/install.sh``'s fallback redaction reads the same files."""
+    the repository config of two checkouts (:func:`_checkout_git_configs`: a linked worktree's too), the one
+    agentsync was installed from (``direct_url.json``) and the one the prompt clones. Read as files, with no
+    git process: step 1 may have stopped on missing developer tools. Since setup prompt v11 step 1's git stop
+    logs git's error, which names that proxy's host (``Could not resolve proxy: <host>``).
+    ``scripts/install.sh``'s fallback redaction reads the same files (``checkout_git_configs``)."""
     xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     names = [Path.home() / ".gitconfig", Path(xdg) / "git" / "config", Path("/etc/gitconfig")]
     for checkout in (_installed_from()[1], Path.home() / "src" / "agent-context-sync"):
-        if checkout is not None and checkout / ".git" / "config" not in names:
-            names.append(checkout / ".git" / "config")
+        for name in _checkout_git_configs(checkout) if checkout is not None else []:
+            if name not in names:
+                names.append(name)
     urls: list[str] = []
     for name in names:
         with contextlib.suppress(OSError):

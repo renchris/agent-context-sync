@@ -4519,6 +4519,35 @@ def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
     assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \|", text)) == len(hosts), text
 
 
+def test_the_shell_report_reads_a_linked_worktrees_git_config(env: dict[str, str]) -> None:
+    """The prompt's clone may be a linked worktree, whose ``.git`` is a file: the shell fallback reads the
+    common dir's config and the worktree's ``config.worktree``, as ``_git_proxy_urls`` does (B13 round 2
+    R110)."""
+    home = Path(env["HOME"])
+    main = home / "src" / "contoso-main"
+    gitdir = main / ".git" / "worktrees" / "agent-context-sync"
+    gitdir.mkdir(parents=True)
+    (main / ".git" / "config").write_text("[http]\n\tproxy = http://common.fabrikam.example:3128\n")
+    (gitdir / "commondir").write_text("../..\n")
+    (gitdir / "config.worktree").write_text("[http]\n\tproxy = http://own.fabrikam.example:8080\n")
+    clone = home / "src" / "agent-context-sync"
+    clone.mkdir()
+    (clone / ".git").write_text("gitdir: ../contoso-main/.git/worktrees/agent-context-sync\n")
+    friction = home / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    hosts = ("common", "own")
+    friction.write_text(
+        "Prompt: v10\n"
+        + "".join(f"F1 | step 1 | error | Could not resolve proxy: {h}.fabrikam.example | -\n" for h in hosts)
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text(encoding="utf-8", errors="replace")
+    for h in hosts:
+        assert f"{h}.fabrikam" not in text, h
+    assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \|", text)) == len(hosts), text
+
+
 # ---- step 2 holds the background sync's lock (N6) ----------------------------------------------------------
 
 REINSTALL_TICK = r"agentsync: reinstalling after the background sync ends, still running, \d+s"

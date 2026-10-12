@@ -2032,6 +2032,33 @@ def test_an_empty_git_proxy_takes_no_token_from_the_next_line(
     assert "sslVerify" not in setup_report._git_proxy_urls()
 
 
+def test_a_linked_worktrees_git_config_is_read_for_proxies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In a linked worktree ``.git`` is a file naming its git dir: ``.git/config`` could not be opened, and a
+    proxy in the repository's config went unredacted. The common dir's config is read, and the worktree's own
+    ``config.worktree``; a plain clone reads as before (B13 round 2 R110)."""
+    main, wt = tmp_path / "main", tmp_path / "wt"
+    gitdir = main / ".git" / "worktrees" / "wt"
+    gitdir.mkdir(parents=True)
+    (main / ".git" / "config").write_text("[http]\n\tproxy = http://proxy.contoso.example:8080\n")
+    (gitdir / "commondir").write_text("../..\n")
+    (gitdir / "config.worktree").write_text("[http]\n\tproxy = http://wt.contoso.example:3128\n")
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {gitdir}\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    for checkout in (wt, main):
+        monkeypatch.setattr(setup_report, "_installed_from", lambda c=checkout: ("", c))
+        urls = setup_report._git_proxy_urls()
+        assert "http://proxy.contoso.example:8080" in urls, (checkout, urls)
+    found = [f.resolve() for f in setup_report._checkout_git_configs(wt)]
+    assert found == [(main / ".git" / "config").resolve(), (gitdir / "config.worktree").resolve()]
+    (wt / ".git").write_text("gitdir: ../main/.git/worktrees/wt\n")  # relative to the checkout
+    assert setup_report._checkout_git_configs(wt)[0].resolve() == (main / ".git" / "config").resolve()
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: ("", wt))
+    assert "http://wt.contoso.example:3128" in setup_report._git_proxy_urls()
+
+
 def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     log = fake_mac["logs"] / "com.agentsync.poll.err.log"
     log.write_text(
