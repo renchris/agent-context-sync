@@ -436,7 +436,7 @@ def test_a_cycle_stores_the_empty_cloud_folders_its_walk_found(
     assert stored() == "", "a walk that could not run knows no empty folder"
 
 
-SYNC_FIX = "agentsync sync (it makes these owner-only)"
+SYNC_FIX = "~/.local/bin/agentsync sync (it makes these owner-only)"
 """``docs_repo.permissions``'s fix when a sync clears every path it found: a command a setup agent may run."""
 
 

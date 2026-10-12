@@ -934,8 +934,8 @@ def test_confirmed_deletion_queues_a_purge_that_removes_the_tombstone(
     state = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert "## Queued purges" in state
     assert (
-        "- 1 purge request(s) waiting; preview with `agentsync purge --queue --dry-run`, then run "
-        "`agentsync purge --queue` (rewrites history)"
+        "- 1 purge request(s) waiting; preview with `~/.local/bin/agentsync purge --queue --dry-run`, then "
+        "run `~/.local/bin/agentsync purge --queue` (rewrites history)"
     ) in state
     (rep,) = governance.run_purge_queue(synced, now=NOW)
     assert rep.verified and rel in rep.docs_paths

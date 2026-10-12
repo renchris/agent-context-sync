@@ -33,7 +33,7 @@ from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import AgentSyncError, ConfigError
-from agentsync.loop import NO_NEXT_HINT_ENV, empty_cloud_folders_held
+from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
@@ -52,7 +52,9 @@ AGENT_STEP_PENDING_ENV = "AGENTSYNC_AGENT_STEP_PENDING"
 """Set to 1 by scripts/install.sh --confirm-install-agent for its doctor step: the LaunchAgents are installed
 by its later agent step, so a launchd.* fix that is install-agent reads :data:`AGENT_STEP_NOTE` instead."""
 AGENT_STEP_NOTE = "installed by the agent step below"
-_AGENT_STEP_FIXES = ("agentsync install-agent", "launchctl bootstrap ")
+# A runnable fix names the binary by its full path (BIN), as the loop's waits do: ~/.local/bin is not on PATH
+# by design (install.sh installs uv with UV_NO_MODIFY_PATH=1), so a bare `agentsync` is "command not found".
+_AGENT_STEP_FIXES = (f"{BIN} install-agent", "launchctl bootstrap ")
 # NO_NEXT_HINT_ENV (agentsync.loop, its one definition) is 1 under scripts/install.sh: its NEXT: line is
 # the only instruction in its output, so the ad hoc launcher's Developer ID fix (an IT action, nothing the
 # person or their agent does) reads ADHOC_IT_NOTE, with no ``fix:``.
@@ -103,7 +105,7 @@ _STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no s
 # A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
 # An operating-system error is not that: the Mac's state causes it and can clear it (see _os_error).
 _CRASH_FIX = (
-    "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
+    f"{BIN} status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
     "and no setup step clears it)"
 )
 _POLICY_FAULT_FIX = (
@@ -475,7 +477,7 @@ def _again_fix(fallback: str | None = None) -> str:
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         again = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
     else:
-        again = "agentsync status (run it again as it is)"
+        again = f"{BIN} status (run it again as it is)"
     return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
 
 
@@ -507,7 +509,7 @@ def _os_error(name: str, exc: OSError, severity: Severity) -> CheckResult:
     error is about, when it has one, and its fix says to look there and run again, then to report a line
     that stays."""
     reason = exc.strerror or str(exc) or type(exc).__name__
-    stays = "if the line stays, report it: agentsync status -v prints where the check stopped"
+    stays = f"if the line stays, report it: {BIN} status -v prints where the check stopped"
     if isinstance(exc.filename, str | bytes | os.PathLike):
         path = os.fsdecode(exc.filename)
         fix = f"check that {path} is there and can be opened, then run again ({stays})"
@@ -727,7 +729,7 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
         anchor = _nearest_existing(repo.parent)
         if anchor.is_dir() and os.access(anchor, os.W_OK | os.X_OK):
             out.append(
-                _ok("docs_repo.git", f"{repo} does not exist yet; `agentsync add-source <folder>` creates it")
+                _ok("docs_repo.git", f"{repo} does not exist yet; `{BIN} add-source <folder>` creates it")
             )
         else:
             out.append(
@@ -752,7 +754,7 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
         out.append(
             _ok(
                 "docs_repo.git",
-                f"{repo} is not a git repo yet; `agentsync add-source <folder>` runs git init",
+                f"{repo} is not a git repo yet; `{BIN} add-source <folder>` runs git init",
             )
         )
 
@@ -1091,7 +1093,7 @@ def _check_graph(config: Config) -> list[CheckResult]:
                 "graph.auth",
                 f"cannot read the token cache: {type(exc).__name__}: {exc}",
                 severity,
-                fix="agentsync logout && agentsync login",
+                fix=f"{BIN} logout && {BIN} login",
             )
         )
         return out
@@ -1103,14 +1105,14 @@ def _check_graph(config: Config) -> list[CheckResult]:
                 "graph.token_cache",
                 f"{status.cache_backend}: the Keychain was unavailable",
                 Severity.WARN,
-                fix="run `agentsync login` from a logged-in GUI session so the login Keychain is used",
+                fix=f"run `{BIN} login` from a logged-in GUI session so the login Keychain is used",
             )
         )
     if status.signed_in:
         out.append(_ok("graph.signed_in", f"as {status.username or '<unknown user>'}"))
     else:
         needed = f" ({len(live_graph)} live Graph source(s): {', '.join(live_graph)})" if live_graph else ""
-        out.append(_bad("graph.signed_in", f"no cached account{needed}", severity, fix="agentsync login"))
+        out.append(_bad("graph.signed_in", f"no cached account{needed}", severity, fix=f"{BIN} login"))
     return out
 
 
@@ -1307,7 +1309,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
                     f"TCC_PENDING: {root} did not answer within {_FP_CANARY_TIMEOUT_S:.0f}s; macOS is asking "
                     f"(or asked) {prompt}",
                     fix=(
-                        f"click Allow on {prompt} while logged in, then run agentsync status again "
+                        f"click Allow on {prompt} while logged in, then run {BIN} status again "
                         "(prefer this per-provider grant over Full Disk Access: see "
                         "launcher/Sources/main.swift, "
                         "trust boundary)"
@@ -1382,15 +1384,15 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
     installed = launchd._installed_plist(spec.label)  # ops-internal helper
     if installed is None:
         if path.exists():
-            return _bad(name, f"{path} is not a readable plist", Severity.WARN, fix="agentsync install-agent")
+            return _bad(name, f"{path} is not a readable plist", Severity.WARN, fix=f"{BIN} install-agent")
         return _bad(
-            name, f"{spec.label} is not installed (no {path})", Severity.WARN, fix="agentsync install-agent"
+            name, f"{spec.label} is not installed (no {path})", Severity.WARN, fix=f"{BIN} install-agent"
         )
     problems: list[tuple[Severity, str, str]] = []
     args = installed.get("ProgramArguments")
     program = args[0] if isinstance(args, list) and args and isinstance(args[0], str) else None
     if program is None or not os.access(program, os.X_OK):
-        problems.append((Severity.ERROR, f"job program {program!r} is missing", "agentsync install-agent"))
+        problems.append((Severity.ERROR, f"job program {program!r} is missing", f"{BIN} install-agent"))
     child = _job_child(args if isinstance(args, list) else [])
     if child is not None:
         # A launcher job execs the program after "--": a removed .venv / uv tool env means every run ends
@@ -1401,7 +1403,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
                 (
                     Severity.ERROR,
                     f"job interpreter {interp} is missing: every run exits 71 (SPAWN_FAILED)",
-                    "agentsync install-agent (from the environment agentsync now runs in)",
+                    f"{BIN} install-agent (from the environment agentsync now runs in)",
                 )
             )
         elif "agentsync" in child and not _importable(interp):
@@ -1409,7 +1411,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
                 (
                     Severity.ERROR,
                     f"job interpreter {interp} cannot import agentsync: every run fails",
-                    "agentsync install-agent (from the environment agentsync now runs in)",
+                    f"{BIN} install-agent (from the environment agentsync now runs in)",
                 )
             )
         # The launcher takes its child's path as text and starts only the one it was built for, so a job
@@ -1424,7 +1426,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
                     Severity.WARN,
                     f"job interpreter {interp} is not the one its launcher starts ({pin}): every run exits "
                     "64 (PROGRAM_REFUSED)",
-                    "agentsync install-agent" if wanted is not None and wanted[0] == pin else _LAUNCHER_FIX,
+                    f"{BIN} install-agent" if wanted is not None and wanted[0] == pin else _LAUNCHER_FIX,
                 )
             )
     expected_program = spec.program_arguments[0]
@@ -1437,7 +1439,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
             (
                 Severity.ERROR,
                 f"the job runs {program} directly, not the signed launcher (TCC prompts would hang it)",
-                "agentsync install-agent",
+                f"{BIN} install-agent",
             )
         )
     if installed.get("MaterializeDatalessFiles") is not False:
@@ -1445,7 +1447,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
             (
                 Severity.ERROR,
                 "plist does not set MaterializeDatalessFiles=false (hydration not fail-closed)",
-                "agentsync install-agent",
+                f"{BIN} install-agent",
             )
         )
     expected = plistlib.loads(launchd.render_plist(spec))
@@ -1455,7 +1457,7 @@ def _check_launchd_job(spec: launchd.AgentSpec, suffix: str) -> CheckResult:
             (
                 Severity.WARN,
                 f"installed plist differs from this config/interpreter ({', '.join(diff)})",
-                "agentsync install-agent",
+                f"{BIN} install-agent",
             )
         )
     loaded = _is_loaded(spec.label)
@@ -1541,7 +1543,7 @@ def _check_gitleaks(config: Config) -> list[CheckResult]:
         f"{found} is on this shell's PATH only: a background run would not find it and would scan for "
         "credentials with the builtin patterns alone",
         Severity.WARN,
-        fix="agentsync sync (a run from this shell records where gitleaks is)",
+        fix=f"{BIN} sync (a run from this shell records where gitleaks is)",
     )
     return [result if agents_wanted(config) else _optional(result)]
 
@@ -1637,7 +1639,7 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
                 _bad(
                     name,
                     "auth: REAUTH_REQUIRED; no Graph cursor advances until you sign in again",
-                    fix="agentsync login",
+                    fix=f"{BIN} login",
                 )
             )
             continue
@@ -1646,14 +1648,14 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
         age = _age_s(last, now)
         incomplete = entry.get("consecutive_incomplete")
         if age is None:
-            out.append(_bad(name, "no successful pass yet", Severity.WARN, fix="agentsync sync -v"))
+            out.append(_bad(name, "no successful pass yet", Severity.WARN, fix=f"{BIN} sync -v"))
         elif age > limit:
             out.append(
                 _bad(
                     name,
                     f"last success {last} ({age}s ago) > {_STALE_FACTOR} x cadence ({limit}s)",
                     Severity.WARN,
-                    fix="agentsync sync -v",
+                    fix=f"{BIN} sync -v",
                 )
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
@@ -1718,8 +1720,8 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
             "sync does not clear it"
         )
     if src.kind is SourceKind.LOCAL:
-        return "agentsync sync; another full walk lists it"
-    return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
+        return f"{BIN} sync; another full walk lists it"
+    return f"{BIN} sync -v (a full pass that lists all of {src.id} clears this)"
 
 
 def _check_logs(config: Config) -> list[CheckResult]:
@@ -1819,7 +1821,7 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         targets = " ".join(_shell_path(r) for r in roots if r.exists())
         # A sync makes agentsync's own paths owner-only, and a setup agent may run it; the chmod is the
         # person's, for a path a sync leaves (in mirror/ or .git, or another user's).
-        fix: str | None = "agentsync sync (it makes these owner-only)"
+        fix: str | None = f"{BIN} sync (it makes these owner-only)"
         if _sync_leaves(config, bad):
             fix = (
                 f"chmod -R go-rwx {targets}; git -C {_shell_path(repo)} config core.sharedRepository 0600"

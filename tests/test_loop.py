@@ -338,11 +338,11 @@ def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
     config = load_config(path)
-    assert heartbeat().fix == "agentsync sync; another full walk lists it"
+    assert heartbeat().fix == "~/.local/bin/agentsync sync; another full walk lists it"
     _assert_fix_parses(heartbeat().fix)
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     r = heartbeat()
-    assert r.note is None and r.fix == "agentsync sync; another full walk lists it"
+    assert r.note is None and r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
 
 
 def test_status_next_is_the_loops_with_and_without_a_fail(
@@ -568,7 +568,8 @@ def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
         "not clear it"
     )
     assert (
-        checks["heartbeat.bare"].fix == "agentsync sync -v (a full pass that lists all of bare clears this)"
+        checks["heartbeat.bare"].fix
+        == "~/.local/bin/agentsync sync -v (a full pass that lists all of bare clears this)"
     )
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     checks = {c.name: c for c in doctor._check_heartbeat(config)}

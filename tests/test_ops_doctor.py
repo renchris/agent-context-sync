@@ -27,6 +27,7 @@ import pytest
 from agentsync import cli, gitops, lints, setup_report
 from agentsync.config import Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
+from agentsync.loop import BIN
 from agentsync.manifest import Manifest
 from agentsync.model import PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
 from agentsync.ops import doctor, launchd
@@ -277,7 +278,7 @@ def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
 
 # --------------------------------------------------------------------- a check that does not finish
 
-RUN_AGAIN = "agentsync status (run it again as it is)"
+RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
 RUN_AGAIN_INSTALL = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
@@ -285,7 +286,8 @@ AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its o
 PANDOC_FIX = "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
 OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (
-    "agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
+    "~/.local/bin/agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to "
+    "report, "
     "and no setup step clears it)"
 )
 
@@ -499,7 +501,7 @@ def test_an_operating_system_error_is_no_crash_and_its_fix_names_the_path(
 
     monkeypatch.setattr(doctor, "_disk_free", no_disk)
     monkeypatch.setattr(cli, "_policy_check", no_network)
-    stays = "if the line stays, report it: agentsync status -v prints where the check stopped"
+    stays = "if the line stays, report it: ~/.local/bin/agentsync status -v prints where the check stopped"
     disk = by_name(run_checks(sample_config))["disk"]
     assert (disk.ok, disk.severity) == (False, Severity.ERROR)
     assert disk.detail == f"could not read {seen[0]}: Input/output error"
@@ -1232,7 +1234,7 @@ def test_graph_not_signed_in_with_live_source(
     monkeypatch.setattr(doctor, "_auth_status", lambda cfg: doctor._AuthProbe(False, None, "file-0600"))
     r = by_name(run_checks(graph_config(tmp_path, sample_config)))
     assert not r["graph.signed_in"].ok and r["graph.signed_in"].severity is Severity.ERROR
-    assert r["graph.signed_in"].fix == "agentsync login" and "od" in r["graph.signed_in"].detail
+    assert r["graph.signed_in"].fix == "~/.local/bin/agentsync login" and "od" in r["graph.signed_in"].detail
     assert not r["graph.token_cache"].ok and r["graph.token_cache"].severity is Severity.WARN
 
 
@@ -1307,7 +1309,7 @@ def test_launchd_interpreter_gone(sample_config: Config, fakes: dict[str, object
     path.write_bytes(plistlib.dumps(d))
     r = by_name(run_checks(sample_config))["launchd.reconcile"]
     assert not r.ok and r.severity is Severity.ERROR and "missing" in r.detail
-    assert r.fix == "agentsync install-agent"
+    assert r.fix == "~/.local/bin/agentsync install-agent"
 
 
 def _pinned_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
@@ -1368,7 +1370,7 @@ def test_launchd_job_whose_interpreter_the_launcher_refuses_is_a_warn_that_names
         f"job interpreter {python3} is not the one its launcher starts ({python}): every run exits 64 "
         "(PROGRAM_REFUSED)" in r.detail
     )
-    assert r.fix == "agentsync install-agent"
+    assert r.fix == "~/.local/bin/agentsync install-agent"
     assert by_name(run_checks(sample_config))["launchd.reconcile"].ok, "the other job names the pin"
     # Under install.sh with no agent step it is the operator's, like every launchd warn: no fix line.
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
@@ -1415,7 +1417,7 @@ def test_a_gitleaks_only_this_shell_finds_is_a_warn_until_a_shell_run_records_it
     r = by_name(run_checks(sample_config))["gitleaks"]
     assert not r.ok and r.severity is Severity.WARN
     assert r.detail.startswith(f"{exe} is on this shell's PATH only: a background run would not find it")
-    assert r.fix == "agentsync sync (a run from this shell records where gitleaks is)"
+    assert r.fix == "~/.local/bin/agentsync sync (a run from this shell records where gitleaks is)"
     lints.remember_gitleaks()
     assert "gitleaks" not in by_name(run_checks(sample_config))
 
@@ -1554,7 +1556,7 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     _beat(sample_config, now_iso=old)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and r.severity is Severity.WARN and "3 x cadence" in r.detail
-    assert r.fix == "agentsync sync -v"
+    assert r.fix == "~/.local/bin/agentsync sync -v"
     assert_fix_parses(r.fix)
 
     sample_config.state_paths.heartbeat.unlink()
@@ -1571,14 +1573,14 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
 
     _beat(sample_config, ok=False, auth_state="REAUTH_REQUIRED")
     r = by_name(run_checks(sample_config))[name]
-    assert not r.ok and r.severity is Severity.ERROR and r.fix == "agentsync login"
+    assert not r.ok and r.severity is Severity.ERROR and r.fix == "~/.local/bin/agentsync login"
     assert_fix_parses(r.fix)
 
     sample_config.state_paths.heartbeat.unlink()
     _beat(sample_config, ok=False, pass_kind=None)
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "no successful pass" in r.detail
-    assert r.fix == "agentsync sync -v"
+    assert r.fix == "~/.local/bin/agentsync sync -v"
     assert_fix_parses(r.fix)
 
 
@@ -1592,7 +1594,7 @@ def test_heartbeat_incomplete_fix_by_source_kind(
     local = sample_config.sources[0]
     for kind in (SourceKind.GRAPH_DRIVE, SourceKind.INBOX):
         fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=kind))
-        assert fix == "agentsync sync -v (a full pass that lists all of team-drive clears this)"
+        assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
         assert_fix_parses(fix)
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     (root / "Bids").mkdir(parents=True)
@@ -1643,10 +1645,10 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
         _beat(sample_config, enumeration_complete=False)
     name = "heartbeat.local-fixture"
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
-    assert r.fix == "agentsync sync; another full walk lists it" and r.note is None
+    assert r.fix == "~/.local/bin/agentsync sync; another full walk lists it" and r.note is None
     assert_fix_parses(r.fix)
     r = by_name(doctor.run_checks(sample_config, tcc_canary=False, loop_checks=()))[name]
-    assert r.fix == "agentsync sync; another full walk lists it"
+    assert r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=(name,)))[name]
     assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about local-fixture ")
     assert "(" not in r.fix, "the report's fix parser strips one level of parentheses"
@@ -1659,14 +1661,15 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=(name,)))[name]
     assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
-    assert r.note is None and r.fix == "agentsync sync; another full walk lists it"
+    assert r.note is None and r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
 
 
 def assert_fix_parses(fix: str | None) -> None:
     """A fix naming an agentsync command names one the CLI still parses (KISS K13b: no deleted spelling
-    such as ``sync --source`` or ``sync --dry-run``). The text after ``;`` and any parenthetical are prose."""
-    assert fix is not None and fix.startswith("agentsync "), fix
-    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
+    such as ``sync --source`` or ``sync --dry-run``), by its full path (B13 round 4 Q49: ~/.local/bin is
+    not on PATH). The text after ``;`` and any parenthetical are prose."""
+    assert fix is not None and fix.startswith(f"{BIN} "), fix
+    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix(f"{BIN} ")
     try:
         cli.build_parser().parse_args(shlex.split(command))
     except SystemExit:
@@ -1674,7 +1677,7 @@ def assert_fix_parses(fix: str | None) -> None:
 
 
 def test_assert_fix_parses_rejects_deleted_spellings() -> None:
-    for fix in ("agentsync sync --source local-fixture -v", "agentsync sync --dry-run"):
+    for fix in (f"{BIN} sync --source local-fixture -v", f"{BIN} sync --dry-run"):
         with pytest.raises(pytest.fail.Exception):
             assert_fix_parses(fix)
 
@@ -2092,8 +2095,8 @@ def test_a_launchd_fail_keeps_its_fix_while_the_installer_step_is_pending(
     monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # install.sh sets both
     r = by_name(run_checks(sample_config))["launchd.poll"]
-    assert (r.severity, r.fix, r.note) == (Severity.ERROR, "agentsync install-agent", None)
-    assert format_results([r]).endswith(" (fix: agentsync install-agent)")
+    assert (r.severity, r.fix, r.note) == (Severity.ERROR, "~/.local/bin/agentsync install-agent", None)
+    assert format_results([r]).endswith(" (fix: ~/.local/bin/agentsync install-agent)")
 
 
 def test_launchd_warn_fix_is_the_operators_under_no_next_hint(
@@ -2127,7 +2130,7 @@ def test_launchd_warn_fix_is_the_operators_under_no_next_hint(
     data["MaterializeDatalessFiles"] = True
     plist.write_bytes(plistlib.dumps(data))
     r = by_name(run_checks(sample_config))["launchd.poll"]
-    assert r.severity is Severity.ERROR and r.fix == "agentsync install-agent" and r.note is None
+    assert r.severity is Severity.ERROR and r.fix == "~/.local/bin/agentsync install-agent" and r.note is None
 
 
 def test_adhoc_launcher_fix_is_worded_for_it_under_no_next_hint(

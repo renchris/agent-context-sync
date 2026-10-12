@@ -189,7 +189,7 @@ def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
         f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
         f.chmod(0o644)
     [found] = doctor._check_permissions(initialised)
-    assert not found.ok and found.fix == "agentsync sync (it makes these owner-only)"
+    assert not found.ok and found.fix == "~/.local/bin/agentsync sync (it makes these owner-only)"
 
     argv = ["init"] if command == "init" else ["add-source", str(initialised.sources[0].path)]
     assert cli.main([*argv, "--config", str(initialised.config_path)]) == cli.EXIT_OK
@@ -1024,7 +1024,7 @@ def test_accept_deletions_clears_a_tripped_breaker(
     capsys.readouterr()
     assert cli.main(["sync", "--mode", "reconcile", "--config", cfg]) == cli.EXIT_OK
     tripped = capsys.readouterr().out
-    assert "BREAKER TRIPPED" in tripped and "run `agentsync accept-deletions source`" in tripped
+    assert "BREAKER TRIPPED" in tripped and "run `~/.local/bin/agentsync accept-deletions source`" in tripped
     assert "--accept-deletions" not in tripped
     repo = initialised.docs_repo
     assert (repo / "mirror/source/projects/sample.csv.md").is_file()

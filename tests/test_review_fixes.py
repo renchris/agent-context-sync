@@ -388,7 +388,8 @@ def test_sg04_label_escalation_queues_a_purge_and_drops_the_cached_plaintext(
     assert (item_id(config, "plan.docx"), "label-escalation") in queued(config)
     (alarm,) = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
     assert alarm.endswith(
-        "purge queued (preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)"
+        "purge queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
+        "`~/.local/bin/agentsync purge --queue`)"
     )
     cached = [p for p in config.cache_dir.rglob("*") if p.is_file()]
     assert not any(b"SECRETPHRASE-ALPHA" in p.read_bytes() for p in cached)
@@ -641,7 +642,7 @@ def test_sg12_cli_runs_owner_only_and_doctor_flags_readable_repos(tmp_path: Path
     (config.docs_repo / "mirror").chmod(0o755)
     bad = {r.name: r for r in doctor.run_checks(config)}["docs_repo.permissions"]
     assert not bad.ok and bad.severity is doctor.Severity.ERROR
-    assert bad.fix == "agentsync sync (it makes these owner-only)"
+    assert bad.fix == "~/.local/bin/agentsync sync (it makes these owner-only)"
 
 
 @pytest.mark.parametrize(

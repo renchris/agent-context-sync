@@ -296,7 +296,10 @@ _RECORDING_DEADLINE_S = 60.0
 _RECORDING_FLOOR_BPS = 500_000
 """A download's deadline is ``_RECORDING_DEADLINE_S + size / _RECORDING_FLOOR_BPS`` seconds (a 4 Mbit/s
 floor): past it the download is given up as a refusal.  The reconcile job's watchdog is far longer."""
-_PURGE_QUEUE_STEPS = "(preview with `agentsync purge --queue --dry-run` before `agentsync purge --queue`)"
+_PURGE_QUEUE_STEPS = (
+    f"(preview with `{skill.AGENTSYNC_BIN} purge --queue --dry-run` before "
+    f"`{skill.AGENTSYNC_BIN} purge --queue`)"
+)
 """How an alarm that queued a purge ends (label escalation): the preview first, as the loop's wait says."""
 _RECORDING_NOT_DOWNLOADED = (
     "{path}: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
@@ -375,7 +378,7 @@ def _accept_incomplete_alarm(source_id: str, held: int | None) -> str:
         return text
     return (
         f"{text}; the deletion breaker still holds {held} file(s): once a sync lists {source_id} in full, "
-        f"run `agentsync accept-deletions {source_id}` again"
+        f"run `{skill.AGENTSYNC_BIN} accept-deletions {source_id}` again"
     )
 
 
@@ -2395,7 +2398,8 @@ class _Cycle:
         if queued:
             lines.append(
                 f"- {len(queued)} purge request(s) waiting; preview with "
-                "`agentsync purge --queue --dry-run`, then run `agentsync purge --queue` (rewrites history)"
+                f"`{skill.AGENTSYNC_BIN} purge --queue --dry-run`, then run "
+                f"`{skill.AGENTSYNC_BIN} purge --queue` (rewrites history)"
             )
         if kept:
             lines.append(f"- {len(kept)} {governance.KEPT_PURGES}")
@@ -3700,8 +3704,8 @@ class _Cycle:
                 acc.breaker_tripped = True
                 acc.alarms.append(
                     f"deletion breaker TRIPPED: {len(absent)} absent file(s) held, nothing "
-                    f"removed; if the deletion is real run `agentsync accept-deletions {src.id}` or retire "
-                    "the source"
+                    f"removed; if the deletion is real run `{skill.AGENTSYNC_BIN} accept-deletions {src.id}` "
+                    "or retire the source"
                 )
             else:
                 confirmed = self._confirmed_absent(src, absent, rows_before, acc)
@@ -4027,7 +4031,7 @@ class _Cycle:
         if online_only and size > cap:
             acc.alarms.append(
                 f"{row.rel_path}: online-only, {size} bytes exceeds the per-cycle budget ({cap}); raise "
-                "max_materialise_bytes or run `agentsync materialise --budget BYTES PATH`"
+                f"max_materialise_bytes or run `{skill.AGENTSYNC_BIN} materialise --budget BYTES PATH`"
             )
 
     def _after_fetch(
@@ -4456,7 +4460,8 @@ class _Cycle:
         if head_paths - {c.path for c in self.changes}:
             # the committed page under the credential-bearing name is removed (named nowhere in CHANGELOG)
             self._acc(self.config.source(sid)).alarms.append(
-                "a page named after a credential was removed from the tree; `agentsync purge` it from history"
+                "a page named after a credential was removed from the tree; "
+                f"`{skill.AGENTSYNC_BIN} purge` it from history"
             )
         log.warning("%s/%s: the name carries a credential; its path is redacted", sid, stable)
 
