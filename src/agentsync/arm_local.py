@@ -130,6 +130,7 @@ class WalkStats:
     unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
     empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
+    empty_cloud_root: bool = False  # the root itself has zero children in a cloud tree ("." in unknown_dirs)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -335,6 +336,7 @@ class _WalkState:
     unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
     empty: list[str] = dataclasses.field(default_factory=list)  # zero-child cloud dirs below the root
     unlisted: list[str] = dataclasses.field(default_factory=list)  # dirs whose listing raised OSError
+    empty_root: bool = False  # the root itself has zero children in a cloud tree
 
 
 class CallTimedOutError(TimeoutError):
@@ -539,6 +541,8 @@ def walk(
             )
             if rel_dir:
                 state.empty.append(rel_dir)
+            else:
+                state.empty_root = True
             # info: the scan's one alarm names these each pass; a line per folder per pass filled the logs.
             log.info(
                 "%s: directory %r has zero children in a cloud tree; treated as unknown", source_id, shown
@@ -627,6 +631,7 @@ def walk(
         unknown_dirs=tuple(sorted(state.unknown)),
         sentinel_present=None,
         empty_cloud_dirs=tuple(sorted(state.empty)),
+        empty_cloud_root=state.empty_root,
     )
     return items, stats
 
@@ -924,7 +929,13 @@ class LocalArm:
         stats = dataclasses.replace(stats, sentinel_present=sentinel)
         alarms: list[str] = []
         known_files = self._known_file_count()
-        if not items and stats.dirs <= 1 and not stats.unknown_dirs and not stats.excluded and known_files:
+        empty_root = (
+            not items
+            and stats.dirs <= 1
+            and not stats.excluded
+            and (not stats.unknown_dirs or stats.empty_cloud_root)
+        )
+        if empty_root and known_files:
             # An existing but EMPTY root (an unmounted volume's mount point, a sync client that has not
             # populated it yet) while files are mirrored: a scope with zero children is unknown, never
             # "everything was deleted" (design 4.7), sentinel or not.
@@ -934,16 +945,24 @@ class LocalArm:
                 "(unmounted volume?): "
                 "enumeration incomplete, nothing is deleted"
             )
+        elif empty_root and stats.unknown_dirs:
+            # An empty cloud root with nothing mirrored yet: a root cannot be excluded, so no exclude advice.
+            alarms.append(
+                f"source root {self.root} has zero children in a cloud tree: enumeration incomplete, "
+                "nothing is deleted"
+            )
         if sentinel is False:
             alarms.append(
                 f"sentinel {self.cfg.sentinel!r} missing under {self.root}: enumeration treated as incomplete"
             )
-        if stats.unknown_dirs:
+        if stats.unknown_dirs and not empty_root:
             shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
             more = f" (+{len(stats.unknown_dirs) - 5} more)" if len(stats.unknown_dirs) > 5 else ""
             cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
             advice = "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
-            if stats.empty_cloud_dirs:
+            if stats.unknown_dirs == (".",):  # the root could not be listed, and a root cannot be excluded
+                advice = "grant the agent Files and Folders access"
+            elif stats.empty_cloud_dirs:
                 # The loop's WAITING ON YOU lines name the empty cloud folders and the step for each, and warn
                 # against excluding one that held mirrored files (that retires its pages unchecked): point
                 # there, never at an exclude. Only an unreadable folder keeps the access advice.

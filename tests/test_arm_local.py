@@ -449,6 +449,35 @@ def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:
     )
 
 
+def test_an_empty_root_alarm_never_advises_an_exclude(tmp_path: Path, tree: Path) -> None:
+    """b13 R103: an empty root (plain or cloud) gets the empty-root alarm alone; it gave a second alarm
+    advising to exclude a deliberately empty cloud folder, and a root cannot be excluded. A root that cannot
+    be listed gets the access advice only."""
+    mirrored = {i.stable_id: i for i in _walk(tree)[0]}
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    plain = tmp_path / "plain"
+    for root in (cloud, plain):
+        root.mkdir(parents=True)
+        arm = al.LocalArm(_cfg(root))
+        arm.known_h0 = mirrored
+        res = arm.scan(None, full=True)
+        assert res.unknown_dirs == (".",) and not res.enumeration_complete
+        assert res.alarms == (
+            f"source root {root} is empty but {len(mirrored)} file(s) are mirrored (unmounted volume?): "
+            "enumeration incomplete, nothing is deleted",
+        )
+    (alarm,) = al.LocalArm(_cfg(cloud)).scan(None, full=True).alarms  # nothing mirrored yet
+    assert alarm == (
+        f"source root {cloud} has zero children in a cloud tree: enumeration incomplete, nothing is deleted"
+    )
+    _write(plain / "a.docx")
+    with _chmod(plain, 0):
+        res = al.LocalArm(_cfg(plain)).scan(None, full=True)
+    assert res.unknown_dirs == (".",)
+    assert [a for a in res.alarms if "exclude" in a] == []
+    assert any(a.endswith("(grant the agent Files and Folders access)") for a in res.alarms)
+
+
 def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_reason(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

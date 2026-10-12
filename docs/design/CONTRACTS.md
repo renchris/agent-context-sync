@@ -11124,6 +11124,11 @@ exclude:
   them)`;
 - no empty cloud folder below the root (an unreadable folder, a provider error, an empty cloud root): the old
   text, byte for byte.
+  **Amended 2026-10-12, §16.45 R103:** an empty root, cloud or plain, gets one alarm and no exclude advice:
+  with files mirrored, `source root <root> is empty but N file(s) are mirrored (unmounted volume?): enumeration
+  incomplete, nothing is deleted`; an empty cloud root with nothing mirrored, `source root <root> has zero
+  children in a cloud tree: enumeration incomplete, nothing is deleted`. A root that cannot be listed keeps the
+  old cause, with the advice `(grant the agent Files and Folders access)` only.
 
 An inbox whose newest FULL pass stored empty cloud folders that today's `exclude` does not prune gets the
 local source's two waits (§16.22), with N26's count (which in an inbox also includes a present file the last
@@ -11144,7 +11149,9 @@ can take belongs in a wait (install.sh, the setup report's Loop line and the set
 notes); "the WAITING ON YOU line" sat above two lines when a source had both kinds of folder. Rejected: an
 inbox-only note telling the person to remove the folders, which drops the "if the files were removed on
 purpose" condition for a folder whose removal lets held deletions through. Not changed: an empty cloud source
-root still gets the old alarm's exclude advice, though a root cannot be excluded. Amends §16.20, §16.22 and
+root still gets the old alarm's exclude advice, though a root cannot be excluded. **Amended 2026-10-12, §16.45
+R103:** it no longer does: an empty root, cloud or plain, gets the empty-root alarm alone (the bullet above).
+Amends §16.20, §16.22 and
 §16.37 (dated lines in §16.20, §16.22 and §16.37). Tests: `tests/test_arm_local.py`
 (`test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them`,
 `test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`,
