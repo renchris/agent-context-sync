@@ -10539,7 +10539,9 @@ copy is stopped at step 1 like every older copy (§16.28).
   last real session's. The first build named only the folder wait, which left that stop with two orders (the v10
   rehearsal, 2026-10-08). The report still follows every other stop (no Xcode tools, a git failure): those are
   failures, and their reports matter most. Rejected: a Rules sentence "where a step says to stop, run nothing
-  after it", which switches the report off at those two stops as well.
+  after it", which switches the report off at those two stops as well. **Amended 2026-10-12, §16.61 F25:** since
+  v14 step 3 names three cases; the third, a missing checkout, was a parenthesis before the two-case sentence,
+  which then required a report at that stop too.
 - **The report of a stopped copy invites no bring-back** (`scripts/install.sh` `on_exit`; amends §16.28 and
   §16.30). An older copy's own text still runs `--report-only` after `--log-start` stopped it. When
   `friction_attempt_stopped` holds, the test that already picks that run's `NEXT:` ("do not bring it back"), the
@@ -12303,7 +12305,10 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   end of" `fix-request.md` without saying under whose heading, so a session with nothing else to write could add
   it under the last session's, and triage would read it as that session's (v10 rehearsal). It sets no limit on
   what a part holds: a status paragraph about earlier items stays welcome. Rejected: "its part holds only step
-  3's section" (no observed part matched that condition, and it reads as a limit on content).
+  3's section" (no observed part matched that condition, and it reads as a limit on content). **Amended
+  2026-10-12, §16.61 F26:** since v14 the sentence reads "Write that heading even when this session asks for no
+  change, unless step 3 skips its "## Not used" section: that section goes under it." With no checkout there is
+  nothing to head.
 - **Removing an inbox file makes its page a deletion notice** (H6). Step 2 says "removing a file turns its page
   into a deletion notice and queues a purge": the page stays at its path (`# [DELETED UPSTREAM]`), the queued
   purge removes it, and `Publisher.reap` does after `tombstone_reap_days` (§9 step 7). Emptying the inbox by
@@ -14132,7 +14137,8 @@ unreachable proxy in git's settings fails as `Failed to connect to <its host> po
 now state the precedence first and base the check on what git prints: "if git's error names a host other than
 github.com, check that setting". The message stays one quote the agent repeats word for word; the agent is not
 asked to judge the error, and nothing tells it to change `~/.gitconfig`. Test: `tests/test_deploy_pack.py`
-(`test_readme_step1_is_one_command`).
+(`test_readme_step1_is_one_command`). **Amended 2026-10-12, §16.61 F24:** "check that setting" is replaced: the
+host is a proxy set by git's setting or by the terminal's `HTTPS_PROXY`, `https_proxy` or `ALL_PROXY`.
 
 **Older contract sections, by dated lines** (Q50 and Q64, one defect; Q54, Q56, Q57, Q62, Q70). Each is pinned by a
 test in `tests/test_deploy_pack.py` that reads the contract against the code, except Q70's proxy prose:
@@ -14184,4 +14190,43 @@ Reserved for round 5 lane E of B13.
 
 ### 16.61 Round 5: setup prompt v14 and docs (2026-10-12, wave B13 round 5 lane P)
 
-Reserved for round 5 lane P of B13.
+The B13 round 5 items of lane P (specs `round5/items/F<n>.md`, the verifier's corrected fix built). Five need
+prompt text (F24 to F28), so the prompt is **setup prompt v14**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's
+`prompt v14` and `setup-prompt-compat 14`, the issue form's placeholder and the block's digest move together; a
+saved v13 copy is stopped at step 1 like every older copy. v14 moves no step, so it has no `PROMPT_LAYOUTS` entry
+and is read with v7's rules. None adds a command, flag, installer option, config key or friction kind.
+
+**The git stop's proxy hint names every source** (F24; amends §16.55 Q25 by a dated line). "If git's error names a
+host other than github.com, check that setting" sent a person whose terminal holds a stale `HTTPS_PROXY` to git's
+`http.proxy`, which prints nothing. A stale `HTTPS_PROXY`, `https_proxy` or `ALL_PROXY` fails exactly as git's own
+setting does (`Could not resolve proxy: <its host>`, git 2.54, measured by the verifier), so the error alone cannot
+tell them apart. The quote now says the host "is a proxy git was told to use, either by git's own setting, which git
+config --get-urlmatch http.proxy https://github.com prints and which wins, or by the terminal's HTTPS_PROXY,
+https_proxy or ALL_PROXY, which env | grep -i proxy shows". `--get-urlmatch` also prints a proxy scoped to that URL
+(`[http "https://github.com"] proxy`), which `--get http.proxy` misses (measured in the lane's review). It stays one
+quote for the person; the agent runs neither command. Test:
+`tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+
+**A missing checkout is step 3's third case with no report** (F25, F27; amends §16.36 "Step 3 names the two stops
+with no report" by a dated line). "Two cases have no report ... Every other stop still ends with the report" came
+right after a parenthesis that ruled a report out when `~/src/agent-context-sync` does not exist, so the two
+contradicted each other at a failed clone. The list now has three cases, the missing checkout the third, stated
+once. The `## Not used` section was skipped "if ~/agent-context/setup does not exist", which step 1's own `--log`
+or `--log-start` creates on every path with a checkout (umask 077, measured), so it fired only with no checkout;
+it now reads "if ~/src/agent-context-sync does not exist", the one condition for both parts of the report. Test:
+`tests/test_deploy_pack.py` (`test_readme_report_step_after_any_failure`).
+
+**The heading rule has step 3's exception** (F26; amends §16.43 H5 by a dated line). "Write that heading even when
+this session asks for no change" had no exception, so a session with no checkout would create `fix-request.md` only
+to hold a heading, after which step 3's skip could no longer apply. It now ends "unless step 3 skips its "## Not
+used" section: that section goes under it". The exception names step 3's skip, so the condition is written once.
+A session that does write a fix request still heads it. Test: `tests/test_deploy_pack.py`
+(`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+
+**Step 1 runs again after a local-changes command whose pull alone failed** (F28). The prompt gave the next action
+only for success, so a failure of that command's last step could also be read as "log it and go to step 3's
+report", which skips the branch name and the git stop's proxy advice. The command is an `&&` chain, so when the pull
+alone fails the branch, the commit and the patch exist; the prompt now says "do this also when only that command's
+last step, the pull, failed, since my changes are already kept". Running step 1 again on the now clean tree reaches
+the git stop and cannot loop. Test: `tests/test_deploy_pack.py` (`test_readme_keeps_local_work_then_runs_step_1_again`,
+which also runs the command against an origin that is gone).

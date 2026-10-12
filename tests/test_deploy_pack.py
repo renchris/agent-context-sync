@@ -536,7 +536,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (13, "f30b21c941476ade4c31c4381c0e79f23ca688b526d6168bb253c5f70e0b1d2c")
+PROMPT = (14, "06eea5787a14077068f2005217329366f2f14f516e0a4be308e2c6af68d6e9a7")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -709,13 +709,22 @@ def test_readme_step1_is_one_command() -> None:
     # B13 round 2 R22: the git stop gave the person nothing to do once git works, which cost a "what now?"
     # turn. HTTPS_PROXY must be in the environment of the shell the agent runs in, so the person starts a new
     # session from a terminal where git reaches GitHub, then pastes the prompt again.
+    # B13 round 5 F24: "check that setting" sent a person whose terminal holds a stale HTTPS_PROXY to git's
+    # http.proxy, which printed nothing. A stale HTTPS_PROXY, https_proxy or ALL_PROXY fails exactly as git's
+    # own setting does ("Could not resolve proxy: <its host>", measured, git 2.54), so the error alone cannot
+    # tell the sources apart: the hint names each, with the command that shows it, and says which one wins.
+    # `--get-urlmatch ... https://github.com` also prints a proxy scoped to that URL ([http "https://github.com"]),
+    # which `--get http.proxy` misses (measured, round 5 review).
     assert (
         'If git failed any other way, show me its error and tell me: "Once git can reach GitHub from a '
-        "terminal (a corporate proxy may need HTTPS_PROXY set there; a proxy in git's own settings, which "
-        "git config --get http.proxy prints, wins over HTTPS_PROXY, so if git's error names a host other "
-        "than github.com, check that setting: it may point at a network this Mac is not on), start a new "
-        f"session from that terminal and paste this prompt again\", and go to step {report}'s report."
+        "terminal (a corporate proxy may need HTTPS_PROXY set there; if git's error names a host other than "
+        "github.com, that host is a proxy git was told to use, either by git's own setting, which git config "
+        "--get-urlmatch http.proxy https://github.com prints and which wins, or by the terminal's "
+        "HTTPS_PROXY, https_proxy or ALL_PROXY, which env | grep -i proxy shows; any of them may point at a "
+        "network this Mac is not on), start "
+        f"a new session from that terminal and paste this prompt again\", and go to step {report}'s report."
     ) in flat
+    assert "check that setting" not in flat
     # B13 round 4 Q25: "if the error names a proxy, the one in git's own settings ... comes before" made an
     # always-true fact conditional, and "the one" read as the proxy the error named. An unreachable proxy in
     # git's settings fails as "Failed to connect to <its host> port <N>", which never says "proxy" (measured,
@@ -775,9 +784,13 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "arrives with the next pull. That file is kept from session to session: leave an earlier session's "
         "text as it is, write yours after it under a heading of your own that names this prompt's version "
         "and the current date and time, and rewrite only your own part. Write that heading even when this "
-        'session asks for no change: step 3\'s "## Not used" section goes under it. In that file, name a '
-        "folder"
+        'session asks for no change, unless step 3 skips its "## Not used" section: that section goes under '
+        "it. In that file, name a folder"
     ) in block
+    # B13 round 5 F26: with no exception, a session whose checkout is missing created fix-request.md only to
+    # hold a heading, and once the folder existed step 3's skip could never apply. With no checkout there is
+    # nothing to head; the exception names step 3's skip, so the condition is written once, there.
+    assert 'section asks for no change: step 3\'s "## Not used"' not in block
     assert "today's date" not in block, "the date alone does not tell two sessions of one day apart"
     assert len(re.findall(r"setup prompt v\d+", block)) == 1, "the heading rule holds no version of its own"
     feedback = " ".join((DEPLOY / "setup-feedback.md").read_text(encoding="utf-8").split())
@@ -890,6 +903,56 @@ def test_step1_keeps_local_changes_on_a_branch_and_updates(tmp_path: Path) -> No
         ["git", "-C", str(checkout), "status", "--porcelain"], capture_output=True, text=True, check=True
     )
     assert status.stdout == ""
+
+
+def test_readme_keeps_local_work_then_runs_step_1_again(tmp_path: Path) -> None:
+    """B13 round 5 F28: step 1's local-changes command can fail at its last step, the pull (a network that
+    drops between the first pull's fetch and this one). The prompt said what to do only on success, so a
+    session could read the failure as "log it and go to the report" and never name the branch or reach the
+    git stop's proxy advice. The command is an && chain: when the pull alone fails, the branch, the commit and
+    the patch already exist (measured here against an origin that is gone), so the prompt says to name the
+    branch and run step 1 again either way."""
+    step1 = " ".join(_prompt_steps()[1].split())
+    assert (
+        "then tell me the branch name (my changes are safe on it, and copied as a patch to "
+        "~/agent-context/setup/local-work) and run step 1's command again; do this also when only that "
+        "command's last step, the pull, failed, since my changes are already kept."
+    ) in step1
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
+    upstream, home = tmp_path / "upstream", tmp_path / "home"
+    checkout = home / "src" / "agent-context-sync"
+    subprocess.run([*git, "init", "-q", str(upstream)], check=True)
+    (upstream / "convert.py").write_text("v6\n", encoding="utf-8")
+    subprocess.run([*git, "-C", str(upstream), "add", "-A"], check=True)
+    subprocess.run([*git, "-C", str(upstream), "commit", "-q", "-m", "v6"], check=True)
+    subprocess.run([*git, "clone", "-q", str(upstream), str(checkout)], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    upstream.rename(tmp_path / "gone")  # the origin can no longer be reached
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    proc = subprocess.run(
+        ["/bin/zsh", "-c", KEEP_LOCAL_WORK], cwd=home, env=env, capture_output=True, text=True, check=False
+    )
+    assert proc.returncode != 0, "the last pull fails"
+    branches = subprocess.run(
+        ["git", "-C", str(checkout), "branch", "--list", "local-work-*", "--format=%(refname:short)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert len(branches) == 1
+    kept = subprocess.run(
+        ["git", "-C", str(checkout), "show", f"{branches[0]}:convert.py"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert kept == "local edit\n", "the changes are kept on the branch"
+    [patch] = (home / "agent-context" / "setup" / "local-work").iterdir()
+    assert "+local edit" in patch.read_text(encoding="utf-8"), "and copied as a patch"
+    head = subprocess.run(
+        ["git", "-C", str(checkout), "branch", "--show-current"], capture_output=True, text=True, check=True
+    )
+    assert head.stdout.strip() == "main", "the next run of step 1 pulls main, now clean"
 
 
 def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
@@ -1387,26 +1450,32 @@ def test_readme_report_step_after_any_failure() -> None:
         "~/agent-context/setup/fix-request.md"
     )
     assert defined in flat
+    # B13 round 5 F27: the skip read "if ~/agent-context/setup does not exist", which step 1's own --log or
+    # --log-start creates on every path with a checkout, so it fired only when the checkout was missing too.
+    # The checkout is now the one condition for the section, the report and the heading rule.
     assert flat.index(defined) < flat.index(
-        "skip this part if ~/agent-context/setup does not exist. Then the"
+        "skip this part if ~/src/agent-context-sync does not exist. Then the"
     )
+    assert "~/agent-context/setup does not exist" not in flat
     assert flat.index("skip this part if") < flat.index("Then the report, always")
     block = " ".join(_one_prompt_block().split())
     assert block.count(f"go to step {report}'s report") >= 4, "the jump sites the definition names"
-    assert (
-        "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
-        in text
-    )
     # Two stops have no report (v10): step 1's folder question on a new Mac is a wait, not a failure, and a
     # copy that is not the installer's runs no other step. Every other stop of step 1 is a failure. Since v11
     # the second case names both of step 1's version checks, and the first as the line --version printed: at
     # an Xcode or git stop --version never ran, and those stops end with the report (B13 H2).
+    # B13 round 5 F25: "Two cases have no report ... Every other stop still ends with the report" came right
+    # after a parenthesis that ruled out a report when the checkout is missing, so the two contradicted each
+    # other at a failed clone. The missing checkout is the third case, stated once, in the list.
     assert (
-        "that setup stopped before the code was downloaded). Two cases have no report: while you wait "
-        "for my folder answer in step 1, and when step 1 stops because this prompt is not the installer's "
-        "(either check: the --version line does not end with this prompt's number, or the command says so). "
-        "Every other stop still ends with the report. The report works out"
-    ) in text
+        "--report-only` Three cases have no report: while you wait for my folder answer in step 1; when "
+        "step 1 stops because this prompt is not the installer's (either check: the --version line does not "
+        "end with this prompt's number, or the command says so); and when ~/src/agent-context-sync does not "
+        "exist (tell me instead that setup stopped before the code was downloaded). Every other stop still "
+        "ends with the report. The report works out"
+    ) in flat
+    assert "Two cases have no report" not in flat
+    assert flat.count("~/src/agent-context-sync does not exist") == 2, "the one condition, once per part"
     assert (
         "or the command says the pasted prompt is not the installer's, stop: this prompt is "
         f"v{PROMPT[0]}" in steps[1]
