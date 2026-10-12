@@ -55,6 +55,7 @@ from agentsync.cycle import (
     _PRESENT,
     _REREAD_BUDGET_S,
     _REREAD_META,
+    _ROOT_UNLISTED_META,
     _SCOPE_ROOT_META,
     _SEED_PAGE_NAMES,
     HYDRATION_REFUSED,
@@ -518,6 +519,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     files = _Files()
     incomplete: list[str] = []
     unlisted: list[tuple[str, int]] = []  # a local listing ran but could not finish: the operator's to fix
+    root_unlisted: list[str] = []  # ... at the root folder itself, which no exclude can clear
     empty: list[tuple[SourceConfig, dict[str, int], int]] = []  # ... because of these empty cloud folders
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
@@ -562,6 +564,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                             inbox_partial.append(src.id)
                         elif stored:
                             incomplete.append(src.id)  # all excluded since that walk: the next sync lists it
+                        elif manifest.get_meta(_ROOT_UNLISTED_META + src.id):
+                            root_unlisted.append(src.id)
                         else:
                             unlisted.append((src.id, _missed(manifest, src.id)))
                     else:
@@ -649,6 +653,14 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             "and no purge queued"
         )
     checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))
+    for sid in sorted(root_unlisted):  # a root cannot be excluded: never offer it
+        waits.append(
+            f"the folder of {sid} itself could not be listed or is empty (an unmounted volume, a sync client "
+            "that has not filled it yet, or no access; another sync does not clear it): mount it or let the "
+            "sync client fill it, or grant Files and Folders access; to stop syncing it on purpose, set "
+            f'state = "paused" in [[source]] id = "{sid}" in {_shown(config.config_path)}'
+        )
+        checks.append(f"heartbeat.{sid}")
     if blocked:
         waits.append(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "

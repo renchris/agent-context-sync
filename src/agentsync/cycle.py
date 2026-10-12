@@ -238,6 +238,11 @@ _EMPTY_DIRS_META = "empty_cloud_dirs:"
 """Manifest meta ``empty_cloud_dirs:<source id>``: the zero-child cloud folders the source's last walk found,
 a JSON list of paths relative to its root ("" when it found none, or could not walk). ``loop.next_step``
 names them from here, so status and STATE.md never walk a source to explain why its listing is incomplete."""
+_ROOT_UNLISTED_META = "root_unlisted:"
+"""Manifest meta ``root_unlisted:<source id>``: "1" when the source's last walk could not list its root
+folder or found it empty (the root its only unknown folder, or no walk at all: missing, unreadable, not a
+folder), else "". ``loop.next_step`` then gives the source a wait with no exclude, since a root cannot be
+excluded (b13 R102/R103 review)."""
 HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
@@ -2512,12 +2517,16 @@ class _Cycle:
         return scan, pc, rows, fast_ids, restamp
 
     def _note_empty_dirs(self, source_id: str, stats: WalkStats | None) -> None:
-        """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), written only on a change."""
-        key = _EMPTY_DIRS_META + source_id
+        """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`) and whether its root was
+        unlisted (:data:`_ROOT_UNLISTED_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
-        value = json.dumps(list(found), ensure_ascii=False) if found else ""
-        if (self.manifest.get_meta(key) or "") != value:
-            self.manifest.set_meta(key, value)
+        root = stats is None or stats.unknown_dirs == (".",)
+        for key, value in (
+            (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
+            (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
+        ):
+            if (self.manifest.get_meta(key) or "") != value:
+                self.manifest.set_meta(key, value)
 
     @staticmethod
     def _observed_state(item: SourceItem, row: ItemRow | None) -> RowState:

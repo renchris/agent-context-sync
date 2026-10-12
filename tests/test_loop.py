@@ -641,6 +641,32 @@ def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclu
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
 
+def test_a_source_root_a_sync_cannot_list_never_offers_an_exclude(tmp_path: Path, folder: Path) -> None:
+    """b13 R102/R103 review: a root that cannot be listed, is missing or is empty cannot be excluded, so its
+    wait offers no exclude, also when mirrored files went unlisted; it says what to do for the root itself."""
+    config = _synced(tmp_path, folder)
+    root_wait = (
+        "WAITING ON YOU: the folder of work itself could not be listed or is empty (an unmounted volume, a "
+        "sync client that has not filled it yet, or no access; another sync does not clear it): mount it or "
+        "let the sync client fill it, or grant Files and Folders access; to stop syncing it on purpose, set "
+        f'state = "paused" in [[source]] id = "work" in {config.config_path}'
+    )
+    folder.chmod(0)
+    try:
+        run_cycle(config, mode=None)
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        folder.chmod(0o755)
+    assert waits == [root_wait]
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+    folder.rename(folder.with_name("Work unmounted"))
+    run_cycle(config, mode=None)
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [root_wait]
+    folder.with_name("Work unmounted").rename(folder)
+    run_cycle(config, mode=None)
+    assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
+
+
 def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
