@@ -36,6 +36,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -52,6 +53,15 @@ FLUIDAUDIO_FLOOR = "04e363c29d9a754022d602d6fe1468ab80a0f705"
 """The oldest FluidAudio commit the speech helper may be built from (spec C3)."""
 FLUIDAUDIO_PIN = FLUIDAUDIO_FLOOR
 """The commit ``speech_helper/Package.swift`` builds; at or after :data:`FLUIDAUDIO_FLOOR`."""
+NEMO_URL = (
+    "https://github.com/FluidInference/text-processing-rs/releases/download/v0.3.1/"
+    "NemoTextProcessing.xcframework.zip"
+)
+"""The one remote binaryTarget (NemoTextProcessing) FluidAudio's Package.swift and Package@swift-6.2.swift
+name at :data:`FLUIDAUDIO_PIN`.  SwiftPM downloads it itself, ignoring the proxy variables, so behind a proxy
+set only in the environment the build fetches it with curl first (:func:`_seed`)."""
+NEMO_SHA256 = "5fa8c10d4ec26c1bb2413125f351a7222a4c68a23b74476680fbada7e26fc6aa"
+"""The checksum those manifests pin for :data:`NEMO_URL` (SwiftPM's checksum is the zip's SHA-256)."""
 THRESHOLD = 0.6
 """The diarizer's clustering threshold (community-1's own); never a forced speaker count."""
 DIARIZER_REVISION = 1
@@ -458,6 +468,57 @@ def _step(argv: Sequence[str], *, cwd: Path, deadline: float, what: str) -> str:
     return cp.stdout.decode("utf-8", errors="replace").strip()
 
 
+_CURL = "/usr/bin/curl"
+_CURL_FLAGS = (
+    *("--fail", "--silent", "--show-error", "--location", "--proto", "=https"),
+    *("--connect-timeout", "30", "--speed-limit", "1024", "--speed-time", "60"),
+)
+"""HTTPS only, through redirects (GitHub serves releases from another host); a stall of a minute below
+1 KB/s ends the fetch rather than the build's twenty minutes."""
+_PROXIES = tuple(key for key in _PROXY_VARS if key.lower() != "no_proxy")
+"""The variables that name a proxy; NO_PROXY alone names none."""
+
+
+def _artifact_name(url: str) -> str:
+    """SwiftPM's file name for a downloaded binary artifact in ``<cache-path>/artifacts``: the URL with
+    every character that is not a letter or digit made ``_`` (SwiftPM's internal layout, measured on Swift
+    6.2.4)."""
+    return re.sub(r"[^A-Za-z0-9]", "_", url)
+
+
+def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
+    """Behind a proxy set in the environment, put FluidAudio's binary artifact where SwiftPM looks before it
+    downloads (it then prints "Fetched ... from cache"): curl, which reads the proxy variables, fetches
+    :data:`NEMO_URL` to a temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
+    place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
+    the checksum again either way."""
+    final = artifacts / _artifact_name(NEMO_URL)
+    if not any(os.environ.get(key) for key in _PROXIES) or final.exists():
+        return
+    try:
+        artifacts.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=".seed-", dir=artifacts)
+    except OSError:
+        return
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        _step(
+            [_CURL, *_CURL_FLAGS, "--output", str(temporary), NEMO_URL],
+            cwd=cwd,
+            deadline=deadline,
+            what="curl",
+        )
+        if _file_sha(temporary) != NEMO_SHA256:
+            log.info("the NemoTextProcessing artifact fetched through the proxy has the wrong checksum")
+            return
+        temporary.replace(final)
+    except (SpeechError, OSError):
+        log.info("NemoTextProcessing could not be fetched through the proxy; SwiftPM downloads it itself")
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _owner_only(tree: Path) -> None:
     """Clear group and other bits on everything in ``tree`` (``docs_repo.permissions`` walks the cache);
     symlinks are neither followed nor changed."""
@@ -502,6 +563,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         pin = tree / "Sources" / _TARGET / "Pin.swift"
         pin.unlink(missing_ok=True)
         log.info("building the on-device %s (FluidAudio from github.com; up to 20 minutes)", kind.name)
+        _seed(spm / "cache" / "artifacts", cwd=tree, deadline=deadline)
         _step(
             [swift, "package", *places, "resolve"], cwd=tree, deadline=deadline, what="swift package resolve"
         )

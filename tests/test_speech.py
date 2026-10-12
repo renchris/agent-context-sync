@@ -7,6 +7,7 @@ up (Contoso).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -42,6 +43,8 @@ def _speech_on(monkeypatch: pytest.MonkeyPatch) -> None:
     """These tests are about speech being on: the suite's off switch is set per test where it matters."""
     monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
     monkeypatch.setattr(sys, "platform", "darwin")
+    for key in (*speech._PROXY_VARS, *speech._CA_VARS):  # a developer's proxy would send a build to curl
+        monkeypatch.delenv(key, raising=False)
 
 
 def place_fake(cache: Path, script_: dict[str, Any] | None = None, **kw: Any) -> Path:
@@ -623,3 +626,102 @@ def test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree(
         speech.build(cache)
     loose = [p for p in (spm, *spm.rglob("*")) if mode(p) & 0o077]
     assert loose == [], "a failed build leaves SwiftPM's folder owner-only too"
+
+
+FLUIDAUDIO_NEMO = {
+    "04e363c29d9a754022d602d6fe1468ab80a0f705": (
+        "https://github.com/FluidInference/text-processing-rs/releases/download/v0.3.1/"
+        "NemoTextProcessing.xcframework.zip",
+        "5fa8c10d4ec26c1bb2413125f351a7222a4c68a23b74476680fbada7e26fc6aa",
+    ),
+}
+"""The NemoTextProcessing binaryTarget's url and checksum in FluidAudio's Package.swift and
+Package@swift-6.2.swift at each commit speech_helper/Package.swift may pin, copied from those two files
+(``git show <commit>:Package.swift`` in a FluidAudio clone; both agree at 04e363c).  A new pin is a KeyError
+in test_the_seeded_artifact_is_the_one_the_pinned_fluidaudio_names until someone re-reads them."""
+NEMO_CACHE_NAME = (
+    "https___github_com_FluidInference_text_processing_rs_releases_download_"
+    "v0_3_1_NemoTextProcessing_xcframework_zip"
+)
+"""SwiftPM's file name for the artifact in ``<cache-path>/artifacts`` (Swift 6.2.4, measured)."""
+PAYLOAD = b"made-up Contoso xcframework bytes\n"
+FAKE_CURL = """while [ $# -gt 0 ]; do [ "$1" = "--output" ] && out="$2"; shift; done
+printf 'made-up Contoso xcframework bytes\\n' > "$out"
+[ -f "$0.exit" ] && exit "$(cat "$0.exit")"
+exit 0"""
+
+
+def test_the_seeded_artifact_is_the_one_the_pinned_fluidaudio_names() -> None:
+    url, checksum = FLUIDAUDIO_NEMO[speech.FLUIDAUDIO_PIN]
+    assert (url, checksum) == (speech.NEMO_URL, speech.NEMO_SHA256)
+    assert speech._artifact_name(speech.NEMO_URL) == NEMO_CACHE_NAME
+
+
+@pytest.fixture
+def curl(tools: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A fake curl that writes PAYLOAD to its --output and exits with the number in ``curl.exit`` (0 when
+    there is none); the pinned checksum is the payload's, so a match seeds the cache.  The fake swift records
+    the artifacts folder at resolve."""
+    monkeypatch.setattr(speech, "_CURL", str(script(tools / "curl", FAKE_CURL)))
+    monkeypatch.setattr(speech, "NEMO_SHA256", hashlib.sha256(PAYLOAD).hexdigest())
+    script(
+        tools / "swift",
+        'if [ "$1" = package ]; then ls -a "$3/artifacts" > "$0.seen" 2>/dev/null; fi\n' + SWIFT_OK,
+    )
+    return tools / "curl"
+
+
+def test_behind_a_proxy_the_build_seeds_swiftpms_cache_with_the_checked_artifact(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R83: SwiftPM downloads FluidAudio's binary artifact itself and ignores the proxy variables, so a Mac
+    whose only way out is a proxy in the environment could not build.  curl reads them, so the build fetches
+    the pinned artifact through the proxy, checks its checksum and puts it where SwiftPM looks first."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    cache = tmp_path / "cache"
+    speech.build(cache)
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    [call] = lines_of(curl.with_name("curl.calls"))
+    flags = "--fail --silent --show-error --location --proto =https --connect-timeout 30 --speed-limit 1024 "
+    flags += "--speed-time 60 --output"
+    assert re.fullmatch(rf"{flags} {re.escape(str(artifacts))}/\.seed-\S+ {re.escape(speech.NEMO_URL)}", call)
+    assert dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))["HTTPS_PROXY"] == (
+        "http://proxy.contoso.example:8080"
+    ), "curl runs in the build's environment, so it reads the proxy"
+    assert [p.name for p in artifacts.iterdir()] == [NEMO_CACHE_NAME], "no temporary file is left"
+    assert (artifacts / NEMO_CACHE_NAME).read_bytes() == PAYLOAD
+    assert NEMO_CACHE_NAME in lines_of(tools / "swift.seen"), "seeded before resolve"
+    assert mode(artifacts / NEMO_CACHE_NAME) & 0o077 == 0
+
+    curl.with_name("curl.calls").unlink()
+    ocr._helper_path(cache, speech.SPEECH).unlink()
+    speech.build(cache)
+    assert not curl.with_name("curl.calls").exists(), "a seeded artifact is not fetched again"
+
+
+@pytest.mark.parametrize("curl_exit", ["0", "22"])
+def test_a_wrong_or_failed_fetch_leaves_nothing_and_swiftpm_downloads_as_before(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, curl_exit: str
+) -> None:
+    """A checksum mismatch (exit 0, wrong bytes) or a curl failure deletes the temporary file and the build
+    goes on as it did before: SwiftPM downloads the artifact itself and checks it again."""
+    monkeypatch.setenv("https_proxy", "http://proxy.contoso.example:8080")
+    curl.with_name("curl.exit").write_text(curl_exit)
+    if curl_exit == "0":
+        monkeypatch.setattr(speech, "NEMO_SHA256", "0" * 64)
+    cache = tmp_path / "cache"
+    assert speech.build(cache).is_file()
+    assert len(lines_of(curl.with_name("curl.calls"))) == 1
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    assert not artifacts.exists() or list(artifacts.iterdir()) == []
+    assert lines_of(tools / "swift.calls")[0].startswith("package ")
+
+
+def test_without_a_proxy_the_build_fetches_nothing_itself(
+    curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No proxy variable (NO_PROXY alone names no proxy): SwiftPM downloads the artifact as before."""
+    monkeypatch.setenv("NO_PROXY", "intranet.contoso.example")
+    monkeypatch.setenv("HTTP_PROXY", "")
+    assert speech.build(tmp_path / "cache").is_file()
+    assert not curl.with_name("curl.calls").exists()
