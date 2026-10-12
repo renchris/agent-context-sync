@@ -506,6 +506,17 @@ def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None
     )
 
 
+def test_setup_feedback_shows_the_current_prompt_version() -> None:
+    """B13 round 2 R66: setup-feedback.md's friction.md row still showed ``--log-start 'prompt v9, <agent>'``
+    and ``Prompt: v9`` two versions later, while the same page's step 1 line said v11. Every example of what
+    step 1 writes there is the current prompt's; "since v9" and the per-version lists are history."""
+    page = (DEPLOY / "setup-feedback.md").read_text(encoding="utf-8")
+    [row] = [ln for ln in page.splitlines() if ln.startswith("| `~/agent-context/setup/friction.md` |")]
+    assert f"--log-start '{START_AGENT}'" in row and f"`Prompt: v{PROMPT[0]}`" in row
+    starts = re.findall(r"--log-start 'prompt v(\d+), <agent>'", page)
+    assert starts and set(starts) == {str(PROMPT[0])}, starts
+
+
 def test_the_prompt_text_changes_only_with_its_version() -> None:
     """Twice a saved copy of the prompt was pasted again without anyone knowing it was old: its wording had
     changed on main while its version had not. The version now moves with every change of the text, and
