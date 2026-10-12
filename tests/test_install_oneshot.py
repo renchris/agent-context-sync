@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import plistlib
 import pwd
 import re
 import shlex
@@ -85,6 +86,12 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
   if [ -n "${STUB_UV_INSTALL_RC:-}" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
   fi
+  half="${STUB_UV_HALF_REMOVE:-}"  # a tick started the tool's Python while uv removed the environment
+  if [ -n "$half" ] && { [ ! -e "$STUB_LOG.half" ] || [ "$half" = always ]; }; then
+    touch "$STUB_LOG.half"
+    rm -f "$HOME/.local/share/uv/tools/agentsync/bin/python"
+    echo "error: failed to remove directory (stub): Directory not empty (os error 66)" >&2; exit 2
+  fi
   mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
   cp "$STUB_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/bin/agentsync"
@@ -92,6 +99,11 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
   b="$HOME/.local/bin"
   printf 'warning: `%s` is not on your PATH. To use installed tools, run ' "$b" >&2
   printf '`export PATH="%s:$PATH"` or `uv tool update-shell`.\n' "$b" >&2
+elif [ "$1" = build ]; then
+  o=""
+  while [ $# -gt 0 ]; do [ "$1" != -o ] || o="$2"; shift; done
+  [ -z "${STUB_UV_BUILD_RC:-}" ] || exit "$STUB_UV_BUILD_RC"
+  : > "$o/agentsync-0.1.0-py3-none-any.whl"
 elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
 elif [ "$1 $2" = "tool dir" ]; then
@@ -3893,6 +3905,8 @@ def test_first_sync_note_carries_the_read_again_count(env: dict[str, str], folde
 
 STUB_TOOL_PYTHON = """#!/bin/bash
 case "$*" in  # the lock path step 2 asks for, unlogged: the other tests' python call counts stay as they were
+*state_paths.lock*" ${STUB_JOB_CONFIG:-/none}")  # a job's own config names its own lock
+	[ -z "${STUB_JOB_LOCK:-}" ] || printf '%s\\n' "$STUB_JOB_LOCK"; exit 0 ;;
 *state_paths.lock*) [ -z "${STUB_SYNC_LOCK:-}" ] || printf '%s\\n' "$STUB_SYNC_LOCK"; exit 0 ;;
 esac
 echo "python $* config=${AGENTSYNC_CONFIG:-}" >> "$STUB_LOG"
@@ -4536,6 +4550,8 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
     assert _lock_log(e) == ["released=yes", "held=True"]
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert _step_seconds(e, "agentsync") >= 1
+    # install.log says why the step took its seconds (B13 round 2 R34).
+    assert ("agentsync", "done", "0", "waited-for-a-background-sync") in steps(install_log(e))
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
 
 
@@ -4552,7 +4568,7 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
         in (cp.stdout.splitlines())
     )
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
-    assert ("agentsync", "done", "0", "") in steps(install_log(e))
+    assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e)), "B13 round 2 R34"
 
 
 def test_no_lock_file_means_no_wait_and_none_is_created(
@@ -4581,6 +4597,7 @@ def test_a_free_lock_file_is_held_while_uv_runs_without_a_wait_line(
     assert _lock_log(e) == ["released=no", "held=True"]
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
+    assert ("agentsync", "done", "0", "") in steps(install_log(e)), "no wait: no note"
 
 
 def test_a_stale_body_is_kept_for_the_next_sync(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -4599,6 +4616,79 @@ def test_a_stale_body_is_kept_for_the_next_sync(env: dict[str, str], folder: Pat
         assert nxt.acquire().broke_stale
     finally:
         nxt.release()
+
+
+def test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The jobs run with the --config fixed in their plist, which can differ from this run's config: the
+    reinstall probes and holds that config's lock too (B13 round 2 R114)."""
+    e, lock = _held_sync(env)
+    lock.write_text("")
+    home = Path(env["HOME"])
+    job_cfg = home / "contoso-job" / "sources.toml"
+    job_cfg.parent.mkdir()
+    job_cfg.write_text("# stub\n")
+    job_lock = home / "contoso-job" / "agentsync.lock"
+    job_lock.write_text("")
+    plist = home / "Library" / "LaunchAgents" / "com.agentsync.poll.plist"
+    plist.parent.mkdir(parents=True)
+    argv = ["/x/agentsync-launcher", "--", "/x/python", "-m", "agentsync", "sync", "--config", str(job_cfg)]
+    plist.write_bytes(plistlib.dumps({"Label": "com.agentsync.poll", "ProgramArguments": argv}))
+    e = {**e, "STUB_JOB_CONFIG": str(job_cfg), "STUB_JOB_LOCK": str(job_lock)}
+    e["AGENTSYNC_REINSTALL_WAIT_SECONDS"] = "1"
+    with SingleWriterLock(job_lock, "poll"):
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "agentsync: a background sync is running; the reinstall waits for it to end (at most 1s)" in (
+        cp.stdout.splitlines()
+    )
+    assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e))
+
+
+def test_a_checkout_over_a_tool_environment_is_built_into_a_wheel_first(
+    env: dict[str, str], folder: Path
+) -> None:
+    """uv --force deletes the environment the jobs run from before it builds: a checkout is built first, and
+    the built wheel installed, so the environment is missing only while uv recreates it; the wheel's folder is
+    removed after (B13 round 2 R114). A first install, with no environment, builds nothing first (the first
+    install of tests/test_launcher.py::test_install_sh_full_run_is_idempotent pins its uv calls)."""
+    e, _ = _held_sync(env)
+    cp = install_sh(e, "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    log = calls(e)
+    [build] = [c for c in log if c.startswith("uv build --wheel -o ")]
+    out = build.split(" -o ", 1)[1].split(" ", 1)[0]
+    assert build.endswith(f" {REPO}")
+    [inst] = [c for c in log if c.startswith("uv tool install")]
+    assert log.index(build) < log.index(inst) and inst.endswith(f" {out}/agentsync-0.1.0-py3-none-any.whl")
+    assert not Path(out).exists()
+    Path(e["STUB_LOG"]).unlink()
+    e = {**e, "STUB_UV_BUILD_RC": "1"}
+    cp = install_sh(e, "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    [inst] = [c for c in calls(e) if c.startswith("uv tool install")]
+    assert inst.endswith(f" {REPO}"), "a wheel that does not build leaves the install to the checkout"
+
+
+def test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """A tick that starts the tool's Python while uv removes the environment fails uv and leaves no
+    interpreter: the install runs once more under the lock, and a second failure says so instead of blaming
+    the network (B13 round 2 R114)."""
+    e, lock = _held_sync(env)
+    lock.write_text("")
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    cp = install_sh({**e, "STUB_UV_HALF_REMOVE": "1"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 2
+    assert "agentsync: uv left the tool environment half removed" in cp.stdout
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    cp = install_sh({**e, "STUB_UV_HALF_REMOVE": "always"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1
+    assert "left the tool environment without its interpreter" in cp.stderr
+    assert "network, proxy or TLS" not in cp.stderr
 
 
 def test_a_bad_reinstall_wait_is_a_usage_error(env: dict[str, str]) -> None:

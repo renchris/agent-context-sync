@@ -400,6 +400,11 @@ time was skipped on purpose: the reinstall held its lock, and launchd starts the
 report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock held by an unrecorded holder
 (install.sh while it reinstalls agentsync, or a check for an instant)`, and doctor's lock line during the wait
 reads `held by an unrecorded holder (...)` with no cycle named: the reinstall writes no lock body.
+The install log's `step=agentsync` line notes what step 2 saw: `waited-for-a-background-sync`,
+`wait-ran-out-after-<N>s` (the reinstall then ran without the lock) or `lock-not-taken-rc<N>`; with no note, the
+step's seconds are uv's own (or a sync that started after the probe). A launchd run that ends in the launcher's
+`SPAWN_FAILED` (exit 71) or an import error at that time started while uv recreated the tool environment; the
+next interval runs normally.
 
 ### A check that ran out of time
 

@@ -99,11 +99,20 @@
 #      are missing for a moment, and a cycle already running meets a new build. So the reinstall holds that
 #      sync's single-writer lock: <state_dir>/agentsync.lock of the config, read by the tool being replaced,
 #      held with /usr/bin/lockf, which writes nothing in it.
-#      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s; 0 never waits),
-#      with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines. A background
-#      sync that starts meanwhile is skipped (exit 75), and launchd starts the next at its interval. A sync
+#      It holds the lock of this run's config and of the config each LaunchAgent's plist names after --config
+#      (they can differ), and builds a checkout into a wheel first, outside the lock, so the environment is
+#      missing only while uv recreates it from its cache.
+#      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s, for each lock; 0
+#      never waits), with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines.
+#      A background sync that starts meanwhile and reaches its lock is skipped (exit 75); a launchd tick that
+#      starts while the environment is being recreated ends in the launcher's SPAWN_FAILED (exit 71) or an
+#      import error instead, and uv itself may fail on the half-removed environment, so a failed locked
+#      install whose interpreter is gone runs once more. launchd starts the next sync at its interval. A sync
 #      still running after the wait, or a lock lockf cannot take, leaves the reinstall as it was: not waited
-#      for
+#      for. A run killed with SIGKILL during the wait leaves lockf to run the reinstall once the lock frees,
+#      still under the lock. install.log's step=agentsync line notes what the script saw:
+#      waited-for-a-background-sync, wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
+#      after the probe is waited for too, with no note)
 #   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
 #      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
@@ -1985,16 +1994,41 @@ uv_run() { { "$@" </dev/null 2>&1 1>&3 3>&- | uv_filter >&2; } 3>&1; } # COMMAND
 # The single-writer lock the background sync takes (<state_dir>/agentsync.lock), read by the tool about to be
 # replaced from this run's config. Empty without that tool or config, or when it cannot say: a background job
 # starts that interpreter on that config, so none can be running agentsync then.
-sync_lock() {
+sync_lock() { # CONFIG: its <state_dir>/agentsync.lock, read by the tool being replaced
 	local py="$TOOL_DIR/agentsync/bin/python"
-	[ -x "$py" ] && [ -f "$CONFIG" ] || return 0
+	[ -x "$py" ] && [ -f "$1" ] || return 0
 	with_timeout 20 "$py" -I -c '
 import sys
 from pathlib import Path
 from agentsync.config import load_config
 
 print(load_config(Path(sys.argv[1])).state_paths.lock)
-' "$CONFIG" 2>/dev/null || true
+' "$1" 2>/dev/null || true
+}
+# The configs the LaunchAgents run with: the value after --config in each plist's ProgramArguments, fixed when
+# the plist was written, so it can differ from this run's AGENTSYNC_CONFIG (B13 round 3 R114).
+job_configs() {
+	local l
+	for l in poll reconcile; do
+		/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$HOME/Library/LaunchAgents/com.agentsync.$l.plist" 2>/dev/null |
+			LC_ALL=C awk '{ sub(/^[ \t]+/, "") } want { print; exit } $0 == "--config" { want = 1 }' || true
+	done
+}
+# The lock files the reinstall holds, one a line: those of this run's config and of each job's, once each, and
+# only a regular file that exists (lockf -n creates none).
+sync_locks() {
+	local c l seen=$'\n'
+	while IFS= read -r c; do
+		[ -n "$c" ] || continue
+		l="$(sync_lock "$c")"
+		[ -n "$l" ] && [ -f "$l" ] && [ ! -L "$l" ] || continue
+		case "$seen" in *$'\n'"$l"$'\n'*) continue ;; esac
+		seen="$seen$l"$'\n'
+		printf '%s\n' "$l"
+	done <<EOF
+$CONFIG
+$(job_configs)
+EOF
 }
 # The reinstall under the background sync's lock (see step 2 in the header). lockf takes the flock(2) lock the
 # sync takes, keeps the file (-k), never creates one (-n: no lock file, no sync ever ran there), and writes
@@ -2002,15 +2036,33 @@ print(load_config(Path(sys.argv[1])).state_paths.lock)
 # not start uv, which never exits with those: then uv runs as before, not waited for. The probe's own error
 # line is dropped (lockf prints it whatever -s says), so a lock it cannot open is reported once, by the call
 # that runs uv.
+# Over a tool environment the jobs run from, a checkout is built into a wheel first (uv build, outside the
+# lock): --force deletes the environment before it builds, so installing a built wheel leaves it missing only
+# while uv recreates it from its cache, about 0.9 s against 6 s on a loaded Mac (B13 round 3 R114). A wheel
+# that does not build leaves the install to build from the checkout, as before, so its error is the one shown.
+# AGENTSYNC_NOTE is the step's install.log note: what the script saw of the lock (B13 round 3 R34).
 uv_tool_install() {
-	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE") lock busy=0 rc=0
+	local args=(tool install --force --reinstall-package agentsync --python 3.11) src="$SOURCE" whl="" locks l
+	local held=() busy=0 rc=0
+	AGENTSYNC_NOTE=""
 	if [ "$DRY_RUN" -eq 1 ]; then
-		run "$UV" "${args[@]}"
+		run "$UV" "${args[@]}" "$src"
 		return 0
 	fi
-	lock="$(sync_lock)"
-	if [ -n "$lock" ] && [ -f "$lock" ] && [ ! -L "$lock" ] && [ -x "$LOCKF" ]; then
-		"$LOCKF" -k -n -s -t 0 "$lock" /usr/bin/true 2>/dev/null || busy=$?
+	if [ "$SOURCE_KIND" = "checkout" ] && [ -x "$TOOL_DIR/agentsync/bin/python" ] &&
+		whl="$(mktemp -d "${TMPDIR:-/tmp}/agentsync-wheel.XXXXXX" 2>/dev/null)"; then
+		if uv_run "$UV" build --wheel -o "$whl" "$SOURCE" && l="$(find "$whl" -maxdepth 1 -name 'agentsync-*.whl' 2>/dev/null)" &&
+			[ -n "$l" ] && [ "$(printf '%s\n' "$l" | wc -l | tr -d ' ')" = 1 ]; then
+			src="$l"
+		fi
+	fi
+	locks="$(sync_locks)"
+	if [ -n "$locks" ] && [ -x "$LOCKF" ]; then
+		while IFS= read -r l; do
+			[ "$busy" -eq 75 ] || { "$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || busy=$?; }
+			held+=("$LOCKF" -k -n -s -t "$REINSTALL_WAIT" "$l")
+		done <<<"$locks"
+		[ "$busy" -eq 75 ] || busy=0
 		if [ "$busy" -eq 75 ]; then
 			say "agentsync: a background sync is running; the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
 			ticker "agentsync: reinstalling after the background sync ends" &
@@ -2018,17 +2070,36 @@ uv_tool_install() {
 			ticker "agentsync: reinstalling" &
 		fi
 		TICKER=$!
-		uv_run "$LOCKF" -k -n -s -t "$REINSTALL_WAIT" "$lock" "$UV" "${args[@]}" || rc=$?
+		uv_run "${held[@]}" "$UV" "${args[@]}" "$src" || rc=$?
+		# A tick that starts the tool's Python while uv deletes the environment fails uv ("Directory not
+		# empty") and leaves no interpreter: once more, still under the locks.
+		if [ "$rc" -ne 0 ] && [ "$rc" -ne 75 ] && [ ! -x "$TOOL_DIR/agentsync/bin/python" ] &&
+			[ -d "$TOOL_DIR/agentsync" ]; then
+			say "agentsync: uv left the tool environment half removed (a background run started in it?); installing once more"
+			rc=0
+			uv_run "${held[@]}" "$UV" "${args[@]}" "$src" || rc=$?
+		fi
 		kill "$TICKER" 2>/dev/null || true
 		TICKER=""
 		case "$rc" in
+		0) [ "$busy" -ne 75 ] || AGENTSYNC_NOTE="waited-for-a-background-sync" ;;
+		64 | 69 | 71 | 73) AGENTSYNC_NOTE="lock-not-taken-rc$rc" ;;
+		75) AGENTSYNC_NOTE="wait-ran-out-after-${REINSTALL_WAIT}s" ;;
+		esac
+		case "$rc" in
 		64 | 69 | 71 | 73 | 75) ;;
-		*) return "$rc" ;;
+		*)
+			[ -z "$whl" ] || rm -rf "$whl"
+			return "$rc"
+			;;
 		esac
 		[ "$rc" -ne 75 ] ||
 			say "agentsync: the background sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
 	fi
-	uv_run "$UV" "${args[@]}"
+	rc=0
+	uv_run "$UV" "${args[@]}" "$src" || rc=$?
+	[ -z "$whl" ] || rm -rf "$whl"
+	return "$rc"
 }
 step_start agentsync
 BIN_DIR="$HOME/.local/bin"
@@ -2048,8 +2119,11 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$SOURCE_KIND" = "checkout" ] && [ "$COMMIT" != "-"
 	say "agentsync: $AGENTSYNC (current: installed from commit $COMMIT)"
 	step_end skipped 0 current
 else
-	uv_tool_install ||
+	if ! uv_tool_install; then
+		[ -x "$TOOL_DIR/agentsync/bin/python" ] || [ ! -d "$TOOL_DIR/agentsync" ] ||
+			fail "uv tool install failed and left the tool environment without its interpreter (a background run started in it while uv removed it, or the network failed after the removal): run this command again"
 		fail "uv tool install failed (network, proxy or TLS inspection? set HTTPS_PROXY / UV_SYSTEM_CERTS=1)"
+	fi
 	if [ "$DRY_RUN" -eq 0 ] && [ ! -x "$AGENTSYNC" ]; then
 		fail "uv tool install finished but $AGENTSYNC is missing"
 	fi
@@ -2061,7 +2135,7 @@ else
 		fi
 	fi
 	say "agentsync: $AGENTSYNC"
-	step_end "done"
+	step_end "done" 0 "$AGENTSYNC_NOTE"
 fi
 # The one interpreter the launcher may start (baked into its sealed Info.plist; see launcher/build.sh).
 TOOL_PY="$TOOL_DIR/agentsync/bin/python"

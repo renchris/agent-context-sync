@@ -1591,6 +1591,29 @@ def test_list_folders_runs_are_not_install_runs(fake_mac: dict[str, Path]) -> No
     assert "- install.sh: 1 install run (+2 --list-folders) during this attempt; the last exit 0" in summary
 
 
+def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: Path) -> None:
+    """install.sh notes on its step=agentsync line what it saw of the background sync's lock; the Summary
+    carries that note, so a 59 s step reads as a wait, not a slow uv (B13 round 2 R34). Other steps' notes
+    stay out of this line."""
+    run = "20261011T100000Z-4242"
+    log = tmp_path / "install.log"
+    log.write_text(
+        f"2026-10-11T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout source=- args=\n"
+        f"2026-10-11T10:00:59Z run={run} step=agentsync seconds=59 rc=0 result=done "
+        "note=waited-for-a-background-sync\n"
+        f"2026-10-11T10:01:00Z run={run} step=config seconds=1 rc=0 result=done note=created\n"
+        f"2026-10-11T10:01:00Z run={run} end rc=0 seconds=60\n",
+        encoding="utf-8",
+    )
+    runs = setup_report.read_install_runs(log)
+    r = setup_report._Run.__new__(setup_report._Run)
+    r.install_runs = runs
+    assert setup_report._install_line(r, runs, scoped=False) == (
+        "- install.sh: 1 install run; the last exit 0 after 60s "
+        "(agentsync 59s (waited-for-a-background-sync) · config 1s)"
+    )
+
+
 @pytest.mark.parametrize(
     "commit", ["commit=0123456789ab-dirty tree=a1b2c3d4e5f6", "commit=0123456789ab-dirty dirty a1b2c3d4e5f6"]
 )

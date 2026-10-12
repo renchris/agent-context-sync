@@ -11535,12 +11535,17 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     that does not parse keeps the old text. The module docstring says so.
   - The setup log is unchanged: `step=agentsync seconds=N` carries the wait. The header's run-time sentence
     says a re-run may spend up to 2 minutes of the first sync's time in step 2 (the first sync would
-    otherwise wait up to 600 s for the same sync).
+    otherwise wait up to 600 s for the same sync). (**amended 2026-10-11, §16.47 R34:** the line now carries
+    a note of what the script saw of the lock: `waited-for-a-background-sync`, `wait-ran-out-after-<N>s` or
+    `lock-not-taken-rc<N>`; a run with no wait keeps the line byte for byte. The Summary's install.sh line
+    shows the agentsync step's note.)
   - Why: with `--force`, uv removes and recreates the tool environment (uv 0.12.17, measured 2026-10-11:
     `bin/python`, the package and the bundled pandoc missing for 0.26 to 0.66 s of a 1.3 s reinstall, then a
     new build under any cycle still running) while a job may run from it (2026-10-08 U7; v10 E3).
   - Residuals: a cycle longer than the wait still meets the rebuild (today's behavior, said in one line); a
     job that starts inside the rebuild can fail at exec or import before it takes the lock (exit 1, as today).
+    (**amended 2026-10-11, §16.47 R114, R125:** the rebuild window is shorter, the locks are those of every
+    config a job runs with, and a run killed with SIGKILL during the wait is said in the header; see §16.47.)
   - Tests: `tests/test_install_oneshot.py` (the wait, released on the first tick; a wait that runs out; no
     lock file, none created; a free lock held while uv runs; a crash marker kept; a bad
     `AGENTSYNC_REINSTALL_WAIT_SECONDS` is a usage error) and `tests/test_ops_lock.py`

@@ -5503,7 +5503,13 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
         if last.rc is not None
         else f"no end line ({_open_state(last)})"
     )
-    steps = " · ".join(f"{k} {v.get('seconds', '?')}s" for k, v in last.steps if k != "report")
+    # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
+    # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts.
+    steps = " · ".join(
+        f"{k} {v.get('seconds', '?')}s" + (f" ({v['note']})" if k == "agentsync" and v.get("note") else "")
+        for k, v in last.steps
+        if k != "report"
+    )
     return f"- install.sh: {where}; the last {status}" + (f" ({steps})" if steps else "")
 
 
