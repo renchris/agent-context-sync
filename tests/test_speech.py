@@ -770,6 +770,38 @@ def test_the_seeds_curl_trusts_the_shells_ca_and_swiftpm_and_git_never_see_curls
         assert not set(CURL_CA) & tool_seen, tool
 
 
+@pytest.mark.parametrize(
+    ("own", "bundle"),
+    [
+        ({}, SHELL_CA["GIT_SSL_CAINFO"]),
+        ({"CURL_CA_BUNDLE": "/Users/contoso/certs/curl.pem"}, "/Users/contoso/certs/curl.pem"),
+        ({"SSL_CERT_FILE": "/Users/contoso/certs/openssl.pem"}, None),
+    ],
+)
+def test_a_ca_only_git_trusts_is_the_seeds_curl_bundle_unless_curl_has_its_own(
+    curl: Path,
+    tools: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    own: dict[str, str],
+    bundle: str | None,
+) -> None:
+    """R84 x R83: a shell behind TLS inspection that trusts the inspecting CA through git alone
+    (GIT_SSL_CAINFO, which curl ignores) clones FluidAudio but would fetch the seed with curl's own bundle and
+    fail verification.  curl gets that file as CURL_CA_BUNDLE, unless the shell names a bundle of curl's own;
+    swift and git never see CURL_CA_BUNDLE."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    monkeypatch.setenv("GIT_SSL_CAINFO", SHELL_CA["GIT_SSL_CAINFO"])
+    for key, value in own.items():
+        monkeypatch.setenv(key, value)
+    assert speech.build(tmp_path / "cache").is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    assert seen.get("CURL_CA_BUNDLE") == bundle
+    for tool in ("swift", "git"):
+        tool_seen = {ln.split("=", 1)[0] for ln in lines_of(tools / f"{tool}.env")}
+        assert "CURL_CA_BUNDLE" not in tool_seen, tool
+
+
 @pytest.mark.parametrize("state", ["fetches", "no proxy", "already seeded"])
 def test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build(
     curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str

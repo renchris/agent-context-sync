@@ -13182,6 +13182,15 @@ download. Pinned by
 `test_without_a_proxy_the_build_fetches_nothing_itself` (its `HTTP_PROXY` and `http_proxy` cases) and
 `test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build`.
 
+A shell that trusts the inspecting CA through git alone, `GIT_SSL_CAINFO`, cloned FluidAudio but fetched the
+seed with curl's own bundle and failed verification, since curl ignores `GIT_SSL_*` (R84, R83, lead's
+follow-on). The seed's curl now runs in `speech._curl_env()`: the above, plus that file as `CURL_CA_BUNDLE`
+when the shell sets neither `CURL_CA_BUNDLE` nor `SSL_CERT_FILE`, so the seed trusts what step 1's git trusts
+(measured 2026-10-12 with `/usr/bin/curl` 8.7.1: `CURL_CA_BUNDLE` at an empty file exits 77, at
+`/etc/ssl/cert.pem` it fetches). `GIT_SSL_CAPATH` is not mapped: `SSL_CERT_DIR` beside an unusable bundle still
+exited 77 in the same measurement. `swift` and `git` never get `CURL_CA_BUNDLE`. Pinned by
+`tests/test_speech.py::test_a_ca_only_git_trusts_is_the_seeds_curl_bundle_unless_curl_has_its_own`.
+
 A Ctrl-C while Popen starts a build tool still stops the tool (R89). `ocr._run_build`'s `finally` treated "no
 Popen object" as "the tool ended", so a KeyboardInterrupt that landed after the fork but before `proc` was set
 (mainly the error-pipe read inside `Popen._execute_child`) told the watcher "done", and the tool ran on to its

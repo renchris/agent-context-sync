@@ -457,6 +457,19 @@ def _build_env() -> dict[str, str]:
     return {**ocr._env(), **_shell((*_PROXY_VARS, *_CA_VARS))}
 
 
+def _curl_env() -> dict[str, str]:
+    """:func:`_build_env` plus the shell's :data:`_CURL_CA_VARS`, for :func:`_seed`'s curl.  A shell that
+    trusts the inspecting CA through git alone (GIT_SSL_CAINFO, which curl ignores) has that bundle passed
+    to curl as CURL_CA_BUNDLE, unless the shell names a bundle of curl's own: the seed's curl then trusts
+    what step 1's git trusts (measured with /usr/bin/curl 8.7.1: CURL_CA_BUNDLE at an empty file fails with
+    exit 77, at /etc/ssl/cert.pem it fetches)."""
+    env = {**_build_env(), **_shell(_CURL_CA_VARS)}
+    cainfo = env.get("GIT_SSL_CAINFO")
+    if cainfo and "CURL_CA_BUNDLE" not in env and "SSL_CERT_FILE" not in env:
+        env["CURL_CA_BUNDLE"] = cainfo
+    return env
+
+
 def _step(
     argv: Sequence[str], *, cwd: Path, deadline: float, what: str, env: dict[str, str] | None = None
 ) -> str:
@@ -529,7 +542,7 @@ def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
             cwd=cwd,
             deadline=deadline,
             what="curl",
-            env={**_build_env(), **_shell(_CURL_CA_VARS)},
+            env=_curl_env(),
         )
         if _file_sha(temporary) != NEMO_SHA256:
             log.info("the NemoTextProcessing artifact fetched through the proxy has the wrong checksum")
