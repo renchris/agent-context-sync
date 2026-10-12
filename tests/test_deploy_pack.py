@@ -2774,3 +2774,50 @@ def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
     assert "So is an image, but only when the OCR part's `helper:` reads `ready`" in page
     assert "or the attempt names no agent (no `Agent:` value)" in page
     assert "agentsync's own globs show as written" in page
+
+
+def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
+    """B13 round 5 F60 and F82 (one defect): since round 4's Q80 the installer's shell fallback report shows
+    an exclude list entry by entry, as the agentsync report does, and Q21/Q22 split a header-less step 1 error
+    by its stated words, with two labels the page never named.  F67: since Q49 every runnable fix doctor
+    prints names `~/.local/bin/agentsync`, while the page still quoted the bare command (the K table's history
+    rows keep what was true then).  F91: the placeholder table had no row for `<tmp>`, `<hash-N>` or
+    `<commit-N>`, which the report's legend names."""
+    from agentsync import setup_report  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "the installer's shell fallback report, show the whole list" not in page
+    assert "since round 4, in the installer's shell fallback report" in page
+    for label in setup_report._HEADERLESS_LABEL.values():
+        assert label in page, label
+    assert "and the open attempt has a header or stated words of its own" in page
+    assert "the shell fallback report names only `$TMPDIR`" in page
+    code = Path(doctor.__file__).read_text(encoding="utf-8")
+    assert doctor.BIN == "~/.local/bin/agentsync"
+    for printed in (
+        "{BIN} sync (it makes these owner-only)",
+        "{BIN} status (run it again as it is)",
+        "{BIN} status -v (prints the traceback",
+        "report it: {BIN} status -v prints where",
+    ):
+        assert printed in code, printed
+    for quoted in (
+        "(fix: ~/.local/bin/agentsync sync (it makes these owner-only))",
+        "`~/.local/bin/agentsync status (run it again as it is)`",
+        "`~/.local/bin/agentsync status -v`, which prints the traceback",
+        "report it: ~/.local/bin/agentsync status -v prints where",
+    ):
+        assert quoted in page, quoted
+    for bare in (
+        "`agentsync status -v`, which",
+        "report it: agentsync status",
+        "(fix: agentsync sync",
+        "`agentsync status (",
+    ):
+        assert bare not in page, bare
+    raw = (DEPLOY / "setup-feedback.md").read_text(encoding="utf-8")
+    table = "\n".join(line.split(" | ", 1)[0] for line in raw.splitlines() if line.startswith("| `"))
+    for entry in setup_report._LEGEND.values():
+        placeholder = entry.split(" ", 1)[0]
+        assert f"`{placeholder}`" in table, placeholder

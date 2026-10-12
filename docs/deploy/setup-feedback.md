@@ -13,7 +13,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config; `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v14, <agent>'` (`Attempt: <UTC time>`, `Prompt: v14`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` dated more than 10 minutes after the closing line is another session, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v14, <agent>'` (`Attempt: <UTC time>`, `Prompt: v14`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header or stated words of its own, with a version or agent that differs from that attempt's or more than 10 minutes after its latest time, end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
 
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
@@ -63,6 +63,8 @@ Redaction is on by default and consistent within one report, so the same value i
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know; in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word, how install.log writes a name with a curly apostrophe, a dash or an accent, and a relative `--source-local` argument from install.log that names no CloudStorage folder |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files and the LaunchAgent's proxy included; a generic dotless host such as `proxy` or `wpad` only inside a URL) and the system PAC URL after its scheme |
 | `<mdmhost>` | the MDM server's host (`profiles status -type enrollment`), when it has a dot; the whole host, no vendor suffix kept |
+| `<tmp>` | this account's temporary folder (`$TMPDIR`, and in the agentsync report any `/var/folders/<x>/<y>` path, with or without `/private`; the shell fallback report names only `$TMPDIR`, in both its forms) |
+| `<hash-N>`, `<commit-N>` | a hex fingerprint of 16 or more digits (launcher cdhash, content hash); a docs-repo commit id (every abbreviation sharing its first 7 digits is the same placeholder) |
 | `(source N)`, `(not in the config, N)` | in the evidence parts only: a configured source id the redaction does not know, by its place in sources.toml; a source id that is in the manifest or the purge queue and no longer in sources.toml |
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
@@ -222,8 +224,13 @@ attempt finished)". When it is the last attempt it is the one the Summary judges
 prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v14, <agent>: ` now), the words step 1 gives `--log-start`, so the
 Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
 `prompt_version` and `agent` name them (the version marked `(from the step 1 error line)`), and the item shows
-the rest of the line. Without those words, as in a v11 log, they say `not stated`. An attempt with a header, and a late line
-that stays in its attempt, are never read that way. Any
+the rest of the line. Without those words, as in a v11 log, they say `not stated`. Since round 4 those words
+also split an attempt that has no end line: a step 1 `error` that states them starts its own attempt when the open attempt has a
+header or stated words of its own and the error's version or agent differs from that attempt's, or it comes more
+than 10 minutes after that attempt's latest time; it is listed as "no Attempt: line (logged after the previous attempt, which has no end line, by another
+session)". When such an error is the log's first line its words are read too, and the attempt is "no Attempt:
+line (a session that stopped before `install.sh --log-start`)". A step 1 error without those words, a line of
+another step or kind, and a late line that stays in its attempt are never read that way. Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`
 is not logged there), says so in a note: a session whose step 1 stopped before `--log-start` and logged nothing is
@@ -263,9 +270,9 @@ When files are still to be read again, the loop's note about them
 follows (two notes when the last sync did not get to one of the sources): `note: sync again: N file(s) ...`
 means the report was written before the one-time re-read finished (section "The evidence parts" says what that
 takes). The line holds no path (in an exclude line's list, agentsync's own globs show as written and every other
-entry as `"<path>"`, or `"/<path>/"` for a folder anchored at the source root; a list that is cut or cannot be
-parsed, and the installer's shell fallback report, show the whole list as `exclude = [<path>]`), so redaction is
-unchanged; its stage prefills the form's Loop stage.
+entry as `"<path>"`, or `"/<path>/"` for a folder anchored at the source root, in the agentsync report and, since
+round 4, in the installer's shell fallback report; a list that is cut or cannot be parsed shows the whole list as
+`exclude = [<path>]`, in both), so redaction is unchanged; its stage prefills the form's Loop stage.
 
 The run type is computed too:
 
@@ -380,7 +387,9 @@ other. Step 2's `install.sh` ran status before its sync, stopped on `[FAIL] docs
   `_eval/` and `topics/` folders, the cache and the logs. It prints
   `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`, a count and no path.
 - The check's fix names a command the agent may run when one clears it:
-  `(fix: agentsync sync (it makes these owner-only))`.
+  `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`. Since 2026-10-12 (Q49, 9ac4273f), every
+  runnable fix doctor prints names agentsync by its full path, `~/.local/bin/agentsync`, because install.sh leaves
+  ~/.local/bin off PATH.
 - The `chmod` is still the fix for a path agentsync does not change: one inside `mirror/` or `.git`, one of
   another user's, or one its owner may not read (a file at mode 0044). A run still stops there, and that
   stop is the person's to clear.
@@ -439,8 +448,8 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
   wrong`. Under `install.sh` its fix starts `run the same scripts/install.sh command again as it is (its
-  NEXT line names it)`, a step the prompt lets the agent take. Run by hand, it starts `agentsync status (run
-  it again as it is)`.
+  NEXT line names it)`, a step the prompt lets the agent take. Run by hand, it starts `~/.local/bin/agentsync
+  status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
   `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc`. For any other
@@ -448,12 +457,12 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   Neither is a command the prompt lets an agent run, so an agent that meets the line twice logs it and goes
   to the report.
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
-  `agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
+  `~/.local/bin/agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.
 - An operating-system error is not a crash. One that gets past its check reads
   `could not read <path>: <reason>` (or `stopped on a system error: <type>: <reason>` when it names no
   path), and its fix is `check that <path> is there and can be opened, then run again (if the line stays,
-  report it: agentsync status -v prints where the check stopped)`. A folder's sentinel that cannot be read
+  report it: ~/.local/bin/agentsync status -v prints where the check stopped)`. A folder's sentinel that cannot be read
   for a reason other than "missing" or "not permitted" is its own `source.<id>.sentinel` line, with the
   fix of the listable line (`check that <folder> opens in Finder`, and for a cloud folder `and that its
   sync app is running and signed in`). Before, a source whose path is a file, or a cloud folder whose sync

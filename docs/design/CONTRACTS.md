@@ -8702,7 +8702,8 @@ now depends on the paths the check found (`cycle._sync_leaves`, private):
 
 - Every one is a path a sync makes owner-only, a regular file or a folder, this user's, and one its owner may
   read: `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's
-  `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20).
+  `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20). **Amended 2026-10-12, §16.51 Q49 (noted by
+  §16.61 F67):** the fix now reads `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`.
 - Any other: the fix it had, `chmod -R go-rwx <the checked folders>; git -C '<docs repo>' config
   core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
   that is neither a file nor a folder, one of another user's (only its owner may change a mode), or one its
@@ -9648,6 +9649,8 @@ system.
 
 A crash still reads `check crashed: <type>: <message>`. Nothing on the Mac fixes a fault in agentsync, so
 its fix is the command that shows where it is, and the words say to report it.
+**Amended 2026-10-12, §16.51 Q49 (noted by §16.61 F67):** every `agentsync status` these two tables quote as a fix
+is printed as `~/.local/bin/agentsync status`.
 
 **An operating-system error is not a crash.** As first written, every exception but a timeout got the crash
 line, whose fix says "a fault in agentsync to report, and no setup step clears it". That is false of an
