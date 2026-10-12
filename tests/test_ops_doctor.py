@@ -1502,6 +1502,12 @@ def test_two_sources_holding_the_same_files_is_an_info_line(sample_config: Confi
     r = by_name(run_checks(cfg))["sources.shared_content"]
     assert r.ok and r.severity is Severity.INFO and r.fix is None
     assert r.detail.startswith("1 file(s) in local-fixture have the same content as a file in team-copy: ")
+    # The advice is the cycle's own rule: deleting the [[source]] block is refused at the next sync (exit 78).
+    assert r.detail.endswith(
+        'set state = "retired" in its [[source]] block in sources.toml (its pages become tombstones in one '
+        "labelled commit)"
+    )
+    assert "removing it" not in r.detail
 
 
 # ------------------------------------------------------------------------------------------------ heartbeat

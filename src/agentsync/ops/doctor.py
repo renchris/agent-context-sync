@@ -1599,8 +1599,8 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     return [
         _ok(
             "sources.shared_content",
-            f"{shown}: both are kept; if one source copies the other, removing it from sources.toml retires "
-            "its pages",
+            f'{shown}: both are kept; if one source copies the other, set state = "retired" in its '
+            "[[source]] block in sources.toml (its pages become tombstones in one labelled commit)",
         )
     ]
 

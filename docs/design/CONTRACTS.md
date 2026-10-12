@@ -12684,7 +12684,10 @@ holds it, so agentsync leaves its modes alone`, fix `set <key> in <sources.toml>
 between two other sources neither copy is the real one, and stubbing one by an unproven inference would cost its
 citations. Doctor adds `sources.shared_content`, an ok (info) line shown only when two live non-inbox sources share
 live or dataless files by canonical hash: `<n> file(s) in <a> have the same content as a file in <b>; ...: both are
-kept; if one source copies the other, removing it from sources.toml retires its pages`. One grouped query,
+kept; if one source copies the other, set state = "retired" in its [[source]] block in sources.toml (its pages
+become tombstones in one labelled commit)` (**Amended 2026-10-12, §16.50 Q42:** was `removing it from sources.toml
+retires its pages`, but deleting the block is refused at the next sync, exit 78, `Cycle._refuse_vanished_sources`,
+so the line names the explicit retirement in that refusal's words). One grouped query,
 `Manifest.shared_canonical_counts(source_ids)`, which joins each file with the distinct (source, hash) set of the
 other sources, never with every copy (a join of copies with copies grows as their product, on every status); no
 line before the first sync or when the manifest cannot be read. Tests: `tests/test_manifest.py`
@@ -13520,7 +13523,15 @@ role-first naming already covers renumbering whatever its cause.
 
 ### 16.50 Round 4: purge (2026-10-12, wave B13 round 4 lane A)
 
-Reserved for round 4 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 4").
+Round 4 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 4"): the purge queue's words, preview and cost,
+the doctor's retirement advice, and two test gaps. Each entry names the finding it builds.
+
+**Q42: the shared-content advice names the retirement the cycle accepts** (`agentsync.ops.doctor`). §16.45 R144's
+info line told a person that removing the copying source from sources.toml retires its pages; the next sync refuses
+that instead (exit 78, `Cycle._refuse_vanished_sources`: retirement is explicit). The line now ends `if one source
+copies the other, set state = "retired" in its [[source]] block in sources.toml (its pages become tombstones in one
+labelled commit)`, the refusal's own words, and R144 carries a dated amendment. Tests: `tests/test_ops_doctor.py`
+(`test_two_sources_holding_the_same_files_is_an_info_line` now pins the end of the line).
 
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
