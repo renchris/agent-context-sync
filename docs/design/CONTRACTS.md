@@ -10593,6 +10593,11 @@ deletions this pass (see the WAITING ON YOU line about <id>, which agentsync sta
 Files and Folders access and an exclude above a wait that names the cause, and that can warn against an exclude
 (a folder that held mirrored files). Any other unknown folder and any inbox keep the old text, which is then the
 only line naming the other causes.
+**Amended 2026-10-11, §16.39 N27:** the pointer now reads `(each WAITING ON YOU line about <id> says what to
+do, and agentsync status prints them)`, for an inbox as for a local source. When an unreadable folder sits beside
+an empty cloud folder, the alarm keeps the old cause and ends `(grant the agent Files and Folders access for the
+other folders; for the empty ones, each WAITING ON YOU line about <id> says what to do, and agentsync status
+prints them)`. Only a walk with no empty cloud folder below the root keeps the old text.
 
 #### Purge dry run (`agentsync.governance`)
 
@@ -11140,7 +11145,7 @@ notes); "the WAITING ON YOU line" sat above two lines when a source had both kin
 inbox-only note telling the person to remove the folders, which drops the "if the files were removed on
 purpose" condition for a folder whose removal lets held deletions through. Not changed: an empty cloud source
 root still gets the old alarm's exclude advice, though a root cannot be excluded. Amends §16.20, §16.22 and
-§16.37 (dated lines in §16.20 and §16.22). Tests: `tests/test_arm_local.py`
+§16.37 (dated lines in §16.20, §16.22 and §16.37). Tests: `tests/test_arm_local.py`
 (`test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them`,
 `test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`,
 `test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`), `tests/test_loop.py`
