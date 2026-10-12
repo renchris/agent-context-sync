@@ -29,6 +29,7 @@ if _ssl.SSLContext is not _truststore.SSLContext:  # same effect as agentsync.ne
     _truststore.inject_into_ssl()
 
 import argparse
+import contextlib
 import dataclasses
 import logging
 import os
@@ -1062,6 +1063,19 @@ def _launchctl_env(names: Sequence[str]) -> dict[str, str]:
     return out
 
 
+_JOB_PROXY_URL_VARS = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy")
+
+
+def _job_proxy_urls(config: Config | None) -> list[str]:
+    """The proxy URLs a LaunchAgent run of ``config`` gets (``launchctl getenv``, then the plist's
+    EnvironmentVariables), for setup-report's redaction: URL variables only, never NO_PROXY."""
+    env = _launchctl_env(_JOB_PROXY_URL_VARS)
+    if config is not None:
+        with contextlib.suppress(ConfigError):
+            env.update(launchd.poll_spec(config).environment)
+    return [env[k] for k in _JOB_PROXY_URL_VARS if env.get(k)]
+
+
 def _job_environment(config: Config) -> dict[str, str]:
     """The environment a LaunchAgent run of this config gets: the plist's EnvironmentVariables over the
     session's ``launchctl setenv`` values (never this shell's)."""
@@ -1450,6 +1464,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         doctor=checks,
         status=lambda config: [_loop_line(config), *_guarded("status", lambda: _status_lines(config))],
         loop_next=loop_next,
+        job_proxy=_job_proxy_urls,
     )
 
 

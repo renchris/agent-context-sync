@@ -912,10 +912,35 @@ generic_folder() {
 	esac
 	return 1
 }
-# "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
-# install.log quotes paths that way.
+# A proxy host with no dot that names no one and that the report prints as a word of its own (HTTPS_PROXY,
+# network.proxy): setup_report._GENERIC_PROXY_HOSTS (a test keeps them equal). Matched only where a URL names it.
+generic_proxy_host() {
+	case "$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+	proxy | webproxy | wpad | localhost | gateway | firewall | squid | cache | http | https) return 0 ;;
+	direct | none | off | network | host) return 0 ;;
+	esac
+	return 1
+}
+# The proxy values in the config files git reads, one a line: the files setup_report._git_proxy_urls reads,
+# the global ones and the repository config of two checkouts (checkout_git_configs, a linked worktree too):
+# the one holding this script, which agentsync is installed from, and the one the prompt clones. Read as files: the logged git error names git's proxy, and step 1 may have stopped
+# with no git. An empty "proxy =" (git's off switch) prints nothing.
+git_proxy_values() {
+	local g
+	{
+		printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
+		[ -z "${repo:-}" ] || checkout_git_configs "$repo"
+		checkout_git_configs "$HOME/src/agent-context-sync"
+	} | while IFS= read -r g; do
+		[ ! -f "$g" ] ||
+			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g"
+	done 2>/dev/null
+}
+# "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
+# hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole orgs_seen c kept
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept
+	local port k
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1161,14 +1186,29 @@ redaction_pairs() {
 		h="${u#*://}"
 		h="${h%%[/?#]*}"
 		h="${h##*@}"
+		port=""
+		case "$h" in *:*) port="${h#*:}" ;; esac
 		h="${h%%:*}"
-		case "$h" in *.*) ;; *) h="" ;; esac # a bare host (proxy, wpad, direct) would redact the report's words
 		for v in "$pac" "$h"; do
 			[ -n "$v" ] || continue
 			case "$seen" in *" $v "*) continue ;; esac
 			seen="$seen$v "
 			n=$((n + 1))
-			add_pair "$v" "<proxy-$n>"
+			case "$v" in
+			"$pac" | *.*) add_pair "$v" "<proxy-$n>" ;;
+			*)
+				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only where a URL names it, so
+				# the report's HTTPS_PROXY and network.proxy stay; any other (contosogw) can name the company and
+				# is a whole word, as git and curl print it ("Could not resolve proxy: contosogw").
+				if generic_proxy_host "$v"; then
+					add_pair "//$v" "//<proxy-$n>" t
+					add_pair "@$v" "@<proxy-$n>" t
+					[ -z "$port" ] || add_pair "$v:$port" "<proxy-$n>:$port" w
+				else
+					add_pair "$v" "<proxy-$n>" w
+				fi
+				;;
+			esac
 		done
 	done < <(
 		{
@@ -1178,17 +1218,10 @@ redaction_pairs() {
 			printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" \
 				"${HTTP_PROXY:-}" "${http_proxy:-}"
 			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
-			# The files setup_report._git_proxy_urls reads: the global ones and the repository config of two
-			# checkouts (checkout_git_configs, a linked worktree too): the one holding this script, which
-			# agentsync is installed from, and the one the prompt clones. No apostrophe in a comment here: bash
-			# 3.2 reads one inside this process substitution as a quote.
-			{
-				printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
-				[ -z "${repo:-}" ] || checkout_git_configs "$repo"
-				checkout_git_configs "$HOME/src/agent-context-sync"
-			} | while IFS= read -r g; do
-				[ ! -f "$g" ] ||
-					LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#]*\).*/\1/p' "$g"
+			git_proxy_values
+			# The LaunchAgent's own (launchctl setenv), which doctor's network.proxy.job line prints (B13 R68).
+			for k in HTTPS_PROXY https_proxy ALL_PROXY all_proxy HTTP_PROXY http_proxy; do
+				with_timeout 5 "$LAUNCHCTL" getenv "$k" </dev/null || true
 			done
 		} 2>/dev/null
 	)
@@ -1279,14 +1312,14 @@ redact_stream() {
 			if (split(rows[k], f, "\t") < 2) continue
 			v = f[1]
 			if (!index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w"); m = 0
+			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); m = 0
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
 				s = seg[j]; acc = ""
 				while ((i = index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
-					if (word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) {
+					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""
@@ -1376,6 +1409,25 @@ fallback_body() {
 		[ -z "$p" ] || v="$v $k"
 	done
 	if [ -n "$v" ]; then say "- proxy environment: yes (set:$v)"; else say "- proxy environment: no"; fi
+	# The system proxy by its Enable flags, as net.py reads them (a host key can stay while its flag is 0), and
+	# whether git's config names a proxy: yes or no only, never a host (B13 R4, R27).
+	if p="$(with_timeout 5 "$(command -v scutil || printf /usr/sbin/scutil)" --proxy 2>/dev/null </dev/null)" && [ -n "$p" ]; then
+		v="no"
+		if LC_ALL=C grep -q '^[[:space:]]*HTTPSEnable : 1$' <<<"$p" &&
+			LC_ALL=C grep -q '^[[:space:]]*HTTPSProxy : [^[:space:]]' <<<"$p"; then v="yes"; fi
+		k="no"
+		! LC_ALL=C grep -q '^[[:space:]]*ProxyAutoConfigEnable : 1$' <<<"$p" || k="yes"
+		n="no"
+		! LC_ALL=C grep -q '^[[:space:]]*ProxyAutoDiscoveryEnable : 1$' <<<"$p" || n="yes"
+		say "- system proxy (scutil --proxy): manual HTTPS $v · PAC $k · WPAD $n"
+	else
+		say "- system proxy (scutil --proxy): unknown"
+	fi
+	if [ -n "$(git_proxy_values)" ]; then
+		say "- proxy in git's config: set (git uses it before HTTPS_PROXY)"
+	else
+		say "- proxy in git's config: not set"
+	fi
 	n=0
 	k=0
 	if [ -d "$cs" ]; then
@@ -1466,8 +1518,9 @@ fallback_redaction() {
 	say ""
 	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
 	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
-	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts with a"
-	say "dot and the system PAC URL after its scheme (<proxy-N>), the names of the folders under CloudStorage that"
+	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts (one"
+	say "named like proxy or wpad only inside a URL) and the system PAC URL after its scheme (<proxy-N>), the"
+	say "names of the folders under CloudStorage that"
 	say "--source-local, sources.toml or install.log name (<folder-N>; a name every OneDrive has only as a whole"
 	say "word), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
 	say "in bash's dollar-quote form, how install.log writes a name with a curly apostrophe, a dash or an accent"

@@ -598,6 +598,9 @@ class ReportHooks:
     # loop.NextStep (typed structurally: the report never imports the loop), or its NEXT lines (KISS K16b;
     # §16.39 N16), after doctor
     loop_next: Callable[[Config], _LoopStep | list[str]] | None = None
+    # the proxy URLs a LaunchAgent run of the config gets (``launchctl getenv``, the plist): registered for
+    # redaction, since doctor's network.proxy.job line prints them
+    job_proxy: Callable[[Config | None], list[str]] | None = None
 
 
 def _tokens(value: str) -> list[str]:
@@ -756,13 +759,22 @@ class Redactor:
             or self._fuzzy.get(_norm(value))
         )
 
-    def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None:
+    def add(
+        self,
+        kind: str,
+        value: str | None,
+        *,
+        ignore_case: bool = False,
+        fuzzy: bool = False,
+        url: bool = False,
+    ) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
         host, mdmhost, proxy); a value already registered (or a variant of a fuzzy one) keeps its first
         placeholder.
         Values under 2 characters are ignored (they would match inside ordinary words). ``fuzzy`` implies
         ``ignore_case`` and adds the space/hyphen/underscore/CamelCase variants (not for a value whose
-        normalized form is under 3 characters)."""
+        normalized form is under 3 characters). ``url``: a host matched, in any case, only where a URL names
+        it, after ``//`` or ``@`` or before ``:<port>`` (a proxy host that is a word the report prints)."""
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
@@ -773,9 +785,9 @@ class Redactor:
         if fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy[_norm(value)] = placeholder
             self._literals.append((value, "fuzzy"))
-        elif ignore_case or fuzzy:
+        elif ignore_case or fuzzy or url:
             self._folded[_bare(value).lower()] = placeholder
-            self._literals.append((value, "fold"))
+            self._literals.append((value, "url" if url else "fold"))
         else:
             self._exact[_bare(value)] = placeholder
             self._literals.append((value, "exact"))
@@ -823,7 +835,13 @@ class Redactor:
                 if mode == "fuzzy":
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(form))
                 else:
-                    body = _word_pattern(form, shell=mode == "fold")
+                    body = _word_pattern(form, shell=mode != "exact")
+                if mode == "url":  # "http://proxy:8080" and "user@proxy", never HTTPS_PROXY or network.proxy
+                    near = r"(?![A-Za-z0-9._-])"
+                    literals.append(
+                        f"(?i:(?:(?<=//)|(?<=@)){body}{near}|(?<![A-Za-z0-9._-]){body}(?=:[0-9]))"
+                    )
+                    continue
                 lead = r"(?<![A-Za-z0-9])" if edge[0].isalnum() else ""
                 trail = r"(?![A-Za-z0-9._-])" if edge.startswith("/") else r"(?![A-Za-z0-9])"
                 if not edge[-1].isalnum() and not edge.startswith("/"):
@@ -2076,6 +2094,22 @@ def _proxy_urls(r: _Run) -> list[str]:
     return urls
 
 
+_GENERIC_PROXY_HOSTS = frozenset(
+    {"proxy", "webproxy", "wpad", "localhost", "gateway", "firewall", "squid", "cache", "http", "https"}
+    | {"direct", "none", "off", "network", "host"}
+)
+"""Proxy host names with no dot that name no one and that the report prints as words of its own
+(``HTTPS_PROXY``, ``network.proxy``, "Could not resolve proxy:"): registered bare, ``proxy`` turned them into
+``HTTPS_<proxy-1>`` and nested placeholders (B13 R42, R67). Such a host is matched only where a URL names it.
+Any other host with no dot (``contosogw``) can carry the company's name and is matched bare, as git and curl
+print it ("Could not resolve proxy: contosogw"). ``scripts/install.sh`` holds the same list."""
+
+
+def _add_proxy_host(red: Redactor, host: str) -> None:
+    generic = "." not in host and ":" not in host and host.lower() in _GENERIC_PROXY_HOSTS
+    red.add("proxy", host, url=generic, ignore_case=True)
+
+
 def _proxy_hosts(urls: list[str]) -> list[str]:
     hosts: list[str] = []
     for url in filter(None, (u.strip() for u in urls)):
@@ -2287,14 +2321,21 @@ def _build_redactor(r: _Run) -> Redactor:
         if src.id in cloud_ids or src.id not in _GENERIC_IDS:
             red.add("source", src.id)
     for host in _proxy_hosts(_proxy_urls(r)):
-        red.add("proxy", host, ignore_case=True)
+        _add_proxy_host(red, host)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
     # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
     pac = r.system_proxy.pac_url if r.system_proxy is not None else None
     red.add("proxy", pac.split("://", 1)[-1] if pac else None, ignore_case=True)
     # Git's proxies last, after the PAC value: a git-only proxy leaves every other <proxy-N> as it was.
     for host in _proxy_hosts(_git_proxy_urls()):
-        red.add("proxy", host, ignore_case=True)
+        _add_proxy_host(red, host)
+    # The LaunchAgent's own proxy (``launchctl setenv``), which network.proxy.job prints where it differs from
+    # this shell's: last, so it renumbers no other <proxy-N> (B13 R68).
+    if r.hooks.job_proxy is not None:
+        with contextlib.suppress(Exception):
+            job = r.hooks.job_proxy
+            for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=4.0)):
+                _add_proxy_host(red, host)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
     for word in (w.strip(".,") for w in tail_words):
@@ -2517,7 +2558,8 @@ def _environment(r: _Run) -> list[str]:
             f"HTTPS_PROXY/ALL_PROXY set in this shell: {yn[env_set]} · system manual HTTPS proxy: "
             f"{yn[bool(sysp.https_proxy)]} · PAC: {yn[sysp.pac_enabled]} · WPAD: {yn[sysp.wpad_enabled]} · "
             f"[network] proxy: {'set' if configured else 'not set'} · agentsync resolves: "
-            f"{resolved.describe()}"
+            f"{resolved.describe()} · proxy in git's config: "
+            + ("set (git uses it before HTTPS_PROXY)" if _git_proxy_urls() else "not set")
         )
 
     def cloud() -> str:
