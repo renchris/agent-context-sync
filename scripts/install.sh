@@ -1518,8 +1518,25 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	return 1
 }
 
+# The report of an attempt an out-of-date copy of the prompt started is written to its own file, so the
+# setup-report.md of the last attempt that was not stopped keeps its bytes, as bring-back.md does. Its first
+# line says not to send it, and names that report only where one exists (B13 round 3 R17). Written after the
+# report's redaction, so it names no path under this home but as ~/.
+stopped_report_note() { # KEPT-REPORT-PATH
+	local tmp shown="$1" note="> This report is of an attempt that an out-of-date copy of the setup prompt started: do not send it or bring it back."
+	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
+	[ ! -f "$1" ] || note="$note The report of the last attempt that was not stopped is $shown."
+	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
+	if { printf '%s\n\n' "$note" && cat "$REPORT_PATH"; } >"$tmp"; then
+		mv -f "$tmp" "$REPORT_PATH"
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
+
 on_exit() {
-	local rc=$? suffix="" link secs
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md"
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -1532,16 +1549,24 @@ on_exit() {
 		END_LINE="$END_AT run=$RUN_ID end rc=$rc seconds=$secs"
 	fi
 	if [ "$REPORT" -eq 1 ]; then
+		# A copy of the prompt that is not this installer's started the attempt (--log-start said so and
+		# stopped it). Its own text may still end at this report: the NEXT says what to do instead, and
+		# nothing invites sending it: the report goes to its own file (stopped_report_note), no bring-back
+		# file is written (the last one stays as it is), and no "bring back:" or issue link line is printed.
+		if [ "$REPORT_ONLY" -eq 1 ] && friction_attempt_stopped; then
+			stopped=1
+			REPORT_PATH="$SETUP_DIR/stopped-copy-report.md"
+		fi
 		write_report "$rc"
 		case $? in
 		0)
 			suffix=" [setup report: $REPORT_PATH]"
-			# A copy of the prompt that is not this installer's started the attempt (--log-start said so and
-			# stopped it). Its own text still ends at this report: the NEXT says what to do instead, and
-			# nothing invites sending it: no bring-back file is written (the one of the last real session
-			# stays as it is), and no "bring back:" or issue link line is printed.
-			if [ "$REPORT_ONLY" -eq 1 ] && friction_attempt_stopped; then
-				NEXT_MSG="this report is of an attempt that an out-of-date copy of the setup prompt started, so do not bring it back: copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session"
+			if [ "$stopped" -eq 1 ]; then
+				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
+				NEXT_MSG="this report is of an attempt that an out-of-date copy of the setup prompt started, so do not send it or bring it back: copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session"
+				# R18: bring-back.md is named only where one exists, and not as "finished": a failed
+				# attempt's report writes it too.
+				[ ! -f "$back" ] || NEXT_MSG="$NEXT_MSG ($back was not touched: it still holds the report of the last attempt that was not stopped)"
 			else
 				write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
 				link="$(report_issue_link)"

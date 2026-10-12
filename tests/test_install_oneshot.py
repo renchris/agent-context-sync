@@ -3409,8 +3409,14 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     """The v10 rehearsal (2026-10-08): the ``--report-only`` of an attempt ``--log-start`` stopped printed
     "bring back:" and an issue link above "NEXT: ... do not bring it back", and wrote bring-back.md over the
     one of the last real session. That run prints neither line and writes no bring-back file: one that
-    exists keeps its bytes, and none is made where there was none. The report itself is still written."""
+    exists keeps its bytes, and none is made where there was none. The report itself is still written, to
+    setup/stopped-copy-report.md, so setup-report.md keeps its bytes too; its first line says not to send it
+    (B13 round 2 R17), and its NEXT names bring-back.md only where one exists, as untouched (R18)."""
     back = report_path(env).parent / "bring-back.md"
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    warning = (
+        "> This report is of an attempt that an out-of-date copy of the setup prompt started: do not send"
+    )
 
     def invites(cp: subprocess.CompletedProcess[str]) -> list[str]:
         return [
@@ -3422,7 +3428,12 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     assert install_sh(env, "--log-start", "x").returncode == 2
     stopped = install_sh(env, "--report-only")
     assert stopped.returncode == 0 and last_line(stopped).startswith(STOPPED_NEXT), stopped.stdout
-    assert invites(stopped) == [] and report_path(env).is_file() and not back.exists()
+    assert invites(stopped) == [] and not report_path(env).exists() and not back.exists()
+    assert "bring-back.md" not in last_line(stopped) and last_line(stopped).endswith(
+        f" [setup report: {side}]"
+    )
+    first = side.read_text().splitlines()[0]
+    assert first.startswith(warning) and "not stopped is" not in first
     _backdate(env, 11)
     assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     real = install_sh(env, "--report-only")
@@ -3430,11 +3441,20 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
         "bring back",
         "issue link (review the report first)",
     ]
-    kept = back.read_bytes()
+    kept, kept_report = back.read_bytes(), report_path(env).read_bytes()
     assert install_sh(env, "--log-start", "x").returncode == 2
     stopped = install_sh(env, "--report-only")
     assert last_line(stopped).startswith(STOPPED_NEXT) and invites(stopped) == [], stopped.stdout
-    assert back.read_bytes() == kept
+    assert back.read_bytes() == kept and report_path(env).read_bytes() == kept_report
+    assert (
+        f"({back} was not touched: it still holds the report of the last attempt that was not stopped)"
+        in (last_line(stopped))
+    )
+    first = side.read_text().splitlines()[0]
+    assert first.startswith(warning) and first.endswith(
+        " The report of the last attempt that was not stopped is ~/agent-context/setup-report.md."
+    )
+    assert env["HOME"] not in side.read_text()
 
 
 def test_a_stopped_copy_is_read_as_stopped_whatever_bytes_a_late_line_holds(env: dict[str, str]) -> None:
