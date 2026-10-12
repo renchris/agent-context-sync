@@ -172,7 +172,9 @@ def test_a_published_page_the_new_rules_match_becomes_a_stub_and_queues_a_purge(
     assert AWS_KEY not in git(config.docs_repo, "show", "HEAD:mirror/src/keys.txt.md")
     assert queued(config) == [(item_id(config, "keys.txt"), "dlp-remediation")]
     alarms = [a for s in again.sources for a in s.alarms]
-    assert any("matches the secret scan's new rules" in a for a in alarms)
+    hit = [a for a in alarms if a.startswith("a published page matches the secret scan's new rules")]
+    # B13 R46/R47/R57: the alarm that queued a purge ends with the preview first (§16.38)
+    assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) for a in hit)
 
 
 def test_the_rules_identity_moves_with_a_pattern_the_version_and_gitleaks(
@@ -484,7 +486,8 @@ def test_a_rescan_hit_in_a_source_the_run_did_not_select_writes_it_no_heartbeat(
     again = run(config, only=["src"])
     assert again.exit_code == 0
     assert page_fm(config, "mirror/two/keys.txt.md")["reason"] == "contains a credential"
-    assert any("matches the secret scan's new rules" in a for s in again.sources for a in s.alarms)
+    hit = [a for s in again.sources for a in s.alarms if "matches the secret scan's new rules" in a]
+    assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) for a in hit)
     assert dict(read_heartbeat(config.state_paths.heartbeat)["two"]) == before  # never attempted: no beat
 
 

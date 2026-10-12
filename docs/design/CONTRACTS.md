@@ -10680,6 +10680,9 @@ Every text that asks the operator to run the purge queue names the preview first
   --dry-run`, then run `agentsync purge --queue` (rewrites history)``
 - the label-escalation alarm ends with `cycle._PURGE_QUEUE_STEPS`, ``(preview with `agentsync purge --queue
   --dry-run` before `agentsync purge --queue`)``, which any later alarm that queues a purge uses too.
+- **Amended 2026-10-12, §16.45 R46/R47/R57:** the credential rescan's alarm (§16.39 N5, ``a published page
+  matches the secret scan's new rules: ...``) ended ``(run `agentsync purge --queue`)`` with no preview; it now
+  ends with `cycle._PURGE_QUEUE_STEPS` too (`tests/test_credential_rescreen.py`, the two tests that read it).
 
 Each text keeps its head (`N queued purge(s): `, `queued
 purges: N (`, `- N purge request(s) waiting; `, `label escalation:`), so readers keyed on the prefix are unchanged.

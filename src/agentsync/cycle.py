@@ -1945,8 +1945,7 @@ class _Cycle:
         )
         self._acc(self.config.source(sid)).alarms.append(
             "a published page matches the secret scan's new rules: it is a `contains a credential` stub now; "
-            f"{removed} cached conversion(s) deleted{', purge queued' if queued else ''} "
-            "(run `agentsync purge --queue`)"
+            f"{removed} cached conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
         )
         log.warning(
             "%s: a published page of %s matches the secret scan's new rules; purge queued", sid, stable
