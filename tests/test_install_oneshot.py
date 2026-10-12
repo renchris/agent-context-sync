@@ -1037,7 +1037,9 @@ def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], 
     assert "usage error: --source-local is not an existing folder" in cp.stderr
     assert report_path(env).is_file() and "usage error" in report_path(env).read_text()
     assert last_line(cp).startswith("NEXT: fix the usage error above")
-    assert [c for c in calls(env) if not c.startswith("launchctl print")] == [], "no step ran"
+    assert [c for c in calls(env) if not c.startswith(("launchctl print", "launchctl getenv"))] == [], (
+        "no step ran (the report's reads of launchd only)"
+    )
     assert re.search(r" end rc=2 seconds=\d+$", install_log(env)[-1])
 
 

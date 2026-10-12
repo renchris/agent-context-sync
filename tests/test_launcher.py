@@ -622,7 +622,7 @@ def test_install_sh_help_and_usage_errors(stubs: dict[str, str], tmp_path: Path)
     cp = install_sh(stubs, "--launcher", str(tmp_path))  # KISS K11b: the launcher is for background sync only
     assert cp.returncode == 2 and "--launcher only applies with --confirm-install-agent" in cp.stderr
     # no step ran; the setup report written at a post-parse usage error only reads launchd
-    assert [c for c in calls(stubs) if not c.startswith("launchctl print ")] == []
+    assert [c for c in calls(stubs) if not c.startswith(("launchctl print ", "launchctl getenv "))] == []
 
 
 def test_install_sh_dry_run_changes_nothing(stubs: dict[str, str], tmp_path: Path) -> None:
