@@ -11255,7 +11255,10 @@ way has none. The run id ends in install.sh's `$$`, and the report runs on the M
 probes that pid with signal 0 (`_pid_alive`, in the probes block; `_RUN_PID_RE` and `_open_state` beside
 `_reached`). Signal 0 sends nothing, and only runs with no end line are probed, so the report stays read-only.
 No such process reads `its process is gone: killed, or the Mac restarted` (HUP, INT and TERM log 129, 130 and
-143, so a run with no end line whose process is gone was killed, or the Mac stopped); a process that exists, also
+143, so a run with no end line whose process is gone was killed, or the Mac stopped) (**amended 2026-10-11,
+§16.47 R131:** it reads `its process is gone: killed, the Mac restarted, or its end line could not be written`:
+`log_at` drops a write that fails, so a run that exited on a full disk leaves no end line either, and no record
+of why); a process that exists, also
 another user's, reads `its process id is in use: still running, or the id was reused`; a run id with no pid, or a
 pid of 0 or 1, keeps `interrupted, or still running`. The pid is read and never printed. The state is in the
 per-run status (`no end line (<state>)`), the Summary's `- install.sh:` line and the outcome detail (`install.sh

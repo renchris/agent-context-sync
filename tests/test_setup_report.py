@@ -6093,9 +6093,10 @@ def test_installer_lists_every_run_and_the_ones_with_no_end_line(
     ]
     assert "Runs with no end line (stopped early, or still running): 1\n" in inst
     assert (
-        "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, its process is gone: killed, or the Mac "
-        "restarted; the last of its 2 step lines is agentsync (failed, rc 1), and nothing after it is "
-        "logged (a step's line is written when the step ends, so a step under way has none)\n" in inst
+        "- run 20261006T021601Z: started 2026-10-06T02:16:01Z, its process is gone: killed, the Mac "
+        "restarted, or its end line could not be written; the last of its 2 step lines is agentsync "
+        "(failed, rc 1), and nothing after it is logged (a step's line is written when the step ends, so a "
+        "step under way has none)\n" in inst
     )
     assert " reached " not in inst
     assert "Wingtip" not in inst and "-777" not in inst
@@ -6124,7 +6125,7 @@ def _append_killed_run(fake_mac: dict[str, Path], *, failed: bool = False) -> No
 @pytest.mark.parametrize(
     ("alive", "state"),
     [
-        (False, "its process is gone: killed, or the Mac restarted"),
+        (False, "its process is gone: killed, the Mac restarted, or its end line could not be written"),
         (True, "its process id is in use: still running, or the id was reused"),
         (None, "interrupted, or still running"),
     ],
@@ -6155,13 +6156,14 @@ def test_a_run_with_no_end_line_says_whether_its_process_is_gone(
 def test_a_run_with_no_end_line_and_a_failed_step_keeps_the_two_apart(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """H14 C2: "killed, or the Mac restarted, last failed step x" read as a third alternative after "or"."""
+    """H14 C2: "killed, or the Mac restarted, last failed step x" read as a third alternative after "or". The
+    third cause (B13 round 2 R131) keeps the semicolon before the step."""
     monkeypatch.setattr(setup_report, "_pid_alive", lambda pid: False)
     _append_killed_run(fake_mac, failed=True)
     _text, summary = summary_of(fake_mac)
     assert (
-        "(computed: install.sh has no end line (its process is gone: killed, or the Mac restarted; last "
-        "failed step launcher))" in summary
+        "(computed: install.sh has no end line (its process is gone: killed, the Mac restarted, or its end "
+        "line could not be written; last failed step launcher))" in summary
     )
 
 
@@ -6185,14 +6187,15 @@ def test_a_run_cut_off_in_a_step_names_the_last_step_logged(
     inst = section(text, "Installer").split("<details>", 1)[0]
     assert "reached launcher" not in inst and "-4243" not in inst and "-4244" not in inst
     assert (
-        "- run 20261010T043017Z: started 2026-10-10T04:30:17Z, its process is gone: killed, or the Mac "
-        "restarted; the last of its 3 step lines is launcher (skipped), and nothing after it is logged (a "
-        "step's line is written when the step ends, so a step under way has none)\n" in inst
+        "- run 20261010T043017Z: started 2026-10-10T04:30:17Z, its process is gone: killed, the Mac "
+        "restarted, or its end line could not be written; the last of its 3 step lines is launcher "
+        "(skipped), and nothing after it is logged (a step's line is written when the step ends, so a step "
+        "under way has none)\n" in inst
     )
     assert (
         "- run 20261010T050000Z (the newest run): started 2026-10-10T05:00:00Z, its process is gone: killed, "
-        "or the Mac restarted; it has no step line (a step's line is written when the step ends, so a step "
-        "under way has none)\n" in inst
+        "the Mac restarted, or its end line could not be written; it has no step line (a step's line is "
+        "written when the step ends, so a step under way has none)\n" in inst
     )
 
 

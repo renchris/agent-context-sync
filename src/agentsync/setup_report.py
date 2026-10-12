@@ -2667,12 +2667,13 @@ _RUN_PID_RE = re.compile(r"-(\d{1,7})$")  # a run id's suffix: install.sh's $$
 def _open_state(run: InstallRun) -> str:
     """Why a run with no end line has none, read from its process id (the run id's suffix: install.sh's $$).
     A process that is gone was killed before it could log its end line (SIGKILL, or the Mac restarted: HUP,
-    INT and TERM log 129, 130 and 143). One that exists is still running, or its id was reused. The id is
-    read, never printed."""
+    INT and TERM log 129, 130 and 143), or it exited and could not write that line (a full disk: install.sh
+    drops a failed log write, and nothing else records it; B13 round 3 R131). One that exists is still
+    running, or its id was reused. The id is read, never printed."""
     m = _RUN_PID_RE.search(run.run_id)
     alive = _pid_alive(int(m.group(1))) if m else None
     if alive is False:
-        return "its process is gone: killed, or the Mac restarted"
+        return "its process is gone: killed, the Mac restarted, or its end line could not be written"
     if alive:
         return "its process id is in use: still running, or the id was reused"
     return "interrupted, or still running"

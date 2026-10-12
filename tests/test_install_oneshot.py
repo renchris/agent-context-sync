@@ -4291,7 +4291,9 @@ def test_a_run_killed_during_the_helper_builds_reads_as_killed(
     assert not any(" end rc=" in ln for ln in lines), lines
     (run,) = setup_report.read_install_runs(install_log_path(env))
     assert run.run_id.endswith(f"-{proc.pid}"), "the run id carries the pid a SIGKILL ends"
-    assert setup_report._open_state(run) == "its process is gone: killed, or the Mac restarted"
+    assert setup_report._open_state(run) == (
+        "its process is gone: killed, the Mac restarted, or its end line could not be written"
+    )
 
 
 # ---- the shell report redacts the per-user temp folder (L6) ------------------------------------------------
