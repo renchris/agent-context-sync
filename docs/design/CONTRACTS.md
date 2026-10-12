@@ -11455,7 +11455,8 @@ or the lines after it, an hour on. A stamp no calendar holds (year 0001, month 1
 section. A line whose time ends in `Z` (the launcher's) is unchanged. Limits: a line written before the Mac changed
 time zone is read with the new zone; a log line quoted inside another line keeps its local stamp (the one producer
 is install.sh's `warning: agentsync setup-report failed (<why>): <last output line>`, which can reach a later
-report's install.out tail); the friction log is the agent's own prose and is not rewritten. The shell fallback
+report's install.out tail) (**amended 2026-10-11, §16.47 R108:** that producer's quoted time is now converted
+too, by one regex anchored to its exact prefix; it does not steer the fall-back choice); the friction log is the agent's own prose and is not rewritten. The shell fallback
 shows no job log and no install.out tail, so it has no twin. `docs/deploy/setup-feedback.md` §4 says which times
 were converted. Tests: `test_log_times_in_the_report_are_utc`, and the merge test under the `mac_zone` fixture
 (America/Denver: the CI runners are in UTC, where the conversion changes nothing).

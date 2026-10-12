@@ -298,6 +298,8 @@ def test_log_times_in_the_report_are_utc(fake_mac: dict[str, Path], tmp_path: Pa
     (fake_mac["setup"] / "install.out").write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
         "2026-09-29 04:00:20,000 WARNING agentsync.arm_local: src-x: not crossing into another volume\n"
+        "warning: agentsync setup-report failed (stopped by SIGTERM (a tool timeout?)): "
+        "2026-09-29 04:00:30,123 ERROR agentsync.cli: boom\n"
         "NEXT: review ~/agent-context/setup-report.md\n",
         encoding="utf-8",
     )
@@ -311,6 +313,11 @@ def test_log_times_in_the_report_are_utc(fake_mac: dict[str, Path], tmp_path: Pa
     assert "0001-01-01 00:00:00,000 WARNING agentsync.cycle: src-a: a stamp no clock wrote\n" in errors
     inst = section(text, "Installer")
     assert "2026-09-29T10:00:20.000Z WARNING agentsync.arm_local: src-x: not crossing" in inst
+    # The one line that quotes a log line has its time converted too (B13 round 2 R108).
+    assert (
+        "warning: agentsync setup-report failed (stopped by SIGTERM (a tool timeout?)): "
+        "2026-09-29T10:00:30.123Z ERROR agentsync.cli: boom" in inst
+    )
     assert "a log line's local time is shown in UTC" in inst
     assert not re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d{3}", text)
 

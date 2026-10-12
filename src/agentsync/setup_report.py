@@ -4908,6 +4908,11 @@ _LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[,.]\d+)?Z?) (.
 and the text after it."""
 _LOCAL_LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3}) ")
 """A Python log line's leading time: ``logging``'s default ``asctime``, the Mac's local time with no zone."""
+_QUOTED_LOG_TIME_RE = re.compile(
+    r"(warning: agentsync setup-report failed \(.*?\): )(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3}) "
+)
+"""The one line that quotes a Python log line: install.sh's ``warning: agentsync setup-report failed (<why>):
+<last output line>``, whose last line is setup-report's own log line (B13 round 3 R108)."""
 _LOG_STEP_BACK = timedelta(seconds=1)
 """How far a log line's time may go back from the line above it and still be read as the same pass of the
 clock: two threads log through one handler, and a record's time is taken before the handler's lock, so lines
@@ -4921,13 +4926,23 @@ def _utc_log_times(lines: Iterable[str]) -> list[str]:
     time zone. ``logging`` writes local time with no offset; beside the report's UTC times it gave the Mac's
     UTC offset away. In the hour a fall-back repeats, the later reading is taken when the earlier one would
     put the line more than :data:`_LOG_STEP_BACK` before the converted line above it. A stamp no calendar
-    holds, and every other line, is unchanged."""
+    holds, and every other line, is unchanged. The time install.sh quotes in its ``setup-report failed``
+    warning (:data:`_QUOTED_LOG_TIME_RE`, that one producer only: a time anywhere in a line can be an item's
+    name) is written as UTC too, and steers nothing: it is another process's clock."""
     out: list[str] = []
     last: datetime | None = None
     for ln in lines:
         m = _LOCAL_LOG_TIME_RE.match(ln)
         if m is None:
-            out.append(ln)
+            q = _QUOTED_LOG_TIME_RE.match(ln)
+            try:
+                moment = datetime.fromisoformat(f"{q[2]}.{q[3]}").astimezone(UTC) if q else None
+            except (ValueError, OverflowError, OSError):
+                moment = None
+            if q is None or moment is None:
+                out.append(ln)
+            else:
+                out.append(f"{q[1]}{moment:%Y-%m-%dT%H:%M:%S}.{q[3]}Z {ln[q.end() :]}")
             continue
         try:  # a stamp no clock wrote (year 0001, month 13) stays as it is, and never fails the section
             naive = datetime.fromisoformat(f"{m[1]}.{m[2]}")
