@@ -760,13 +760,17 @@ _EXCLUDE_KEY_LINE = re.compile(r"^\s*exclude\s*=")
 _ID_KEY_LINE = re.compile(r"^\s*id\s*=")
 
 
-def set_source_exclude(config_path: Path, source_id: str, exclude: Collection[str]) -> Config:
+def set_source_exclude(
+    config_path: Path, source_id: str, exclude: Collection[str], *, expected: Collection[str] | None = None
+) -> Config:
     """Set the ``exclude`` of the ``[[source]]`` table whose id is ``source_id`` to ``exclude``, as one line,
     editing the file's text so every other byte and comment stays (B13 round 4 Q71): an existing ``exclude``
     key's whole span (one line or an array over several) is replaced, else the line goes after the table's
     ``id`` line.  The result must load (:func:`parse_config`), give this source exactly ``exclude`` and leave
     every other table and key as it was, BEFORE anything is written; then the file is replaced atomically
-    with its mode kept.  Raises ConfigError (and writes nothing) otherwise."""
+    with its mode kept.  Raises ConfigError (and writes nothing) otherwise, and when ``expected`` (the
+    source's exclude ``exclude`` was built from) is given and the file read here no longer has it: an edit
+    made since that read is not written over (B13 round 5 F70)."""
     p = expand(config_path)
     target = p.resolve()  # a symlinked sources.toml keeps its link
     try:
@@ -777,6 +781,10 @@ def set_source_exclude(config_path: Path, source_id: str, exclude: Collection[st
         raise ConfigError(f"{p}: not found") from None
     except OSError as exc:
         raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
+    if expected is not None and parse_config(text, config_path=p).source(source_id).exclude != tuple(
+        expected
+    ):
+        raise ConfigError(f"{p}: source {source_id!r}'s exclude changed since it was read; run it again")
     eol = "\r\n" if "\r\n" in text else "\n"
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):

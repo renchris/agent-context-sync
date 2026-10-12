@@ -58,6 +58,7 @@ from agentsync import policy as content_policy
 from agentsync.arm_local import exclude_advice, exclude_globs
 from agentsync.config import (
     Config,
+    SourceConfig,
     append_to_config,
     canonical_source_root,
     default_config_text,
@@ -760,11 +761,11 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     files is left as it is: excluding it would retire its pages at once, with no deletion check. The file is
     edited as text and checked before it is written (:func:`config.set_source_exclude`); under the cycle's
     lock, as an interactive sync waits for it. Nothing to exclude exits 0; a refused edit prints the line to
-    paste instead and exits 78."""
+    paste instead and exits 78. sources.toml is read again once the lock is held, and the write refuses an
+    ``exclude`` that changed after that read (B13 round 5 F70)."""
     config = _config(args)
-    src = next((s for s in config.sources if s.id == args.source), None)
-    if src is None or src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
-        _err(f"exclude-empty {args.source}: no local or inbox source with that id in {config.config_path}")
+    src = _exclude_empty_source(config, args.source)
+    if src is None:
         return EXIT_USAGE
     where = loop._shown(config.config_path)
     db = config.state_paths.db
@@ -774,6 +775,15 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     lock = SingleWriterLock(config.state_paths.lock, "exclude-empty")
     _acquire_waiting(lock, INTERACTIVE_LOCK_WAIT_S)
     try:
+        # the wait can be minutes: an exclude edited by hand meanwhile is read again, not written over (F70)
+        try:
+            config = load_config(config.config_path)
+        except ConfigError as exc:
+            _err(f"exclude-empty {args.source}: sources.toml does not load: {exc}")
+            return EXIT_CONFIG
+        src = _exclude_empty_source(config, args.source)
+        if src is None:
+            return EXIT_USAGE
         with Manifest(db) as manifest:
             _stored, below = loop._empty_dirs(manifest, src)
             # A folder's glob that would also prune a folder holding mirrored files (a "[" is written as
@@ -793,7 +803,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             return EXIT_OK
         exclude = exclude_globs(src, clear)
         try:
-            set_source_exclude(config.config_path, src.id, exclude)
+            set_source_exclude(config.config_path, src.id, exclude, expected=src.exclude)
         except ConfigError as exc:
             _err(f"exclude-empty {src.id}: sources.toml was not changed: {exc}")
             _out(f"instead, {exclude_advice(src, clear, where)}")
@@ -807,6 +817,15 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         f"files; the next sync lists {src.id} without them{held}"
     )
     return EXIT_OK
+
+
+def _exclude_empty_source(config: Config, source_id: str) -> SourceConfig | None:
+    """The local or inbox source ``exclude-empty`` edits, or None after printing why there is none."""
+    src = next((s for s in config.sources if s.id == source_id), None)
+    if src is None or src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+        _err(f"exclude-empty {source_id}: no local or inbox source with that id in {config.config_path}")
+        return None
+    return src
 
 
 def _cmd_mat(args: argparse.Namespace) -> int:

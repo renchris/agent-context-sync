@@ -195,3 +195,66 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     assert "rename or remove the empty folder(s) in the cloud drive" in wait
     assert "`~/.local/bin/agentsync sync -v` names them" in wait and "Plans" not in wait
     assert "file(s) the mirror still has" not in wait, "not the gone line: the folder held no file"
+
+
+_ACQUIRE_WAITING = cli._acquire_waiting
+
+
+def _edit_during_the_wait(monkeypatch: pytest.MonkeyPatch, cfg: Path, old: str, new: str) -> None:
+    """Make the lock wait (``_acquire_waiting``) the moment a hand edit of sources.toml lands."""
+    real = _ACQUIRE_WAITING
+
+    def waiting(lock: object, wait_s: float) -> None:
+        text = cfg.read_text(encoding="utf-8")
+        assert old in text
+        cfg.write_text(text.replace(old, new), encoding="utf-8")
+        real(lock, wait_s)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli, "_acquire_waiting", waiting)
+
+
+def test_an_exclude_edited_during_the_lock_wait_is_kept(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F70 (B13 round 5): the new exclude was built from the config read before the lock wait (up to 600 s),
+    so a glob added by hand during the wait was written over with no word. sources.toml is read again once
+    the lock is held."""
+    root = _root()
+    (root / "Empty").mkdir()
+    cfg = _setup(tmp_path, local_source_table("work", root) + 'exclude = ["*.bak"]\n')
+    run_cycle(load_config(cfg), mode=None)
+    _edit_during_the_wait(monkeypatch, cfg, 'exclude = ["*.bak"]', 'exclude = ["*.bak", "/Private/"]')
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK, out
+    assert load_config(cfg).source("work").exclude == ("*.bak", "/Private/", "/Empty/")
+
+
+def test_a_source_removed_or_a_config_broken_during_the_lock_wait_is_reported(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F70: what the read after the wait finds is reported as such, with no traceback and no write."""
+    root = _root()
+    (root / "Empty").mkdir()
+    table = local_source_table("work", root)
+    cfg = _setup(tmp_path, table)
+    run_cycle(load_config(cfg), mode=None)
+    _edit_during_the_wait(monkeypatch, cfg, 'id = "work"', 'id = "other"')
+    assert cli.main(["exclude-empty", "work", "--config", str(cfg)]) == cli.EXIT_USAGE
+    assert "no local or inbox source with that id" in capsys.readouterr().err
+    assert "/Empty/" not in cfg.read_text(encoding="utf-8")
+    _edit_during_the_wait(monkeypatch, cfg, 'id = "other"', 'id = "other"\nnot toml [')
+    capsys.readouterr()
+    assert cli.main(["exclude-empty", "other", "--config", str(cfg)]) == cli.EXIT_CONFIG
+    assert "exclude-empty other: sources.toml does not load: " in capsys.readouterr().err
+
+
+def test_the_write_refuses_an_exclude_changed_since_it_was_read(tmp_path: Path) -> None:
+    """F70: between the read the new list is built from and the write, an edit of the same key refuses the
+    write (exit 78 and the paste line in the CLI) instead of dropping the edit."""
+    cfg = _file(tmp_path)
+    before = cfg.read_bytes()
+    with pytest.raises(ConfigError, match="'alpha''s exclude changed since it was read"):
+        set_source_exclude(cfg, "alpha", ["*.bak", "/Empty/"], expected=("*.bak",))
+    assert cfg.read_bytes() == before
+    config = set_source_exclude(cfg, "alpha", ["*.bak", "~$*", "/Empty/"], expected=("*.bak", "~$*"))
+    assert config.source("alpha").exclude == ("*.bak", "~$*", "/Empty/")

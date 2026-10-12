@@ -14256,6 +14256,19 @@ assignments parse as a retired source),
 `tests/test_review_fixes.py::test_removing_a_source_block_is_refused_not_silently_kept_current`,
 `tests/test_ops_doctor.py::test_two_sources_holding_the_same_files_is_an_info_line`.
 
+**F70: exclude-empty reads sources.toml again once it holds the lock** (`agentsync.cli`, `agentsync.config`).
+`exclude-empty` (§16.51 Q71) loaded the config and chose the source before its lock wait (up to 600 s), then built
+the new list from that stale `exclude`; `set_source_exclude` re-reads the file but sets this source's `exclude`
+before comparing, so a glob added by hand during the wait was written over with no word. The command now loads the
+config and looks the source up again once the lock is held: a file that no longer loads prints `exclude-empty <id>:
+sources.toml does not load: ...` (exit 78), a source that is gone or no longer local or inbox prints the usage error
+(exit 2), both with the lock released. `set_source_exclude` takes `expected` (keyword only: the `exclude` the list
+was built from) and, on its own read, refuses with `source <id>'s exclude changed since it was read; run it again`
+when that key differs, so the gap between the two reads ends in the refusal path (exit 78, the paste line) rather
+than a lost edit. Tests: `tests/test_exclude_empty.py` (`test_an_exclude_edited_during_the_lock_wait_is_kept`,
+`test_a_source_removed_or_a_config_broken_during_the_lock_wait_is_reported`,
+`test_the_write_refuses_an_exclude_changed_since_it_was_read`).
+
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
 Wave B13 round 5, lane B: 18 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in
