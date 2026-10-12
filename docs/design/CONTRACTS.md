@@ -13071,6 +13071,20 @@ and `ocr_pdf_rules` 4 in `test_pdf_version_and_options_change_only_with_an_engin
 (`test_the_real_helper_reads_a_pdf_picture_stored_upright_and_drawn_turned_as_its_separate_lines`; §16.42's
 `test_the_real_helper_reads_a_pdf_picture_stored_on_its_side_the_way_up_the_page_shows_it` still passes).
 
+**A Visio group nested any depth is read (R86, part a).** `diagram._vsdx_shapes` walks a page's shapes with
+a stack instead of by recursion: each shape, then its group's members (pushed last first, so they come off
+in the file's order), then what follows the group, the order §16.42 "Page" gives. Groups nested past
+Python's recursion limit (about 1000) failed as `conversion failed: corrupt Visio package: RecursionError:
+…`, though the package was sound; now they convert, so no "nested too deep" wording is needed. Every
+drawing that converted before reads exactly as it did and a failed conversion is never cached, so the
+converter's version stays `1.0.0+python-<x.y.z>`. A drawing that failed this way keeps its stub until its
+file changes: a failed conversion is not retried (§16.28 "The run record"), and `diagram-stdlib` has no
+`outdated` rule.
+
+Tests: `tests/test_convert_formats.py` (`test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order`,
+groups 5000 deep with shapes before, inside and after each; §16.42's
+`test_a_visio_drawing_is_its_shape_text_and_connections_per_page` still passes).
+
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 
 The B13 round 2 items of lane P (specs `round2/items/R<n>.md`, the verifier's corrected fix built). Ten need

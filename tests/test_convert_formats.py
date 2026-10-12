@@ -3978,6 +3978,40 @@ def test_a_visio_drawing_is_its_shape_text_and_connections_per_page(tmp_path: Pa
     assert (u.title, u.summary) == ("", "Visio drawing: 2 page(s); pages: Site plan; Frame")
 
 
+def test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order(tmp_path: Path) -> None:
+    """Groups nested 5000 deep are read, every shape in the file's order (a group, then its members, then
+    what follows the group), where walking them by recursion failed as a ``corrupt Visio package``."""
+    depth, keep = 5000, {0, 1, 4999}
+
+    def text(s: str, i: int) -> str:
+        return f"<Text>{s} {i}</Text>" if i in keep else ""
+
+    opening = "".join(
+        f'<Shape ID="{3 * i + 10}" Type="Group">{text("Group", i)}<Shapes>'
+        f'<Shape ID="{3 * i + 11}">{text("first", i)}</Shape>'
+        for i in range(depth)
+    )
+    closing = "".join(
+        f'<Shape ID="{3 * i + 12}">{text("last", i)}</Shape></Shapes></Shape>' for i in reversed(range(depth))
+    )
+    page = (
+        '<PageContents xmlns="http://schemas.microsoft.com/office/visio/2012/main"><Shapes>'
+        '<Shape ID="1"><Text>Contoso before</Text></Shape>'
+        f'{opening}<Shape ID="2"><Text>Contoso core</Text></Shape>{closing}'
+        '<Shape ID="3"><Text>Contoso after</Text></Shape></Shapes></PageContents>'
+    ).encode()
+    src = build_vsdx(tmp_path / "Contoso Deep.vsdx", extra={"visio/pages/page1.xml": page})
+    body = _one(DiagramConverter(CFG).convert(src, name=src.name)).body
+    order = [
+        "Contoso before",
+        *(f"{s} {i}" for i in (0, 1, 4999) for s in ("Group", "first")),
+        "Contoso core",
+        *(f"last {i}" for i in (4999, 1, 0)),
+        "Contoso after",
+    ]
+    assert body.startswith("## Site plan\n\n" + "".join(f"- {s}\n" for s in order) + "\n## Frame")
+
+
 def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
     """A deflate bomb stops at the part limit; another XML document, a broken page and a non-zip .vsdx fail
     with what they are; a diagram with no text at all is the empty-output stub."""

@@ -200,10 +200,15 @@ def _part(zf: zipfile.ZipFile, name: str, budget: _Budget) -> bytes | None:
 
 
 def _vsdx_shapes(shapes: ET.Element | None) -> Iterator[ET.Element]:
-    """Every shape, a group's members after the group, in the page's order."""
-    for shape in [] if shapes is None else shapes.findall(f"{_V}Shape"):
+    """Every shape, a group's members after the group, in the page's order.  Walked with a stack, not by
+    recursion, so groups nested any depth are read (each group's members are pushed last first)."""
+    stack = [] if shapes is None else shapes.findall(f"{_V}Shape")[::-1]
+    while stack:
+        shape = stack.pop()
         yield shape
-        yield from _vsdx_shapes(shape.find(f"{_V}Shapes"))
+        members = shape.find(f"{_V}Shapes")
+        if members is not None:
+            stack.extend(reversed(members.findall(f"{_V}Shape")))
 
 
 def _vsdx_page(page: _Page, contents: ET.Element) -> _Page:
