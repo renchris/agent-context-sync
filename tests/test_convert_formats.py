@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import ctypes
 import datetime as dt
@@ -62,6 +63,8 @@ from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit, Un
 from agentsync.ops import launchd
 from agentsync.policy import PolicyConfig
 from test_convert_builders import (
+    POTX_MAIN,
+    PPTX_MAIN,
     MsgAttachment,
     PdfPicture,
     build_annotated_pdf,
@@ -480,6 +483,51 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
     assert "## Numbers" in _one(PptxConverter(CFG).convert(deck_typed, name=deck_typed.name)).body
     with pytest.raises(ConversionError):
         PptxConverter(CFG).convert(make_zip(tmp_path / "c.potx", {"x": b"y"}), name="c.potx")
+
+
+def build_empty_template(path: Path) -> Path:
+    """A made-up Contoso template as PowerPoint saves one: no slides, a master with a fixed text box, a
+    layout renamed "Contoso Title" holding a fixed text box of its own, and the template content type."""
+    boxes = Presentation()
+    blank = boxes.slides.add_slide(boxes.slide_layouts[6])
+
+    def box(text: str) -> Any:
+        shape = blank.shapes.add_textbox(Inches(1), Inches(6.5), Inches(5), Inches(0.5))
+        shape.text_frame.text = text
+        return copy.deepcopy(shape._element)
+
+    prs = Presentation()
+    prs.slide_master.shapes._spTree.append(box("Contoso Ltd. Confidential"))
+    layout = prs.slide_layouts[0]
+    layout.name = "Contoso Title"
+    layout.shapes._spTree.append(box("Contoso Quarterly Review"))
+    deck = io.BytesIO()
+    prs.save(deck)
+    with zipfile.ZipFile(deck) as zin, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                data = data.replace(PPTX_MAIN.encode(), POTX_MAIN.encode())
+            zout.writestr(info, data)
+    return path
+
+
+def test_a_template_with_no_slides_says_what_its_layouts_and_master_hold(tmp_path: Path) -> None:
+    """B13 round 4 Q77: a typical .potx has layouts and no slides, and its page read only "[empty
+    presentation: no slides]", titled with that marker.  It now names the layouts and gives the fixed text of
+    the master and layouts: every shape that is not a placeholder, and a footer that carries text; never the
+    prompt text a placeholder holds ("Click to edit Master title style")."""
+    template = build_empty_template(tmp_path / "Contoso Template.potx")
+    u = _one(PptxConverter(CFG).convert(template, name="Contoso Template.potx"))
+    lines = u.body.splitlines()
+    assert lines[0] == "[empty presentation: no slides]"
+    [layouts] = [line for line in lines if line.startswith("Layouts: ")]
+    assert layouts.startswith("Layouts: Contoso Title; Title and Content; ")
+    assert lines.count("Contoso Ltd. Confidential") == lines.count("Contoso Quarterly Review") == 1
+    assert lines.index("Contoso Ltd. Confidential") > lines.index("Fixed text in the master and layouts:")
+    assert "Click to edit" not in u.body
+    assert u.title == "Contoso Ltd. Confidential" and "empty presentation" not in u.title
+    assert u.summary == "Presentation: 0 slide(s); 11 layout(s)"
 
 
 # ---------------------------------------------------------------------------------------------------------

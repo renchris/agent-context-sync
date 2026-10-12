@@ -129,6 +129,43 @@ def _text_frame_lines(shape: Any) -> list[str]:
     return lines
 
 
+def _fixed_lines(shapes: Iterable[Any]) -> list[str]:
+    """The fixed text of a master's or layout's shapes in reading order: every shape that is not a
+    placeholder, and a footer placeholder that carries text.  The other placeholders hold the prompt text a
+    slide replaces ("Click to edit Master title style") or a field (date, slide number)."""
+    lines: list[str] = []
+    for shape in _reading_order(shapes):
+        kind = _placeholder_type(shape)
+        if getattr(shape, "is_placeholder", False) and kind != "FOOTER":
+            continue
+        if getattr(shape, "shapes", None) is not None:  # a group
+            lines += _fixed_lines(shape.shapes)
+        elif getattr(shape, "has_table", False):
+            lines += _table_lines(shape.table)
+        elif getattr(shape, "has_text_frame", False):
+            lines += _text_frame_lines(shape)
+    return lines
+
+
+def _template_lines(prs: Any) -> tuple[list[str], list[str]]:
+    """A deck with no slides, usually a template: its layout names in order and the fixed text of its
+    masters and layouts (:func:`_fixed_lines`), each de-duplicated (B13 round 4 Q77)."""
+    names: list[str] = []
+    fixed: list[str] = []
+    for master in prs.slide_masters:
+        for line in _fixed_lines(master.shapes):
+            if line not in fixed:
+                fixed.append(line)
+        for layout in master.slide_layouts:
+            name = _norm(str(layout.name or ""))
+            if name and name not in names:
+                names.append(name)
+            for line in _fixed_lines(layout.shapes):
+                if line not in fixed:
+                    fixed.append(line)
+    return names, fixed
+
+
 def _table_lines(table: Any) -> list[str]:
     """A pptx table as GFM (first row as header); merged cells carry the origin cell's text."""
     rows = list(table.rows)
@@ -438,13 +475,27 @@ class PptxConverter:
             raise
         except Exception as exc:
             raise ConversionError(f"cannot read slide content: {type(exc).__name__}: {exc}") from exc
+        layouts: list[str] = []
         if not slides:
+            # A template (or an empty deck): what its layouts and master say, since no slide does.
+            try:
+                layouts, fixed = _template_lines(prs)
+            except Exception as exc:
+                raise ConversionError(f"cannot read the slide layouts: {type(exc).__name__}: {exc}") from exc
             out = ["[empty presentation: no slides]"]
+            if layouts:
+                out += ["", _escape_line("Layouts: " + _join_limited(layouts, limit=600))]
+            if fixed:
+                out += ["", "Fixed text in the master and layouts:", "", *fixed]
+            first = fixed[0] if fixed else layouts[0] if layouts else ""
+            titles.append(_first_line(first) or "Untitled presentation")  # never the marker
         body = "\n".join(out)
         # A picture's text follows its own ``[image…]`` line, so the first line is never one OCR read.
         title = next((t for t in titles if t), "") or _first_line(body) or "Untitled presentation"
-        named = [t for t in titles if t]
+        named = [t for t in titles if t] if slides else []
         summary = f"Presentation: {len(slides)} slide(s)"
+        if not slides:
+            summary += f"; {len(layouts)} layout(s)"
         # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
         if found > len(texts):
             summary += "; " + _PICTURES_READ.format(found - len(texts))
