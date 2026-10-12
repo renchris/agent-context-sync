@@ -12147,7 +12147,140 @@ Reserved for round 3 lane RA of B13.
 
 ### 16.47 Round 3: setup report and installer (2026-10-11, wave B13 round 3 lane RB)
 
-Reserved for round 3 lane RB of B13.
+Round 2's rehearsal, review and harvest items for the setup report, the installer and `it_request.py` (lane
+RB). Each item names its round 2 id; the spec is the adversarial verifier's corrected fix. Where an item amends
+an older section, a dated line sits at that section too.
+
+#### The shell fallback report
+
+- **launchd job ownership** (R6, R16, one defect). `launchctl print` reads the uid's domain, not this HOME's.
+  `launchd_foreign` applies `setup_report._background`'s rule: the job is another install's when the plist it
+  was loaded from is outside this home folder, or its program or an argument is in another user's or a
+  temporary folder. Then the line reads `- loaded, but the job belongs to another install (its plist or
+  ProgramArguments are outside this home folder); its runs and exit codes are not this setup's result`, with no
+  state, runs or exit code. A job loaded from this home's own plist path whose file is gone stays this setup's:
+  `- loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent repairs it):
+  state ...`. The Summary's `- launchd: real` reads `- launchd: not simulated (real LaunchAgents)`. Tests:
+  `test_the_shell_report_names_another_installs_job_as_not_this_setups` (the stub's `print` takes
+  STUB_LC_PATH and STUB_LC_PROGRAM).
+- **uv's Pythons** (R5): the count skips uv's hidden `.temp` folder (`! -name '.*'`).
+  `test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder`.
+- **A repeated organisation** (R44) takes no second `<org-N>`. Only the same bytes are a repeat: the shell
+  matcher is case-sensitive (`index`), so a case-insensitive dedupe would leave another spelling unregistered.
+  The order stays glob order (§16.46, R135). `test_the_shell_report_gives_a_repeated_organisation_one_number`.
+- **A linked worktree's git config** (R110), here and in `_git_proxy_urls`: `checkout_git_configs` and
+  `setup_report._checkout_git_configs` resolve `.git` (a directory, or a file with `gitdir: <path>`, relative
+  to the checkout), then `commondir` (relative to the git dir), and read `<common dir>/config` and `<git
+  dir>/config.worktree` as files. Tests: `test_a_linked_worktrees_git_config_is_read_for_proxies`,
+  `test_the_shell_report_reads_a_linked_worktrees_git_config`. A comment inside that process substitution
+  carries no apostrophe: `/bin/bash` 3.2 reads one there as a quote, which made the block a syntax error that
+  its `2>/dev/null` hid (every proxy pair lost; caught by the H19 test).
+
+#### A stopped copy's report (R17, R18)
+
+`--report-only` for an attempt `--log-start` stopped writes `~/agent-context/setup/stopped-copy-report.md`,
+not `setup-report.md`, so the last report that was not stopped keeps its bytes, as `bring-back.md` already did.
+Its first line is `> This report is of an attempt that an out-of-date copy of the setup prompt started: do not
+send it or bring it back.`, followed by ` The report of the last attempt that was not stopped is
+~/agent-context/setup-report.md.` only when that file exists; the line is added after redaction, so it names a
+home path only as `~/`. The agentsync report's Send-it paragraph and last-line issue link are untouched. The
+NEXT says `do not send it or bring it back` and, only where `bring-back.md` exists, `(<path> was not touched: it
+still holds the report of the last attempt that was not stopped)`: never "finished", since a failed attempt's
+report writes it too. `test_the_report_of_a_stopped_copy_invites_no_bring_back`. The stop comment and
+`docs/deploy/setup-feedback.md` now say which copies still go on to a report (v9 and older, and a v10 copy taken
+before its step 3 named the stop; R21).
+
+#### Step 2's reinstall (R34, R114, R125)
+
+- The reinstall holds the lock of this run's config and of the config each LaunchAgent's plist names after
+  `--config` (PlistBuddy), once each; a busy probe on any of them is the wait. The wait is per lock.
+- Over a tool environment the jobs run from, a checkout is built into a wheel first (`uv build --wheel`, outside
+  the lock) and the wheel installed: measured at load 500 (uv 0.12.17), the environment was missing about 6 s
+  for a checkout and about 0.9 s for a wheel. A first install, and a wheel source, build nothing first. A wheel
+  that does not build leaves the install to the checkout. uv's receipt then names the removed temporary wheel;
+  nothing here runs `uv tool upgrade`.
+- A locked install that fails and leaves no interpreter (a tick started Python while uv removed the
+  environment: "Directory not empty") runs once more under the locks; a second failure says the environment was
+  left without its interpreter and to run the command again, not network, proxy or TLS.
+- install.log's `step=agentsync` line notes what the script saw: `waited-for-a-background-sync`,
+  `wait-ran-out-after-<N>s` or `lock-not-taken-rc<N>`; a run with no wait keeps the line byte for byte. The
+  Summary's install.sh line shows that step's note. A sync that starts after the probe is waited for with no
+  note.
+- The header says a tick in the rebuild ends in SPAWN_FAILED (exit 71) or an import error, and that a run killed
+  with SIGKILL during the wait leaves lockf to run the reinstall once the lock frees (R125, kept). The launcher
+  is unchanged: an edit would rebuild it, a new TCC identity.
+- Tests: the wait, ran-out and free-lock tests (their notes),
+  `test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with`,
+  `test_a_checkout_over_a_tool_environment_is_built_into_a_wheel_first`,
+  `test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more`,
+  `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+
+#### The setup report's Summary
+
+- **First sync of an attempt that ran no install.sh** (R19, R28, one defect). The fallback to the newest earlier
+  run is named: `(install.log: the install run of <start>, before this attempt; this attempt ran none)`, its
+  counts `(install.log: that earlier run; ...)` or `(install.out: an earlier run's; this attempt ran none)`. With
+  no earlier sync step it reads `no install.sh run during this attempt (install.log)`. The live baseline clause
+  and the Loop line keep their words. `test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_reads`.
+- **No install.sh run, no folder question** (R15). An attempt with no run of its own counts no folder question
+  and reads `- expected turns: none (no install.sh --list-folders run in this attempt: no folder question and no
+  Allow click)`; any run keeps the usual rules and a logged question still counts.
+  `test_an_attempt_with_no_installer_run_is_given_no_folder_question`.
+- **Approvals with no Agent: line** (R24) are `approvals: not observable`.
+  `test_approvals_are_counted_or_not_observable_by_tool`.
+- **One timestamp** (R26): `session: one timestamp (<time>), no duration`.
+  `test_an_attempt_with_one_timestamp_says_so_on_its_time_line`.
+- **One step line** (R107): `its only step line is ...`; two or more `the last of its N step lines is ...`.
+- **A gone process** (R131, wording only): `its process is gone: killed, the Mac restarted, or its end line
+  could not be written`, since `log_at` drops a failed write. No detection: free space at report time says
+  nothing of the earlier write.
+
+#### Other report and doctor lines
+
+- **Empty cloud folders** (R14): `; its last walk listed all T file(s) the mirror holds for it` when none was
+  missed.
+- **The setup-report warning's quoted time** (R108) is converted to UTC by one regex anchored to `warning:
+  agentsync setup-report failed (...): `; it is lazy across the parentheses, because `rc_meaning` can give
+  `stopped by SIGTERM (a tool timeout?)`.
+- **Signal exits** (R81): `rc_meaning` names every 128 + N as `stopped by SIG<NAME> (signal N)`; doctor's git
+  and pandoc probes (`_exit_words`) and the report's probes (`_exited`) word subprocess's negative code with
+  `ocr._ended`. `test_a_signal_exit_is_named_by_its_signal`,
+  `test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it`.
+- **A .msg or an image under a label rule** (R33). The stored reason stays `no converter for <suffix>` (re-reads,
+  stub identity, no label escalation). The page says `a [policy] label rule is set and the label of a <suffix>
+  file cannot be read, so its content is withheld (content policy)` and names the route (save as .eml, export
+  as a PDF). The report counts such rows as `withheld by label rule` while the rule is on, with a line naming
+  those routes. `convert.registry.label_withheld_suffixes()` defines the set beside the gates;
+  `setup_report._LABEL_WITHHELD` is held equal to it by a test.
+- **The exclude line** (R8): an allowlist. Agentsync's shipped globs show as written; every other entry is
+  `"<path>"` or `"/<path>/"`. The Loop line cuts a path to its last part first (K16b), so a nested
+  `"/a/b/"` entry shows there as `"<path>"`.
+- **Doctor's fixes name `~/.local/bin/agentsync`** (R12): the purge-queue, compaction and Time Machine fixes are
+  built from `loop.BIN`; the report's Loop line keeps stripping paths (K16b).
+- **An inbox held by an empty cloud folder** (R53): `loop.empty_cloud_folders_held` (stored empty folders today's
+  exclude does not prune, after a FULL pass, not held for a prompt) decides; such an inbox gets the local
+  source's status pointer, a note under install.sh. Doctor reads the manifest's stored state and lists no
+  folder. `test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait`.
+- **The evidence parts' helper lines** (R106) quote the probe's detail, which for a failed build is its reason:
+  the docstrings and setup-feedback.md say so instead of "no reason text".
+
+#### Tests (R97, R98)
+
+The stubbed purge waits carry the loop's two-command text (R97). R98: the setup_report content tests run with a
+roomy budget (`roomy_budget`; `build_report` reads `TIME_BUDGET_S` at the call); the budget's own wall-clock
+bounds are in tests marked `timing`, which conftest skips while the 1-minute load passes 4 per core
+(`AGENTSYNC_TIMING=1` runs them); the status progress test asserts the first tick precedes status's lines, not
+the last; the friction options' speed is CPU time.
+
+#### Kept, not built
+
+- R127: bracketed tail words stay exact-case (written and upper case). A case-insensitive form would replace
+  every lower-case use of a common word in the report's own prose (the verifier's run: "sales").
+- R148: section 2 stays the whole fix-request.md and section 3 keeps its "not repeated" line. Sending the patch
+  every time restores 165 KB of unredacted names a report; sending earlier parts once needs a delivery record
+  the zero-IT Mac cannot have.
+- R60 and R132 are contract text only: R60's mark at §16.43's git-config sentence is lane P's SUPERSEDED line
+  (ffbb615), and R132's sentence is under "The bring-back sends local work once".
 
 ### 16.48 Round 3: converters and speech (2026-10-11, wave B13 round 3 lane E)
 
