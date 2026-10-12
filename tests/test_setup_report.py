@@ -2779,6 +2779,35 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed) "
             "(install.log; the unreadable/failed split: install.out)",
         ),
+        (  # B13 round 5 F8, F32: both clauses of the sync's line (F34's form), and the first read is kept
+            "note=converted-2-deferred-0-reread-2",
+            "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
+            "time, also counted above); of the converted: 1 unreadable, 0 failed",
+            "converted 2, deferred 0 online-only, read again 2 (2 of them read for the first time, also in "
+            "the converted count; of the converted: 1 unreadable, 0 failed) (install.log; the first-read "
+            "count and the unreadable/failed split: install.out)",
+        ),
+        (  # an older agentsync's two brackets in a row: the same two clauses
+            "note=converted-2-deferred-0-reread-2",
+            "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
+            "time, also counted above) (of the converted: 1 unreadable, 0 failed)",
+            "read again 2 (2 of them read for the first time, also in the converted count; of the converted: "
+            "1 unreadable, 0 failed) (install.log; the first-read count and the unreadable/failed split: "
+            "install.out)",
+        ),
+        (  # the first read alone; nothing else changes
+            "",
+            "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
+            "time, also counted above)",
+            "converted 1, deferred 0 online-only, read again 1 (1 of them read for the first time, also in "
+            "the converted count) (install.out)",
+        ),
+        (  # a first-read count of another sync (its read-again count differs) is not this one's
+            "note=converted-1-deferred-0-reread-3",
+            "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
+            "time, also counted above)",
+            "converted 1, deferred 0 online-only, read again 3 (install.log)",
+        ),
     ):
         v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done {note}".rstrip())
         (fake_mac["setup"] / "install.out").write_text(
@@ -2802,9 +2831,12 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
         "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)",
     ):
         match = setup_report._CONVERTED_LINE_RE.search(line)
-        assert match is not None and match.group(1, 2, 4, 5) == ("3", "0", "1", "0"), line
+        assert match is not None and match.group("c", "d") == ("3", "0"), line
+        split = setup_report._SPLIT_RE.search(match.group("tail"))
+        assert split is not None and split.groups() == ("1", "0"), line
     match = setup_report._CONVERTED_LINE_RE.search("converted 1, deferred 0 online-only, read again 4")
-    assert match is not None and match.groups() == ("1", "0", "4", None, None)
+    assert match is not None and match.group("c", "d", "r", "tail") == ("1", "0", "4", "")
+    assert setup_report._SPLIT_RE.search(match.group("tail")) is None
 
 
 @pytest.mark.usefixtures("clean_doctor")

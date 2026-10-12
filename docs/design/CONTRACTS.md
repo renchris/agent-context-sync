@@ -7867,6 +7867,7 @@ other key that would be 0 is left out. No reader depended on the old content.
   ` (of the converted: U unreadable, F failed)` when U > 0, after the words install.sh and setup-report match,
   and setup-report's first-sync clause carries the same breakdown from install.out's line of that sync
   (install.log's `converted-N-deferred-M` note, written by install.sh, has none).
+  **Amended 2026-10-12, §16.58 F8:** setup-report reads the breakdown wherever it stands after the counts.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
   `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
@@ -12620,6 +12621,8 @@ install.log's `converted-N-deferred-M` note has none, since install.sh writes it
 `tests/test_cycle.py::test_an_unreadable_conversion_is_counted_apart_from_a_failed_one`,
 `tests/test_setup_report.py::test_repeat_conversions_part_reads_the_run_records_and_the_cache` and
 `::test_first_sync_clause_carries_the_read_again_count`.
+Amended 2026-10-12 (§16.58, F8 and F32): setup-report reads the `of the converted: U unreadable, F failed` clause
+wherever it stands after the counts (§16.57 F34 puts it after Q28's clause as `; of the converted: ...`).
 
 **R100: a converter library upgrade reopens the re-read (`agentsync.cycle`).** `_Cycle._capabilities` adds `deps`:
 the sorted `[name, convert._common._dist_version(name)]` pairs of `cycle._CONVERTER_DISTS` (olefile, openpyxl,
@@ -13856,6 +13859,7 @@ install.out's sync line gives the unreadable/failed split, the clause's source t
 unreadable/failed split: install.out)`, or `install.out's last sync line` for a borrowed earlier run (matched only
 by an equal converted count). The inner `(of the converted: U unreadable, F failed)` words are §16.45 R2's,
 unchanged. Test: `test_first_sync_clause_carries_the_read_again_count`.
+Amended 2026-10-12 (§16.58, F8 and F32): the tag also names the first-read count when it carries it.
 
 **Q3, Q66: the unreadable-file note names its classes as examples.** Repeat conversions' note reads `under the
 class its stub names (such as "encrypted", "damaged", "not the type its name says", "empty", "image not readable",
@@ -14521,6 +14525,20 @@ two or more words (name, folder, library or organisation), as the code always di
 name. install.sh's `name_forms` applies it to the full name only, because its folder and organisation pairs are
 matched only as written and never matched the run-together lower-case word. Test:
 `test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alone` (a folder `Set Up`).
+
+**F8, F32: the Summary keeps the sync line's first-read count and its split.** The CLI half, one parenthesis per
+subject on the sync's last line, is lane B's F34 (§16.57; this lane leaves cli.py to it). Read with §16.45 R2 and
+Q28: setup-report's `_CONVERTED_LINE_RE` reads the head with named groups and keeps the rest of the line, and
+`_FIRST_READ_RE` and `_SPLIT_RE` read Q28's first-read clause and the unreadable/failed split from it wherever
+they stand, so F34's `(F of them read for the first time, also counted above); of the converted: ...`, an older
+install.out's two brackets side by side and a split alone all read the same; before, the split was lost after
+Q28's clause and the first-read count was never read (a reader added 1 + 1 for one file). The first-sync clause
+puts both in one bracket, `read again R (F of them read for the first time, also in the converted count; of the
+converted: U unreadable, X failed)`, the first-read count only when install.out's line has the same converted and
+read-again counts, and its source tag names the file: `(install.log; the first-read count and the
+unreadable/failed split: install.out)`. install.sh's note is unchanged (no `-first-F` suffix). F8 and F32
+describe one defect and are built once. Tests: `test_first_sync_clause_carries_the_read_again_count`,
+`test_the_converted_line_parses_with_the_read_again_clause_in_either_form`.
 
 **F9, F46: the Loop line's order clause in plain words.** Amends Q13 (§16.52): the wait the loop stopped on
 still comes first (the 2026-10-07 field report: the loop prints queued purges first and the draft baseline last,

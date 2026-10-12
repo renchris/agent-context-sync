@@ -611,12 +611,15 @@ _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited fo
     # or the suffix alone, when the sync printed no counts (B13 round 5 F59): group 5, and no group 1
     r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?|(waited-for-the-lock)"
 )
-_CONVERTED_LINE_RE = (
-    re.compile(  # sync's last line; "; of the converted" after the Q28 clause (B13 round 5 F34)
-        r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b(?: \(\d+ of them [^)]*\))?)?"
-        r"(?:(?: \(|; )of the converted: (\d+) unreadable, (\d+) failed\)?)?"
-    )
+_CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its clauses
+    r"\bconverted (?P<c>\d+), deferred (?P<d>\d+) online-only\b(?:, read again (?P<r>\d+)\b)?(?P<tail>.*)"
 )
+# The clauses in that rest, read apart so their order and brackets do not matter: Q28's first reads and the
+# unreadable/failed split, "(F of them read for the first time, also counted above); of the converted: U
+# unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
+# agentsync's install.out still holds (round 5 F8, F32)
+_FIRST_READ_RE = re.compile(r"\b(\d+) of them read for the first time, also counted above\b")
+_SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -1984,6 +1987,8 @@ class _Facts:
     first_sync: tuple[int, int, int] | None = None
     # that line's "(of the converted: U unreadable, F failed)" as (N, U, F); None: the line has none
     first_sync_unreadable: tuple[int, int, int] | None = None
+    # its "F of them read for the first time, also counted above" as (N, R, F); None: the line has none
+    first_sync_first_read: tuple[int, int, int] | None = None
     # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
@@ -2954,17 +2959,15 @@ def _installer_output(r: _Run) -> list[str]:
     r.facts.out_counted = counted
     synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
     if synced:
-        r.facts.first_sync = (
-            int(synced[-1].group(1)),
-            int(synced[-1].group(2)),
-            int(synced[-1].group(3) or 0),
-        )
-        if synced[-1].group(4) is not None:
-            r.facts.first_sync_unreadable = (
-                int(synced[-1].group(1)),
-                int(synced[-1].group(4)),
-                int(synced[-1].group(5)),
-            )
+        last = synced[-1]
+        converted, again = int(last.group("c")), int(last.group("r") or 0)
+        r.facts.first_sync = (converted, int(last.group("d")), again)
+        split = _SPLIT_RE.search(last.group("tail"))
+        if split is not None:
+            r.facts.first_sync_unreadable = (converted, int(split.group(1)), int(split.group(2)))
+        read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
+        if read_first is not None:
+            r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     return [
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
@@ -5858,15 +5861,26 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
         reread = f", read again {again}" if again else ""
-        # install.log's note has no breakdown (install.sh writes it): install.out's line of the same sync does
+        # install.log's note has no breakdown (install.sh writes it): install.out's line of the same sync
+        # does. Its clauses share one bracket (B13 round 5 F8, F32): a first read in "read again" is a file
+        # also in the converted count, so a reader adding them would count it twice
+        clauses: list[str] = []
+        named: list[str] = []
+        first = r.facts.first_sync_first_read
+        if first is not None and first[:2] == (converted, again) and first[2]:
+            clauses.append(f"{first[2]} of them read for the first time, also in the converted count")
+            named.append("the first-read count")
         split = r.facts.first_sync_unreadable
         if split is not None and split[0] == converted and split[1]:
-            reread += f" (of the converted: {split[1]} unreadable, {split[2]} failed)"
-            # Name the file the split came from: install.log's note carries none (B13 round 4 Q1). A borrowed
-            # run is matched to install.out's last sync line only by an equal converted count: say which line
+            clauses.append(f"of the converted: {split[1]} unreadable, {split[2]} failed")
+            named.append("the unreadable/failed split")
+        if clauses:
+            reread += f" ({'; '.join(clauses)})"
+            # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A
+            # borrowed run is matched to install.out's last sync line only by equal counts: say which line
             if source.startswith("install.log"):
                 line = "install.out's last sync line" if borrowed else "install.out"
-                source += f"; the unreadable/failed split: {line}"
+                source += f"; {' and '.join(named)}: {line}"
         parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
