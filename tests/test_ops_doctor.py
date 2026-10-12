@@ -1060,7 +1060,7 @@ def test_a_sentinel_the_system_will_not_read_is_its_own_line(
     )
     volume = r["source.onedrive.volume"]
     assert "is missing" not in volume.detail, "a folder that cannot be read is not one that is gone"
-    assert volume.detail.startswith(f"File Provider root UUID unreadable for {cloud}: ")
+    assert volume.detail.startswith(f"volume UUID unreadable for {cloud}: ")
     assert volume.fix == "check the volume is mounted (diskutil info <mount>)"
 
 
@@ -1074,7 +1074,9 @@ def test_cloud_source_without_sentinel_and_tcc_note(sample_config: Config) -> No
     # it finds empty or cannot list, so the missing sentinel is an ok line, not a warn with a hand edit.
     sentinel = r["source.local-fixture.sentinel"]
     assert sentinel.ok and sentinel.fix is None and "optional" in sentinel.detail
-    assert "File Provider root UUID" in r["source.local-fixture.volume"].detail
+    # B13 round 4 Q2: the value is the APFS volume's UUID, whatever the folder is, so it is named as one.
+    volume = r["source.local-fixture.volume"].detail
+    assert volume.startswith("volume UUID ") and "File Provider" not in volume
     # Bring-back S21: an [ok] line is a note, never the Full Disk Access instruction, and points at lines
     # that exist in every branch.
     assert r["tcc"].ok and "needs its own" in r["tcc"].detail

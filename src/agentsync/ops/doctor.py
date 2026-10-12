@@ -981,7 +981,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     else:
         out.append(_ok(f"{base}.sentinel", "no sentinel configured"))
 
-    kind = "File Provider root" if cloud else "volume"
+    # The value is the APFS volume's UUID (getattrlist ATTR_VOL_UUID of the mount point), for a File Provider
+    # domain as for a plain folder: nothing in it is the domain's, so it is labelled as what it is.
+    kind = "volume"
     if not listed and _is_missing(root):
         out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {root} is missing", fix=missing_fix))
         return out
@@ -1874,7 +1876,7 @@ def run_checks(
     FAIL; docs_repo
     outside CloudStorage, a git repo (or creatable), no symlinks; state_dir exists with mode 0700 and the db
     0600; each local/inbox source root is listable (EPERM => "grant Full Disk Access to <interpreter>"),
-    sentinel present, File Provider root (volume UUID readable); materialisation policy readable; graph:
+    sentinel present, volume UUID readable; materialisation policy readable; graph:
     client id set, token cache backend (Keychain vs file), signed in (no network); disk free >= 2 GiB on state
     and docs volumes; launchd agents loaded (WARN if not; INFO when none is installed, KISS K11a).
 
