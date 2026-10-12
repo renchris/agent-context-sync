@@ -1770,6 +1770,23 @@ class Manifest:
                 )
         return int(cur.rowcount)
 
+    def touch_withheld(self, source_id: str, stable_ids: Iterable[str], *, run_id: int) -> int:
+        """Stamp ``last_seen_run`` (and only that) on the present file rows of files a walk listed but held
+        back (``ScanResult.withheld``): the file is there, so :meth:`unlisted_count` does not count it and
+        :meth:`unseen_live` never offers it as a deletion candidate. A held-back file with no row (a new
+        file still being written) stamps nothing. Returns the number of rows stamped."""
+        ids = sorted(set(stable_ids))
+        if not ids:
+            return 0
+        states = [s.value for s in _PRESENT_STATES]
+        cur = self._db.execute(
+            "UPDATE items SET last_seen_run = ? WHERE source_id = ? AND is_dir = 0 "
+            f"AND state IN ({', '.join('?' for _ in states)}) "
+            "AND stable_id IN (SELECT value FROM json_each(?))",
+            (run_id, source_id, *states, _json_dumps(ids)),
+        )
+        return int(cur.rowcount)
+
     def _update_item(self, sql: str, params: Sequence[object], source_id: str, stable_id: str) -> None:
         cur = self._db.execute(sql, (*params, source_id, stable_id))
         if cur.rowcount != 1:

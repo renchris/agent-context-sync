@@ -2541,6 +2541,7 @@ class _Cycle:
             # ---- one transaction: observations, safe-save rekeys, derived paths, pending cursor -----------
             with self.manifest.transaction():
                 self.manifest.touch_observed(src.id, fast_ids, run_id=self.run_id, verdict_changed=restamp)
+                self.manifest.touch_withheld(src.id, scan.withheld, run_id=self.run_id)
                 observations: list[tuple[SourceItem, Verdict, RowState]] = []
                 for c in slow_verdicts:
                     item = items[c.stable_id]

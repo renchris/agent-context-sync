@@ -224,6 +224,9 @@ class ScanResult:
     # a read of the root past its time limit: macOS is holding it for an Allow prompt, so every other read
     # under the root would wait too; the cycle fetches, rewrites and removes nothing for the source this pass
     listing_held: bool = False
+    # stable ids an inbox walk listed but held back (changed within quiescence_s): present, so the cycle
+    # stamps their rows seen, though neither new nor changed this pass
+    withheld: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

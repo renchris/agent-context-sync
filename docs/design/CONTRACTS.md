@@ -11102,6 +11102,13 @@ withheld item is not in the listing, so its row is not stamped. Nothing is taken
 promises only "those still absent"), and the first sync that lists the file drops it from the count. The
 withheld set is not stored per walk, so the count cannot leave it out
 (`test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it`).
+**Amended 2026-10-12, §16.45 R101:** a pass stamps `last_seen_run`, and only that, on the present file rows
+of the files its walk withheld (`ScanResult.withheld`, `Manifest.touch_withheld`), so neither count includes a
+withheld file that is still there, and `unseen_live` never offers one as a deletion candidate. A withheld file
+with no row (a new file still being written) stamps nothing, so a file deleted upstream still counts. N27's
+parenthetical that an inbox's count includes such a file no longer holds
+(`test_an_inbox_file_the_walk_withheld_is_not_in_the_count`,
+`test_withheld_inbox_files_leave_a_real_deletion_in_the_count`).
 
 Why: with a listing held incomplete, files deleted upstream stay mirrored and no line said how many
 (rehearsal v10, `unchanged=26` beside `live 30`), so the person pasting the exclude line could not tell what

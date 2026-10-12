@@ -1107,12 +1107,14 @@ class InboxArm(LocalArm):
             horizon = now - quiescence_ns
             kept: list[SourceItem] = []
             withheld: list[str] = []
+            withheld_ids: list[str] = []
             settling: list[int] = []  # withheld stamps that leave the window in time (not future-dated)
             for item in items:
                 created = item.created_ns if item.created_ns is not None else item.mtime_ns
                 stamp = max(item.mtime_ns, item.ctime_ns, created)
                 if stamp > horizon:
                     withheld.append(item.rel_path)
+                    withheld_ids.append(item.stable_id)
                     if stamp <= now:
                         settling.append(stamp)
                     continue
@@ -1162,6 +1164,7 @@ class InboxArm(LocalArm):
             enumeration_complete=complete,
             unknown_dirs=stats.unknown_dirs,
             alarms=tuple(alarms),
+            withheld=tuple(withheld_ids),
         )
 
     def fetch(self, item: SourceItem, dest_dir: Path, budget: ByteBudget) -> FetchResult:

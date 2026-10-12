@@ -508,10 +508,10 @@ def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
     assert checks["heartbeat.bare"].fix is not None and checks["heartbeat.bare"].note is None
 
 
-def test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it(tmp_path: Path) -> None:
-    """§16.39 N26, Known limit (b13 N27 review): an inbox walk leaves a file that changed too recently out
-    of its listing, so a mirrored file that is still there counts as "not listed" beside an empty cloud
-    folder. Nothing is taken out for it, and the first sync that lists it drops it from the count."""
+def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> None:
+    """b13 R101 (was §16.39 N26's Known limit): an inbox walk leaves a file that changed too recently out
+    of its listing, but the file is there: the pass stamps its row seen, so it never counts as "not listed"
+    beside an empty cloud folder, and is never a deletion candidate."""
     box = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
     (box / "Empty").mkdir(parents=True)
     _write(box / "keep.txt", "The purchase order is approved.\n")
@@ -524,23 +524,39 @@ def test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it(t
         "gains files"
     )
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
-    settled = (box / "keep.txt").stat()
     ahead = time.time() + 3600  # dated ahead of the clock: withheld by every walk, and never waited for
     os.utime(box / "keep.txt", (ahead, ahead))
     run_cycle(config, mode=None)
     with Manifest(config.state_paths.db) as manifest:
-        assert manifest.unlisted_count("drop") == 1
+        assert manifest.unlisted_count("drop") == 0
+        assert manifest.unseen_live("drop", manifest.last_runs(1)[0][0]) == []
         assert manifest.live_count("drop") == 1, "withheld, not deleted"
-    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
-        paste + "; the last walk of drop did not list 1 file(s) the mirror still has: once the listing is "
-        "complete, later syncs take out the pages of those still absent, with the usual deletion check"
-    ]
-    os.utime(box / "keep.txt", ns=(settled.st_atime_ns, settled.st_mtime_ns))
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
+
+
+def test_withheld_inbox_files_leave_a_real_deletion_in_the_count(tmp_path: Path) -> None:
+    """b13 R101: held-back files (new ones with no row, and a mirrored one) take nothing off the count of
+    mirrored files the walk did not list: a file deleted upstream still counts, alone."""
+    box = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Drop"
+    (box / "Empty").mkdir(parents=True)
+    for name in ("keep.txt", "gone.txt"):
+        _write(box / name, f"The purchase order for {name} is approved.\n")
+    config = _setup(tmp_path, inbox_source_table("drop", box) + "quiescence_s = 0\n")
+    run_cycle(config, mode=None)
+    (box / "gone.txt").unlink()
+    ahead = time.time() + 3600
+    for name in ("keep.txt", "new 1.txt", "new 2.txt", "new 3.txt"):
+        _write(box / name, "Still being written.\n")
+        os.utime(box / name, (ahead, ahead))
     run_cycle(config, mode=None)
     with Manifest(config.state_paths.db) as manifest:
-        assert manifest.unlisted_count("drop") == 0
-        assert manifest.live_count("drop") == 1
-    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
+        assert manifest.unlisted_count("drop") == 1
+        assert manifest.live_count("drop") == 2, "the listing is incomplete: the deletion is held"
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait.endswith(
+        "; the last walk of drop did not list 1 file(s) the mirror still has: once the listing is complete, "
+        "later syncs take out the pages of those still absent, with the usual deletion check"
+    )
 
 
 def test_an_inbox_listing_left_incomplete_by_no_empty_folder_promises_nothing(tmp_path: Path) -> None:
