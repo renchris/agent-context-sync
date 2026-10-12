@@ -1505,7 +1505,7 @@ fallback_install_line() { # RC
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 fallback_body() {
-	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l
+	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o
 	say "# agentsync setup report"
 	say ""
 	say "## Summary"
@@ -1585,13 +1585,22 @@ fallback_body() {
 	else
 		say "- proxy in git's config: not set"
 	fi
+	# Folders only, as setup_report.cloud counts them since B13 round 4 Q33: a symlink and any other entry are
+	# counted apart, and named only when there is one (B13 round 5 F56). BSD find does not follow a link (-P).
 	n=0
 	k=0
+	l=0
+	o=0
 	if [ -d "$cs" ]; then
-		n="$(find "$cs" -mindepth 1 -maxdepth 1 ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
-		k="$(find "$cs" -mindepth 1 -maxdepth 1 -name 'OneDrive-*' 2>/dev/null | wc -l | tr -d ' ')"
+		n="$(find "$cs" -mindepth 1 -maxdepth 1 ! -name '.*' -type d 2>/dev/null | wc -l | tr -d ' ')"
+		k="$(find "$cs" -mindepth 1 -maxdepth 1 -name 'OneDrive-*' -type d 2>/dev/null | wc -l | tr -d ' ')"
+		l="$(find "$cs" -mindepth 1 -maxdepth 1 ! -name '.*' -type l 2>/dev/null | wc -l | tr -d ' ')"
+		o="$(find "$cs" -mindepth 1 -maxdepth 1 ! -name '.*' ! -type d ! -type l 2>/dev/null | wc -l | tr -d ' ')"
 	fi
-	say "- ~/Library/CloudStorage providers: $n (OneDrive: $k)"
+	v="$n (OneDrive: $k)"
+	[ "$l" -eq 0 ] || v="$v and $l symlink(s)"
+	[ "$o" -eq 0 ] || v="$v and $o other entry(ies)"
+	say "- ~/Library/CloudStorage providers: $v"
 	say ""
 	say "## Installer"
 	say ""

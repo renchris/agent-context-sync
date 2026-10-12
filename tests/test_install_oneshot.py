@@ -858,6 +858,22 @@ def test_the_shell_report_shows_run_ids_without_their_process_id(env: dict[str, 
     assert "20261012T090100Z-4242" not in back
 
 
+def test_the_shell_report_counts_cloud_folders_apart_from_links_and_files(env: dict[str, str]) -> None:
+    """B13 round 5 F56: the shell report counted every CloudStorage entry as a provider, a symlink named
+    OneDrive-* as a OneDrive too, where setup_report.cloud counts folders and gives links and other entries
+    apart (B13 round 4 Q33)."""
+    cs = Path(env["HOME"]) / "Library" / "CloudStorage"
+    (cs / "OneDrive-Contoso").mkdir(parents=True)
+    (cs / "OneDrive-Old").symlink_to(cs / "OneDrive-Contoso")
+    (cs / "stray.txt").write_text("")
+    (cs / ".hidden").write_text("")
+    assert install_sh(env, "--report-only").returncode == 0
+    assert (
+        "- ~/Library/CloudStorage providers: 1 (OneDrive: 1) and 1 symlink(s) and 1 other entry(ies)\n"
+        in report_path(env).read_text()
+    )
+
+
 def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[str, str]) -> None:
     """uv keeps a hidden ``.temp`` folder, a ``.lock`` file and minor-version links beside its Pythons: one
     installed Python reads 1, not 2 (B13 round 2 R5)."""
