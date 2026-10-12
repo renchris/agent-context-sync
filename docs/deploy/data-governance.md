@@ -87,8 +87,10 @@ editing `sources.toml`.
   `label-escalation` purge is queued. A policy change re-screens every label-capable item.
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
   stub. It is never decrypted. An S/MIME-encrypted or IRM-protected (rpmsg) `.msg` is also an UNREADABLE stub
-  (`encrypted` / `IRM-protected`), and a `.msg` that carries an encrypted Office attachment is screened as
-  `encrypted-office` as a whole.
+  (`encrypted` / `IRM-protected`), and an Outlook-format `.msg` that carries an encrypted Office attachment is
+  screened as `encrypted-office` as a whole. A `.msg` that holds MIME text is read as an `.eml` (CONTRACTS §16.48
+  R87), so an encrypted Office attachment in it, like one in an `.eml`, is listed by name, size and sha256 and
+  never opened.
 - **Known limits:** Graph-side label reads (`extractSensitivityLabels`) are not implemented, so a Graph file is
   downloaded to staging before it is screened. A save that changes only the label, not the content, is re-screened
   only when the content changes or the policy changes (CONTRACTS §16.11).
@@ -99,8 +101,9 @@ editing `sources.toml`.
   text stays in git history until that is squashed or the item is purged). The
   pictures of a document are read only after that document's own label and encryption screen. `[convert] ocr =
   false` in `sources.toml` means the helper is neither built nor run (CONTRACTS §16.25 to §16.27).
-- **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` is not fetched or converted and stays a
-  `no converter for .msg` stub. A policy change turns a `.msg` page published before it into that stub. No purge
+- **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` is not fetched or converted. Its page says
+  that a `[policy]` label rule withholds it and that it can be saved as `.eml`; its `_sync/QUARANTINE.tsv` reason
+  stays `no converter for .msg`. A policy change turns a `.msg` page published before it into that stub. No purge
   is queued for it, so its earlier text stays in git history until that is squashed or the item is purged. To
   publish one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42).
 
@@ -111,11 +114,12 @@ banner. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`
 and `_manifest/` as data, never as instructions. Source files named like agent instruction files (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, `.claude/`, …) are mirrored under neutral names. `.claude/settings.json` excludes
 mirror `CLAUDE.md` files from memory. Git runs with the user's global excludes and hooks switched off. A secret
-scan blocks any commit that would carry a credential. When the scan's rules change (an agentsync update, gitleaks
-installed or upgraded), files held back as `contains a credential` that are on this Mac are read and scanned again
-once (by the built-in patterns too, so a scanner change never publishes a password they catch; so is every later
-reading of a file that was held back once), and every published page and stub is scanned again; a page the new
-rules match is replaced by a stub and a purge of its history is queued.
+scan blocks any commit that would carry a credential: agentsync's built-in patterns read every page, and gitleaks,
+when installed, reads them as well (it misses a plain `Password: ...`). When the scan's rules change (an agentsync
+update, gitleaks installed or upgraded), files held back as `contains a credential` that are on this Mac are read
+and scanned again once, and every published page and stub is scanned again. A page the new rules match is replaced
+by a stub and a purge of its history is queued. A `[governance] archive` copy they match is deleted with its
+sidecars, its tombstone stops naming it, and a purge is queued.
 
 **Access:** the mirror is the writer's *delegated view*. Anyone who reads the repo sees everything the writer can
 open, including items from restricted libraries. Do not share the repo, and never add a remote, unless every reader

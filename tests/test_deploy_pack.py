@@ -2526,3 +2526,55 @@ def test_the_contracts_suffix_count_for_the_log_scrub_test_is_the_converters() -
     counts = [re.findall(r"(\d+) (?:suffixes|since)", clause) for clause in clauses]
     assert counts and all(counts), clauses
     assert {int(found[-1]) for found in counts} == {len(suffixes)}
+
+
+def _page(relative: str) -> str:
+    return " ".join((ROOT / relative).read_text(encoding="utf-8").split())
+
+
+def test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs() -> None:
+    """B13 round 4 Q58 and Q69: the governance page limited the built-in secret patterns to files once held
+    back (since R76 they read every page), said nothing of an archive copy the rescan matches (R74), called a
+    withheld `.msg` page a `no converter` stub (R33 gave it its own words), and said any `.msg` with an
+    encrypted Office attachment is screened as a whole, which since R87 holds only for an Outlook-format one.
+    The README's archive guarantee names the one exception."""
+    from agentsync import publish  # noqa: PLC0415
+
+    page = _page("docs/deploy/data-governance.md")
+    assert "agentsync's built-in patterns read every page" in page
+    assert "by the built-in patterns too" not in page
+    assert "A `[governance] archive` copy they match is deleted with its sidecars" in page
+    assert "Save the message as .eml" in Path(publish.__file__).read_text(encoding="utf-8")
+    assert "a `[policy]` label rule withholds it and that it can be saved as `.eml`" in page
+    assert "an Outlook-format `.msg` that carries an encrypted Office attachment is screened" in page
+    assert "A `.msg` that holds MIME text is read as an `.eml`" in page
+    readme = _page("README.md")
+    assert "reaping never removes it" in readme, "the archive guarantee stays"
+    assert "The one exception is a copy that the secret scan's new rules match, which is deleted" in readme
+
+
+def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
+    """B13 round 4 Q65 and Q68: the reviewer's guide lagged four round 3 changes: every entry a purge run
+    keeps has a `note: stays queued:` line, a held one included, and a real run ends one of three ways
+    (`cli._cmd_purge`); images join `withheld by label rule` only once the OCR part reads ready (R33); an
+    attempt that names no agent reads approvals as not observable (R24); and an exclude line shows agentsync's
+    own globs as written (R8)."""
+    page = _page("docs/deploy/setup-feedback.md")
+    cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
+    forms = {
+        "`N queued purge(s) run; M still queued`": "queued purge(s) run; {len(left)} still queued{also}",
+        "`N queued purge(s) run; M still queued (K of them while their file is listed)`": (
+            " ({len(kept)} of them while their file is listed)"
+        ),
+        "`N queued purge(s) run; K stay queued while their file is listed`": (
+            "queued purge(s) run; {len(kept)} stay queued while their file is listed"
+        ),
+    }
+    for quoted, printed in forms.items():
+        assert quoted in page and printed in cli, quoted
+    assert "are exactly those with a `note: stays queued:` line" in page
+    assert "`note: stays queued: purge suspended by legal/records hold: ...`" in page
+    assert "a `.msg` or an image with no converter is `withheld by label rule`" not in page
+    assert "So is an image, but only when the OCR part's `helper:` reads `ready`" in page
+    assert "or the attempt names no agent (no `Agent:` value)" in page
+    assert "agentsync's own globs show as written" in page

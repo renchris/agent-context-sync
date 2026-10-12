@@ -133,7 +133,8 @@ With `archive = true`, agentsync keeps everything:
   `docs/archive/<path under mirror/>` with `status: archived`, `deleted_at` and `last_commit`, and the tombstone
   names that path. Agents search `archive/` like `mirror/`; it is generated, never hand-edited
   (`~/.local/bin/agentsync curate` reports a hand edit as an error), and reaping never removes it. No purge is
-  queued for the deletion;
+  queued for the deletion. The one exception is a copy that the secret scan's new rules match, which is deleted
+  and a purge queued (see [data governance](docs/deploy/data-governance.md));
 - each `curated` checkpoint, which a sync moves at the end of a build session, also creates a permanent tag
   `snapshot/<UTC date and time>`, so `git -C ~/agent-context/docs show snapshot/<date>:<path>` reads any page as it
   was when a build session ended;
