@@ -1591,6 +1591,18 @@ def test_list_folders_runs_are_not_install_runs(fake_mac: dict[str, Path]) -> No
     assert "- install.sh: 1 install run (+2 --list-folders) during this attempt; the last exit 0" in summary
 
 
+def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it() -> None:
+    """The report's probes (sw_vers, profiles, xcode-select, the helpers' --version) print subprocess's
+    negative code for a signal as "was stopped by SIGKILL (signal 9)", the phrase of ``ocr._ended``; a crash
+    keeps the line it printed; a plain exit keeps its words byte for byte (B13 round 2 R81)."""
+    assert setup_report._exited(-9, "partial output") == "was stopped by SIGKILL (signal 9)"
+    assert setup_report._exited(-6, "boom") == "was stopped by SIGABRT (signal 6): boom"
+    assert setup_report._exited(-9) == "was stopped by SIGKILL (signal 9)"
+    assert setup_report._exited(2, "usage") == "exited 2: usage"
+    assert setup_report._exited(2, "") == "exited 2: "
+    assert setup_report._exited(1) == "exited 1"
+
+
 def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: Path) -> None:
     """install.sh notes on its step=agentsync line what it saw of the background sync's lock; the Summary
     carries that note, so a 59 s step reads as a wait, not a slow uv (B13 round 2 R34). Other steps' notes

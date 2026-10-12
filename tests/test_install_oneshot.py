@@ -2926,6 +2926,31 @@ def test_a_stopped_run_logs_its_end_and_names_the_rerun(
 # ---- the report's issue link before NEXT (K3) --------------------------------------------------------------
 
 
+def test_a_signal_exit_is_named_by_its_signal() -> None:
+    """``rc_meaning`` names any signal's exit (128 + N) as ``stopped by SIG<NAME> (signal N)``, the phrase of
+    ``ocr._ended``: a first sync jetsam killed read "exit 137". 129, 130 and 143 keep their words, and a code
+    that is no signal's stays ``exit N`` (B13 round 2 R81)."""
+    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
+    assert fn is not None
+    codes = ["137", "134", "141", "143", "130", "200", "1", "64"]
+    cp = subprocess.run(
+        [BASH32, "-c", fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done', "-", *codes],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert cp.stdout.splitlines() == [
+        "stopped by SIGKILL (signal 9)",
+        "stopped by SIGABRT (signal 6)",
+        "stopped by SIGPIPE (signal 13)",
+        "stopped by SIGTERM (a tool timeout?)",
+        "stopped by SIGINT",
+        "exit 200",
+        "failed",
+        "the launcher refused the job: its program is not the one it starts, or an option is wrong",
+    ]
+
+
 def test_report_only_without_a_link_prints_no_link_line(env: dict[str, str]) -> None:
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)

@@ -217,6 +217,30 @@ def test_git_broken_shim(sample_config: Config, monkeypatch: pytest.MonkeyPatch)
     assert not r.ok and "xcrun: error" in r.detail and r.fix == "xcode-select --install"
 
 
+def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """subprocess gives a signal's stop as a negative code: git and pandoc read "stopped by SIGKILL (signal
+    9)", the phrase of ``ocr._ended``, not "exit -9"; a plain exit keeps its words (B13 round 2 R81)."""
+    real_run = doctor._run
+    pandoc = str(doctor._pandoc_path(sample_config))
+    codes = {GIT: -9, pandoc: -9}
+
+    def fake_run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        if argv[1:] == ["--version"] and argv[0] in codes:
+            return subprocess.CompletedProcess(list(argv), codes[argv[0]], "", "a line before the kill")
+        return real_run(argv, timeout)
+
+    monkeypatch.setattr(doctor, "_run", fake_run)
+    found = by_name(run_checks(sample_config))
+    assert found["git"].detail == f"{GIT} --version failed: stopped by SIGKILL (signal 9)"
+    assert found["pandoc"].detail == f"{pandoc} --version failed (stopped by SIGKILL (signal 9))"
+    codes.update({GIT: 1, pandoc: 2})
+    found = by_name(run_checks(sample_config))
+    assert found["git"].detail == f"{GIT} --version failed: a line before the kill"
+    assert found["pandoc"].detail == f"{pandoc} --version failed (exit 2): a line before the kill"
+
+
 def test_git_missing(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     def missing() -> Path:
         raise FileNotFoundError("git not found")

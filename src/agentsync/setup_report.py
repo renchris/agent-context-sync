@@ -1795,6 +1795,19 @@ class _Facts:
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
 
 
+def _exited(rc: int, text: str | None = None) -> str:
+    """``exited 2: <text>`` for a probe :meth:`_Run.run` ran; for one a signal stopped (subprocess's negative
+    code) ``was stopped by SIGKILL (signal 9)``, the converters' phrase, with its text only for a crash
+    (``ocr._ended``; B13 round 3 R81)."""
+    if rc >= 0:
+        return f"exited {rc}" + (f": {text}" if text is not None else "")
+    try:
+        from agentsync.convert import ocr  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # the phrase without the signal's name
+        return f"was stopped by signal {-rc}"
+    return f"was {ocr._ended(rc, (text or '').encode())}"
+
+
 class _Run:
     """One report: the deadline, the loaded config (or why not), and the facts sections share."""
 
@@ -2353,7 +2366,7 @@ def _environment(r: _Run) -> list[str]:
     def sw_vers() -> str:
         rc, text = r.run(["/usr/bin/sw_vers"], 3.0)
         if rc != 0:
-            return f"sw_vers exited {rc}: {text}"
+            return f"sw_vers {_exited(rc, text)}"
         kv = dict(ln.split(":", 1) for ln in text.splitlines() if ":" in ln)
         return " ".join(
             v.strip() for k, v in kv.items() if k.strip() in ("ProductName", "ProductVersion")
@@ -2374,13 +2387,13 @@ def _environment(r: _Run) -> list[str]:
                 host = urlsplit(url.rstrip(";")).hostname or ""
                 if "." in host:  # a bare word would redact the report's own words
                     r.red.add("mdmhost", host, ignore_case=True)
-        return joined if rc == 0 else f"`profiles` exited {rc}: {joined}"
+        return joined if rc == 0 else f"`profiles` {_exited(rc, joined)}"
 
     def clt() -> str:
         rc, text = r.run(["/usr/bin/xcode-select", "-p"], 3.0)
         if rc == 0 and text and Path(text.splitlines()[0]).is_dir():
             return f"present ({text.splitlines()[0]})"
-        return f"not installed (xcode-select -p exited {rc})"
+        return f"not installed (xcode-select -p {_exited(rc)})"
 
     def shell() -> str:
         bits = [os.environ.get("SHELL", "unknown")]
@@ -2397,7 +2410,7 @@ def _environment(r: _Run) -> list[str]:
         if not os.access(exe, os.X_OK):
             return "not found"
         rc, text = r.run([exe, "--version"], 3.0)
-        return f"{text} ({exe})" if rc == 0 else f"{exe} --version exited {rc}: {text}"
+        return f"{text} ({exe})" if rc == 0 else f"{exe} --version {_exited(rc, text)}"
 
     def pandoc() -> str:
         if r.config is not None and r.config.convert.pandoc_path is not None:
@@ -2407,7 +2420,7 @@ def _environment(r: _Run) -> list[str]:
 
             exe = Path(pypandoc.__file__).parent / "files" / "pandoc"
         rc, text = r.run([str(exe), "--version"], 5.0)
-        return text.splitlines()[0] if rc == 0 and text else f"{exe} exited {rc}: {text[:200]}"
+        return text.splitlines()[0] if rc == 0 and text else f"{exe} {_exited(rc, text[:200])}"
 
     def app(name: str) -> Callable[[], str]:
         def version() -> str:

@@ -654,7 +654,10 @@ show_version() { # the compat line last: step 1 of the setup prompt reads the la
 	say "setup-prompt-compat $SETUP_PROMPT_COMPAT"
 }
 # What an agentsync (or launchd) exit code means, for the messages.
+# A signal's exit (128 + N) that no line above names reads "stopped by SIG<NAME> (signal N)", the phrase
+# ocr._ended gives a converter that a signal stopped (B13 round 3 R81).
 rc_meaning() {
+	local n=""
 	case "$1" in
 	0) printf 'ok' ;;
 	1) printf 'failed' ;;
@@ -669,7 +672,10 @@ rc_meaning() {
 	129) printf 'stopped by SIGHUP' ;;
 	130) printf 'stopped by SIGINT' ;;
 	143) printf 'stopped by SIGTERM (a tool timeout?)' ;;
-	*) printf 'exit %s' "$1" ;;
+	*)
+		case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
+		if [ -n "$n" ]; then printf 'stopped by SIG%s (signal %s)' "${n#SIG}" "$(($1 - 128))"; else printf 'exit %s' "$1"; fi
+		;;
 	esac
 }
 # Run a command for at most $1 seconds (bash 3.2 and macOS have no timeout(1)); its status, 143 if killed.

@@ -539,8 +539,21 @@ def _check_git(config: Config) -> list[CheckResult]:
     if cp.returncode == 0 and out.startswith("git version"):
         return [_ok("git", f"{out} at {git}")]
     detail = (cp.stderr or cp.stdout).strip().splitlines()
-    first = detail[0] if detail else f"exit {cp.returncode}"
+    first = detail[0] if detail and cp.returncode >= 0 else _exit_words(cp.returncode, cp.stderr)
     return [_bad("git", f"{git} --version failed: {first}", fix="xcode-select --install")]
+
+
+def _exit_words(returncode: int, stderr: str = "") -> str:
+    """``exit 2``; for a program a signal stopped (subprocess's negative code), the converters' phrase
+    ``stopped by SIGKILL (signal 9)``, with the line its stderr says why only for a crash (``ocr._ended``;
+    B13 round 3 R81)."""
+    if returncode >= 0:
+        return f"exit {returncode}"
+    try:
+        from agentsync.convert import ocr  # noqa: PLC0415 - lazy, as _ocr_status's
+    except Exception:  # the phrase without the signal's name
+        return f"stopped by signal {-returncode}"
+    return ocr._ended(returncode, stderr.encode())
 
 
 def _check_pandoc(config: Config) -> list[CheckResult]:
@@ -580,11 +593,9 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     lines = cp.stdout.strip().splitlines()
     if cp.returncode == 0 and lines and lines[0].startswith("pandoc"):
         return [_ok("pandoc", f"{lines[0]} at {pandoc}")]
-    return [
-        _bad(
-            "pandoc", f"{pandoc} --version failed (exit {cp.returncode}): {cp.stderr.strip()[:200]}", fix=fix
-        )
-    ]
+    said = f"exit {cp.returncode}): {cp.stderr.strip()[:200]}" if cp.returncode >= 0 else ""
+    said = said or f"{_exit_words(cp.returncode, cp.stderr)})"
+    return [_bad("pandoc", f"{pandoc} --version failed ({said}", fix=fix)]
 
 
 def _check_ocr(config: Config) -> list[CheckResult]:

@@ -11932,7 +11932,9 @@ prints, and could not tell the build had succeeded.
 `subprocess` reports a child a signal stopped as the negative signal number. `ocr._ended` reads it at
 `ocr._run_helper`, `ocr._compile`, `speech._step` and pandoc's runner and words it `stopped by SIGKILL (signal
 9)`, the phrase `scripts/install.sh`'s `rc_meaning` uses; a number that names no signal reads `stopped by signal
-N`. A crash's own signal (`ocr._CRASHES`: SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV, SIGSYS) adds the
+N`. (**amended 2026-10-11, §16.47 R81:** `rc_meaning` used only the `stopped by SIG...` stem, for 129, 130 and
+143; it now words every other signal's exit, 128 + N, as `stopped by SIG<NAME> (signal N)`, and doctor's git and
+pandoc probes and the report's probes word subprocess's negative code the same way.) A crash's own signal (`ocr._CRASHES`: SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV, SIGSYS) adds the
 line the tool printed on stderr (`ocr._plain`), because that line is why it stopped: `the OCR helper was stopped
 by SIGTRAP (signal 5): main.swift:9: Fatal error: no frames`. Any other signal came from outside and drops what
 the tool printed before it. `speech._step` passes stderr only, never stdout, which is SwiftPM's progress. pandoc
