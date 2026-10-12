@@ -17,9 +17,9 @@
 #                           that it closes the friction log's current attempt ("<time> | end | finished") when
 #                           that attempt has no end line yet, and that it leaves the setup folder's contents
 #                           owner-only, as every run does (see "Setup log"). When --log-start stopped that
-#                           attempt (a copy of the prompt that is not this installer's), its NEXT: says to
-#                           copy the prompt again and not to bring this report back, and the run writes no
-#                           bring-back.md and prints no "bring back:" or issue link line
+#                           attempt (a copy of the prompt that is not this installer's), its NEXT: says not
+#                           to bring this report back and what to do instead (the fix that stop logged), and
+#                           the run writes no bring-back.md and prints no "bring back:" or issue link line
 #   --version               print the commit of this checkout ("source commit: <sha> dirty <fingerprint>" when it
 #                           has local changes; see the setup log), then "setup-prompt-compat N" as the last line
 #                           (the line step 1 of the setup prompt checks)
@@ -74,7 +74,9 @@
 #                      TOOL" is read as the prompt writes it). When N is not this installer's
 #                      SETUP_PROMPT_COMPAT the pasted copy is not the README's: it also appends a "step 1
 #                      | error" line and the attempt's "end | finished" line, prints what to do (stop; the
-#                      person copies the prompt again from README.md on the main branch) and exits 2, so
+#                      person copies the prompt again from README.md on the main branch, or, for a copy
+#                      newer than this checkout that does not follow that branch, points the checkout at
+#                      it: git, read-only, tells the two apart) and exits 2, so
 #                      step 1's command stops before --list-folders. An AGENT that does not start with a
 #                      version is a copy from before v8 and is logged as "Prompt: v7 or older". The
 #                      message names no value that passes; its last sentence is for a current copy whose
@@ -280,7 +282,8 @@ friction_file() {
 }
 FRICTION_KINDS="question, click, approval, deviation, error or prompt"
 PROMPT_UNSTATED=7 # the last setup prompt whose --log-start named no version: a copy that names none is that or older
-PROMPT_SOURCE="README.md on the main branch of https://github.com/renchris/agent-context-sync"
+CANON_REPO="https://github.com/renchris/agent-context-sync"
+PROMPT_SOURCE="README.md on the main branch of $CANON_REPO"
 PROMPT_STOPPED="install.sh --log-start: the pasted setup prompt is" # how the error line of a stopped attempt starts
 # The default setup folder 0700 and everything in it owner-only: DIR is touched only when it is
 # ~/agent-context/setup, a real folder (not a symlink) that this user owns. The coding agent writes there
@@ -315,8 +318,50 @@ friction_append() {
 	printf '%s' "$1" >>"$f" || return 1
 	if [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ]; then chmod 600 "$f" 2>/dev/null || true; fi
 }
+# What to tell the person when the pasted copy is newer than this installer (B13 round 5 F17): step 1's
+# git pull --ff-only has just run, so the checkout did not update to the README's version. Either the copy
+# came from another branch or a fork, and copying it again from the README fixes it, or the checkout does not
+# follow main of CANON_REPO (a fork or a stale mirror, another branch), and a fresh copy stops here again. This
+# script's own checkout says which: its upstream branch and that remote's URL (origin's when there is no
+# upstream), read with git, read-only, only with the developer tools (else /usr/bin/git offers to install
+# them). Sets TELL, a clause that ends the sentence "Tell the person to ...", for stderr, and FIX, the same
+# without the checkout's path or remote URL, for the friction line's fix column and the stopped NEXT, which
+# reach the report (a fork owner's login or a company mirror's host is nothing the redaction knows). No "|"
+# in either. Mutates nothing.
+newer_copy_fix() {
+	local src shown url="" u="" r=origin d canon=0 follows
+	src="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || src=""
+	shown="$src"
+	# shellcheck disable=SC2088 # the ~ is printed
+	case "$shown" in "$HOME"/*) shown='~/'"${shown#"$HOME"/}" ;; esac
+	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
+	if [ -n "$src" ] && [ -n "$d" ] && [ -d "$d" ]; then
+		u="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+		[ -z "$u" ] || r="${u%%/*}"
+		url="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" remote get-url "$r" 2>/dev/null || true)"
+	fi
+	url="$(printf '%s' "$url" | LC_ALL=C sed -E 's#^([A-Za-z+]+://)[^/@]*@#\1#')" # no user or token
+	case "$(printf '%s' "${url%/}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+	"${CANON_REPO#https://}" | "$CANON_REPO" | "$CANON_REPO.git" | git@github.com:renchris/agent-context-sync | \
+		git@github.com:renchris/agent-context-sync.git | ssh://git@github.com/renchris/agent-context-sync | \
+		ssh://git@github.com/renchris/agent-context-sync.git) canon=1 ;;
+	esac
+	if [ "$canon" -eq 1 ] && [ -n "$u" ] && [ "${u#*/}" = main ]; then
+		TELL="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session: this Mac's checkout follows that branch, so a copy newer than it came from another branch or a fork"
+		FIX="$TELL"
+	elif [ -n "$url" ] && { [ "$canon" -eq 0 ] || [ -n "$u" ]; }; then
+		# a remote that is not the repository, or a branch of it that is not main: the checkout is the cause
+		if [ -n "$u" ]; then follows="$u of $url"; else follows="$url (no upstream branch)"; fi
+		FIX="point this Mac's checkout at main of $CANON_REPO (it follows another remote or branch, so a fresh copy of the prompt would stop here again), or move the checkout aside so step 1 clones it, then paste the same prompt into a new session"
+		TELL="point this Mac's checkout ($shown) at main of $CANON_REPO (it follows $follows, so a fresh copy of the prompt would stop here again), or move the checkout aside so step 1 clones it, then paste the same prompt into a new session"
+	else
+		follows="does not follow main of $CANON_REPO (git could not say which branch it follows): point it there, or move it aside so step 1 clones it, then paste the prompt again"
+		FIX="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout $follows"
+		TELL="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout ($shown) $follows"
+	fi
+}
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
-	local op="$1" now line step kind what fix note="" v a p rest said rc=0
+	local op="$1" now line step kind what fix note="" v a p rest said rc=0 TELL FIX
 	shift
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	case "$op" in
@@ -362,13 +407,18 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			[ -z "$p" ] || [ "$p" -lt "$SETUP_PROMPT_COMPAT" ] || what="this checkout is older than the prompt"
 			what="$said and this installer is for setup prompt v$SETUP_PROMPT_COMPAT: $what"
 			fix="copy the prompt again from $PROMPT_SOURCE"
+			TELL="$fix (\"Set up on a new Mac: one prompt\") and paste it into a new session"
+			if [ -n "$p" ] && [ "$p" -gt "$SETUP_PROMPT_COMPAT" ]; then
+				newer_copy_fix
+				fix="$FIX"
+			fi
 			# The attempt is closed here: the agent is told to run no other step, so an agent that obeys runs
 			# no --report-only (an older copy's step 3 may still run one, and that report reads this closed
 			# attempt), and a later session's line must not join an attempt left open.
 			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
 			# The last sentence is for a current copy whose agent changed the value. It names no value that
 			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
-			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s ("Set up on a new Mac: one prompt") and paste it into a new session. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again exactly as the prompt writes it.\n' "$what" "$fix" "$SETUP_PROMPT_COMPAT" >&2
+			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again exactly as the prompt writes it.\n' "$what" "$TELL" "$SETUP_PROMPT_COMPAT" >&2
 			rc=2
 		fi
 		;;
@@ -434,6 +484,7 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 # attempt: a step 1 error dated more than NEW_SESSION_GAP seconds after its end line is another session's,
 # whose step 1 stopped before --log-start, and that one is not a stopped copy. Any other line after the end
 # line is a late line of the stopped session (an old copy logs the failed command, then writes its report).
+# When it is, it prints the fix that stop logged (its line's last column), for the NEXT (B13 round 5 F17).
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
 # a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
@@ -488,8 +539,8 @@ friction_attempt_stopped() {
 		q { stopped = 0; ended = ""; next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { stopped = 0; ended = ""; restate($0); next }
-		index($0, mark) { stopped = 1 }
-		END { exit !stopped }' "$f" 2>/dev/null
+		index($0, mark) { stopped = 1; fx = $0; sub(/.* [|] /, "", fx) }
+		END { if (stopped) print fx; exit !stopped }' "$f" 2>/dev/null
 }
 # --report-only: close the friction log's current attempt with "<UTC> | end | finished", only when its last
 # "Attempt:" has no end line yet (so a second --report-only adds none). No log or no attempt: nothing to close.
@@ -1965,7 +2016,8 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	return 1
 }
 
-# The report of an attempt an out-of-date copy of the prompt started is written to its own file, so the
+# The report of an attempt a copy of the prompt that does not match this installer started (older, naming no
+# version, or newer: B13 round 5 F18) is written to its own file, so the
 # setup-report.md of the last attempt that was not stopped keeps its bytes, as bring-back.md does. Its first
 # line says not to send it, and names that report only where one exists (B13 round 3 R17). Written after the
 # report's redaction, so it names no path under this home but as ~/.
@@ -1976,7 +2028,7 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # the report's install.out tail, go too, with one line saying so in their place, and the Redaction legend's
 # "Read the report before sending it: a..." reads "A..." (B13 round 5 F16, F7): a field Mac has an earlier run.
 stopped_report_note() { # KEPT-REPORT-PATH
-	local tmp shown="$1" note="> This report is of an attempt that an out-of-date copy of the setup prompt started: do not send it or bring it back."
+	local tmp shown="$1" note="> This report is of an attempt that a copy of the setup prompt that does not match this installer started: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
 	[ ! -f "$1" ] || note="$note The report of the last attempt that was not stopped is $shown."
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
@@ -1999,7 +2051,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 }
 
 on_exit() {
-	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md"
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -2016,7 +2068,7 @@ on_exit() {
 		# stopped it). Its own text may still end at this report: the NEXT says what to do instead, and
 		# nothing invites sending it: the report goes to its own file (stopped_report_note), no bring-back
 		# file is written (the last one stays as it is), and no "bring back:" or issue link line is printed.
-		if [ "$REPORT_ONLY" -eq 1 ] && friction_attempt_stopped; then
+		if [ "$REPORT_ONLY" -eq 1 ] && tell="$(friction_attempt_stopped)"; then
 			stopped=1
 			REPORT_PATH="$SETUP_DIR/stopped-copy-report.md"
 		fi
@@ -2026,7 +2078,18 @@ on_exit() {
 			suffix=" [setup report: $REPORT_PATH]"
 			if [ "$stopped" -eq 1 ]; then
 				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
-				NEXT_MSG="this report is of an attempt that an out-of-date copy of the setup prompt started, so do not send it or bring it back: copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session"
+				# What to do instead is the fix the stop logged: copy the prompt again, or, for a copy newer
+				# than a checkout that does not follow main, point the checkout there (B13 round 5 F17, F18).
+				# Only a fix this installer writes for a newer copy is repeated; any other text in that column
+				# (an older installer's, a hand edit) gets the copy-again sentence.
+				case "$tell" in
+				"copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session"[:\;]* | \
+					"point this Mac's checkout at main of $CANON_REPO "*)
+					tell="$tell (this installer is for setup prompt v$SETUP_PROMPT_COMPAT)"
+					;;
+				*) tell="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session" ;;
+				esac
+				NEXT_MSG="this report is of an attempt that a copy of the setup prompt that does not match this installer started, so do not send it or bring it back: $tell"
 				# R18: bring-back.md is named only where one exists, and not as "finished": a failed
 				# attempt's report writes it too.
 				[ ! -f "$back" ] || NEXT_MSG="$NEXT_MSG ($back was not touched: it still holds the report of the last attempt that was not stopped)"

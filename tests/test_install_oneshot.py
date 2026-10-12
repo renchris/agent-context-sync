@@ -3722,18 +3722,22 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         ("prompt v1234, x", "v7 or older", "prompt v1234, x", "the pasted copy is not the current one"),
     ]
     for value, said, agent, why in cases:
+        # a newer copy's fix depends on this checkout's origin and upstream (the tests of newer_copy_fix)
+        newer_copy = why == "this checkout is older than the prompt"
         cp = install_sh(env, "--log-start", value)
         assert cp.returncode == 2 and cp.stdout == "", (value, cp.stdout, cp.stderr)
         assert cp.stderr.startswith(
             f"error: the pasted setup prompt is {said} and this installer is for setup prompt v{COMPAT}: "
         ), cp.stderr
         assert why in cp.stderr and cp.stderr.count("\n") == 1, "one line"
-        assert (
+        told = (
             f"Stop here and run no other step of that prompt. Tell the person to copy the prompt again from "
             f'{PROMPT_SOURCE} ("Set up on a new Mac: one prompt") and paste it into a new session. If the '
             f'first line of your prompt says "setup prompt v{COMPAT}", the --log-start value was changed: '
             "run step 1's command again exactly as the prompt writes it.\n"
-        ) in cp.stderr
+        )
+        assert newer_copy or told in cp.stderr
+        assert "Stop here and run no other step of that prompt. Tell the person to " in cp.stderr
         assert f"prompt v{COMPAT}," not in cp.stderr.replace(value, ""), "no value that passes is shown"
         attempt = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1]
         assert attempt.header == {"Prompt": said, "Agent": agent}
@@ -3741,7 +3745,7 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         assert (event.step, event.kind) == (1, "error") and why in event.what
         assert event.what.endswith(f"; setup stopped (exit {cp.returncode})"), "the line gives the real exit"
         assert setup_report._PROMPT_STOP_RE.match(event.what), "the report still reads the line as the stop"
-        assert event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
+        assert newer_copy or event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
         assert closed.kind == "finished" and attempt.finished, "the stop closes its own attempt"
     assert len(setup_report.parse_friction(friction_path(env).read_text()).attempts) == len(cases)
     ok = install_sh(env, "--log-start", f"prompt v{COMPAT},Copilot CLI")
@@ -3753,6 +3757,115 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
     assert reported.returncode == 0 and last_line(reported).startswith("NEXT: review "), (
         "the newest attempt is the current prompt's: its report is the one to bring back"
     )
+
+
+def _checkout_following(tmp_path: Path, origin: str | None, upstream: bool | str) -> Path:
+    """A git checkout of install.sh whose origin is ``origin`` and whose main tracks origin/main when
+    ``upstream``, or main of a remote named upstream on the repository itself when it is that word; its
+    install.sh."""
+    src = tmp_path / "checkout"
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    git = _git_checkout(src)
+    subprocess.run([*git, "branch", "-M", "main"], check=True, capture_output=True)
+    if origin is not None:
+        subprocess.run([*git, "remote", "add", "origin", origin], check=True, capture_output=True)
+        subprocess.run(
+            [*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True, capture_output=True
+        )
+    if upstream == "upstream":
+        canon = "https://github.com/renchris/agent-context-sync.git"
+        subprocess.run([*git, "remote", "add", "upstream", canon], check=True, capture_output=True)
+        subprocess.run(
+            [*git, "update-ref", "refs/remotes/upstream/main", "HEAD"], check=True, capture_output=True
+        )
+        subprocess.run([*git, "branch", "-u", "upstream/main"], check=True, capture_output=True)
+    elif upstream:
+        subprocess.run([*git, "branch", "-u", "origin/main"], check=True, capture_output=True)
+    return src / "scripts" / "install.sh"
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+@pytest.mark.parametrize(
+    ("origin", "upstream", "kind"),
+    [
+        ("https://github.com/renchris/agent-context-sync.git", True, "copy-again"),
+        ("git@github.com:renchris/agent-context-sync", True, "copy-again"),
+        ("https://example.invalid/contoso/agent-context-sync.git", True, "checkout"),
+        ("https://jdoe:secret-token@example.invalid/contoso/agent-context-sync", False, "checkout"),
+        ("https://github.com/renchris/agent-context-sync", False, "both"),
+        (None, False, "both"),
+        ("https://example.invalid/contoso/agent-context-sync.git", "upstream", "copy-again"),
+    ],
+)
+def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
+    env: dict[str, str], tmp_path: Path, origin: str | None, upstream: bool | str, kind: str
+) -> None:
+    """B13 round 5 F17: a copy newer than the installer was told to copy the prompt again from the README;
+    when this Mac's checkout does not follow main of the repository (a fork or a stale mirror as origin), the
+    fresh copy is the same newer one and stops here again. The installer reads its own checkout's origin
+    and upstream, read-only: following main there, the copy came from another branch or a fork, and copying
+    it again fixes it; following anything else, the checkout is the cause and is named; when git cannot say,
+    both. The stderr, the friction line's fix and the stopped report's NEXT say the same."""
+    script = _checkout_following(tmp_path, origin, upstream)
+
+    def run(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [BASH32, str(script), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
+
+    cp = run("--log-start", f"prompt v{COMPAT + 1}, Contoso Agent")
+    assert cp.returncode == 2 and cp.stderr.count("\n") == 1, cp.stderr
+    [event, _closed] = setup_report.parse_friction(friction_path(env).read_text()).attempts[-1].events
+    copy_again = f'copy the prompt again from {PROMPT_SOURCE} ("Set up on a new Mac: one prompt")'
+    if kind == "copy-again":
+        assert f"Tell the person to {copy_again} and paste it into a new session: " in cp.stderr
+        assert "another branch or a fork" in cp.stderr and "point this Mac's checkout" not in cp.stderr
+    elif kind == "checkout":
+        shown = "https://example.invalid/contoso/agent-context-sync"
+        assert "Tell the person to point this Mac's checkout (" in cp.stderr and shown in cp.stderr
+        assert "copy the prompt again from" not in cp.stderr, "a fresh copy would stop here again"
+        assert ("it follows origin/main of " in cp.stderr) == bool(upstream)
+        assert "secret-token" not in cp.stderr + friction_path(env).read_text() and "jdoe" not in cp.stderr
+    else:
+        assert f"Tell the person to {copy_again} and paste it into a new session; if that copy stops" in (
+            cp.stderr
+        )
+        assert "git could not say which branch it follows" in cp.stderr
+    told = cp.stderr.split("Tell the person to ", 1)[1]
+    tell = told.split('. If the first line of your prompt says "', 1)[0]
+    if kind == "copy-again":
+        assert event.fix == tell, "the friction line's fix is what the agent was told"
+    else:  # the same without the checkout's path or remote URL: the friction log reaches the report
+        assert str(script.parents[1]) not in event.fix and "example.invalid" not in event.fix, event.fix
+        assert event.fix.rsplit(", ", 1)[1] == tell.rsplit(", ", 1)[1], (event.fix, tell)
+    reported = run("--report-only")
+    assert reported.returncode == 0, reported.stdout + reported.stderr
+    assert last_line(reported).startswith(
+        f"{STOPPED_NEXT}, so do not send it or bring it back: {event.fix} (this installer is for setup "
+        f"prompt v{COMPAT})"
+    ), last_line(reported)
+    side = friction_path(env).parent / "stopped-copy-report.md"
+    assert "example.invalid" not in reported.stdout + side.read_text(), "nor in what the report holds"
+
+
+def test_a_stopped_newer_copy_is_not_called_out_of_date(env: dict[str, str]) -> None:
+    """B13 round 5 F18: a newer copy's report said "an out-of-date copy" in its first line and its NEXT, while
+    its Summary said the copy is newer than the installer's. Both say the copy does not match this installer,
+    true of an older, an unstated and a newer copy alike, and still say not to send the report."""
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT + 1}, Contoso Agent").returncode == 2
+    reported = install_sh(env, "--report-only")
+    side = friction_path(env).parent / "stopped-copy-report.md"
+    first = side.read_text().splitlines()[0]
+    for text in (last_line(reported), first):
+        assert "out-of-date" not in text and "does not match this installer" in text, text
+        assert "do not send it or bring it back" in text
 
 
 @pytest.mark.parametrize(
@@ -3779,7 +3892,10 @@ def test_log_start_reads_the_current_version_in_the_shape_an_agent_gave_it(
     assert attempt.header == {"Prompt": f"v{COMPAT}", "Agent": agent} and not attempt.events
 
 
-STOPPED_NEXT = "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started"
+STOPPED_NEXT = (
+    "NEXT: this report is of an attempt that a copy of the setup prompt that does not match this installer "
+    "started"
+)
 
 
 def _backdate(env: dict[str, str], minutes: int) -> None:
@@ -3840,7 +3956,8 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     back = report_path(env).parent / "bring-back.md"
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
     warning = (
-        "> This report is of an attempt that an out-of-date copy of the setup prompt started: do not send"
+        "> This report is of an attempt that a copy of the setup prompt that does not match this installer "
+        "started: do not send"
     )
 
     def invites(cp: subprocess.CompletedProcess[str]) -> list[str]:
@@ -4238,7 +4355,7 @@ def test_a_saved_v6_prompt_still_closes_and_reports(env: dict[str, str]) -> None
     reported = install_sh(env, "--report-only")
     assert reported.returncode == 0
     assert last_line(reported).startswith(
-        "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started, so do not "
+        f"{STOPPED_NEXT}, so do not "
         f'send it or bring it back: copy the prompt again from {PROMPT_SOURCE} ("Set up on a new Mac: one '
         f'prompt"; this installer is for setup prompt v{COMPAT}) and paste it into a new session '
         "[setup report: "
