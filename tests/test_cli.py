@@ -288,7 +288,7 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     ends the source's line with how many files wait; after the removal (the tombstone keeps its mark) it
     does not."""
     cfg = str(initialised.config_path)
-    held = " · absent 1 (removed by a later complete pass if still missing)"
+    held = " · absent 1 (turned into deletion notices by a later complete pass if still missing)"
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -298,7 +298,10 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     assert line.endswith(held), line
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "    alarm: 1 file(s) still absent from this complete pass: removed as deleted upstream\n" in out
+    assert (
+        "    alarm: 1 file(s) still absent from this complete pass: their pages are now deletion notices "
+        "(deleted upstream; purge queued)\n"
+    ) in out
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     status = capsys.readouterr().out
     assert "source (local, live): baseline complete" in status and " · absent " not in status
@@ -321,8 +324,9 @@ def test_the_sync_line_tells_the_marking_pass_from_the_removing_pass(
         lines.append(line)
     marking, removing, after = lines
     assert "deletion_candidate=1" in marking and "deletion_candidate=1" in removing
-    assert " · 1 marked absent · " in marking and "removed as deleted upstream" not in marking, marking
-    assert " · 1 removed as deleted upstream · " in removing and "marked absent" not in removing, removing
+    assert " · 1 marked absent · " in marking and "deletion notices" not in marking, marking
+    removed = " · 1 turned into deletion notices (deleted upstream) · "
+    assert removed in removing and "marked absent" not in removing, removing
     assert "absent" not in after and "removed" not in after, after
 
 
@@ -348,8 +352,8 @@ def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
     both = dataclasses.replace(src, absent_marked=1, absent_removed=3)
     cli._print_report(dataclasses.replace(report, sources=(both,)))
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 1 marked absent · 3 removed as deleted upstream · "
-        "cursor held · deletion_candidate=2, unchanged=1"
+        "  src: full_enumeration · complete · 1 marked absent · 3 turned into deletion notices "
+        "(deleted upstream) · cursor held · deletion_candidate=2, unchanged=1"
     )
     neither = dataclasses.replace(src, absent_marked=0)
     cli._print_report(dataclasses.replace(report, sources=(neither,)))

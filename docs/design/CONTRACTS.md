@@ -4708,7 +4708,8 @@ boundary); `parse_governance` rejects a prefix that is not a URL or carries a pa
 `moved:*`, `moved-out-of-scope` and `excluded` tombstone as reason `moved` (`# [MOVED OUT OF SCOPE]`, no purge);
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
 complete passes before it is tombstoned (`extra.absent_since_run`; **amended 2026-10-08, §16.37:** `status` ends
-that source's line with `· absent N (removed by a later complete pass if still missing)` while N present rows
+that source's line with `· absent N (turned into deletion notices by a later complete pass if still missing)`
+(**Amended 2026-10-12, §16.45 R105:** was `removed by ...`; the page stays as a `[DELETED UPSTREAM]` notice) while N present rows
 carry the mark and the breaker is not tripped (a tripped breaker removes nothing and counts its held files
 itself), and the marking pass and the removing pass each say so in an alarm); safe-save pairing runs in every
 FULL pass, complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
@@ -10546,14 +10547,20 @@ still holds no path, and the live `agentsync status` wait keeps the full path.
 #### Sync and status around deletions and re-reads (`agentsync.cycle`, `agentsync.cli`, `agentsync.manifest`)
 
 - Between the pass that marks a file absent and the pass that removes it, `status` ends that source's line with
-  `· absent N (removed by a later complete pass if still missing)`, from `Manifest.absent_counts()` (present,
+  `· absent N (turned into deletion notices by a later complete pass if still missing)`, from `Manifest.absent_counts()` (present,
   non-directory rows carrying `extra.absent_since_run`), unless the source's deletion breaker is tripped: then
   nothing is removed until `accept-deletions`, and the breaker field already counts the held files. The count
   stays out of `SourceStatus`, which feeds the committed `_sync/STATE.snapshot.md`.
 - The pass that removes a local or inbox file still absent from a second complete pass adds the alarm `N file(s)
-  still absent from this complete pass: removed as deleted upstream`. Graph sources and `accept-deletions` are
-  unchanged. **Amended 2026-10-11, §16.39 H23:** unchanged in the alarm (they raise none); the line of their
-  source now says `K removed as deleted upstream`, as the line of this pass does.
+  still absent from this complete pass: their pages are now deletion notices (deleted upstream; purge queued)`.
+  Graph sources and `accept-deletions` are unchanged. **Amended 2026-10-11, §16.39 H23:** unchanged in the alarm
+  (they raise none); the line of their source now says `K turned into deletion notices (deleted upstream)`, as the
+  line of this pass does.
+  **Amended 2026-10-12, §16.45 R105:** the three literals above and the marking pass's alarm (`N file(s) absent from this complete pass:
+  their pages become deletion notices only if still absent next pass`) said "removed"; the page stays in the
+  mirror as a `[DELETED UPSTREAM]` stub until `tombstone_reap_days`, so they now say "deletion notices", plural
+  because an `.eml` tombstones its attachment pages with it. `; purge queued` is printed only when
+  `purge_on_upstream_delete` is on (the default; `archive = true` turns it off).
 - When the sync header's `0 change(s)` (it counts `MirrorChange` rows) sits beside a commit, it adds ` (no
   source changed a mirror page; the commit holds other docs-repo files)`: a baseline flip in INDEX.md and the
   snapshot, or the agent's `_eval` drafts. Marking a file absent never commits.
@@ -10780,7 +10787,8 @@ on the pass that removes it. `SourceReport` carries the outcome as two counts, l
 default: `absent_marked` (a local or inbox file absent for the first time, kept) and `absent_removed` (a file
 removed this pass as deleted upstream: a local or inbox file on its second absence, a Graph item or a file under
 `accept-deletions` on its first). `_Cycle._confirmed_absent` is the one place that sets them. The source's line
-prints `M marked absent` and `K removed as deleted upstream`, each only when nonzero, after `BREAKER TRIPPED`
+prints `M marked absent` and `K turned into deletion notices (deleted upstream)` (**Amended 2026-10-12, §16.45 R105:** was `K removed
+as deleted upstream`), each only when nonzero, after `BREAKER TRIPPED`
 and before the cursor's word; a pass with neither prints the line it always did. `_sync/STATE.md`'s `this_run:`
 line adds ` · absent_marked: M` and ` · absent_removed: K` after `materialised_bytes`, each only when nonzero.
 

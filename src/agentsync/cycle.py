@@ -3626,12 +3626,15 @@ class _Cycle:
             self.manifest.mark_absent(src.id, first, self.run_id)
             acc.absent_marked += len(first)
             acc.alarms.append(
-                f"{len(first)} file(s) absent from this complete pass: removed only if still absent next pass"
+                f"{len(first)} file(s) absent from this complete pass: their pages become deletion notices "
+                "only if still absent next pass"
             )
         if confirmed:
             acc.absent_removed += len(confirmed)
+            purge = "; purge queued" if self.gov.purge_on_upstream_delete else ""  # off under archive
             acc.alarms.append(
-                f"{len(confirmed)} file(s) still absent from this complete pass: removed as deleted upstream"
+                f"{len(confirmed)} file(s) still absent from this complete pass: their pages are now "
+                f"deletion notices (deleted upstream{purge})"
             )
         return confirmed
 

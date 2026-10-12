@@ -254,6 +254,11 @@ def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
     run(sample_config)
     report = run(sample_config, mode=CycleMode.RECONCILE)
     assert report.exit_code == 0 and kept in git(repo, "ls-files")
+    # archive queues no purge, so the alarm does not claim one
+    assert (
+        "1 file(s) still absent from this complete pass: their pages are now deletion notices "
+        "(deleted upstream)"
+    ) in source_report(report).alarms
     assert "\nstatus: archived\n" in (repo / kept).read_text(encoding="utf-8")
     assert "- archive on: history is kept" in (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert governance.pending_purges(sample_config.state_paths.root) == []
@@ -1660,12 +1665,13 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
         assert rep.counts[Verdict.DELETION_CANDIDATE] == 2
         assert (rep.absent_marked, rep.absent_removed) == (1, 0)
         assert (source_report(second).absent_marked, source_report(second).absent_removed) == (0, 1)
-        assert not any("removed as deleted upstream" in a for a in rep.alarms), (
+        assert not any("are now deletion notices" in a for a in rep.alarms), (
             "the marking pass removes nothing"
         )
-        assert "1 file(s) still absent from this complete pass: removed as deleted upstream" in (
-            source_report(second).alarms
-        )
+        assert (
+            "1 file(s) still absent from this complete pass: their pages are now deletion notices "
+            "(deleted upstream; purge queued)"
+        ) in source_report(second).alarms
         assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
         assert len(governance.pending_purges(excluded.state_paths.root)) == 1
     else:

@@ -412,7 +412,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if s.absent_marked:
             bits.append(f"{s.absent_marked} marked absent")
         if s.absent_removed:
-            bits.append(f"{s.absent_removed} removed as deleted upstream")
+            bits.append(f"{s.absent_removed} turned into deletion notices (deleted upstream)")
         bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
         over = [a for a in s.alarms if run_budget is not None and _OVER_BUDGET in a]
@@ -845,7 +845,12 @@ def _status_lines(config: Config) -> list[str]:
             f"quarantined {st.quarantined} · refused {st.refused} · deferred {st.deferred} · "
             f"breaker {st.breaker} · auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
-            + (f" · absent {waiting} (removed by a later complete pass if still missing)" if waiting else "")
+            + (
+                f" · absent {waiting} (turned into deletion notices by a later complete pass if still "
+                "missing)"
+                if waiting
+                else ""
+            )
         )
     state_md = config.layout.state_md
     if state_md.is_file():

@@ -347,7 +347,7 @@ def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_pa
         assert manifest.unlisted_count("work") == 4
     run_cycle(config, mode=None)
     with Manifest(config.state_paths.db) as manifest:
-        assert manifest.live_count("work") == 2, "absent from two complete passes: removed as deleted"
+        assert manifest.live_count("work") == 2, "absent from two complete passes: deletion notices now"
         assert manifest.unlisted_count("work") == 0
 
 
