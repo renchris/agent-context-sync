@@ -565,7 +565,10 @@ def _run_build(
     tool's output goes to unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line written
     after this process died would end the tool before the SIGINT reached it.  Out of time, this process sends
     the tool SIGINT, then its group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.  A
-    tool that does not start raises OSError as before."""
+    tool that does not start raises OSError as before.
+    A Ctrl-Z stops this process, not the tool, which keeps compiling.  A tool that ignores SIGINT, including
+    one that inherited the ignore from a ``cmd &`` launch, outlives the stop.  swiftc and SwiftPM handle
+    SIGINT themselves, so neither applies to them."""
     env = _env() if env is None else env
     r, w = os.pipe()
     try:

@@ -12990,6 +12990,26 @@ Pinned by `tests/test_ocr.py::test_a_ctrl_c_while_popen_starts_the_tool_still_st
 stub tool, which sets its own SIGINT handler as swiftc does, writes `got-int`; before the fix it wrote
 `finished-unwatched`.
 
+Ctrl-Z and a tool that ignores SIGINT stay as they are (R130, no code). A Ctrl-Z stops install.sh and Python,
+not the tool, which is not in the terminal's foreground group and keeps compiling. Nothing goes wrong as a
+result: the tool's input is /dev/null and its output goes to files, and on resume `Popen.wait` reaps a tool that
+ended during the pause before it checks the deadline. A tool that ignores SIGINT outlives the group stop,
+including one that inherited the ignore from a non-interactive shell's `cmd &` (Popen restores only SIGPIPE,
+SIGXFZ and SIGXFSZ). Measured: swiftc and SwiftPM set their own SIGINT handling, so an inherited ignore does not
+keep them running; the stub tool in the R89 test sets its handler for the same reason, since a `/bin/sh` tool
+cannot trap a signal that was ignored when it started. Not built: having Python catch SIGTSTP and stop the
+tool's group. If Python were killed while the tool was stopped, the watcher's SIGINT would stay pending, so
+the tool and its compilers would stay stopped indefinitely. That is a worse leak than today's. The `_run_build`
+docstring now states both behaviors and that neither applies to swiftc or SwiftPM.
+
+A failed speech build is tried again on every install.sh run, as before (R140, no code). The retry is
+incremental, not in full: `speech._compile` keeps `<folder>/build`, so a retry reuses SwiftPM's checkout and
+build products and runs resolve and build again, up to 20 minutes (`speech._BUILD_TIMEOUT_S`) a run. Not built: a
+skip marker. The `<helper>.failed` marker is read only by `probe`, and the frozen CLI has no command to clear
+a marker. A one-off failure (a network drop during resolve, a signal, a timeout) would then leave speech unbuilt
+for good, and the messages "scripts/install.sh tries the build again on its next run" and "scripts/install.sh
+rebuilds it" would no longer be true. What a build that times out costs per run is unmeasured. A later change
+keeps retry as the default and never blocks a rebuild because of what an earlier run left behind.
 
 #### PDF pictures and diagrams
 
