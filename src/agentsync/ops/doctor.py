@@ -1556,8 +1556,9 @@ def _check_lock(config: Config) -> list[CheckResult]:
     desc = SingleWriterLock.describe(path)
     if held:
         if LockInfo.parse(body) is None:
-            # No cycle's record: install.sh's reinstall, a probe, or a cycle before its body write. A sidecar
-            # here is a dead cycle's, so its pid and beat say nothing about this holder.
+            # No cycle's record: an empty body (install.sh's reinstall, a probe, or a cycle before its body
+            # write) or one that does not parse (a corrupt leftover under install.sh's lockf). A sidecar here
+            # is a dead cycle's, so its pid and beat say nothing about this holder and none is read.
             return [_ok("lock", f"held by {desc}")]
         holder = SingleWriterLock.read_holder(path)
         age = _age_s(holder.get("last_beat_at"), _now()) if holder else None
@@ -1572,8 +1573,7 @@ def _check_lock(config: Config) -> list[CheckResult]:
                     fix=f"if that process is hung: kill {pid}" if isinstance(pid, int) else None,
                 )
             ]
-        # an empty body is install.sh's reinstall or a probe as often as a starting cycle: no cycle is named
-        return [_ok("lock", f"held by {desc} (a cycle is running)" if body else f"held by {desc}")]
+        return [_ok("lock", f"held by {desc} (a cycle is running)")]
     if body:
         return [
             _bad(
