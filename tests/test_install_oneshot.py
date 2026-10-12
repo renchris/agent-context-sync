@@ -11,7 +11,8 @@ ends at once with the next exit code of STUB_LC_EXITS (the last one repeats), an
 appends the launcher's TCC_PENDING line to that stderr log. With STUB_LC_CANARIES (paths joined by ``:``)
 ``print`` also shows ``pid`` while running and the launcher's ``arguments`` with one ``--canary`` per path,
 and ``kickstart`` logs the launcher's canary lines as STUB_LC_CANARY_LOG says (``ok``: CANARY_OK for each;
-``pending``: CANARY_OK for the first, then TCC_PENDING).
+``pending``: CANARY_OK for the first, then TCC_PENDING). STUB_LC_PATH and STUB_LC_PROGRAM add the job's
+``path`` and ``program`` lines.
 """
 
 from __future__ import annotations
@@ -184,6 +185,8 @@ case "$1" in
       for c in "${cans[@]}"; do printf '\\t\\t--canary\\n\\t\\t%s\\n' "$c"; done
       printf '\\t\\t--\\n\\t\\t/x/python\\n\\t}\\n'
     fi
+    [ -z "${STUB_LC_PATH:-}" ] || printf '\\tpath = %s\\n' "$STUB_LC_PATH"
+    [ -z "${STUB_LC_PROGRAM:-}" ] || printf '\\tprogram = %s\\n' "$STUB_LC_PROGRAM"
     printf '\\tstderr path = %s\\n' "$d/poll.err.log"
     printf '\\truns = %s\\n' "$runs"
     printf '\\tlast exit code = %s\\n' "$(cat "$d/last" 2>/dev/null || echo '(never exited)')"
@@ -788,7 +791,8 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     assert (report_path(env).stat().st_mode & 0o777) == 0o600
     assert _headings(text) == list(setup_report.SECTION_TITLES), "the same headings as agentsync's report"
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
-    assert "exit 1 (failed)" in text and "uv tool install failed" in text and "- launchd: real" in text
+    assert "exit 1 (failed)" in text and "uv tool install failed" in text
+    assert "- launchd: not simulated (real LaunchAgents)" in text
     assert "step=agentsync" in text and "result=failed" in text, "the install.log lines are embedded"
     assert (
         "- macOS: " in text
@@ -820,6 +824,44 @@ def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
     assert "- uv-managed Pythons: 1\n" in report_path(env).read_text()
+
+
+def _background_part(env: dict[str, str]) -> str:
+    return report_path(env).read_text().split("\n## Background runs\n", 1)[1].split("\n## ", 1)[0]
+
+
+def test_the_shell_report_names_another_installs_job_as_not_this_setups(env: dict[str, str]) -> None:
+    """``launchctl print`` reads the uid's domain, not this HOME's: a job loaded from another home's plist, or
+    running another home's program, is another install's, and its runs are not this setup's result; a job
+    loaded from this home's plist path whose file is gone stays this setup's (B13 round 2 R6, R16)."""
+    home = Path(env["HOME"])
+    lc = Path(env["STUB_LC_DIR"])
+    lc.mkdir()
+    (lc / "runs").write_text("2183\n")
+    (lc / "last").write_text("79\n")
+    plist = home / "Library" / "LaunchAgents" / "com.agentsync.poll.plist"
+    other = "/Users/contoso-other"
+    for extra in (
+        {"STUB_LC_PATH": f"{other}/Library/LaunchAgents/com.agentsync.poll.plist"},
+        {"STUB_LC_PATH": str(plist), "STUB_LC_PROGRAM": f"{other}/Applications/AgentSyncLauncher.app/x"},
+    ):
+        cp = install_sh({**env, **extra}, "--report-only")
+        assert cp.returncode == 0, cp.stderr
+        part = _background_part(env)
+        assert "- loaded, but the job belongs to another install (its plist or ProgramArguments" in part
+        assert "runs 2183" not in part and "last exit code" not in part
+    cp = install_sh({**env, "STUB_LC_PATH": str(plist)}, "--report-only")
+    part = _background_part(env)
+    assert "- com.agentsync.poll plist: absent" in part
+    assert (
+        "- loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent"
+        in part
+    )
+    assert "runs 2183, last exit code 79" in part and "another install" not in part
+    plist.parent.mkdir(parents=True)
+    plist.write_text("")
+    cp = install_sh({**env, "STUB_LC_PATH": str(plist)}, "--report-only")
+    assert "- loaded: state not running, runs 2183, last exit code 79" in _background_part(env)
 
 
 def test_the_shell_report_redacts_a_full_name_written_last_comma_first(

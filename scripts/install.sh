@@ -1190,6 +1190,23 @@ launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `la
 	printf '%s\n' "$1" | sed -n "s/^	$2 = //p" | head -1
 }
 launchd_print() { with_timeout 10 "$LAUNCHCTL" print "gui/$(id -u)/$POLL_LABEL" 2>/dev/null; }
+# `launchctl print` reads the uid's domain, not this HOME's: the job it shows is another install's when the
+# plist it was loaded from is outside this home folder, or its program or an argument is in another user's or
+# a temporary folder (setup_report._background's rule, _under_home and _foreign_paths; B13 round 3 R6, R16).
+# A job loaded from this home's plist path whose file is gone stays this setup's.
+launchd_foreign() { # PRINT-TEXT: exit 0 when the loaded job is another install's
+	local hp
+	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
+	printf '%s\n' "$1" | LC_ALL=C awk -v h="$HOME" -v hp="${hp:-$HOME}" '
+		function mine(v) { return v == h || v == hp || index(v, h "/") == 1 || index(v, hp "/") == 1 }
+		function homelike(v) { return v ~ /^\/(Users|private\/var\/folders|var\/folders|private\/tmp|tmp|Volumes)\// }
+		/^\targuments = \{$/ { inside = 1; next }
+		inside && /^\t\}$/ { inside = 0; next }
+		inside { sub(/^[\t ]+/, ""); if (homelike($0) && !mine($0)) bad = 1; next }
+		/^\tpath = / { v = substr($0, 9); if (v != "" && !mine(v)) bad = 1 }
+		/^\tprogram = / { v = substr($0, 12); if (homelike(v) && !mine(v)) bad = 1 }
+		END { exit !bad }'
+}
 leading_int() { # "79: ..." -> 79; "(never exited)" -> empty
 	case "$1" in
 	[0-9]*) printf '%s' "${1%%[!0-9]*}" ;;
@@ -1204,7 +1221,7 @@ fallback_body() {
 	say ""
 	say "- written by: scripts/install.sh shell fallback ($why), $(utc_now)"
 	say "- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}, exit $rc ($(rc_meaning "$rc"))"
-	if [ "$SIMULATE" -eq 1 ]; then say "- launchd: simulated"; else say "- launchd: real"; fi
+	if [ "$SIMULATE" -eq 1 ]; then say "- launchd: simulated"; else say "- launchd: not simulated (real LaunchAgents)"; fi
 	[ -z "$LAST_ERROR" ] || say "- last error: $LAST_ERROR"
 	say ""
 	say "## Agent friction log"
@@ -1294,12 +1311,19 @@ fallback_body() {
 		if [ -f "$HOME/Library/LaunchAgents/$POLL_LABEL.plist" ]; then v="present"; else v="absent"; fi
 		say "- $POLL_LABEL plist: $v"
 		p="$(launchd_print || true)"
-		if [ -n "$p" ]; then
+		if [ -z "$p" ]; then
+			say "- loaded: no"
+		elif launchd_foreign "$p"; then
+			say "- loaded, but the job belongs to another install (its plist or ProgramArguments are outside this home folder); its runs and exit codes are not this setup's result"
+		else
 			v="$(launchd_field "$p" "last exit code")"
 			k="$(leading_int "$v")"
-			say "- loaded: state $(launchd_field "$p" state), runs $(launchd_field "$p" runs), last exit code ${v:-?}${k:+ ($(rc_meaning "$k"))}"
-		else
-			say "- loaded: no"
+			v="state $(launchd_field "$p" state), runs $(launchd_field "$p" runs), last exit code ${v:-?}${k:+ ($(rc_meaning "$k"))}"
+			if [ -f "$HOME/Library/LaunchAgents/$POLL_LABEL.plist" ]; then
+				say "- loaded: $v"
+			else
+				say "- loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent repairs it): $v"
+			fi
 		fi
 	fi
 	say ""
