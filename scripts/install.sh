@@ -436,13 +436,45 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 # line is a late line of the stopped session (an old copy logs the failed command, then writes its report).
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
-# a step 1 error line, which after an end line may open a header-less attempt (parse_friction)
+# a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
+# called on every line first, keeps the open attempt's prompt number PV, agent AG and latest time LT, and is 1
+# for a step 1 error that states "prompt vN, <agent>:" words another session's: a version or agent that
+# differs from the attempt's, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
+# restate(LINE) gives an attempt a step 1 error opened the words that line states.
 FRICTION_AWK='
 		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
 			y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0
 			if (m <= 2) { y--; m += 12 }
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
+		}
+		function agent_key(a) { # setup_report._agent_key: casefolded, quotes dropped, spaces collapsed
+			a = tolower(a); gsub("[\"\047*]", " ", a); gsub("[ \t]+", " ", a); sub("^ ", "", a); sub(" $", "", a)
+			return a
+		}
+		function stated(line,    w) { # sets SV and SA from "prompt vN, <agent>:" at the start of the what-text
+			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w); sub("^[\"\047 \t]*", "", w)
+			if (tolower(substr(w, 1, 8)) != "prompt v" || !match(substr(w, 9), "^[0-9][0-9]?[0-9]?")) return 0
+			SV = substr(w, 9, RLENGTH) + 0; w = substr(w, 9 + RLENGTH)
+			if (!match(w, "^[ ,:;-]+")) return 0
+			w = substr(w, RLENGTH + 1)
+			if (!match(w, "^[^: \t][^:]*:")) return 0
+			SA = agent_key(substr(w, 1, RLENGTH - 1)); return 1
+		}
+		function restate(line) { PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
+		function track(line,    a, new) {
+			if (line ~ /^Attempt:/) { SEEN = 1; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
+			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
+			if (line ~ /^[-* ]*Agent:/) { SEEN = 1; a = line; sub("^[-* ]*Agent:", "", a); if (AG == "") AG = agent_key(a); return 0 }
+			if (line !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/) return 0
+			new = 0
+			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
+			else if (line ~ s1 && (PV != "" || AG != "") && stated(line)) {
+				if ((PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
+			}
+			if (new) { PV = SV; AG = SA; LT = substr(line, 1, 20) }
+			else if (LT == "" || secs(line) > secs(LT)) LT = substr(line, 1, 20)
+			return new
 		}
 '
 STEP1_ERROR_RE='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step 1 [|] error [|]'
@@ -451,9 +483,11 @@ friction_attempt_stopped() {
 	f="$(friction_file)"
 	[ -f "$f" ] || return 1
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		{ q = track($0) }
 		/^Attempt:/ { stopped = 0; ended = ""; next }
+		q { stopped = 0; ended = ""; next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
-		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { stopped = 0; ended = ""; next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { stopped = 0; ended = ""; restate($0); next }
 		index($0, mark) { stopped = 1 }
 		END { exit !stopped }' "$f" 2>/dev/null
 }
@@ -1605,8 +1639,10 @@ friction_earlier_end() {
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		{ q = track($0) }
 		/^Attempt:/ { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
-		e != "" && $0 ~ s1 && secs($0) - secs(e) > gap { if (!stopped) last = e; e = ""; stopped = 0; next }
+		q { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
+		e != "" && $0 ~ s1 && secs($0) - secs(e) > gap { if (!stopped) last = e; e = ""; stopped = 0; restate($0); next }
 		index($0, mark) { stopped = 1 }
 		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z \| end \| finished[[:space:]]*$/ { e = substr($0, 1, 20) }
 		END { print last }' "$f" 2>/dev/null || true

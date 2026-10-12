@@ -3597,6 +3597,16 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         + f"Attempt: 2026-10-07T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n",
         "a stopped attempt after a finished one": "Attempt: 2026-10-05T10:00:00Z\nPrompt: v7\nAgent: x\n"
         "2026-10-05T10:30:00Z | end | finished\n" + stop + end,
+        # B13 round 4 Q21: a line that states another version or agent is another session's, within the gap
+        "a v12 paste two minutes after the stop": stop
+        + end
+        + "2026-10-06T16:44:00Z | step 1 | error | prompt v12, Claude Code: git pull exited 1 | -\n",
+        "another agent's line, the version the same": stop
+        + end
+        + "2026-10-06T16:44:00Z | step 1 | error | 'prompt v7, Contoso Agent: git pull exited 1' | -\n",
+        "the stopped session's own words": stop
+        + end
+        + "2026-10-06T16:44:00Z | step 1 | error | prompt v7, X: git pull exited 1 | -\n",
     }
     answers = {}
     for name, text in logs.items():
@@ -3611,6 +3621,8 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         "a step 1 error over a month end",
         "another session, then its own lines",
         "a current attempt after it",
+        "a v12 paste two minutes after the stop",
+        "another agent's line, the version the same",
     ]
 
 

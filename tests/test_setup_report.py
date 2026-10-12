@@ -4092,16 +4092,82 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         "prompt not stated, agent not stated" in fr and "prompt_version" not in link and "agent" not in link
     )
 
-    late = stop.replace("10:20:00Z", "10:05:00Z")  # within 10 minutes: the same session's late line
+    # Within 10 minutes and in the attempt's own words: the same session's late line. (Since B13 round 4 Q21
+    # a line whose words name another version or agent is another session's: the next test.)
+    own = "prompt v11, Claude Code, claude-opus-5-5: "
+    late = stop.replace("10:20:00Z", "10:05:00Z").replace(f"prompt v12, {agent}: ", own)
     parsed = setup_report.parse_friction(V11_HAPPY + late).attempts
-    assert len(parsed) == 1 and parsed[0].events[-1].what.startswith("prompt v12, ")
+    assert len(parsed) == 1 and parsed[0].events[-1].what.startswith("prompt v11, ")
     end = "2026-09-29T10:01:10Z | end"
-    headed = V11_HAPPY.replace(
-        end, f"2026-09-29T10:00:00Z | step 1 | error | prompt v12, {agent}: x | -\n{end}"
-    )
+    headed = V11_HAPPY.replace(end, f"2026-09-29T10:00:00Z | step 1 | error | {own}x | -\n{end}")
     [attempt] = setup_report.parse_friction(headed).attempts
     assert attempt.stated == {} and attempt.said("Agent") == "Claude Code, claude-opus-5-5"
-    assert attempt.events[0].what.startswith("prompt v12, "), "an attempt with a header keeps the line whole"
+    assert attempt.events[0].what.startswith("prompt v11, "), "an attempt with a header keeps the line whole"
+
+    # B13 round 4 Q22, Q38, Q67: the step 1 error is the log's first line (a checkout cloned by hand, with no
+    # friction.md until this line). Its words are read, and the attempt is no v4 log and no stale one.
+    [only] = setup_report.parse_friction(stop).attempts
+    assert only.stated == {"Prompt": "v12", "Agent": agent} and only.events[0].what == "git pull exited 1"
+    _text, summary, fr, link = report(stop)
+    assert "- prompt: v12 (from the step 1 error line) · run: " in summary
+    assert summary.split(" · agent: ", 1)[1].startswith(agent)
+    assert re.search(r"· step 1 · error · git pull exited 1\b", summary)
+    assert link["prompt_version"] == ["v12"] and link["agent"] == [agent]
+    assert f"prompt v12 (from the step 1 error line), agent {agent}" in fr
+    assert "no Attempt: line (a session that stopped before `install.sh --log-start`)" in fr, fr
+    assert "v4 format" not in fr and "may be stale" not in summary
+    assert (
+        "It starts at a step 1 error logged before any attempt was started: that session stopped" in summary
+    )
+    # A first line of another step or kind keeps its text whole, and a log of F<n> lines is still v4.
+    for first in (
+        stop.replace("step 1 | error", "step 2 | error"),
+        stop.replace("| error |", "| deviation |"),
+    ):
+        [att] = setup_report.parse_friction(first).attempts
+        assert att.stated == {} and att.events[0].what.startswith("prompt v12, "), first
+    _text, _summary, fr, _link = report("F1 | step 2 | the pull failed | -\n")
+    assert "no Attempt: line (v4 format)" in fr, fr
+
+
+def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line() -> None:
+    """B13 round 4 Q21: a session that stopped at the folder question leaves no end line, so the next
+    session's step 1 error, logged before its own ``--log-start``, joined that attempt and the report gave
+    the earlier session's prompt and agent. A line whose words name another version or agent, or that comes
+    more than the gap after the attempt's latest time, is another session's, end line or not; the same
+    session's line within the gap stays."""
+    agent = "Claude Code, claude-opus-5-5"
+    open_v11 = V11_HAPPY.replace("2026-09-29T10:01:10Z | end | finished\n", "")
+    stop = (
+        "2026-09-30T10:20:00Z | step 1 | error | prompt v12, Contoso Agent model-b: git pull exited 1 | -\n"
+    )
+    first, second = setup_report.parse_friction(open_v11 + stop).attempts
+    assert first.version == 11 and not first.finished
+    assert second.stated == {"Prompt": "v12", "Agent": "Contoso Agent model-b"} and second.version == 12
+    assert second.events[0].what == "git pull exited 1"
+    fr = setup_report.parse_friction(open_v11 + stop)
+    assert setup_report._headerless_kind(fr, 1) == "open" and setup_report._headerless_kind(fr, 0) is None
+    # The same version and agent, 30 seconds on (case and spacing aside): one attempt.
+    open_v12 = V12_HAPPY.replace("2026-09-29T10:01:10Z | end | finished\n", "")
+    same = "2026-09-29T09:58:30Z | step 1 | error | prompt v12, claude code,  Claude-Opus-5-5: x | -\n"
+    [one] = setup_report.parse_friction(open_v12 + same).attempts
+    assert one.said("Agent") == agent and one.events[0].what.startswith("prompt v12, ")
+    # The same words more than 10 minutes after the attempt's latest time: another session.
+    assert len(setup_report.parse_friction(open_v12 + same.replace("09:58:30Z", "10:08:01Z")).attempts) == 2
+    # Another agent at once: another session.
+    other = same.replace("claude code,  Claude-Opus-5-5", "Contoso Agent")
+    assert len(setup_report.parse_friction(open_v12 + other).attempts) == 2
+    # A stopped v11 copy closes its attempt; a v12 paste two minutes later is its own, within the gap too.
+    copy = (
+        "Attempt: 2026-09-29T10:00:00Z\nPrompt: v11\nAgent: x\n2026-09-29T10:00:00Z | step 1 | error | "
+        "install.sh --log-start: the pasted setup prompt is v11; setup stopped | -\n"
+        "2026-09-29T10:00:00Z | end | finished\n"
+    )
+    later = "2026-09-29T10:02:00Z | step 1 | error | prompt v12, x: git pull exited 1 | -\n"
+    assert [a.stated for a in setup_report.parse_friction(copy + later).attempts] == [
+        {},
+        {"Prompt": "v12", "Agent": "x"},
+    ]
 
 
 def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac: dict[str, Path]) -> None:
