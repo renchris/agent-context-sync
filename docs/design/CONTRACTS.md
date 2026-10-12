@@ -12201,12 +12201,13 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   click-Allow sentence after it.
 - **Step 2's timeout covers the speech build** (H8, B12 F34). Step 2 suggests 30 minutes, not 10, "the speech
   helper's build alone can take up to 20 minutes" (`speech._BUILD_TIMEOUT_S`, 1,200 s; field 687 s). That build
-  runs again in full after a failed or interrupted build or a change to the speech package, so the prompt does
-  not say "the first time". 30 is that limit plus a 10-minute margin, not the sum of the run's limits (37
+  runs again after a failed or interrupted build or a change to the speech package (incremental, up to 20
+  minutes a run), so the prompt does not say "the first time". 30 is that limit plus a 10-minute margin, not the sum of the run's limits (37
   minutes before status and sync, with step 2's 2-minute wait for a running background sync; **amended
   2026-10-11, §16.49, R65:** it read 35, from before that wait); a run cut anyway is safe to re-run, and a tool capped below 30 minutes takes
   step 2's background branch. The `--confirm-install-agent` texts (README, docs/deploy/README.md, install.sh's
   header) name the same case.
+  Amended 2026-10-11 by §16.48 (R140): the retry is incremental, up to 20 minutes a run, not "in full".
 - **Friction lines name roles** (N42; 2026-10-07 C12). "These lines go into the report, which I may post in
   public, so in them name a folder, a file, a person, my organization or a customer by its role in plain words
   ("a project folder"), never by its real name, a short form of it or a placeholder; if a name itself is the
@@ -13014,8 +13015,10 @@ the tool and its compilers would stay stopped indefinitely. That is a worse leak
 docstring now states both behaviors and that neither applies to swiftc or SwiftPM.
 
 A failed speech build is tried again on every install.sh run, as before (R140, no code). The retry is
-incremental, not in full: `speech._compile` keeps `<folder>/build`, so a retry reuses SwiftPM's checkout and
-build products and runs resolve and build again, up to 20 minutes (`speech._BUILD_TIMEOUT_S`) a run. Not built: a
+incremental, not in full, and this amends §16.43's step-2 bullet, which said "in full": `speech._compile` keeps
+`<folder>/build`, so a retry reuses SwiftPM's checkout and build products and runs resolve and build again, up
+to 20 minutes (`speech._BUILD_TIMEOUT_S`) a run. That holds after a change to the speech package too: the build
+tree is shared across helper hashes, and `ocr._prune` removes only `<prefix>-*` and `.build-*` entries. Not built: a
 skip marker. The `<helper>.failed` marker is read only by `probe`, and the frozen CLI has no command to clear
 a marker. A one-off failure (a network drop during resolve, a signal, a timeout) would then leave speech unbuilt
 for good, and the messages "scripts/install.sh tries the build again on its next run" and "scripts/install.sh
