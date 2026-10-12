@@ -4042,6 +4042,111 @@ def test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order(tmp_path
     assert body.startswith("## Site plan\n\n" + "".join(f"- {s}\n" for s in order) + "\n## Frame")
 
 
+_VISIO_MAIN = "http://schemas.microsoft.com/office/visio/2012/main"
+
+
+def _visio_page(shapes: str, connects: str = "") -> bytes:
+    return (
+        f'<PageContents xmlns="{_VISIO_MAIN}"><Shapes>{shapes}</Shapes>'
+        f"<Connects>{connects}</Connects></PageContents>"
+    ).encode()
+
+
+def _visio_masters(masters: Mapping[str, str]) -> dict[str, bytes]:
+    """``visio/masters/masters.xml`` listing each master ID, its relationship naming ``masterN.xml`` (the
+    second one by an absolute target, as some writers do), and each part holding that master's shapes."""
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+    parts: dict[str, bytes] = {}
+    listed, related = "", ""
+    for n, (mid, shapes) in enumerate(masters.items(), start=1):
+        listed += f'<Master ID="{mid}" NameU="Contoso {n}"><Rel r:id="rId{n}"/></Master>'
+        target = f"/visio/masters/master{n}.xml" if n == 2 else f"master{n}.xml"
+        related += f'<Relationship Id="rId{n}" Type="master" Target="{target}"/>'
+        parts[f"visio/masters/master{n}.xml"] = (
+            f'<MasterContents xmlns="{_VISIO_MAIN}"><Shapes>{shapes}</Shapes></MasterContents>'
+        ).encode()
+    parts["visio/masters/masters.xml"] = (
+        f'<Masters xmlns="{_VISIO_MAIN}" xmlns:r="{r}">{listed}</Masters>'.encode()
+    )
+    parts["visio/masters/_rels/masters.xml.rels"] = (
+        f'<Relationships xmlns="{rels}">{related}</Relationships>'.encode()
+    )
+    return parts
+
+
+def test_a_visio_shape_without_text_shows_its_masters_text(tmp_path: Path) -> None:
+    """A shape with no ``<Text>`` shows the text of the master shape it is an instance of: a master's only
+    top-level shape for the instance, the ``MasterShape`` it names for a member of the instance. Its own text,
+    even an empty ``<Text/>``, wins; a master with two top-level shapes, an unknown master and a local member
+    with no ``MasterShape`` give nothing. A connector's end is named by the text it shows."""
+    masters = _visio_masters(
+        {
+            "2": '<Shape ID="5"><Text>Contoso firewall</Text></Shape>',
+            "3": '<Shape ID="1" Type="Group"><Text>Rack</Text><Shapes><Shape ID="2"><Text>Blade '
+            '<fld IX="0">slot</fld></Text></Shape><Shape ID="3"><Text>Fan tray</Text></Shape>'
+            "</Shapes></Shape>",
+            "6": '<Shape ID="1"><Text>Left half</Text></Shape><Shape ID="2"><Text>Right half</Text></Shape>',
+        }
+    )
+    page = _visio_page(
+        '<Shape ID="1" Master="2"/><Shape ID="2" Master="2"><Text/></Shape>'
+        '<Shape ID="3" Master="2"><Text>Edge firewall</Text></Shape>'
+        '<Shape ID="4" Master="3" Type="Group"><Shapes><Shape ID="5" MasterShape="2"/>'
+        '<Shape ID="6" MasterShape="3"><Text>Fan tray B</Text></Shape><Shape ID="12"/></Shapes></Shape>'
+        '<Shape ID="7" Master="6" Type="Group"><Shapes><Shape ID="8" MasterShape="1"/>'
+        '<Shape ID="9" MasterShape="2"/></Shapes></Shape><Shape ID="10" Master="99"/>'
+        '<Shape ID="11"><Text>uplink</Text></Shape>',
+        '<Connect FromSheet="11" FromCell="BeginX" ToSheet="1"/>'
+        '<Connect FromSheet="11" FromCell="EndX" ToSheet="5"/>',
+    )
+    src = build_vsdx(tmp_path / "Contoso Masters.vsdx", extra={**masters, "visio/pages/page1.xml": page})
+    assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
+        "## Site plan\n\n- Contoso firewall\n- Edge firewall\n- Rack\n- Blade slot\n- Fan tray B\n"
+        "- Left half\n- Right half\n\nConnections:\n\n- Contoso firewall -> Blade slot: uplink\n\n## Frame"
+    )
+
+
+def test_a_visio_master_is_read_only_when_needed_and_within_the_caps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Master parts count against the part and total caps like a page; a drawing whose shapes all carry their
+    own text never opens them; a malformed master fails without quoting the file."""
+    pad = "Contoso " * 2000
+    masters = _visio_masters({"2": f'<Shape ID="5"><Text>Contoso firewall</Text></Shape><!-- {pad} -->'})
+    needs = build_vsdx(
+        tmp_path / "Contoso Needs.vsdx",
+        extra={**masters, "visio/pages/page1.xml": _visio_page('<Shape Master="2"/>')},
+    )
+    owns = build_vsdx(
+        tmp_path / "Contoso Owns.vsdx",
+        extra={**masters, "visio/pages/page1.xml": _visio_page('<Shape Master="2"><Text>Own</Text></Shape>')},
+    )
+    assert "\n- Contoso firewall\n" in _one(DiagramConverter(CFG).convert(needs, name=needs.name)).body
+    monkeypatch.setattr(diagram_mod, "_MAX_PART_BYTES", 10_000)
+    with pytest.raises(ConversionError, match="diagram page too large"):
+        DiagramConverter(CFG).convert(needs, name=needs.name)
+    assert "\n- Own\n" in _one(DiagramConverter(CFG).convert(owns, name=owns.name)).body
+    monkeypatch.setattr(diagram_mod, "_MAX_PART_BYTES", 32 * 1024 * 1024)
+    monkeypatch.setattr(diagram_mod, "_MAX_TOTAL_BYTES", 10_000)
+    with pytest.raises(ConversionError, match="diagram too large"):
+        DiagramConverter(CFG).convert(needs, name=needs.name)
+    assert "\n- Own\n" in _one(DiagramConverter(CFG).convert(owns, name=owns.name)).body
+    monkeypatch.undo()
+    broken = build_vsdx(
+        tmp_path / "Contoso Broken.vsdx",
+        extra={
+            **masters,
+            "visio/masters/master1.xml": b"<MasterContents><Contoso-secret>",
+            "visio/pages/page1.xml": _visio_page('<Shape Master="2"/>'),
+        },
+    )
+    with pytest.raises(ConversionError) as exc:
+        DiagramConverter(CFG).convert(broken, name=broken.name)
+    assert str(exc.value).startswith("a master is not well-formed XML: ")
+    assert "secret" not in str(exc.value)
+
+
 def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
     """A deflate bomb stops at the part limit; another XML document, a broken page and a non-zip .vsdx fail
     with what they are; a diagram with no text at all is the empty-output stub."""

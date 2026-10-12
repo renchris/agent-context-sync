@@ -3,8 +3,9 @@
 
 One WHOLE unit: per page a ``## <page name>`` heading, the text of each shape that has text (one line, in the
 file's order), then ``Connections:`` with one ``- <from> -> <to>: <label>`` line per connector that has a
-labelled end or a label of its own.  Pictures, shape data, links, layer names and a Visio master's default
-text are not read; text on a hidden layer is read like any other.  The title is left empty, so the page takes
+labelled end or a label of its own.  A Visio shape with no ``<Text>`` of its own shows its master shape's
+text (``visio/masters``; an empty ``<Text/>`` stays empty).  Pictures, shape data, links and layer names are
+not read; text on a hidden layer is read like any other.  The title is left empty, so the page takes
 the file's name; the summary counts pages and names them.  No XML part is inflated past ``_MAX_PART_BYTES``
 and no file is read past ``_MAX_TOTAL_BYTES`` of XML in all, so a deflate bomb or an oversized file is a
 ``conversion failed: diagram … too large`` stub, never a hang.
@@ -39,13 +40,14 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.1.0"  # 1.1.0: a Visio shape without text of its own shows its master's
 _MAX_PART_BYTES = 32 * 1024 * 1024
 _MAX_TOTAL_BYTES = 128 * 1024 * 1024
 _V = "{http://schemas.microsoft.com/office/visio/2012/main}"
 _R_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 _RELS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 _PAGES_PART = "visio/pages/pages.xml"
+_MASTERS_PART = "visio/masters/masters.xml"
 # Each tag pattern is linear in the label: a tag's tail holds no ``<`` (so a run of ``<`` without ``>`` is not
 # rescanned to the end from every one), and the blanks around a closing ``/`` can be split one way only.
 _BREAK_RE = re.compile(
@@ -199,23 +201,99 @@ def _part(zf: zipfile.ZipFile, name: str, budget: _Budget) -> bytes | None:
     return data
 
 
-def _vsdx_shapes(shapes: ET.Element | None) -> Iterator[ET.Element]:
-    """Every shape, a group's members after the group, in the page's order.  Walked with a stack, not by
-    recursion, so groups nested any depth are read (each group's members are pushed last first)."""
-    stack = [] if shapes is None else shapes.findall(f"{_V}Shape")[::-1]
+def _targets(rels: bytes | None, base: str, what: str) -> dict[str | None, str]:
+    """Relationship ID -> part name.  A target is relative to ``base`` or, from some writers, absolute
+    (``/visio/…``); an external one names no part."""
+    if rels is None:
+        return {}
+    return {
+        r.get("Id"): posixpath.normpath(posixpath.join(base, r.get("Target") or "")).lstrip("/")
+        for r in _parse(rels, what).iter(_RELS)
+        if r.get("TargetMode") != "External"
+    }
+
+
+def _vsdx_shapes(shapes: ET.Element | None) -> Iterator[tuple[ET.Element, str]]:
+    """Every shape with the ID of the master it is, or is inside, an instance of (``""`` for none), a group's
+    members after the group, in the page's order.  Walked with a stack, not by recursion, so groups nested
+    any depth are read (each group's members are pushed last first)."""
+    stack = [] if shapes is None else [(s, "") for s in reversed(shapes.findall(f"{_V}Shape"))]
     while stack:
-        shape = stack.pop()
-        yield shape
+        shape, master = stack.pop()
+        master = shape.get("Master") or master
+        yield shape, master
         members = shape.find(f"{_V}Shapes")
         if members is not None:
-            stack.extend(reversed(members.findall(f"{_V}Shape")))
+            stack.extend((m, master) for m in reversed(members.findall(f"{_V}Shape")))
 
 
-def _vsdx_page(page: _Page, contents: ET.Element) -> _Page:
+def _shape_text(text: ET.Element) -> str:
+    return _one_line("".join(text.itertext()))
+
+
+class _Masters:
+    """The text of the drawing's master shapes, for a shape that has no ``<Text>`` of its own.  Nothing is
+    read until a shape needs it, then ``masters.xml``, its relationships and each master's part once, all
+    through ``_part``: the part and total caps hold for masters as for pages."""
+
+    def __init__(self, zf: zipfile.ZipFile, budget: _Budget) -> None:
+        self._zf, self._budget = zf, budget
+        self._index: dict[str, str] | None = None  # master ID -> part name
+        self._read: dict[str, tuple[dict[str, str], str | None]] = {}  # part -> (shape ID -> text, top ID)
+
+    def text(self, master: str, shape: str | None) -> str:
+        """The text of shape ``shape`` in master ``master``; ``None``: the master's top-level shape, when it
+        has exactly one (a master of several is instanced as a group whose members name theirs)."""
+        if self._index is None:
+            self._index = self._load_index()
+        part = self._index.get(master)
+        if part is None:
+            return ""
+        if part not in self._read:
+            self._read[part] = self._load(part)
+        texts, top = self._read[part]
+        key = top if shape is None else shape
+        return "" if key is None else texts.get(key, "")
+
+    def _load_index(self) -> dict[str, str]:
+        index = _part(self._zf, _MASTERS_PART, self._budget)
+        if index is None:
+            return {}
+        rels = _part(self._zf, "visio/masters/_rels/masters.xml.rels", self._budget)
+        targets = _targets(rels, "visio/masters", "the master list's relationships")
+        parts: dict[str, str] = {}
+        for el in _parse(index, "the master list").iter(f"{_V}Master"):
+            rel = el.find(f"{_V}Rel")
+            part = targets.get(None if rel is None else rel.get(_R_ID))
+            if el.get("ID") and part is not None:
+                parts.setdefault(el.get("ID") or "", part)
+        return parts
+
+    def _load(self, part: str) -> tuple[dict[str, str], str | None]:
+        data = _part(self._zf, part, self._budget)
+        if data is None:
+            return {}, None
+        shapes = _parse(data, "a master").find(f"{_V}Shapes")
+        tops = [] if shapes is None else shapes.findall(f"{_V}Shape")
+        texts: dict[str, str] = {}
+        for s, _ in _vsdx_shapes(shapes):
+            t = s.find(f"{_V}Text")
+            if s.get("ID"):  # a master shape without an ID is no instance's
+                texts.setdefault(s.get("ID") or "", "" if t is None else _shape_text(t))
+        return texts, tops[0].get("ID") if len(tops) == 1 else None
+
+
+def _vsdx_page(page: _Page, contents: ET.Element, masters: _Masters) -> _Page:
     shapes: list[tuple[str, str]] = []  # (ID, text): each shape keeps its own text, whatever its ID
-    for s in _vsdx_shapes(contents.find(f"{_V}Shapes")):
+    for s, master in _vsdx_shapes(contents.find(f"{_V}Shapes")):
         t = s.find(f"{_V}Text")
-        shapes.append((s.get("ID") or "", "" if t is None else _one_line("".join(t.itertext()))))
+        if t is not None:  # its own text, even an empty <Text/>, wins over its master's
+            text = _shape_text(t)
+        elif master and (s.get("Master") or s.get("MasterShape")):
+            text = masters.text(master, s.get("MasterShape"))
+        else:  # no master, or a member added to an instance with no master shape behind it
+            text = ""
+        shapes.append((s.get("ID") or "", text))
     named = {sid: t for sid, t in shapes if sid}  # a shape without an ID is no connector's end
     ends: dict[str, dict[str, str]] = {}
     for c in contents.iter(f"{_V}Connect"):
@@ -244,18 +322,8 @@ def _vsdx_pages(src: Path) -> list[_Page]:
             if index is None:
                 raise ConversionError("not a Visio drawing (no visio/pages/pages.xml)")
             rels = _part(zf, "visio/pages/_rels/pages.xml.rels", budget)
-            targets = (
-                {}
-                if rels is None
-                else {
-                    # A target is relative to visio/pages/ or, from some writers, absolute ("/visio/…")
-                    r.get("Id"): posixpath.normpath(
-                        posixpath.join("visio/pages", r.get("Target") or "")
-                    ).lstrip("/")
-                    for r in _parse(rels, "the page list's relationships").iter(_RELS)
-                    if r.get("TargetMode") != "External"
-                }
-            )
+            targets = _targets(rels, "visio/pages", "the page list's relationships")
+            masters = _Masters(zf, budget)
             pages: list[_Page] = []
             for n, el in enumerate(_parse(index, "the page list").iter(f"{_V}Page"), start=1):
                 name = _one_line(el.get("Name") or el.get("NameU") or "") or f"Page {n}"
@@ -263,7 +331,7 @@ def _vsdx_pages(src: Path) -> list[_Page]:
                 rel = el.find(f"{_V}Rel")
                 part = targets.get(None if rel is None else rel.get(_R_ID))
                 data = None if part is None else _part(zf, part, budget)
-                pages.append(page if data is None else _vsdx_page(page, _parse(data, f"page {n}")))
+                pages.append(page if data is None else _vsdx_page(page, _parse(data, f"page {n}"), masters))
     except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError, zlib.error, EOFError) as exc:
         raise ConversionError(f"corrupt Visio package: {type(exc).__name__}: {exc}") from exc
     return pages

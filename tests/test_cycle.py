@@ -3001,7 +3001,10 @@ def test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page(
     assert again.commit_sha is not None and sorted(fetched) == rels
     fm, body = _mirror_page(sample_config, rels[0])
     assert (fm["status"], fm["source_title"]) == ("current", "Contoso Architecture.drawio")
-    assert fm["converter"].startswith("diagram-stdlib@1.0.0+") and "\n- Contoso API\n" in body
+    assert (
+        fm["converter"].startswith(f"diagram-stdlib@{diagram_mod._EMITTER_VERSION}+")
+        and "\n- Contoso API\n" in body
+    )
     fm, body = _mirror_page(sample_config, rels[1])
     assert fm["status"] == "current" and "\n- Contoso router -> Server 42: uplink\n" in body
     assert run(sample_config).commit_sha is None and sorted(fetched) == rels, "no file is read a second time"

@@ -11982,8 +11982,8 @@ it too. It uses the standard library only: no new dependency.
   (`(no text)` for an end without text). A page with no text reads `[no text on this page]`; a diagram
   with no text at all is the `empty-output` stub. The title is empty, so the page takes the file's name;
   the summary is `draw.io diagram: N page(s); pages: …` or `Visio drawing: …`. Pictures, shape data,
-  links, layer names and a Visio master's default text are not read (a shape that shows only its master's
-  text is missing); text on a hidden layer is read like any other.
+  links and layer names are not read; a Visio shape with no `<Text>` of its own shows its master shape's
+  text (§16.48 "PDF pictures and diagrams"); text on a hidden layer is read like any other.
 - **draw.io.** `<mxfile>` with `<diagram>` pages, each a `<mxGraphModel>` or compressed (base64 of raw
   deflate of the URI-encoded XML), or a bare `<mxGraphModel>`. A shape's text is its `value` (a
   `UserObject` or `object` wrapper's `label`). A label is HTML only when `html=1` is one of the cell's
@@ -12027,7 +12027,10 @@ it too. It uses the standard library only: no new dependency.
 Amended 2026-10-11 by §16.48 (R86): `.vsdm` is routed with `.vsdx` (routing, labels, report, old stubs and
 the extensions tuple below); it was refused here.
 
-Version: `1.0.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
+Amended 2026-10-11 by §16.48 (R86, part b): a Visio shape with no `<Text>` shows its master shape's text
+("Page" said a master's default text was not read); the version below is `1.1.0`.
+
+Version: `1.1.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
 
 ##### `agentsync.convert.diagram` — `src/agentsync/convert/diagram.py` — owner: **convert**
 
@@ -13109,6 +13112,32 @@ Tests: `tests/test_convert_formats.py`
 not-a-zip refusal and `cycle._LABEL_CAPABLE`), `tests/test_convert_core.py`
 (`test_default_registry_routes_exactly_the_contract_set`) and `tests/test_setup_report.py`
 (`test_a_log_line_never_names_a_file_a_converter_reads`, 40 suffixes).
+
+**A Visio shape without text of its own shows its master's (R86, part b; amends §16.42 "Diagrams: draw.io
+and Visio", "Page").** A shape dropped from a stencil often carries no `<Text>` element: it shows the text of
+the master shape it is an instance of, and was missing from the page. Now a shape with no `<Text>` takes that
+text. The master is found through `visio/masters/masters.xml` (a `Master` element's `ID` and its `Rel`) and
+`visio/masters/_rels/masters.xml.rels` (a target relative to `visio/masters/` or absolute, as for pages).
+A shape with a `Master` attribute is an instance: it takes the text of the master's top-level shape when the
+master has exactly one (a master of several is instanced as a group whose members name theirs), or of the
+shape its own `MasterShape` names. A member inside an instance, at any depth, takes the text of the shape its
+`MasterShape` names in the nearest enclosing instance's master; a member with no `MasterShape` (added to the
+instance on the page) and a shape naming an unknown master or master shape show nothing. Its own `<Text>`
+always wins, and an empty `<Text/>` stays empty: the master's text is never shown over it. A connector's end
+is named by the text its shape shows, master text included. The master parts are read only when a shape
+needs one (a drawing whose shapes all carry their own text never opens them), each once, and all through
+`diagram._part`: they count against the 32 MiB part cap and the 128 MiB total like a page, and past either
+the file is a `conversion failed: diagram … too large` stub. A malformed master list, its relationships or a
+master is `conversion failed: <the master list | the master list's relationships | a master> is not
+well-formed XML: …`, naming no master and quoting nothing of the file. The converter's version is
+`1.1.0+python-<x.y.z>`, so a cached reading is not reused; a page already published keeps its reading until
+its file changes.
+
+Tests: `tests/test_convert_formats.py` (`test_a_visio_shape_without_text_shows_its_masters_text`, an
+instance, an empty `<Text/>`, own text, a group instance's members by `MasterShape`, a master of two
+top-level shapes, an unknown master and a connector named by master text;
+`test_a_visio_master_is_read_only_when_needed_and_within_the_caps`) and `tests/test_cycle.py`
+(`test_a_diagram_stub_from_before_its_converter_is_read_once_as_a_page`, the version read from the module).
 
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 
