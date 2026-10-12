@@ -8702,8 +8702,8 @@ now depends on the paths the check found (`cycle._sync_leaves`, private):
 
 - Every one is a path a sync makes owner-only, a regular file or a folder, this user's, and one its owner may
   read: `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's
-  `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20). **Amended 2026-10-12, §16.51 Q49 (noted by
-  §16.61 F67):** the fix now reads `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`.
+  `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20). **Amended 2026-10-12, §16.61 F67 (by §16.51
+  Q49):** the fix now reads `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`.
 - Any other: the fix it had, `chmod -R go-rwx <the checked folders>; git -C '<docs repo>' config
   core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
   that is neither a file nor a folder, one of another user's (only its owner may change a mode), or one its
@@ -9649,7 +9649,7 @@ system.
 
 A crash still reads `check crashed: <type>: <message>`. Nothing on the Mac fixes a fault in agentsync, so
 its fix is the command that shows where it is, and the words say to report it.
-**Amended 2026-10-12, §16.51 Q49 (noted by §16.61 F67):** every `agentsync status` these two tables quote as a fix
+**Amended 2026-10-12, §16.61 F67 (by §16.51 Q49):** every `agentsync status` these two tables quote as a fix
 is printed as `~/.local/bin/agentsync status`.
 
 **An operating-system error is not a crash.** As first written, every exception but a timeout got the crash
@@ -13310,6 +13310,11 @@ a marker. A one-off failure (a network drop during resolve, a signal, a timeout)
 for good, and the messages "scripts/install.sh tries the build again on its next run" and "scripts/install.sh
 rebuilds it" would no longer be true. What a build that times out costs per run is unmeasured. A later change
 keeps retry as the default and never blocks a rebuild because of what an earlier run left behind.
+**Amended 2026-10-12, §16.61 F101 (by §16.51 Q71):** the freeze no longer rules out a clear command (§16.51
+Q71 built a hidden one, pinned in §16.10's Hidden line), so "the frozen CLI has no command to clear a marker" is no
+longer a reason. The decision stands without it. With a marker, a one-off failure (a network drop, a signal, a
+timeout) would leave speech unbuilt until someone ran that command. Today's retry needs nothing from anyone, and the
+two install.sh messages ("tries the build again on its next run", "rebuilds it") stay true.
 
 #### PDF pictures and diagrams
 
@@ -13653,7 +13658,7 @@ describe one defect and are built once, as are Q34 and Q46. Q48 removes dead cod
 **Q2: the volume line names what it reads (`agentsync.ops.doctor`).** `source.<id>.volume` reads `volume UUID
 <uuid>` for every source. The value is `getattrlist` `ATTR_VOL_UUID` of the mount point, the APFS volume's UUID,
 for a File Provider domain as for a plain folder; it said `File Provider root UUID` for any path under
-`~/Library/CloudStorage`. No consumer matched the old words. Dated line in §5's `run_checks` docstring. Tests:
+`~/Library/CloudStorage`. No consumer matched the old words. Dated line in §15's `agentsync.ops.doctor` reference, after `run_checks`. Tests:
 `test_cloud_source_without_sentinel_and_tcc_note`, `test_a_sentinel_the_system_will_not_read_is_its_own_line`.
 
 **Q14, Q35: an ok heartbeat names an incomplete listing (`agentsync.ops.doctor`).** An incomplete pass sets
@@ -13720,7 +13725,7 @@ scripts/install.sh).** Rule 5 reads `stop: the operator confirms the baseline qu
 lines); session done`. install.sh no longer rewrites it (it prints the waits above its NEXT, status below), so the
 finish, which lists the waits under the last NEXT, reads true either way. `setup_report._WAIT_NAMED` (was
 `_WAIT_BELOW`) matches the new phrase only: `_loop_line` reads the loop live through the `loop_next` hook, never a
-logged line. Dated lines in §16.4x (`_stopped_wait`) and at R133. Tests: `test_rule_5_the_operator_confirms_a_draft`,
+logged line. Dated lines in §16.30 (`_stopped_wait`) and at R133. Tests: `test_rule_5_the_operator_confirms_a_draft`,
 `test_the_closing_statuss_waits_are_printed_above_its_next`.
 
 **Q9: stubs and tombstones open with the banner (`agentsync.publish`, `agentsync.lints`, `agentsync.policy`).**
@@ -13737,7 +13742,7 @@ redacted stub keep the heading above the banner. The banner is still in the body
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
 converted` (`export it as a PDF` for an image), not `refused: no converter for <suffix>`. The stored reason,
-QUARANTINE.tsv, the body and `rendered_sha256` are unchanged. Dated line at R33 (§16.48). Tests:
+QUARANTINE.tsv, the body and `rendered_sha256` are unchanged. Dated line at R33 (§16.47). Tests:
 `test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub`,
 `test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a_stub`.
 
@@ -13768,7 +13773,7 @@ false-positive stub or queued purge from them needs undoing. Test:
 **Q16: deletion-notice counts for one file (`agentsync.cli`).** The sync line reads `N page(s) turned into
 deletion notice(s) (deleted upstream)`; status reads `· absent N (each becomes a deletion notice on a later
 complete pass if still missing)`. The alarms keep their `N file(s) ... their pages` house wording. Dated lines in
-§5 and §16.37. Tests: `test_the_sync_line_tells_the_marking_pass_from_the_removing_pass`,
+§16.12 and §16.37. Tests: `test_the_sync_line_tells_the_marking_pass_from_the_removing_pass`,
 `test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass`.
 
 **Q28: which re-reads are also counted as converted (`agentsync.cli`, `agentsync.cycle`, `agentsync.model`).** A
@@ -14075,7 +14080,7 @@ read every deck again, and no install has written a `.potx` deck page yet (its s
 no-converter rule). Pinned by
 `tests/test_convert_formats.py::test_a_template_with_no_slides_says_what_its_layouts_and_master_hold`.
 
-**Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and R33).**
+**Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
 compound-file magic: `policy.mime_msg`; `policy.rfc822_head` is the one sniff the screen and both `.msg` converters
 share) as the `.eml` it is. Under a label rule `.msg` goes to `msg-mime` (`msg.MsgMimeConverter`): such a message is screened as an `.eml` (an excluded label or, under
@@ -14168,7 +14173,7 @@ test in `tests/test_deploy_pack.py` that reads the contract against the code, ex
   (`test_the_contracts_suffix_count_for_the_log_scrub_test_is_the_converters`).
 - §16.47 cites `test_install_sh_full_run_is_idempotent` in place of a wheel test that was deleted with the wheel
   pre-build (`test_a_test_the_contract_cites_exists`: every backticked test name in this file is a test, the start
-  of one's name, or one of two names a dated line retires).
+  of one's name, or a name a dated line retires, listed in `_RETIRED_TEST_NAMES`).
 - §16.43's SUPERSEDED line and §16.40's proxy paragraph point to §16.46 R42/R67/R68 and §16.47 R110.
 
 **Docs** (Q58, Q65, Q68, Q69). data-governance.md: only an Outlook-format `.msg` with an encrypted Office attachment
@@ -14252,3 +14257,38 @@ and followed one out of it: the source stopped being a cloud path. It now stops 
 `paths.cloud_storage_roots()`, which resolves only `~/Library/CloudStorage` and its ancestors, so §16.12's "up to,
 never inside" holds again. A real `/Users/<name>` home, whose resolved root is the lexical one, is unchanged. Test:
 `tests/test_review_fixes.py` (`test_a_link_inside_the_cloud_tree_is_not_followed_under_a_linked_home`).
+
+**Docs that lagged round 4's code** (F60 and F82, one defect; F67; F75 and F81, one defect; F87; F88; F90; F91).
+Each is pinned in `tests/test_deploy_pack.py` against the code it describes:
+- data-governance.md, both READMEs and setup-feedback.md: under a label rule every `.msg` is fetched (§16.54 Q78),
+  a MIME one is screened and read as an `.eml`, and only a binary one keeps the `no converter for .msg` stub; §16.42
+  N46 gets a dated line. Not claimed: that an encrypted compound `.msg` gets the encrypted stub (no test pins it).
+  data-governance.md also drops Q45's retired "runs once the file is gone again", and its banner sentence names
+  the pages written before Q9 that keep a heading above the banner (Q9 gets the same dated line). Not built: Q9's
+  optional re-render of old tombstones in `cycle._rerender_stubs` with a `STUB_RENDER` bump. That function and
+  its version are lane E's this round (`.msg` stubs and their re-render), and a credential, path or redacted stub
+  keeps the heading anyway, so the doc must name the exception either way
+  (`test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`).
+- §7 routes `.msg` to `msg-mime` with a label rule, and its routing test reads §7 twice, without and with a rule,
+  splitting it at each SUPERSEDED clause: a clause "with a label rule" counts only under a rule and one for "no
+  label rule" only without one. The doc line alone turned the old test red, since its last match won in both
+  passes (`test_section_7_routes_every_suffix_where_the_registry_does`).
+- setup-feedback.md: the shell fallback report shows an exclude list entry by entry since §16.53 Q80; a stated
+  step 1 error splits an attempt with no end line, and is read as a first line, with both of
+  `setup_report._HEADERLESS_LABEL`'s newer labels named (§16.52 Q21, Q22); doctor's fixes are quoted with
+  `~/.local/bin/agentsync` (§16.51 Q49), with dated lines at §16.29's and §16.32's quotes, while the K table's
+  history rows keep what was true then; the placeholder table has a row for every placeholder in
+  `setup_report._LEGEND` (`<tmp>`, `<hash-N>` and `<commit-N>` were missing)
+  (`test_setup_feedback_states_the_report_rules_of_round_4`).
+
+**Contract cross-references** (F84, F85, F101). §16.55's account of `test_a_test_the_contract_cites_exists` names
+`_RETIRED_TEST_NAMES` in place of a count it outgrew. §16.51's pointers name the sections that hold their dated
+lines: Q2's is in §15's `agentsync.ops.doctor` reference, Q16's in §16.12 and §16.37, Q74's in §16.30 and at R133,
+Q27's at R33 in §16.47; §16.54 Q78 amends §16.48 R87 and §16.47 R33
+(`test_a_round_item_names_the_sections_that_hold_its_dated_lines` reads every round 4 item's "Dated line" pointer
+against the sections that hold an `Amended 2026-10-12, §16.5N <item>` line). §16.48 R140's "the frozen CLI has no
+command to clear a marker" gets a dated line: §16.51 Q71 built a hidden command under the freeze, and the decision
+stands for its other reason, that retry needs nothing from anyone
+(`test_the_speech_marker_reason_says_the_freeze_allows_a_hidden_command`). This round's own dated lines read
+`Amended 2026-10-12, §16.61 F<n> (by §16.5N <item>)` where they record another round's change, so that test reads
+round 4's markers alone.

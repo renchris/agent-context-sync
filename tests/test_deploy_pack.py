@@ -2604,6 +2604,81 @@ def test_a_test_the_contract_cites_exists() -> None:
     assert set(_RETIRED_TEST_NAMES) <= cited - defined, (
         "a retired name is cited and gone, or the list is stale"
     )
+    # B13 round 5 F84: §16.55 counted "one of two names" while the list held three; it names the list instead.
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    assert "one of two names a dated line retires" not in text
+    assert "or a name a dated line retires, listed in `_RETIRED_TEST_NAMES`" in text
+
+
+def _contracts_numbered_sections() -> list[tuple[str, str]]:
+    """CONTRACTS.md as (section number, text) in order: a `## N.` or `### N.M` heading starts one, and an
+    unnumbered heading (§15's module blocks) stays in the numbered section above it."""
+    sections: list[tuple[str, list[str]]] = [("0", [])]
+    for line in CONTRACTS.read_text(encoding="utf-8").splitlines():
+        head = re.match(r"#{2,3} (\d+(?:\.\d+)?)[. ]", line)
+        if head:
+            sections.append((head.group(1), []))
+        sections[-1][1].append(line)
+    return [(number, "\n".join(lines)) for number, lines in sections]
+
+
+def test_a_round_item_names_the_sections_that_hold_its_dated_lines() -> None:
+    """B13 round 5 F85: round 4's text pointed to the wrong sections for its own dated lines (`§5` for a line
+    in §15's doctor reference and another in §16.12, a `§16.4x` never filled in, R33 under §16.48).  For each
+    round 4 item whose paragraph says "Dated line(s) ... §X", every § it names holds an `Amended 2026-10-12,
+    §16.5N <item>` line, and every section holding one is named, or holds an "at R<n>" the sentence names.
+    And Q78's "amends §16.48 R87 and R33" put R33 in the wrong section: each R<n> it amends follows its §."""
+    sections = _contracts_numbered_sections()
+    checked = 0
+    for home in ("16.50", "16.51", "16.52", "16.53", "16.54", "16.55"):
+        body = dict(sections)[home]
+        for para in re.split(r"\n\s*\n", body):
+            item = re.match(r"\*\*([QR]\d+)\b", para)
+            flat = " ".join(para.split())
+            pointer = re.search(r"Dated lines? (?:in|at) ([^.]*(?:\.\d+[^.]*)*)\.", flat)
+            if not item or not pointer:
+                continue
+            marker = re.compile(rf"amended 2026-10-12, §{re.escape(home)} {item.group(1)}\b", re.IGNORECASE)
+            holding = {
+                number
+                for number, text in sections
+                if number != home and marker.search(" ".join(text.split()))
+            }
+            cited = set(re.findall(r"§(\d+(?:\.\d+)?)", pointer.group(1)))
+            at_r = re.findall(r"at (R\d+)(?! \()", pointer.group(1))
+            assert holding, item.group(1)
+            assert cited <= holding, (item.group(1), "names a section holding no dated line", cited - holding)
+            for number in holding - cited:
+                assert any(re.search(rf"\b{r}\b", dict(sections)[number]) for r in at_r), (
+                    item.group(1),
+                    number,
+                )
+            checked += 1
+    assert checked >= 4, "the scan found the round 4 pointers (it found few, so it is broken)"
+    q78 = " ".join(_contracts_section("**Under a label rule a `.msg` that holds MIME text", "\n\n").split())
+    amends = re.search(r"amends ([^)]*)\)", q78)
+    assert amends is not None
+    pairs = re.findall(r"(§[\d.]+ )?(R\d+)", amends.group(1))
+    assert pairs and all(section for section, _r in pairs), "every R<n> it amends follows its own §"
+    for section, r in pairs:
+        assert re.search(rf"\b{r}\b", dict(sections)[section.strip().lstrip("§")]), (section, r)
+
+
+def test_the_speech_marker_reason_says_the_freeze_allows_a_hidden_command() -> None:
+    """B13 round 5 F101: §16.48 R140 kept no skip marker partly because "the frozen CLI has no command to
+    clear a marker", while round 4's Q71 built the hidden `exclude-empty` under the same freeze.  The reason
+    keeps its words (it was true of that round) and a dated line after it says the freeze no longer rules one
+    out, and why the decision stands without it."""
+    cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
+    assert re.search(r'"exclude-empty",\n(?:.*\n){1,4}?\s+hidden=True,', cli), "a hidden command exists"
+    r140 = " ".join(
+        _contracts_section("the frozen CLI has no command to clear", "#### PDF pictures and diagrams").split()
+    )
+    assert (
+        "**Amended 2026-10-12, §16.61 F101 (by §16.51 Q71):** the freeze no longer rules out a clear" in r140
+    )
+    assert "The decision stands without it." in r140
+    assert '"tries the build again on its next run", "rebuilds it") stay true' in r140
 
 
 def test_section_7_routes_every_suffix_where_the_registry_does() -> None:
