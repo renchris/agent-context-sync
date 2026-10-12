@@ -1079,6 +1079,115 @@ def test_a_ctrl_c_while_popen_starts_the_tool_still_stops_it(
             os.kill(int(Path(f"{base}.pid").read_text()), signal.SIGKILL)
 
 
+def test_the_stop_at_once_never_kills_a_watcher_that_has_not_set_its_trap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The measured cause of R89's lost stops (B13 Q73): the stop at once reached a watcher that had not run
+    ``trap "" INT`` yet and killed it, so nothing stopped the group when this process ended.  Here the watcher
+    is slow to set its trap and the tool swallows the first SIGINT, as a child that has not exec'd yet does:
+    only the watcher's own stop, sent as this process ends, can end it.  The tool now starts only once the
+    watcher has said it ignores SIGINT."""
+    base = tmp_path / "tool"
+    tool = (
+        "import os, signal, sys, time\n"
+        "base = sys.argv[1]\n"
+        "def say(word):\n"
+        "    open(base + '.tmp', 'w').write(word)\n"
+        "    os.replace(base + '.tmp', base + '.' + word)  # whole, never half-written\n"
+        "def stop(*_):\n"
+        "    say('got-int')\n"
+        "    sys.exit(130)\n"
+        "def swallow(*_):\n"
+        "    signal.signal(signal.SIGINT, stop)\n"
+        "    say('swallowed')\n"
+        "signal.signal(signal.SIGINT, swallow)\n"
+        "open(base + '.pid', 'w').write(str(os.getpid()))\n"
+        "open(base + '.ready', 'w').close()\n"
+        "time.sleep(4)\n"
+        "say('finished-unwatched')\n"
+    )
+    argv = [sys.executable, "-I", "-c", tool, str(base)]
+    ready, swallowed = Path(f"{base}.ready"), Path(f"{base}.swallowed")
+    real, real_killpg = subprocess.Popen._execute_child, os.killpg  # type: ignore[attr-defined]
+    watchers: list[subprocess.Popen[bytes]] = []
+
+    def wait_for(path: Path) -> None:
+        deadline = time.monotonic() + 10
+        while not path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    def interrupted(self: subprocess.Popen[bytes], args: Sequence[str], *rest: object, **kw: object) -> None:
+        real(self, args, *rest, **kw)
+        if list(args)[:1] == ["/bin/sh"]:
+            watchers.append(self)
+        if list(args) == argv:
+            wait_for(ready)  # its SIGINT handler is set
+            raise KeyboardInterrupt
+
+    def killpg(pgid: int, sig: int) -> None:
+        real_killpg(pgid, sig)
+        if sig == signal.SIGINT:
+            wait_for(swallowed)  # the first SIGINT is spent before the watcher's own stop is sent
+
+    monkeypatch.setattr(ocr, "_WATCH", "sleep 2; " + ocr._WATCH)  # a watcher slow to set its trap
+    monkeypatch.setattr(subprocess.Popen, "_execute_child", interrupted)
+    monkeypatch.setattr(os, "killpg", killpg)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            ocr._run_build(argv, cwd=tmp_path, timeout=30)
+        wait_for(Path(f"{base}.got-int"))
+        assert swallowed.exists(), "the stop at once never reached the tool"
+        assert Path(f"{base}.got-int").exists(), "the tool ran on unwatched after a Ctrl-C"
+        assert watchers[0].wait(timeout=10) != -signal.SIGINT, "the stop at once killed the watcher"
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            os.kill(int(Path(f"{base}.pid").read_text()), signal.SIGKILL)
+
+
+def test_a_tool_started_with_sigint_ignored_still_stops_with_the_build(tmp_path: Path) -> None:
+    """A build started by ``cmd &`` from a script inherits SIGINT ignored, and so did every tool: one that
+    sets no handler of its own (/usr/bin/curl, the speech seed) ran on after the watcher's stop (B13 Q51).
+    Each tool now starts with SIGINT at its default.  The stub tool sets no handler: a Python started with
+    SIGINT ignored keeps it ignored."""
+    base = tmp_path / "tool"
+    tool = (
+        "import os, sys, time\n"
+        "base = sys.argv[1]\n"
+        "open(base + '.tmp', 'w').write(str(os.getpid()))\n"
+        "os.replace(base + '.tmp', base + '.pid')\n"
+        "time.sleep(6)\n"
+        "open(base + '.finished-unwatched', 'w').close()\n"
+    )
+    code = (
+        "import signal, sys\nsignal.signal(signal.SIGINT, signal.SIG_IGN)  # as a cmd & launch leaves it\n"
+        "from pathlib import Path\nfrom agentsync.convert import ocr\n"
+        f"ocr._run_build([sys.executable, '-I', '-c', {tool!r}, {str(base)!r}], cwd=Path({str(tmp_path)!r}), "
+        "timeout=30)\n"
+    )
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # its own group stands for install.sh's
+    )
+    pidfile = Path(f"{base}.pid")
+    try:
+        deadline = time.monotonic() + 20
+        while not pidfile.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        tool_pid = int(pidfile.read_text())
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=30)
+        assert gone(tool_pid, within=4.0), "a tool that inherited SIGINT ignored outlived the build"
+        assert not Path(f"{base}.finished-unwatched").exists()
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(OSError, ValueError):
+            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+
 def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp_path: Path) -> None:
     """A cycle that started before an upgrade may still be running the previous helper.  An earlier build left
     its helper and folder readable by everyone: what stays is made owner-only."""

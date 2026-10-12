@@ -543,10 +543,15 @@ def _tool(argv: Sequence[str]) -> str:
 
 
 _STOP_S = 10.0  # how long a build tool told to stop (SIGINT) gets before SIGKILL; SwiftPM took about 2 s
-# The watcher leads the process group the build tool joins.  It ignores SIGINT itself and waits for one line.
-# Unless that line is "done", the build's Python process ended while the tool ran (killed or interrupted): it
-# stops its group, the tool, the one way that also stops the tool's compilers.
-_WATCH = 'trap "" INT; read -r said; [ "$said" = done ] || kill -INT 0 2>/dev/null'
+# The watcher leads the process group the build tool joins.  It ignores SIGINT itself, says so with one empty
+# line, and waits for one line.  Unless that line is "done", the build's Python process ended while the tool
+# ran (killed or interrupted): it stops its group, the tool, the one way that also stops the tool's compilers.
+_WATCH = 'trap "" INT; echo; read -r said; [ "$said" = done ] || kill -INT 0 2>/dev/null'
+
+
+def _sigint_default() -> None:
+    """In the tool's child, before it execs: SIGINT back at its default (bring-back B13 Q51)."""
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 
 def _run_build(
@@ -561,23 +566,27 @@ def _run_build(
     killed by any signal or interrupted.  The tool joins that group as it starts, so no pid is handed over,
     and the group is the watcher's while the watcher runs, so the signal reaches no other process.  An
     interrupt that lands while Popen starts the tool leaves no Popen object: the group is then told to stop
-    at once.  A signal that reaches the child before it execs the tool is still lost, about 1 in 20 such
-    interrupts (measured): the child joins the group only after the fork, and until the exec it keeps
-    Python's SIGINT handler, which records the signal and never acts on it.  The tool's output goes to
-    unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line written after this process
-    died would end the tool before the SIGINT reached it.  Out of time, this process sends
-    the tool SIGINT, then its group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.  A
-    tool that does not start raises OSError as before.
-    A Ctrl-Z stops this process, not the tool, which keeps compiling.  A tool that ignores SIGINT, including
-    one that inherited the ignore from a ``cmd &`` launch, outlives the stop.  swiftc and SwiftPM handle
-    SIGINT themselves, so neither applies to them."""
+    at once.  The tool starts only once the watcher has said it ignores SIGINT, so that stop can never end
+    the watcher, which then stops the group again as this process ends: the stop at once used to kill a
+    watcher that had not set its trap yet, the measured cause of the tools that ran on unwatched (B13 Q73).
+    The tool's output goes to unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line
+    written after this process died would end the tool before the SIGINT reached it.  Out of time, this
+    process sends the tool SIGINT, then its group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as
+    before.  A tool that does not start raises OSError as before.
+    A Ctrl-Z stops this process, not the tool, which keeps compiling.  Each tool starts with SIGINT at its
+    default, so an ignore inherited from a ``cmd &`` launch no longer keeps any tool running: /usr/bin/curl
+    (speech's seed) sets no SIGINT handler and ran on after the stop (B13 Q51).  Only a tool that ignores
+    SIGINT itself outlives the stop."""
     env = _env() if env is None else env
+    # Only when this process ignores SIGINT: a preexec_fn makes Popen fork rather than vfork, and no tool
+    # needs it otherwise.
+    reset = _sigint_default if signal.getsignal(signal.SIGINT) is signal.SIG_IGN else None
     r, w = os.pipe()
     try:
         watcher = subprocess.Popen(
             ["/bin/sh", "-c", _WATCH],
             stdin=r,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             env=env,
             process_group=0,
@@ -589,6 +598,10 @@ def _run_build(
         os.close(r)
     proc: subprocess.Popen[bytes] | None = None
     try:
+        assert watcher.stdout is not None
+        with watcher.stdout as said:
+            if said.readline() != b"\n":
+                raise OSError("the build's watcher did not start")
         with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
             proc = subprocess.Popen(
                 list(argv),
@@ -598,6 +611,7 @@ def _run_build(
                 stdout=out,
                 stderr=err,
                 process_group=watcher.pid,
+                preexec_fn=reset,  # noqa: PLW1509 - only install.sh's one-thread build runs this
             )
             try:
                 proc.wait(timeout=timeout)
