@@ -3569,6 +3569,9 @@ def format_results(results: list[CheckResult]) -> str:
     """Render results as aligned text lines ``[ok|FAIL|warn] name — detail (fix: ...)`` (or ``(<note>)``)."""
 ```
 
+**Amended 2026-10-12, §16.51 Q2:** the volume check reads `volume UUID readable` (it reads the APFS volume's
+UUID, for a File Provider domain as for a plain folder).
+
 Amendment (2026-09-30, judge finding K5): with `AGENTSYNC_AGENT_STEP_PENDING=1` in the environment (set by
 `scripts/install.sh --confirm-install-agent` for the doctor step it runs before its agent step), each failed
 `launchd.*` result whose fix is `agentsync install-agent` or `launchctl bootstrap ...` has `fix=None` and
@@ -4731,7 +4734,9 @@ boundary); `parse_governance` rejects a prefix that is not a URL or carries a pa
 a removed folder takes its known descendants with the same reason. A local/inbox file must be absent from two
 complete passes before it is tombstoned (`extra.absent_since_run`; **amended 2026-10-08, §16.37:** `status` ends
 that source's line with `· absent N (turned into deletion notices by a later complete pass if still missing)`
-(**Amended 2026-10-12, §16.45 R105:** was `removed by ...`; the page stays as a `[DELETED UPSTREAM]` notice) while N present rows
+(**Amended 2026-10-12, §16.45 R105:** was `removed by ...`; the page stays as a `[DELETED UPSTREAM]` notice;
+**amended 2026-10-12, §16.51 Q16:** now `· absent N (each becomes a deletion notice on a later complete pass if
+still missing)`) while N present rows
 carry the mark and the breaker is not tripped (a tripped breaker removes nothing and counts its held files
 itself), and the marking pass and the removing pass each say so in an alarm); safe-save pairing runs in every
 FULL pass, complete or not. After a `[[source]]` scope change (fingerprint), files now outside it are retired
@@ -5797,7 +5802,8 @@ commits it. agentsync never writes, reads or lints `_eval/`; the files are the a
 | `_eval/answers.md` | the agent (draft answers + mirror paths), corrected by the operator | scoring only, after every answer is recorded |
 | `_eval/results-<yyyy-mm-dd>-<before\|after>.md` | a baseline run: answer, cited paths, look-up count, verdict | the operator |
 
-`skill_text` gains a "Baseline questions" section (draft about 15 candidates, keep about 10; run; pass rule) and a
+`skill_text` gains a "Baseline questions" section (draft about 15 candidates, keep about 10; run; pass rule;
+**amended 2026-10-12, §16.51 Q37:** fewer candidates on a mirror too small for 15, all kept then) and a
 sixth look-up step that forbids opening `_eval/answers.md` or `_eval/results-*.md` to answer a question. The answer
 key is a separate file so an answering agent never has it in front of it. Test:
 `test_cli.py::test_install_skill_writes_once_and_names_the_docs_repo` (moved 2026-10-04 to `test_skill.py`).
@@ -8861,6 +8867,9 @@ So a queue of any length hid both of the waits a setup stops on. The report of t
    for. `scripts/install.sh` makes the same wait its own `NEXT:`, by the same words.
 3. Else the first wait, as before.
 
+**Amended 2026-10-12, §16.51 Q74:** rule 5's phrase is `(see the WAITING ON YOU lines)` (`_WAIT_NAMED`), and
+install.sh no longer rewrites it.
+
 **Amended (2026-10-08, §16.37):** `(+N more)` is gone: every other wait follows the one shown, each as its own
 `; WAITING ON YOU: ...`, in the loop's order.
 
@@ -10646,6 +10655,9 @@ still holds no path, and the live `agentsync status` wait keeps the full path.
   Graph sources and `accept-deletions` are unchanged. **Amended 2026-10-11, §16.39 H23:** unchanged in the alarm
   (they raise none); the line of their source now says `K turned into deletion notices (deleted upstream)`, as the
   line of this pass does.
+  **Amended 2026-10-12, §16.51 Q16:** the status suffix reads `· absent N (each becomes a deletion notice on a
+  later complete pass if still missing)` and the sync line `K page(s) turned into deletion notice(s) (deleted
+  upstream)`; the alarms are unchanged.
   **Amended 2026-10-12, §16.45 R105:** the three literals above and the marking pass's alarm (`N file(s) absent from this complete pass:
   their pages become deletion notices only if still absent next pass`) said "removed"; the page stays in the
   mirror as a `[DELETED UPSTREAM]` stub until `tombstone_reap_days`, so they now say "deletion notices", plural
@@ -12618,6 +12630,9 @@ restatement. Not built: the spec's `exclude-empty` command (the CLI command set 
 (`test_an_empty_folder_in_a_plain_provider_folder_gets_no_wait`, macOS only). `tests/conftest.py` reads every
 provider folder as a domain in-process (autouse `_provider_folders_are_domains`); the R1 tests opt out with
 `real_domain_check`, and `file_provider_domain(path)` sets the real attribute for a walk in another process.
+**Amended 2026-10-12, §16.51 Q11, Q71:** the wait reads `... loses nothing, but while the listing is incomplete,
+deletions in <id> are held, not applied, and another sync does not complete it; if the folder(s) are meant to be
+empty, run `~/.local/bin/agentsync exclude-empty <id>` ...`; the command is built (§16.51 Q71).
 
 **Review fixes (R1, R102, R103).**
 - R1: `_is_domain` also counts an entry that is not a real folder on lstat (a symlinked provider entry, whose own
@@ -12770,6 +12785,8 @@ writes a stub for an item its source deleted. §16.39 N5 is amended in place (it
 measured that a refusal would stub a source's copy on an unproven inference and cost its citations (only the
 advisory above is built). R1's `agentsync exclude-empty <id>` command: the CLI command set is frozen (tests pin
 it); the wait's paste line stays the one step, and in a plain folder the turn no longer arises.
+**Amended 2026-10-12, §16.51 Q71:** built as the hidden `agentsync exclude-empty SOURCE`; the freeze allowed a
+hidden command pinned in §16.10, and no harm was measured. The operator still runs it.
 
 ### 16.46 Round 3: report redaction (2026-10-11, wave B13 round 3 lane RA)
 
@@ -12985,7 +13002,8 @@ and the next report of an attempt that was not stopped deletes the file.
   those routes. An image is the rule's only where an OCR engine exists (the cycle's `Publisher.images_readable`;
   the report's OCR part reading `ready`): without one no image converter is registered whatever the policy
   says, and the image keeps the `no converter` words and class. `convert.registry.label_withheld_suffixes()` defines the set beside the gates;
-  `setup_report._LABEL_WITHHELD` is held equal to it by a test.
+  `setup_report._LABEL_WITHHELD` is held equal to it by a test. **Amended 2026-10-12, §16.51 Q27:** the stub's
+  summary says it too (`refused: withheld by label rule: ...`).
 - **The exclude line** (R8): an allowlist. Agentsync's shipped globs show as written; every other entry is
   `"<path>"` or `"/<path>/"`. The Loop line cuts a path to its last part first (K16b), so a nested
   `"/a/b/"` entry shows there as `"<path>"`.
@@ -13504,6 +13522,8 @@ block carries a dated line).
 would read "none" after a failure: the last command before the report is then `install.sh --log`, which prints no
 NEXT. The current wording shows the previous command's NEXT, where a re-run starts. The "above" mismatch shows only
 when the installer exited 0 and the loop's sync then printed no NEXT; it loses nothing.
+**Amended 2026-10-12, §16.51 Q74:** the second half is built: rule 5 says `(see the WAITING ON YOU lines)`,
+true above or below.
 
 **Lock holder with no body** (R62; amends §16.39 N24 and §9 step 2 by dated lines). One constant names an empty
 body in `LockHeldError.who`, on the stderr line and in doctor; doctor adds `(a cycle is running)` only for a held
@@ -13614,7 +13634,137 @@ one uniquely named dummy item (`not-a-secret`) that no later run removes. Tests:
 
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
-Reserved for round 4 lane B of B13.
+Wave B13 round 4, lane B: 17 items (`~/.cache/agentsync-bring-back/b13/round4/items/Q<n>.md`, lanes in
+`round4/lanes.json`), each built to its verifier's corrected fix with a test that fails without it. Q14 and Q35
+describe one defect and are built once, as are Q34 and Q46. Q48 removes dead code and changes no behavior.
+
+**Q2: the volume line names what it reads (`agentsync.ops.doctor`).** `source.<id>.volume` reads `volume UUID
+<uuid>` for every source. The value is `getattrlist` `ATTR_VOL_UUID` of the mount point, the APFS volume's UUID,
+for a File Provider domain as for a plain folder; it said `File Provider root UUID` for any path under
+`~/Library/CloudStorage`. No consumer matched the old words. Dated line in §5's `run_checks` docstring. Tests:
+`test_cloud_source_without_sentinel_and_tcc_note`, `test_a_sentinel_the_system_will_not_read_is_its_own_line`.
+
+**Q14, Q35: an ok heartbeat names an incomplete listing (`agentsync.ops.doctor`).** An incomplete pass sets
+`last_success_at` too, so below `_INCOMPLETE_RUNS` (3) the line read as a clean full pass while the loop already
+printed a WAITING ON YOU line about the source. The line stays `[ok]` and adds `; listing incomplete for the last N
+pass(es), deletions held, a warn after 3`; the detail still starts `last success`, so
+`setup_report._yours_warn` is unaffected. The threshold and the warn are unchanged. Test: `test_heartbeat_states`.
+
+**Q48: the held-lock line loses a dead branch (`agentsync.ops.doctor`).** The early return on a body
+`LockInfo.parse` rejects (an empty one, or a corrupt leftover under install.sh's `lockf`) stays as §16.45 R37
+contracts it, reading no sidecar; the `if body else` below it could never take its else. Covered by
+`test_lock_held_with_an_empty_body_names_no_cycle`.
+
+**Q49: every runnable fix names the binary by its full path (`agentsync.ops.doctor`, `agentsync.cycle`).**
+`~/.local/bin` is not on PATH by design (install.sh installs uv with `UV_NO_MODIFY_PATH=1`), so doctor's fixes
+(login, logout, install-agent, sync, status, the run-again and crash texts, gitleaks, permissions, heartbeat,
+`add-source`) use `loop.BIN`, as R12 made cli.py's. `_AGENT_STEP_FIXES` matches `{BIN} install-agent`, so the
+install.sh doctor step still reads `installed by the agent step below`. `cycle._PURGE_QUEUE_STEPS` uses
+`skill.AGENTSYNC_BIN` (cycle cannot import loop), as do cycle's other alarms and STATE.md lines that name a
+command (`accept-deletions`, `purge --queue`, `materialise --budget`, `purge`). The tests' `assert_fix_parses`
+requires the full path. Tests:
+`test_heartbeat_states`, `test_a_launchd_fail_keeps_its_fix_while_the_installer_step_is_pending`,
+`test_sg04_label_escalation_queues_a_purge_and_drops_the_cached_plaintext`.
+
+**Q34, Q46: a cloud folder is one by the resolved CloudStorage too (`agentsync.paths`, `agentsync.arm_local`,
+`agentsync.ops.launchd`).** A source path is stored resolved, so under a home reached through a symlink (`/tmp` is
+`/private/tmp`) only `~/Library/CloudStorage`'s resolved form holds it. `paths.cloud_storage_roots()` is the one
+definition (the root and what it resolves to; resolving touches only `~/Library/CloudStorage` and its ancestors,
+never a File Provider tree); `is_cloud_path` and `arm_local._cloud_roots` (which adds the account home's) build
+on it. `paths.cloud_relative(path)` gives the path relative to the root that holds it, and
+`launchd.tcc_prompt_text` takes the provider folder from it: widening `is_cloud_path` alone made it raise
+`ValueError` from `relative_to`. `tcc_protected` reads Documents, Desktop, Downloads and Mobile Documents by the
+resolved home too. `config.canonical_source_root` stays lexical. Test:
+`test_a_home_reached_through_a_symlink_keeps_a_resolved_cloud_source_cloud`.
+
+**Q11: the empty-folder wait names each thing (`agentsync.loop`).** `N empty cloud folder(s) keep the listing of
+<id> incomplete: an empty folder in a cloud folder is expected and loses nothing, but while the listing is
+incomplete, deletions in <id> are held, not applied, and another sync does not complete it; if the folder(s) are
+meant to be empty, ...`. Dated line in §16.45 (R1). Test:
+`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`.
+
+**Q71: `agentsync exclude-empty SOURCE` (`agentsync.cli`, `agentsync.config`, `agentsync.arm_local`,
+`agentsync.loop`).** A hidden command (§16.10's Hidden line, `CLI_SURFACE`). It reads the empty cloud folders the
+source's last walk stored (manifest meta `empty_cloud_dirs:<id>`; no folder is read), keeps those today's
+`exclude` does not prune and that hold no mirrored file, and writes all of them, not five a round, as `/<path>/`
+beside the configured globs (`arm_local.exclude_globs`, shared with `exclude_advice`). A folder whose glob would
+also prune a folder holding mirrored files (a `[` is written as `?`) is left too.
+`config.set_source_exclude(config_path, source_id, exclude)` edits that one table's `exclude` as text: an
+existing key's whole span (one line or an array over several) becomes one line, keeping a comment after the
+value, or the line goes under the table's `id`; the file's line endings (LF or CRLF) are kept. The result must load, read back and change no other key before anything is written; the file is
+then replaced atomically with its mode kept. It runs under the cycle's lock, as an interactive sync waits for it.
+A folder that held mirrored files is left and counted (excluding it retires its pages past the deletion check).
+Nothing left exits 0 with `nothing to exclude`; a refused edit prints the old paste line and exits 78. The clear
+case's wait now ends `if the folder(s) are meant to be empty, run `~/.local/bin/agentsync exclude-empty <id>` (it
+adds them to that source's exclude in <sources.toml>; an excluded folder is not mirrored if it later gains
+files)`; the gone case's line is unchanged. The operator still runs it (README unchanged); decision
+71d3e66ef726's rule is unchanged. Dated line in §16.45. Tests: `tests/test_exclude_empty.py`,
+`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`.
+
+**Q74: rule 5 points at the waits without a place (`agentsync.loop`, `agentsync.setup_report`,
+scripts/install.sh).** Rule 5 reads `stop: the operator confirms the baseline questions (see the WAITING ON YOU
+lines); session done`. install.sh no longer rewrites it (it prints the waits above its NEXT, status below), so the
+finish, which lists the waits under the last NEXT, reads true either way. `setup_report._WAIT_NAMED` (was
+`_WAIT_BELOW`) matches the new phrase only: `_loop_line` reads the loop live through the `loop_next` hook, never a
+logged line. Dated lines in §16.4x (`_stopped_wait`) and at R133. Tests: `test_rule_5_the_operator_confirms_a_draft`,
+`test_the_closing_statuss_waits_are_printed_above_its_next`.
+
+**Q9: stubs and tombstones open with the banner (`agentsync.publish`, `agentsync.lints`, `agentsync.policy`).**
+A stub's and a tombstone's body is `policy.UNTRUSTED_BANNER`, a blank line, then `# [<STATUS>] <title>`, so every
+mirror page body starts with the banner, as this document and data-governance.md say. `lints` accepts a
+tombstone in either layout, so one written before this change raises no FRONTMATTER finding. Tests:
+`test_deleted_status_needs_a_tombstone_body`, `test_item_label_excluded_by_policy_gets_a_metadata_only_refused_stub`,
+`test_f_delete_writes_a_tombstone`.
+
+**Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
+`refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
+converted` (`export it as a PDF` for an image), not `refused: no converter for <suffix>`. The stored reason,
+QUARANTINE.tsv, the body and `rendered_sha256` are unchanged. Dated line at R33 (§16.48). Tests:
+`test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub`,
+`test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a_stub`.
+
+**Q75: a stub from an older rendering is rendered again, once (`agentsync.publish`, `agentsync.cycle`).** An
+unchanged refused row is never planned again, so a stub kept whatever its renderer wrote (`refused: refused:`
+before R35; the heading above the banner before Q9). `publish.STUB_RENDER` (2) versions a stub's rendering; the
+cycle (`_rerender_stubs`, manifest meta `stub_render`), once per version and only on a run that covers every
+live source, re-plans each refused or unreadable stub it can rebuild from stored state alone: a `no converter`
+stub from its name, any other from its own page (its full `reason:` and the converter fields of the read that
+made it). It never fetches or hydrates a file and skips a credential stub, a path stub and a redacted item. A
+page is written only where the plan differs from the intact page; no verdict or count moves. A row that cannot
+be planned or written (`PublishError`, `OSError`) keeps its page and is logged; no sync stops on it. The meta key is
+written after the last row, so an interrupted run tries again. Bump `STUB_RENDER` whenever a stub's text changes.
+Test: `test_a_label_stub_from_an_older_rendering_is_rendered_again_once`.
+
+**Q44: policy prose about a password is no credential (`agentsync.lints`).** `generic-password` passes over,
+after `:` only, a letters-only value followed by a lowercase word or a number (`_PROSE`: "minimum 12 characters,
+...", "contact the Contoso service desk"), and over a lone status word (`_STATUS`: required, unknown, expired,
+...). A value followed by a table bar, a bracket, a dash, a capital or a `;` is still a hit
+(`| Password: Contoso |`, `Password=Contoso; Database=crm`). No digit or symbol is required, so
+`changeme`, `letmein` and `password=Contoso`, which gitleaks misses, stay hits, as does a value with a digit
+before more words. Known miss: a letters-only password followed by more words (`changeme until first login`). The
+pattern edit moves `secret_rules_identity`, so every install screens again; the scan code is unchanged, so
+`SECRET_RULES_VERSION` stays 2. No field install ran the v2 rules (the field Mac's build predates them), so no
+false-positive stub or queued purge from them needs undoing. Test:
+`test_the_password_pattern_passes_over_placeholders_and_masks`.
+
+**Q16: deletion-notice counts for one file (`agentsync.cli`).** The sync line reads `N page(s) turned into
+deletion notice(s) (deleted upstream)`; status reads `· absent N (each becomes a deletion notice on a later
+complete pass if still missing)`. The alarms keep their `N file(s) ... their pages` house wording. Dated lines in
+§5 and §16.37. Tests: `test_the_sync_line_tells_the_marking_pass_from_the_removing_pass`,
+`test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass`.
+
+**Q28: which re-reads are also counted as converted (`agentsync.cli`, `agentsync.cycle`, `agentsync.model`).** A
+no-converter stub's re-read is the first read of its bytes, so the file is in `converted N` and in `read again R`.
+Every count stays (loop.py's sync-again note and the setup report's engine row read the raw `reread` tally);
+`CycleReport.read_first` (run tally `reread_first`) counts those reads, and the line adds ` (F of them read for
+the first time, also counted above)` after R, with no bare `converted` token for install.sh's awk. Tests:
+`test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`,
+`test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_as_a_page`.
+
+**Q37: the baseline draft on a small mirror (`agentsync.skill`).** Step 1 keeps about 15 as the target and allows
+fewer when the mirror is too small to hold that many distinct questions, never padded; the operator keeps about
+10, or all of them when fewer were drafted. No per-page formula. Dated line in §16.19. Test:
+`test_the_baseline_draft_allows_fewer_questions_on_a_small_mirror`.
 
 ### 16.52 Round 4: setup report (2026-10-12, wave B13 round 4 lane RA)
 
