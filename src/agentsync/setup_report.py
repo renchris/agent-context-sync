@@ -114,6 +114,7 @@ from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
 from agentsync.materialise import file_provider_marker
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
+from agentsync.skill import AGENTSYNC_BIN
 
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES = (
@@ -1599,10 +1600,12 @@ def loop_stage(baseline: str | None, topics: int | None, synced: bool) -> str:
 
 
 def loop_next_text(line: str) -> str:
-    """A ``NEXT:`` line without paths: each ``~/...`` or ``/...`` path becomes its last part
-    (``~/.local/bin/agentsync`` is ``agentsync``). The loop's wording names no mirror path or file name, so
+    """A ``NEXT:`` line without paths: each ``~/...`` or ``/...`` path becomes its last part, except
+    agentsync's own fixed ``~/.local/bin/agentsync`` (``loop.BIN``), which is kept whole: it holds no name,
+    the doctor's fixes and the report's status lines print it the same way, and it stays runnable when
+    ~/.local/bin is not on PATH (B13 round 4 Q12). The loop's wording names no mirror path or file name, so
     this leaves fixed text, counts and source ids (which the report redacts)."""
-    return _NEXT_PATH_RE.sub(r"\1", line.strip())
+    return AGENTSYNC_BIN.join(_NEXT_PATH_RE.sub(r"\1", part) for part in line.strip().split(AGENTSYNC_BIN))
 
 
 _IT_DRAFT_DATE_RE = re.compile(r"\bdate = (\d{4}-\d{2}-\d{2})\b")

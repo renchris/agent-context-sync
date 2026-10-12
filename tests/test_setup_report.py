@@ -3343,8 +3343,9 @@ def test_loop_stage_and_next_text() -> None:
         '`~/.local/bin/agentsync add-source "<folder>"` for each, then `/Users/x/.local/bin/agentsync sync`'
     ) == (
         "NEXT: no folder is synced yet: ask the operator which folders to sync (`install.sh --list-folders` "
-        'lists them), then run `agentsync add-source "<folder>"` for each, then `agentsync sync`'
-    )
+        'lists them), then run `~/.local/bin/agentsync add-source "<folder>"` for each, then `agentsync sync`'
+    ), "agentsync's own ~/.local/bin/agentsync stays whole; every other path, an absolute one too, is cut"
+    assert setup_report.AGENTSYNC_BIN == loop.BIN == "~/.local/bin/agentsync"
     assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
     # On its own, loop_next_text keeps the folder's last part; the Loop line names it in words first
     # (_eval_by_name).
@@ -3373,7 +3374,9 @@ def test_v7_sync_only_reads_synced_and_draft_the_baseline_questions(
     )
     [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
     assert loop.startswith("- Loop: synced; NEXT: draft the baseline questions"), loop
-    assert "~/" not in loop and "/Users/" not in loop and "`agentsync sync`" in loop
+    # every path cut but agentsync's own fixed one, kept whole (B13 round 4 Q12)
+    cut = loop.replace(setup_report.AGENTSYNC_BIN, "")
+    assert "~/" not in cut and "/Users/" not in loop and "`~/.local/bin/agentsync sync`" in loop
     assert "- prompt: v7 · " in summary, "a v7 attempt is still judged, and nothing says its copy was old"
     assert "IT draft" not in summary, "v7 has no IT request step"
     assert "NEXT:" not in section(text, "Status")
@@ -3448,10 +3451,11 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(loop_next=slow))
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert loop.endswith(
-        "; NEXT: draft the baseline questions: run `agentsync sync`; WAITING ON YOU: macOS held the listing "
-        "of one for a privacy prompt: click Allow on the macOS prompt (it can sit behind other windows), "
-        "then run `agentsync sync`; WAITING ON YOU: 2 queued purge(s): preview with `agentsync purge --queue "
-        "--dry-run` (writes nothing) before you run `agentsync purge --queue` (rewrites history)"
+        "; NEXT: draft the baseline questions: run `~/.local/bin/agentsync sync`; WAITING ON YOU: macOS held "
+        "the listing of one for a privacy prompt: click Allow on the macOS prompt (it can sit behind other "
+        "windows), then run `agentsync sync`; WAITING ON YOU: 2 queued purge(s): preview with "
+        "`~/.local/bin/agentsync purge --queue --dry-run` (writes nothing) before you run "
+        "`~/.local/bin/agentsync purge --queue` (rewrites history)"
     ), loop
     took = re.search(r"^- took: ([0-9.]+)s", text, flags=re.MULTILINE)
     assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
@@ -3600,8 +3604,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     selector = governance.PurgeSelector(source_id=held, path_glob="*")
     assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
     purge = (
-        "WAITING ON YOU: 1 queued purge(s): preview with `agentsync purge --queue --dry-run` (writes "
-        "nothing) before you run `agentsync purge --queue` (rewrites history)"
+        "WAITING ON YOU: 1 queued purge(s): preview with `~/.local/bin/agentsync purge --queue --dry-run` "
+        "(writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites history)"
     )
 
     def loop_line() -> str:
@@ -3635,9 +3639,10 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     line = loop_line()
     assert re.search(
         r"; WAITING ON YOU: macOS held the listing of <(?:source|folder)-\d+> for a privacy prompt: click "
-        r"Allow on the macOS prompt \(it can sit behind other windows\), then run `agentsync sync`; "
-        r"WAITING ON YOU: 1 queued purge\(s\): preview with `agentsync purge --queue --dry-run` \(writes "
-        r"nothing\) before you run `agentsync purge --queue` \(rewrites history\)$",
+        r"Allow on the macOS prompt \(it can sit behind other windows\), then run "
+        r"`~/\.local/bin/agentsync sync`; WAITING ON YOU: 1 queued purge\(s\): preview with "
+        r"`~/\.local/bin/agentsync purge --queue --dry-run` \(writes nothing\) before you run "
+        r"`~/\.local/bin/agentsync purge --queue` \(rewrites history\)$",
         line,
     ), line
     assert line.index("macOS held") < line.index("queued purge") and "(WAITING ON YOU below)" not in line
@@ -3656,8 +3661,9 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep about 10 "
         r"in questions\.md, "
         r"correct the answers in answers\.md, and change both files to status: confirmed; WAITING ON YOU: 1 "
-        r"queued purge\(s\): preview with `agentsync purge --queue --dry-run` \(writes nothing\) before you "
-        r"run `agentsync purge --queue` \(rewrites history\); WAITING ON YOU: macOS held the listing of "
+        r"queued purge\(s\): preview with `~/\.local/bin/agentsync purge --queue --dry-run` \(writes "
+        r"nothing\) before you run `~/\.local/bin/agentsync purge --queue` \(rewrites history\); WAITING ON "
+        r"YOU: macOS held the listing of "
         r"<(?:source|folder)-\d+> .*$",
         line,
     ), line
