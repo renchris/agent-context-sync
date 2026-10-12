@@ -13009,7 +13009,7 @@ the tool are in that group. One race remains, and it is wider than the join alon
 child before it execs the tool is lost. The child joins the group only after the fork, and until the exec it
 keeps CPython's C SIGINT handler (on the fork path `_posixsubprocess` restores only SIGPIPE, SIGXFZ and
 SIGXFSZ), which records the signal for Python code the child never runs again. Both the direct `killpg` and the
-watcher's end-of-input stop can land in that window. Measured by the round 3 review at e33e50c, with SIGINT sent
+watcher's end-of-input stop can land in that window. Measured by the round 3 review of the R89 fix, with SIGINT sent
 to the main thread at a random point 0-4 ms into the tool's Popen: 6 of 115 interrupts that landed mid-Popen
 still let the tool finish unwatched, and 17 of 103 with 8,000 extra open file descriptors, which lengthen
 `close_fds` after the join, so the loss is after the join, not before it. Not built: a second group SIGINT a
