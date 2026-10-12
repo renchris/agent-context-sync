@@ -2502,13 +2502,16 @@ def run_purge_queue(
             stays.append(q)
 
         for n, q in enumerate(queue):
+            if n in covered:
+                # an earlier purge of this run did it (or, in a preview, would): audited and noted on that
+                # report.  Skipped before the kept check, which a preview would judge on a manifest it left as
+                # it is: the run's covering purge has already erased the row that check reads
+                continue
             why = _kept_upstream_deletion(sp.db, q)
             if why:
                 log.warning("governance: %s", why)
                 not_run(q, why)
                 continue
-            if n in covered:
-                continue  # an earlier purge of this run did it: audited and noted when that purge verified
             try:
                 rep = purge(
                     config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now

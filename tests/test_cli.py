@@ -1679,6 +1679,32 @@ def test_purge_queue_preview_counts_a_covered_entry_as_the_run_does(
     assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
 
 
+def test_purge_queue_preview_does_not_keep_a_covered_upstream_deletion(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F80 (B13 round 5): an upstream deletion of a live file queued behind a label escalation of the same
+    file read, in the preview, both "would also do ... the run takes it off the queue" and "not run ... stays
+    queued", because the kept check ran before the covered skip on a manifest the preview left as it was.  The
+    run takes it off; the preview now says only that."""
+    cfg = _synced(initialised)
+    root = initialised.state_paths.root
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    for reason in (governance.PurgeReason.LABEL_ESCALATION, governance.PurgeReason.UPSTREAM_DELETED):
+        assert governance.enqueue_purge(root, selector, reason)
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    note = "would also do the queued upstream-deleted purge of the same item: the run takes it off the queue"
+    assert f"  note: {note}" in out
+    assert "not run" not in out
+    assert "stays queued" not in out
+    assert out.splitlines()[-1] == "1 queued purge(s) previewed (dry run, nothing written); 2 queued"
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+    assert governance.pending_purges(root) == []
+
+
 def test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewed(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

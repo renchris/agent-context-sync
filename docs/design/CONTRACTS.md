@@ -14199,7 +14199,22 @@ approvals as not observable (R24); an exclude line shows agentsync's own globs a
 
 ### 16.56 Round 5: purge (2026-10-12, wave B13 round 5 lane A)
 
-Reserved for round 5 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 5").
+Round 5 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 5"): the purge preview, exclude-empty's lock,
+the absent-file counts and alarms, the doctor's lock line, the retirement advice, the binary's full path in printed
+commands, and the contract stub test (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`). Each entry names the
+finding it builds; an entry that changes text an older section quotes is that section's dated amendment
+(2026-10-12).
+
+**F80: the purge queue preview skips a covered entry before judging it kept** (`agentsync.governance`). §16.50 Q61
+said the loop skips the entries a previewed purge covers, but `run_purge_queue` asked `_kept_upstream_deletion`
+first: a preview leaves the manifest as it is, so an upstream deletion of a live file queued behind a label
+escalation of the same file read both `would also do the queued upstream-deleted purge ...: the run takes it off the
+queue` and `purge stable-id (upstream-deleted): not run` / `note: stays queued: ...`, while the run takes it off. A
+covered entry is now skipped before the kept check, in the preview and the run alike; in the run the covering purge
+has already erased the row the check reads, so only the preview's words change. Q61's "the loop skips those
+entries" and `docs/deploy/setup-feedback.md`'s "the entries a run would keep are exactly those with a `note: stays
+queued:` line" now hold. Tests:
+`tests/test_cli.py::test_purge_queue_preview_does_not_keep_a_covered_upstream_deletion`.
 
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
