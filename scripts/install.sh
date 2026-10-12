@@ -1284,7 +1284,7 @@ redaction_pairs() {
 				"${HTTP_PROXY:-}" "${http_proxy:-}"
 			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
 			git_proxy_values
-			# The LaunchAgent's own (launchctl setenv), which doctor's network.proxy.job line prints (B13 R68); a
+			# The LaunchAgent environment (launchctl setenv) that the doctor network.proxy.job line prints (B13 R68); a
 			# read, as launchd_print is, and none when launchd is simulated (no launchctl call at all).
 			[ "$SIMULATE" -eq 1 ] || for k in HTTPS_PROXY https_proxy ALL_PROXY all_proxy HTTP_PROXY http_proxy; do
 				with_timeout 5 "$LAUNCHCTL" getenv "$k" </dev/null || true

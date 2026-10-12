@@ -19,18 +19,35 @@ from typing import Any
 
 import pytest
 
+from agentsync.convert import speech
+
 ROOT = Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / "docs" / "deploy"
 ENTRA = DEPLOY / "entra-app.json"
 PPPC = DEPLOY / "mdm" / "agentsync-pppc.mobileconfig"
 SCRIPTS = (ROOT / "scripts" / "install.sh", ROOT / "scripts" / "tenant-probes.sh")
+SHELL_SCRIPTS = sorted(
+    path
+    for folder in ("scripts", "probes", "launcher", "docs/design/receipts/review/scripts")
+    for path in (ROOT / folder).glob("*.sh")
+)
+BASH_SCRIPTS = [p for p in SHELL_SCRIPTS if p.read_text(encoding="utf-8").startswith("#!/bin/bash\n")]
+BASH = "/bin/bash" if sys.platform == "darwin" else "bash"
+"""The bash these scripts run under: on a Mac, /bin/bash is 3.2, whose parser is not bash 5's."""
 SPEECH_PACKAGE = ROOT / "src" / "agentsync" / "convert" / "speech_helper" / "Package.swift"
-FLUIDAUDIO_BINARY_TARGETS = {
-    "04e363c29d9a754022d602d6fe1468ab80a0f705": ("NemoTextProcessing.xcframework.zip", "text-processing-rs"),
-}
-"""FluidAudio's remote binary targets at each commit speech_helper/Package.swift may pin, read from
-FluidAudio's own Package.swift and Package@swift-6.2.swift at that commit (H9). A new pin is a KeyError in
-test_it_request_names_the_speech_build_downloads until someone re-reads them and updates the IT request."""
+
+
+def nemo_release() -> tuple[str, str]:
+    """The archive and release repository of FluidAudio's one remote binary target, read from
+    ``speech.NEMO_URL``, the one url the speech build fetches (B13 round 4 Q60: a second hand-copied table
+    could go stale beside it). The url is checked against FluidAudio's own Package.swift at each pin by
+    test_speech's FLUIDAUDIO_NEMO, a KeyError at a new pin until someone re-reads it."""
+    m = re.fullmatch(
+        r"https://github\.com/FluidInference/([^/]+)/releases/download/v[^/]+/([^/]+)", speech.NEMO_URL
+    )
+    assert m, speech.NEMO_URL
+    return m.group(2), m.group(1)
+
 
 REDIRECT_URIS = ["http://localhost", "msauth.com.msauth.unsignedapp://auth"]
 """C15 section 1.6: the loopback rung (MSAL uses http://localhost:<port>) and the macOS broker rung (MSAL
@@ -92,7 +109,8 @@ def test_it_request_names_the_speech_build_downloads() -> None:
     assert m, "speech_helper/Package.swift pins FluidAudio by URL and revision"
     repo, revision = m.groups()
     assert f"`{repo}`" in section and f"`{revision[:7]}`" in section, "the git fetch and its pin"
-    archive, release_repo = FLUIDAUDIO_BINARY_TARGETS[revision]
+    assert revision == speech.FLUIDAUDIO_PIN, "a new pin: re-read FluidAudio's binary targets (test_speech)"
+    archive, release_repo = nemo_release()
     assert f"`{archive}`" in section and release_repo in section, "the prebuilt binary FluidAudio links"
     assert "`release-assets.githubusercontent.com`" in section, "the host GitHub serves release files from"
     assert "`[convert] recordings = false`" in section, "how IT turns the build off"
@@ -123,12 +141,9 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
         "files.pythonhosted.org",
         "release-assets.githubusercontent.com",
     }
-    package = SPEECH_PACKAGE.read_text(encoding="utf-8")
-    [revision] = re.findall(r'revision: "([0-9a-f]{40})"', package)
-    archive, release_repo = FLUIDAUDIO_BINARY_TARGETS[revision]
     url, end = hosts.release_file(bullet)
-    assert url.startswith(f"https://github.com/FluidInference/{release_repo}/releases/download/v")
-    assert url.endswith(f"/{archive}") and end == "release-assets.githubusercontent.com"
+    assert url == speech.NEMO_URL, "the page names the release the speech build fetches (B13 round 4 Q60)"
+    assert end == "release-assets.githubusercontent.com"
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert hosts.uv_installer_url(script) == "https://astral.sh/uv/install.sh"
     installer = (
@@ -194,10 +209,57 @@ def test_pppc_profile_passes_plutil_lint() -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-@pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
+@pytest.mark.parametrize("script", BASH_SCRIPTS, ids=lambda p: p.name)
 def test_scripts_parse_with_bash_n(script: Path) -> None:
-    proc = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True, check=False)
+    """Every ``#!/bin/bash`` script parses under the bash it runs under, /bin/bash 3.2 on a Mac: an apostrophe
+    in a comment inside a multi-line ``"$( )"`` fails 3.2's ``-n`` and passes bash 5's (B13 round 4 Q84).  It
+    does not catch the same apostrophe inside ``<( )``, which 3.2 parses and then fails at run time;
+    test_no_apostrophe_in_a_comment_inside_a_substitution is for that."""
+    proc = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
+
+
+def substitution_comment_apostrophes(text: str) -> list[int]:
+    """The line numbers of comment lines holding a straight apostrophe inside a multi-line ``$(``, ``"$(``
+    or ``<(`` block: one opened by a line ending in it, closed by a line whose first non-blank character is
+    ``)``.  A line ending in another ``(`` (an array, a subshell) opens a block that is not a substitution."""
+    found: list[int] = []
+    open_: list[bool] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        body = line.strip()
+        if body.startswith("#"):
+            if any(open_) and "'" in body:
+                found.append(number)
+            continue
+        if body.startswith(")") and open_:
+            open_.pop()
+        if re.search(r"[$<]\($", body):
+            open_.append(True)
+        elif body.endswith("("):
+            open_.append(False)
+    return found
+
+
+def test_the_substitution_lint_finds_the_round_3_shape() -> None:
+    text = (
+        'f() {\n\twhile read -r k; do\n\t\techo "$k"\n\tdone < <(\n\t\t# Contoso\'s odd one\n'
+        '\t\tprintf "a\\n"\n\t)\n}\nx="$(\n\t# a quoted one\n\tdate\n)"\narr=(\n\t# Contoso\'s array\n)\n'
+    )
+    assert substitution_comment_apostrophes(text) == [5]
+
+
+@pytest.mark.parametrize("script", SHELL_SCRIPTS, ids=lambda p: p.name)
+def test_no_apostrophe_in_a_comment_inside_a_substitution(script: Path) -> None:
+    """/bin/bash 3.2 reads a straight apostrophe in a comment inside a multi-line ``$( )`` or ``<( )`` as an
+    open quote.  Inside ``<( )`` neither its ``-n`` nor bash 5's nor shellcheck notices, and at run time the
+    substitution fails ("bad substitution"): in round 3 that silently dropped every proxy pair of install.sh,
+    when a comment there went from two apostrophes to three (B13 round 4 Q84).  So none is allowed, even an
+    even number."""
+    lines = substitution_comment_apostrophes(script.read_text(encoding="utf-8"))
+    assert lines == [], (
+        f"{script.name} lines {lines}: a comment inside a multi-line substitution holds an apostrophe; "
+        "move the comment above the substitution or drop the apostrophe"
+    )
 
 
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
