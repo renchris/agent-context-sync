@@ -723,7 +723,8 @@ def test_the_closing_statuss_waits_are_printed_above_its_next(
     waits = [
         "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10 in "
         "questions.md, correct the answers in answers.md, and change both files to status: confirmed",
-        "WAITING ON YOU: 2 queued purge(s): run `~/.local/bin/agentsync purge --queue`",
+        "WAITING ON YOU: 2 queued purge(s): preview with `~/.local/bin/agentsync purge --queue --dry-run` "
+        "(writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites history)",
     ]
     out = "\n".join([f"NEXT: {rule5}", *waits, "note: a later sync lists it"])
     cp = install_sh({**env, "STUB_STATUS_OUT": out}, str(wheel), "--source-local", str(folder))

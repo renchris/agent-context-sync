@@ -3383,7 +3383,9 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
             "NEXT: draft the baseline questions: run `~/.local/bin/agentsync sync`",
             "WAITING ON YOU: macOS held the listing of one for a privacy prompt: click Allow on the macOS "
             "prompt (it can sit behind other windows), then run `/Users/x/.local/bin/agentsync sync`",
-            "WAITING ON YOU: 2 queued purge(s): run `~/.local/bin/agentsync purge --queue`",
+            "WAITING ON YOU: 2 queued purge(s): preview with `~/.local/bin/agentsync purge --queue "
+            "--dry-run` (writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites "
+            "history)",
             "note: 3 online-only file(s) in one wait for a later sync's download budget",
         ]
 
@@ -3392,7 +3394,8 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
     assert loop.endswith(
         "; NEXT: draft the baseline questions: run `agentsync sync`; WAITING ON YOU: macOS held the listing "
         "of one for a privacy prompt: click Allow on the macOS prompt (it can sit behind other windows), "
-        "then run `agentsync sync`; WAITING ON YOU: 2 queued purge(s): run `agentsync purge --queue`"
+        "then run `agentsync sync`; WAITING ON YOU: 2 queued purge(s): preview with `agentsync purge --queue "
+        "--dry-run` (writes nothing) before you run `agentsync purge --queue` (rewrites history)"
     ), loop
     took = re.search(r"^- took: ([0-9.]+)s", text, flags=re.MULTILINE)
     assert took is not None and float(took.group(1)) >= 1.0, "took counts the Loop line's hook"
@@ -3599,7 +3602,10 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
     """The rule by itself, on lines in the loop's order. The draft wait is shown only when the NEXT line
     points at a wait; without that a held listing comes before it; and a NEXT that points at a wait the
     lines do not have falls back to the same order."""
-    purge = "WAITING ON YOU: 14 queued purge(s): run `~/.local/bin/agentsync purge --queue`"
+    purge = (
+        "WAITING ON YOU: 14 queued purge(s): preview with `~/.local/bin/agentsync purge --queue --dry-run` "
+        "(writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites history)"
+    )
     breaker = "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone)"
     held = "WAITING ON YOU: macOS held the listing of work for a privacy prompt: click Allow"
     draft = "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10"
