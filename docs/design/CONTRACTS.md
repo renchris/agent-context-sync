@@ -13708,7 +13708,130 @@ Reserved for round 4 lane RB of B13.
 
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 
-Reserved for round 4 lane E of B13.
+Items are the round 4 harvest's and reviews' (`docs/plans/bring-back-ocr.md`, "B13 round 4"). Where a part corrects
+§16.48, the correction is stated here and §16.48 is left as it was.
+
+#### Build tools
+
+**The watcher is ready before a tool starts (Q73; corrects §16.48 R89).** The loss R89 measured (a tool that ran
+on unwatched after an interrupt mid-Popen) was not the child before its exec. In every lost trial the watcher had
+exited -2: `_run_build`'s stop at once (`os.killpg(watcher.pid, SIGINT)`) reached a `/bin/sh` that had not yet
+run `trap "" INT`, killed it, and nothing stopped the group when Python ended. `_WATCH` is now
+`trap "" INT; echo; read -r said; ...`: the watcher prints one line after its trap, and `_run_build` reads that line
+(a pipe, closed at once and never passed to the tool) before it starts the tool. A watcher that dies first raises
+OSError, which the build reports as before. With the watcher alive the round 4 verifier measured 0 lost stops in
+425 mid-Popen interrupts (with and without 8,000 extra file descriptors), so neither a second group SIGINT nor a
+SIGKILL tail is built: on Swift 6.2.4 SwiftPM ends 0.00-0.02 s after a group SIGINT, with no compiler left 5 s
+later, and a second SIGINT finds the build already gone; the git calls take milliseconds. Pinned by
+`tests/test_ocr.py::test_the_stop_at_once_never_kills_a_watcher_that_has_not_set_its_trap`: a watcher slow to set
+its trap and a tool that swallows the first SIGINT; before the fix the watcher died and the tool ran to its end.
+
+**Each tool starts with SIGINT at its default (Q51; corrects §16.48 R130).** R130 left a tool that inherited an
+ignored SIGINT from a `cmd &` launch unbuilt because swiftc and SwiftPM set their own handlers. R83 then put
+`/usr/bin/curl` (the speech seed) on the same path, and curl sets none: with SIGINT ignored at launch, a curl was
+still fetching 2 s after the build's process group was killed, against none with SIGINT at default. When this
+process ignores SIGINT, `_run_build` starts each tool through a `preexec_fn` that sets SIGINT back to its default
+before the exec; the parent's own disposition never changes, and with SIGINT not ignored no `preexec_fn` is passed
+(it makes Popen fork rather than vfork). Only a tool that ignores SIGINT itself now outlives the stop. Pinned by
+`tests/test_ocr.py::test_a_tool_started_with_sigint_ignored_still_stops_with_the_build`.
+
+#### The speech build
+
+**The seed's curl trusts and routes as git does, from git's config too (Q52, and Q79 for the CA folder).** §16.48
+said the seed's curl trusts what step 1's git trusts; that held only for `GIT_SSL_CAINFO` in the environment. Git
+also reads `http.sslCAInfo`, `http.sslCAPath`, `http.sslBackend` and `http.proxy` from its config files, and
+SwiftPM's clone used them. `speech._seed` now runs the build's git once,
+`git config --type=path --get-urlmatch http https://github.com` (url-scoped values count; a `~` path comes back
+expanded), and `_curl_env` maps with git's precedence: the bundle (`GIT_SSL_CAINFO`, else `http.sslCAInfo`) to
+`CURL_CA_BUNDLE` unless the shell names a bundle of curl's own; the CA folder (`GIT_SSL_CAPATH`, else
+`http.sslCAPath`) to `SSL_CERT_DIR` unless the shell sets one; `http.sslBackend` to `CURL_SSL_BACKEND` unless the
+shell sets it; `http.proxy`, which wins over the environment in git, to `HTTPS_PROXY` and `https_proxy`, in curl's
+environment and never on argv. The seed also runs when only git's config names a proxy. `http.sslVerify` is never
+read. The CA folder: `/usr/bin/curl` 8.7.1 (LibreSSL) ignores `GIT_SSL_CAPATH` (exit 60), and with `SSL_CERT_DIR`
+at a hashed folder beside `/etc/ssl/cert.pem` it fetched from a server that folder's CA signed, while github.com
+still fetched with it at that folder or at one that does not exist; under `CURL_SSL_BACKEND=secure-transport` it
+is ignored, as before. This replaces §16.48's "`GIT_SSL_CAPATH` is not mapped", whose measurement put the folder
+beside an unusable bundle. Pinned by `tests/test_speech.py::test_the_seed_trusts_and_routes_as_gits_own_config_does`,
+`tests/test_speech.py::test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the_configs`,
+`tests/test_speech.py::test_without_a_proxy_in_the_shell_or_gits_config_nothing_is_fetched` and
+`tests/test_speech.py::test_a_ca_folder_only_git_trusts_is_the_seeds_curl_folder_unless_curl_has_its_own`.
+
+**The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
+replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
+`--config-path` and was "not found" under another), so since R90 a Mac that reaches GitHub only through a SwiftPM
+mirror or registry could not build. Every build copies `mirrors.json` and `registries.json` from the shared folder
+(`~/Library/org.swift.swiftpm/configuration`, then `~/.swiftpm/configuration`, found from HOME so a rehearsal
+never reads the real one) into `<cache>/speech/swiftpm/config`, owner-only, and removes a copy whose source is
+gone. Pinned by
+`tests/test_speech.py::test_the_persons_swiftpm_mirrors_and_registries_reach_the_build_and_leave_with_them`.
+
+#### Converters
+
+**A template or drawing saved again unchanged is not changed (Q76).** `canonical.OOXML_SUFFIXES` is now
+`policy.OOXML_SUFFIXES`, one list, so H1 hashes `.potx`, `.vsdx`, `.vsdm`, `.dotx` and `.xltx` by their parts; a
+save that changes only docProps is touched, not changed. A purge records the H1 of its day (`bytes@1` for these
+until now), so `_after_fetch` also checks the fetched bytes' own hash against the purged hashes: a byte-identical
+copy of a template purged before stays suppressed. An existing row is changed once (`canonical-method-changed`)
+and keeps its pages (H2). Not built: also recording the raw hash at purge time (the round 4 verifier's optional
+step; the check at fetch already holds every purge recorded so far). Pinned by
+`tests/test_convert_core.py::test_a_template_or_drawing_saved_again_unchanged_hashes_the_same`,
+`tests/test_review_fixes.py::test_a_template_purged_under_its_raw_bytes_hash_stays_suppressed` and
+`tests/test_review_fixes.py::test_a_template_hashed_as_bytes_before_is_changed_once_and_keeps_its_page`.
+
+**A template with no slides says what its layouts and master hold (Q77; amends §16.48 R85).** Under
+`[empty presentation: no slides]` the page names the layouts (`Layouts: …`) and gives the fixed text of the
+masters and layouts in reading order: every shape that is not a placeholder, and a footer placeholder that carries
+text; never a title, body, object, picture, date or slide-number placeholder, which hold prompt text or a field.
+The title is the first fixed text, else the first layout name, never the marker; the summary adds `N layout(s)`.
+The deck emitter's version is unchanged: an `outdated()` rule cannot tell `.potx` pages from `.pptx` ones and would
+read every deck again, and no install has written a `.potx` deck page yet (its stubs are read again by the
+no-converter rule). Pinned by
+`tests/test_convert_formats.py::test_a_template_with_no_slides_says_what_its_layouts_and_master_hold`.
+
+**Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and R33).**
+`policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
+compound-file magic: `policy.mime_msg`; `policy.rfc822_head` is the one sniff the screen and both `.msg` converters
+share) as the `.eml` it is. Under a label rule `.msg` goes to `msg-mime` (`msg.MsgMimeConverter`): such a message is screened as an `.eml` (an excluded label or, under
+`refuse_unlabelled`, no label refuses it) and read through the `.eml` converter. A binary `.msg` keeps the reason
+`no converter for .msg`, the page's wording and the setup report's count (`NotConvertibleError` in `convert_file`,
+under `msg-mime`'s id). `msg-mime` claiming `.msg` makes each existing `.msg` stub a re-read target once; a binary
+one gets the same refusal back, and that settles it: a `no converter` refusal counts as lacking, or as a target,
+only when the converter now claiming its suffix is not the one that gave it, and a kept stub's output rows take the
+converter of its conversion, which no cache row records for a stub. Without that, three binary `.msg` in a row
+stopped every other re-read of the cycle (`_REREAD_STREAK`) and each was read again every cycle. Lifting the rule
+reads them again through `msg-olefile`. Under a rule a `.msg` is now fetched, since only its bytes say which kind
+it is. Pinned by `tests/test_convert_formats.py::test_under_a_label_rule_a_binary_msg_is_the_no_converter_stub`,
+`tests/test_convert_formats.py::test_under_a_label_rule_a_msg_that_holds_mime_text_is_screened_as_an_eml` and
+`tests/test_cycle.py::test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files_reread`. 2026-10-12: §16.48 R87's
+`test_under_a_label_rule_a_msg_is_the_no_converter_stub` is replaced by the first two, since a MIME `.msg` under a
+rule is no longer the stub.
+
+#### Tests
+
+**A time bound under load (Q59, Q82).** The `timing` marker says what conftest does: a run whose 1-minute load is
+above 4 per core skips it, and `AGENTSYNC_TIMING=1` runs it anyway; nothing reruns a test.
+`tests/test_install_oneshot.py::test_friction_options_are_fast`, a CPU-time bound that load stretched to
+0.27-0.43 s against 0.2 s, is marked `timing`. `tests/test_curate.py::test_the_citation_lint_survives_hostile_pages_and_units`
+measures its linear-time bound in CPU time, so its hostile-input checks run on every Mac;
+`tests/test_cycle.py::test_a_held_root_read_ends_in_the_same_click_allow_pass` holds the read for two minutes
+against a one-minute bound; `tests/test_setup_report.py::test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_the_copy`
+and `tests/test_setup_report.py::test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli` take
+`roomy_budget` (with the report budget starved to 0.3 s, both fail without it).
+
+**The IT request names the release the speech build fetches (Q60).**
+`tests/test_deploy_pack.py::test_a_weekly_check_follows_the_download_hosts_the_it_request_names` requires the
+page's release url to equal `speech.NEMO_URL`, and the hand-copied table of FluidAudio's binary targets is gone:
+the archive and release repository are read from that url, and a new pin fails
+`tests/test_deploy_pack.py::test_it_request_names_the_speech_build_downloads` against `speech.FLUIDAUDIO_PIN`.
+
+**Bash 3.2 (Q84).** An apostrophe in a comment inside a multi-line `<( )` passes bash 5's `-n`, `/bin/bash` 3.2's
+`-n` and shellcheck, then fails at run time ("bad substitution"); in round 3 it dropped every proxy pair.
+`tests/test_deploy_pack.py::test_no_apostrophe_in_a_comment_inside_a_substitution` refuses any apostrophe in a
+comment inside a multi-line `$(`, `"$(` or `<(` block of `scripts`, `probes`, `launcher` and the review receipts'
+scripts (`install.sh`'s one such comment is reworded), and
+`tests/test_deploy_pack.py::test_scripts_parse_with_bash_n` parses every `#!/bin/bash` script with `/bin/bash` on a
+Mac, which catches the quoted `"$( )"` form bash 5 accepts. An unquoted `$( )` with the same comment parses and
+runs under 3.2.
 
 ### 16.55 Round 4: setup prompt v13 and docs (2026-10-12, wave B13 round 4 lane P)
 
