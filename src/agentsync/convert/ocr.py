@@ -561,9 +561,11 @@ def _run_build(
     killed by any signal or interrupted.  The tool joins that group as it starts, so no pid is handed over,
     and the group is the watcher's while the watcher runs, so the signal reaches no other process.  An
     interrupt that lands while Popen starts the tool leaves no Popen object: the group is then told to stop
-    at once (only a signal sent in the microseconds before the child joins the group misses the tool).  The
-    tool's output goes to unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line written
-    after this process died would end the tool before the SIGINT reached it.  Out of time, this process sends
+    at once.  A signal that reaches the child before it execs the tool is still lost, about 1 in 20 such
+    interrupts (measured): the child joins the group only after the fork, and until the exec it keeps
+    Python's SIGINT handler, which records the signal and never acts on it.  The tool's output goes to
+    unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line written after this process
+    died would end the tool before the SIGINT reached it.  Out of time, this process sends
     the tool SIGINT, then its group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.  A
     tool that does not start raises OSError as before.
     A Ctrl-Z stops this process, not the tool, which keeps compiling.  A tool that ignores SIGINT, including

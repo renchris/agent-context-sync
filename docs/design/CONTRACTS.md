@@ -12981,10 +12981,21 @@ Popen object" as "the tool ended", so a KeyboardInterrupt that landed after the 
 end in the watcher's group, which the terminal's Ctrl-C never reaches. Now, with no Popen object, the tool
 counts as ended only when nothing is in flight or the exception is OSError (exec failed; Popen has already
 reaped the child). Otherwise the watcher is not told "done", so its end-of-input path stops the group, and
-`_run_build` also sends `os.killpg(watcher.pid, SIGINT)` at once, so the stop does not wait for this process to
-exit. Only the watcher, which ignores SIGINT, and perhaps the tool are in that group. One race remains: on macOS
-the child joins the group after the fork, so a signal sent in the microseconds before it joins misses it. The
-docstring's "a Ctrl-C in the milliseconds Popen takes still leaves it unwatched" is narrowed to that race.
+`_run_build` also sends `os.killpg(watcher.pid, SIGINT)` at once, so the group is signalled at once rather than
+when the watcher wakes, and even while a just-forked child still holds the pipe's write end (it closes its copy
+only in `close_fds`, just before the exec). No test pins that direct signal: with it made a no-op, the test
+below still passes, through the watcher's end-of-input stop. Only the watcher, which ignores SIGINT, and perhaps
+the tool are in that group. One race remains, and it is wider than the join alone: a signal that reaches the
+child before it execs the tool is lost. The child joins the group only after the fork, and until the exec it
+keeps CPython's C SIGINT handler (on the fork path `_posixsubprocess` restores only SIGPIPE, SIGXFZ and
+SIGXFSZ), which records the signal for Python code the child never runs again. Both the direct `killpg` and the
+watcher's end-of-input stop can land in that window. Measured by the round 3 review at e33e50c, with SIGINT sent
+to the main thread at a random point 0-4 ms into the tool's Popen: 6 of 115 interrupts that landed mid-Popen
+still let the tool finish unwatched, and 17 of 103 with 8,000 extra open file descriptors, which lengthen
+`close_fds` after the join, so the loss is after the join, not before it. Not built: a second group SIGINT a
+moment later (a watcher that runs `kill -INT 0; sleep 1; kill -INT 0`), which would catch a tool that execed
+after the first; unmeasured. The docstring's "a Ctrl-C in the milliseconds Popen takes still leaves it
+unwatched" is narrowed to that race, about 1 in 20 interrupts that land while Popen runs.
 Pinned by `tests/test_ocr.py::test_a_ctrl_c_while_popen_starts_the_tool_still_stops_it`, which wraps
 `subprocess.Popen._execute_child` to raise KeyboardInterrupt after the real call for the tool's argv only. Its
 stub tool, which sets its own SIGINT handler as swiftc does, writes `got-int`; before the fix it wrote
