@@ -157,7 +157,7 @@ def test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everythi
     ]
     checkout = folder / "build" / ".build" / "checkouts" / "FluidAudio"
     assert lines_of(tools / "git.calls") == [
-        "config --type=path --get-urlmatch http https://github.com",  # the seed: no proxy in git's config
+        f"config --type=path --get-urlmatch http {speech.NEMO_URL}",  # the seed: no proxy in git's config
         f"-C {checkout} rev-parse HEAD",
         f"-C {checkout} merge-base --is-ancestor {speech.FLUIDAUDIO_FLOOR} {FAKE_PIN}",
     ]
@@ -866,12 +866,14 @@ def test_a_ca_folder_only_git_trusts_is_the_seeds_curl_folder_unless_curl_has_it
         assert "SSL_CERT_DIR" not in tool_seen, tool
 
 
-def real_git_config(tools: Path) -> None:
-    """The stub git answers ``config`` as the real git does, from HOME's .gitconfig."""
-    real = shutil.which("git")
+def real_git_config(tools: Path, real: str | None = None) -> None:
+    """The stub git answers ``config`` as the real git does, from HOME's .gitconfig: never from the machine's
+    system gitconfig, which ``_build_env`` lets git read (B13 round 5 F79: conftest's GIT_CONFIG_NOSYSTEM
+    never reaches it), so a Mac whose system gitconfig sets a proxy passes these tests as well."""
+    real = real or shutil.which("git")
     assert real is not None
     answer = f'case "$3" in rev-parse) echo {FAKE_PIN} ;; merge-base) exit 0 ;; esac'  # as git_answering
-    script(tools / "git", f'if [ "$1" = config ]; then exec {real} "$@"; fi\n{answer}')
+    script(tools / "git", f'if [ "$1" = config ]; then GIT_CONFIG_NOSYSTEM=1 exec {real} "$@"; fi\n{answer}')
 
 
 def test_the_seed_trusts_and_routes_as_gits_own_config_does(
@@ -933,6 +935,55 @@ def test_without_a_proxy_in_the_shell_or_gits_config_nothing_is_fetched(
     real_git_config(tools)
     assert speech.build(tmp_path / "cache").is_file()
     assert not curl.with_name("curl.calls").exists()
+
+
+def test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git(
+    curl: Path, tools: Path, tmp_path: Path
+) -> None:
+    """B13 round 5 F79: a git first on PATH that reads a system gitconfig with a proxy (as an MDM-managed or
+    Homebrew one may) stands in for such a Mac; the stub's git still reads HOME's .gitconfig alone."""
+    system = tmp_path / "system-gitconfig"
+    system.write_text("[http]\n\tproxy = http://mdm-proxy.contoso.example:3128\n")
+    real = shutil.which("git")
+    assert real is not None
+    wrapped = tmp_path / "wrapped"
+    wrapped.mkdir()
+    script(wrapped / "git", f'GIT_CONFIG_SYSTEM={system} exec {real} "$@"')
+    real_git_config(tools, str(wrapped / "git"))
+    assert speech.build(tmp_path / "cache").is_file()
+    assert not curl.with_name("curl.calls").exists()
+
+
+@pytest.mark.parametrize("shell", [{}, {"HTTPS_PROXY": "http://env-proxy.contoso.example:8080"}])
+def test_an_empty_proxy_in_gits_config_turns_the_proxy_off_for_the_seed_as_for_git(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shell: dict[str, str]
+) -> None:
+    """B13 round 5 F78: ``http.proxy = ""`` is git's way to turn a proxy off: git goes direct whatever the
+    environment says, so the seed's curl does not route through the environment's proxy (nothing is
+    fetched), and a curl environment built from such a config carries no proxy at all."""
+    (Path.home() / ".gitconfig").write_text('[http]\n\tproxy = ""\n')
+    real_git_config(tools)
+    for key, value in shell.items():
+        monkeypatch.setenv(key, value)
+    assert speech.build(tmp_path / "cache").is_file()
+    assert not curl.with_name("curl.calls").exists()
+    monkeypatch.setenv("ALL_PROXY", "http://env-proxy.contoso.example:8080")
+    env = speech._curl_env({"http.proxy": ""})
+    assert not {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} & set(env)
+
+
+def test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed(
+    curl: Path, tools: Path, tmp_path: Path
+) -> None:
+    """B13 round 5 F78: a proxy scoped to a path under github.com routes git's clone of FluidAudio, and the
+    seed reads git's settings for the url it fetches, so it routes the seed as well."""
+    (Path.home() / ".gitconfig").write_text(
+        '[http "https://github.com/FluidInference"]\n\tproxy = http://path-proxy.contoso.example:3128\n'
+    )
+    real_git_config(tools)
+    assert speech.build(tmp_path / "cache").is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    assert seen.get("HTTPS_PROXY") == "http://path-proxy.contoso.example:3128"
 
 
 @pytest.mark.parametrize("state", ["fetches", "no proxy", "already seeded"])

@@ -457,9 +457,10 @@ def _build_env() -> dict[str, str]:
     return {**ocr._env(), **_shell((*_PROXY_VARS, *_CA_VARS))}
 
 
-_GIT_URL = "https://github.com"
-"""The host whose settings :func:`_git_config` reads: FluidAudio's clone and its binary artifact's download
-both start there."""
+_GIT_URL = NEMO_URL
+"""The url whose settings :func:`_git_config` reads: the one the seed's curl fetches, so a setting git scopes
+to a path under github.com (``[http "https://github.com/FluidInference"]``) counts, as it does for the clone,
+and a host-wide one still does (git takes the most specific match; B13 round 5 F78)."""
 _GIT_SETTINGS = ("http.sslcainfo", "http.sslcapath", "http.sslbackend", "http.proxy")
 """The git settings the seed's curl follows, as ``git config`` names them.  http.sslVerify is never read:
 verification is never turned off."""
@@ -470,7 +471,9 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
     files: one ``git config --type=path --get-urlmatch http <url>``, so a url-scoped
     ``[http "https://github.com"]`` value counts and a ``~`` path is expanded (``--type=path`` changes no
     value that does not start with ``~``; measured with Xcode's git 2.50.1).  Nothing set (git exits 1), a
-    git that does not run and the build's time running out all read as nothing set."""
+    git that does not run and the build's time running out all read as nothing set.  An empty http.proxy is
+    kept as ``""``: it is git's way to turn a proxy off, and git then goes direct whatever the environment
+    says (measured with Xcode's git 2.50.1: ls-remote with HTTPS_PROXY at a closed port succeeded)."""
     left = deadline - _clock()
     if left <= 0:
         return {}
@@ -491,8 +494,9 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
     found: dict[str, str] = {}
     for line in cp.stdout.decode("utf-8", errors="replace").splitlines():
         key, _, value = line.partition(" ")
-        if key.lower() in _GIT_SETTINGS and value.strip():
-            found[key.lower()] = value.strip()
+        key = key.lower()
+        if key in _GIT_SETTINGS and (value.strip() or key == "http.proxy"):
+            found[key] = value.strip()
     return found
 
 
@@ -513,7 +517,7 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
     * http.sslBackend becomes CURL_SSL_BACKEND unless the shell sets it.
     * git's http.proxy wins over the environment's proxy, as it does in git, so it becomes HTTPS_PROXY and
       https_proxy (curl reads the lower-case one first); in the environment, not on argv, where ``ps`` would
-      show a proxy's credentials."""
+      show a proxy's credentials.  An empty one turns the environment's proxy off, as it does for git."""
     env = {**_build_env(), **_shell(_CURL_CA_VARS)}
     cainfo = env.get("GIT_SSL_CAINFO") or git_config.get("http.sslcainfo")
     if cainfo and "CURL_CA_BUNDLE" not in env and "SSL_CERT_FILE" not in env:
@@ -527,6 +531,9 @@ def _curl_env(git_config: Mapping[str, str]) -> dict[str, str]:
     proxy = git_config.get("http.proxy")
     if proxy:
         env["HTTPS_PROXY"] = env["https_proxy"] = proxy
+    elif proxy == "":
+        for key in _PROXIES:
+            env.pop(key, None)
     return env
 
 
@@ -591,8 +598,9 @@ def _seed(artifacts: Path, *, git: str, cwd: Path, deadline: float) -> None:
     if final.exists():
         return
     git_config = _git_config(git, cwd=cwd, deadline=deadline)
-    if not _shell(_PROXIES) and "http.proxy" not in git_config:
-        return
+    proxy = git_config.get("http.proxy")
+    if proxy == "" or (proxy is None and not _shell(_PROXIES)):
+        return  # no proxy, or git's empty http.proxy: git goes direct, so there is nothing to route
     try:
         artifacts.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=_SEED_PREFIX, dir=artifacts)
