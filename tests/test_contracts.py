@@ -349,8 +349,9 @@ def test_inbox_writer_contract_matches_the_arm() -> None:
 
 
 def _dataclass_stubs(text: str) -> dict[tuple[str, str], list[str]]:
-    """The first stub of each class in the python blocks under a ``#### `agentsync.<mod>``` header (the §16
-    module sections), with the names of its ``    name: type`` lines in order.  A later partial block (an
+    """The first stub of each class in the python blocks under a ``###`` or ``#### `agentsync.<mod>```
+    header (§15's module reference and the §16 module sections; B13 round 5 F86), with the names of its
+    ``    name: type`` lines in order.  A later partial block (an
     amendment that repeats a class to add a field) is not the stub and is skipped."""
     stubs: dict[tuple[str, str], list[str]] = {}
     seen: set[str] = set()
@@ -364,7 +365,7 @@ def _dataclass_stubs(text: str) -> dict[tuple[str, str], list[str]]:
             in_block = in_fence and line.strip() == "```python" and module is not None
             continue
         if not in_fence:
-            header = re.match(r"#### `(agentsync(?:\.\w+)+)`", line)
+            header = re.match(r"#{3,4} `(agentsync(?:\.\w+)+)`", line)
             if header or re.match(r"#{1,4} ", line):
                 module = header.group(1) if header else None
             continue
@@ -390,7 +391,7 @@ def test_dataclass_stubs_list_the_code_fields() -> None:
     """Q87 (B13 round 4): the contract checked that each public name appears, not a dataclass stub's fields,
     so `PurgeReport` lacked `not_run` from §16.38 to §16.45 and `Suppressions` and `GovernanceConfig` were
     still short of fields added only in prose. Each module section's stub lists the code's fields, in
-    order."""
+    order, §15's as well as §16's."""
     stubs = _dataclass_stubs(CONTRACTS.read_text(encoding="utf-8"))
     checked = []
     for (module_name, cls_name), fields in stubs.items():
@@ -399,5 +400,6 @@ def test_dataclass_stubs_list_the_code_fields() -> None:
             continue
         checked.append(cls_name)
         assert fields == [f.name for f in dataclasses.fields(cls)], f"{module_name}.{cls_name}"
-    assert {"PurgeReport", "Suppressions", "GovernanceConfig", "ProxySettings"} <= set(checked)
-    assert len(checked) >= 21
+    # B13 round 5 F86: §15's module reference (### headers) too, where 13 stubs had fallen behind
+    assert {"PurgeReport", "Suppressions", "GovernanceConfig", "ProxySettings", "CycleReport"} <= set(checked)
+    assert len(checked) >= 65

@@ -852,6 +852,7 @@ class ScanResult:
     # a read of the root past its time limit: macOS is holding it for an Allow prompt, so every other read
     # under the root would wait too; the cycle fetches, rewrites and removes nothing for the source this pass
     listing_held: bool = False
+    withheld: tuple[str, ...] = ()  # 2026-10-12 (§16.56 F86)
 
 @dataclass(frozen=True, slots=True)
 class FetchResult:
@@ -987,6 +988,8 @@ class SourceReport:
     deferred_online_only: int = 0  # 2026-09-30 (L3): of ``deferred``, the online-only files (a download refused)
     absent_marked: int = 0  # 2026-10-11 (B13, §16.39 H23): of the deletion candidates, files marked absent (kept)
     absent_removed: int = 0  # 2026-10-11 (B13, §16.39 H23): of them, files removed this pass as deleted upstream
+    unreadable: int = 0  # 2026-10-12 (§16.56 F86)
+    conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
 
 @dataclass(frozen=True, slots=True)
 class CycleReport:
@@ -1005,6 +1008,9 @@ class CycleReport:
     checkpoint_blockers: tuple[LintFinding, ...] = ()  # held: curate.checkpoint_blockers
     snapshot_tag: str | None = None  # [governance] archive: the tag cut at the new commit
     read_again: int = 0  # §16.37: files read again for what their converter has gained (tally reread); same bytes: not in converted
+    read_first: int = 0  # 2026-10-12 (§16.56 F86)
+    rescreened: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
+    rescreened_unchanged: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -1325,6 +1331,9 @@ class GraphConfig:
     # company: removed 2026-10-04 (KISS K15). `[graph] company` is still accepted but ignored: the User-Agent
     # is always NONISV|agentsync|agentsync/<version>, and Config.graph_company_line records the key.
     base_url: str = DEFAULT_GRAPH_BASE_URL
+    cloud: str | None = None  # 2026-10-12 (§16.56 F86)
+    allow_device_code: bool = False  # 2026-10-12 (§16.56 F86)
+    broker: bool = True  # 2026-10-12 (§16.56 F86)
 
     @property
     def authority(self) -> str:
@@ -1381,6 +1390,8 @@ class Config:
     graph: GraphConfig = field(default_factory=GraphConfig)
     breaker: BreakerConfig = field(default_factory=BreakerConfig)
     convert: ConvertConfig = field(default_factory=ConvertConfig)
+    network: NetworkConfig = field(default_factory=NetworkConfig)  # 2026-10-12 (§16.56 F86)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)  # 2026-10-12 (§16.56 F86)
     reconcile_interval_s: int = 3600
     poll_interval_s: int = 300
     tombstone_reap_days: int = 180
@@ -1509,6 +1520,7 @@ class MirrorFrontmatter:
     converter: str | None = None  # "<converter_id>@<converter_version>"
     options_hash: str | None = None  # "sha256:<hex>"
     sensitivity_label: str | None = None
+    content_trust: str | None = None  # 2026-10-12 (§16.56 F86)
     reason: str | None = None  # unreadable/refused/failed stubs
     superseded_by: str | None = None
     deleted_at: str | None = None
@@ -1985,6 +1997,7 @@ class WalkStats:
     unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
     empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
+    empty_cloud_root: bool = False  # 2026-10-12 (§16.56 F86)
 
 LISTING_TIMEOUT_S = 120.0  # one directory listing; past it macOS is holding the read for an Allow prompt
 INBOX_SETTLE_MAX_S = 60.0  # the most one interactive sync waits for settling inbox files, all inboxes
@@ -2711,6 +2724,12 @@ class PlannedPage:
     rendered_sha256: str  # H2 (body)
     page_sha256: str  # sha256 of ``text``
     sidecars: tuple[tuple[str, bytes], ...] = ()  # (docs-repo-relative path, bytes)
+    refusal: str | None = None  # 2026-10-12 (§16.56 F86)
+    status: OutputStatus = OutputStatus.OK  # 2026-10-12 (§16.56 F86)
+    action_key: str | None = None  # 2026-10-12 (§16.56 F86)
+    converter_id: str | None = None  # 2026-10-12 (§16.56 F86)
+    converter_version: str | None = None  # 2026-10-12 (§16.56 F86)
+    options_hash: str | None = None  # 2026-10-12 (§16.56 F86)
 
 @dataclass(frozen=True, slots=True)
 class SourceStatus:
@@ -2984,6 +3003,11 @@ class AuthSettings:
     scopes: tuple[str, ...]
     keychain_marker: Path
     fallback_cache: Path
+    allow_device_code: bool = False  # 2026-10-12 (§16.56 F86)
+    use_broker: bool = True  # 2026-10-12 (§16.56 F86)
+    graph_root: str = "https://graph.microsoft.com"  # 2026-10-12 (§16.56 F86)
+    proxy: str | None = None  # 2026-10-12 (§16.56 F86)
+    interactive_timeout_s: int = 300  # 2026-10-12 (§16.56 F86)
 
 @dataclass(frozen=True, slots=True)
 class AuthStatus:
@@ -2993,6 +3017,7 @@ class AuthStatus:
     tenant_id: str | None
     cache_backend: str  # "keychain" | "file-0600"
     scopes: tuple[str, ...]
+    sign_in_method: str | None = None  # 2026-10-12 (§16.56 F86)
 
 def settings_from_config(config: Config) -> AuthSettings:
     """Build AuthSettings; raises ConfigError when ``[graph] client_id`` is unset."""
@@ -3162,6 +3187,11 @@ class DiscoveredScope:
     site: str | None
     web_url: str | None
     note: str  # e.g. "sharedWithMe remoteItem: needs its own cursor against the owning drive"
+    folder: str | None = None  # 2026-10-12 (§16.56 F86)
+    mailbox: str | None = None  # 2026-10-12 (§16.56 F86)
+    team_id: str | None = None  # 2026-10-12 (§16.56 F86)
+    channel_id: str | None = None  # 2026-10-12 (§16.56 F86)
+    configured: str | None = None  # 2026-10-12 (§16.56 F86)
 
 def resolve_drive_id(client: GraphClient, cfg: SourceConfig) -> str:
     """``drive_id="me"`` -> GET /me/drive; ``site`` -> GET /sites/{host}:/{path} then /sites/{id}/drive."""
@@ -3333,6 +3363,7 @@ class TopicPage:
     aliases: tuple[str, ...]
     provenance: str | None  # "hand-written" for adopted pages (exempt from STALE, absent from DEPENDS.tsv)
     adopted_at: str | None
+    purpose: str | None = None  # 2026-10-12 (§16.56 F86)
 
 @dataclass(frozen=True, slots=True)
 class RefreshVerdict:
@@ -3500,6 +3531,8 @@ class AgentSpec:
     run_at_load: bool = True
     materialize_dataless_files: bool = False
     throttle_interval_s: int = 60
+    low_priority_io: bool = True  # 2026-10-12 (§16.56 F86)
+    umask: int | None = 0o077  # 2026-10-12 (§16.56 F86)
 
 def program_arguments(config: Config, mode: str) -> tuple[str, ...]:
     """Absolute interpreter + ``-m agentsync sync --mode <mode> --config <abs path>`` (no PATH lookup)."""
@@ -14303,6 +14336,22 @@ at the top of the sources.toml template. Q49's scope now covers these modules. T
 `test_status_with_no_folder_source_is_a_next_line_and_exit_0`), `tests/test_config.py`
 (`test_load_config_missing_file_names_add_source`).
 
+**F86: §15's dataclass stubs list the code's fields too** (`docs/design/CONTRACTS.md`, `tests/test_contracts.py`).
+§16.50 Q87's test matched only ``#### `agentsync.<mod>` `` headers, so the python blocks under §15's ``###``
+module headers were never compared: 21 of 65 dataclass stubs were checked, and 13 had fallen behind the code,
+CycleReport's `read_first` (round 4) among them. The test now reads ``###`` and ``####`` module headers and checks
+65 classes. The first stub of each class gains its missing fields in the code's order, each marked `# 2026-10-12
+(§16.56 F86)`: `model.ScanResult` (`withheld`), `SourceReport` (`unreadable`, `conversion_failed`), `CycleReport`
+(`read_first`; and `rescreened`, `rescreened_unchanged`, added by round 5 lane B, which the widened test caught
+on rebase), `config.GraphConfig` (`cloud`, `allow_device_code`, `broker`), `Config` (`network`, `policy`),
+`frontmatter.MirrorFrontmatter` (`content_trust`), `arm_local.WalkStats` (`empty_cloud_root`),
+`publish.PlannedPage` (`refusal`, `status`, `action_key`, `converter_id`, `converter_version`, `options_hash`),
+`graph.auth.AuthSettings` (`allow_device_code`, `use_broker`, `graph_root`, `proxy`, `interactive_timeout_s`),
+`AuthStatus` (`sign_in_method`), `graph.drive.DiscoveredScope` (`folder`, `mailbox`, `team_id`, `channel_id`,
+`configured`), `curate.TopicPage` (`purpose`) and `ops.launchd.AgentSpec` (`low_priority_io`, `umask`). Every
+drift was a missing field; none was extra or out of order. This amends Q87: the stub rule covers the python blocks
+under a ``###`` or ``####`` `` `agentsync.<mod>` `` header. Tests:
+`tests/test_contracts.py::test_dataclass_stubs_list_the_code_fields`.
 
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
