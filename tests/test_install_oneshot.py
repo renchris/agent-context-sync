@@ -1625,6 +1625,50 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     assert text.rstrip().endswith("none")
 
 
+def test_the_bring_back_file_fences_each_file_it_embeds(env: dict[str, str]) -> None:
+    """B13 round 5 F14: the embedded report's H1 and H2s and the fix request's H1 outranked or matched the
+    file's own numbered sections. Each embedded file sits in a tilde fence longer than any tilde run that
+    starts one of its lines, so outside the fences the only headings are the title and the three sections,
+    and the files come back byte for byte between them (section 2's triage diff still works)."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    report = "# agentsync setup report\\n\\n## Summary\\n\\n~~~text\\n# a log line\\n~~~\\n"
+    stub = STUB_AGENTSYNC.replace(
+        "printf '# agentsync setup report\\n\\nstub, simulate=%s\\n' \"${AGENTSYNC_SIMULATE_LAUNCHD:-0}\"",
+        f"printf '{report}'",
+    )
+    assert stub != STUB_AGENTSYNC
+    _write_exe(home / ".local" / "bin" / "agentsync", stub)
+    setup = home / "agent-context" / "setup"
+    (setup / "local-work").mkdir(parents=True)
+    fix = "# Fix request: Contoso folders\n\n## Not used\n\n~~~~~~~~~~~~~~\n## quoted\n~~~~~~~~~~~~~~\nlast"
+    (setup / "fix-request.md").write_text(fix, encoding="utf-8")
+    (setup / "local-work" / "0001-local.patch").write_text(" ~~~~~~~~~~~~\n+x\n", encoding="utf-8")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    outside: list[str] = []
+    fence = ""
+    for ln in text.splitlines():
+        if not fence and re.match(r"~{3,}", ln):
+            fence = re.match(r"~+", ln).group(0)  # type: ignore[union-attr]
+        elif fence and ln == fence:
+            fence = ""
+        elif not fence:
+            outside.append(ln)
+    assert not fence, "every fence is closed"
+    assert [ln for ln in outside if re.match(r"#{1,2} ", ln)] == [
+        "# agentsync: the one file to bring back",
+        "## 1. Setup report",
+        "## 2. Fix request (~/agent-context/setup/fix-request.md)",
+        "## 3. Local work kept by setup prompt step 1 (~/agent-context/setup/local-work)",
+    ]
+    body = report_path(env).read_text(encoding="utf-8")
+    assert f"## 1. Setup report\n\n~~~~~~~~~~markdown\n{body}~~~~~~~~~~\n" in text
+    assert f"\n\n~~~~~~~~~~~~~~~markdown\n{fix}\n~~~~~~~~~~~~~~~\n" in text, "longer than its 14 tildes"
+    assert "~~~~~~~~~~~~~~diff\n ~~~~~~~~~~~~\n+x\n~~~~~~~~~~~~~~\n" in text, "a context line's tildes"
+
+
 # ---- section 3 of the bring-back file: local work is sent once ---------------------------------------------
 
 PATCH_NAME = "0001-local-changes-kept-before-update.patch"

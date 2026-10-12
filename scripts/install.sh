@@ -1950,8 +1950,26 @@ utc_stamp() {
 # says where it still is. This Mac cannot know what was copied back, so the line claims nothing about that.
 # Every doubt sends the patch: no friction log, no earlier finished attempt, a time or a hash that cannot be
 # read. Nothing is deleted or moved.
+# Each embedded file sits inside a tilde fence longer than any tilde run that starts one of its lines (at least
+# 10), so its own headings are no headings of this file and none of its lines can close the fence (B13 round 5
+# F14): the outline is this file's title and its three numbered sections, and every embedded byte is kept, so
+# section 2 still compares line for line with an earlier file's.
+fence_for() { # FILE...: the fence
+	local n
+	n="$(LC_ALL=C awk 'match($0, /^ *~+/) && RLENGTH > m { m = RLENGTH } END { print (m < 10 ? 10 : m + 1) }' "$@" 2>/dev/null)" || n=""
+	case "$n" in "" | *[!0-9]*) n=40 ;; esac
+	printf '%*s' "$n" '' | LC_ALL=C tr ' ' '~'
+}
+embed() { # FILE INFO: the file inside its fence, the fence's info string INFO
+	local fence
+	fence="$(fence_for "$1")"
+	printf '%s%s\n' "$fence" "$2"
+	cat "$1"
+	[ -z "$(tail -c 1 "$1")" ] || printf '\n'
+	printf '%s\n' "$fence"
+}
 write_bring_back() {
-	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence="~~~~~~~~~~" shown="$SETUP_DIR"
+	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped=""
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -1964,10 +1982,11 @@ write_bring_back() {
 		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
 		printf 'them before sending.\n\n'
 		printf '## 1. Setup report\n\n'
-		cat "$REPORT_PATH"
+		embed "$REPORT_PATH" markdown
 		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
-		if [ -s "$SETUP_DIR/fix-request.md" ]; then cat "$SETUP_DIR/fix-request.md"; else printf 'none\n'; fi
+		if [ -s "$SETUP_DIR/fix-request.md" ]; then embed "$SETUP_DIR/fix-request.md" markdown; else printf 'none\n'; fi
 		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
+		fence="$(fence_for "$SETUP_DIR"/local-work/*.patch)"
 		for p in "$SETUP_DIR"/local-work/*.patch; do
 			[ -e "$p" ] || continue
 			at=""

@@ -103,7 +103,8 @@ words) is yours to remove. The CLI always redacts.
   was copied back, and a session whose file nobody copied leaves its part above the next session's heading.
   So triage compares section 2 with section 2 of the last bring-back file received from that Mac, finds the
   first line that differs, and reads from the session heading above it down to the end. With no earlier file
-  from that Mac, it reads all of section 2 (K23).
+  from that Mac, it reads all of section 2 (K23). Each section holds its file inside a tilde fence, every byte
+  kept, so the file's own headings stay inside it.
   A placeholder in section 2 is the one the report on the Mac gave when that part was written, which need not
   be section 1's numbering. A report numbers values in the order it registers them (configured CloudStorage
   folders, then the CloudStorage listing, then configured folders elsewhere; the shell fallback report: that

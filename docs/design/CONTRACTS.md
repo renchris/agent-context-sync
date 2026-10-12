@@ -9140,6 +9140,8 @@ The fix is prompt wording, on v9 before it is published. The file stays cumulati
 - **Triage rule** (`docs/deploy/setup-feedback.md`, the private route, and K23): compare section 2 with
   section 2 of the last bring-back file received from that Mac, find the first line that differs, and read
   from the session heading above it down to the end. With no earlier file from that Mac, read all of it.
+  Amended 2026-10-12 (§16.58, F14): section 2 now holds the file inside a tilde fence, every byte kept; a file
+  compared with one from before the fence differs at the fence line, and the rule reads on from there.
 - The first rule was "from the last session heading down", because the parts above it "came back in an
   earlier round and were triaged then". Nothing knows that (review, 2026-10-07). A v9 session fails at step
   2, writes its request under its heading and runs the report. Nobody copies the file. The prompt is pasted
@@ -14609,6 +14611,15 @@ is new, and `restate()` and a new attempt clear it, matching Python's empty head
 `test_a_header_less_step_1_error_states_its_prompt_and_agent`,
 `test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions`,
 `test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`.
+
+**F14: bring-back.md fences each file it embeds.** In install.sh's `write_bring_back`, the setup report
+(section 1) and fix-request.md (section 2) each sit inside a tilde fence with the info string `markdown`, and the
+local-work patches (section 3) inside one with `diff`, each fence longer than any tilde run that starts a line of
+what it holds, and at least 10 tildes (`fence_for`, `embed`; a file without a final newline gets one before the
+closing fence). Outside the fences the file's only headings are its title and its three numbered sections; the
+embedded H1s and H2s no longer outrank or match them. No heading is rewritten, so every embedded byte is kept and
+section 2 still compares line for line (the triage rule's dated line). Not a three-tilde fence: the report's own
+`~~~text` blocks would close it. Test: `test_the_bring_back_file_fences_each_file_it_embeds`.
 
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
