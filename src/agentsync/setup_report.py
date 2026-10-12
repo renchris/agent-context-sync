@@ -3616,7 +3616,7 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
 
 
 _IMAGE_OUTCOMES = (
-    "page",
+    "with a page",
     "no-text stub",
     "not-readable stub",
     "not-on-this-Mac stub",
@@ -3624,6 +3624,7 @@ _IMAGE_OUTCOMES = (
     "deferred on this Mac",
     "deferred online-only",
     "not converted yet",
+    "withheld-by-label-rule stub",
     "failed",
     "other stub",
 )
@@ -3634,7 +3635,7 @@ def _image_outcome(state: str, away: bool, verdict: str, cls: str, page: int) ->
     online-only, or a Graph source's: no image is downloaded for OCR)."""
     if state in ("live", "dataless"):
         if page:
-            return "page"
+            return "with a page"
         if verdict == "deferred":
             return "deferred online-only" if away else "deferred on this Mac"
         return "not converted yet"
@@ -3643,6 +3644,8 @@ def _image_outcome(state: str, away: bool, verdict: str, cls: str, page: int) ->
         "no text in image": "no-text stub",
         "image not readable": "not-readable stub",
         "too large": "not-readable stub",
+        # the rule withholds it whether or not it is on this Mac (B13 round 4 Q30)
+        "withheld by label rule": "withheld-by-label-rule stub",
         "conversion failed": "failed",
     }
     return stubs.get(cls, "other stub")
@@ -3677,7 +3680,8 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
             absent[2] += int(size)
         if outcome == "no-converter stub on this Mac" and not label_rule:
             waiting[str(sid)] += int(files)
-    shown = " · ".join(f"{name} {outcomes[name]}" for name in _IMAGE_OUTCOMES if outcomes[name])
+    # count first, as the document lines put it ("1 with a page", never "page 1": B13 round 4 Q4)
+    shown = " · ".join(f"{outcomes[name]} {name}" for name in _IMAGE_OUTCOMES if outcomes[name])
     out.append(f"- images: {sum(outcomes.values())} file(s)" + (f": {shown}" if shown else ""))
     out.append(
         f"- images that are not on this Mac: {absent[0] + absent[1]} file(s), {_megabytes(absent[2])} "

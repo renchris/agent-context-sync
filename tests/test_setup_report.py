@@ -4743,8 +4743,8 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     text, parts = status_parts(fake_mac)
     ocr_part = parts["OCR"]
     assert (
-        "- images: 8 file(s): page 2 · no-text stub 1 · not-on-this-Mac stub 1 · no-converter stub on this "
-        "Mac 1 · deferred on this Mac 1 · deferred online-only 1 · failed 1\n" in ocr_part
+        "- images: 8 file(s): 2 with a page · 1 no-text stub · 1 not-on-this-Mac stub · 1 no-converter stub "
+        "on this Mac · 1 deferred on this Mac · 1 deferred online-only · 1 failed\n" in ocr_part
     )
     assert (
         "- images that are not on this Mac: 2 file(s), 8.0 MB (2 online-only, 0 of a Graph source; none is "
@@ -5008,7 +5008,7 @@ def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]
     seed.item(one, "Wingtip cloud.png", state="refused", reason=NO_CONVERTER, page="refused", dataless=True)
     seed.close()
     text, parts = status_parts(fake_mac)
-    assert "- images: 3 file(s): not-on-this-Mac stub 2 · no-converter stub on this Mac 1\n" in parts["OCR"]
+    assert "- images: 3 file(s): 2 not-on-this-Mac stub · 1 no-converter stub on this Mac\n" in parts["OCR"]
     assert (
         "- images that are not on this Mac: 2 file(s), 0.0 MB (1 online-only, 1 of a Graph source; none is "
         "downloaded for OCR;" in parts["OCR"]
@@ -5065,6 +5065,35 @@ def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
         encoding="utf-8",
     )
     assert "- label rule in [policy]: on (no image is read under one)\n" in status_parts(fake_mac)[1]["OCR"]
+
+
+def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 4 Q30: with a label rule on and the OCR engine ready, an image with no converter is the
+    rule's (Quarantine by reason says `withheld by label rule`), and the OCR part's images line names the same
+    outcome, not "other stub". Its count comes first, as on the document lines (Q4)."""
+    cfg = fake_mac["config"]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv("AGENTSYNC_OCR")
+    write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    seed = Seed(cfg)
+    seed.item(
+        seed.ids()[0], "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
+    )
+    seed.close()
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
+        encoding="utf-8",
+    )
+    parts = status_parts(fake_mac)[1]
+    assert "- images: 1 file(s): 1 withheld-by-label-rule stub\n" in parts["OCR"], parts["OCR"]
+    assert "other stub" not in parts["OCR"]
+    assert any(
+        ln.split(" | ")[2:4] == ["withheld by label rule", "1"]
+        for ln in parts["Quarantine by reason"].splitlines()
+    )
 
 
 def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[str, Path]) -> None:
@@ -5861,7 +5890,8 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     assert "- label rule in [policy]: off\n" in parts["OCR"] and "too late" not in text
     assert "not measured" not in section(text, "Status"), "fixed words: a second report would say the same"
     assert (
-        "- images: 8 file(s): page 2" in parts["OCR"] and "- OCR time: of the last 3 run(s)" in parts["OCR"]
+        "- images: 8 file(s): 2 with a page" in parts["OCR"]
+        and "- OCR time: of the last 3 run(s)" in parts["OCR"]
     )
     assert "| <folder-2> | quarantined | no text in image | 1 | 0 | - |" in parts["Quarantine by reason"]
     assert "of the last 3 run(s), 2 recorded what they converted" in parts["Repeat conversions"]
@@ -5884,7 +5914,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         "- label rule in [policy]: off\n"
     ) in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
-    assert "- images: 8 file(s): page 2" in parts["OCR"]
+    assert "- images: 8 file(s): 2 with a page" in parts["OCR"]
 
 
 def test_the_ocr_part_has_a_speech_line_of_its_own(
@@ -6046,8 +6076,8 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
     text = "\n".join(setup_report._evidence(r))
     assert setup_report.NOT_MEASURED not in text and "not measured" not in text
     assert (
-        "- images: 17045 file(s): page 11933 · not-on-this-Mac stub 1704 · failed 1704 · other stub 1704"
-        in text
+        "- images: 17045 file(s): 11933 with a page · 1704 not-on-this-Mac stub · 1704 failed · 1704 other "
+        "stub" in text
     )
     assert "- files whose row carries a reason: 9091 quarantined, 4546 refused" in text
     by_type = re.findall(
