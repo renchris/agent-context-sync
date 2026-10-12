@@ -5758,14 +5758,15 @@ def _loop_line(r: _Run) -> str:
     """``- Loop: <stage>; NEXT: <the loop's NEXT line, without paths>`` (KISS K16b): the stage from status's
     loop line, the NEXT from the ``loop_next`` hook (run after doctor, whose FAILs are rule 1's), then the
     ``WAITING ON YOU:`` line the loop stopped on (:func:`_stopped_wait`) and every other one, in the loop's
-    order, then the loop's ``note:`` lines about files still to be read again, when it has any (a second
-    one is of the sources the last sync did not get to): a report that shows ``note: sync again:`` there
-    was written before the one-time re-read finished. The three paths the config puts into these lines, the
-    docs repo's ``_eval``, its ``AGENTS.md`` and the config file, are shown without their path (the docs
-    repo's ``_eval`` folder, ``AGENTS.md`` and the config file by their names) whatever the path
-    (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its waits
-    are on this line. Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once, before
-    ``took``."""
+    order (when the one it stopped on is not the loop's first, a fixed clause before the others says where
+    the command prints it), then the loop's ``note:`` lines about files still to be read again, when it has
+    any (a second one is of the sources the last sync did not get to): a report that shows ``note: sync
+    again:`` there was written before the one-time re-read finished. The three paths the config puts into
+    these lines, the docs repo's ``_eval``, its ``AGENTS.md`` and the config file, are shown without their
+    path (the docs repo's ``_eval`` folder, ``AGENTS.md`` and the config file by their names) whatever the
+    path (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its
+    waits are on this line. Sets ``r.loop_stage`` for the issue link; :func:`build_report` runs it once,
+    before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
@@ -5784,7 +5785,15 @@ def _loop_line(r: _Run) -> str:
     waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
     if waits:
         shown = _stopped_wait(found, waits)
-        text += "".join(f"; {loop_next_text(w)}" for w in (shown, *(w for w in waits if w is not shown)))
+        rest = [w for w in waits if w is not shown]
+        text += f"; {loop_next_text(shown)}"
+        moved = waits.index(shown)
+        if moved:  # first here, not where the command printed it: the line says so (B13 round 4 Q13)
+            where = f"the {moved}" if moved == len(rest) else f"the first {moved} of the {len(rest)}"
+            text += f"; the command prints that one after {where} wait(s) that follow, in their order:"
+            text += f" {loop_next_text(rest[0])}" + "".join(f"; {loop_next_text(w)}" for w in rest[1:])
+        else:
+            text += "".join(f"; {loop_next_text(w)}" for w in rest)
     for reread in (ln for ln in lines if ln.startswith("note: ") and "read again" in ln):
         text += f"; {loop_next_text(reread)}"
     # the checks only once the waits are on the line: a Loop line that reads "not read" shows no wait
