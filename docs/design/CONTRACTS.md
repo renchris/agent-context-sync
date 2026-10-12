@@ -6930,12 +6930,12 @@ The same holds, engine or not, for a file the pdfminer fallback converts: PDFium
 With an engine `version()` ends in its identity (`2.1.0+pypdfium2-…+pdfminer.six-…+ocr-apple-vision-r3-h2.0.0-l1`)
 and `options()` gains the shared OCR options and five of its own: `ocr_pdf_rules` (2; bumped when a rule
 below changes without one of the numbers changing; 2 is the cover rule and the picture limits as written
-here; **amended (2026-10-11, §16.42):** it is 3, a picture read the way up the page shows it; **amended
-(2026-10-11, §16.48):** it is 4, a turned picture whose lines run down read once more the other way), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
+here; **amended (2026-10-11, §16.42):** it is 3, a picture read the way up the page shows it), `ocr_page_dpi` (300), `ocr_page_max_px` (6000),
 `ocr_pictures_seen` (400) and `ocr_picture_pixels` (400,000,000). The emitter version is not what moves
 with an OCR rule: it would move the key of every PDF on a Mac without an engine.
 
-Amended 2026-10-11 by §16.48 (R82): `ocr_pdf_rules` is 4.
+Amended 2026-10-11 by §16.48 (R82): `ocr_pdf_rules` is 4, a quarter-turned PDF picture whose lines run
+down is read once more the other way.
 
 ```text
 <!-- page: 1 -->
@@ -11820,29 +11820,26 @@ be read is read as stored. A page whose `/Rotate` cannot be read counts as not t
 never taken for either failure, it fails the pass. A page image is rendered by PDFium with its `/Rotate` as
 before, and `_png(bitmap)` writes it byte for byte as before. A picture is known by (stream sha256, pixel
 size, orientation), so one stream drawn two ways is two pictures, each charged its pixels; one drawn the
-same way on every page is still decoded once. `ocr_pdf_rules` is 3 (4 since §16.48). No version, no helper, no key of a Mac
+same way on every page is still decoded once. `ocr_pdf_rules` is 3. No version, no helper, no key of a Mac
 without an engine moves. A page already published is not read again for this: it keeps its reading until
 its file changes (as with the bump to 2). Measured with the real helper: a screenshot stored a quarter
 right and drawn upright read as one merged line in reverse order before, as its two lines now; one stored
 bottom-up (drawn with a negative `d`) was mirrored and unreadable before, and is read now.
 
-Amended 2026-10-11 by §16.48 (R82): `ocr_pdf_rules` is 4.
-
-The other way round was the limit until §16.48: a picture stored upright and drawn turned, so that the
-page itself shows it on its side (a wide table turned to fit a portrait page, a browser's CSS-turned
-image), was read on its side, and its lines came back merged. Measured on a Chrome-printed and a
-WebKit-printed page: three table rows read as three lines before this part, as one line after it. The file
-cannot tell the two cases apart (both are a wide stored picture shown tall); only the text in it can, so
-the page's way up is read first and the text decides: a quarter-turned picture whose lines come back
-running down is read once more the other way (§16.48, R82). The page's way up is taken first because
-browsers (Chrome, WebKit) embed every portrait phone photo the first way, its EXIF turn applied by the
-matrix, and because a mirrored or upside-down picture, which nobody draws that way on purpose, was not
-read at all. Pictures in a deck or Word file drawn with a `rot` or flip are still read as stored (their
-embedded JPEG's EXIF is honoured by the helper).
+The other way round is now the limit: a picture stored upright and drawn turned, so that the page itself
+shows it on its side (a wide table turned to fit a portrait page, a browser's CSS-turned image), is read
+on its side, as a page without a text layer always was. Vision still reads its words; its lines come back
+merged. Measured on a Chrome-printed and a WebKit-printed page: three table rows read as three lines
+before, as one line now. The file cannot tell the two cases apart (both are a wide stored picture shown
+tall); only the text in it can. The page's way up is taken because browsers (Chrome, WebKit) embed every
+portrait phone photo the first way, its EXIF turn applied by the matrix, and because a mirrored or
+upside-down picture, which nobody draws that way on purpose, was not read at all. Pictures in a deck or
+Word file drawn with a `rot` or flip are still read as stored (their embedded JPEG's EXIF is honoured by
+the helper).
 
 Amended 2026-10-11 by §16.48 (R82): a picture stored upright and drawn turned is no longer read on its
-side; its lines running down send it to a second reading the other way, which is kept when its lines run
-across.
+side. A quarter-turned picture whose lines come back running down is read once more the other way, and
+that reading is kept when its lines run across. `ocr_pdf_rules` is 4.
 
 Every new name in `agentsync.convert.pdf` is private (`_shown`, `_screen_axis`, `_Axes`, `_UPRIGHT`).
 
