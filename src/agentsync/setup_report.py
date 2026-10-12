@@ -5308,14 +5308,19 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     return "- doctor: " + " · ".join(parts)
 
 
-def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
+def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = False) -> str:
     """The installer's first sync: its step from install.log, what it converted and left to background sync
     (the step's ``converted-N-deferred-M[-reread-R]`` note, else the sync's own "converted N, deferred M
     online-only[, read again R]" line in install.out), and how many sources status says have a complete
     baseline (``baseline complete``: one listing complete since the source's scope last changed), read when
     the report runs. Labelled ``sync`` when that run's config step says sources.toml already existed (note
-    ``add-source`` or ``exists``), as install.sh's lines say since 2026-10-06."""
+    ``add-source`` or ``exists``), as install.sh's lines say since 2026-10-06.
+
+    A Summary ``scoped`` to an attempt that ran no install.sh falls back to the newest earlier run, and says
+    so: that run's start time, "before this attempt" (it may predate every logged attempt, so it is not
+    numbered). The baseline clause is live state and keeps its words (B13 round 3 R19, R28)."""
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
+    borrowed = scoped and not runs and bool(pool)
     parts: list[str] = []
     counts: tuple[int, int, int] | None = None
     label = "first sync"
@@ -5332,12 +5337,24 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
         elif v.get("note"):
             text += f" ({v['note']})"
-        parts.append(text + " (install.log)")
+        if borrowed:
+            text += (
+                f" (install.log: the install run of {_iso(pool[-1].started)}, before this attempt; this "
+                "attempt ran none)"
+            )
+        else:
+            text += " (install.log)"
+        parts.append(text)
+    elif scoped and not runs:
+        parts.append("no install.sh run during this attempt (install.log)")
     else:
         parts.append("no install.sh run with a first-sync step (install.log)")
-    source = "install.log"
+    source = "install.log: that earlier run" if borrowed else "install.log"
     if counts is None and r.facts.first_sync is not None:
-        counts, source = r.facts.first_sync, "install.out"
+        counts = r.facts.first_sync
+        source = (
+            "install.out: an earlier run's; this attempt ran none" if scoped and not runs else "install.out"
+        )
     if counts is not None:
         converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
@@ -5730,7 +5747,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out.append(folders)
     if r.facts.instructions is not None:
         out.append(_installer_output_line(r, runs, scoped=att is not None and att.begin is not None))
-    out.append(_first_sync_line(r, runs))
+    out.append(_first_sync_line(r, runs, scoped=att is not None and att.begin is not None))
     out.append(_doctor_line(r, runs))
     if run_type == "simulated launchd" or r.facts.launchd_simulated:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")

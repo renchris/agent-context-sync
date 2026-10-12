@@ -2922,6 +2922,36 @@ NO_TURN = (
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_reads(
+    fake_mac: dict[str, Path],
+) -> None:
+    """The Summary of an attempt that ran no install.sh fell back to the newest earlier run's first-sync step
+    and printed it as this attempt's. It still shows it, named by that run's start and "before this attempt",
+    with the live baseline clause as it was; with no earlier sync step it says this attempt ran none (B13
+    round 2 R19 and R28, one defect from two finders)."""
+    write_install_log(fake_mac, first_sync="seconds=34 rc=0 result=done note=converted-3-deferred-1")
+    write_friction(fake_mac, STOPPED_V8)
+    _text, summary = summary_of(fake_mac)
+    [line] = [ln for ln in summary.splitlines() if ln.startswith(("- first sync: ", "- sync: "))]
+    assert line.startswith(
+        "- first sync: done in 34s (install.log: the install run of 2026-09-29T10:00:00Z, before this "
+        "attempt; this attempt ran none) · converted 3, deferred 1 online-only (install.log: that earlier "
+        "run; background sync downloads and converts the 1)"
+    ), line
+    write_friction(fake_mac, V5_HAPPY)
+    _text, summary = summary_of(fake_mac)
+    assert "- first sync: done in 34s (install.log) · converted 3, deferred 1 online-only (install.log;" in (
+        summary
+    ), "this attempt's own run keeps its tags"
+    log = fake_mac["setup"] / "install.log"  # the earlier run without a first-sync step
+    log.write_text(
+        "".join(ln for ln in log.read_text(encoding="utf-8").splitlines(True) if "first-sync" not in ln)
+    )
+    write_friction(fake_mac, STOPPED_V8)
+    _text, summary = summary_of(fake_mac)
+    assert "- first sync: no install.sh run during this attempt (install.log)" in summary, summary
+
+
 def test_an_attempt_with_no_installer_run_is_given_no_folder_question(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
