@@ -96,4 +96,5 @@ markers = [
   "macos: needs macOS-specific syscalls (st_flags, setiopolicy_np, getattrlist)",
   "network: talks to a real network service; never run by default",
   "fileprovider: touches the live OneDrive File Provider mount (agentsync-e2e/ only)",
+  "timing: asserts a wall-clock bound that is the contract; a loaded parallel run may rerun or skip it",
 ]

@@ -6060,7 +6060,7 @@ def build_report(
     hooks: ReportHooks | None = None,
     friction_path: Path | None = None,
     now: datetime | None = None,
-    budget_s: float = TIME_BUDGET_S,
+    budget_s: float | None = None,
 ) -> tuple[str, Redactor]:
     """The report text and the redactor that produced it (its ``total`` is the redaction count, numbered
     placeholders as the report shows them: :meth:`Redactor.recount`), always
@@ -6069,6 +6069,7 @@ def build_report(
     agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
     line is the prefilled issue link (:func:`issue_link` returns it)."""
     moment = now or datetime.now(UTC)
+    budget_s = TIME_BUDGET_S if budget_s is None else budget_s  # read at the call: a test can widen it
     r = _Run(config_path, hooks or ReportHooks(), budget_s)
     r.now = moment
     if friction_path is not None:

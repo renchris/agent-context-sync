@@ -55,6 +55,20 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         for marker, (env, reason) in gates.items():
             if marker in item.keywords and os.environ.get(env) != "1":
                 item.add_marker(pytest.mark.skip(reason=reason))
+    # A ``timing`` test asserts a wall-clock bound that is the contract (the report's time budget). On a Mac
+    # whose load is many runnable processes per core, the clock says nothing about the code: such a run skips
+    # them, and says why; CI's runners and an idle Mac run them. AGENTSYNC_TIMING=1 runs them anyway.
+    per_core = os.getloadavg()[0] / (os.cpu_count() or 1)
+    if per_core > _TIMING_LOAD_PER_CORE and os.environ.get("AGENTSYNC_TIMING") != "1":
+        busy = pytest.mark.skip(reason=f"load {per_core:.0f} per core: a wall-clock bound cannot be judged")
+        for item in items:
+            if "timing" in item.keywords:
+                item.add_marker(busy)
+
+
+_TIMING_LOAD_PER_CORE = 4.0
+"""The 1-minute load per core above which the ``timing`` tests are skipped (B13 round 2 R98: the report's
+budget tests failed at 10 to 60 per core, and pass on CI's runners and an idle Mac, well under 1)."""
 
 
 @pytest.fixture(autouse=True, scope="session")

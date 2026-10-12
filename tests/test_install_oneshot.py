@@ -23,6 +23,7 @@ import os
 import plistlib
 import pwd
 import re
+import resource
 import shlex
 import shutil
 import signal
@@ -2871,7 +2872,9 @@ def test_the_status_step_prints_progress_lines_too(env: dict[str, str], folder: 
     assert cp.returncode == 0, cp.stdout + cp.stderr
     out = cp.stdout.splitlines()
     waits = [i for i, ln in enumerate(out) if re.fullmatch(r"status: still running, \d+s", ln)]
-    assert waits and waits[-1] < out.index("[warn] launchd.poll — not loaded (fix: agentsync install-agent)")
+    # At least one progress line comes before status's own lines; a late tick may land between them and the
+    # pipeline's end, a race, not a wrong order (B13 round 2 R98).
+    assert waits and waits[0] < out.index("[warn] launchd.poll — not loaded (fix: agentsync install-agent)")
     assert ("status", "done", "0", "") in steps(install_log(env))
 
     failing = {**e, "STUB_DOCTOR_OUT": LISTING_HELD_FAIL, "STUB_DOCTOR_RC": "1"}
@@ -3601,15 +3604,19 @@ def test_friction_options_touch_nothing_else(env: dict[str, str]) -> None:
 
 
 def test_friction_options_are_fast(env: dict[str, str]) -> None:
+    """The friction options do almost nothing: measured in the CPU time bash and its children use, which a
+    loaded Mac does not stretch as it stretches the wall clock (B13 round 2 R98). That they start no uv,
+    agentsync or launchctl is test_friction_options_touch_nothing_else's."""
     for argv in (["--log-start", started("a")], ["--log", "2", "approval", "x", "-"]):
-        best = min(_timed(env, argv) for _ in range(3))
-        assert best < 0.2, f"{argv[0]} took {best:.3f}s"
+        best = min(_cpu(env, argv) for _ in range(3))
+        assert best < 0.2, f"{argv[0]} used {best:.3f}s of CPU"
 
 
-def _timed(env: dict[str, str], argv: list[str]) -> float:
-    t0 = time.monotonic()
+def _cpu(env: dict[str, str], argv: list[str]) -> float:
+    before = resource.getrusage(resource.RUSAGE_CHILDREN)
     assert install_sh(env, *argv).returncode == 0
-    return time.monotonic() - t0
+    after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return (after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime)
 
 
 def test_log_writes_its_arguments_literally(env: dict[str, str], tmp_path: Path) -> None:

@@ -139,10 +139,25 @@ _REAL_FULL_NAME = setup_report._full_name  # the fake_mac fixture replaces it
 RAW = (ORG, ORG.lower(), *FOLDERS, LIBRARY, LOGIN, FULL_NAME, "Jane", EMAIL, GUID, SERIAL, HOST)
 
 
-def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Path) -> None:
-    rc, text, elapsed = report(tmp_path, fake_mac["config"])
+@pytest.fixture
+def roomy_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A report time budget no load reaches, for a test that checks what the sections say: under load a
+    section ran out of the 12 s budget and said "This section failed" instead of its facts (B13 round 2
+    R98). The tests of the budget itself (marked ``timing``) keep the real one."""
+    monkeypatch.setattr(setup_report, "TIME_BUDGET_S", 120.0)
+
+
+@pytest.mark.timing
+def test_the_report_finishes_inside_its_time_budget(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    rc, _text, elapsed = report(tmp_path, fake_mac["config"])
     assert rc == 0
     assert elapsed < 15, f"setup-report took {elapsed:.1f}s"
+
+
+@pytest.mark.usefixtures("roomy_budget")
+def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    rc, text, _elapsed = report(tmp_path, fake_mac["config"])
+    assert rc == 0
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
     headings = re.findall(r"^## (.+)$", text, flags=re.MULTILINE)
     assert headings == list(setup_report.SECTION_TITLES)
@@ -397,6 +412,7 @@ def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) ->
             assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
 
 
+@pytest.mark.usefixtures("roomy_budget")
 def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
@@ -501,6 +517,7 @@ def test_a_broken_section_is_recorded_not_raised(fake_mac: dict[str, Path], tmp_
     assert headings == list(setup_report.SECTION_TITLES)
 
 
+@pytest.mark.timing
 def test_a_crashing_or_hanging_hook_never_takes_the_report_down(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("doctor exploded")
@@ -1423,6 +1440,7 @@ def test_doctor_hook_makes_no_network_probe(
     assert [ln.detail.split(" (")[0] for ln in lines] == ["not probed"]
 
 
+@pytest.mark.usefixtures("roomy_budget")
 def test_checks_render_once_from_one_offline_status_build(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
