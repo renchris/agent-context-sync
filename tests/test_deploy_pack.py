@@ -397,12 +397,12 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (11, "9efc4ad0e475d6f6dc51729df427fd956b72ada1776921385960d7a2c153d1db")
+PROMPT = (12, "0abbd071062fa82278c76282670f666837639e4a542cb26928243ab44272caa7")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
-"setup-prompt-compat N" numbers of step 1, SETUP_PROMPT_COMPAT in scripts/install.sh, PROMPT_VERSION in
-setup_report.py and the form's placeholder, and set both values here
+"setup-prompt-compat N" numbers of step 1 and the "prompt vN, <agent>: " its stops log, SETUP_PROMPT_COMPAT
+in scripts/install.sh, PROMPT_VERSION in setup_report.py and the form's placeholder, and set both values here
 (``test_the_prompt_text_changes_only_with_its_version`` prints the new digest). The number is also written out
 in tests/test_install_oneshot.py, tests/test_launcher.py and tests/test_setup_report.py, and in
 docs/deploy/setup-feedback.md."""
@@ -555,12 +555,39 @@ def test_readme_step1_is_one_command() -> None:
     # a step 1 error (a step that is not a number has no step column, and no reader opens an attempt on it).
     report = _report_step()
     assert f"then paste this prompt again\", and go to step {report}'s report." in step1
-    assert f"(a corporate proxy may need HTTPS_PROXY set) and go to step {report}'s report." in step1
+    flat = " ".join(step1.split())
+    # B13 round 2 R22: the git stop gave the person nothing to do once git works, which cost a "what now?"
+    # turn. HTTPS_PROXY must be in the environment of the shell the agent runs in, so the person starts a new
+    # session from a terminal where git reaches GitHub, then pastes the prompt again.
     assert (
-        "Before going to the report from either of these two stops, log the failed command as a step 1 error"
-        " if ~/src/agent-context-sync exists."
-    ) in step1
+        'If git failed any other way, show me its error and tell me: "Once git can reach GitHub from a '
+        'terminal, start a new session from that terminal and paste this prompt again"'
+    ) in flat
+    # R29: git's own http.proxy comes before HTTPS_PROXY (measured: with both set, git used the config value),
+    # so a hint naming only HTTPS_PROXY pointed the wrong way when git's error names a proxy. The setting is
+    # named for the agent to read; the prompt does not tell it to change ~/.gitconfig.
+    assert (
+        "(a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in git's own "
+        "settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may point at a "
+        f"network this Mac is not on), and go to step {report}'s report."
+    ) in flat
+    assert "~/.gitconfig" not in step1 and "git config --global" not in step1
+    # R32: "either of these two stops" came right after three cases, the middle one a recovery, not a stop.
+    # R25: the line a session logs here is the only one it writes before --log-start, so it carries the
+    # prompt's version and the agent in --log-start's words, which the report reads for that attempt alone.
+    assert (
+        "Before going to the report from the Xcode stop or the other-git-failure stop above, log the failed "
+        "command as a step 1 error if ~/src/agent-context-sync exists, starting its what-text with "
+        f"'{START_AGENT}: ' (the same words as in step 1's command, then a colon)."
+    ) in flat
+    assert "either of these two stops" not in flat
     assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
+    from agentsync import setup_report  # noqa: PLC0415
+
+    stated = setup_report._STEP1_STATED_RE.match(f"{START_AGENT.replace('<agent>', 'Contoso Agent, m-1')}: x")
+    assert stated is not None and stated.groups() == (str(PROMPT[0]), "Contoso Agent, m-1"), (
+        "the words the prompt asks for are the ones the report reads"
+    )
 
 
 def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
@@ -991,6 +1018,24 @@ def test_readme_step2_is_the_one_install_command() -> None:
         "If your tool cannot wait that long in the foreground, run it in the background and read its output"
         " until the NEXT: line appears; that is expected, not a deviation." in step2
     ), "a background run is blessed, so it is not logged as a deviation"
+    # B13 round 2 R40: a re-run's reinstall waits for a sync that holds the writer lock and prints "still
+    # running" lines; the friction rule ("not in this prompt") and the kind list pulled two ways on it, so one
+    # agent might log it and another not. The wait is named, with the installer's own cap, and not logged.
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    [wait] = re.findall(
+        r'^REINSTALL_WAIT="\$\{AGENTSYNC_REINSTALL_WAIT_SECONDS:-(\d+)\}"', script, re.MULTILINE
+    )
+    assert int(wait) % 60 == 0
+    said = (
+        "It is safe to re-run: if your tool stopped it early, run the same command again. If another sync is"
+        " running when it reinstalls, it says so and waits for that sync to end, up to"
+        f' {int(wait) // 60} minutes, printing "still running" lines, and then goes on even if that sync'
+        " has not ended; that is expected, not a deviation: do not log it."
+    )
+    assert said in " ".join(step2.split())
+    assert "agentsync: reinstalling after the background sync ends" in script
+    assert 'say "$1, still running, $((SECONDS - t0))s"' in script, "the ticker's words"
+    assert "reinstalling without waiting longer" in script, "and it goes on when the wait runs out"
 
 
 def test_readme_step3_runs_the_loop_then_the_report() -> None:
@@ -1046,10 +1091,23 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         "the loop's NEXT says 'session done' where the prompt stops"
     )
     finish = step3.split("Finish with:", 1)[1]
+    # B13 round 2 R11, R30: "the folders synced" read two ways on a Mac whose sources.toml also lists
+    # folders the person added as inbox sources, and had no words for a session that synced nothing. It is
+    # now the folders the installer counts (live kind = "local" sources: step 1's [synced] marks and step
+    # 2's additions), with a fallback for a step 1 that stopped before its list, and one "none" form.
     assert (
-        "the folders synced (full paths); the last NEXT: line printed before the report, or"
-        ' "none", and under it each WAITING ON YOU: line the same command printed;'
-    ) in finish, "one NEXT line, the report's own excluded, and every wait the same command printed"
+        "the folders this Mac syncs, as full paths (those step 1's list marked [synced] and those step 2"
+        ' added; if step 1 stopped before its list, the kind = "local" sources in'
+        ' ~/agent-context/sources.toml; never the inbox or another kind = "inbox" folder), saying which ones'
+        ' this session added, or "none: this Mac syncs no folder" (if setup stopped before step 2, say at'
+        ' which step); the last NEXT: line printed before the report, or "none", and under it each WAITING'
+        " ON YOU: line the same command printed;"
+    ) in " ".join(finish.split()), (
+        "one NEXT line, the report's own excluded, and every wait the same command printed"
+    )
+    assert "the folders synced (full paths)" not in finish
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 's.kind.value == "local" and s.state.value == "live"' in script, "the folders the installer counts"
     assert "of the loop" not in finish and "three lines" not in step3, "no candidate set, no line count"
     assert "it-request" not in block and "IT request" not in block, "KISS K04: no IT request step"
     assert "--confirm-install-agent" not in block
@@ -1158,6 +1216,23 @@ def test_readme_report_step_after_any_failure() -> None:
     text = steps[report]
     assert text.startswith("Sync loop and report.")
     assert "Then the report, always, even after a failure; this is the last command you run:" in text
+    # B13 round 2 R31: five places say "go to step 3's report", and step 3 used "the report" for its last
+    # command alone, with the "## Not used" section before it. The term is defined once, where step 3 uses
+    # it, as both parts in order; the section is skipped where its folder does not exist yet (an Xcode stop
+    # on a new Mac, which has no report either).
+    flat = " ".join(text.split())
+    defined = (
+        f"Step {report}'s report, where every \"go to step {report}'s report\" in this prompt lands, has two "
+        'parts, in this order. First, add a "## Not used" section to the end of '
+        "~/agent-context/setup/fix-request.md"
+    )
+    assert defined in flat
+    assert flat.index(defined) < flat.index(
+        "skip this part if ~/agent-context/setup does not exist. Then the"
+    )
+    assert flat.index("skip this part if") < flat.index("Then the report, always")
+    block = " ".join(_one_prompt_block().split())
+    assert block.count(f"go to step {report}'s report") >= 4, "the jump sites the definition names"
     assert (
         "(if ~/src/agent-context-sync does not exist, tell me instead that setup stopped before the code"
         in text
@@ -1235,11 +1310,14 @@ def test_readme_prompt_carries_the_field_lines() -> None:
         "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not "
         "choose folders for me: log a deviation, stop and wait for my answer."
     ) in step1
+    # B13 round 2 R9: on a new Mac step 2's first sync prints a WAITING ON YOU line too (an empty cloud folder
+    # names a sources.toml edit), and the only rule for such a line was a re-run's. It now covers every Mac,
+    # and forbids doing what the line says, not only running its commands.
     assert (
-        "If this Mac already runs agentsync, its sources, history and background jobs are kept, and [warn] "
-        "or WAITING ON YOU: lines about them may predate this session: show them to me and do not run "
-        "their commands."
-    ) in step2
+        "If this Mac already runs agentsync, its sources, history and background jobs are kept. Any [warn] "
+        "or WAITING ON YOU: line this command prints is mine (on such a Mac it may predate this session): "
+        "show it to me and do not do what it says, neither its commands nor its sources.toml edits."
+    ) in " ".join(step2.split())
     assert step2.index("run the same command again") < step2.index("If this Mac already runs agentsync")
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     # Field report 2026-10-08: the drop folder is the one inbox beside the docs repo, not every inbox-kind
@@ -1319,7 +1397,7 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "folders before and they are kept (each has [synced] before its path in the list). Then tell me "
         "which they are and ask only whether to add any unmarked folder. If you cannot ask me then, add none "
         "and go on to step 2. That is not a deviation: do not log it or stop, and say in your final message "
-        "that I was not asked and no folder was added."
+        "that I gave no answer, so no folder was added."
     )
     assert step1.endswith(kept), "the rule for a new Mac, then its one exception, which ends the step"
     assert step1.index(stop) < step1.index(kept) and step1.count("log a deviation") == 1

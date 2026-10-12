@@ -13,7 +13,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config; `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v9, <agent>'` (`Attempt: <UTC time>`, `Prompt: v9`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` dated more than 10 minutes after the closing line is another session, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v12, <agent>'` (`Attempt: <UTC time>`, `Prompt: v12`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` dated more than 10 minutes after the closing line is another session, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
 
 The machine part is read-only and bounded: no network (doctor runs without its Graph probe), no sudo, no prompts,
 no `tmutil`, every command with a timeout and the whole report within 12 s (`TIME_BUDGET_S`). Each section records its own failure
@@ -126,8 +126,8 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v11` (an attempt an older copy started reports that copy's: `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
-| `agent` | input | the attempt header's `Agent:` value |
+| `prompt_version` | input | the prompt version, `v12` (an attempt an older copy started reports that copy's: `v11`, `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
+| `agent` | input | the attempt header's `Agent:` value (for an attempt with no header, the agent its step 1 error line names, below) |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
 | `review` | checkboxes | ticked by the person |
@@ -211,7 +211,12 @@ attempt's outcome. One kind of late line is another session: a step 1 `error` da
 the closing line. Its session's step 1 stopped before `install.sh --log-start` wrote a header (since prompt v11
 the Xcode and git stops log that error before the report), so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line (logged after the previous
-attempt finished)". When it is the last attempt it is the one the Summary judges: "failed at step 1". Any
+attempt finished)". When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
+prompt v12 that line's text starts with `prompt v12, <agent>: `, the words step 1 gives `--log-start`, so the
+Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
+`prompt_version` and `agent` name them, marked `(from the step 1 error line)`, and the item shows the rest of
+the line. Without those words, as in a v11 log, they say `not stated`. An attempt with a header, and a late line
+that stays in its attempt, are never read that way. Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`
 is not logged there), says so in a note: a session whose step 1 stopped before `--log-start` and logged nothing is
@@ -229,7 +234,7 @@ question in its step 2, its Allow clicks the first click in its steps 2 and 3, a
 resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
 1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
 three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
-A `Prompt: v8`, `Prompt: v9`, `Prompt: v10` or `Prompt: v11` attempt is judged by the same rules: none moved a step. So is every
+A `Prompt: v8`, `Prompt: v9`, `Prompt: v10`, `Prompt: v11` or `Prompt: v12` attempt is judged by the same rules: none moved a step. So is every
 later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
 the rules only with its steps.
 
@@ -273,18 +278,18 @@ sentence included. A saved copy is therefore always known by its number. Twice a
 pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
 version, and the installer wrote its own number into the log.
 
-- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v11, <agent>'`. The
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v12, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
   with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
   error` line and the attempt's end line, tells the agent to stop and to have the person copy the prompt again
   from `README.md` on the main branch, and exits 2, so step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
-- The version leads the value, and is read in the shape the agent gave it (`Prompt v11: <agent>` and `prompt v11 -
-  <agent>` are v11). The stop message shows no value that passes; its last sentence tells a current copy whose
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v12: <agent>` and `prompt v12 -
+  <agent>` are v12). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
 - An older copy's own text still goes on to its report. That report's Summary says
-  `prompt: v7 or older (older than the installer's v11: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v12: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. That run writes no `bring-back.md` (one from the last real session
   stays as it is) and prints no `bring back:` or issue link line. Triage such a report as `known K18`, not as a
@@ -295,7 +300,7 @@ version, and the installer wrote its own number into the log.
   and no Allow click)`. Before 2026-10-07 it said `1 question` and `the folder question (step 1; not logged)`
   there (K28). A question the agent logged is still counted, and an attempt with an `install.sh` run in it
   (the agent listed the folders all the same) is read by the usual rules.
-- A copy newer than the installer (`newer than the installer's v11`) means the checkout on that Mac did not
+- A copy newer than the installer (`newer than the installer's v12`) means the checkout on that Mac did not
   update: look at step 1's `git pull` in the friction log.
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
   the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
@@ -602,6 +607,7 @@ named as "v5b review, its L<n>").
 | K33 | friction lines are the only agent prose in the report's public part, and four short forms of registered names reached them, which redaction does not catch; a typed placeholder made two false residue hits (2026-10-07 C12) | prompt wording | v11 has the agent name a folder, a file, a person, the organization or a customer in a friction line by its role in plain words, never by its real name, a short form of it or a placeholder; a name that is itself the problem goes to `fix-request.md`, and its line is still logged by role; `test_readme_friction_line_format_and_kinds` |
 | K34 | an earlier part's `<folder-N>` in `fix-request.md` can name another folder in section 1: placeholders are numbered per report in registration order, so an added folder, a listing past its 3 s bound or the shell fallback report renumbers them, between sessions and between step 2's and step 3's report of one (b11 C7 skeptic; measured again for B13) | prompt wording | v11 asks for a role that tells the folder apart, with the report's placeholder beside it, and says the numbers can change from one report to the next; triage identifies a folder by the role; `test_prompt_routes_changes_to_the_source_not_the_checkout` |
 | K35 | a go-ahead the person gave in the chat for a printed fix was logged only as a `deviation`, which no count reads, so human turns left it out (2026-10-07 U4) | prompt wording | v11's `question` kind covers a go-ahead or an answer given in the chat, other than the folder answer or word of a click, as a line of its own beside any `deviation` it allowed; `test_readme_question_kind_counts_a_go_ahead_given_in_the_chat` |
+| K36 | wording the v11 rehearsals read two ways or found missing (B13 round 2): the git stop gave the person nothing to do once git works (R22), and its proxy hint named only `HTTPS_PROXY`, which git's own `http.proxy` setting comes before (R29); "either of these two stops" followed three cases (R32); a header-less step 1 error lost the session's prompt and agent (R25); step 2's rule for `WAITING ON YOU:` lines was a re-run's only, though a new Mac's first sync prints one (R9), and its reinstall wait for a running sync was in no rule (R40); "step 3's report" was never defined, so whether it included the `## Not used` section was inferred (R31); the finish's "the folders synced" read two ways and had no words for a session that synced nothing (R11, R30); "I was not asked" was false when the question went unanswered (R41) | prompt wording | v12: the git stop tells the person to start a new session from a terminal where git reaches GitHub and paste the prompt again, and names git's own proxy setting; the stops it means are named; the step 1 error starts with `prompt v12, <agent>: `, which the report reads for that attempt alone; step 2 makes every `[warn]` or `WAITING ON YOU:` line the person's and names the reinstall wait as no deviation; step 3 defines its report as the `## Not used` section, then `--report-only`; the finish names the folders the installer counts, which ones this session added, or "none: this Mac syncs no folder"; the final message says no answer was given; `test_readme_step1_is_one_command`, `test_readme_step2_is_the_one_install_command`, `test_readme_prompt_carries_the_field_lines`, `test_readme_report_step_after_any_failure`, `test_readme_step3_runs_the_loop_then_the_report`, `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_a_header_less_step_1_error_states_its_prompt_and_agent` |
 
 ## 5. Unavoidable steps so far
 

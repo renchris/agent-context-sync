@@ -2685,24 +2685,27 @@ V10_HAPPY = V9_HAPPY.replace("Prompt: v9", "Prompt: v10")
 """Setup prompt v10: the same steps and rules, three sentences reworded."""
 
 V11_HAPPY = V10_HAPPY.replace("Prompt: v10", "Prompt: v11")
-"""Setup prompt v11, this build's: the same steps and rules, wording only (B13)."""
+"""Setup prompt v11: the same steps and rules, wording only (B13)."""
+
+V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
+"""Setup prompt v12, this build's: the same steps and rules, wording only (B13 round 3)."""
 
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v11 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v12 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
-    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, 10, 11, None, 99)]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7]
+    read_as = [setup_report.prompt_layout(v).version for v in (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, None, 99)]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 11 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 12 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
-    for version in (8, 9, 10, 11):  # none of them moved a step: each gets every rule written for v7
+    for version in (8, 9, 10, 11, 12):  # none of them moved a step: each gets every rule written for v7
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    for version in (7, 8, 9, 10, 11):
+    for version in (7, 8, 9, 10, 11, 12):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
@@ -2790,11 +2793,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v12, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v13, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 12
+    assert setup_report.PROMPT_VERSION < 13
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -2807,8 +2810,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            12,
-            "v9 (older than the installer's v12: the pasted copy was not the current README)",
+            13,
+            "v9 (older than the installer's v13: the pasted copy was not the current README)",
             "the pasted copy is not the current one",
         ),
     ):
@@ -3831,6 +3834,54 @@ def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
     write_friction(fake_mac, V7_HAPPY + "2026-09-29T10:12:00Z | step 1 | error | git pull exited 1 | -\n")
     summary = summary_at(20)[1]
     assert "- note: attempt 2 has no Attempt: line." in summary and note not in summary
+
+
+def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[str, Path]) -> None:
+    """B13 round 2 R25: a session whose step 1 stopped before ``install.sh --log-start`` wrote no header, so
+    the Summary, the friction log section and the issue link said "not stated" for a v11 paste by a known
+    agent. Since v12 the step 1 error line starts with ``prompt v12, <agent>: ``, and that attempt alone is
+    read with it: the line's own text is the rest. A line without the words reads as before, and an attempt
+    with a header, or a late line that stays in its attempt, never takes them."""
+    v6_install_log(fake_mac)
+    agent = "GitHub Copilot CLI, model-x1"
+    stop = f"2026-09-29T10:20:00Z | step 1 | error | prompt v12, {agent}: git pull exited 1 | -\n"
+
+    def report(friction: str) -> tuple[str, str, str, dict[str, list[str]]]:
+        write_friction(fake_mac, friction)
+        now = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+        link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+        return text, section(text, "Summary"), section(text, "Agent friction log"), link
+
+    _text, summary, fr, link = report(V11_HAPPY + stop)
+    assert "- prompt: v12 (from the step 1 error line) · run: " in summary
+    assert summary.split(" · agent: ", 1)[1].startswith(agent)
+    assert "approvals: not observable" in summary, "the stated agent's tool does not show approvals"
+    assert re.search(r"· step 1 · error · git pull exited 1\b", summary), "the item is the line's own text"
+    assert "prompt v12, " not in summary.split(" · agent: ", 1)[1]
+    assert f"prompt v12 (from the step 1 error line), agent {agent}" in fr
+    assert link["prompt_version"] == ["v12"] and link["agent"] == [agent]
+    assert "v12" in link["title"][0]
+    parsed = setup_report.parse_friction(V11_HAPPY + stop).attempts
+    assert parsed[0].stated == {} and parsed[1].header == {}, "the derived words are not a header"
+    assert parsed[1].events[0].what == "git pull exited 1" and parsed[1].version == 12
+
+    _text, summary, fr, link = report(V11_HAPPY + stop.replace(f"prompt v12, {agent}: ", ""))
+    assert "- prompt: not stated · run: " in summary and " · agent: not stated" in summary
+    assert (
+        "prompt not stated, agent not stated" in fr and "prompt_version" not in link and "agent" not in link
+    )
+
+    late = stop.replace("10:20:00Z", "10:05:00Z")  # within 10 minutes: the same session's late line
+    parsed = setup_report.parse_friction(V11_HAPPY + late).attempts
+    assert len(parsed) == 1 and parsed[0].events[-1].what.startswith("prompt v12, ")
+    end = "2026-09-29T10:01:10Z | end"
+    headed = V11_HAPPY.replace(
+        end, f"2026-09-29T10:00:00Z | step 1 | error | prompt v12, {agent}: x | -\n{end}"
+    )
+    [attempt] = setup_report.parse_friction(headed).attempts
+    assert attempt.stated == {} and attempt.said("Agent") == "Claude Code, claude-opus-5-5"
+    assert attempt.events[0].what.startswith("prompt v12, "), "an attempt with a header keeps the line whole"
 
 
 def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac: dict[str, Path]) -> None:

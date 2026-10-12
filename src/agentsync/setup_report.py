@@ -150,7 +150,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 11
+PROMPT_VERSION = 12
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -249,15 +249,15 @@ is gone and step 3 runs the sync loop, then the report), v6 and v5. A log is rea
 own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v7 share this module's step
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
 report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
-again), v10 (three sentences reworded) or v11 (wording only), so they have no entry: :func:`prompt_layout`
-reads them as v7."""
+again), v10 (three sentences reworded), v11 or v12 (wording only), so they have no entry:
+:func:`prompt_layout` reads them as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8 to v11, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8 to v12, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
@@ -871,6 +871,12 @@ class Attempt:
     legacy: tuple[str, ...]  # v4 "F<n> | step | status | minutes | what | fix" lines: shown, not counted
     first_line: int
     last_line: int
+    stated: dict[str, str] = dataclasses.field(default_factory=dict)  # Prompt, Agent of a header-less step 1
+
+    def said(self, key: str) -> str:
+        """The header's ``key`` line (``Prompt`` or ``Agent``), else what a header-less attempt's step 1 error
+        line stated (:data:`_STEP1_STATED_RE`), else empty."""
+        return self.header.get(key) or self.stated.get(key, "")
 
     @property
     def finished(self) -> bool:
@@ -881,7 +887,7 @@ class Attempt:
     @property
     def version(self) -> int | None:
         """The setup prompt version of the ``Prompt:`` line (``v6`` -> 6), None when not stated."""
-        m = re.search(r"\bv?(\d{1,3})\b", self.header.get("Prompt", ""))
+        m = re.search(r"\bv?(\d{1,3})\b", self.said("Prompt"))
         return int(m.group(1)) if m else None
 
     @property
@@ -1014,6 +1020,12 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
     return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
 
 
+_STEP1_STATED_RE = re.compile(r"prompt v(\d{1,3}), ([^:]{1,100}): ", re.IGNORECASE)
+"""How a step 1 error line starts its what-text since setup prompt v12 (``prompt v12, <agent>: ``, the words
+step 1 gives ``--log-start``): the line a session logs when step 1 stops before ``--log-start`` writes the
+attempt's header, so the report still knows that session's prompt version and agent."""
+
+
 def parse_friction(text: str) -> Friction:
     """Parse friction.md into attempts. An attempt starts at each ``Attempt: <time>`` line; lines before the
     first one (a v4 log) form an attempt of their own, and a second ``Prompt:`` line in one attempt starts
@@ -1029,7 +1041,9 @@ def parse_friction(text: str) -> Friction:
     of its own (the lines after it, up to the next header, are its too): the session that failed is judged,
     not the one that had finished. Any other line after a closing line stays in its attempt (a line logged
     late in the same session must not become the latest attempt), and :func:`stopping_error` does not judge
-    it."""
+    it. When that step 1 error starts with ``prompt vN, <agent>: `` (:data:`_STEP1_STATED_RE`), the attempt
+    states that version and agent (:attr:`Attempt.stated`) and the line's what-text is the rest; an attempt
+    with a header, or a line that stays in its attempt, is never read that way."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
 
@@ -1050,6 +1064,7 @@ def parse_friction(text: str) -> Friction:
                     legacy=tuple(cast("list[str]", cur["legacy"])),
                     first_line=cast(int, cur["first"]),
                     last_line=cast(int, cur["last"]),
+                    stated=cast("dict[str, str]", cur["stated"]),
                 )
             )
 
@@ -1062,6 +1077,7 @@ def parse_friction(text: str) -> Friction:
             "legacy": [],
             "first": line_no,
             "last": line_no,
+            "stated": {},
         }
 
     for n, line in enumerate(text.splitlines(), start=1):
@@ -1084,7 +1100,12 @@ def parse_friction(text: str) -> Friction:
             cast("dict[str, str]", cur["header"]).setdefault(name, key.group(2).strip("*").strip())
         parsed = _parse_event(n, event.group(1), event.group(2)) if event is not None else None
         if cur is None or (parsed is not None and orphan(parsed)):
+            headed = cur is not None
             cur = begin(n, None)
+            stated = _STEP1_STATED_RE.match(parsed.what) if headed and parsed is not None else None
+            if parsed is not None and stated is not None:
+                cur["stated"] = {"Prompt": f"v{int(stated.group(1))}", "Agent": stated.group(2).strip()}
+                parsed = dataclasses.replace(parsed, what=parsed.what[stated.end() :])
         if parsed is not None:
             cast("list[FrictionEvent]", cur["events"]).append(parsed)
         elif legacy is not None:
@@ -4976,8 +4997,14 @@ def _iso(moment: datetime | None) -> str:
 
 def _prompt_version(attempt: Attempt | None) -> str | None:
     """``v5`` from the attempt's Prompt: line (only the version: the line is the agent's free text)."""
-    m = re.search(r"\bv?(\d{1,3})\b", attempt.header.get("Prompt", "")) if attempt is not None else None
+    m = re.search(r"\bv?(\d{1,3})\b", attempt.said("Prompt")) if attempt is not None else None
     return f"v{int(m.group(1))}" if m else None
+
+
+def _stated_note(attempt: Attempt | None) -> str:
+    """Where a header-less attempt's prompt version came from, when its step 1 error line stated it."""
+    stated = attempt is not None and not attempt.header.get("Prompt") and attempt.stated.get("Prompt")
+    return " (from the step 1 error line)" if stated else ""
 
 
 _PROMPT_STOP_RE = re.compile(
@@ -5066,8 +5093,8 @@ def _friction_section(r: _Run) -> list[str]:
         no_header = "logged after the previous attempt finished" if _headerless(fr, i) else "v4 format"
         bits = [
             f"started {_iso(att.started)}" if att.started else f"no Attempt: line ({no_header})",
-            f"prompt {_prompt_version(att) or 'not stated'}",
-            f"agent {att.header.get('Agent') or 'not stated'}",
+            f"prompt {_prompt_version(att) or 'not stated'}{_stated_note(att)}",
+            f"agent {att.said('Agent') or 'not stated'}",
         ]
         tail = [f"{len(att.events)} event line(s): {_kind_counts(att)}"]
         if att.legacy:
@@ -5125,7 +5152,7 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
     # v6: the folder question is not logged
     asked = 0 if att.layout.logs_expected_turns or synced or stopped else 1
     q = logged_q + asked
-    agent = att.header.get("Agent", "").lower()
+    agent = att.said("Agent").lower()
     hidden = a == 0 and any(t in agent for t in APPROVAL_HIDDEN_TOOLS)
     approvals = "approvals: not observable" if hidden else _plural(a, "approval")
     no_clicks = _no_clicks_why(run_type)
@@ -5581,9 +5608,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     }[run_type]
     if run_type == "simulated launchd" and is_sandbox_home(home_path()):
         why_run += "; HOME is also under a temporary folder"
-    agent = (att.header.get("Agent") if att is not None else None) or "not stated"
+    agent = (att.said("Agent") if att is not None else None) or "not stated"
     out.append(
-        f"- prompt: {_prompt_version(att) or 'not stated'}{_prompt_copy_note(att)} · run: "
+        f"- prompt: {_prompt_version(att) or 'not stated'}{_stated_note(att)}{_prompt_copy_note(att)} · run: "
         f"{ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: {agent}"
     )
     if att is not None and att.header.get("Run"):
@@ -5879,7 +5906,7 @@ def _exclude_placeholder(m: re.Match[str]) -> str:
 def _issue_link(r: _Run, red: Redactor) -> str:
     fr = r.friction
     att = fr.latest if fr is not None else None
-    agent = att.header.get("Agent", "") if att is not None else ""
+    agent = att.said("Agent") if att is not None else ""
     agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub(" ".join(agent.split())))[:100].strip()
     outcome = r.outcome or compute_outcome(att, _latest_runs(r))  # the Summary's, else by the same runs
     return build_issue_url(

@@ -8455,6 +8455,10 @@ folder was added.
   prompt's quoted start against the script's two `say` lines.
 - "Not a deviation" is said outright, with "do not log it or stop". The v8 run that lost a round followed
   the stop to the letter, and a deviation line would count as agent friction for doing what the prompt asks.
+- **Amended 2026-10-11, setup prompt v12, §16.49 (B13 round 2 R41):** the last sentence ends "say in your final
+  message that I gave no answer, so no folder was added". "I was not asked" was false when the question was
+  asked and came back unanswered (the v11 rehearsal's closing line said it); "I gave no answer" is true in both
+  cases "cannot ask me" covers.
 - A person who can be asked is still asked, but only whether to add a folder. The answer "none" is a normal
   one.
 - The `question` kind is unchanged ("something other than which folders to sync"): whether to add a folder
