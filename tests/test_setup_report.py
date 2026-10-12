@@ -417,6 +417,29 @@ def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) ->
             assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
 
 
+def test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole() -> None:
+    """B13 round 5 F52: Q49 put ``~/.local/bin/agentsync`` into cycle's alarms, and its ``/`` read as an item
+    path, so the report cut whole alarms to ``<path>`` and lost the command they name. The binary is not an
+    item path; a real path beside it still is."""
+    bin_ = setup_report.AGENTSYNC_BIN
+    assert bin_ == "~/.local/bin/agentsync"
+    alarms = [  # cycle's own words (cycle.py: the breaker, the secret scan's purge, the credential page)
+        "  alarm: deletion breaker TRIPPED: 3 absent file(s) held, nothing removed; if the deletion is real "
+        f"run `{bin_} accept-deletions contoso-files` or retire the source",
+        "  alarm: a published page matches the secret scan's new rules: 2026-10-12; 2 cached conversion(s) "
+        f"deleted, purge queued {cycle._PURGE_QUEUE_STEPS}",
+        f"  alarm: a page named after a credential was removed from the tree; `{bin_} purge` it from history",
+    ]
+    for alarm in alarms:
+        assert setup_report._scrub_item_paths(alarm) == alarm
+    beside = f"  alarm: Clients/Contoso/plan.docx could not be read; run `{bin_} sync`"
+    assert "Contoso" not in setup_report._scrub_item_paths(beside), "an item path is still <path>"
+    assert (
+        setup_report._scrub_item_paths("  error: Clients/Contoso/plan.docx: timed out")
+        == "  error: <path>: timed out"
+    )
+
+
 @pytest.mark.usefixtures("roomy_budget")
 def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     _rc, text, _ = report(tmp_path, fake_mac["config"])

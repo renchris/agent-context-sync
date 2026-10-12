@@ -14587,6 +14587,14 @@ later syncs or an `exclude-empty`). An older run's warns, warns after the sync l
 still gives (already under `yours` or `unexpected`) are not named; with none, the line is unchanged. Test:
 `test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_one_does_not`.
 
+**F52: an alarm that names agentsync's full path keeps its words.** Amends the install.out tail and Recent
+errors scrub (`_scrub_segment`), read with Q49: every path test reads the segment with `~/.local/bin/agentsync`
+turned into the bare word and logger names dropped (`_probe`), while the substitutions still run on the original
+text, so the output keeps the full path. Before, the binary's `/` read as an item path and the deletion breaker,
+secret-scan purge and credential-page alarms became `alarm: ... <path>`, losing the command they name. A segment
+that names an item path beside the binary is still `<path>`. Test:
+`test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)

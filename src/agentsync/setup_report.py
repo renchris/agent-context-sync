@@ -5393,14 +5393,21 @@ def _scrub_item_paths(line: str) -> str:
     return name + sep + ": ".join(_scrub_segment(part) for part in rest.split(": "))
 
 
+def _probe(text: str) -> str:
+    """``text`` as the path tests read it: agentsync's own fixed binary path (``~/.local/bin/agentsync``,
+    which every runnable fix names since B13 round 4 Q49) and logger names are not item paths (B13 round 5
+    F52). The binary becomes the bare word, so nothing on either side of it is joined."""
+    return text.replace(AGENTSYNC_BIN, "agentsync").replace("agentsync.", "")
+
+
 def _scrub_segment(part: str) -> str:
-    if _LOG_HEAD_RE.fullmatch(part) or not _PATH_IN_LOG_RE.search(part.replace("agentsync.", "")):
+    if _LOG_HEAD_RE.fullmatch(part) or not _PATH_IN_LOG_RE.search(_probe(part)):
         return part
     out = _KEY_PATH_RE.sub(
-        lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(m.group(0)) else m.group(0), part
+        lambda m: m.group(1) + "<path>" if _PATH_IN_LOG_RE.search(_probe(m.group(0))) else m.group(0), part
     )
     out = _ABS_PATH_RE.sub("<path>", out)
-    return "<path>" if _PATH_IN_LOG_RE.search(out.replace("agentsync.", "").replace("<path>", "")) else out
+    return "<path>" if _PATH_IN_LOG_RE.search(_probe(out).replace("<path>", "")) else out
 
 
 _LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[,.]\d+)?Z?) (.*)")
