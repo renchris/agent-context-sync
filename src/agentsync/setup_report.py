@@ -113,7 +113,7 @@ from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
-from agentsync.config import Config, load_config
+from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
 
 REPORT_TITLE = "# agentsync setup report"
@@ -5959,6 +5959,8 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
 _EXCLUDE_LIST_RE = re.compile(r"\bexclude = \[.*?(?:\] in \[\[source\]\]|$)")
 """The ready-to-paste exclude line of ``arm_local.exclude_advice`` (a WAITING ON YOU line, the heartbeat
 fix): it names folders below a source root, which the Redactor has never seen. Also a line cut short."""
+_SHIPPED_EXCLUDES = frozenset((*DEFAULT_EXCLUDES, *INBOX_IGNORES, *OS_JUNK_EXCLUDES))
+"""The globs agentsync itself ships (``config``): the only entries of an exclude line shown as written."""
 
 
 _SOURCE_LOCAL_RE = re.compile(
@@ -6064,7 +6066,26 @@ def _redact_lines(red: Redactor, lines: list[str]) -> str:
 
 
 def _exclude_placeholder(m: re.Match[str]) -> str:
-    return "exclude = [<path>]" + (" in [[source]]" if m.group(0).endswith("]]") else "")
+    """An exclude line with only agentsync's own globs (:data:`_SHIPPED_EXCLUDES`) shown, so a reviewer can
+    check the advice kept them, and every other entry as ``"<path>"`` (``"/<path>/"`` for a root-anchored
+    folder): a hand-written entry can be a bare folder name. An allowlist, not a denylist (B13 round 3 R8). A
+    line cut inside the list, or one whose entries do not parse, is ``exclude = [<path>]`` as before."""
+    whole = m.group(0)
+    if not whole.endswith("] in [[source]]"):
+        return "exclude = [<path>]"
+    try:
+        entries = json.loads("[" + whole[len("exclude = [") : -len("] in [[source]]")] + "]")
+    except ValueError:
+        entries = None
+    if not isinstance(entries, list) or not all(isinstance(e, str) for e in entries):
+        return "exclude = [<path>] in [[source]]"
+    shown = [
+        json.dumps(e, ensure_ascii=False)
+        if e in _SHIPPED_EXCLUDES
+        else ('"/<path>/"' if len(e) > 2 and e.startswith("/") and e.endswith("/") else '"<path>"')
+        for e in entries
+    ]
+    return f"exclude = [{', '.join(shown)}] in [[source]]"
 
 
 def _issue_link(r: _Run, red: Redactor) -> str:

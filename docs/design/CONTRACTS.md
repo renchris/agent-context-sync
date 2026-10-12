@@ -6086,7 +6086,10 @@ or empty for this case (a source sat incomplete for 900 passes):
   Redactor runs (also a line cut inside the list). The names come from inside a source, where the Redactor has
   registered nothing, and the line reaches the report through the Loop line, the install.out tail and
   whatever the agent logged. install.sh's shell fallback report does the same (`scrub_exclude_lists`, after
-  `redact_stream`).
+  `redact_stream`). (**amended 2026-10-11, §16.47 R8:** in a whole list, agentsync's own globs
+  (`config.DEFAULT_EXCLUDES`, `INBOX_IGNORES`, `OS_JUNK_EXCLUDES`) are shown as written and every other entry is
+  `"<path>"`, or `"/<path>/"` for a root-anchored folder: an allowlist, so a hand-written bare folder name stays
+  hidden. A cut or unparsable list keeps `exclude = [<path>]`, and the shell fallback keeps the whole-list form.)
 
 **doctor and status wording.**
 

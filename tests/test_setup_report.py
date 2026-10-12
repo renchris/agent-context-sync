@@ -3448,8 +3448,9 @@ def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: 
 
 def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac: dict[str, Path]) -> None:
     """Bring-back S11: the wait for an empty cloud folder prints a ready-to-paste exclude line naming folders
-    below a source root, which the Redactor has never seen. The report shows the line without its globs,
-    also when a line was cut inside the list."""
+    below a source root, which the Redactor has never seen. The report shows agentsync's own globs as written
+    and every other entry as <path>, so a reviewer can check the advice kept the defaults (B13 round 2 R8); a
+    hand-written bare folder name is <path> too, and a line cut inside the list is all <path>."""
     wait = (
         "WAITING ON YOU: 2 empty cloud folder(s) keep the listing of one incomplete (deletions held; another "
         'sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "/Fabrikam Bids/", '
@@ -3459,9 +3460,17 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     hooks = setup_report.ReportHooks(loop_next=lambda config: ["NEXT: session done", wait])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
-    assert "set exclude = [<path>] in [[source]] id = " in loop and loop.endswith("later gains files"), loop
+    # The Loop line cuts a path to its last part first (KISS K16b): "/Plans/..." is no longer anchored.
+    shown = 'set exclude = ["~$*", "/<path>/", "<path>"] in [[source]] id = '
+    assert shown in loop and loop.endswith("later gains files"), loop
     assert "Fabrikam" not in text and "Tailspin" not in text
     red = setup_report.Redactor()
+    kept = (
+        'set exclude = ["*.tmp", "Contoso Payroll", ".~lock.*#", "/Empty Subfolder/"] in [[source]] id = "x"'
+    )
+    assert setup_report._redact_lines(red, [kept]) == (
+        'set exclude = ["*.tmp", "<path>", ".~lock.*#", "/<path>/"] in [[source]] id = "x"'
+    )
     cut = 'fix: set exclude = ["~$*", "/Fabrikam Bi'
     assert setup_report._redact_lines(red, [cut]) == "fix: set exclude = [<path>]"
 
@@ -3476,7 +3485,7 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert f"; {draft}; WAITING ON YOU: 2 empty cloud folder(s) keep the listing of " in loop, loop
-    assert "set exclude = [<path>] in [[source]] id = " in loop and loop.endswith("later gains files"), loop
+    assert shown in loop and loop.endswith("later gains files"), loop
     assert "Fabrikam" not in text and "Tailspin" not in text
 
 
