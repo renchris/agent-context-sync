@@ -3619,7 +3619,7 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     # B13 round 4 Q13: the command printed the draft after the exclude wait, and the line says so
-    moved = "; the command prints that one after the 1 wait(s) that follow, in their order: WAITING ON YOU: "
+    moved = "; also waiting, which the command prints before it: WAITING ON YOU: "
     assert f"; {draft}{moved}2 empty cloud folder(s) keep the listing of " in loop, loop
     assert shown in loop and loop.endswith("later gains files"), loop
     assert "Fabrikam" not in text and "Tailspin" not in text
@@ -3628,7 +3628,18 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert f"; {draft}; WAITING ON YOU: 2 empty cloud folder(s) keep the listing of " in loop, loop
-    assert "the command prints that one" not in loop
+    assert "also waiting" not in loop
+    # B13 round 5 F9: the draft in the middle of three, so only the first of the others comes before it
+    hooks = setup_report.ReportHooks(
+        loop_next=lambda config: [stop, wait, draft, wait.replace("2 empty", "3 empty")]
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
+    assert (
+        f"; {draft}; also waiting (the command prints the first of these before it): WAITING ON YOU: 2 empty"
+        in (loop)
+    ), loop
+    assert "wait(s)" not in loop and "below" not in loop and "the 1 " not in loop
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -3767,8 +3778,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     assert re.search(
         r"; WAITING ON YOU: macOS held the listing of <(?:source|folder)-\d+> for a privacy prompt: click "
         r"Allow on the macOS prompt \(it can sit behind other windows\), then run "
-        r"`~/\.local/bin/agentsync sync`; the command prints that one after the 1 wait\(s\) that follow, in "
-        r"their order: WAITING ON YOU: 1 queued purge\(s\): preview with "
+        r"`~/\.local/bin/agentsync sync`; also waiting, which the command prints before it: WAITING ON "
+        r"YOU: 1 queued purge\(s\): preview with "
         r"`~/\.local/bin/agentsync purge --queue --dry-run` \(writes nothing\) before you run "
         r"`~/\.local/bin/agentsync purge --queue` \(rewrites history\)$",
         line,
@@ -3790,8 +3801,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         r"session done; "
         r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep up to "
         r"about 10 in questions\.md \(all of them if there are fewer\), "
-        r"correct the answers in answers\.md, and change both files to status: confirmed; the command prints "
-        r"that one after the 2 wait\(s\) that follow, in their order: WAITING ON YOU: 1 "
+        r"correct the answers in answers\.md, and change both files to status: confirmed; also waiting, "
+        r"which the command prints before it: WAITING ON YOU: 1 "
         r"queued purge\(s\): preview with `~/\.local/bin/agentsync purge --queue --dry-run` \(writes "
         r"nothing\) before you run `~/\.local/bin/agentsync purge --queue` \(rewrites history\); WAITING ON "
         r"YOU: macOS held the listing of "

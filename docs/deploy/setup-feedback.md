@@ -262,9 +262,10 @@ the config file its name. So a setup that synced and stopped before drafting the
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
 something waits on the person, the line ends with every `WAITING ON YOU:` line the loop printed: first the one
 the loop stopped on, then the others in the loop's order; when the command printed that one after others, a
-fixed clause before them says so ("the command prints that one after the N wait(s) that follow, in their
-order:"). The one it stopped on is the draft baseline's
-when the NEXT line says "(see the WAITING ON YOU line)" or, over two or more waits, "(see the WAITING ON YOU lines)", else a listing macOS holds for an Allow click, else the
+fixed clause before them says so ("also waiting, which the command prints before it:", or "also waiting
+(the command prints the first K of these before it):" when it printed only some of them first). The one it
+stopped on is the draft baseline's when the NEXT line says "(see the WAITING ON YOU line)" or, over two or
+more waits, "(see the WAITING ON YOU lines)", else a listing macOS holds for an Allow click, else the
 first. The loop prints its queued purges first, so shown by place they hid the wait the NEXT line points at.
 When files are still to be read again, the loop's note about them
 follows (two notes when the last sync did not get to one of the sources): `note: sync again: N file(s) ...`

@@ -13881,6 +13881,8 @@ stopped on still comes first; when the command printed it after others, a fixed 
 command prints that one after the N wait(s) that follow, in their order:` (or `the first K of the N`). The line is
 unchanged when the orders match. Tests: `test_an_exclude_line_never_carries_its_folder_names_into_the_report`,
 `test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
+Amended 2026-10-12 (§16.58, F9 and F46): the clause now reads `; also waiting, which the command prints before
+it:` or `; also waiting (the command prints the first K of these before it):`.
 
 **Q17: the Empty cloud folders line says its zeros in words.** Amends the Empty cloud folders line: the head `N
 unknown: D dataless, M materialised-and-empty (...)` and `C of N checked` always show; a kind with no folder
@@ -14519,6 +14521,15 @@ two or more words (name, folder, library or organisation), as the code always di
 name. install.sh's `name_forms` applies it to the full name only, because its folder and organisation pairs are
 matched only as written and never matched the run-together lower-case word. Test:
 `test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alone` (a folder `Set Up`).
+
+**F9, F46: the Loop line's order clause in plain words.** Amends Q13 (§16.52): the wait the loop stopped on
+still comes first (the 2026-10-07 field report: the loop prints queued purges first and the draft baseline last,
+so by place they hid the wait the NEXT line points at); the clause before the others reads `; also waiting, which
+the command prints before it:` when the command printed all of them first, or `; also waiting (the command prints
+the first K of these before it):` (`the first of these` for one) when it printed only some first. No `wait(s)`,
+no numeral for one, and no place word: the others follow on the same line. F9 and F46 describe one clause and are
+built once. Tests: `test_an_exclude_line_never_carries_its_folder_names_into_the_report` (with the middle case),
+`test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
 
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
