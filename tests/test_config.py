@@ -9,6 +9,7 @@ import pytest
 
 from agentsync.config import (
     DEFAULT_EXCLUDES,
+    RETIRE_ADVICE,
     SOURCE_ID_RE,
     BreakerConfig,
     Config,
@@ -313,6 +314,17 @@ def test_load_config_missing_file_names_add_source(tmp_path: Path) -> None:
 def test_invalid_configs_have_clear_errors(tmp_path: Path, text: str, match: str) -> None:
     with pytest.raises(ConfigError, match=match):
         parse(text, tmp_path)
+
+
+def test_the_retire_advice_names_a_source_block_the_loader_accepts(tmp_path: Path) -> None:
+    """F97 (B13 round 5): the cycle's vanished-source refusal and doctor's shared-content line said to set
+    state = "retired" alone, which the loader refuses (a retired source needs retired_reason).  The advice's
+    own assignments, pasted into a [[source]] block, parse as a retired source."""
+    settings = re.findall(r'(\w+) = ("[^"]*")', RETIRE_ADVICE)
+    assert [k for k, _ in settings] == ["state", "retired_reason"]
+    block = "".join(f"{k} = {v}\n" for k, v in settings)
+    cfg = parse(f"[[source]]\nid = 'a'\nkind = 'local'\npath = '/tmp/x'\n{block}", tmp_path)
+    assert cfg.sources[0].state is SourceState.RETIRED
 
 
 def test_source_inside_docs_repo_rejected(tmp_path: Path) -> None:

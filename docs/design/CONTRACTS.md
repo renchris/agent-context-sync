@@ -14243,6 +14243,19 @@ This amends §16.41, §16.45 and §16.49's "only when the body parses as a cycle
 that parses as a cycle's record": the body parses and its label is a `CycleMode`. Tests: `tests/test_ops_doctor.py` (`test_lock_held_by_a_non_cycle_names_no_cycle`,
 `test_lock_held_by_a_cycle_says_a_cycle_is_running`).
 
+**F97: one retirement advice, and a config the loader accepts** (`agentsync.config`, `agentsync.cycle`,
+`agentsync.ops.doctor`). The vanished-source refusal (`Cycle._refuse_vanished_sources`) and doctor's
+`sources.shared_content` line wrote the advice out twice, and §16.50 Q42's "the refusal's own words" was held by
+nothing: only doctor's copy was pinned. Both also said to set `state = "retired"` alone, which the loader refuses (`a
+retired source needs 'retired_reason'`). `config.RETIRE_ADVICE` is now ``state = "retired" and retired_reason =
+"<why>" (its pages become tombstones in one labelled commit)``, beside the check it describes; the refusal ends `put
+the [[source]] block back with <RETIRE_ADVICE>, or restore it` and doctor's line `if one source copies the other,
+give its [[source]] block in sources.toml <RETIRE_ADVICE>`. This amends the text §16.45 R144 and §16.50 Q42 quote.
+Tests: `tests/test_config.py::test_the_retire_advice_names_a_source_block_the_loader_accepts` (the advice's own
+assignments parse as a retired source),
+`tests/test_review_fixes.py::test_removing_a_source_block_is_refused_not_silently_kept_current`,
+`tests/test_ops_doctor.py::test_two_sources_holding_the_same_files_is_an_info_line`.
+
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
 Wave B13 round 5, lane B: 18 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in

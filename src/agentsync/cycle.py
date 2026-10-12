@@ -66,7 +66,7 @@ from agentsync.classifier import (
     classify_output,
 )
 from agentsync.classifier import classify_pass as _classify_pass
-from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
+from agentsync.config import RETIRE_ADVICE, BreakerConfig, Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr, speech
 from agentsync.convert import _common as convert_common
 from agentsync.convert import recording as recording_mod
@@ -2210,8 +2210,7 @@ class _Cycle:
             names = ", ".join(f"{sid!r} ({n} file(s))" for sid, n in sorted(vanished.items()))
             raise ConfigError(
                 f"source(s) {names} are mirrored but no longer in sources.toml; retirement is explicit: put "
-                'the [[source]] block back with state = "retired" (its pages become tombstones in one '
-                "labelled commit), or restore it"
+                f"the [[source]] block back with {RETIRE_ADVICE}, or restore it"
             )
 
     def _retag_published(self) -> None:

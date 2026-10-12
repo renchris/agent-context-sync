@@ -25,7 +25,7 @@ import pytest
 
 from agentsync import arm_local, cli, cycle, gitops, governance, lints, paths, policy, slug
 from agentsync import manifest as manifest_mod
-from agentsync.config import Config, canonical_source_root, parse_config
+from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, parse_config
 from agentsync.cycle import run_cycle
 from agentsync.frontmatter import parse_frontmatter
 from agentsync.graph.client import GraphClient
@@ -1073,8 +1073,10 @@ def test_removing_a_source_block_is_refused_not_silently_kept_current(tmp_path: 
         .replace(f'id = "{SID}"', 'id = "second"')
         .replace('sentinel = "README.txt"\n', "")
     )
-    with pytest.raises(cycle.ConfigError, match="retirement is explicit"):
+    with pytest.raises(cycle.ConfigError, match="retirement is explicit") as refused:
         run(write_config(tmp_path, only_other))
+    # B13 round 5 F97: the advice is the one doctor gives, and names retired_reason, which the loader needs
+    assert RETIRE_ADVICE in str(refused.value)
 
 
 def test_empty_root_without_sentinel_deletes_nothing(tmp_path: Path) -> None:

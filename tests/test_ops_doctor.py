@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, gitops, lints, setup_report
-from agentsync.config import Config, local_source_table, parse_config
+from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.loop import BIN
 from agentsync.manifest import Manifest
@@ -1582,10 +1582,8 @@ def test_two_sources_holding_the_same_files_is_an_info_line(sample_config: Confi
     assert r.ok and r.severity is Severity.INFO and r.fix is None
     assert r.detail.startswith("1 file(s) in local-fixture have the same content as a file in team-copy: ")
     # The advice is the cycle's own rule: deleting the [[source]] block is refused at the next sync (exit 78).
-    assert r.detail.endswith(
-        'set state = "retired" in its [[source]] block in sources.toml (its pages become tombstones in one '
-        "labelled commit)"
-    )
+    # B13 round 5 F97: in the refusal's own words, from one constant
+    assert r.detail.endswith(f"give its [[source]] block in sources.toml {RETIRE_ADVICE}"), r.detail
     assert "removing it" not in r.detail
 
 

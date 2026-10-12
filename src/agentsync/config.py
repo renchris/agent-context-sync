@@ -415,6 +415,14 @@ def _path(t: Mapping[str, Any], key: str, where: str, default: Path) -> Path:
 # ---------------------------------------------------------------------------------------------------------
 
 
+RETIRE_ADVICE = (
+    'state = "retired" and retired_reason = "<why>" (its pages become tombstones in one labelled commit)'
+)
+"""How a source is retired, in the words the cycle's vanished-source refusal and doctor's shared-content line
+both print (B13 round 5 F97): the settings this module accepts for a retired source, ``retired_reason``
+included, so advice followed word for word is not refused again."""
+
+
 def _parse_source(raw: object, n: int, cfg_where: str) -> SourceConfig:
     where = f"{cfg_where}: [[source]] #{n}"
     if not isinstance(raw, dict):

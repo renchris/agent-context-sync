@@ -30,7 +30,7 @@ from pathlib import Path
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
-from agentsync.config import Config, SourceConfig, canonical_source_root
+from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
@@ -1647,8 +1647,8 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     return [
         _ok(
             "sources.shared_content",
-            f'{shown}: both are kept; if one source copies the other, set state = "retired" in its '
-            "[[source]] block in sources.toml (its pages become tombstones in one labelled commit)",
+            f"{shown}: both are kept; if one source copies the other, give its [[source]] block in "
+            f"sources.toml {RETIRE_ADVICE}",
         )
     ]
 
