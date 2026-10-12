@@ -11,8 +11,7 @@ import zlib
 from pathlib import Path
 
 from agentsync.model import CanonicalHash
-
-OOXML_SUFFIXES: tuple[str, ...] = (".docx", ".docm", ".xlsx", ".xlsm", ".pptx", ".pptm")
+from agentsync.policy import OOXML_SUFFIXES  # every Office package agentsync reads or labels (B13 Q76)
 
 VOLATILE_PARTS: tuple[str, ...] = (
     "docProps/*",

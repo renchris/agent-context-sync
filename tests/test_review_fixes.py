@@ -6,11 +6,14 @@ no real ``tmutil``; every repo lives under tmp_path and HOME is isolated by conf
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 import plistlib
 import stat
 import subprocess
+import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -40,6 +43,7 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops import doctor, launchd
+from test_convert_builders import build_potx
 from test_policy import LABEL, OTHER_LABEL, SITE, labelinfo_xml, labelled_docx
 
 SID = "src"
@@ -231,6 +235,64 @@ def test_sg03_erasure_purge_is_not_undone_by_a_safe_save_or_a_copy(tmp_path: Pat
     assert not committed_blobs_containing(config.docs_repo, b"SECRET-KAPPA")
     again = run(config)
     assert again.exit_code == 0 and again.commit_sha is None
+
+
+def resaved(potx: Path, stamp: str) -> None:
+    """Save ``potx`` again in place with only docProps/core.xml changed, as a no-edit save changes it."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(potx) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "docProps/core.xml":
+                data = data.replace(b"</cp:coreProperties>", f"<!-- {stamp} --></cp:coreProperties>".encode())
+            zout.writestr(info, data)
+    potx.write_bytes(out.getvalue())
+
+
+def test_a_template_purged_under_its_raw_bytes_hash_stays_suppressed(tmp_path: Path) -> None:
+    """B13 round 4 Q76: a purge records the H1 of its day, which for a .potx, .vsdx or .vsdm was the raw-bytes
+    hash.  H1 now hashes them by parts, so a byte-identical copy would no longer match and be published
+    again; the fetched bytes' own hash is checked against the purged hashes too."""
+    config, src = make_env(tmp_path)
+    potx = build_potx(src / "copy of plan.potx", "Contoso Erased Plan")
+    raw = hashlib.sha256(potx.read_bytes()).hexdigest()
+    governance._add_suppressions(config.state_paths.root, [], [], canonical=[raw])  # a bytes@1 purge
+    report = run(config)
+    assert report.exit_code == 0
+    assert not [p for p in git(config.docs_repo, "ls-files", "mirror").split() if "plan" in p]
+    assert not committed_blobs_containing(config.docs_repo, b"Contoso Erased Plan")
+    assert any("matched purged content" in a for s in report.sources for a in s.alarms), report.sources
+
+
+def test_a_template_hashed_as_bytes_before_is_changed_once_and_keeps_its_page(tmp_path: Path) -> None:
+    """B13 round 4 Q76: an existing .potx row whose H1 is bytes@1 counts as changed once when it is next
+    fetched (canonical-method-changed), is read again and keeps its page (H2: output unchanged); after that,
+    a save that changes only docProps is touched, not changed, and is not read again."""
+    config, src = make_env(tmp_path)
+    potx = build_potx(src / "plan.potx", "Contoso Quarterly Plan")
+    assert run(config).exit_code == 0
+    page = "mirror/src/plan.potx.md"
+    assert "Contoso Quarterly Plan" in (config.docs_repo / page).read_text(encoding="utf-8")
+    stable = item_id(config, "plan.potx")
+    with Manifest(config.state_paths.db) as m:
+        row = m.get_item(SID, stable)
+        assert row is not None and row.canonical_method == "ooxml-parts@1"
+        m.set_content(  # as a run before the fix hashed it
+            SID,
+            stable,
+            content_sha256=row.content_sha256 or "",
+            canonical_sha256=hashlib.sha256(potx.read_bytes()).hexdigest(),
+            canonical_method="bytes@1",
+            canonical_parts=(),
+        )
+    for stamp, verdict in (("first", Verdict.OUTPUT_UNCHANGED), ("second", Verdict.TOUCHED_NOT_CHANGED)):
+        resaved(potx, stamp)
+        report = run(config)
+        assert report.exit_code == 0 and page not in [p for _, p in ops(report)], stamp
+        with Manifest(config.state_paths.db) as m:
+            row = m.get_item(SID, stable)
+        assert row is not None and row.canonical_method == "ooxml-parts@1", stamp
+        assert row.last_verdict is verdict, stamp
 
 
 def test_volume_uuid_change_keeps_the_page_id_and_purge_by_the_new_id_verifies(

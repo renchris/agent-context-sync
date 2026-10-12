@@ -4046,7 +4046,10 @@ class _Cycle:
         sid, stable = row.source_id, row.stable_id
         if h1 is None:
             h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
-        if self.suppressions.matches_content(h1.sha256):
+        # The raw-bytes hash too: a purge recorded the H1 of its day, and a suffix whose H1 method has since
+        # changed (B13 round 4 Q76: .potx, .vsdx and .vsdm were bytes@1) must stay suppressed.
+        purged = self.suppressions.matches_content
+        if purged(h1.sha256) or purged(fetched.content_sha256):
             self._suppress_purged_content(src, row, acc)
             return None
         c2 = classify_content(row, h1)

@@ -400,6 +400,19 @@ def test_every_ooxml_suffix_uses_parts(tmp_path: Path) -> None:
         assert canonical_hash(p, suffix=suffix).method == "ooxml-parts@1"
 
 
+@pytest.mark.parametrize("suffix", [".potx", ".vsdx", ".vsdm", ".dotx", ".xltx"])
+def test_a_template_or_drawing_saved_again_unchanged_hashes_the_same(tmp_path: Path, suffix: str) -> None:
+    """B13 round 4 Q76: the deck converter reads .potx and the diagram converter .vsdx and .vsdm, but H1
+    hashed them as raw bytes, so a save that changed only docProps counted as changed and was converted
+    again.  H1 now hashes every suffix policy.OOXML_SUFFIXES names by its parts."""
+    parts = {"[Content_Types].xml": b"<Types/>", "body.xml": b"<b>Contoso plan</b>"}
+    one = make_zip(tmp_path / f"one{suffix}", {**parts, "docProps/core.xml": b"<c>saved 09:00</c>"})
+    two = make_zip(tmp_path / f"two{suffix}", {**parts, "docProps/core.xml": b"<c>saved 17:30</c>"})
+    first, second = canonical_hash(one, suffix=suffix), canonical_hash(two, suffix=suffix)
+    assert first.method == "ooxml-parts@1" and first == second
+    assert one.read_bytes() != two.read_bytes()
+
+
 def test_differing_parts_added_removed_changed_sorted() -> None:
     old = (("a", "1"), ("b", "2"), ("c", "3"))
     new = (("b", "2"), ("c", "9"), ("d", "4"))
