@@ -180,6 +180,31 @@ def _ocr_lines(image: OcrImage, *, escape: bool = True) -> list[str]:
     return out
 
 
+_ON_ITS_SIDE = 1.5
+"""A line whose box, in pixels, is more than this many times higher than it is wide runs down the picture: its
+text was read on its side (the helper's boxes of such lines measured 2 to 9 times).  One this many times
+wider than high runs across."""
+
+
+def _direction(image: OcrImage) -> int:
+    """Which way the lines read in ``image`` run: 1 across, -1 down (the picture was read on its side), 0
+    neither, or no lines.  A way wins when most of the lines' characters are in lines that run that way
+    (``_ON_ITS_SIDE``).  A box is measured in pixels, not in the fractions of the picture the helper gives:
+    on a wide picture a short line's fractions look tall."""
+    across = down = total = 0
+    for line in image.lines:
+        weight = len("".join(line.text.split()))
+        width, height = line.w * image.width, line.h * image.height
+        total += weight
+        if width > _ON_ITS_SIDE * height:
+            across += weight
+        elif height > _ON_ITS_SIDE * width:
+            down += weight
+    if 2 * across > total:
+        return 1
+    return -1 if 2 * down > total else 0
+
+
 # ---------------------------------------------------------------------------------------------------------
 # pictures inside a document
 # ---------------------------------------------------------------------------------------------------------
@@ -195,13 +220,15 @@ class _PictureText:
     lines of each picture text was read in (escaped, unless the caller asked for them as read), by that
     digest.  ``unread`` counts the pictures taken that a helper failure or the time limit left unread: 0
     means every picture without an entry in ``lines`` holds no text.  ``over_bytes`` says the byte limit
-    stopped the reading: the last picture looked at passed it and was not read.
+    stopped the reading: the last picture looked at passed it and was not read.  ``down`` holds the digests
+    of the pictures whose lines run down (``_direction``): each was given to the helper on its side.
     """
 
     digests: tuple[str | None, ...]
     lines: Mapping[str, list[str]]
     unread: int
     over_bytes: bool = False
+    down: frozenset[str] = frozenset()
 
 
 def _read_each(
@@ -335,17 +362,21 @@ def _read_pictures(
                 counted += image is None or not image.skipped
                 path.unlink(missing_ok=True)
     lines: dict[str, list[str]] = {}
+    down: set[str] = set()
     unread = 0
     for digest, image in read.items():
         if image is None or image.error == _GAVE_UP:
             unread += 1
-        elif any(block := _ocr_lines(image, escape=escape)):
+            continue
+        if any(block := _ocr_lines(image, escape=escape)):
             lines[digest] = block
+        if _direction(image) < 0:
+            down.add(digest)
     if unread:
         log.warning(
             "on-device OCR left %d of %d picture(s) unread: %s", unread, len(read), reason or _GAVE_UP
         )
-    return _PictureText(tuple(digests), lines, unread, over_bytes)
+    return _PictureText(tuple(digests), lines, unread, over_bytes, frozenset(down))
 
 
 def _raster_left(pictures: Iterator[BinaryIO]) -> bool:

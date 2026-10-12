@@ -1072,7 +1072,7 @@ def test_pdf_version_and_options_change_only_with_an_engine(tmp_path: Path) -> N
     assert reading.options() == {
         **plain.options(),
         **image._OCR_OPTIONS,
-        "ocr_pdf_rules": 3,
+        "ocr_pdf_rules": 4,
         "ocr_page_dpi": 300,
         "ocr_page_max_px": 6000,
         "ocr_pictures_seen": 400,
@@ -1539,6 +1539,129 @@ def test_a_turned_picture_is_read_through_the_converter_by_what_it_shows(tmp_pat
     src = _staged(tmp_path, [(_TEXT, [turned, upright])], name="twice.pdf")
     u = _ocr_one(src, engine)
     assert u.body.endswith(f"{_OCR_PICTURE}\nOrders by month\n\n{_OCR_PICTURE}\nContoso read on its side\n")
+
+
+# R82: a 96 x 64 picture drawn turned a quarter left (shown 64 wide, 96 high).  The fake helper reads a
+# picture by its first pixel: 60 as stored, 61 as the page shows it (stored top right, shown top left).
+_TURNED_PIXELS = bytes([60]) * 95 + bytes([61]) + bytes([60]) * (96 * 64 - 96)
+_TURNED = PdfPicture(60, "0 96 -64 0 214 20", pixels=_TURNED_PIXELS)
+_ROWS = ["Units by region", "North 12", "South 9"]
+
+
+def _down(text: str) -> dict[str, Any]:
+    """What the helper reports for a picture it was given on its side: one line taller than it is wide."""
+    return {"lines": [{"text": text, "confidence": 1.0, "x": 0.45, "y": 0.1, "w": 0.1, "h": 0.8}]}
+
+
+def _images_read(engine: ocr.OcrEngine) -> int:
+    return sum(map(len, reads(engine.helper)))
+
+
+def test_a_picture_stored_upright_and_drawn_turned_is_read_as_its_separate_lines(tmp_path: Path) -> None:
+    """The page shows it on its side (a wide table turned to fit the page), so read the way up the page
+    shows it its lines run down the picture and merge into one.  Such a reading is read once more the way
+    the picture is stored, and that reading is kept because its lines run across."""
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    engine = shade_engine(tmp_path / "bin", {61: _down(" ".join(_ROWS)), 60: _ROWS})
+    u = _ocr_one(src, engine)
+    assert u.body == _ocr_one(src, None).body + f"\n{_OCR_PICTURE}\n" + "\n".join(_ROWS) + "\n"
+    assert _images_read(engine) == 2
+    assert sorted(p.name for p in src.parent.iterdir()) == [src.name]  # no picture left behind
+
+
+def test_a_picture_stored_on_its_side_and_drawn_upright_is_still_read_once_as_shown(tmp_path: Path) -> None:
+    """N45's case, the other way round: as stored its lines run down, as shown they run across.  The reading
+    as shown is kept and nothing is read twice."""
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    engine = shade_engine(
+        tmp_path / "bin", {61: ["Orders by month", "March 412 April 388"], 60: _down("x y")}
+    )
+    u = _ocr_one(src, engine)
+    assert u.body.endswith(f"{_OCR_PICTURE}\nOrders by month\nMarch 412 April 388\n")
+    assert _images_read(engine) == 1
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        {},  # a turned photo with no text: one read
+        {61: _down("Units by region North 12")},  # read the other way it holds no text
+        {61: _down("Units by region North 12"), 60: _down("Units")},  # both ways it runs down
+    ],
+    ids=["no text", "nothing the other way", "down both ways"],
+)
+def test_a_turned_picture_keeps_its_first_reading_unless_the_other_one_runs_across(
+    tmp_path: Path, said: dict[int, Any]
+) -> None:
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    engine = shade_engine(tmp_path / "bin", said)
+    u = _ocr_one(src, engine)
+    first = said.get(61)
+    want = _ocr_one(src, None).body + (f"\n{_OCR_PICTURE}\n{first['lines'][0]['text']}\n" if first else "")
+    assert u.body == want
+    assert _images_read(engine) == (1 if first is None else 2)
+
+
+def test_a_second_reading_is_charged_to_the_pixel_budget_and_the_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The picture counts once against the pictures read; its second reading is charged its pixels again,
+    and is not started once the document's OCR time is over.  Either way the first reading stands."""
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    said = {61: _down("Units by region North 12 South 9"), 60: _ROWS}
+    sideways = _ocr_one(src, None).body + f"\n{_OCR_PICTURE}\nUnits by region North 12 South 9\n"
+
+    monkeypatch.setattr(pdf_mod, "_MAX_PICTURE_PIXELS", 96 * 64)  # room for one decoding of it
+    engine = shade_engine(tmp_path / "pixels", said)
+    assert _ocr_one(src, engine).body == sideways
+    assert _images_read(engine) == 1
+    monkeypatch.setattr(pdf_mod, "_MAX_PICTURE_PIXELS", 2 * 96 * 64)
+    engine = shade_engine(tmp_path / "room", said)
+    assert _ocr_one(src, engine).body.endswith("\n".join(_ROWS) + "\n")
+    assert _images_read(engine) == 2
+
+    over = False
+    real_read, real_clock = pdf_mod._read_pictures, pdf_mod._clock
+
+    def read_then_time_out(*args: Any, **kw: Any) -> Any:
+        nonlocal over
+        got = real_read(*args, **kw)
+        over = True
+        return got
+
+    monkeypatch.setattr(pdf_mod, "_read_pictures", read_then_time_out)
+    monkeypatch.setattr(pdf_mod, "_clock", lambda: real_clock() + (1e6 if over else 0))
+    engine = shade_engine(tmp_path / "late", said)
+    assert _ocr_one(src, engine).body == sideways
+    assert _images_read(engine) == 1
+
+
+def test_a_picture_only_its_page_turns_is_not_read_twice(tmp_path: Path) -> None:
+    """Drawn upright on a page whose /Rotate turns it: its stored pixels turned by the page alone are the
+    pixels already read, so there is no other way to read it."""
+    upright = _TURNED._replace(matrix="96 0 0 64 150 20")
+    folder = tmp_path / "staging" / "0123456789abcdef"
+    folder.mkdir(parents=True)
+    src = build_picture_pdf(folder / "doc.pdf", [(_TEXT, [upright])], rotate=90)
+    engine = shade_engine(tmp_path / "bin", {60: _down("Units by region"), 61: _down("Units by region")})
+    _ocr_one(src, engine)
+    assert _images_read(engine) == 1
+
+
+def test_which_way_lines_run_is_measured_in_pixels() -> None:
+    """A box is in fractions of the picture, so on a wide picture a short line's fractions look tall."""
+    line = ocr.OcrLine(text="Q3 total", confidence=1.0, x=0.1, y=0.2, w=0.1, h=0.5)
+    wide = ocr.OcrImage(width=2000, height=100, frames=1, frame=0, lines=(line,))  # 200 x 50 px: across
+    tall = ocr.OcrImage(width=100, height=2000, frames=1, frame=0, lines=(line,))  # 10 x 1000 px: down
+    assert (image._direction(wide), image._direction(tall)) == (1, -1)
+    # Weighed by characters: one long line across outweighs two short ones down.
+    many = (
+        line,
+        ocr.OcrLine("ab", 1.0, 0.1, 0.1, 0.01, 0.5),
+        ocr.OcrLine("cd", 1.0, 0.2, 0.1, 0.01, 0.5),
+    )
+    assert image._direction(ocr.OcrImage(2000, 100, 1, 0, many)) == 1
+    assert image._direction(ocr.OcrImage(2000, 100, 1, 0, ())) == 0
 
 
 def test_a_page_whose_rotation_cannot_be_read_is_shown_as_drawn_and_memory_running_out_is_not_hidden(

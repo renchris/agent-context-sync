@@ -1472,6 +1472,36 @@ def test_the_real_helper_reads_a_pdf_picture_stored_on_its_side_the_way_up_the_p
     ]
 
 
+def test_the_real_helper_reads_a_pdf_picture_stored_upright_and_drawn_turned_as_its_separate_lines(
+    vision: ocr.OcrEngine, tmp_path: Path
+) -> None:
+    """R82, the other way round: a wide table stored upright and drawn turned a quarter left to fit the page,
+    which shows it on its side.  Read the way up the page shows it, its rows came back as one line; its lines
+    run down, so it is read once more as stored, and that reading is kept."""
+    pil = pytest.importorskip("PIL.Image")
+    draw_module = pytest.importorskip("PIL.ImageDraw")
+    font_module = pytest.importorskip("PIL.ImageFont")
+    from agentsync.convert.pdf import PdfConverter  # noqa: PLC0415
+    from test_convert_builders import PdfPicture, build_picture_pdf  # noqa: PLC0415 - it imports this module
+
+    rows = ["Region units shipped", "North 412 South 388", "East 251 West 197"]
+    im = pil.new("L", (900, 330), 255)
+    for y, line in zip((40, 140, 240), rows, strict=True):
+        draw_module.Draw(im).text((40, y), line, fill=0, font=font_module.truetype(FONT, 40))
+    table = PdfPicture(0, "0 180 -66 0 286 10", px=im.size, pixels=im.tobytes())  # 66 x 180 pt, turned
+    text = ["This page has a text layer.", "A table follows."]
+    src = build_picture_pdf(tmp_path / "units.pdf", [(text, [table])])
+    try:
+        (unit,) = PdfConverter(CFG, ocr=vision).convert(src, name=src.name)
+    except ocr.OcrError:
+        pytest.skip("Apple Vision text recognition does not run on this machine")
+    assert [ln.casefold() for ln in unit.body.split("\n") if ln][-4:] == [
+        "[text in an image on this page, read by on-device ocr (apple vision):]",
+        *(row.casefold() for row in rows),
+    ]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [src.name]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # the helper's tile joining on made-up readings (developer tools only; Vision recognises nothing here)
 # ---------------------------------------------------------------------------------------------------------

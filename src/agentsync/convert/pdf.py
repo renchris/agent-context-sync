@@ -33,6 +33,7 @@ import contextlib
 import ctypes
 import hashlib
 import io
+import itertools
 import logging
 import math
 import re
@@ -61,10 +62,13 @@ from agentsync.convert.image import (
     _ENGINE_LABEL,
     _OCR_OPTIONS,
     _PICTURES_CUT,
+    _PICTURES_PER_RUN,
     _PICTURES_READ,
     _budget_s,
+    _direction,
     _field_build,
     _ocr_lines,
+    _read_each,
     _read_pictures,
     _read_without_ocr,
 )
@@ -119,12 +123,14 @@ a searchable scan is covered many times over, and the one stamped line of an e-s
 letter page needs 324 characters) is not."""
 _MAX_PICTURES_SEEN = 400  # image objects of one file that are looked at
 _MAX_PICTURE_PIXELS = 8 * MAX_MEGAPIXELS * 1_000_000  # pixels of one file's pictures decoded here
-_OCR_RULES = 3
+_OCR_RULES = 4
 """Bumped when a rule here that decides what OCR reads, or how a page shows it, changes without one of the
 numbers below changing.  It is in the options only with an engine, so it moves no key of a Mac without one
 (the emitter version would).  2: a picture is covered by its size, not by 20 characters anywhere in it; an
 image object counts toward the limits once it may be read, and a repeated one is decoded once.  3: a picture
-is read the way up the page shows it (``_shown``), not as it is stored."""
+is read the way up the page shows it (``_shown``), not as it is stored.  4: a picture shown a quarter turn
+from its stored pixels, whose lines come back running down, is read once more the other way
+(``_read_other_way``)."""
 _PDF_OCR_OPTIONS: dict[str, OptionValue] = {
     "ocr_pdf_rules": _OCR_RULES,
     "ocr_page_dpi": _RENDER_DPI,
@@ -559,6 +565,7 @@ def _png_chunk(tag: bytes, data: bytes) -> bytes:
 _Axes = tuple[tuple[int, int], tuple[int, int]]
 _UPRIGHT: _Axes = ((1, 0), (0, 1))
 """Where a stored picture's columns and its rows point as shown, on screen (x right, y down): as stored."""
+_Where = tuple[int, int, _Axes]  # a picture's page index, its place in ``_PagePictures._objects``, a way up
 
 
 def _screen_axis(x: float, y: float) -> tuple[int, int] | None:
@@ -591,6 +598,12 @@ def _shown(obj: Any, rotation: int) -> _Axes:
         raise
     except Exception:
         return _UPRIGHT
+    return _on_screen(cols, rows, rotation)
+
+
+def _on_screen(cols: tuple[float, float], rows: tuple[float, float], rotation: int) -> _Axes:
+    """The screen axes a picture's stored columns and rows point along, from their directions in PDF space
+    and the page's /Rotate; ``_UPRIGHT`` when they do not snap to two axes (``_shown``)."""
     axes: list[tuple[int, int] | None] = []
     for page_x, page_y in (cols, rows):
         x, y = page_x, -page_y  # PDF space has y up, the screen y down
@@ -601,6 +614,15 @@ def _shown(obj: Any, rotation: int) -> _Axes:
     if col is None or row is None or (col[0] == 0) == (row[0] == 0):
         return _UPRIGHT
     return (col, row)
+
+
+def _other_way(shown: _Axes, rotation: int) -> _Axes | None:
+    """The other way to read a picture shown ``shown`` on a page turned ``rotation``: its stored pixels turned
+    by the page's /Rotate alone, its own matrix and its forms' left out (R82).  None unless that is a quarter
+    turn from ``shown``: a picture its matrix does not turn has no other way, and one its matrix turns
+    upside down or mirrors is not a picture drawn turned to fit the page."""
+    other = _on_screen((1.0, 0.0), (0.0, -1.0), rotation)
+    return other if (other[0][0] == 0) != (shown[0][0] == 0) else None
 
 
 def _png(bitmap: Any, shown: _Axes = _UPRIGHT) -> bytes:
@@ -721,7 +743,9 @@ class _PagePictures:
     ``_MAX_PICTURE_PIXELS`` pixels decoded.  Both are counts, so a file gives the same pictures on every
     run, and neither is spent on what is never read: an icon counts for nothing, and a repeated picture is
     charged its pixels once.  ``pages`` holds the page index of each picture offered so far, ``cut`` says
-    one of the two limits stopped the looking, and ``done`` that every page was looked at.
+    one of the two limits stopped the looking, and ``done`` that every page was looked at.  ``others`` has
+    an entry beside each in ``pages``: where the picture is and the other way to read it (``_other_way``),
+    or None when there is none.  ``again`` decodes such a picture once more that way, charged its pixels.
     """
 
     def __init__(self, doc: Any, pdfium_c: Any, indexes: Sequence[int], deadline: float) -> None:
@@ -735,11 +759,16 @@ class _PagePictures:
         # (sha256 of the stored stream, width, height, which way up it is shown)
         self._offered: set[tuple[bytes, int, int, _Axes]] = set()
         self.pages: list[int] = []
+        self.others: list[_Where | None] = []
         self.cut = False
         self.done = False
 
-    def _picture(self, obj: Any, textpage: Any, rotation: int) -> bytes | None:
-        """One image object as PNG bytes, or None when it is not one to read."""
+    def _objects(self, page: Any) -> Iterator[Any]:
+        """The page's image objects, the page's own and those in its forms, in one fixed order."""
+        return iter(page.get_objects(filter=(self._image,), max_depth=_FORM_DEPTH))
+
+    def _picture(self, obj: Any, textpage: Any, rotation: int) -> tuple[bytes, _Axes | None] | None:
+        """One image object as PNG bytes and the other way to read it, or None when it is not one to read."""
         width, height = obj.get_px_size()
         pixels = width * height
         if min(width, height) < _MIN_PX or pixels > MAX_MEGAPIXELS * 1_000_000:
@@ -762,31 +791,65 @@ class _PagePictures:
         self._pixels += pixels
         bitmap = obj.get_bitmap()  # the stored image: its matrix and mask are not applied
         try:
-            return _png(bitmap, shown)  # the way up the page shows it
+            return _png(bitmap, shown), _other_way(shown, rotation)  # the way up the page shows it
         finally:
             bitmap.close()
 
-    def _on_page(self, page: Any, textpage: Any) -> Iterator[bytes]:
+    def _on_page(self, page: Any, textpage: Any) -> Iterator[tuple[bytes, int, _Axes | None]]:
+        """(PNG bytes, the object's place in ``_objects``, the other way to read it) of each picture."""
         try:
             rotation = int(page.get_rotation())  # /Rotate: 0, 90, 180 or 270, clockwise
         except MemoryError:
             raise
         except Exception:
             rotation = 0  # a page whose /Rotate cannot be read is shown as it is drawn
-        objects = iter(page.get_objects(filter=(self._image,), max_depth=_FORM_DEPTH))
+        objects = self._objects(page)
+        place = -1
         while not self.cut:
             try:
                 obj = next(objects, None)
                 if obj is None:
                     return
-                data = self._picture(obj, textpage, rotation)
+                place += 1
+                got = self._picture(obj, textpage, rotation)
             except MemoryError:
                 raise
             except Exception as exc:  # this picture is skipped (when the listing failed, the page's rest)
                 log.debug("a picture was not read for OCR: %s", type(exc).__name__)
                 continue
-            if data is not None:
-                yield data
+            if got is not None:
+                yield got[0], place, got[1]
+
+    def again(self, where: _Where) -> bytes | None:
+        """The picture at ``where`` as PNG bytes turned its other way, its pixels charged again; None when
+        they would pass ``_MAX_PICTURE_PIXELS`` or PDFium cannot find or decode it a second time."""
+        index, place, axes = where
+        try:
+            page = self._doc[index]
+        except MemoryError:
+            raise
+        except Exception:
+            return None
+        try:
+            obj = next(itertools.islice(self._objects(page), place, None), None)
+            if obj is None:
+                return None
+            width, height = obj.get_px_size()
+            if self._pixels + width * height > _MAX_PICTURE_PIXELS:
+                return None
+            self._pixels += width * height
+            bitmap = obj.get_bitmap()
+            try:
+                return _png(bitmap, axes)
+            finally:
+                bitmap.close()
+        except MemoryError:
+            raise
+        except Exception as exc:
+            log.debug("a picture was not read its other way: %s", type(exc).__name__)
+            return None
+        finally:
+            page.close()
 
     def streams(self) -> Generator[BinaryIO, None, None]:
         """The pictures, one PNG stream at a time; OcrError once the document's OCR time is over."""
@@ -805,8 +868,9 @@ class _PagePictures:
                 page.close()
                 continue
             try:
-                for data in self._on_page(page, textpage):
+                for data, place, other in self._on_page(page, textpage):
                     self.pages.append(index)
+                    self.others.append(None if other is None else (index, place, other))
                     yield io.BytesIO(data)
             finally:
                 textpage.close()
@@ -865,22 +929,66 @@ def _read_page_pictures(
 ) -> tuple[dict[int, list[list[str]]], bool]:
     """(the lines of each picture ``scan`` offers, under the page it is first seen on; whether a limit left
     later pictures unread).  Raises OcrError when the helper left a picture unread: a page that kept the
-    other pictures' text would look complete."""
+    other pictures' text would look complete.
+
+    A picture whose lines came back running down (``_PictureText.down``) and that has another way to read
+    it (``_PagePictures.others``) is read that way once more, after all the others (``_read_other_way``)."""
     pictures: dict[int, list[list[str]]] = {}
     with contextlib.closing(scan.streams()) as streams:
         got = _read_pictures(engine, streams, work_dir=work_dir, budget_s=deadline - _clock())
         if got.unread:  # _read_pictures has logged how many, and the helper's reason
             raise OcrError("the OCR helper left pictures unread")
-        first_seen: set[str] = set()
-        for index, digest in zip(scan.pages, got.digests, strict=True):
-            if digest is not None and digest not in first_seen and digest in got.lines:
-                first_seen.add(digest)
-                pictures.setdefault(index, []).append(got.lines[digest])
+        first_seen: dict[str, int] = {}  # digest: the page it is first seen on
+        sideways: dict[str, _Where] = {}
+        for index, other, digest in zip(scan.pages, scan.others, got.digests, strict=True):
+            if digest is not None and digest not in first_seen:
+                first_seen[digest] = index
+                if other is not None and digest in got.down:
+                    sideways[digest] = other
         # A limit of _read_pictures stops it asking.  One more is asked for, to know whether any was left.
         left = None if scan.done else next(streams, None)
         if left is not None:
             left.close()
+    across = _read_other_way(scan, engine, sideways, work_dir, deadline) if sideways else {}
+    for digest, index in first_seen.items():
+        if lines := across.get(digest) or got.lines.get(digest):
+            pictures.setdefault(index, []).append(lines)
     return pictures, scan.cut or left is not None or None in got.digests
+
+
+def _read_other_way(
+    scan: _PagePictures, engine: OcrEngine, sideways: Mapping[str, _Where], work_dir: Path, deadline: float
+) -> dict[str, list[str]]:
+    """The lines of each picture of ``sideways`` (by the digest of its first reading) read the other way
+    (R82), where that reading's lines run across (``_direction``); a picture read so gets no entry otherwise,
+    and keeps its first reading.
+
+    The picture counted once toward the pictures read; this reading is charged its pixels again
+    (``_PagePictures.again``) and shares the document's time.  None is started once that time is over, and
+    a picture the helper fails on here keeps its first reading: it was read."""
+    out: dict[str, list[str]] = {}
+    wanted = list(sideways.items())
+    with tempfile.TemporaryDirectory(dir=work_dir, prefix=".ocr-", ignore_cleanup_errors=True) as tmp:
+        for start in range(0, len(wanted), _PICTURES_PER_RUN):
+            if _clock() >= deadline:
+                break
+            batch: list[tuple[str, Path]] = []
+            for n, (digest, where) in enumerate(wanted[start : start + _PICTURES_PER_RUN], start=start):
+                data = scan.again(where)
+                if data is not None:
+                    path = Path(tmp) / f"{n:05d}.png"
+                    path.write_bytes(data)
+                    batch.append((digest, path))
+            if not batch:
+                continue
+            images, _why = _read_each(
+                engine, [path for _d, path in batch], work_dir=Path(tmp), deadline=deadline
+            )
+            for (digest, path), image in zip(batch, images, strict=True):
+                path.unlink(missing_ok=True)
+                if image is not None and _direction(image) > 0 and any(lines := _ocr_lines(image)):
+                    out[digest] = lines
+    return out
 
 
 def _ocr_text(src: Path, engine: OcrEngine, scanned: Sequence[int], texted: Sequence[int]) -> _OcrText:
