@@ -2163,25 +2163,33 @@ def _build_redactor(r: _Run) -> Redactor:
             for form in dict.fromkeys(forms):
                 red.add("name", form, fuzzy=True)
         for part in full.replace(",", " ").split():
-            word = part.strip(".,")
-            if len(word) >= 3:  # a lone first or last name: its written and upper-case forms
-                lone = [word, word.upper()]
-            elif len(word) == 2 and word.isalpha() and word[0].isupper():
-                # A two-letter name ("Li") too, in no form that is one of the report's own words. A part
-                # written in lower case is a particle ("de", "la"): alone it names no one.
-                lone = [form for form in (word, word.upper()) if not _short_word(form)]
-            else:
-                lone = []
-            for form in lone:
-                red.add("name", form)
+            whole = part.strip(".,")
+            # A hyphenated part ("Jean-Luc") whole and each of its pieces ("Jean", "Luc"), and an all-capitals
+            # one ("DOE") also capitalised ("Doe"): a lone value is case-sensitive (B13 R71).
+            for word in dict.fromkeys([whole, *(p for p in whole.split("-") if p)]):
+                cased = [word, word.upper(), *([word.capitalize()] if word.isupper() else [])]
+                if len(word) >= 3:  # a lone first or last name: its written and upper-case forms
+                    lone = cased
+                elif len(word) == 2 and word.isalpha() and word[0].isupper():
+                    # A two-letter name ("Li") too, in no form that is one of the report's own words. A part
+                    # written in lower case is a particle ("de", "la"): alone it names no one.
+                    lone = [form for form in dict.fromkeys(cased) if not _short_word(form)]
+                else:
+                    lone = []
+                for form in lone:
+                    red.add("name", form)
         # A bracketed part ("Doe, Jane (Contoso)", "Jane (JJ) Doe") is a company, team or nickname. Without
         # it, and in the order the name is said ("Jane Q. Doe" for "Doe, Jane Q."), the name is a fuzzy value
         # too, and so are its words joined without their dots ("jane-q-doe") and every two of its words in
         # either order, the later of 2 or more characters and the earlier the first word or of 2 or more: a
         # bracketed part, a middle part, a suffix ("Jane Doe, Jr.") or a title ("Dr. Jane Doe") does not hide
         # the first and last name ("JaneDoe", "doe-jane"). The bracketed words come last.
-        tail_words = [w for inner in _NAME_BRACKET_RE.findall(full) for w in inner.replace(",", " ").split()]
-        core = _NAME_BRACKET_RE.sub("", full).strip(" ,")
+        # Innermost first, until none is left: "(Contoso (EU))" takes two passes (B13 R73).
+        core = full
+        while inners := _NAME_BRACKET_RE.findall(core):
+            tail_words += [w for inner in inners for w in inner.replace(",", " ").split()]
+            core = _NAME_BRACKET_RE.sub("", core)
+        core = core.strip(" ,")
         core_segs = [seg.strip() for seg in core.split(",") if seg.strip(" .")]
         said = [*core_segs[1:2], *core_segs[:1], *core_segs[2:]] if "," in core else [core]
         words = [w.strip(".,") for seg in said for w in seg.split() if w.strip(".,")]
@@ -2293,6 +2301,7 @@ def _build_redactor(r: _Run) -> Redactor:
         if len(word) >= 3:
             red.add("name", word)
             red.add("name", word.upper())
+            red.add("name", word.capitalize() if word.isupper() else None)
     with contextlib.suppress(Exception):
         for sha in _docs_commits(r):
             red.add_commit(sha)

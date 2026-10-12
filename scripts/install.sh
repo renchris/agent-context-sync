@@ -915,7 +915,7 @@ generic_folder() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole orgs_seen
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole orgs_seen c kept
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -977,13 +977,17 @@ redaction_pairs() {
 		q="$(printf '%q' "$1")"
 		[ "$q" = "$1" ] || printf '%s\t%s\t%s\n' "$q" "$2" "${3:-}"
 	}
-	add_pair() { # VALUE PLACEHOLDER [w]: emit_pair for the value as written, in NFC and in NFD, as the Python
+	add_pair() { # VALUE PLACEHOLDER [w]: add_forms for a value of 3 or more characters
+		[ "${#1}" -ge 3 ] || return 0
+		add_forms "$@"
+	}
+	add_forms() { # VALUE PLACEHOLDER [w]: emit_pair for the value as written, in NFC and in NFD, as the Python
 		# report matches it: a Finder-made name is NFD on disk and an agent types it NFC, or the reverse.
 		# iconv's UTF-8-MAC is macOS's decomposed form; a value that is not UTF-8 adds no other form. Printable
 		# ASCII has one form: listed, not a range, which a UTF-8 locale would collate (no iconv run for it).
+		# Any length: only a two-letter name part, which short_name screens, comes here without add_pair.
 		local v nfc="" nfd="" bare ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 		ascii+=' !"#$%&'\''()*+,./:;<=>?@[\]^_`{|}~-'
-		[ "${#1}" -ge 3 ] || return 0
 		emit_pair "$@"
 		case "$1" in *[!"$ascii"]*) ;; *) return 0 ;; esac
 		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""
@@ -998,14 +1002,30 @@ redaction_pairs() {
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}"
 		done
 	}
-	name_forms() { # $@: words, joined by a space, -, _ or nothing; as written, lower and upper case: <name>
-		local s v x
+	recase() { # upper|lower TEXT, as Python's str.upper and str.lower write it ("ÅL" for "Ål"): tr in UTF-8,
+		# byte-wise for TEXT that is not UTF-8 (where tr in UTF-8 stops). bash 3.2 has no ${x^^}.
+		local from='[:lower:]' to='[:upper:]' out
+		[ "$1" = upper ] || { from='[:upper:]' && to='[:lower:]'; }
+		out="$(printf '%s' "$2" | LC_ALL=en_US.UTF-8 tr "$from" "$to" 2>/dev/null)" && printf '%s' "$out" && return 0
+		printf '%s' "$2" | LC_ALL=C tr "$from" "$to"
+	}
+	capital() { # WORD: its first letter as written, the rest lower case ("Doe" for "DOE"), as str.capitalize
+		printf '%s%s' "${1:0:1}" "$(recase lower "${1:1}")"
+	}
+	name_forms() { # $@: words, joined by a space, -, _ or nothing; as written, lower and upper case, and each
+		# word capitalised ("Jane Li" for "LI, JANE", as the Python report's case-insensitive forms match): <name>
+		local s v c x
+		local -a caps=()
+		for x in "$@"; do caps+=("$(capital "$x")"); done
 		for s in ' ' - _ ''; do
 			v=""
+			c=""
 			for x in "$@"; do v="${v:+$v$s}$x"; done
+			for x in "${caps[@]}"; do c="${c:+$c$s}$x"; done
 			add_pair "$v" "<name>" w
-			add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<name>" w
-			add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:lower:]' '[:upper:]')" "<name>" w
+			add_pair "$(recase lower "$v")" "<name>" w
+			add_pair "$(recase upper "$v")" "<name>" w
+			add_pair "$c" "<name>" w
 		done
 	}
 	if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then # this account's per-user temp folder links reports
@@ -1065,22 +1085,43 @@ redaction_pairs() {
 		add_pair "$name" "<name>"
 		# Every word as written ("(JJ)" too) and without its brackets ("Doe, Jane (Contoso)"): macOS keeps the
 		# comma. read, not an unquoted for: a part with * ? or [ would glob.
-		read -r -a toks <<<"${name//,/ }" || true
+		# A hyphenated part in pieces ("Jean", "Luc"; the loop after this one keeps "Jean-Luc"), each in its
+		# upper case and, all capitals ("DOE"), capitalised ("Doe"), as setup_report does (B13 R71).
+		read -r -a toks <<<"${name//[,-]/ }" || true
 		for tok in ${toks[@]+"${toks[@]}"}; do
 			add_pair "$tok" "<name>" w
-			# A two-letter part ("Li") too, as setup_report does: add_pair keeps 3 for orgs and folders.
-			if short_name "${tok%.}"; then printf '%s\t%s\tw\n' "${tok%.}" "<name>"; fi
+			tok="${tok%.}"
+			u="$(recase upper "$tok")"
+			c=""
+			[ "$u" != "$tok" ] || c="$(capital "$tok")"
+			if [ "${#tok}" -ge 3 ]; then
+				[ "$u" = "$tok" ] || add_pair "$u" "<name>" w
+				add_pair "$c" "<name>" w
+			else
+				# A two-letter part ("Li", "LI") too, each form that is no word of the report's (short_name), as
+				# setup_report does: add_forms has no 3-character floor (B13 R72).
+				kept=" "
+				for v in "$tok" "$u" "$c"; do
+					case "$kept" in *" $v "*) continue ;; esac
+					kept="$kept$v "
+					[ -z "$v" ] || ! short_name "$v" || add_forms "$v" "<name>" w
+				done
+			fi
 		done
 		read -r -a toks <<<"$(printf '%s' "$name" | LC_ALL=C sed 'y/,()[]{}/       /')"
 		for tok in ${toks[@]+"${toks[@]}"}; do
 			tok="${tok%.}"
-			add_pair "${tok#.}" "<name>" w
+			tok="${tok#.}"
+			add_pair "$tok" "<name>" w
+			u="$(recase upper "$tok")"
+			[ "$u" = "$tok" ] || add_pair "$u" "<name>" w
+			[ "$u" != "$tok" ] || add_pair "$(capital "$tok")" "<name>" w
 		done
 		# Without its bracketed part, in the order the name is said ("Jane Q. Doe" for "Doe, Jane Q."): the
 		# words joined, and every two words in either order, the later of 2 or more characters and the earlier
 		# the first word or of 2 or more, so a suffix ("Jane Doe, Jr.") or a title ("Dr. Jane Doe") hides no
 		# pair; each as written, lower and upper case and joined by a space, -, _ or nothing ("JaneDoe").
-		core="$(printf '%s' "$name" | LC_ALL=C sed 's/[[:space:]]*[([{][^]()[{}]*[])}]//g')"
+		core="$(printf '%s' "$name" | LC_ALL=C sed -e ':a' -e 's/[[:space:]]*[([{][^]()[{}]*[])}]//' -e 'ta')" # innermost first (R73)
 		IFS=, read -r -a segs <<<"$core"
 		[ "${#segs[@]}" -lt 2 ] || segs=("${segs[1]}" "${segs[0]}" ${segs[2]+"${segs[@]:2}"})
 		read -r -a toks <<<"${segs[*]-}"

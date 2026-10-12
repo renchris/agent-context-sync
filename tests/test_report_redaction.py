@@ -230,3 +230,57 @@ def test_the_shell_report_redacts_an_unaccented_folder_name(env: dict[str, str])
     said = f"Cafe Resume, Café Résumé, {_nfd('Café Résumé')}"
     text = _shell_report(env, f"Prompt: v10\nF1 | step 1 | clean | 1 | {said} | -\n")
     assert "| <folder-1>, <folder-1>, <folder-1> |" in text, text
+
+
+# ---- the parts of a full name (R71, R72, R73) -------------------------------------------------------------
+
+NAME_CASES = [
+    ("Doe, Jean-Luc", "Jean met Luc; JEAN-LUC and Jean-Luc", "<name> met <name>; <name> and <name>"),
+    ("DOE Jane", "Doe and Doe Projects, DOE, Jane", "<name> and <name> Projects, <name>, <name>"),
+    ("LI, JANE", "asked Li, LI; Jane Li and Jane agreed", "asked <name>, <name>; <name> and <name> agreed"),
+    ("Jane Ål", f"asked ÅL, Ål and {unicodedata.normalize('NFD', 'Ål')}", "asked <name>, <name> and <name>"),
+    ("Tanaka, Ai", "asked Ai; the AI agent agreed", "asked <name>; the AI agent agreed"),
+    ("Jane Doe (Northwind (EU))", "Northwind team; NORTHWIND; EU", "<name> team; <name>; EU"),
+    ("Doe, Jane (NORTHWIND [EU])", "Northwind and NORTHWIND", "<name> and <name>"),
+]
+NAME_IDS = [
+    "hyphenated",
+    "all-capitals",
+    "two-letter-capitals",
+    "non-ascii-two-letter",
+    "abbreviation",
+    "nested",
+]
+NAME_IDS += ["nested-capitals"]
+
+
+@pytest.mark.parametrize(("gecos", "said", "shown"), NAME_CASES, ids=NAME_IDS)
+def test_the_python_report_redacts_every_part_of_a_name(
+    fake_mac: dict[str, Path],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    gecos: str,
+    said: str,
+    shown: str,
+) -> None:
+    """A hyphenated part ("Jean-Luc") registered only whole, an all-capitals one ("DOE") only as written and
+    in upper case, so "Jean", "Luc" and "Doe" printed in clear (B13 R71); a nested bracket ("(Northwind
+    (EU))") kept the outer one in the core, so the bare company word printed in clear (R73)."""
+    _gecos(monkeypatch, gecos)
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {said} |"))
+    text, _summary = summary_of(fake_mac)
+    assert f"| {shown} |" in section(text, "Agent friction log"), section(text, "Agent friction log")
+
+
+@pytest.mark.parametrize(("gecos", "said", "shown"), NAME_CASES, ids=NAME_IDS)
+def test_the_shell_report_redacts_every_part_of_a_name(
+    env: dict[str, str],  # noqa: F811
+    gecos: str,
+    said: str,
+    shown: str,
+) -> None:
+    """The same parts in the shell fallback, which split only at commas, registered no capitalised form, and
+    wrote a two-letter part in one form only, with no upper-case and no NFD form (B13 R71, R72)."""
+    _stub_id(env, gecos)
+    text = _shell_report(env, f"Prompt: v10\nF1 | step 1 | clean | 1 | {said} | -\n", LC_ALL="en_US.UTF-8")
+    assert f"| {shown} |" in text, text
