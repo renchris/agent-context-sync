@@ -85,6 +85,7 @@ MODEL_DIGESTS: dict[str, str] = {
 _PACKAGE = "speech_helper"
 _TARGET = "agentsync-speech"
 _BUILD_TREE = "build"
+_SWIFTPM = "swiftpm"  # SwiftPM's cache, configuration and security folders, beside the build tree
 _BUILD_TIMEOUT_S = 1200.0  # cold builds took 279 to 451 s; OCR's 300 s was sized for one swiftc file
 _VERSION_TIMEOUT_S = 5.0
 _COMMIT_RE = re.compile(r"[0-9a-f]{40}")
@@ -473,7 +474,9 @@ def _owner_only(tree: Path) -> None:
 def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     """Build the packaged SwiftPM package into ``helper``: resolve, refuse a FluidAudio checkout older than
     the floor, write ``Pin.swift``, build release.  The tree ``<folder>/build`` is kept (a rebuild is then
-    incremental) and owner-only.  Raises SpeechError or OSError."""
+    incremental) and owner-only, and so is ``<folder>/swiftpm``: both steps get its ``cache``, ``config``
+    and ``security`` folders, since SwiftPM on Darwin finds its user-level folders through Foundation, which
+    ignores HOME, and would otherwise write the real ``~/Library``.  Raises SpeechError or OSError."""
     developer = ocr._tool([ocr._XCODE_SELECT, "-p"])
     if not developer or not Path(developer).is_dir():
         raise SpeechError("no Xcode or Command Line Tools (xcode-select -p names no folder)")
@@ -487,14 +490,21 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     deadline = _clock() + _BUILD_TIMEOUT_S
     tree = helper.parent / _BUILD_TREE
     tree.mkdir(mode=0o700, exist_ok=True)
+    spm = helper.parent / _SWIFTPM
     try:
+        spm.mkdir(mode=0o700, exist_ok=True)
+        places = [
+            arg for what in ("cache", "config", "security") for arg in (f"--{what}-path", str(spm / what))
+        ]
         for name, data in _sources().items():
             (tree / name).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             (tree / name).write_bytes(data)
         pin = tree / "Sources" / _TARGET / "Pin.swift"
         pin.unlink(missing_ok=True)
         log.info("building the on-device %s (FluidAudio from github.com; up to 20 minutes)", kind.name)
-        _step([swift, "package", "resolve"], cwd=tree, deadline=deadline, what="swift package resolve")
+        _step(
+            [swift, "package", *places, "resolve"], cwd=tree, deadline=deadline, what="swift package resolve"
+        )
         checkout = tree / ".build" / "checkouts" / "FluidAudio"
         resolved = _step(
             [git, "-C", str(checkout), "rev-parse", "HEAD"], cwd=tree, deadline=deadline, what="git"
@@ -517,7 +527,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
             ) from None
         pin.write_text(f'let fluidAudioCommit = "{resolved}"\n', encoding="utf-8")
         _step(
-            [swift, "build", "-c", "release", "--product", _TARGET],
+            [swift, "build", *places, "-c", "release", "--product", _TARGET],
             cwd=tree,
             deadline=deadline,
             what="swift build",
@@ -531,6 +541,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         staged.replace(helper)
     finally:
         _owner_only(tree)
+        _owner_only(spm)
 
 
 def build(cache_dir: Path) -> Path:

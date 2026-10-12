@@ -10106,8 +10106,9 @@ package `src/agentsync/convert/speech_helper/` (`Package.swift`, `Sources/agents
 version 0.1.0; spec S8, C3). Built, trusted, probed and pruned as the media helper is (§16.25), by the same
 functions of `convert/ocr.py`, which take its `SPEECH` description (an `ocr.Helper`); `ocr._build` takes the
 package build as its `compile_` and `ocr._entry` its `speech` label. It lives in `<cache_dir>/speech/` as
-`agentsync-speech-<digest of the package source>`, beside the SwiftPM build tree `build/`, both owner-only (the
-build clears group and other bits on the whole tree). FluidAudio is pinned by commit: `FLUIDAUDIO_FLOOR`
+`agentsync-speech-<digest of the package source>`, beside the SwiftPM build tree `build/` and SwiftPM's own
+cache, configuration and security folders `swiftpm/`, all owner-only (the build clears group and other bits on
+both trees). FluidAudio is pinned by commit: `FLUIDAUDIO_FLOOR`
 (`04e363c29d9a754022d602d6fe1468ab80a0f705`, the first build with the silence-aware FBank) and `FLUIDAUDIO_PIN`,
 the commit `Package.swift` builds (today the floor). Only `scripts/install.sh` builds it, right after the media
 helper, by running `python -I -m agentsync.convert.speech`, which prints one line, exit 0 when ready or off, 1
@@ -10122,6 +10123,9 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
 refusal; a build step a signal stopped says so, `swift build was stopped by SIGKILL (signal 9); scripts/install.sh
 tries the build again on its next run`, and a check that a signal stopped or that does not run keeps its own
 reason.)
+
+Amended 2026-10-11 by §16.48 (R90): SwiftPM's cache, configuration and security folders are `swiftpm/` beside the
+build tree, passed to both swift steps, instead of the real `~/Library` ones.
 
 - **Models.** The operator places `parakeet-tdt-0.6b-v3/` (`ASR_MODELS`, 483 MB) and `speaker-diarization/`
   (`DIARIZER_MODELS`, 22 MB) in `<cache_dir>/speech/`, FluidAudio's own folder names. `MODEL_FILES` lists what
@@ -12896,6 +12900,18 @@ behind TLS inspection whose shell exports one of these clones from the shell; wi
 FluidAudio failed certificate verification and speech stayed off. `GIT_SSL_NO_VERIFY` and `DEVELOPER_DIR` never
 reach the build, and `ocr._env()` is unchanged. Pinned by
 `tests/test_speech.py::test_the_build_gives_git_the_shells_ca_and_never_turns_verification_off`.
+
+SwiftPM's own folders live beside the build tree (R90). `speech._compile` makes one owner-only folder
+`<cache>/speech/swiftpm` (`speech._SWIFTPM`) and passes `--cache-path <it>/cache --config-path <it>/config
+--security-path <it>/security` after the subcommand word to both `swift package resolve` and `swift build`, with
+the same values so the build reuses what resolve fetched. On Darwin SwiftPM finds its user-level folders through
+Foundation, which ignores `HOME`, so before this the build wrote the real `~/Library/Caches/org.swift.swiftpm`,
+`~/Library/org.swift.swiftpm/configuration` and `.../security` whatever `HOME` said (measured on Swift 6.2.4 in a
+sandbox that denied those writes; `--cache-path` alone still pointed at the real configuration and security
+folders). The folder is made owner-only in the build's `finally`, as the build tree is. A first build no longer
+reuses a FluidAudio clone that happens to sit in the user's shared SwiftPM cache. Pinned by
+`tests/test_speech.py::test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree` and
+`test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everything_owner_only`.
 
 #### PDF pictures and diagrams
 

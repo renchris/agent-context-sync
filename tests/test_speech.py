@@ -145,9 +145,11 @@ def test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everythi
     folder = cache / "speech"
     assert helper == ocr._helper_path(cache, speech.SPEECH) and helper.parent == folder
     assert helper.name.startswith("agentsync-speech-")
+    spm = f"--cache-path {folder}/swiftpm/cache --config-path {folder}/swiftpm/config "
+    spm += f"--security-path {folder}/swiftpm/security"
     assert lines_of(tools / "swift.calls") == [
-        "package resolve",
-        "build -c release --product agentsync-speech",
+        f"package {spm} resolve",
+        f"build {spm} -c release --product agentsync-speech",
     ]
     checkout = folder / "build" / ".build" / "checkouts" / "FluidAudio"
     assert lines_of(tools / "git.calls") == [
@@ -576,3 +578,48 @@ def test_the_build_gives_git_the_shells_ca_and_never_turns_verification_off(
     assert git_seen.get("GIT_SSL_CAINFO") == SHELL_CA["GIT_SSL_CAINFO"]
     assert not set(IGNORED_CA) & set(git_seen)
     assert helper.is_file()
+
+
+SPM_FLAGS = ("--cache-path", "--config-path", "--security-path")
+
+
+def test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree(
+    tools: Path, tmp_path: Path
+) -> None:
+    """R90: on Darwin SwiftPM finds its user-level folders through Foundation, which ignores HOME, so without
+    these flags the build wrote the real ~/Library/Caches/org.swift.swiftpm and ~/Library/org.swift.swiftpm.
+    Both steps get the same three paths (build reuses resolve's state), all under one owner-only folder beside
+    the build tree, made owner-only again when the build fails."""
+    cache = tmp_path / "cache"
+    spm = cache / "speech" / "swiftpm"
+    with loose_umask():
+        speech.build(cache)
+    calls = [line.split() for line in lines_of(tools / "swift.calls")]
+    assert [c[0] for c in calls] == ["package", "build"]
+    flags = []
+    for call in calls:
+        seen = {flag: call[call.index(flag) + 1] for flag in SPM_FLAGS if flag in call}
+        assert set(seen) == set(SPM_FLAGS), call
+        flags.append(seen)
+    assert (
+        flags[0]
+        == flags[1]
+        == {
+            "--cache-path": f"{spm}/cache",
+            "--config-path": f"{spm}/config",
+            "--security-path": f"{spm}/security",
+        }
+    )
+    assert mode(spm) == 0o700
+
+    (tools / "swift.calls").unlink()
+    script(
+        tools / "swift",
+        f'mkdir -p "{spm}/cache/manifests"; echo x > "{spm}/cache/manifests/m.db"\n'
+        'echo "error: the network is down" >&2; exit 1',
+    )
+    ocr._helper_path(cache, speech.SPEECH).unlink()
+    with loose_umask(), pytest.raises(SpeechError):
+        speech.build(cache)
+    loose = [p for p in (spm, *spm.rglob("*")) if mode(p) & 0o077]
+    assert loose == [], "a failed build leaves SwiftPM's folder owner-only too"
