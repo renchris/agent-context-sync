@@ -3919,7 +3919,12 @@ def test_under_a_label_rule_a_msg_is_the_no_converter_stub(tmp_path: Path, rule:
     assert (result.status, result.reason) == (ConversionStatus.REFUSED, "no converter for .msg")
     # A .msg that holds MIME text is read as an .eml, but the label screen reads .eml labels only for an
     # .eml name: under a rule it stays the stub, never a page whose label nothing read (R87).
-    assert _msg_result(tmp_path, MIME_MSG).status is ConversionStatus.OK
+    # The control has its own cache: the calls above share the action key "0"*64 under msg-olefile, so in
+    # their cache the MIME bytes would get the OLE message's page back.
+    (own := tmp_path / "mime").mkdir()
+    control = _msg_result(own, MIME_MSG)
+    assert (control.status, control.from_cache) == (ConversionStatus.OK, False), control.reason
+    assert control.units[0].title == "Q3 plan"
     mime = _msg_result(tmp_path, MIME_MSG, Registry.default(CFG, policy=rule))
     assert (mime.status, mime.reason, mime.units) == (ConversionStatus.REFUSED, "no converter for .msg", ())
 
