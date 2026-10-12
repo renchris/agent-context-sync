@@ -2922,6 +2922,31 @@ NO_TURN = (
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_an_attempt_with_no_installer_run_is_given_no_folder_question(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """Attempt 4 of the round 2 rehearsal: --log-start then --report-only, nothing else. With no install.sh
+    run in the attempt no folder list was printed, so nobody was asked: no question counted and no turn
+    expected. A logged question still counts (B13 round 2 R15)."""
+    header = "Attempt: 2026-09-29T11:00:00Z\nPrompt: v11\nAgent: Claude Code, claude-opus-5-5\n"
+    write_friction(fake_mac, header)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary").splitlines()
+    assert rc == 0
+    assert "- human turns: 0 (0 questions; clicks: none possible; approvals: not observable)" in summary
+    assert (
+        "- expected turns: none (no install.sh --list-folders run in this attempt: no folder question and no "
+        "Allow click)" in summary
+    )
+    write_friction(
+        fake_mac, header + "2026-09-29T11:00:20Z | step 1 | question | asked which Mac this is | -\n"
+    )
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)" in (
+        section(text, "Summary").splitlines()
+    )
+
+
 def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

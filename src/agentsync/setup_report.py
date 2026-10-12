@@ -5190,14 +5190,21 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
 
 
 def _expected_turns_line(
-    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False, unstarted: bool = False
+    att: Attempt,
+    run_type: str,
+    synced: int | None = None,
+    *,
+    stopped: bool = False,
+    unstarted: bool = False,
+    no_run: bool = False,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
     them: the person chose before, and the prompt asks at most whether to add a folder. An attempt the
     installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all, and
     nor has one ``unstarted``: a header-less attempt with no install.sh run, whose step 1 command stopped
-    before ``install.sh --log-start``."""
+    before ``install.sh --log-start``, nor one with ``no_run``: an attempt with no install.sh run of its own,
+    so no folder list was printed (B13 round 3 R15)."""
     layout = att.layout
     if unstarted:
         return (
@@ -5208,6 +5215,11 @@ def _expected_turns_line(
         return (
             f"- expected turns: none (the installer stopped this copy of the prompt in step "
             f"{layout.folder_question_step}, before the folder list: no folder question and no Allow click)"
+        )
+    if no_run:
+        return (
+            "- expected turns: none (no install.sh --list-folders run in this attempt: no folder question "
+            "and no Allow click)"
         )
     no_clicks = _no_clicks_why(run_type)
     if not layout.logs_expected_turns:  # prompt v6 logs neither
@@ -5675,9 +5687,22 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     if att is not None:
         synced = synced_before(runs)
         unstarted = fr is not None and _headerless(fr, len(fr.attempts) - 1) and not runs
-        stopped = _stopped_before_the_list(att, runs) or unstarted
+        # An attempt with no install.sh run of its own printed no folder list, so nobody was asked: like a
+        # stopped one (B13 round 3 R15). Any run, list or install, keeps the usual rules.
+        no_run = not runs and not att.layout.logs_expected_turns
+        copy_stopped = _stopped_before_the_list(att, runs)
+        stopped = copy_stopped or unstarted or no_run
         out.append(_turns_line(att, run_type, synced, stopped=stopped))
-        out.append(_expected_turns_line(att, run_type, synced, stopped=stopped, unstarted=unstarted))
+        out.append(
+            _expected_turns_line(
+                att,
+                run_type,
+                synced,
+                stopped=copy_stopped,
+                unstarted=unstarted,
+                no_run=no_run and not unstarted,
+            )
+        )
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
         out.append(
