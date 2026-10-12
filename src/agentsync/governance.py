@@ -2346,7 +2346,12 @@ def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
         conn.close()
 
 
-def _kept_why(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge) -> str:
+def _kept_why(
+    conn: sqlite3.Connection,
+    m: _ManifestRead,
+    q: QueuedPurge,
+    state: Mapping[tuple[str, str], str] | None = None,
+) -> str:
     """Why the queue must not run ``q`` now, or "".
 
     Only an ``upstream-deleted`` entry is judged.  It is queued as its row becomes a tombstone, and a file
@@ -2354,12 +2359,34 @@ def _kept_why(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge) -> str
     (a re-key), which a purge follows.  Run, the entry would erase that file's page and history.  A row that
     is quarantined or refused does not stop it: after a file comes back refused, the queued purge is the only
     thing that erases its earlier text from history.  Label escalation, DLP and erasure entries erase live
-    content on purpose and are never judged here."""
+    content on purpose and are never judged here.  ``state`` (each row's state) saves a caller that judges
+    many entries a pass over the rows per entry."""
     if q.reason is not PurgeReason.UPSTREAM_DELETED:
         return ""
-    state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
+    if state is None:
+        state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
     mt = _resolve_read(conn, m, q.selector, set())
     listed = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir and state.get((s, i)) in _LISTED_STATES]
+    return _kept_note(q, listed)
+
+
+def _kept_listed(
+    s: str,
+    sid: str,
+    info: Mapping[tuple[str, str], tuple[str, bool]],
+    alias_to_current: Mapping[tuple[str, str], str],
+) -> list[tuple[str, str]]:
+    """The listed files a ``source_id`` + ``stable_id`` selector (no ``docs_glob``) names, by lookup: the rows
+    :func:`_resolve_read` selects for that shape are the queued id and the id it is an alias of (a re-key),
+    and nothing else.  ``info`` maps each row to (state, is_dir)."""
+    cands = [(s, sid)]
+    if alias_to_current.get((s, sid), sid) != sid:
+        cands.append((s, alias_to_current[(s, sid)]))
+    return [k for k in cands if k in info and not info[k][1] and info[k][0] in _LISTED_STATES]
+
+
+def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
+    """:func:`_kept_why`'s note for the listed files ``q`` names, or "" when none is listed."""
     if not listed:
         return ""
     later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
@@ -2375,8 +2402,9 @@ def partition_purges(
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
     """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it
     keeps queued with why: an upstream deletion of a file the manifest lists again (:func:`_kept_why`, the
-    rule the run itself applies).  Read-only, and the manifest is read once.  A manifest this build cannot
-    read leaves every entry runnable, as before the kept ones were told apart."""
+    rule the run itself applies).  Read-only, the manifest is read once, and an entry the cycle queues (a
+    source + id selector) is judged by lookup, so the cost is rows + entries, not their product.  A manifest
+    this build cannot read leaves every entry runnable, as before the kept ones were told apart."""
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
     db = state_paths.db
     if not db.exists() or all(q.reason is not PurgeReason.UPSTREAM_DELETED for q in entries):
@@ -2386,7 +2414,24 @@ def partition_purges(
         conn = _connect(db)
         try:
             m = _read_manifest(conn)
-            whys = [_kept_why(conn, m, q) for q in entries]
+            # One pass over the rows for every entry: the cycle queues one source + id selector per confirmed
+            # deletion, so a moved folder fills the queue, and status, doctor, the loop and STATE.md read it.
+            info = {(r["source_id"], r["stable_id"]): (r["state"], bool(r["is_dir"])) for r in m.rows}
+            state = {k: st for k, (st, _d) in info.items()}
+            whys: list[str] = []
+            for q in entries:
+                sel = q.selector
+                if (
+                    q.reason is PurgeReason.UPSTREAM_DELETED
+                    and sel.source_id
+                    and sel.stable_id
+                    and not sel.docs_glob
+                ):
+                    whys.append(
+                        _kept_note(q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current))
+                    )
+                else:
+                    whys.append(_kept_why(conn, m, q, state))
         finally:
             conn.close()
     except (AgentSyncError, sqlite3.Error) as exc:

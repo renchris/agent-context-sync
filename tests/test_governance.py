@@ -13,6 +13,7 @@ import pwd
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -826,6 +827,115 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     assert all(r.verified for r in gv.run_purge_queue(world.config, now=NOW))
     assert gv.pending_purges(world.state) == []
     assert gv.pending_purges(world.state) == []
+
+
+def _add_items(
+    db: Path, rows: list[tuple[str, str, int, str]], aliases: list[tuple[str, str, str]] = ()
+) -> None:
+    """Add manifest rows (source, id, is_dir, state) and aliases (source, retired id, current id)."""
+    conn = sqlite3.connect(db)
+    conn.executemany(
+        "INSERT OR IGNORE INTO sources (source_id, kind, config_state, config_fingerprint) "
+        "VALUES (?, 'local', 'live', 'x')",
+        sorted({(r[0],) for r in rows}),
+    )
+    conn.executemany(
+        "INSERT INTO items (source_id, stable_id, name, rel_path, is_dir, state, first_seen_run, "
+        "last_seen_run) VALUES (?, ?, ?, ?, ?, ?, 1, 1)",
+        [(s, i, f"{i}.txt", f"d/{i}.txt", d, st) for s, i, d, st in rows],
+    )
+    conn.executemany("INSERT INTO item_aliases (source_id, alias_id, stable_id) VALUES (?,?,?)", aliases)
+    conn.commit()
+    conn.close()
+
+
+def test_partition_purges_judges_a_cycle_entry_by_lookup_as_kept_why_does(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Q43 (B13 round 4): partition_purges resolved every queued entry over every manifest row, so status,
+    doctor, the loop and STATE.md each cost entries x rows. A cycle-queued entry (source + id) is now
+    judged by lookup; its verdict is the one _kept_why gives, entry by entry, and only other selector
+    shapes resolve."""
+    db = world.config.state_paths.db
+    _add_items(
+        db,
+        [
+            ("src", "R1", 0, "live"),  # the current id of re-keyed R0
+            ("src", "T0", 0, "tombstone"),  # a tombstoned original whose file came back as T1
+            ("src", "T1", 0, "live"),
+            ("src", "D1", 1, "live"),  # a directory row, and an alias that names it
+            ("src2", "K1", 0, "live"),  # the same id as world's K1 under a second source
+            ("src2", "G1", 0, "live"),  # ... and as world's tombstoned G1
+            ("src", "DL", 0, "dataless"),
+            ("src", "QU", 0, "quarantined"),
+            ("src", "RF", 0, "refused"),
+            ("src", "RT", 0, "live"),  # an alias pointing at a tombstone
+            ("src", "RX", 0, "tombstone"),
+        ],
+        [
+            ("src", "R0", "R1"),
+            ("src", "T0", "T1"),
+            ("src", "DA", "D1"),
+            ("src", "XA", "RX"),
+            ("src", "RT", "G1"),
+        ],
+    )
+    ids = ["R0", "R1", "T0", "T1", "D1", "DA", "K1", "G1", "S1", "DL", "QU", "RF", "RT", "RX", "XA", "NONE"]
+    up = gv.PurgeReason.UPSTREAM_DELETED
+    queue = [
+        gv.QueuedPurge(gv.PurgeSelector(source_id=s, stable_id=i), up, NOW.isoformat())
+        for s in ("src", "src2")
+        for i in ids
+    ]
+    # other shapes go the long way: no source, a path glob, a docs glob, another reason
+    queue += [
+        gv.QueuedPurge(gv.PurgeSelector(stable_id="K1"), up, NOW.isoformat()),
+        gv.QueuedPurge(gv.PurgeSelector(source_id="src", path_glob="d/*"), up, NOW.isoformat()),
+        gv.QueuedPurge(gv.PurgeSelector(source_id="src", docs_glob="mirror/*"), up, NOW.isoformat()),
+        gv.QueuedPurge(
+            gv.PurgeSelector(source_id="src", stable_id="T1"), gv.PurgeReason.ERASURE_REQUEST, NOW.isoformat()
+        ),
+    ]
+    conn = gv._connect(db)
+    try:
+        m = gv._read_manifest(conn)
+        want = [gv._kept_why(conn, m, q) for q in queue]
+    finally:
+        conn.close()
+    assert sum(1 for w in want if w) >= 8 and any("under a later id" in w for w in want)
+    resolved: list[gv.PurgeSelector] = []
+    real = gv._resolve_read
+
+    def counted(
+        conn: sqlite3.Connection, m: Any, selector: gv.PurgeSelector, ids: set[tuple[str, str]]
+    ) -> Any:
+        resolved.append(selector)
+        return real(conn, m, selector, ids)
+
+    monkeypatch.setattr(gv, "_resolve_read", counted)
+    runnable, kept = gv.partition_purges(world.config.state_paths, queue)
+    assert [q for q, _w in kept] == [q for q, w in zip(queue, want, strict=True) if w]
+    assert [w for _q, w in kept] == [w for w in want if w]
+    assert runnable == [q for q, w in zip(queue, want, strict=True) if not w]
+    assert resolved == [q.selector for q in queue[-4:-1]]  # the erasure request is never judged
+
+
+def test_partition_purges_costs_rows_plus_entries(world: World) -> None:
+    """Q43: 1,000 queued upstream deletions over 10,000 rows took about 15 s per call, three calls per
+    status; one read and a lookup per entry take well under a second."""
+    _add_items(
+        world.config.state_paths.db,
+        [("big", f"F{n}", 0, "live" if n % 2 else "tombstone") for n in range(10_000)],
+    )
+    up = gv.PurgeReason.UPSTREAM_DELETED
+    queue = [
+        gv.QueuedPurge(gv.PurgeSelector(source_id="big", stable_id=f"F{n}"), up, "") for n in range(1000)
+    ]
+    start = time.monotonic()
+    runnable, kept = gv.partition_purges(world.config.state_paths, queue)
+    elapsed = time.monotonic() - start
+    assert (len(runnable), len(kept)) == (500, 500)  # an odd id is live, an even one a tombstone
+    assert elapsed < 3.0, f"{elapsed:.2f} s"
 
 
 def test_purge_works_on_a_sha256_repo(tmp_path: Path, tmp_state_dir: Path) -> None:

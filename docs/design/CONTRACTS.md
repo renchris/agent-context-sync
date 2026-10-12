@@ -13533,6 +13533,19 @@ copies the other, set state = "retired" in its [[source]] block in sources.toml 
 labelled commit)`, the refusal's own words, and R144 carries a dated amendment. Tests: `tests/test_ops_doctor.py`
 (`test_two_sources_holding_the_same_files_is_an_info_line` now pins the end of the line).
 
+**Q43: telling kept purges apart costs rows + entries** (`agentsync.governance`). `partition_purges` read the
+manifest once but resolved each queued entry over every row (`_kept_why` -> `_resolve_read`), and status (three
+calls), doctor, the loop and STATE.md on every cycle call it: 1,000 queued upstream deletions over 10,000 rows took
+about 15 s a call, and the cycle queues one per confirmed deletion, so a moved folder fills the queue. An entry of
+the cycle's shape (`upstream-deleted`, a source id and a stable id, no docs glob) is now judged by lookup: the rows
+`_resolve_read` selects for that shape are the queued id and the id it is an alias of, nothing else
+(`_kept_listed`), and both paths word the note through one formatter (`_kept_note`). Any other shape still resolves,
+with each row's state built once. `run_purge_queue` keeps its fresh read per entry: each purge it runs changes the
+manifest. Tests: `tests/test_governance.py`
+(`test_partition_purges_judges_a_cycle_entry_by_lookup_as_kept_why_does`, entry by entry against `_kept_why` over
+re-keyed, tombstoned, directory, second-source, dataless, quarantined and refused rows;
+`test_partition_purges_costs_rows_plus_entries`).
+
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
 Reserved for round 4 lane B of B13.
