@@ -30,7 +30,8 @@ from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _sync_leaves
 from agentsync.errors import ConfigError
-from agentsync.loop import NO_NEXT_HINT_ENV
+from agentsync.loop import NO_NEXT_HINT_ENV, empty_cloud_folders_held
+from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
@@ -1566,23 +1567,41 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
             detail = f"enumeration incomplete for {incomplete} consecutive passes (deletions held)"
-            if src.kind is SourceKind.LOCAL and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+            # An inbox held by empty cloud folders gets the loop's waits, which say another sync does not
+            # clear it: the same pointer as a local folder's (B13 round 3 R53).
+            yours = src.kind is SourceKind.LOCAL or (
+                src.kind is SourceKind.INBOX and _empty_folders_held(config, src)
+            )
+            if yours and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
                 out.append(CheckResult(name, False, detail, Severity.WARN, note=_LISTING_YOURS_NOTE))
             else:
-                out.append(_bad(name, detail, Severity.WARN, fix=_incomplete_fix(src)))
+                out.append(_bad(name, detail, Severity.WARN, fix=_incomplete_fix(src, yours=yours)))
         else:
             out.append(_ok(name, f"last success {last} ({age}s ago, {entry.get('pass_kind')})"))
     return out
 
 
-def _incomplete_fix(src: SourceConfig) -> str:
+def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
+    """:func:`agentsync.loop.empty_cloud_folders_held` from the manifest's stored state (no folder is listed);
+    False when there is no manifest or it cannot be read."""
+    db = config.state_paths.db
+    if not db.exists():
+        return False
+    try:
+        with Manifest(db) as manifest:
+            return empty_cloud_folders_held(manifest, src)
+    except Exception:  # the check is extra: an unreadable manifest keeps the sync-again fix
+        return False
+
+
+def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
     """The fix for a source whose listing stays incomplete. A Graph pass resumes, and an inbox is most often
     incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names
-    any other cause, and prints the loop's WAITING ON YOU lines for an inbox's empty cloud folders. A local
-    folder's walk is always a full pass, so the same folder stops it again: the loop's WAITING ON YOU lines,
-    which status prints above the checks, say which case it is and what to do (they name the empty cloud
-    folders)."""
-    if src.kind is not SourceKind.LOCAL:
+    any other cause. A local folder's walk is always a full pass, so the same folder stops it again: the
+    loop's WAITING ON YOU lines, which status prints above the checks, say which case it is and what to do
+    (they name the empty cloud folders). An inbox that ``yours`` says is held by empty cloud folders gets that
+    pointer too (``yours`` defaults to "a local source")."""
+    if not (src.kind is SourceKind.LOCAL if yours is None else yours):
         return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
     return (
         f"agentsync status (each WAITING ON YOU line about {src.id} says what stops the listing and what to "

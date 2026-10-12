@@ -467,6 +467,47 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
     ], "deleted, not retired: the deletion queued its purge"
 
 
+def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The loop said another sync does not clear an inbox's empty cloud folder while doctor's heartbeat fix
+    said a full pass clears it. Doctor now asks the loop's own predicate: that inbox gets the local folder's
+    status pointer (a note under install.sh), and an inbox left incomplete by anything else keeps sync -v
+    (B13 round 2 R53)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - only this test needs it
+
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    held, other = cloud / "Drop", cloud / "Bare"
+    (held / "Empty").mkdir(parents=True)
+    _write(held / "keep.txt", "The purchase order is approved.\n")
+    other.mkdir()
+    config = _setup(
+        tmp_path, inbox_source_table("drop", held) + "quiescence_s = 0\n" + inbox_source_table("bare", other)
+    )
+    for _ in range(4):
+        run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        by_id = {s.id: s for s in config.sources}
+        assert loop.empty_cloud_folders_held(manifest, by_id["drop"])
+        assert not loop.empty_cloud_folders_held(manifest, by_id["bare"])
+    assert "heartbeat.drop" in loop.next_step(config, count_queue=False).checks
+    checks = {c.name: c for c in doctor._check_heartbeat(config)}
+    assert checks["heartbeat.drop"].fix == (
+        "agentsync status (each WAITING ON YOU line about drop says what stops the listing and what to do: "
+        "another sync does not clear it)"
+    )
+    assert (
+        checks["heartbeat.bare"].fix == "agentsync sync -v (a full pass that lists all of bare clears this)"
+    )
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    checks = {c.name: c for c in doctor._check_heartbeat(config)}
+    assert (checks["heartbeat.drop"].fix, checks["heartbeat.drop"].note) == (
+        None,
+        "yours: see WAITING ON YOU",
+    )
+    assert checks["heartbeat.bare"].fix is not None and checks["heartbeat.bare"].note is None
+
+
 def test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it(tmp_path: Path) -> None:
     """§16.39 N26, Known limit (b13 N27 review): an inbox walk leaves a file that changed too recently out
     of its listing, so a mirrored file that is still there counts as "not listed" beside an empty cloud

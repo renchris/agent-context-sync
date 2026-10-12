@@ -399,6 +399,24 @@ def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, 
     return bool(names), below
 
 
+def empty_cloud_folders_held(manifest: Manifest, src: SourceConfig) -> bool:
+    """Whether ``src``'s listing stays incomplete because of empty cloud folders its last walk stored and
+    today's exclude does not prune: the case :func:`next_step` gives WAITING ON YOU lines that say another
+    sync does not clear it (a local or inbox source, its row incomplete, its newest pass FULL and not held
+    for a privacy prompt, and :func:`_empty_dirs` names some). Stored folders that are all excluded now are
+    not this case: the next sync lists the source. Doctor's heartbeat check words its fix by it (B13 round
+    3 R53). Reads stored state only, never a folder."""
+    if src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+        return False
+    row = manifest.get_source(src.id)
+    last = manifest.last_source_pass(src.id)
+    if (row is not None and row.enumeration_complete) or last is None or last.pass_kind is not PassKind.FULL:
+        return False
+    if (last.skipped_reason or "").startswith(LISTING_HELD):
+        return False
+    return bool(_empty_dirs(manifest, src)[1])
+
+
 def _missed(manifest: Manifest, source_id: str) -> int:
     """The mirrored files the source's last walk did not list, of those last listed under the root it has
     now (manifest meta ``scope_root:<id>``, ``<run>:<path>``): a complete pass retires a row last listed under

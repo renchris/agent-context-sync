@@ -6074,7 +6074,10 @@ or empty for this case (a source sat incomplete for 900 passes):
   clear it)`: "a full pass clears this" was never true of a local walk, which is always a full pass, and
   status prints the loop's lines above the checks. **Amended 2026-10-11, §16.39 N27:** the fix reads "each
   WAITING ON YOU line about <id>", since a source can have two. Under `AGENTSYNC_NO_NEXT_HINT=1` the local line has
-  `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line.
+  `fix=None` and the note "yours: see WAITING ON YOU", since install.sh prints the loop's line. **Amended
+  2026-10-11, §16.47 R53:** an inbox the loop gives empty-cloud-folder waits (`loop.empty_cloud_folders_held`:
+  stored empty folders today's exclude does not prune, after a FULL pass) gets the local source's fix and note;
+  any other incomplete inbox keeps the sync -v text.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
   that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
