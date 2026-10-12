@@ -3891,9 +3891,12 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
 
 def _sends_nothing(side: Path) -> None:
     """A stopped copy's report ends saying it is not for sending: no "Send it:" line and no issue link,
-    whichever writer wrote it (B13 round 4 Q10, Q18)."""
+    whichever writer wrote it (B13 round 4 Q10, Q18), not even an earlier run's quoted in it, and its legend
+    does not say "before sending it" (B13 round 5 F16, F7)."""
     text = side.read_text()
     assert "Send it:" not in text and "issues/new" not in text, text[-600:]
+    assert "Read the report before sending it" not in text and "is yours to remove." in text
+    assert not [ln for ln in text.splitlines() if ln.startswith("bring back: ")]
     assert text.endswith("\nNot for sending: see the note at the top of this report.\n"), text[-300:]
 
 
@@ -3908,17 +3911,37 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
         f'#!/bin/sh\nexec "{real_env["REAL_PYTHON"]}" -m agentsync "$@"\n',
     )
     side = report_path(real_env).parent / "setup" / "stopped-copy-report.md"
+    # An earlier full install run's end, as install.out keeps it: the stopped copy's report quotes its tail
+    # (B13 round 5 F16, F7: every field Mac has one)
+    out = side.parent / "install.out"
+    out.parent.mkdir(parents=True, mode=0o700)
+    out.write_text(
+        "# run=20261012T090000Z-41 2026-10-12T09:00:00Z install.sh\n"
+        "report: ~/agent-context/setup-report.md\n"
+        "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)\n"
+        f"issue link (review the report first): {setup_report.ISSUE_URL}&title=Contoso\n"
+        "NEXT: review ~/agent-context/bring-back.md and copy that one file back privately, or paste the "
+        "setup report into the issue the link above opens (nothing is sent for you)\n"
+    )
+    out.chmod(0o600)
     assert install_sh(real_env, "--log-start", "x").returncode == 2
     stopped = install_sh(real_env, "--report-only")
     assert stopped.returncode == 0 and "(agentsync setup-report)" in stopped.stdout, stopped.stdout
     assert "## Redaction" in side.read_text()
     _sends_nothing(side)
+    gone = "(an earlier run's bring-back, issue link and NEXT lines are left out of this report)"
+    assert side.read_text().splitlines().count(gone) == 1, side.read_text()
+    assert "bring-back.md and copy" not in side.read_text(), "nor the earlier run's NEXT"
     _backdate(real_env, 11)
     assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     real = install_sh(real_env, "--report-only")
     assert real.returncode == 0 and not side.exists()
     text = report_path(real_env).read_text()
     assert "\nSend it: " in text and text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
+    assert "\nbring back: ~/agent-context/bring-back.md (one file:" in text and "&title=Contoso" in text, (
+        "a report that was not stopped still quotes both lines"
+    )
+    assert gone not in text and "Read the report before sending it: a" in text
 
 
 def test_a_stopped_copy_is_read_as_stopped_whatever_bytes_a_late_line_holds(env: dict[str, str]) -> None:
