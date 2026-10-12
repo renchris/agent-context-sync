@@ -34,6 +34,7 @@ UV_ASSET = (
 )
 MAX_HOPS = 10
 REDIRECTS = ("301", "302", "303", "307", "308")
+REFUSES_HEAD = ("403", "405", "501")
 
 
 def downloads_bullet(text: str) -> str:
@@ -105,13 +106,19 @@ def python_url() -> str | None:
 
 
 def _curl(*args: str) -> str:
-    """curl's output (curl, not urllib: a python.org Python on a Mac has no CA bundle of its own)."""
-    return subprocess.run(
+    """curl's output (curl, not urllib: a python.org Python on a Mac has no CA bundle of its own). A failure
+    is a RuntimeError that carries curl's own message."""
+    done = subprocess.run(
         ["curl", "-sS", "--max-time", "60", "-A", "agentsync-download-hosts", *args],
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout
+        check=False,
+    )
+    if done.returncode != 0:
+        raise RuntimeError(
+            f"curl exit {done.returncode}: {done.stderr.strip() or 'no message'}"
+        )
+    return done.stdout
 
 
 def hops(url: str) -> list[str]:
@@ -119,9 +126,12 @@ def hops(url: str) -> list[str]:
     hop is followed by hand, so no request downloads a file."""
     seen = [url]
     for _ in range(MAX_HOPS):
-        code, _sep, location = _curl(
-            "-I", "-o", "/dev/null", "-w", "%{http_code} %{redirect_url}", seen[-1]
-        ).partition(" ")
+        out = ("-o", "/dev/null", "-w", "%{http_code} %{redirect_url}", seen[-1])
+        code, _sep, location = _curl("-I", *out).partition(" ")
+        if (
+            code in REFUSES_HEAD
+        ):  # a server that will not answer HEAD: ask for one byte instead
+            code, _sep, location = _curl("-r", "0-0", *out).partition(" ")
         if code not in REDIRECTS or not location.strip():
             if not code.startswith("2"):
                 raise RuntimeError(f"HTTP {code} from {seen[-1]}")
@@ -165,7 +175,14 @@ def check(
     """One problem line per chain that ends off its host or passes a host ``named`` lacks."""
     problems = []
     for what, url, end in steps:
-        chain = follow(url)
+        try:
+            chain = follow(url)
+        except (
+            RuntimeError,
+            OSError,
+        ) as exc:  # one chain's failure leaves the others checked
+            problems.append(f"{what} could not be followed ({exc}): {url}")
+            continue
         print(f"{what}: {' -> '.join(host(u) for u in chain)}")
         if end is not None and host(chain[-1]) != end:
             problems.append(
