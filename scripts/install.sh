@@ -1530,11 +1530,12 @@ fallback_redaction() {
 	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
 	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts (one"
 	say "named like proxy or wpad only inside a URL) and the system PAC URL after its scheme (<proxy-N>), the"
-	say "names of the folders under CloudStorage that"
-	say "--source-local, sources.toml or install.log name (<folder-N>; a name every OneDrive has only as a whole"
-	say "word), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
-	say "in bash's dollar-quote form, how install.log writes a name with a curly apostrophe, a dash or an accent"
-	say "(<path>). Read the report before sending it: anything else confidential is yours to remove."
+	say "names of the folders under CloudStorage that --source-local, sources.toml or install.log name"
+	say "(<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a"
+	say "whole word), a --source-local argument in install.log that names no CloudStorage folder (<path>), and"
+	say "every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly"
+	say "apostrophe, an en dash or an accent (<path>). Read the report before sending it: anything else"
+	say "confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).

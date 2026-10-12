@@ -1321,7 +1321,14 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     installer = raw.split(b"## Installer", 1)[1].split(b"## Configuration", 1)[0]
     assert name.encode() not in raw and b"Fabrikam" not in installer and b"\\" not in installer
     flat = " ".join(text.split())
-    assert "and every word in bash's dollar-quote form" in flat, "the Redaction text is not itself redacted"
+    assert (
+        "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
+        "apostrophe, an en dash or an accent (<path>)" in flat
+    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
+    assert (
+        "(<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands"
+        in flat
+    )
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
