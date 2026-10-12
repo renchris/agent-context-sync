@@ -72,8 +72,9 @@ and the system PAC URL after its scheme (``<proxy-N>``) and this account's tempo
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
 CamelCase variants, in NFC, NFD, mixed or unaccented spelling, and the shell-escaped form install.sh logs its
 arguments in (``Client\\ Alpha``). A folder, library, organisation or full-name value of two or more words
-whose joined form spells a word the report prints (:data:`_JOINED_WORDS`: "Ho, Me" is "home") is matched
-with a separator or a CamelCase boundary only. A
+whose joined form spells a word the report prints (:data:`_JOINED_WORDS` and :func:`report_words`: "Ho, Me" is
+"home") is matched with a separator or a CamelCase boundary only, and a one-word organisation that is such a
+word only in a folder or domain name (``OneDrive-<org-1>``). A
 placeholder already in the text (any numbered kind, the unnumbered kinds, ``<path>`` and the IT template
 fields: :data:`_HELD_RE`) is left whole on a second pass, and this repository's own ``github.com`` locator is
 kept whole, so a full name that matches its owner does not cut the issue link. A
@@ -90,6 +91,7 @@ check runs over the whole redacted report, listing its hits by section.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import dataclasses
 import functools
@@ -462,8 +464,34 @@ word its static text uses 8 or more times, and the common short words "home", "m
 which two or more short words of a fuzzy value (a full name, folder, library or organisation) can spell run
 together ("Ho, Me" is "home"). Such a joined form
 is matched with a separator or a CamelCase boundary only ("Ho Me", "ho_me", "HoMe"), never as the bare word
-in one case, which is the same text as the word: "home", "HOME" and "Home" stay (B13 round 4 Q72). Leaving a
-word off only keeps the old over-redaction. install.sh's ``joined_word`` holds the same list."""
+in one case, which is the same text as the word: "home", "HOME" and "Home" stay (B13 round 4 Q72). The rule
+reads :func:`report_words`, which holds these and every word of the report's static text (B13 round 5 F93: a
+word left off was over-redacted, and that gives the name back). install.sh's ``joined_word`` holds this list.
+"""
+
+_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
+
+
+@functools.cache
+def report_words() -> frozenset[str]:
+    """The lower-case words of 3 or more letters the report prints: :data:`_JOINED_WORDS` and every such word
+    in this module's string literals, read from its own source when first asked (B13 round 5 F93), so a word
+    a later change adds to the report's text is in it with no list to keep. A fuzzy value of two or more
+    words whose joined form is one of them is matched with a separator or a CamelCase boundary only (Q72;
+    "In Stall" leaves "install" alone), a one-word organisation that is one is matched only where a folder
+    or domain name puts it (F42, F55), and a one-word folder or library that is one makes the Redaction
+    section advise sending privately (F92). Unreadable source: :data:`_JOINED_WORDS` alone."""
+    words = set(_JOINED_WORDS)
+    with contextlib.suppress(OSError, SyntaxError, ValueError):
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        # Docstrings and comments are not the report's text, and their examples name what is redacted
+        # ("janedoe" for "Jane Doe"): a string statement on its own is left out
+        loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
+                words.update(_WORD_RE.findall(node.value))
+    return frozenset(words)
+
 
 _GENERIC_IDS = frozenset(
     {
@@ -757,6 +785,12 @@ class Redactor:
         # _norm(value) -> placeholder of a name's joined form that spells a report word (_JOINED_WORDS):
         # apart, so a later folder or organisation spelled the same ("Home") is registered under its own kind
         self._joined: dict[str, str] = {}
+        # _norm(value) -> placeholder of a one-word organisation that is a report word (:func:`report_words`),
+        # matched only where a folder or domain name puts it (B13 round 5 F42, F55): apart, as _joined
+        self._context: dict[str, str] = {}
+        # placeholders of one-word folder, library or organisation values matched anywhere that are report
+        # words: one shown means the report's own text may give the value back (B13 round 5 F92)
+        self._word_named: set[str] = set()
         # _bare(value).lower() -> placeholder of a host matched only inside a URL (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
         self._url_hosts: dict[str, str] = {}
@@ -801,6 +835,14 @@ class Redactor:
         self.counts.update(self._kind_of[p] for p in shown.elements())
         self._used = {p for p in self._used if self._kind_of.get(p) not in numbered} | set(shown)
 
+    @property
+    def word_named_shown(self) -> bool:
+        """Whether the text redacted so far shows the placeholder of a one-word folder, library or
+        organisation value that is a word the report prints: its fixed text can then give the value back
+        (``the <folder-1> of this report`` is "status"), so the report is not for a public issue (B13 round 5
+        F92). An organisation matched only in a folder or domain name (F42) never is."""
+        return bool(self._word_named & self._used)
+
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
             return "~"
@@ -838,8 +880,12 @@ class Redactor:
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
-        joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in _JOINED_WORDS
+        joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in report_words()
         if joined and _norm(value) in self._joined:
+            return
+        word = len(_tokens(value)) == 1 and _norm(value) in report_words()
+        context = word and fuzzy and kind == "org"
+        if context and _norm(value) in self._context:
             return
         known = self._known(value)
         # An accented spelling of a known value ("Société" after "Societe") keeps that placeholder, but is
@@ -852,9 +898,14 @@ class Redactor:
             return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
-        if joined:  # matched with a separator or a CamelCase boundary only (_JOINED_WORDS)
+        if word and kind in ("folder", "library", "org") and not context:
+            self._word_named.add(placeholder)
+        if joined:  # matched with a separator or a CamelCase boundary only (report_words)
             self._joined[_norm(value)] = placeholder
             self._literals.append((value, "joined"))
+        elif context:  # only after an app's name or before a SharePoint or tenant domain (report_words)
+            self._context[_norm(value)] = placeholder
+            self._literals.append((value, "context"))
         elif fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy.setdefault(_norm(value), placeholder)
             self._literals.append((value, "fuzzy"))
@@ -921,6 +972,13 @@ class Redactor:
                     body = f"(?:{_JOINED_SEP.join(_word_pattern(w) for w in words)}|{camel})"
                 else:
                     body = _word_pattern(form, shell=mode != "exact")
+                if (
+                    mode == "context"
+                ):  # "OneDrive-Link", "link.sharepoint.com"; never "link" or "Link" in prose
+                    after = "(?:(?<=Drive-)|(?<=Drive - )|(?<=Libraries-)|(?<=Box-))"
+                    domain = r"(?=(?:-my)?\.sharepoint\.com|\.onmicrosoft\.com)"
+                    literals.append(f"(?i:{after}{body}(?![A-Za-z0-9])|(?<![A-Za-z0-9.-]){body}{domain})")
+                    continue
                 if mode == "url":  # "http://proxy:8080" and "user@proxy", never HTTPS_PROXY or network.proxy
                     near = r"(?![A-Za-z0-9._-])"
                     literals.append(
@@ -966,6 +1024,7 @@ class Redactor:
             placeholder = (
                 self._known(text)
                 or self._joined.get(_norm(text))
+                or self._context.get(_norm(text))
                 or self._url_hosts.get(_bare(text).lower())
                 or text
             )
@@ -6566,6 +6625,21 @@ def _redaction_section(
         if filled
         else 'a blank "Setup report" issue form'
     )
+    send = (
+        f"Send it: the link on the last line opens {opens}; paste this report into its Setup report field, "
+        "or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
+        "automatically."
+    )
+    word = []
+    if red.word_named_shown:  # its placeholder in fixed text reads back as the word (B13 round 5 F92)
+        word = [
+            "Private only: one of your folder, library or organisation names is also a word this report "
+            "prints, so where its placeholder stands in the report's own text it can be read back."
+        ]
+        send = (
+            "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the "
+            "link on the last line: a public issue would show that name. Nothing is sent automatically."
+        )
     return [
         "",
         "## Redaction",
@@ -6577,9 +6651,8 @@ def _redaction_section(
         f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
         "anything else confidential (a project name inside a log line, say) is yours to remove.",
         check,
-        f"Send it: the link on the last line opens {opens}; paste this report into its Setup report field, "
-        "or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
-        "automatically.",
+        *word,
+        send,
     ]
 
 

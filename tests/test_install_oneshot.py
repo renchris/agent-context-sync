@@ -1265,6 +1265,59 @@ def test_the_shell_report_leaves_a_report_word_a_short_name_spells_alone(
     assert "your home folder; HOME set; <name>, <name>, <name>, <name> agreed" in text, text
 
 
+def test_the_shell_report_leaves_any_report_word_a_name_spells_alone(
+    env: dict[str, str], folder: Path
+) -> None:
+    """B13 round 5 F93: the shell's joined-word rule read the 263 hand-picked words only, so "In Stall" turned
+    "install" into <name>. It reads report_word: those and every word on install.sh's own lines that are not
+    comments (a comment's "janedoe" is no word of the report)."""
+    body = INSTALL_SH.read_text(encoding="utf-8")
+    assert "janedoe" in body, "the comment this test relies on"
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        '#!/bin/bash\n[ "$1" = -F ] && { echo "In Stall"; exit 0; }\nexec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | the install log; INSTALL; In Stall, InStall, in_stall agreed "
+        "| -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "the install log; INSTALL; <name>, <name>, <name> agreed" in text, text
+
+
+@pytest.mark.parametrize("link", [True, False], ids=["symlink", "folder"])
+def test_the_shell_report_keeps_the_word_a_one_word_organisation_spells(
+    env: dict[str, str], link: bool
+) -> None:
+    """B13 round 5 F42, F55: OneDrive-Link registered "Link", so the shell report's text and quoted lines lost
+    the word. Every entry is still registered (a symlink named after the tenant must not print it); a
+    one-word organisation that is a report word is replaced only in the entry's name and its domains."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    team = cloud / "OneDrive-Contoso" / "Q3 Launch"
+    team.mkdir(parents=True)
+    entry = cloud / "OneDrive-Link"
+    if link:
+        entry.symlink_to(cloud / "OneDrive-Contoso")
+    else:
+        entry.mkdir()
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | OneDrive-Link and link.sharepoint.com; the Link button | -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(team))
+    assert cp.returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Contoso" not in text and "OneDrive-Link" not in text and "link.sharepoint.com" not in text
+    assert "OneDrive-<org-2> and <org-2>.sharepoint.com; the Link button" in text, text
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, str], locale: str) -> None:
     """A CloudStorage folder of any provider: the part after the app's name is <org-N> in the shell fallback

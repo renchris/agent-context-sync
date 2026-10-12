@@ -1018,6 +1018,21 @@ joined_word() {
 	esac
 	return 1
 }
+# WORD (lower case): joined_word, or a lower-case word of 3 or more letters on one of this script's lines that is
+# not a comment: the text the shell report prints, read when first asked, as setup_report.report_words reads
+# its string literals (B13 round 5 F93: a word left off was over-redacted, which gives a joined name back; a
+# comment's example, "janedoe", is no word of the report). name_forms reads it, and so does the organisation
+# rule: a one-word organisation that is such a word is registered only in the entry's own name and domains.
+REPORT_WORDS=""
+report_word() {
+	joined_word "$1" && return 0
+	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '/^[[:space:]]*#/ { next }
+		{ sub(/[[:space:]]#[[:space:]].*$/, ""); n = split($0, a, /[^A-Za-z]+/)
+			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1 }
+		END { for (k in w) printf "%s ", k }' "$SELF" 2>/dev/null || true) "
+	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac
+	return 1
+}
 # A folder name every OneDrive or Google Drive has: setup_report._GENERIC_FOLDERS (a test keeps them equal). A
 # configured one is still redacted, as the Python report does, but only as a whole word.
 generic_folder() {
@@ -1061,7 +1076,7 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
 	local port k
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
@@ -1175,7 +1190,7 @@ redaction_pairs() {
 			c=""
 			for x in "$@"; do v="${v:+$v$s}$x"; done
 			for x in "${caps[@]}"; do c="${c:+$c$s}$x"; done
-			if [ -z "$s" ] && [ "$#" -ge 2 ] && joined_word "$(recase lower "$v")"; then
+			if [ -z "$s" ] && [ "$#" -ge 2 ] && report_word "$(recase lower "$v")"; then
 				# run together they spell a report word: only a CamelCase join is the name (B13 round 4 Q72)
 				for x in "$v" "$c"; do
 					case "$x" in *[[:lower:]][[:upper:]]*) add_pair "$x" "<name>" w ;; esac
@@ -1221,7 +1236,15 @@ redaction_pairs() {
 			case "$orgs_seen" in *$'\n'"$org"$'\n'*) continue ;; esac
 			orgs_seen+="$org"$'\n'
 			n=$((n + 1))
-			add_pair "$org" "<org-$n>"
+			low="$(recase lower "$org")"
+			if [ "${org#* }" = "$org" ] && report_word "$low"; then
+				# a word the report prints ("Link"): in the entry's name and its domains only, never the word in
+				# the report's own sentences (B13 round 5 F42, F55), as setup_report's context mode
+				add_pair "$e" "${e%"$org"}<org-$n>"
+				for x in .sharepoint.com -my.sharepoint.com .onmicrosoft.com; do add_pair "$low$x" "<org-$n>$x"; done
+			else
+				add_pair "$org" "<org-$n>"
+			fi
 		done
 	fi
 	n=0

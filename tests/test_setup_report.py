@@ -417,6 +417,100 @@ def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) ->
             assert setup_report._scrub_item_paths(line) == f"{LOG_HEAD}cycle: src-x: <path>: timed out"
 
 
+def test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone() -> None:
+    """B13 round 5 F93: the joined-word rule read a hand-picked list of 263 words, so "In Stall" turned every
+    "install" into <name> and gave the joined name back. It reads report_words(): those and every word of the
+    report's static text, read from its own string literals (no list to keep), never a docstring's example."""
+    words = setup_report.report_words()
+    assert words >= setup_report._JOINED_WORDS and words >= {"install", "content", "agentsync", "issue"}
+    assert "janedoe" not in words and "contoso" not in words, "a docstring's example is not the report's text"
+    red = setup_report.Redactor()
+    red.add("name", "In Stall", fuzzy=True)
+    assert red.redact("install.sh exited 0; the install log; INSTALL; InStall in-stall In Stall") == (
+        "install.sh exited 0; the install log; INSTALL; <name> <name> <name>"
+    )
+    red = setup_report.Redactor()
+    red.add("name", "Con Tent", fuzzy=True)
+    assert red.redact("the content of the report; ConTent") == "the content of the report; <name>"
+    red = setup_report.Redactor()
+    red.add("name", "Jane Doe", fuzzy=True)
+    assert red.redact("janedoe Jane Doe JaneDoe") == "<name> <name> <name>", "no report word: as before"
+
+
+def test_a_one_word_organisation_that_is_a_report_word_is_matched_only_in_folder_and_domain_names() -> None:
+    """B13 round 5 F42, F55: an entry OneDrive-Link registered the organisation "Link", fuzzy, so "a link's
+    own attributes" and "issue link" read "<org-2>", and the placeholder in the report's fixed text gave
+    the name back. Every entry is still registered (a symlink named after the tenant must not print it),
+    but a one-word organisation that is a report word is matched only after an app's name or before a
+    SharePoint or tenant domain; the bare word in prose stays, as Q72 keeps "home". Any other organisation
+    is matched as before."""
+    red = setup_report.Redactor()
+    red.add("org", "Contoso", fuzzy=True)
+    red.add("org", "Link", fuzzy=True)
+    said = (
+        "OneDrive-Link, OneDrive - Link, OneDrive-SharedLibraries-Link, link.sharepoint.com, "
+        "link-my.sharepoint.com, link.onmicrosoft.com; a link's own attributes; link count; issue link; Link"
+    )
+    assert red.redact(said) == (
+        "OneDrive-<org-2>, OneDrive - <org-2>, OneDrive-SharedLibraries-<org-2>, <org-2>.sharepoint.com, "
+        "<org-2>-my.sharepoint.com, <org-2>.onmicrosoft.com; a link's own attributes; link count; "
+        "issue link; Link"
+    )
+    assert (
+        red.redact("Contoso contoso CONTOSO contoso.sharepoint.com")
+        == "<org-1> <org-1> <org-1> <org-1>.sharepoint.com"
+    )
+    assert not red.word_named_shown, "matched only in a name, the placeholder reads back as nothing"
+
+
+@pytest.mark.parametrize("link", [True, False], ids=["symlink", "folder"])
+def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
+    fake_mac: dict[str, Path], link: bool
+) -> None:
+    """B13 round 5 F42, F55 end to end: OneDrive-Link beside OneDrive-Contoso, as a symlink to it or as a
+    folder. The organisation never prints, and the Environment line's own words keep "link"."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage"
+    entry = cloud / "OneDrive-Link"
+    if link:
+        entry.symlink_to(cloud / f"OneDrive-{ORG}")
+        (cloud / "OneDrive-Fabrikam").symlink_to(cloud / f"OneDrive-{ORG}")
+    else:
+        entry.mkdir()
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert ORG not in text and "Fabrikam" not in text and "OneDrive-Link" not in text
+    env = section(text, "Environment")
+    assert "OneDrive-<org-" in env
+    if link:
+        assert "(a link's own attributes say nothing about its target)" in env, env
+    assert "<org-2>'s own" not in text and "issue <org-" not in text
+
+
+def test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 5 F92: a folder named like a word the report prints is redacted everywhere, so the report's
+    public template gives it back where its placeholder stands ("the <folder-3> of this report"). When such a
+    placeholder is shown, the Redaction section says so and sends the report privately, not through the
+    issue link. An organisation matched only in folder and domain names (F42), or any other name, does not."""
+    plain = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    assert "Private only:" not in plain and "Send it: the link on the last line opens" in plain
+    folder = fake_mac["one"].parent / "Status"
+    folder.mkdir()
+    assert cli.main(["add-source", str(folder), "--config", str(fake_mac["config"])]) == 0
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    redaction = text.split("\n## Redaction\n", 1)[1]
+    assert (
+        "Private only: one of your folder, library or organisation names is also a word this report prints, "
+        "so where its placeholder stands in the report's own text it can be read back.\n" in redaction
+    ), redaction
+    assert (
+        "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the "
+        "link on the last line: a public issue would show that name." in redaction
+    )
+    assert "Send it: the link on the last line opens" not in redaction
+    assert "Read the report before sending it: anything else confidential" in redaction, "the caveat stays"
+
+
 def test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole() -> None:
     """B13 round 5 F52: Q49 put ``~/.local/bin/agentsync`` into cycle's alarms, and its ``/`` read as an item
     path, so the report cut whole alarms to ``<path>`` and lost the command they name. The binary is not an

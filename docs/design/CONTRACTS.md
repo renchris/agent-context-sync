@@ -12420,7 +12420,8 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   differs between the two reports as well: the shell fallback numbers the CloudStorage entries in glob order
   (a repeated organisation takes no number, §16.47) and never reads `graph.tenant` or SharePoint site hosts. A one-word organisation is
   redacted as a whole word wherever it stands (`Microsoft` in `Microsoft Graph`) on purpose, since that fails
-  closed; no common-word exemption is made.
+  closed; no common-word exemption is made. **Amended (2026-10-12, §16.58 F92):** not for a one-word value that
+  is a word the report prints; see §16.46 "Kept as they are".
 
 #### Outside the prompt
 
@@ -12942,6 +12943,11 @@ needs no pair: `redact_stream` makes every `$'..'` word `<path>` first.
   tenant named like a common word; matching the shell's order would still not match Python's numbers (the
   shell never reads `graph.tenant` or SharePoint hosts), and partly matching numbers would look reliable
   without being so (N44, amended).
+  Amended 2026-10-12 (§16.58, F42, F55, F92): whole-word redaction of a value that is a word the report prints
+  does not fail closed: the report's template is public, so its placeholder in fixed text reads back as the
+  word. Such a one-word organisation is still registered from every entry (no exemption prints it) but matched
+  only in folder and domain names; such a folder or library sends the report privately. The full fix is
+  redaction where each value is put into a line.
 - A short name's joined forms over-redact report words ("Ho, Me" turns "home" into `<name>`). Dropping parts
   under 3 letters from the joined forms reopens the leak of `LiJo`, `li_jo` and a listed-word part (`Me` in
   `Ho Me`), which the joined forms alone cover (§16.40 H20).
@@ -14635,6 +14641,46 @@ shell report's Configuration prints the same line from sources.toml (`source_exc
 `SHIPPED_EXCLUDES`; a source is `(source N)` by its place). Tests:
 `test_configuration_counts_the_source_excludes_beyond_agentsyncs_own`,
 `test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own`.
+
+**F93: the joined-word rule reads every word the report prints.** Amends Q72 (§16.52): the words a fuzzy value
+of two or more words may spell run together are `setup_report.report_words()`, which holds `_JOINED_WORDS` and
+every lower-case word of 3 or more letters in the module's own string literals, read from its source when first
+asked (docstrings and comments left out: their examples, such as `janedoe`, name what is redacted). A word the
+report's text gains is in it with no list to keep. "In Stall" now leaves `install.sh`, `the install log` and
+`INSTALL` alone and still redacts `InStall`, `in-stall` and `In Stall`; a non-word join (`janedoe`) is redacted as
+before. The bare one-case join is the dictionary word, so leaving it reveals nothing (Q72's reasoning). install.sh's
+`name_forms` reads `report_word`: `joined_word` (still equal to `_JOINED_WORDS`) or a word on install.sh's own lines
+that are not comments. Tests: `test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone`,
+`test_the_shell_report_leaves_any_report_word_a_name_spells_alone`, `test_the_shell_joined_word_list_is_the_reports`.
+
+**F42, F55: a one-word organisation that is a report word is matched only in folder and domain names.** Amends
+§16.46 "Kept as they are" (dated line there). Every CloudStorage entry, symlinks and non-folders included, and every
+configured path's provider still registers its organisation, so nothing that might name the tenant prints (Q33's
+symlink note and the Environment line print every entry). When the organisation is one word and in
+`report_words()` (`Link`, `Data`, `Status`), the Redactor registers it in a `context` mode: matched only after
+`Drive-`, `Drive - `, `Libraries-` or `Box-` (`OneDrive-<org-N>`, `OneDrive-SharedLibraries-<org-N>`) or before
+`.sharepoint.com`, `-my.sharepoint.com` or `.onmicrosoft.com`; never the bare word, so `a link's own attributes`,
+`link count` and `issue link` keep their words. Any other organisation (`Contoso`) is matched as before. The shell
+report registers such an organisation as the whole entry name (`OneDrive-<org-N>`) and its three lower-case
+domains instead of the bare word. Not built: matching it "as a separator-bounded part of a longer joined name",
+which would also match hyphenated prose. F42 and F55 describe one defect and are built once. Tests:
+`test_a_one_word_organisation_that_is_a_report_word_is_matched_only_in_folder_and_domain_names`,
+`test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words`,
+`test_the_shell_report_keeps_the_word_a_one_word_organisation_spells`.
+
+**F92: a folder named like a report word sends the report privately.** Amends §16.46 "Kept as they are" and its
+R135 line (dated lines there). A one-word folder, library or organisation value in `report_words()` matched
+anywhere has a placeholder that reads back as the word where it stands in the report's public template (`the
+<folder-3> of ...` is "status"). When such a placeholder is shown in the report (`Redactor.word_named_shown`, after
+`recount`), the Redaction section adds `Private only: one of your folder, library or organisation names is also a
+word this report prints, so where its placeholder stands in the report's own text it can be read back.` and its
+`Send it:` line reads `privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the link
+on the last line: a public issue would show that name.` An organisation in `context` mode (F42) never lands in
+fixed text and never raises it; the `Read the report before sending it` caveat is unchanged. The full fix, redaction
+at interpolation, is a broad change to `_redact_lines`' callers and is not built. The finder's "Send it" example
+was not reproducible (that sentence is appended unredacted), and its org `Link` test is replaced by a folder
+`Status`, since F42 keeps a word-named organisation out of fixed text. Test:
+`test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
 
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
