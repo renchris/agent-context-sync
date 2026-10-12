@@ -39,7 +39,13 @@ from typing import Protocol, TypeVar, cast
 
 from agentsync.config import SourceConfig, always_excluded
 from agentsync.errors import ConfigError, MaterialiseError
-from agentsync.materialise import is_dataless, materialise, materialize_allowed, sha256_file
+from agentsync.materialise import (
+    file_provider_marker,
+    is_dataless,
+    materialise,
+    materialize_allowed,
+    sha256_file,
+)
 from agentsync.model import (
     ByteBudget,
     ExtraValue,
@@ -127,7 +133,7 @@ class WalkStats:
     dataless: int
     excluded: int
     symlinks_skipped: int
-    unknown_dirs: tuple[str, ...]  # zero-child dirs inside a cloud tree, and EPERM/EACCES dirs (TCC)
+    unknown_dirs: tuple[str, ...]  # zero-child dirs in a File Provider domain, and EPERM/EACCES dirs (TCC)
     sentinel_present: bool | None  # None when no sentinel is configured
     empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
     empty_cloud_root: bool = False  # the root itself has zero children in a cloud tree ("." in unknown_dirs)
@@ -295,13 +301,33 @@ def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:
     return any(is_under(path, r) for r in roots)
 
 
-def cloud_provider_root(path: Path) -> Path | None:
-    """The File Provider folder holding ``path`` (``~/Library/CloudStorage/<provider>``); None outside one."""
+def _provider_folder(path: Path, roots: Sequence[Path]) -> Path | None:
+    """The provider folder holding ``path`` (``~/Library/CloudStorage/<provider>``, the first component
+    below a cloud root); None outside one and for a cloud root itself."""
     p = expand(path)
-    for root in _cloud_roots():
+    for root in roots:
         if root in p.parents:
             return root / p.relative_to(root).parts[0]
     return None
+
+
+def cloud_provider_root(path: Path) -> Path | None:
+    """The File Provider folder holding ``path`` (``~/Library/CloudStorage/<provider>``); None outside one."""
+    return _provider_folder(path, _cloud_roots())
+
+
+def _is_domain(provider: Path) -> bool:
+    """Whether a provider folder is a File Provider domain, from its own extended attributes: True when one
+    is a File Provider attribute (a real domain root carries ``com.apple.file-provider-domain-id``), when the
+    entry is not a real folder (a symlink's own attributes say nothing about the folder it points to), and
+    when a read fails for any reason (EPERM, ENOSYS off macOS, anything: the zero-children rule stands).
+    False only for a clean read of a real folder with none, such as a sandbox's ``mkdir`` makes."""
+    try:
+        if not stat.S_ISDIR(os.lstat(provider).st_mode):
+            return True
+        return file_provider_marker(provider) is not None
+    except OSError:
+        return True
 
 
 def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:
@@ -480,12 +506,14 @@ def walk(
     Emits files only (is_dir=False), sorted by rel_path; rel_path is POSIX, NFC-normalised, relative to
     ``root``.  Directories are pruned only by ``exclude`` (``include`` applies to files).  Each item carries
     size, mtime_ns, ctime_ns, created_ns (st_birthtime), ino, mode, dataless (SF_DATALESS), gen_count.
-    A directory under ~/Library/CloudStorage with zero children, or one raising EPERM/EACCES, is recorded in
-    ``unknown_dirs`` and never read as empty; the folders whose listing failed are logged once a walk, at
-    warning, with their reasons (``_warn_unlisted``).  Raises FileNotFoundError if ``root`` does not exist,
-    and CallTimedOutError when one directory listing does not return within ``listing_timeout_s`` (macOS holds
-    a read until someone clicks Allow on a privacy prompt; every later listing would wait on the same prompt,
-    so the walk stops rather than reading anything as empty).
+    A directory with zero children in a File Provider domain (a provider folder under ~/Library/CloudStorage
+    that ``_is_domain`` does not rule out, read once a walk; in a plain provider folder it is just empty), or
+    one raising EPERM/EACCES, is recorded in ``unknown_dirs`` and never read as empty; the folders whose
+    listing failed are logged once a walk, at warning, with their reasons (``_warn_unlisted``).  Raises
+    FileNotFoundError if ``root`` does not exist, and CallTimedOutError when one directory listing does not
+    return within ``listing_timeout_s`` (macOS holds a read until someone clicks Allow on a privacy prompt;
+    every later listing would wait on the same prompt, so the walk stops rather than reading anything as
+    empty).
 
     ``known`` (stable_id -> stored H0, from ``Manifest.observation_index``) makes getattrlist conditional:
     a file whose lstat tuple ``(size, mtime_ns, ctime_ns, ino, mode)`` equals its stored row, and whose row
@@ -504,6 +532,21 @@ def walk(
 
     state = _WalkState()
     cloud_roots = _cloud_roots()
+    domains: dict[Path, bool] = {}  # provider folder -> _is_domain, read once a walk
+
+    def in_domain(dir_path: Path) -> bool:
+        """Whether a zero-child ``dir_path`` lies in a File Provider domain, where its children may simply
+        not be listed yet; under a cloud root with no provider folder above it, or with a ``..`` in the path
+        (the provider folder it names may not be the one it is in), the rule stands."""
+        if not _is_cloud_tree(dir_path, cloud_roots):
+            return False
+        provider = _provider_folder(dir_path, cloud_roots)
+        if provider is None or ".." in expand(dir_path).parts:
+            return True
+        if (known := domains.get(provider)) is None:
+            known = domains[provider] = _is_domain(provider)
+        return known
+
     included = _file_matcher(include, exclude)
     root_dev = root_st.st_dev
     known_get = known.get if known else None
@@ -535,7 +578,7 @@ def walk(
             log.info("%s: directory %r is unknown (%s)", source_id, shown, reason)
             continue
         state.dirs += 1
-        if not entries and _is_cloud_tree(dir_path, cloud_roots):
+        if not entries and in_domain(dir_path):
             state.unknown[shown] = "zero children in a cloud tree" + (
                 " (dataless)" if is_dataless(dir_st) else ""
             )

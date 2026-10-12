@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from agentsync import arm_local
 from agentsync.config import Config, parse_config
 from agentsync.gitops import ensure_repo
 from fixtures.make_fixtures import make_fixtures
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from agentsync.ops.doctor import CheckResult
 
 REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
+_REAL_IS_DOMAIN = arm_local._is_domain
 
 
 def _fileprovider_root() -> Path:
@@ -43,6 +45,45 @@ FILEPROVIDER_ROOT = _fileprovider_root()
 E2E_SUBDIR = "agentsync-e2e"  # the ONLY place tests may write inside the File Provider mount
 
 requires_macos = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only syscalls")
+
+FILE_PROVIDER_DOMAIN_XATTR = "com.apple.file-provider-domain-id"
+"""The attribute a real File Provider domain root carries (``~/Library/CloudStorage/<provider>``)."""
+
+
+def file_provider_domain(provider: Path) -> Path:
+    """Make ``provider`` (``<HOME>/Library/CloudStorage/<provider>``) and give it the attribute a real File
+    Provider domain root carries, so a sandbox fixture under it gets the walk's zero-children rule (b13 R1):
+    a plain folder there is not a domain. Off macOS nothing is written: the walk cannot read the attribute
+    there and treats the folder as a domain."""
+    provider.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        from agentsync.tm_exclude import _libc_xattr  # noqa: PLC0415 - macOS only
+
+        value = b"agentsync-test"
+        name = FILE_PROVIDER_DOMAIN_XATTR.encode()
+        assert _libc_xattr().setxattr(os.fsencode(provider), name, value, len(value), 0, 0x0001) == 0
+    return provider
+
+
+@pytest.fixture(autouse=True)
+def _provider_folders_are_domains() -> Iterator[None]:
+    """b13 R1: a zero-child folder under ~/Library/CloudStorage is unknown only in a File Provider domain,
+    and a test's provider folder is a plain mkdir. In-process walks read every provider folder as a domain
+    (the rule the tests were written for) unless the test asks for ``real_domain_check``, where
+    ``file_provider_domain`` gives a provider folder the real attribute. A walk in another process does not
+    see this patch: such a test needs ``file_provider_domain`` (none does today). Its own MonkeyPatch, as
+    ``_isolate_home`` has."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(arm_local, "_is_domain", lambda provider: True)
+        yield
+
+
+@pytest.fixture
+def real_domain_check(_provider_folders_are_domains: None) -> Iterator[None]:
+    """The walk reads each provider folder's own attributes (``arm_local._is_domain``), as in production."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(arm_local, "_is_domain", _REAL_IS_DOMAIN)
+        yield
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

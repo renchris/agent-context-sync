@@ -492,7 +492,15 @@ discovery lives in `graph/discover.py` (`agentsync discover`).
 records `SF_DATALESS` (0x40000000 in `st_flags`) as `dataless`, `gen_count` via `getattrlist(ATTR_CMN_GEN_COUNT)`
 (None/0 = unknown ⇒ hash to confirm), and reports zero-child cloud directories and EPERM (TCC) directories as
 `unknown_dirs` (never empty). **Amended (2026-10-06, §16.22):** the zero-child cloud directories below the root
-are also returned on their own, as `WalkStats.empty_cloud_dirs`. A configured `sentinel` must be present or the
+are also returned on their own, as `WalkStats.empty_cloud_dirs`.
+**Amended 2026-10-12, §16.45 R1:** the rule holds for a zero-child folder in a File Provider domain: its provider
+folder (`~/Library/CloudStorage/<provider>`, the first component below a cloud root) carries a File Provider
+extended attribute, such as `com.apple.file-provider-domain-id`, or the attribute read fails for any reason
+(EPERM, ENOSYS off macOS). A zero-child folder in a provider folder whose read is clean and finds none (a plain
+folder, as a sandbox's `mkdir` makes) is an ordinary empty folder, and the listing is complete. The walk reads
+the attribute once per provider folder (`materialise.file_provider_marker`, listxattr on the folder only, no file
+opened). Decision 71d3e66ef726 (keep the rule for a real domain) is unchanged.
+A configured `sentinel` must be present or the
 pass is incomplete. `materialise`
 is the only place bytes of a sync-root file are read: THREAD-scope `IOPOL_MATERIALIZE_DATALESS_FILES_ON` around a
 tmp-copy, budget charged first, EDEADLK (11) → `DatalessRefusedError`, ETIMEDOUT (60) → retry with backoff then
@@ -6039,7 +6047,15 @@ before the `…`, never inside a word.
 
 **Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
 `~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
-deletions are held until the folder gains a child or is excluded. What changed is the guidance, which was false
+deletions are held until the folder gains a child or is excluded.
+**Amended 2026-10-12, §16.45 R1:** the rule holds only for a zero-child folder in a File Provider domain: its
+provider folder (`~/Library/CloudStorage/<provider>`, the first component below a cloud root) carries a File
+Provider extended attribute, such as `com.apple.file-provider-domain-id`, or the attribute read fails for any
+reason (EPERM, ENOSYS off macOS). A zero-child folder in a provider folder whose read is clean and finds none (a
+plain folder, as a sandbox's `mkdir` makes) is an ordinary empty folder, and the listing is complete. The walk
+reads the attribute once per provider folder (`materialise.file_provider_marker`, listxattr on the folder only,
+no file opened). Decision 71d3e66ef726 (keep the rule for a real domain) is unchanged.
+What changed is the guidance, which was false
 or empty for this case (a source sat incomplete for 900 passes):
 
 - The names come from the walk a sync already does, never from a second listing. `arm_local.WalkStats` has

@@ -29,6 +29,7 @@ from agentsync.config import DEFAULT_EXCLUDES, SourceConfig
 from agentsync.errors import BudgetExhaustedError, ConfigError, MaterialiseError
 from agentsync.materialise import SF_DATALESS, is_dataless
 from agentsync.model import ByteBudget, PassKind, SourceArm, SourceItem, SourceKind
+from conftest import file_provider_domain
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only syscalls")
 
@@ -362,6 +363,62 @@ def test_empty_cloud_root_is_unknown(tmp_path: Path) -> None:
     items, stats = _walk(root)
     assert items == []
     assert stats.unknown_dirs == (".",)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="off macOS the attribute read fails: a domain")
+@pytest.mark.usefixtures("real_domain_check")
+def test_an_empty_folder_in_a_plain_provider_folder_is_just_empty() -> None:
+    """b13 R1: a provider folder with no File Provider attribute (a sandbox's mkdir, not a domain) lists its
+    zero-child folders as empty, so the listing is complete; the rule stays for a real domain."""
+    provider = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    root = provider / "Project Alpha"
+    (root / "Empty Subfolder").mkdir(parents=True)
+    _write(root / "a.txt")
+    items, stats = _walk(root)
+    assert _rels(items) == ["a.txt"]
+    assert stats.unknown_dirs == () and stats.empty_cloud_dirs == ()
+    res = al.LocalArm(_cfg(root)).scan(None, full=True)
+    assert res.enumeration_complete and res.alarms == ()
+    file_provider_domain(provider)
+    assert _walk(root)[1].empty_cloud_dirs == ("Empty Subfolder",), "a domain keeps the rule"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="off macOS the attribute read fails: a domain")
+@pytest.mark.usefixtures("real_domain_check")
+def test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule() -> None:
+    """b13 R1 review: a provider entry that is a symlink to a domain carries no attribute of its own, and a
+    ``..`` in the path names a provider folder it is not in (``~/Library``): both keep the rule, never read
+    a folder as known-empty."""
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage"
+    real = file_provider_domain(cloud / "OneDrive-Contoso")
+    (real / "Proj" / "Empty").mkdir(parents=True)
+    _write(real / "Proj" / "a.txt")
+    (cloud / "OneDrive-Link").symlink_to(real, target_is_directory=True)
+    assert _walk(real / "Proj")[1].empty_cloud_dirs == ("Empty",)
+    assert _walk(cloud / "OneDrive-Link" / "Proj")[1].empty_cloud_dirs == ("Empty",)
+    dot_dot = cloud / ".." / "CloudStorage" / "OneDrive-Contoso" / "Proj"
+    assert _walk(dot_dot)[1].empty_cloud_dirs == ("Empty",)
+
+
+@pytest.mark.usefixtures("real_domain_check")
+def test_a_provider_folder_whose_attributes_cannot_be_read_keeps_the_rule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """b13 R1, fail-safe: any error reading the provider folder's attributes (EPERM, ENOSYS off macOS) reads
+    as a domain, and the marker is read once per provider folder per walk, not once per empty folder."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
+    for name in ("One", "Two", "Three"):
+        (root / name).mkdir(parents=True)
+    read: list[Path] = []
+
+    def refused(path: Path) -> str | None:
+        read.append(path)
+        raise PermissionError(errno.EPERM, os.strerror(errno.EPERM), str(path))
+
+    monkeypatch.setattr(al, "file_provider_marker", refused)
+    _, stats = _walk(root)
+    assert stats.empty_cloud_dirs == ("One", "Three", "Two")
+    assert read == [root.parent]
 
 
 def test_excluded_empty_cloud_dir_is_not_unknown(tmp_path: Path) -> None:

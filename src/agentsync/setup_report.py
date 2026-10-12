@@ -82,9 +82,7 @@ check runs over the whole redacted report, listing its hits by section.
 from __future__ import annotations
 
 import contextlib
-import ctypes
 import dataclasses
-import errno
 import functools
 import hashlib
 import importlib.metadata
@@ -114,6 +112,7 @@ from urllib.parse import quote, unquote, urlencode, urlsplit
 from agentsync import __version__, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
+from agentsync.materialise import file_provider_marker
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
 
 REPORT_TITLE = "# agentsync setup report"
@@ -1694,36 +1693,6 @@ def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> l
                 if len(out) >= limit:
                     return out
     return out
-
-
-_XATTR_NOFOLLOW = 0x0001
-
-
-def file_provider_marker(path: Path) -> str | None:
-    """The name of the first File Provider extended attribute on ``path`` itself (a name containing
-    ``fileprovider`` or ``file-provider``, such as the domain root's ``com.apple.file-provider-domain-id``),
-    None when it has none (a plain folder, as a sandbox's ``mkdir`` makes). ``listxattr`` on the folder only,
-    symlinks not followed: no provider file is opened or read. Raises OSError (ENOSYS off macOS)."""
-    if sys.platform != "darwin":
-        raise OSError(errno.ENOSYS, "listxattr is read through libSystem on macOS only")
-    libc = ctypes.CDLL(None, use_errno=True)
-    fn = libc.listxattr
-    fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
-    fn.restype = ctypes.c_ssize_t
-    raw = os.fsencode(path)
-    size = fn(raw, None, 0, _XATTR_NOFOLLOW)
-    if size < 0:
-        err = ctypes.get_errno()
-        raise OSError(err, os.strerror(err), str(path))
-    if size == 0:
-        return None
-    buf = ctypes.create_string_buffer(size)
-    size = fn(raw, buf, size, _XATTR_NOFOLLOW)
-    if size < 0:
-        err = ctypes.get_errno()
-        raise OSError(err, os.strerror(err), str(path))
-    names = [n.decode("utf-8", "replace") for n in buf.raw[:size].split(b"\0") if n]
-    return next((n for n in names if "fileprovider" in n.lower() or "file-provider" in n.lower()), None)
 
 
 def _domain_text(folder: Path) -> str:

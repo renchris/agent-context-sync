@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -280,8 +281,10 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         run_cycle(config, mode=None)
         assert _lines(config) == [
             f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
-            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
-            f"another sync does not clear it): if they are meant to be empty, set {paste} in [[source]] "
+            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete: an empty folder in "
+            "a cloud folder is expected and loses nothing, since deletions in work are only held until it "
+            "is excluded, and another sync does not clear it; if they are meant to be empty, "
+            f"set {paste} in [[source]] "
             'id = "work" in ~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later '
             "gains files",
         ]
@@ -394,8 +397,10 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         assert manifest.live_count("work") == 3, "the listing is incomplete: both deletions are held"
     waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert waits == [
-        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete (deletions held; "
-        'another sync does not clear it): if they are meant to be empty, set exclude = ["~$*", "*.tmp", '
+        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete: an empty folder in "
+        "a cloud folder is expected and loses nothing, since deletions in work are only held until it "
+        "is excluded, and another sync does not clear it; if they are meant to be empty, "
+        'set exclude = ["~$*", "*.tmp", '
         f'".~lock.*#", "/Empty/"] in [[source]] id = "work" in {config.config_path}; an excluded folder is '
         "not mirrored if it later gains files",
         "WAITING ON YOU: 1 empty cloud folder(s) in work held 2 file(s) the mirror still has (the listing "
@@ -440,8 +445,10 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             assert manifest.live_count("drop") == 2, "the listing is incomplete: the deletion is held"
         lines = _lines(config)
         assert [ln for ln in lines if ln.startswith("WAITING ON YOU")] == [
-            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete (deletions held; "
-            'another sync does not clear it): if they are meant to be empty, set exclude = ["/Empty/"] in '
+            "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete: an empty folder in "
+            "a cloud folder is expected and loses nothing, since deletions in drop are only held until it "
+            "is excluded, and another sync does not clear it; if they are meant to be empty, "
+            'set exclude = ["/Empty/"] in '
             f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
             "gains files",
             "WAITING ON YOU: 1 empty cloud folder(s) in drop held 1 file(s) the mirror still has (the "
@@ -518,8 +525,10 @@ def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> 
     config = _setup(tmp_path, inbox_source_table("drop", box) + "quiescence_s = 0\n")
     run_cycle(config, mode=None)
     paste = (
-        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete (deletions held; "
-        'another sync does not clear it): if they are meant to be empty, set exclude = ["/Empty/"] in '
+        "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete: an empty folder in "
+        "a cloud folder is expected and loses nothing, since deletions in drop are only held until it "
+        "is excluded, and another sync does not clear it; if they are meant to be empty, "
+        'set exclude = ["/Empty/"] in '
         f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
         "gains files"
     )
@@ -572,6 +581,22 @@ def test_an_inbox_listing_left_incomplete_by_no_empty_folder_promises_nothing(tm
         "written, but not a folder it cannot read or an empty cloud folder "
         f"(`{BIN} sync -v` names the cause); it does not block the next step"
     ]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="off macOS the attribute read fails: a domain")
+@pytest.mark.usefixtures("real_domain_check")
+def test_an_empty_folder_in_a_plain_provider_folder_gets_no_wait(tmp_path: Path) -> None:
+    """b13 R1: a rehearsal's sandbox makes its provider folder with mkdir, not a File Provider domain, so an
+    empty subfolder there is just empty: the listing completes and no wait asks for an exclude."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    (root / "Empty Subfolder").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    assert not any(ln.startswith(("WAITING ON YOU", "note: ")) for ln in _lines(config))
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
+        assert manifest.get_meta("empty_cloud_dirs:work") in (None, "")
 
 
 def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:
