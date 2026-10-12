@@ -1165,6 +1165,10 @@ checkout_git_configs() { # DIR
 	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
 	printf '%s\n' "$c/config" "$gd/config.worktree"
 }
+repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's own locator
+	local s="${ISSUE_URL#https://github.com/}"
+	printf '%s' "${s%%/issues/*}"
+}
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
 	# Every stage byte-wise: under a UTF-8 locale macOS cut and sort stop at the first pair that is not UTF-8
@@ -1175,16 +1179,36 @@ redact_stream() {
 	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
-			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" LC_ALL=C awk '
+			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
-	# report, which replaces in one pass. A held piece ends in ">" or "~", never a word character, as the
-	# line it stood in did. A placeholder already in the text (the friction log of an earlier report; an
+	# report, which replaces in one pass. A held piece ends in ">" or "~", or is followed by no word character,
+	# as the line it stood in did. A placeholder already in the text (the friction log of an earlier report; an
 	# agent may copy one from either report or from it-request.md, whose <org>, <Org>, <team> and <TEAMID>
 	# are template fields) is held from the start: only these names, since "<jdoe>" may be the login itself.
+	# So is the locator of this repository (github.com/ or github.com: and the owner/repo of ISSUE_URL, any case,
+	# not followed by a word character): on a Mac whose full name run together is its public owner, the name
+	# pairs cut the issue link and the source URL to github.com/<name>/..., as setup_report.Redactor holds it.
 	# A heading of the report itself is never redacted, as in the Python report.
 	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
+	function repo_at(s, low, best, k, p, t, i, off, n) { # where the locator starts in s (0: nowhere); RL its length
+		best = 0
+		for (k = 1; k <= 2; k++) {
+			p = "github.com" (k == 1 ? "/" : ":") slug; t = low = tolower(s); off = 0
+			while (slug != "" && (i = index(t, p)) > 0) {
+				n = length(p)
+				if (substr(t, i + n, 4) == ".git" && substr(t, i + n + 4, 1) !~ /[A-Za-z0-9_-]/) n += 4
+				if (substr(t, i + n, 1) !~ /[A-Za-z0-9_-]/) {
+					if (!best || off + i < best) { best = off + i; RL = n }
+					break
+				}
+				off += i; t = substr(t, i + 1)
+			}
+		}
+		return best
+	}
 	BEGIN {
+		slug = tolower(ENVIRON["REPO_SLUG"])
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
@@ -1193,7 +1217,10 @@ redact_stream() {
 	$0 in heading { print; next }
 	{
 		m = 0; s = $0
-		while (match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy)-([0-9]+|N))>/)) {
+		while (1) {
+			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy)-([0-9]+|N))>/)) RSTART = 0
+			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
+			if (!RSTART) break
 			keep(substr(s, 1, RSTART - 1), 0)
 			keep(substr(s, RSTART, RLENGTH), 1)
 			s = substr(s, RSTART + RLENGTH)

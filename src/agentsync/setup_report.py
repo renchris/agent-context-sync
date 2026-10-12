@@ -751,7 +751,11 @@ class Redactor:
 
     def _compile(self) -> re.Pattern[str]:
         if self._regex is None:
-            alts = [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
+            # This repository's own locator first, kept whole: on a Mac whose full name run together is its
+            # public owner ("Jane Doe", "doejane/..."), the name forms cut every copy of the issue link and
+            # the source URL to github.com/<name>/... Only this owner's: a fork's owner stays a name (R20).
+            alts = [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]+{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
+            alts += [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
             if self._commits:
                 prefixes = "|".join(sorted(self._commits))
                 alts.append(f"(?P<commit>(?<![0-9A-Za-z])(?i:{prefixes})[0-9a-fA-F]{{0,33}}(?![0-9A-Za-z]))")
@@ -794,6 +798,8 @@ class Redactor:
     def _replace(self, m: re.Match[str]) -> str:
         text = m.group(0)
         groups = m.groupdict()
+        if groups.get("keep") is not None:
+            return text
         if groups.get("email") is not None:
             placeholder = self._pattern("email", text)
         elif groups.get("guid") is not None:
