@@ -5294,6 +5294,8 @@ class Redactor:
     <mdmhost>, <proxy-N>, <tmp>), docs-repo commits (<commit-N>) and email/GUID/long-hex/temporary-folder patterns
     (<email-N>, <guid-N>, <hash-N>, <tmp>) to placeholders, the same value always the same placeholder; single pass, longest value first,
     bounded so /Users/jdoe2 is not /Users/jdoe."""
+    # amended 2026-10-11, §16.49 R43: one call is one pass, but the Summary's item lines get two (redacted before
+    # they are cut, then with the whole report); since §16.46 R69 the second keeps a placeholder whole
     def __init__(self, *, enabled: bool = True) -> None: ...
     def add(self, kind: str, value: str | None, *, ignore_case: bool = False, fuzzy: bool = False) -> None: ...
     def add_commit(self, sha: str | None) -> None: ...  # 7-40 hex; abbreviations share a placeholder
@@ -11634,7 +11636,11 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
   - Now the full name's parts are split without glob expansion. A configured CloudStorage component that is
     one of `setup_report._GENERIC_FOLDERS` is redacted as a whole word, as the Python report matches it (a test
     keeps the shell's `generic_folder` list equal to that set); any other component is still a substring. No
-    value is replaced inside a placeholder an earlier value wrote, as in the Python report's single pass, nor
+    value is replaced inside a placeholder an earlier value wrote, as in the Python report's single pass (**amended
+    2026-10-11, §16.49, R43:** the Python report's Summary item lines are redacted twice, once before they are cut
+    and then with the whole report, so before §16.46 R69 a registered value could still match inside a
+    placeholder the first pass wrote, `<<folder-1>-1>`; R69 has the Redactor hold a placeholder's shape first),
+    nor
     inside a report or it-request.md placeholder already in the text (the friction log of an earlier report:
     `<name>`, `<user>`, `<host>`, `<mdmhost>`, `<tmp>`, `<path>`, `<serial>`, `<org>`, `<Org>`, `<team>`,
     `<TEAMID>`, and `<org-N>`, `<folder-N>` and the other numbered kinds); the Python report does not hold the
@@ -12201,6 +12207,12 @@ host it-request.md names for release files or any hop passes a host the "Install
 name. `.github/workflows/download-hosts.yml` runs it weekly and on `workflow_dispatch`, never on a push; it is
 outside the gate (CLAUDE.md says why). Test: `tests/test_deploy_pack.py`
 (`test_a_weekly_check_follows_the_download_hosts_the_it_request_names`, offline).
+
+**The Python report's two passes** (R43). §16.41 and the `Redactor` sketch said the Python report replaces in a
+single pass; its Summary item lines are redacted twice (before they are cut, so a value split at the cut still
+matches, then with the whole report). Both carry a dated line that says so and that §16.46 R69 holds a
+placeholder whole on the second pass. The inner pass in `_item_line` stays: cutting first could leave a fragment
+the whole-report pass no longer knows.
 
 **Docs** (R61, R63, R65, R66, R116): dated markers in §16.36, §16.37 and §16.43 and the corrected H8 sum (37
 minutes); data-governance.md covers an Outlook `.msg` under a label rule; setup-feedback.md's friction.md row shows
