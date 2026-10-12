@@ -129,41 +129,45 @@ def _text_frame_lines(shape: Any) -> list[str]:
     return lines
 
 
-def _fixed_lines(shapes: Iterable[Any]) -> list[str]:
-    """The fixed text of a master's or layout's shapes in reading order: every shape that is not a
-    placeholder, and a footer placeholder that carries text.  The other placeholders hold the prompt text a
-    slide replaces ("Click to edit Master title style") or a field (date, slide number)."""
-    lines: list[str] = []
+def _fixed_blocks(shapes: Iterable[Any]) -> list[tuple[str, ...]]:
+    """The fixed text of a master's or layout's shapes in reading order, one block of lines per shape: every
+    shape that is not a placeholder, and a footer placeholder that carries text.  The other placeholders hold
+    the prompt text a slide replaces ("Click to edit Master title style") or a field (date, slide number).
+    A group gives its shapes' blocks; a shape with no text gives none."""
+    blocks: list[tuple[str, ...]] = []
     for shape in _reading_order(shapes):
         kind = _placeholder_type(shape)
         if getattr(shape, "is_placeholder", False) and kind != "FOOTER":
             continue
         if getattr(shape, "shapes", None) is not None:  # a group
-            lines += _fixed_lines(shape.shapes)
+            blocks += _fixed_blocks(shape.shapes)
         elif getattr(shape, "has_table", False):
-            lines += _table_lines(shape.table)
+            blocks.append(tuple(_table_lines(shape.table)))
         elif getattr(shape, "has_text_frame", False):
-            lines += _text_frame_lines(shape)
-    return lines
+            blocks.append(tuple(_text_frame_lines(shape)))
+    return [b for b in blocks if b]
 
 
 def _template_lines(prs: Any) -> tuple[list[str], list[str]]:
     """A deck with no slides, usually a template: its layout names in order and the fixed text of its
-    masters and layouts (:func:`_fixed_lines`), each de-duplicated (B13 round 4 Q77)."""
+    masters and layouts (:func:`_fixed_blocks`), each de-duplicated (B13 round 4 Q77).  The text is
+    de-duplicated a shape at a time, never a line at a time: a footer every layout repeats is kept once, and
+    a second table keeps its own delimiter row and a row an earlier table also has (B13 round 5 F77).  A
+    blank line follows each shape's text, so two text boxes are two paragraphs and a table ends before the
+    next shape (GFM continues a table on the next line otherwise)."""
     names: list[str] = []
-    fixed: list[str] = []
+    blocks: list[tuple[str, ...]] = []
     for master in prs.slide_masters:
-        for line in _fixed_lines(master.shapes):
-            if line not in fixed:
-                fixed.append(line)
+        found = _fixed_blocks(master.shapes)
         for layout in master.slide_layouts:
             name = _norm(str(layout.name or ""))
             if name and name not in names:
                 names.append(name)
-            for line in _fixed_lines(layout.shapes):
-                if line not in fixed:
-                    fixed.append(line)
-    return names, fixed
+            found += _fixed_blocks(layout.shapes)
+        for block in found:
+            if block not in blocks:
+                blocks.append(block)
+    return names, [line for block in blocks for line in (*block, "")][:-1]
 
 
 def _table_lines(table: Any) -> list[str]:
@@ -487,8 +491,9 @@ class PptxConverter:
                 out += ["", _escape_line("Layouts: " + _join_limited(layouts, limit=600))]
             if fixed:
                 out += ["", "Fixed text in the master and layouts:", "", *fixed]
-            first = fixed[0] if fixed else layouts[0] if layouts else ""
-            titles.append(_first_line(first) or "Untitled presentation")  # never the marker
+            # The first fixed text that can be a title (never a table row), else the first layout name.
+            first = _first_line("\n".join(fixed)) or (layouts[0][:120] if layouts else "")
+            titles.append(first or "Untitled presentation")  # never the marker
         body = "\n".join(out)
         # A picture's text follows its own ``[image…]`` line, so the first line is never one OCR read.
         title = next((t for t in titles if t), "") or _first_line(body) or "Untitled presentation"

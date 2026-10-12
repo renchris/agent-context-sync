@@ -531,6 +531,57 @@ def test_a_template_with_no_slides_says_what_its_layouts_and_master_hold(tmp_pat
     assert u.summary == "Presentation: 0 slide(s); 11 layout(s)"
 
 
+def build_table_template(path: Path, *, boxes: bool) -> Path:
+    """A made-up Contoso template with no slides whose first two layouts each hold a two-column table (the
+    second repeats a row of the first) and, with ``boxes``, a third layout holding two text boxes."""
+    scratch = Presentation()
+    blank = scratch.slides.add_slide(scratch.slide_layouts[6])
+
+    def table(rows: list[tuple[str, str]]) -> Any:
+        frame = blank.shapes.add_table(len(rows), 2, Inches(1), Inches(1), Inches(4), Inches(1))
+        for r, cells in enumerate(rows):
+            for c, text in enumerate(cells):
+                frame.table.cell(r, c).text = text
+        return copy.deepcopy(frame._element)
+
+    def box(text: str, top: float) -> Any:
+        shape = blank.shapes.add_textbox(Inches(1), Inches(top), Inches(5), Inches(0.5))
+        shape.text_frame.text = text
+        return copy.deepcopy(shape._element)
+
+    prs = Presentation()
+    prs.slide_layouts[0].shapes._spTree.append(table([("Region", "Owner"), ("North", "Contoso")]))
+    prs.slide_layouts[1].shapes._spTree.append(table([("Step", "Date"), ("North", "Contoso")]))
+    if boxes:
+        prs.slide_layouts[2].shapes._spTree.append(box("Contoso Ltd.", 5.5))
+        prs.slide_layouts[2].shapes._spTree.append(box("Internal use only", 6.5))
+    prs.save(str(path))
+    return path
+
+
+@pytest.mark.parametrize("boxes", [True, False])
+def test_a_templates_fixed_text_keeps_every_table_whole_and_its_shapes_apart(
+    tmp_path: Path, boxes: bool
+) -> None:
+    """B13 round 5 F77: the fixed text was de-duplicated a line at a time, so a second table lost its
+    delimiter row (its header became a row of the first table) and a row an earlier table had; shapes ran
+    together with no blank line, so two text boxes read as one paragraph and a line after a table as one more
+    row of it; and a template whose fixed text is all tables was titled "Untitled presentation", where the
+    first layout name was there to use.  Each shape is now one block, de-duplicated whole, with a blank line
+    after it, and the title passes over table rows to the first layout name."""
+    template = build_table_template(tmp_path / "Contoso Tables.pptx", boxes=boxes)
+    u = _one(PptxConverter(CFG).convert(template, name="Contoso Tables.potx"))
+    fixed = u.body.split("Fixed text in the master and layouts:\n\n", 1)[1].rstrip("\n")
+    first = "| Region | Owner |\n|---|---|\n| North | Contoso |\n"
+    second = "| Step | Date |\n|---|---|\n| North | Contoso |\n"
+    if boxes:
+        assert fixed == first + "\n" + second + "\nContoso Ltd.\n\nInternal use only", fixed
+        assert u.title == "Contoso Ltd."
+    else:
+        assert fixed == first + "\n" + second.rstrip("\n"), fixed
+        assert u.title == "Title Slide", "the first layout name, never the marker or a table row"
+
+
 # ---------------------------------------------------------------------------------------------------------
 # pdf
 # ---------------------------------------------------------------------------------------------------------
