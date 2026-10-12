@@ -1019,6 +1019,23 @@ def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, 
     assert "the organisation or team after the app's name in a CloudStorage folder" in " ".join(text.split())
 
 
+def test_the_shell_report_gives_a_repeated_organisation_one_number(env: dict[str, str]) -> None:
+    """An organisation in two CloudStorage folders (a OneDrive and its SharePoint libraries, or two apps) took
+    two numbers, so every later one was numbered past a gap. It takes one; another spelling of it (the
+    matcher is case-sensitive) keeps its own pair (B13 round 2 R44)."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    for name in ("Box-Contoso", "Dropbox-Contoso", "Dropbox-Wingtip Partners", "GoogleDrive-CONTOSO"):
+        (cloud / name).mkdir(parents=True)
+    log = friction_path(env)
+    log.parent.mkdir(parents=True)
+    log.write_text("Prompt: v4\nF1 | step 1 | clean | 1 | Contoso, Wingtip Partners and CONTOSO | -\n")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert "F1 | step 1 | clean | 1 | <org-1>, <org-2> and <org-3> | -" in text, text
+    assert "<org-4>" not in text
+
+
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
     cp = install_sh(env, "--source-local", str(tmp_path / "nowhere"))
     assert cp.returncode == 2

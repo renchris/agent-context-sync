@@ -916,7 +916,7 @@ generic_folder() {
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only) for redact_stream; the %q form too, since
 # install.log quotes paths that way.
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v g pac seen i whole orgs_seen
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1014,7 +1014,10 @@ redaction_pairs() {
 	if [ -d "$cs" ]; then
 		# The organisation, team or account after the app's name ("<app>-<domain>", as setup_report._org_of
 		# reads it): not a bare app name, Personal, Business or Work, nor a name repeating the app's (Box-Box).
-		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern.
+		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern. An organisation
+		# already registered takes no second number (OneDrive-X and OneDrive-SharedLibraries-X; B13 round 3
+		# R44). Only the same bytes: the matcher is case-sensitive, so another spelling keeps its own pair.
+		orgs_seen=$'\n'
 		for e in "$cs"/*; do
 			[ -e "$e" ] || continue
 			e="$(basename "$e")"
@@ -1027,6 +1030,8 @@ redaction_pairs() {
 			case "$org" in
 			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
 			esac
+			case "$orgs_seen" in *$'\n'"$org"$'\n'*) continue ;; esac
+			orgs_seen+="$org"$'\n'
 			n=$((n + 1))
 			add_pair "$org" "<org-$n>"
 		done
