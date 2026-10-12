@@ -47,6 +47,17 @@ SIDECAR_DIGEST_PREFIX = "Sidecar file "
 _TEXT_SIDECAR_SUFFIXES = (".txt", ".md")
 
 
+def label_withheld_suffixes() -> frozenset[str]:
+    """The suffixes :meth:`Registry.default` registers no converter for while a ``[policy]`` label rule is on,
+    because their label cannot be read: ``.msg`` and every image (``ImageConverter.extensions``). Their stub
+    keeps the stored reason ``no converter for <suffix>``; the page and the setup report word it as the
+    label rule's (B13 round 3 R33)."""
+    from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
+    from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
+
+    return frozenset((*MsgConverter.extensions, *ImageConverter.extensions))
+
+
 def sidecar_digest_lines(body: str) -> list[tuple[str, str]]:
     """(sidecar name, sha256) pairs of a page body's sidecar footer (``_pages_intact`` verifies them)."""
     out: list[tuple[str, str]] = []
@@ -238,6 +249,7 @@ class Registry:
             TeamsMonthConverter(cfg),
             DiagramConverter(cfg),
         ]
+        # label_withheld_suffixes() names what these two gates leave without a converter under a label rule.
         if not content_policy.labels_active:
             from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 

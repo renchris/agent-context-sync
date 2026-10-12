@@ -2943,6 +2943,7 @@ QUARANTINE_CLASSES = (
     "encrypted",
     "credential",
     "label policy",
+    "withheld by label rule",
     "too large",
     "duplicate",
     "conversion failed",
@@ -2957,6 +2958,9 @@ QUARANTINE_CLASSES = (
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
 """``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
+_LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
+"""``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
+while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33)."""
 _OCR_DOCUMENTS = {".pdf": "PDF", ".pptx": "deck", ".docx": "Word", ".odt": "OpenDocument"}
 """The suffixes of the documents a converter reads pictures or page images in when it has an engine."""
 _OCR_MARK = "+ocr-"  # in a converter version: an engine's identity follows (``OcrEngine.identity``)
@@ -2983,13 +2987,17 @@ _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
 _PRESENT_SQL = "('live', 'dataless')"
 
 
-def quarantine_class(reason: str | None) -> str:
+def quarantine_class(reason: str | None, *, labels_active: bool = False) -> str:
     """The fixed class (one of :data:`QUARANTINE_CLASSES`) of a manifest row's ``state_reason``. A reason is
     free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
-    so the report prints the class and never the reason."""
+    so the report prints the class and never the reason. While a label rule is on (``labels_active``), a
+    ``.msg`` or an image with no converter is ``withheld by label rule``: the rule is why none is registered
+    (:data:`_LABEL_WITHHELD`)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
+    if labels_active and text.startswith(_NO_CONVERTER) and text[len(_NO_CONVERTER) :] in _LABEL_WITHHELD:
+        return "withheld by label rule"
     starts = (
         (_NO_CONVERTER, "no converter"),
         ("refused: ", "label policy"),
@@ -3064,14 +3072,17 @@ _REFUSED_BARE = "no extension"
 _TYPES_SHOWN = 12
 
 
-def _refused_type(reason: str | None) -> str | None:
+def _refused_type(reason: str | None, *, labels_active: bool = False) -> str | None:
     """What a ``no converter`` reason says the file is: its suffix when that is one of
     :data:`_REFUSED_TYPES`, ``no extension``, else ``other``. None for a reason of any other class
-    (:func:`quarantine_class` reads the text the same way, so the two agree on which rows these are)."""
+    (:func:`quarantine_class` reads the text the same way, so the two agree on which rows these are, a file
+    withheld by a label rule included)."""
     text = " ".join((reason or "").split()).casefold()
     if not text.startswith(_NO_CONVERTER):
         return None
     tail = text[len(_NO_CONVERTER) :]
+    if labels_active and tail in _LABEL_WITHHELD:
+        return None
     if tail == _NO_EXTENSION:
         return _REFUSED_BARE
     return tail if tail in _REFUSED_TYPES else _REFUSED_OTHER
@@ -3152,8 +3163,11 @@ class _Mirror:
     whatever the Mac's speed. ``latest``: the time the deadline is never moved past (the report's own
     deadline less its reserve)."""
 
-    def __init__(self, db: Path, budget_s: float, *, latest: float | None = None) -> None:
+    def __init__(
+        self, db: Path, budget_s: float, *, latest: float | None = None, labels_active: bool = False
+    ) -> None:
         self.db = db
+        self.labels_active = labels_active  # how reason_class and refused_type read a .msg or an image
         self.deadline = time.monotonic() + budget_s
         self.latest = latest
         self.steps = 0
@@ -3180,8 +3194,16 @@ class _Mirror:
                 raise _NoManifestError
             conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
             conn.set_progress_handler(self._tick, _STEP_TICK)
-            conn.create_function("reason_class", 1, quarantine_class, deterministic=True)
-            conn.create_function("refused_type", 1, _refused_type, deterministic=True)
+            active = self.labels_active
+            conn.create_function(
+                "reason_class",
+                1,
+                functools.partial(quarantine_class, labels_active=active),
+                deterministic=True,
+            )
+            conn.create_function(
+                "refused_type", 1, functools.partial(_refused_type, labels_active=active), deterministic=True
+            )
             conn.create_function("refused_shape", 1, _refused_shape, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
             self._conn = conn
@@ -3981,6 +4003,16 @@ def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "is counted by its type when that is one of a fixed list, else as `other`)",
         "",
         *_table(header, rows),
+        *(
+            [
+                "",
+                "- `withheld by label rule`: a [policy] label rule is set and the label of a .msg or an "
+                "image cannot be read, so no converter reads them while it is set (the page says so); a "
+                "message saved as .eml, or an image exported as a PDF, is converted and its label screened",
+            ]
+            if any(cls == "withheld by label rule" for _s, _st, cls, *_rest in stubs)
+            else []
+        ),
         *_lines(lambda: _refused_types(m, labels)),
     ]
 
@@ -4458,10 +4490,16 @@ def _evidence(r: _Run) -> list[str]:
     which can be a failed build's reason."""
     if r.config is None:
         return []
+    active = False
+    with contextlib.suppress(Exception):  # an unreadable [policy] counts as no rule, as the OCR part says
+        from agentsync import policy  # noqa: PLC0415 - lazy, as in _ocr_helper
+
+        active = bool(policy.load_policy(r.config).labels_active)
     mirror = _Mirror(
         r.config.state_paths.db,
         min(EVIDENCE_BUDGET_S, r.remaining() - _RESERVE_S),
         latest=r.deadline - _RESERVE_S,
+        labels_active=active,
     )
     labels = _Labels(r.config, r.red)
     parts: tuple[Callable[[_Run, _Mirror, _Labels], list[str]], ...] = (

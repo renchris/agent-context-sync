@@ -40,6 +40,7 @@ from agentsync import (
 )
 from agentsync.config import Config, ConvertConfig, load_config
 from agentsync.convert import image, media, msg, ocr, pdf, speech
+from agentsync.convert import registry as registry_mod
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.recording import RecordingConverter
@@ -5102,6 +5103,40 @@ def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[
     assert table_counts(part) == {"<folder-2>": 8, "<folder-3>": 1}
     assert ".final" not in text and "Secret" not in text, "SECRET_NAMES holds the other tail"
     assert residue_free(text), "no word beside the source's placeholder reads as a name the Redactor missed"
+
+
+def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
+    fake_mac: dict[str, Path],
+) -> None:
+    """Under a label rule no converter is registered for a .msg or an image, because their label cannot be
+    read: the report counted them as missing a converter. While the rule is on they are `withheld by label
+    rule`, with a line naming the .eml and PDF routes, and are not in the by-type list; any other file with
+    no converter keeps its class (B13 round 2 R33)."""
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    refused = {"state": "refused", "page": "refused"}
+    seed.item(one, "Wingtip thread.msg", reason="no converter for .msg", **refused)
+    seed.item(one, "Northwind logo.png", reason="no converter for .png", **refused)
+    seed.item(one, "merger call.mp4", reason="no converter for .mp4", **refused)
+    seed.close()
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    assert "withheld by label rule" not in part and ".msg 1" in part, "no rule: a missing converter"
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
+        encoding="utf-8",
+    )
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    assert table_counts(part) == {"<folder-2>": 1}, part
+    assert any(ln.split(" | ")[2:4] == ["withheld by label rule", "2"] for ln in part.splitlines()), part
+    assert (
+        "- `withheld by label rule`: a [policy] label rule is set and the label of a .msg or an image" in part
+    )
+    assert [ln for ln in part.splitlines() if ln.startswith("- <")] == [
+        "- <folder-2>, no converter by type: .mp4 1"
+    ]
+    assert registry_mod.label_withheld_suffixes() == setup_report._LABEL_WITHHELD
 
 
 def residue_free(text: str) -> bool:

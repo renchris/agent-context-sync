@@ -32,7 +32,7 @@ from typing import Any
 from agentsync import gitops, governance, policy, skill, slug
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX
-from agentsync.convert.registry import sidecar_digest_lines
+from agentsync.convert.registry import label_withheld_suffixes, sidecar_digest_lines
 from agentsync.errors import ConfigError, GitError, PublishError, SidecarPathError
 from agentsync.frontmatter import (
     HEX64_RE,
@@ -1064,7 +1064,29 @@ class Publisher:
             item.source_id, item.stable_id, item.rel_path
         )
         label = "REFUSED" if page_status is PageStatus.REFUSED else "UNREADABLE"
-        if refusal:
+        suffix = Path(item.name).suffix.lower()
+        # A .msg or an image has no converter while a label rule is on, because its label cannot be read: the
+        # stored reason stays "no converter for <suffix>" (re-reads and stub identity key on it, and no label
+        # escalation fires), and only the words say why (B13 round 3 R33).
+        withheld = (
+            status is ConversionStatus.REFUSED
+            and not refusal
+            and self._policy.labels_active
+            and result.reason == NO_CONVERTER_PREFIX + suffix
+            and suffix in label_withheld_suffixes()
+        )
+        if withheld:
+            route = (
+                "Save the message as .eml to have it converted: an .eml's label is read."
+                if suffix == ".msg"
+                else "Export it as a PDF to have it converted: a PDF's label is read."
+            )
+            text_lines = (
+                f"agentsync did not convert this source: a [policy] label rule is set and the label of a "
+                f"{suffix} file cannot be read, so its content is withheld (content policy). {route}\n"
+                "The source exists: it is withheld, not absent. See `_sync/QUARANTINE.tsv`.\n"
+            )
+        elif refusal:
             text_lines = (
                 f"agentsync did not convert this source: {reason}.\n"
                 "Its content is deliberately not in docs/ (content policy); this page holds metadata only. "

@@ -2339,9 +2339,16 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
         fm, body = _mirror_page(labelled, rel)
         assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
         assert "Renewal is in March." not in body and "The price is agreed." not in body
+        # The page says why: the rule, not a missing converter; the stored reason is unchanged (R33).
+        assert "a [policy] label rule is set and the label of a .msg file cannot be read" in body
+        assert "Save the message as .eml to have it converted" in body and "it is unreadable" not in body
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
+    # Lifting the rule reads it again (B13 round 2 R33: re-reads key on the unchanged reason).
+    assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
+    fm, body = _mirror_page(open_config, KICKOFF_MSG)
+    assert fm["status"] == "current" and "Renewal is in March." in body
 
 
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
