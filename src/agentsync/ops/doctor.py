@@ -13,6 +13,7 @@ import contextlib
 import ctypes
 import enum
 import errno
+import functools
 import logging
 import os
 import plistlib
@@ -20,7 +21,7 @@ import shutil
 import stat
 import subprocess
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1530,8 +1531,12 @@ def _check_lock(config: Config) -> list[CheckResult]:
     return [_ok("lock", "free")]
 
 
-def _check_heartbeat(config: Config) -> list[CheckResult]:
-    """Per live source: auth state, last success within 3 x cadence, enumeration completing."""
+def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = None) -> list[CheckResult]:
+    """Per live source: auth state, last success within 3 x cadence, enumeration completing.
+
+    ``loop_checks`` (``loop.NextStep.checks``, which status passes) are the checks a WAITING ON YOU line
+    explains: an incomplete listing points at that line only when its ``heartbeat.<id>`` is among them, and
+    otherwise says to sync again. ``None`` (no loop state read): a local source points at the line."""
     path = config.state_paths.heartbeat
     try:
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
@@ -1571,11 +1576,15 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
             detail = f"enumeration incomplete for {incomplete} consecutive passes (deletions held)"
-            # An inbox held by empty cloud folders gets the loop's waits, which say another sync does not
-            # clear it: the same pointer as a local folder's (B13 round 3 R53).
-            yours = src.kind is SourceKind.LOCAL or (
-                src.kind is SourceKind.INBOX and _empty_folders_held(config, src)
-            )
+            # status passes the loop's own checks (R151): a wait the loop prints decides. Without them (the
+            # setup report), an inbox held by empty cloud folders gets the loop's pointer too, read from the
+            # manifest's stored state (B13 round 3 R53).
+            if loop_checks is not None:
+                yours = name in loop_checks
+            else:
+                yours = src.kind is SourceKind.LOCAL or (
+                    src.kind is SourceKind.INBOX and _empty_folders_held(config, src)
+                )
             if yours and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
                 out.append(CheckResult(name, False, detail, Severity.WARN, note=_LISTING_YOURS_NOTE))
             else:
@@ -1601,18 +1610,25 @@ def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
 
 
 def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
-    """The fix for a source whose listing stays incomplete. A Graph pass resumes, and an inbox is most often
-    incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names
-    any other cause. A local folder's walk is always a full pass, so the same folder stops it again: the
-    loop's WAITING ON YOU lines, which status prints above the checks, say which case it is and what to do
-    (they name the empty cloud folders). An inbox that ``yours`` says is held by empty cloud folders gets that
-    pointer too (``yours`` defaults to "a local source")."""
-    if not (src.kind is SourceKind.LOCAL if yours is None else yours):
-        return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
-    return (
-        f"agentsync status (each WAITING ON YOU line about {src.id} says what stops the listing and what to "
-        "do: another sync does not clear it)"
-    )
+    """The fix for a source whose listing stays incomplete. ``yours`` (default: a local source): a WAITING ON
+    YOU line explains it. A local folder's walk is always a full pass, so the same folder stops it again: each
+    such line about the source says which case it is and what to do (they name the empty cloud folders). No
+    command and no "above": status prints the lines, and the setup report's Doctor section may have none
+    above. Otherwise a Graph pass resumes, and an inbox is most often incomplete while a file in it is still
+    being written, so another sync clears those; ``sync -v`` names any other cause. A local source with no
+    such line either changed since its last walk (its stopping folders are excluded now) or had no full walk
+    yet: the next full walk lists it.
+    No nested parentheses: the setup report's fix parser strips one level."""
+    if yours is None:
+        yours = src.kind is SourceKind.LOCAL
+    if yours:
+        return (
+            f"each WAITING ON YOU line about {src.id} says what stops the listing and what to do: another "
+            "sync does not clear it"
+        )
+    if src.kind is SourceKind.LOCAL:
+        return "agentsync sync; another full walk lists it"
+    return f"agentsync sync -v (a full pass that lists all of {src.id} clears this)"
 
 
 def _check_logs(config: Config) -> list[CheckResult]:
@@ -1746,7 +1762,9 @@ def _tcc_canary_skipped(config: Config) -> list[CheckResult]:
     ]
 
 
-def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
+def run_checks(
+    config: Config, *, tcc_canary: bool = True, loop_checks: Collection[str] | None = None
+) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
 
     python >= 3.11; git absolute path; pandoc (configured or bundled) runs and reports a version; on-device
@@ -1761,11 +1779,14 @@ def run_checks(config: Config, *, tcc_canary: bool = True) -> list[CheckResult]:
     Ops extension (C15 §3): the signed launcher's presence, signature, identifier and designated requirement
     (WARN when ad hoc), and per TCC-protected source a timed metadata-only canary run *as the launcher*.
     ``tcc_canary=False`` (KISS K08a: ``status`` decides when it is due) replaces the canary with one
-    ``tcc.canary`` info line.
+    ``tcc.canary`` info line. ``loop_checks`` (``loop.NextStep.checks``; ``None``: not read) go to the
+    heartbeat check, which points an incomplete listing at WAITING ON YOU only when the loop has that wait.
     """
     results: list[CheckResult] = []
     for group, check in _CHECKS:
         run = _tcc_canary_skipped if group == "tcc" and not tcc_canary else check
+        if group == "heartbeat" and loop_checks is not None:
+            run = functools.partial(_check_heartbeat, loop_checks=loop_checks)
         try:
             results.extend(run(config))
         except Exception as exc:

@@ -25,6 +25,7 @@ from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAIL
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind, RowState, Verdict
+from agentsync.ops.doctor import CheckResult, Severity
 from test_cli import _assert_fix_parses
 
 BIN = "~/.local/bin/agentsync"
@@ -312,6 +313,69 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         assert manifest.get_meta("empty_cloud_dirs:work") == ""
 
 
+def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R151: status reads the loop before its checks. While the empty cloud folder's wait is there, the
+    incomplete listing's check points at it (R38: no command, since status prints it); once the folder is
+    excluded and no sync has run, the loop's step is to sync again and so is the check's, with no note."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    for _ in range(3):
+        run_cycle(config, mode=None)
+
+    def heartbeat() -> CheckResult:
+        (r,) = [c for c in cli._build_status(config).checks if c.name == "heartbeat.work"]
+        assert not r.ok and r.detail.startswith("enumeration incomplete for 3"), r
+        return r
+
+    assert heartbeat().fix == (
+        "each WAITING ON YOU line about work says what stops the listing and what to do: another sync "
+        "does not clear it"
+    )
+    path = config.config_path
+    path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
+    config = load_config(path)
+    assert heartbeat().fix == "agentsync sync; another full walk lists it"
+    _assert_fix_parses(heartbeat().fix)
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    r = heartbeat()
+    assert r.note is None and r.fix == "agentsync sync; another full walk lists it"
+
+
+def test_status_next_is_the_loops_with_and_without_a_fail(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R151 review: status reads the loop before its checks, without rule 9's count of the queue. Its NEXT
+    is still the loop's, byte for byte: rule 9's count with no FAIL, and rule 1's step with one, which reads
+    no queue at all (as before); the queue is counted no more often than before."""
+    config = _synced(tmp_path, folder)
+    _hand_written(config, 1)
+    counted: list[int] = []
+    real = loop.queue_rows
+
+    def queue_rows(cfg: Config) -> int:
+        counted.append(1)
+        return real(cfg)
+
+    monkeypatch.setattr(loop, "queue_rows", queue_rows)
+    fail = CheckResult("fake.check", False, "broken", Severity.ERROR, fix="do the thing")
+    for checks in ([], [fail]):
+        monkeypatch.setattr(cli, "_status_checks", lambda config, **kw: list(checks))  # noqa: B023
+        counted.clear()
+        status = cli._build_status(config)
+        reads = len(counted)
+        want = loop.next_lines(config, fixes=[cli._fail_step(c) for c in checks])
+        assert list(status.loop) == want and want[0].startswith("NEXT: "), want
+        # The loop line counts the queue once ("to curate N"); rule 9 once more, and rule 1 not at all.
+        if checks:
+            assert reads == 1 and want[0].startswith("NEXT: the fake.check check failed"), reads
+        else:
+            assert reads == 2 and want[0].startswith("NEXT: 1 curation row(s) queued"), reads
+
+
 def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_path: Path) -> None:
     """N26: while a cloud folder keeps the listing incomplete, files deleted upstream stay mirrored, and the
     wait counts them (never a path), so the person knows what completing the listing checks. The paste
@@ -500,8 +564,8 @@ def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
     assert "heartbeat.drop" in loop.next_step(config, count_queue=False).checks
     checks = {c.name: c for c in doctor._check_heartbeat(config)}
     assert checks["heartbeat.drop"].fix == (
-        "agentsync status (each WAITING ON YOU line about drop says what stops the listing and what to do: "
-        "another sync does not clear it)"
+        "each WAITING ON YOU line about drop says what stops the listing and what to do: another sync does "
+        "not clear it"
     )
     assert (
         checks["heartbeat.bare"].fix == "agentsync sync -v (a full pass that lists all of bare clears this)"

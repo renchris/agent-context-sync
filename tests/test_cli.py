@@ -1909,13 +1909,15 @@ def test_status_fail_lines_are_doctors_byte_for_byte_and_exit_1(
         doctor.CheckResult("fake.check", False, "broken (twice)", doctor.Severity.ERROR, fix="do the thing"),
         doctor.CheckResult("fake.warn", False, "degraded", doctor.Severity.WARN, fix="later"),
     ]
-    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: list(fake))
+    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True, loop_checks=None: list(fake))
     monkeypatch.setattr(cli, "_extra_checks", lambda config, *, offline=False: [])
     rc, out = _status(cfg, capsys)
     assert rc == cli.EXIT_FAILED
     assert [ln for ln in out if ln.startswith("[")] == doctor.format_results(fake).splitlines()
     assert out[0] == "NEXT: the fake.check check failed: do what the fix on its [FAIL] line below says"
-    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: [fake[0], fake[2]])
+    monkeypatch.setattr(
+        doctor, "run_checks", lambda config, *, tcc_canary=True, loop_checks=None: [fake[0], fake[2]]
+    )
     assert _status(cfg, capsys)[0] == cli.EXIT_OK, "a warn alone is not a failure"
 
 
@@ -1930,7 +1932,7 @@ def test_status_next_never_copies_a_fail_fix(
         doctor.CheckResult("source.x.sentinel", False, "gone", doctor.Severity.ERROR, fix=sentinel),
         doctor.CheckResult("graph.auth", False, "REAUTH", doctor.Severity.ERROR, fix="agentsync login"),
     ]
-    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True: list(fake))
+    monkeypatch.setattr(doctor, "run_checks", lambda config, *, tcc_canary=True, loop_checks=None: list(fake))
     rc, out = _status(cfg, capsys)
     nexts = [ln for ln in out if ln.startswith(("NEXT:", "WAITING ON YOU:"))]
     assert rc == cli.EXIT_FAILED and nexts[0].startswith("NEXT: the source.x.sentinel check failed: ")
@@ -2100,9 +2102,11 @@ def test_status_runs_the_tcc_canary_only_after_a_tcc_event_or_before_any_run(
     seen: list[bool] = []
     real = doctor.run_checks
 
-    def spy(config: Config, *, tcc_canary: bool = True) -> list[doctor.CheckResult]:
+    def spy(
+        config: Config, *, tcc_canary: bool = True, loop_checks: Sequence[str] | None = None
+    ) -> list[doctor.CheckResult]:
         seen.append(tcc_canary)
-        return real(config, tcc_canary=tcc_canary)
+        return real(config, tcc_canary=tcc_canary, loop_checks=loop_checks)
 
     monkeypatch.setattr(doctor, "run_checks", spy)
     cfg = str(initialised.config_path)
@@ -2167,9 +2171,11 @@ def test_a_denied_path_is_not_cleared_by_another_paths_canary_ok(
     seen: list[bool] = []
     real = doctor.run_checks
 
-    def spy(config: Config, *, tcc_canary: bool = True) -> list[doctor.CheckResult]:
+    def spy(
+        config: Config, *, tcc_canary: bool = True, loop_checks: Sequence[str] | None = None
+    ) -> list[doctor.CheckResult]:
         seen.append(tcc_canary)
-        return real(config, tcc_canary=False)
+        return real(config, tcc_canary=False, loop_checks=loop_checks)
 
     monkeypatch.setattr(doctor, "run_checks", spy)
     stray = launchd.plist_path("com.agentsync.old-job")  # background sync installed (KISS K11a)

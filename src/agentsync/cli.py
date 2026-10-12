@@ -932,10 +932,14 @@ def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
         return [f"{name}: cannot read the state: {type(exc).__name__}: {exc}"]
 
 
-def _status_checks(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+def _status_checks(
+    config: Config, *, offline: bool = False, loop_checks: Sequence[str] | None = None
+) -> list[doctor.CheckResult]:
     """Every check of ``status``. ``offline`` (setup-report): no Graph probe and no TCC canary (it can raise
-    a privacy prompt)."""
-    checks = doctor.run_checks(config, tcc_canary=not offline and _tcc_canary_due(config))
+    a privacy prompt). ``loop_checks``: the loop's ``NextStep.checks``, for the heartbeat check."""
+    checks = doctor.run_checks(
+        config, tcc_canary=not offline and _tcc_canary_due(config), loop_checks=loop_checks
+    )
     return checks + _extra_checks(config, offline=offline)
 
 
@@ -949,13 +953,25 @@ def _loop_line(config: Config) -> str:
 def _build_status(config: Config, *, brief: bool = False) -> _Status:
     """``status``'s output. ``brief`` (the ``doctor`` alias, or AGENTSYNC_NO_NEXT_HINT=1, both install.sh's):
     no detail and no policy lines, so install.sh's output (and setup-report's tail of it) holds what the old
-    doctor printed and no label names."""
-    checks = _status_checks(config)
-    fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
+    doctor printed and no label names.
+
+    The loop is read first, without rule 9's count of the curation queue, so the heartbeat check points at
+    WAITING ON YOU only for a wait the loop has (``NextStep.checks``, which neither a FAIL nor that count
+    changes). Its NEXT is that read's when no check failed and the step came before rule 9, which is all
+    the count changes; otherwise the loop is read again as before, with the FAILs' fixes."""
     hint_off = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
+    try:
+        step: loop.NextStep | None = loop.next_step(config, count_queue=False)
+    except Exception:  # the NEXT read below names the error; the checks keep their default wording
+        step = None
+    checks = _status_checks(config, loop_checks=None if step is None else step.checks)
+    fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
     next_lines: list[str] = []
     if not hint_off:
-        next_lines = _guarded("NEXT", lambda: loop.next_lines(config, fixes=fixes))
+        if step is not None and not fixes and step.rule < 9:
+            next_lines = step.lines()
+        else:
+            next_lines = _guarded("NEXT", lambda: loop.next_lines(config, fixes=fixes))
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config))

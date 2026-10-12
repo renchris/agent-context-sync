@@ -1324,10 +1324,7 @@ def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> 
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         r = by_name(run_checks(sample_config))["lock"]
-        assert r.ok and r.detail == (
-            "held by an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an "
-            "instant)"
-        )
+        assert r.ok and r.detail == f"held by {EMPTY_BODY_HOLDER}"
     finally:
         os.close(fd)
     lock_path.write_text(LockInfo(99999, boot_time(), "2026-09-29T10:00:00Z", "poll").render() + "\n")
@@ -1388,12 +1385,11 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     r = by_name(run_checks(sample_config))[name]
     assert not r.ok and "incomplete for 3" in r.detail
     # Bring-back S11: a local walk is always a full pass, so "another sync clears this" was false for it.
-    # The loop's WAITING ON YOU line, which status prints above the checks, says what to do.
+    # The loop's WAITING ON YOU line says what to do; R38: status prints this fix, so it names no command.
     assert r.fix == (
-        "agentsync status (each WAITING ON YOU line about local-fixture says what stops the listing and "
-        "what to do: another sync does not clear it)"
+        "each WAITING ON YOU line about local-fixture says what stops the listing and what to do: another "
+        "sync does not clear it"
     )
-    assert_fix_parses(r.fix)
 
     _beat(sample_config, ok=False, auth_state="REAUTH_REQUIRED")
     r = by_name(run_checks(sample_config))[name]
@@ -1430,7 +1426,7 @@ def test_heartbeat_incomplete_fix_by_source_kind(
         _beat(sample_config, enumeration_complete=False)
     monkeypatch.setattr(os, "scandir", lambda *a, **k: pytest.fail("the heartbeat check lists no folder"))
     r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
-    assert r.fix is not None and r.fix.startswith("agentsync status (each WAITING ON YOU line about ")
+    assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about ")
     assert "Bids" not in r.fix and r.note is None
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
@@ -1438,6 +1434,34 @@ def test_heartbeat_incomplete_fix_by_source_kind(
     assert r.note == "yours: see WAITING ON YOU"
     [line] = format_results([r]).splitlines()
     assert line.endswith("consecutive passes (deletions held) (yours: see WAITING ON YOU)")
+
+
+def test_heartbeat_incomplete_follows_the_loop_checks(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R151: given the loop's checks (status passes them), an incomplete listing points at WAITING ON YOU
+    only when the loop has a wait for it, whatever the source kind; otherwise a local source syncs again."""
+    for _ in range(3):
+        _beat(sample_config, enumeration_complete=False)
+    name = "heartbeat.local-fixture"
+    r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
+    assert r.fix == "agentsync sync; another full walk lists it" and r.note is None
+    assert_fix_parses(r.fix)
+    r = by_name(doctor.run_checks(sample_config, tcc_canary=False, loop_checks=()))[name]
+    assert r.fix == "agentsync sync; another full walk lists it"
+    r = by_name(doctor._check_heartbeat(sample_config, loop_checks=(name,)))[name]
+    assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about local-fixture ")
+    assert "(" not in r.fix, "the report's fix parser strips one level of parentheses"
+    inbox = dataclasses.replace(
+        sample_config, sources=(dataclasses.replace(sample_config.sources[0], kind=SourceKind.INBOX),)
+    )
+    r = by_name(doctor._check_heartbeat(inbox, loop_checks=(name,)))[name]
+    assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about local-fixture ")
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    r = by_name(doctor._check_heartbeat(inbox, loop_checks=(name,)))[name]
+    assert r.fix is None and r.note == "yours: see WAITING ON YOU"
+    r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
+    assert r.note is None and r.fix == "agentsync sync; another full walk lists it"
 
 
 def assert_fix_parses(fix: str | None) -> None:
