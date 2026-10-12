@@ -37,7 +37,7 @@ from pathlib import Path
 from agentsync.config import Config
 from agentsync.errors import ConfigError
 from agentsync.model import CycleMode, SourceKind
-from agentsync.paths import CLOUD_STORAGE_ROOT, expand, is_cloud_path, is_under
+from agentsync.paths import cloud_relative, expand, is_cloud_path, is_under
 
 log = logging.getLogger(__name__)
 
@@ -288,14 +288,22 @@ def tcc_protected(path: Path) -> bool:
     p = expand(path)
     if is_cloud_path(p):
         return True
-    home = Path.home()
-    gated = (
-        home / "Documents",
-        home / "Desktop",
-        home / "Downloads",
-        home / "Library" / "Mobile Documents",
+    homes = {Path.home()}
+    with contextlib.suppress(OSError, RuntimeError):  # also the home a symlink reaches, as is_cloud_path does
+        homes.add(Path.home().resolve())
+    gated = [
+        *(
+            g
+            for home in homes
+            for g in (
+                home / "Documents",
+                home / "Desktop",
+                home / "Downloads",
+                home / "Library" / "Mobile Documents",
+            )
+        ),
         Path("/Volumes"),
-    )
+    ]
     return any(is_under(p, g) for g in gated)
 
 
@@ -362,10 +370,12 @@ def tcc_prompt_text(config: Config) -> str | None:
     cloud = [p for p in canary_paths(config) if is_cloud_path(p)]
     if not cloud:
         return None
-    root = expand(CLOUD_STORAGE_ROOT)
     providers: list[str] = []
     for p in cloud:
-        rel = p.relative_to(root).parts
+        # By the root that holds it: a source stored resolved (a home reached through a symlink) is under
+        # ~/Library/CloudStorage's resolved form only, which relative_to on the lexical root refused.
+        found = cloud_relative(p)
+        rel = found.parts if found is not None else ()
         name = rel[0].split("-", 1)[0] if rel else "the File Provider"
         if name not in providers:
             providers.append(name)

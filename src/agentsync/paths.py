@@ -65,9 +65,31 @@ def is_under(path: Path, root: Path) -> bool:
     return p == r or r in p.parents
 
 
+def cloud_storage_roots() -> tuple[Path, ...]:
+    """``~/Library/CloudStorage``, also by the path it resolves to: a source path is stored resolved, so
+    with a home reached through a symlink (``/tmp`` is ``/private/tmp``) only that form holds it.  Resolving
+    touches only ``~/Library/CloudStorage`` and its ancestors, never anything inside a File Provider tree."""
+    root = expand(CLOUD_STORAGE_ROOT)
+    roots = {root}
+    with contextlib.suppress(OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
+        roots.add(root.resolve())
+    return tuple(sorted(roots))
+
+
 def is_cloud_path(path: Path) -> bool:
-    """Return True for any path under ``~/Library/CloudStorage`` (a File Provider tree)."""
-    return is_under(path, expand(CLOUD_STORAGE_ROOT))
+    """Return True for any path under ``~/Library/CloudStorage`` (a File Provider tree), by either form of
+    :func:`cloud_storage_roots`."""
+    return any(is_under(path, r) for r in cloud_storage_roots())
+
+
+def cloud_relative(path: Path) -> PurePosixPath | None:
+    """``path`` relative to the :func:`cloud_storage_roots` entry that holds it (its first part is the
+    provider folder, ``OneDrive-Contoso``); None outside every one."""
+    p = expand(path)
+    for root in cloud_storage_roots():
+        if is_under(p, root):
+            return PurePosixPath(p.relative_to(root))
+    return None
 
 
 TEMPORARY_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")

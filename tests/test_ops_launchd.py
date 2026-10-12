@@ -683,6 +683,39 @@ def test_tcc_prompt_text_names_the_provider(sample_config: Config) -> None:
     )
 
 
+def test_a_home_reached_through_a_symlink_keeps_a_resolved_cloud_source_cloud(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 4 Q34/Q46: a source path is stored resolved, so with HOME reached through a symlink (``/tmp``
+    is ``/private/tmp``) only ~/Library/CloudStorage's resolved form holds it. is_cloud_path read the lexical
+    root alone, so the launcher's canary, the privacy prompt text and doctor's tcc line all skipped the
+    source; widening it alone made tcc_prompt_text raise ValueError (relative_to the lexical root)."""
+    from agentsync.ops.doctor import run_checks  # noqa: PLC0415
+    from agentsync.paths import cloud_relative, is_cloud_path  # noqa: PLC0415
+
+    real = tmp_path / "real-home"
+    (tmp_path / "home-link").symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home-link"))
+    root = real / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Falcon"
+    root.mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    assert not str(root).startswith(str(Path.home())), "the stored form is not under the lexical home"
+    src = dataclasses.replace(sample_config.sources[0], id="falcon", path=root, sentinel=None)
+    cfg = dataclasses.replace(sample_config, sources=(src,))
+
+    assert is_cloud_path(root)
+    assert cloud_relative(root) is not None and cloud_relative(root).parts[0] == "OneDrive-Contoso"  # type: ignore[union-attr]
+    assert launchd.canary_paths(cfg) == (root,)
+    assert launchd.tcc_prompt_text(cfg) == (
+        "\u201cagentsync-launcher\u201d wants to access files managed by \u201cOneDrive\u201d."
+    )
+    names = {r.name: r for r in run_checks(cfg, tcc_canary=False)}
+    assert "tcc" in names and "needs its own" in names["tcc"].detail
+    assert names["source.falcon.volume"].detail.startswith("volume UUID ")
+    # Also Documents and the like by the resolved home, as tcc_protected's other gated folders.
+    assert launchd.tcc_protected(real / "Documents" / "x")
+
+
 def test_render_plist_rejects_platform_python(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="platform binary"):
         render_plist(_spec(tmp_path, program_arguments=("/usr/bin/python3", "-m", "agentsync")))

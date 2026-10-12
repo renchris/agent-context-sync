@@ -56,7 +56,7 @@ from agentsync.model import (
     SourceItem,
     SourceKind,
 )
-from agentsync.paths import CLOUD_STORAGE_ROOT, _glob_regex, expand, glob_match, glob_strip, is_under
+from agentsync.paths import _glob_regex, cloud_storage_roots, expand, glob_match, glob_strip, is_under
 
 log = logging.getLogger(__name__)
 
@@ -291,11 +291,13 @@ def _cloud_roots() -> tuple[Path, ...]:
     """``~/Library/CloudStorage`` for $HOME and for the account's real home (launchd/tests may differ), each
     also by the path it resolves to: a source path is stored resolved, so with a home reached through a
     symlink (``/tmp`` is ``/private/tmp``) only that form holds it."""
-    roots = {expand(CLOUD_STORAGE_ROOT)}
+    roots = set(cloud_storage_roots())
     account = _account_cloud_root()
     if account is not None:
         roots.add(account)
-    return tuple(sorted(roots | {r.resolve() for r in roots}))
+        with contextlib.suppress(OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
+            roots.add(account.resolve())
+    return tuple(sorted(roots))
 
 
 def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:
