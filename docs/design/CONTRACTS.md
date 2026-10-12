@@ -13727,6 +13727,15 @@ item amends an older section, a dated line sits at that section too.
 - **The Summary's launchd line** (Q6) names the mode and the plists this home holds, not an install:
   `- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, com.agentsync.reconcile plist
   absent (Background runs has each job's state)`. `test_failure_without_agentsync_writes_the_shell_report`.
+- **The Summary's install.sh line under `--report-only`** (Q23). That run only writes the report, so its own
+  `exit 0 (ok)` said nothing of the setup, and was the fallback's only status line. It now reads `- install.sh:
+  setup-prompt-compat <N>, source commit <sha>; this --report-only run only writes the report; ` and then the
+  last install run in install.log, found as `setup_report._install_line` finds it (by run id, a
+  `--list-folders` run skipped): `the last install run (started <UTC>) exit <rc> (<meaning>)`, `... has no end
+  line (stopped or still running)`, or `no install run in the install log`. The start time keeps an earlier
+  run's success from reading as this attempt's. An install run keeps `, exit <rc> (<meaning>)`. Tests:
+  `test_the_shell_report_only_gives_the_last_install_runs_exit`,
+  `test_the_shell_report_only_names_this_checkouts_commit`.
 
 #### The commands the installer prints
 

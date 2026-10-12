@@ -868,6 +868,45 @@ def test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use(env: dict[s
     assert line.startswith("- gitleaks: /") and line.endswith("/stubbin/gitleaks"), "PATH's comes first"
 
 
+def test_the_shell_report_only_gives_the_last_install_runs_exit(env: dict[str, str]) -> None:
+    """--report-only only writes the report: its own exit 0 said "exit 0 (ok)" over an install log whose last
+    run failed. The Summary gives the last install run's exit, dated, and skips a --list-folders run, as
+    setup_report._install_line does (B13 round 4 Q23)."""
+    log = Path(env["HOME"]) / "agent-context" / "setup" / "install.log"
+    log.parent.mkdir(parents=True)
+
+    def line() -> str:
+        cp = install_sh(env, "--report-only")
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        [found] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+        assert "; this --report-only run only writes the report; " in found and ", exit 0 (ok)" not in found
+        return found.split("; this --report-only run only writes the report; ", 1)[1]
+
+    log.write_text(
+        "2026-10-12T09:00:00Z run=a1 start install.sh compat=12 args=--list-folders\n"
+        "2026-10-12T09:00:01Z run=a1 step=list-folders seconds=1 result=done rc=0 note=listed-4\n"
+        "2026-10-12T09:00:01Z run=a1 end rc=0 seconds=1\n"
+    )
+    assert line() == "no install run in the install log"
+    with log.open("a") as fh:
+        fh.write(
+            "2026-10-12T09:01:00Z run=b2 start install.sh compat=12 commit=x kind=local source=- args=\n"
+            "2026-10-12T09:01:06Z run=b2 step=uv seconds=6 result=failed rc=1\n"
+            "2026-10-12T09:01:06Z run=b2 end rc=1 seconds=6\n"
+            "2026-10-12T09:02:00Z run=c3 start install.sh compat=12 args=--list-folders\n"
+            "2026-10-12T09:02:01Z run=c3 step=list-folders seconds=1 result=done rc=0 note=listed-4\n"
+            "2026-10-12T09:02:01Z run=c3 end rc=0 seconds=1\n"
+        )
+    assert line() == "the last install run (started 2026-10-12T09:01:00Z) exit 1 (failed)"
+    with log.open("a") as fh:
+        fh.write(
+            "2026-10-12T09:03:00Z run=d4 start install.sh compat=12 commit=x kind=local source=- args=\n"
+        )
+    assert line() == (
+        "the last install run (started 2026-10-12T09:03:00Z) has no end line (stopped or still running)"
+    )
+
+
 def _background_part(env: dict[str, str]) -> str:
     return report_path(env).read_text().split("\n## Background runs\n", 1)[1].split("\n## ", 1)[0]
 
@@ -1918,12 +1957,15 @@ def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], 
         [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
         return line
 
-    assert summary() == f"- install.sh: setup-prompt-compat {COMPAT}, source commit {sha}, exit 0 (ok)"
+    assert summary() == (
+        f"- install.sh: setup-prompt-compat {COMPAT}, source commit {sha}; this --report-only run only "
+        "writes the report; no install run in the install log"
+    )
     with (src / "scripts" / "install.sh").open("a") as fh:
         fh.write("# a local change\n")
-    assert f"source commit {sha}-dirty tree={_fingerprint(git)}," in summary()
+    assert f"source commit {sha}-dirty tree={_fingerprint(git)};" in summary()
     no_tools = {"DEVELOPER_DIR": str(tmp_path / "none")}
-    assert f"source commit {sha} (local changes not checked)," in summary(no_tools)
+    assert f"source commit {sha} (local changes not checked);" in summary(no_tools)
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)

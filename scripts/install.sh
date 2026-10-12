@@ -1437,6 +1437,42 @@ leading_int() { # "79: ..." -> 79; "(never exited)" -> empty
 	[0-9]*) printf '%s' "${1%%[!0-9]*}" ;;
 	esac
 }
+# The last install run in install.log, as setup_report._install_line reads it: by run id, skipping a
+# --list-folders run. Prints "<start time> <rc>", the rc empty when the run has no end line; nothing when there
+# is no such run.
+last_install_run() {
+	[ -f "$SETUP_LOG" ] || return 0
+	LC_ALL=C awk '
+		$2 !~ /^run=/ { next }
+		{ id = substr($2, 5) }
+		!(id in at) { order[++n] = id; at[id] = $1 }
+		index($0 " ", " step=list-folders ") { lists[id] = 1 }
+		$3 == "end" && match($0, / rc=[0-9]+/) { rc[id] = substr($0, RSTART + 4, RLENGTH - 4) }
+		END {
+			for (i = n; i > 0; i--) if (!(order[i] in lists)) { print at[order[i]] " " rc[order[i]]; exit }
+		}' "$SETUP_LOG" 2>/dev/null || true
+}
+# The Summary's install.sh line. A --report-only run only writes the report, so its own exit 0 says nothing of
+# the setup: it gives the last install run's instead, dated, so an earlier run's is not read as this
+# attempt's (B13 round 4 Q23).
+fallback_install_line() { # RC
+	local head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}" last at rc
+	if [ "$REPORT_ONLY" -eq 0 ]; then
+		say "$head, exit $1 ($(rc_meaning "$1"))"
+		return 0
+	fi
+	head="$head; this --report-only run only writes the report"
+	last="$(last_install_run)"
+	at="${last%% *}"
+	rc="${last#* }"
+	if [ -z "$last" ]; then
+		say "$head; no install run in the install log"
+	elif [ -z "$rc" ]; then
+		say "$head; the last install run (started $at) has no end line (stopped or still running)"
+	else
+		say "$head; the last install run (started $at) exit $rc ($(rc_meaning "$rc"))"
+	fi
+}
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 fallback_body() {
 	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l
@@ -1445,7 +1481,7 @@ fallback_body() {
 	say "## Summary"
 	say ""
 	say "- written by: scripts/install.sh shell fallback ($why), $(utc_now)"
-	say "- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}, exit $rc ($(rc_meaning "$rc"))"
+	fallback_install_line "$rc"
 	# The mode, and whether this home holds each job's plist: "not simulated" alone read as "installed" on a setup
 	# that installed none (B13 round 4 Q6). Background runs has each job's loaded state.
 	if [ "$SIMULATE" -eq 1 ]; then
