@@ -179,6 +179,10 @@ mkdir -p "$d"
 runs="$(cat "$d/runs" 2>/dev/null || echo 0)"
 case "$1" in
   print)
+    # STUB_LC_LABELS: the colon list of the job labels loaded; unset, every label is
+    if [ -n "${STUB_LC_LABELS+x}" ]; then
+      case ":$STUB_LC_LABELS:" in *":${2##*/}:"*) ;; *) exit 113 ;; esac
+    fi
     echo "$2 = {"
     if [ -n "${STUB_LC_RUNNING:-}" ] && [ "$runs" -gt 0 ]; then
       printf '\\tstate = running\\n'
@@ -801,7 +805,10 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     assert _headings(text) == list(setup_report.SECTION_TITLES), "the same headings as agentsync's report"
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
     assert "exit 1 (failed)" in text and "uv tool install failed" in text
-    assert "- launchd: not simulated (real LaunchAgents)" in text
+    assert (
+        "- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, "
+        "com.agentsync.reconcile plist absent (Background runs has each job's state)" in text
+    ), "the mode names the plists this home holds, not an install that never ran (B13 round 4 Q6)"
     assert "step=agentsync" in text and "result=failed" in text, "the install.log lines are embedded"
     assert (
         "- macOS: " in text
@@ -883,20 +890,58 @@ def test_the_shell_report_names_another_installs_job_as_not_this_setups(env: dic
         cp = install_sh({**env, **extra}, "--report-only")
         assert cp.returncode == 0, cp.stderr
         part = _background_part(env)
-        assert "- loaded, but the job belongs to another install (its plist or ProgramArguments" in part
+        for label in ("com.agentsync.poll", "com.agentsync.reconcile"):
+            assert (
+                f"- {label}: loaded, but the job belongs to another install (its plist or ProgramArguments"
+                in part
+            )
         assert "runs 2183" not in part and "last exit code" not in part
-    cp = install_sh({**env, "STUB_LC_PATH": str(plist)}, "--report-only")
-    part = _background_part(env)
-    assert "- com.agentsync.poll plist: absent" in part
-    assert (
-        "- loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent"
-        in part
+    cp = install_sh(
+        {**env, "STUB_LC_PATH": str(plist), "STUB_LC_LABELS": "com.agentsync.poll"}, "--report-only"
     )
-    assert "runs 2183, last exit code 79" in part and "another install" not in part
+    part = _background_part(env)
+    assert (
+        "- com.agentsync.poll: loaded, but the plist is absent (removed without launchctl bootout; agentsync "
+        "install-agent repairs it): state not running, runs 2183, last exit code 79" in part
+    )
+    assert "- com.agentsync.reconcile: plist absent · loaded: no" in part and "another install" not in part
     plist.parent.mkdir(parents=True)
     plist.write_text("")
-    cp = install_sh({**env, "STUB_LC_PATH": str(plist)}, "--report-only")
-    assert "- loaded: state not running, runs 2183, last exit code 79" in _background_part(env)
+    cp = install_sh(
+        {**env, "STUB_LC_PATH": str(plist), "STUB_LC_LABELS": "com.agentsync.poll"}, "--report-only"
+    )
+    assert (
+        "- com.agentsync.poll: plist present · loaded: state not running, runs 2183, last exit code 79"
+        in _background_part(env)
+    )
+
+
+def test_the_shell_report_has_a_line_for_each_job(env: dict[str, str]) -> None:
+    """The reconcile job is this setup's too: the shell report names it, each line starting with its label,
+    as `agentsync setup-report` does (B13 round 4 Q5, Q15)."""
+    agents = Path(env["HOME"]) / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / "com.agentsync.reconcile.plist").write_text("")
+    cp = install_sh({**env, "STUB_LC_LABELS": ""}, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    assert _background_part(env).strip().splitlines() == [
+        "- com.agentsync.poll: plist absent · loaded: no",
+        "- com.agentsync.reconcile: plist present · loaded: no",
+    ]
+    lc = Path(env["STUB_LC_DIR"])
+    lc.mkdir(exist_ok=True)
+    (lc / "runs").write_text("3\n")
+    (lc / "last").write_text("0\n")
+    other = "/Users/contoso-other/Library/LaunchAgents/com.agentsync.reconcile.plist"
+    cp = install_sh(
+        {**env, "STUB_LC_LABELS": "com.agentsync.reconcile", "STUB_LC_PATH": other}, "--report-only"
+    )
+    part = _background_part(env)
+    assert "- com.agentsync.poll: plist absent · loaded: no" in part
+    assert "- com.agentsync.reconcile: loaded, but the job belongs to another install" in part
+    assert "- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, " in (
+        report_path(env).read_text()
+    )
 
 
 def test_the_shell_report_redacts_a_full_name_written_last_comma_first(

@@ -576,6 +576,7 @@ PROGRESS_SECONDS="${AGENTSYNC_PROGRESS_SECONDS:-15}"
 LIST_TIMEOUT="${AGENTSYNC_LIST_TIMEOUT:-90}"
 LIST_TOTAL="${AGENTSYNC_LIST_TOTAL_SECONDS:-100}"
 POLL_LABEL="com.agentsync.poll"
+RECONCILE_LABEL="com.agentsync.reconcile"
 ISSUE_URL="https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml" # setup_report.ISSUE_URL
 ISSUE_LINK_PREFIX="issue link (review the report first): "
 OUT_MAX_LINES=2000 # install.out keeps this many lines
@@ -1406,7 +1407,7 @@ redact_stream() {
 launchd_field() { # TEXT KEY: the value of a top-level "KEY = value" line of `launchctl print`
 	printf '%s\n' "$1" | sed -n "s/^	$2 = //p" | head -1
 }
-launchd_print() { with_timeout 10 "$LAUNCHCTL" print "gui/$(id -u)/$POLL_LABEL" 2>/dev/null; }
+launchd_print() { with_timeout 10 "$LAUNCHCTL" print "gui/$(id -u)/${1:-$POLL_LABEL}" 2>/dev/null; } # [LABEL]
 # `launchctl print` reads the uid's domain, not this HOME's: the job it shows is another install's when the
 # plist it was loaded from is outside this home folder, or its program or an argument is in another user's or
 # a temporary folder (setup_report._background's rule, _under_home and _foreign_paths; B13 round 3 R6, R16).
@@ -1431,14 +1432,25 @@ leading_int() { # "79: ..." -> 79; "(never exited)" -> empty
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 fallback_body() {
-	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n
+	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l
 	say "# agentsync setup report"
 	say ""
 	say "## Summary"
 	say ""
 	say "- written by: scripts/install.sh shell fallback ($why), $(utc_now)"
 	say "- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}, exit $rc ($(rc_meaning "$rc"))"
-	if [ "$SIMULATE" -eq 1 ]; then say "- launchd: simulated"; else say "- launchd: not simulated (real LaunchAgents)"; fi
+	# The mode, and whether this home holds each job's plist: "not simulated" alone read as "installed" on a setup
+	# that installed none (B13 round 4 Q6). Background runs has each job's loaded state.
+	if [ "$SIMULATE" -eq 1 ]; then
+		say "- launchd: simulated"
+	else
+		v=""
+		for l in "$POLL_LABEL" "$RECONCILE_LABEL"; do
+			if [ -f "$HOME/Library/LaunchAgents/$l.plist" ]; then k="present"; else k="absent"; fi
+			v="$v${v:+, }$l plist $k"
+		done
+		say "- launchd: not simulated (the real launchctl); $v (Background runs has each job's state)"
+	fi
 	[ -z "$LAST_ERROR" ] || say "- last error: $LAST_ERROR"
 	say ""
 	say "## Agent friction log"
@@ -1550,23 +1562,26 @@ fallback_body() {
 	if [ "$SIMULATE" -eq 1 ]; then
 		say "- launchd: simulated (AGENTSYNC_SIMULATE_LAUNCHD=1, a test seam: nothing was installed or started)"
 	else
-		if [ -f "$HOME/Library/LaunchAgents/$POLL_LABEL.plist" ]; then v="present"; else v="absent"; fi
-		say "- $POLL_LABEL plist: $v"
-		p="$(launchd_print || true)"
-		if [ -z "$p" ]; then
-			say "- loaded: no"
-		elif launchd_foreign "$p"; then
-			say "- loaded, but the job belongs to another install (its plist or ProgramArguments are outside this home folder); its runs and exit codes are not this setup's result"
-		else
-			v="$(launchd_field "$p" "last exit code")"
-			k="$(leading_int "$v")"
-			v="state $(launchd_field "$p" state), runs $(launchd_field "$p" runs), last exit code ${v:-?}${k:+ ($(rc_meaning "$k"))}"
-			if [ -f "$HOME/Library/LaunchAgents/$POLL_LABEL.plist" ]; then
-				say "- loaded: $v"
+		# One line a job, each starting with its label, as setup_report._background writes them (B13 round 4 Q5).
+		for l in "$POLL_LABEL" "$RECONCILE_LABEL"; do
+			if [ -f "$HOME/Library/LaunchAgents/$l.plist" ]; then v="present"; else v="absent"; fi
+			p="$(launchd_print "$l" || true)"
+			if [ -z "$p" ]; then
+				say "- $l: plist $v · loaded: no"
+			elif launchd_foreign "$p"; then
+				say "- $l: loaded, but the job belongs to another install (its plist or ProgramArguments are outside this home folder); its runs and exit codes are not this setup's result"
 			else
-				say "- loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent repairs it): $v"
+				n="$(launchd_field "$p" "last exit code")"
+				k="$(leading_int "$n")"
+				n="state $(launchd_field "$p" state), runs $(launchd_field "$p" runs), last exit code ${n:-?}"
+				[ -z "$k" ] || n="$n ($(rc_meaning "$k"))"
+				if [ "$v" = present ]; then
+					say "- $l: plist present · loaded: $n"
+				else
+					say "- $l: loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent repairs it): $n"
+				fi
 			fi
-		fi
+		done
 	fi
 	say ""
 	say "## Recent errors"
@@ -2245,8 +2260,8 @@ print(load_config(Path(sys.argv[1])).state_paths.lock)
 # the plist was written, so it can differ from this run's AGENTSYNC_CONFIG (B13 round 3 R114).
 job_configs() {
 	local l
-	for l in poll reconcile; do
-		/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$HOME/Library/LaunchAgents/com.agentsync.$l.plist" 2>/dev/null |
+	for l in "$POLL_LABEL" "$RECONCILE_LABEL"; do
+		/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$HOME/Library/LaunchAgents/$l.plist" 2>/dev/null |
 			LC_ALL=C awk '{ sub(/^[ \t]+/, "") } want { print; exit } $0 == "--config" { want = 1 }' || true
 	done
 }

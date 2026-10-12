@@ -12883,6 +12883,9 @@ an older section, a dated line sits at that section too.
   state ...`. The Summary's `- launchd: real` reads `- launchd: not simulated (real LaunchAgents)`. Tests:
   `test_the_shell_report_names_another_installs_job_as_not_this_setups` (the stub's `print` takes
   STUB_LC_PATH and STUB_LC_PROGRAM).
+  Amended 2026-10-12 (§16.53, Q5, Q6): every Background runs line starts with its job's label, the reconcile
+  job has its own, and the Summary reads `- launchd: not simulated (the real launchctl); <label> plist
+  present|absent, ...`.
 - **uv's Pythons** (R5): the count skips uv's hidden `.temp` folder (`! -name '.*'`).
   `test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder`.
 - **A repeated organisation** (R44) takes no second `<org-N>`. Only the same bytes are a repeat: the shell
@@ -13704,7 +13707,23 @@ available. The shell report adds `- gitleaks: <path>` or `not found (builtin pat
 
 ### 16.53 Round 4: installer and the shell report (2026-10-12, wave B13 round 4 lane RB)
 
-Reserved for round 4 lane RB of B13.
+Round 4's rehearsal, review and harvest items for the installer (`scripts/install.sh`) and its shell fallback
+report (lane RB). Each item names its round 4 id; the spec is the adversarial verifier's corrected fix. Where an
+item amends an older section, a dated line sits at that section too.
+
+#### The shell fallback report
+
+- **Both jobs in Background runs** (Q5, Q15, one defect). The section has a line for each of
+  `com.agentsync.poll` and `com.agentsync.reconcile` (`RECONCILE_LABEL`, which `job_configs` reads too), each
+  starting with its label, as `setup_report._background` writes them: `- <label>: plist present|absent ·
+  loaded: no`, `- <label>: loaded, but the job belongs to another install (...)`, `- <label>: loaded, but the
+  plist is absent (...): state ...` and `- <label>: plist present · loaded: state ...`. `launchd_print` takes
+  an optional label; the post-install wait's calls give none and read the poll job, as before. Tests:
+  `test_the_shell_report_has_a_line_for_each_job`, `test_the_shell_report_names_another_installs_job_as_not_this_setups`
+  (the stub's `print` answers only the labels in STUB_LC_LABELS when that is set).
+- **The Summary's launchd line** (Q6) names the mode and the plists this home holds, not an install:
+  `- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, com.agentsync.reconcile plist
+  absent (Background runs has each job's state)`. `test_failure_without_agentsync_writes_the_shell_report`.
 
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 
