@@ -6135,6 +6135,7 @@ or empty for this case (a source sat incomplete for 900 passes):
   (`config.DEFAULT_EXCLUDES`, `INBOX_IGNORES`, `OS_JUNK_EXCLUDES`) are shown as written and every other entry is
   `"<path>"`, or `"/<path>/"` for a root-anchored folder: an allowlist, so a hand-written bare folder name stays
   hidden. A cut or unparsable list keeps `exclude = [<path>]`, and the shell fallback keeps the whole-list form.)
+  (**amended 2026-10-12, §16.53 Q80:** the shell fallback shows a whole list as the Python report does.)
 
 **doctor and status wording.**
 
@@ -13741,6 +13742,19 @@ item amends an older section, a dated line sits at that section too.
   `pwd -P` form. The legend is printed after `redact_stream`, so its `$` is escaped (`\$TMPDIR`): unescaped, bash
   would print this account's real `/var/folders/...` path, unredacted. Only `$TMPDIR` is named: unlike the
   Python report, the shell redacts no other `/var/folders` path. `test_shell_report_redacts_tmpdir`.
+- **agentsync's own exclude globs** (Q80). `scrub_exclude_lists` shows a whole exclude list as
+  `setup_report._exclude_placeholder` does (§16.47 R8), where it showed `exclude = [<path>] in [[source]]`:
+  an entry that is exactly one of `SHIPPED_EXCLUDES`, the shell's twin of `_SHIPPED_EXCLUDES` with each entry
+  as `json.dumps` writes it (`"Icon\r"` is a backslash and an `r`), is shown as written; any other is
+  `"<path>"`, or `"/<path>/"` for a root-anchored folder. One LC_ALL=C awk reads the line as the Python regex
+  does (the first `] in [[source]]` after `exclude = [`; a line cut inside the list is `exclude = [<path>]`)
+  and tokenizes the body: `"..."` strings, a backslash escaping the next byte, blanks around a comma. A body
+  that does not parse is the whole-list form, and a token is compared by its bytes, never decoded, so drift
+  or an odd spelling only ever hides more. The set is read from `ENVIRON`: `awk -v` would turn `\r` into a
+  carriage return. Tests: `test_the_shell_exclude_allowlist_is_the_reports` (the set),
+  `test_the_shell_exclude_scrub_is_the_reports` (the shell and Python scrubbers on the same lines: shipped
+  only, mixed, a root-anchored folder, an escaped quote, `Icon\r`, a non-ASCII name, a cut line, an
+  unparsable body, blanks, two lists on one line), `test_the_shell_report_shows_an_exclude_list_as_path`.
 
 #### The installer's steps and commands
 

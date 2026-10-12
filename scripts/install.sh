@@ -1669,12 +1669,77 @@ friction_text() {
 			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi
 }
+# The globs agentsync itself ships (setup_report._SHIPPED_EXCLUDES: config.DEFAULT_EXCLUDES, INBOX_IGNORES
+# and OS_JUNK_EXCLUDES), each as an exclude line writes it (json.dumps): Icon\r is a backslash and an r. A test
+# holds it to the Python set.
+SHIPPED_EXCLUDES='"~$*" "*.tmp" ".~lock.*#" ".DS_Store" "Icon\r" "._*" "*.crdownload" "*.part" "*.partial" "*.download"'
 # An exclude line (the loop's WAITING ON YOU text for an empty cloud folder, which an agent may log) names
-# folders below a source root, which redact_stream has never seen: the list is shown as <path>, as
-# `agentsync setup-report` shows it. The second expression is a line cut inside the list.
+# folders below a source root, which redact_stream has never seen. As `agentsync setup-report` shows it
+# (setup_report._exclude_placeholder, B13 round 3 R8; here since round 4 Q80): in a whole list, every entry
+# that is exactly one of SHIPPED_EXCLUDES is shown as written, so a reviewer can check the advice kept them,
+# and every other one is "<path>", or "/<path>/" for a root-anchored folder. A list whose entries do not parse
+# as "...", "..." (a backslash escapes the next byte; blanks around a comma as JSON allows them) is
+# exclude = [<path>] in [[source]], and a line cut inside the list is exclude = [<path>]. Byte-wise (LC_ALL=C, index and substr), and the set is read from
+# ENVIRON: awk -v would turn its \r into a carriage return.
 scrub_exclude_lists() {
-	LC_ALL=C sed -e 's/exclude = \[.*\] in \[\[source\]\]/exclude = [<path>] in [[source]]/' \
-		-e 's/exclude = \[".*$/exclude = [<path>]/'
+	SHIPPED="$SHIPPED_EXCLUDES" LC_ALL=C awk '
+		BEGIN {
+			n = split(ENVIRON["SHIPPED"], a, " ")
+			for (i = 1; i <= n; i++) shipped[a[i]] = 1
+			op = "exclude = ["
+			cl = "] in [[source]]"
+		}
+		function entry(t, inner) {
+			if (t in shipped) return t
+			inner = substr(t, 2, length(t) - 2)
+			if (length(inner) > 2 && substr(inner, 1, 1) == "/" && substr(inner, length(inner), 1) == "/") return "\"/<path>/\""
+			return "\"<path>\""
+		}
+		function blanks(body, i) {
+			while (i <= length(body) && index(" \t\r\n", substr(body, i, 1)) > 0) i++
+			return i
+		}
+		function entries(body, out, i, j, m) { # sets parsed: 0 when the body does not parse
+			parsed = 0
+			m = length(body)
+			i = blanks(body, 1)
+			out = ""
+			if (i > m) {
+				parsed = 1
+				return ""
+			}
+			while (1) {
+				if (substr(body, i, 1) != "\"") return ""
+				for (j = i + 1; j <= m && substr(body, j, 1) != "\""; j++) if (substr(body, j, 1) == "\\") j++
+				if (j > m) return ""
+				out = out (out == "" ? "" : ", ") entry(substr(body, i, j - i + 1))
+				i = blanks(body, j + 1)
+				if (i > m) {
+					parsed = 1
+					return out
+				}
+				if (substr(body, i, 1) != ",") return ""
+				i = blanks(body, i + 1)
+			}
+		}
+		{
+			out = ""
+			rest = $0
+			while ((i = index(rest, op)) > 0) {
+				out = out substr(rest, 1, i - 1)
+				rest = substr(rest, i + length(op))
+				j = index(rest, cl)
+				if (j == 0) {
+					out = out "exclude = [<path>]"
+					rest = ""
+					break
+				}
+				shown = entries(substr(rest, 1, j - 1))
+				out = out op (parsed ? shown : "<path>") cl
+				rest = substr(rest, j + length(cl))
+			}
+			print out rest
+		}'
 }
 write_fallback_report() { # RC WHY
 	local dir tmp friction c

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import os
 import plistlib
 import pwd
@@ -1739,8 +1740,9 @@ def test_report_only_falls_back_when_setup_report_fails(env: dict[str, str]) -> 
 
 def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> None:
     """The loop's wait for an empty cloud folder prints an exclude line naming folders below a source root,
-    which the shell report's redaction has never seen. An agent may log that line: the list is shown as
-    <path>, as agentsync setup-report shows it, also when the line was cut inside the list."""
+    which the shell report's redaction has never seen. An agent may log that line: agentsync's own globs are
+    shown as written and every other entry as <path>, as agentsync setup-report shows it (B13 round 4 Q80),
+    and the list is <path> when the line was cut inside it."""
     setup = Path(env["HOME"]) / "agent-context" / "setup"
     setup.mkdir(parents=True)
     said = (
@@ -1758,11 +1760,59 @@ def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> 
     assert f"report: {report_path(env)} (shell fallback: agentsync is not installed)" in cp.stdout
     text = report_path(env).read_text(encoding="utf-8")
     assert (
-        'status said: set exclude = [<path>] in [[source]] id = "one" in ~/agent-context/sources.toml | -\n'
-        in text
+        'status said: set exclude = ["~$*", "/<path>/", "/<path>/"] in [[source]] id = "one" in '
+        "~/agent-context/sources.toml | -\n" in text
     )
     assert "and then: set exclude = [<path>]\n" in text
     assert "Fabrikam" not in text and "Tailspin" not in text
+
+
+def _shell_exclude_scrub(lines: list[str]) -> list[str]:
+    """install.sh's scrub_exclude_lists, with its SHIPPED_EXCLUDES line, run on ``lines``."""
+    text = INSTALL_SH.read_text()
+    [const] = re.findall(r"(?m)^SHIPPED_EXCLUDES='.*'$", text)
+    [fn] = re.findall(r"(?ms)^scrub_exclude_lists\(\) \{\n.*?^\}$", text)
+    cp = subprocess.run(
+        [BASH32, "-c", f"{const}\n{fn}\nscrub_exclude_lists"],
+        input="".join(f"{ln}\n" for ln in lines).encode(),
+        capture_output=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8"},
+    )
+    return cp.stdout.decode().splitlines()
+
+
+def test_the_shell_exclude_allowlist_is_the_reports() -> None:
+    """The shell's twin of setup_report._SHIPPED_EXCLUDES, each entry as an exclude line writes it: a glob
+    agentsync adds and the shell lacks would read as <path>, one it drops would still show (B13 round 4
+    Q80)."""
+    [const] = re.findall(r"(?m)^SHIPPED_EXCLUDES='(.*)'$", INSTALL_SH.read_text())
+    assert set(const.split(" ")) == {
+        json.dumps(e, ensure_ascii=False) for e in setup_report._SHIPPED_EXCLUDES
+    }
+
+
+def test_the_shell_exclude_scrub_is_the_reports() -> None:
+    """The shell report's exclude lines read as the Python report's, line for line (B13 round 4 Q80)."""
+    lines = [
+        'set exclude = ["~$*", "*.tmp", ".DS_Store", "Icon\\r", "._*"] in [[source]] id = "one"',
+        'set exclude = ["~$*", "*.tmp", ".DS_Store", "/Contoso Board/", "Payroll"] in [[source]] id = "one"',
+        'status: set exclude = ["/Plans/Tailspin [[]old]/", "*.part"] in [[source]] id = "two" in x.toml',
+        'set exclude = ["x\\", \\"*.tmp", "*.tmp"] in [[source]] id = "one"',
+        'set exclude = ["Résumés de l\u2019équipe", "*.download"] in [[source]] id = "one"',
+        'set exclude = ["/a/", "//", "/"] in [[source]] id = "one"',
+        'and then: set exclude = ["~$*", "/Fabrikam Bi',
+        'set exclude = [~$*, *.tmp] in [[source]] id = "one"',
+        'set exclude = ["*.tmp",  "x"] in [[source]] id = "one"',
+        'set exclude = ["*.tmp"] in [[source]] then exclude = ["Payroll"] in [[source]] id = "one"',
+        "set exclude = [] in [[source]] and exclude = [ ] in [[source]]",
+        'set exclude = ["*.tmp", ] in [[source]] id = "one"',
+        "no list here",
+    ]
+    want = [setup_report._EXCLUDE_LIST_RE.sub(setup_report._exclude_placeholder, ln) for ln in lines]
+    assert _shell_exclude_scrub(lines) == want
+    assert want[3] == 'set exclude = ["<path>", "*.tmp"] in [[source]] id = "one"', "an escaped quote"
+    assert want[0] == lines[0], "only shipped globs: shown as written"
 
 
 def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
