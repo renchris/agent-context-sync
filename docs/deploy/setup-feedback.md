@@ -20,9 +20,10 @@ no `tmutil`, every command with a timeout and the whole report within 12 s (`TIM
 ("This section failed: ...") instead of stopping the report, so a Mac where setup broke half-way still produces one.
 Since 2026-10-07 the Status section ends with six evidence parts read from the manifest (OCR, Quarantine by
 reason, Purge queue, Overlapping sources, Empty cloud folders, Repeat conversions), and Background runs,
-Installer and Configuration carry a few more lines; section 4 says how to read them. They are counts, states,
-seconds, version strings and fixed words, so they add nothing to review: no file name, folder name or reason
-text is in them. They share 3 of the 12 seconds, and a part that runs out prints "not measured (time limit)".
+Installer and Configuration carry a few more lines; section 4 says how to read them. Apart from the three helper
+lines, they are counts, states, seconds, version strings and fixed words: no file name, folder name or quarantine
+reason text is in them. The helper lines quote the probe's detail as Doctor's ocr, media and speech lines do: a
+failed build's reason (paths removed) is shown, so read those three lines before sharing. They share 3 of the 12 seconds, and a part that runs out prints "not measured (time limit)".
 The three programs they start, the OCR, media and speech helpers' `--version`, each have 1.5 seconds of their
 own beside those 3, so a helper that hangs costs the other parts nothing: its own line (`- helper:`,
 `- media helper:` or `- speech:`) then says `did not answer within 1.5s`.

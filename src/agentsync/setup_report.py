@@ -37,7 +37,10 @@ output copy (``install.out`` next to install.log: what the agent saw) and counts
 The Status section ends with the evidence parts (:data:`EVIDENCE_TITLES`, CONTRACTS.md 16.28): what a
 maintainer would otherwise have to ask this Mac for after reading the report, so that one bring-back file is
 enough. They are read from the manifest (opened read-only), the purge queue and one ``lstat`` per folder,
-inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only:
+inside :data:`EVIDENCE_BUDGET_S`, and hold counts, states, seconds, version strings and fixed words only,
+except that the helper lines (``- helper:``, ``- media helper:``, ``- speech:``) carry the probe's detail as
+Doctor shows it: the engine's description, the switch that turned the helper off, or a failed build's reason
+(``ocr._plain`` removes its paths and cuts it to 200 characters; B13 round 3 R106):
 OCR's state and what it did, the quarantined files by reason class (:func:`quarantine_class`) and the ones
 no converter reads by a fixed list of file types (:func:`_refused_type`) and an unlisted one by its shape
 (:func:`_refused_shape`), the purge queue by reason and day, sources whose folder is inside another's, empty
@@ -3353,7 +3356,7 @@ def _span(days: dict[int, str], lo: object, hi: object) -> str:
 def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, str]) -> str:
     """``- <label>: <state> (<detail>)`` from ``agentsync.convert.<module>.probe``, the call Doctor's check of
     the same name makes, with a wait of its own (:data:`_PROBE_S`, not counted: ``_Mirror.not_counted``).
-    Never raises."""
+    The detail can be a failed build's reason, its paths removed. Never raises."""
     config = cast(Config, r.config)
     room = r.remaining() - _RESERVE_S
     started = time.monotonic()
@@ -3375,7 +3378,8 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
     the one program it may start is a built helper's ``--version``), and whether a label rule is on.
     Then the media helper that reads recordings and the speech engine that hears them, by the probes Doctor's
     media and speech checks call (``convert.media.probe``, ``convert.speech.probe``, which look the same way):
-    one line each, each with a wait of its own (:func:`_helper_line`).
+    one line each, each with a wait of its own (:func:`_helper_line`). A failed build's detail is its reason
+    (``ocr._plain``: paths removed, at most 200 characters), the same text Doctor's ocr line shows.
     Returns the four lines, the OCR state ("" when the probe gave none) and whether a label rule is on:
     the file counts after it are worded by them. Never raises.
 
@@ -4449,7 +4453,9 @@ def _evidence(r: _Run) -> list[str]:
     maintainers need from this Mac to judge the OCR build and settle the open questions of the last
     bring-back file, so that no further round is needed. Read-only (the manifest is opened ``mode=ro``; a
     folder is lstat-ed, never listed), bounded by :data:`EVIDENCE_BUDGET_S` in all, and made of counts,
-    states, seconds, version strings and fixed words: never a file name, a folder name or a reason's text."""
+    states, seconds, version strings and fixed words: never a file name, a folder name or a quarantine
+    reason's text. The helper lines quote the probe's detail (:func:`_ocr_helper`, :func:`_helper_line`),
+    which can be a failed build's reason."""
     if r.config is None:
         return []
     mirror = _Mirror(
