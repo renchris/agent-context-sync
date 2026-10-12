@@ -2784,6 +2784,24 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         assert line.startswith("- first sync: done in 9s (install.log) · converted ") and want in line, line
 
 
+def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -> None:
+    """B13 round 5 F34: with the Q28 clause, sync now joins the split with "; " so two parentheses never
+    stand side by side; an earlier sync's two-parenthesis line persists in install.out. Both give the
+    counts and the split, which the old pattern lost after the Q28 clause."""
+    for line in (
+        "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
+        "above); of the converted: 1 unreadable, 0 failed",
+        "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
+        "above) (of the converted: 1 unreadable, 0 failed)",
+        "converted 3, deferred 0 online-only, read again 2 (of the converted: 1 unreadable, 0 failed)",
+        "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)",
+    ):
+        match = setup_report._CONVERTED_LINE_RE.search(line)
+        assert match is not None and match.group(1, 2, 4, 5) == ("3", "0", "1", "0"), line
+    match = setup_report._CONVERTED_LINE_RE.search("converted 1, deferred 0 online-only, read again 4")
+    assert match is not None and match.groups() == ("1", "0", "4", None, None)
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_first_sync_clause_says_the_sync_waited_for_another(
     fake_mac: dict[str, Path], tmp_path: Path

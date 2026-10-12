@@ -288,6 +288,20 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
         "above)"
     )
     assert re.findall(r"\bconverted\b", line) == ["converted"]
+    # B13 round 5 F34: with the split as well, one parenthesis per subject: "; of the converted" follows
+    # the Q28 clause, never a second parenthesis beside it; no other field is a bare "converted".
+    unread = SourceReport("work", SourceKind.LOCAL, PassKind.FULL, True, converted=3, unreadable=1)
+    cli._print_report(dataclasses.replace(report, sources=(unread,), read_first=2))
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line == (
+        "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
+        "above); of the converted: 1 unreadable, 0 failed"
+    )
+    assert ") (" not in line and line.split().count("converted") == 1
+    cli._print_report(dataclasses.replace(report, sources=(unread,), read_again=0))
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)"
+    )
 
 
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(

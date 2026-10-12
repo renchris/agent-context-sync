@@ -11,6 +11,7 @@ import io
 import json
 import os
 import plistlib
+import re
 import stat
 import subprocess
 import zipfile
@@ -422,6 +423,43 @@ def test_sg05_tightened_policy_rescreens_published_files(
     assert page_fm(loosened, "mirror/src/hr-review.docx.md")["status"] == "current"
     run(loosened)
     assert "## Content policy" not in (loosened.docs_repo / "_sync/STATE.md").read_text(encoding="utf-8")
+
+
+def test_a_policy_rescreen_is_counted_apart_on_the_sync_line(
+    tmp_path: Path, fixture_files: dict[str, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 5 F35: a [policy] change converts every label-capable file again from the same bytes, so
+    each is in N (the converter ran) and counted again as re-screened, with how many came out unchanged; the
+    clause comes last, so install.sh's and the setup report's patterns read the line as before."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{OTHER_LABEL}"]\n')
+    labelled_docx(
+        fixture_files["sample.docx"], src / "hr-review.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0"))
+    )
+    (src / "plain.docx").write_bytes(fixture_files["sample.docx"].read_bytes())
+    first = run(config)
+    assert first.exit_code == 0 and first.rescreened == 0
+    text = config.config_path.read_text(encoding="utf-8").replace(
+        f'["{OTHER_LABEL}"]', f'["{OTHER_LABEL}", "{LABEL}"]'
+    )
+    tightened = write_config(tmp_path, text)
+    report = run(tightened)
+    assert report.exit_code == 0
+    assert page_fm(tightened, "mirror/src/hr-review.docx.md")["status"] == "refused"
+    assert (report.rescreened, report.rescreened_unchanged) == (2, 1), "both re-screened, the plain one kept"
+    assert sum(s.converted for s in report.sources) == 2
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line == (
+        "converted 2, deferred 0 online-only; re-screened 2 for a rule change (also counted above, 1 of them "
+        "unchanged)"
+    )
+    assert re.search(r"converted [0-9]+, deferred [0-9]+ online-only", line), "install.sh's SYNC_SUMMARY_RE"
+    match = setup_report._CONVERTED_LINE_RE.search(line)
+    assert match is not None and match.group(1, 2) == ("2", "0")
+    assert line.split().count("converted") == 1 and "deferred" not in line.split(";", 1)[1]
+    assert run(tightened).rescreened == 0, "a re-screen is counted once"
 
 
 def test_sg06_ooxml_name_without_zip_header_is_never_converted(

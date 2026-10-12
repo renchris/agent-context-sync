@@ -2312,6 +2312,8 @@ class _Cycle:
             snapshot_tag=self.snapshot_tag,
             read_again=self._reread_n,
             read_first=self._reread_first,
+            rescreened=self._tally["rescreened"],
+            rescreened_unchanged=self._tally["rescreened_unchanged"],
         )
 
     def _after(self, report: CycleReport, status: str, *, ok_cycle: bool) -> None:
@@ -2369,7 +2371,9 @@ class _Cycle:
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
         of those, files whose own pages were made from the same bytes by an earlier run
         (``_converted_before``; a copy of a file is not one); ``converted_again``: of those, when the bytes
-        were last converted in the run just before.
+        were last converted in the run just before.  ``rescreened``: of those, files converted again because
+        a [policy] or secret-rule change forgot their hashes (B13 round 5 F35); ``rescreened_unchanged``: of
+        those, the ones whose pages came out the same.
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
         of them that kept their page.  ``reread_first``: of the ``reread``, those whose bytes were read for
         the first time (a no-converter stub's re-read is the first read of its bytes), so they are in
@@ -4193,6 +4197,16 @@ class _Cycle:
         if not reread:
             self._reread_forget(src, stable)  # new bytes: what a re-read of the old ones did is void
         again = reread and same  # the bytes its pages were made from, converted once more
+        # A re-screen (B13 round 5 F35): a [policy] or secret-rule change forgot the hashes of a file whose
+        # pages were made from its bytes (``mark_for_rescreen``, ``mark_quarantined_rescreen``), so it is
+        # converted again. Only a page made from read bytes counts: an online-only placeholder's, a
+        # tombstone's and a no-converter stub's were made with no byte read, and a re-read is counted apart.
+        rescreen = (
+            not reread
+            and row.content_sha256 is None
+            and not _no_converter_stub(row)
+            and any(o.status not in (OutputStatus.SKIPPED_DATALESS, OutputStatus.TOMBSTONE) for o in outs)
+        )
         # ...or bytes never read before, behind a stub made from the name: the stub is what there is to keep
         keeps = again or (reread and intact and _no_converter_stub(fresh))
         registry = self._converting()
@@ -4249,8 +4263,12 @@ class _Cycle:
             elif result.status is ConversionStatus.FAILED:
                 acc.conversion_failed += 1
             self._tally_converted(result, prior)
+            if rescreen:
+                self._tally["rescreened"] += 1
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
+            if rescreen and not again:
+                self._tally["rescreened_unchanged"] += 1
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
             if self._rewrite_if_moved(src, fresh, outs, acc):
                 acc.counts[Verdict.OUTPUT_UNCHANGED] += 1

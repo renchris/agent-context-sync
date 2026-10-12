@@ -608,9 +608,11 @@ _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each 
 _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited for another sync (Q29)
     r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?"
 )
-_CONVERTED_LINE_RE = re.compile(  # sync's last line
-    r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b)?"
-    r"(?: \(of the converted: (\d+) unreadable, (\d+) failed\))?"
+_CONVERTED_LINE_RE = (
+    re.compile(  # sync's last line; "; of the converted" after the Q28 clause (B13 round 5 F34)
+        r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b(?: \(\d+ of them [^)]*\))?)?"
+        r"(?:(?: \(|; )of the converted: (\d+) unreadable, (\d+) failed\)?)?"
+    )
 )
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)

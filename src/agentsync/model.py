@@ -437,6 +437,11 @@ class CycleReport:
     # of those, the ones whose bytes were read for the first time (a no-converter stub made from the name, or
     # bytes that changed): also counted in their source's converted (B13 round 4 Q28)
     read_first: int = 0
+    # files converted again because a [policy] or secret-rule change forgot their hashes (a re-screen of the
+    # same bytes): also counted in their source's converted (B13 round 5 F35); of those, the ones whose pages
+    # came out the same
+    rescreened: int = 0
+    rescreened_unchanged: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
