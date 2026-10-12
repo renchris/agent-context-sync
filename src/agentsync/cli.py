@@ -1179,7 +1179,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                     False,
                     "not excluded from Time Machine: " + ", ".join(str(p) for p in missing),
                     doctor.Severity.WARN,
-                    fix="agentsync sync (or: tmutil addexclusion " + " ".join(map(str, missing)) + ")",
+                    fix=f"{loop.BIN} sync (or: tmutil addexclusion " + " ".join(map(str, missing)) + ")",
                 )
             )
         else:
@@ -1191,7 +1191,9 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     except AgentSyncError as exc:
         state, detail = "overdue", f"cannot read the docs repo history: {exc}"
     severity = {"ok": doctor.Severity.INFO, "due": doctor.Severity.WARN}.get(state, doctor.Severity.ERROR)
-    compact_fix = "agentsync sync (its next full pass compacts); release any hold"
+    # A runnable command is named by its full path, as the loop's waits are: ~/.local/bin may not be on PATH
+    # (B13 round 3 R12).
+    compact_fix = f"{loop.BIN} sync (its next full pass compacts); release any hold"
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
     queued = governance.pending_purges(config.state_paths.root)
@@ -1212,8 +1214,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
                     detail,
                     doctor.Severity.WARN,
                     fix=(
-                        "agentsync purge --queue --dry-run (a preview that writes nothing); "
-                        "then agentsync purge --queue"
+                        f"{loop.BIN} purge --queue --dry-run (a preview that writes nothing); "
+                        f"then {loop.BIN} purge --queue"
                     ),
                 )
             )

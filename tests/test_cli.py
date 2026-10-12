@@ -862,9 +862,12 @@ def _age_runs(config: Config) -> None:
 
 def _assert_fix_parses(fix: str | None) -> None:
     """A fix naming an agentsync command names one the CLI still parses (KISS K13b; the twin of
-    test_ops_doctor.assert_fix_parses). The text after ``;`` and any parenthetical are prose."""
-    assert fix is not None and fix.startswith("agentsync "), fix
-    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix("agentsync ")
+    test_ops_doctor.assert_fix_parses). The text after ``;`` and any parenthetical are prose. The command may
+    be named by its full path, as ``loop.BIN`` names it (B13 round 2 R12)."""
+    assert fix is not None and fix.startswith(("agentsync ", f"{loop.BIN} ")), fix
+    command = (
+        re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix(f"{loop.BIN} ").removeprefix("agentsync ")
+    )
     try:
         cli.build_parser().parse_args(shlex.split(command))
     except SystemExit:
@@ -893,6 +896,19 @@ def test_due_reconcile_follows_reconcile_interval_with_a_frozen_clock(initialise
     assert run_cycle(initialised, mode=None, now=lambda: sooner).mode is CycleMode.POLL
 
 
+def test_the_time_machine_fix_names_agentsync_by_its_full_path(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """~/.local/bin may not be on PATH: doctor's runnable fixes name agentsync by its full path, as the loop's
+    waits do (B13 round 2 R12)."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "1")
+    state = initialised.state_paths.root
+    monkeypatch.setattr(governance, "time_machine_status", lambda c: [(state, False)])
+    (tm,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.time_machine"]
+    assert tm.fix == f"~/.local/bin/agentsync sync (or: tmutil addexclusion {state})"
+
+
 def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -911,7 +927,7 @@ def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
     gov = governance.load_governance(config.config_path)
     assert governance.compaction_state(config.docs_repo, gov)[0] == "overdue"
     compaction = {c.name: c for c in cli._governance_checks(config)}["governance.compaction"]
-    assert compaction.fix == "agentsync sync (its next full pass compacts); release any hold"
+    assert compaction.fix == "~/.local/bin/agentsync sync (its next full pass compacts); release any hold"
     _assert_fix_parses(compaction.fix)
     (local_source_dir / "projects" / "fresh.txt").write_text("fresh\n", encoding="utf-8")
     _age_runs(config)
@@ -1433,7 +1449,8 @@ def test_purge_queue_check_names_no_command_under_no_next_hint(
 
     by_hand = check()
     assert by_hand.severity is doctor.Severity.WARN and by_hand.fix == (
-        "agentsync purge --queue --dry-run (a preview that writes nothing); then agentsync purge --queue"
+        "~/.local/bin/agentsync purge --queue --dry-run (a preview that writes nothing); "
+        "then ~/.local/bin/agentsync purge --queue"
     )
     _assert_fix_parses(by_hand.fix)
     monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
