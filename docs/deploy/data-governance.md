@@ -81,11 +81,14 @@ editing `sources.toml`.
   can own a `policy.toml` next to it, which is merged by union, so it can only add refusals. A policy that does not
   parse stops the run (exit 78) and never falls back to "allow".
 - **Where labels are read:** from the file itself, before conversion: `docMetadata/LabelInfo.xml`, then
-  `docProps/custom.xml` (MS-OFFCRYPTO 2.6.3), the PDF info dictionary, and the mail `msip_labels` header. A file
+  `docProps/custom.xml` (MS-OFFCRYPTO 2.6.3), the PDF info dictionary, and the mail `msip_labels` header of an
+  `.eml`. No label is read from an Outlook `.msg` (it sits in a named MAPI property agentsync does not read). A file
   with an excluded label is never converted or published. Its earlier conversions are deleted and a
   `label-escalation` purge is queued. A policy change re-screens every label-capable item.
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
-  stub. It is never decrypted.
+  stub. It is never decrypted. An S/MIME-encrypted or IRM-protected (rpmsg) `.msg` is also an UNREADABLE stub
+  (`encrypted` / `IRM-protected`), and a `.msg` that carries an encrypted Office attachment is screened as
+  `encrypted-office` as a whole.
 - **Known limits:** Graph-side label reads (`extractSensitivityLabels`) are not implemented, so a Graph file is
   downloaded to staging before it is screened. A save that changes only the label, not the content, is re-screened
   only when the content changes or the policy changes (CONTRACTS §16.11).
@@ -96,6 +99,10 @@ editing `sources.toml`.
   text stays in git history until that is squashed or the item is purged). The
   pictures of a document are read only after that document's own label and encryption screen. `[convert] ocr =
   false` in `sources.toml` means the helper is neither built nor run (CONTRACTS §16.25 to §16.27).
+- **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` is not fetched or converted and stays a
+  `no converter for .msg` stub. A policy change turns a `.msg` page published before it into that stub. No purge
+  is queued for it, so its earlier text stays in git history until that is squashed or the item is purged. To
+  publish one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42).
 
 ## Untrusted-content boundary
 
