@@ -2525,6 +2525,55 @@ def test_a_binary_msg_stub_from_an_older_rendering_is_rendered_again_once_under_
     assert run(labelled).commit_sha is None and fetched == []
 
 
+def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:
+    """A .msg published as a page with no label rule, and the config that adds one."""
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+    open_config = config_with(tmp_path, local_source_dir)
+    assert run(open_config).exit_code == 0
+    assert _mirror_page(open_config, KICKOFF_MSG)[0]["status"] == "current"
+    return config_with(tmp_path, local_source_dir, LABEL_RULE), KICKOFF_MSG
+
+
+def test_under_a_new_label_rule_a_msg_the_os_will_not_hydrate_is_withheld_at_once(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F73: once msg-mime claims .msg under a label rule, a .msg was withheld only after its bytes
+    were fetched and screened, so one the OS would not hydrate (an evicted file in a launchd run) kept the
+    page from before the rule on every run.  It is withheld by its name on the first sync now, as before
+    Q78."""
+    labelled, rel = _msg_page_then_a_rule(tmp_path, local_source_dir)
+    copy = al.materialise
+
+    def refused(src: Path, dest: Path, budget: Any, **kwargs: Any) -> Any:
+        if src.suffix == ".msg":
+            raise DatalessRefusedError(str(src), errno.EDEADLK, "materialisation refused (EDEADLK)")
+        return copy(src, dest, budget, **kwargs)
+
+    monkeypatch.setattr(al, "materialise", refused)
+    assert run(labelled).exit_code == 0
+    fm, body = _mirror_page(labelled, rel)
+    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+    assert "Renewal is in March." not in body and "Save the message as .eml" in body
+    assert run(labelled).commit_sha is None, "settled: the same stub is not published again"
+
+
+def test_under_a_new_label_rule_an_online_only_msg_is_withheld_with_no_download(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F73: an online-only .msg is withheld by its name under a label rule, with nothing
+    downloaded, as an image is; the pre-rule page does not wait for a download."""
+    labelled, rel = _msg_page_then_a_rule(tmp_path, local_source_dir)
+    _online_only(monkeypatch, local_source_dir / rel)
+    fetched = _fetches(monkeypatch)
+    assert run(labelled).exit_code == 0 and rel not in fetched
+    fm, body = _mirror_page(labelled, rel)
+    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+    assert "Renewal is in March." not in body
+    # ``materialise PATH`` asks for the download: the file is fetched (a binary one stays withheld)
+    assert run(labelled, materialise_paths=[local_source_dir / rel]).exit_code == 0 and rel in fetched
+    assert _mirror_page(labelled, rel)[0]["status"] == "refused"
+
+
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

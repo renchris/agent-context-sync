@@ -3967,9 +3967,17 @@ class _Cycle:
         file, any Graph item). No image was ever downloaded, and hydrating a photo library is the operator's
         choice, never a side effect of OCR: an image that was never read keeps the stub it has without an
         engine, and one that was read while it was on this Mac keeps its page (``_keeps_page``). Only an
-        image already on this Mac is read."""
+        image already on this Mac is read.
+
+        A .msg under a label rule is refused so too while reading it means a download (B13 round 5 F73),
+        unless ``materialise PATH`` names it, which asks for that download: msg-mime reads one that holds MIME
+        text, but a binary one, the common kind, can never be screened, and the page it had before the rule
+        must not stay up until its bytes can be fetched (one the OS refuses to hydrate gets the stub when its
+        fetch is refused: ``_process``).  One on this Mac is read."""
+        download = src.kind.is_graph or row.dataless
+        forced = row.rel_path in self.forced_paths.get(src.id, ())
         if self.registry.for_name(row.name) is not None and not (
-            self._ocr_image(row) and (src.kind.is_graph or row.dataless)
+            (self._ocr_image(row) and download) or (self._msg_withheld(row) and download and not forced)
         ):
             return None
         return convert_file(
@@ -3980,6 +3988,10 @@ class _Cycle:
             registry=_NO_CONVERTERS,
             cache=self.cache,
         )
+
+    def _msg_withheld(self, row: ItemRow) -> bool:
+        """True when ``row`` is a .msg under a label rule: only one that holds MIME text is read then."""
+        return self.registry.policy.labels_active and Path(row.name).suffix.lower() == ".msg"
 
     def _reads_with_ocr(self, name: str) -> bool:
         """True when the converter this cycle's registry routes ``name`` to reads with the engine: an
@@ -4008,8 +4020,8 @@ class _Cycle:
         The row is settled as the online-only file it is, and nothing is published.  Without this, whatever
         made such a row pending work (a ``materialise PATH`` run that names it, a repair) replaced its page
         with the ``no converter`` stub.  Under a label rule there is no image converter at all, and the
-        stub is what the rule asks for."""
-        if self.registry.for_name(row.name) is None:
+        stub is what the rule asks for, as it is for a .msg (B13 round 5 F73)."""
+        if self.registry.for_name(row.name) is None or self._msg_withheld(row):
             return False
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         if not any(o.status is OutputStatus.OK for o in outs) or not _pages_intact(self.repo, outs):
@@ -4101,6 +4113,12 @@ class _Cycle:
             self._defer(src, row, budget, acc, online_only=True)  # the pre-check passed: bytes refused it
             return
         except DatalessRefusedError as exc:
+            if self._msg_withheld(row):  # a .msg under a label rule: withheld by its name, not left as it was
+                withheld = self._no_converter(src, dataclasses.replace(row, dataless=True))
+                if withheld is not None and not self._stub_stands(src, row, withheld):
+                    self._publish(src, row, withheld, acc)
+                if withheld is not None:
+                    return
             self.manifest.set_verdict(sid, stable, Verdict.DEFERRED)
             if row.state in (RowState.LIVE, RowState.DATALESS):  # never over a quarantine's own reason
                 self.manifest.set_state(sid, stable, row.state, HYDRATION_REFUSED)
