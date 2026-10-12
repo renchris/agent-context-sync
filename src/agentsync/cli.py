@@ -416,7 +416,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if s.absent_marked:
             bits.append(f"{s.absent_marked} marked absent")
         if s.absent_removed:
-            bits.append(f"{s.absent_removed} turned into deletion notices (deleted upstream)")
+            bits.append(f"{s.absent_removed} page(s) turned into deletion notice(s) (deleted upstream)")
         if s.pass_kind is not None:
             bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
@@ -861,7 +861,7 @@ def _status_lines(config: Config) -> list[str]:
             f"breaker {st.breaker} · auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
             + (
-                f" · absent {waiting} (turned into deletion notices by a later complete pass if still "
+                f" · absent {waiting} (each becomes a deletion notice on a later complete pass if still "
                 "missing)"
                 if waiting
                 else ""

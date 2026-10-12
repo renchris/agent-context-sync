@@ -288,7 +288,8 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     ends the source's line with how many files wait; after the removal (the tombstone keeps its mark) it
     does not."""
     cfg = str(initialised.config_path)
-    held = " · absent 1 (turned into deletion notices by a later complete pass if still missing)"
+    # B13 round 4 Q16: words that hold for any count, one file included
+    held = " · absent 1 (each becomes a deletion notice on a later complete pass if still missing)"
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -325,7 +326,7 @@ def test_the_sync_line_tells_the_marking_pass_from_the_removing_pass(
     marking, removing, after = lines
     assert "deletion_candidate=1" in marking and "deletion_candidate=1" in removing
     assert " · 1 marked absent · " in marking and "deletion notices" not in marking, marking
-    removed = " · 1 turned into deletion notices (deleted upstream) · "
+    removed = " · 1 page(s) turned into deletion notice(s) (deleted upstream) · "
     assert removed in removing and "marked absent" not in removing, removing
     assert "absent" not in after and "removed" not in after, after
 
@@ -352,7 +353,7 @@ def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
     both = dataclasses.replace(src, absent_marked=1, absent_removed=3)
     cli._print_report(dataclasses.replace(report, sources=(both,)))
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 1 marked absent · 3 turned into deletion notices "
+        "  src: full_enumeration · complete · 1 marked absent · 3 page(s) turned into deletion notice(s) "
         "(deleted upstream) · cursor held · deletion_candidate=2, unchanged=1"
     )
     neither = dataclasses.replace(src, absent_marked=0)
