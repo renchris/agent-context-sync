@@ -288,12 +288,14 @@ def _account_cloud_root() -> Path | None:
 
 
 def _cloud_roots() -> tuple[Path, ...]:
-    """``~/Library/CloudStorage`` for $HOME and for the account's real home (launchd/tests may differ)."""
+    """``~/Library/CloudStorage`` for $HOME and for the account's real home (launchd/tests may differ), each
+    also by the path it resolves to: a source path is stored resolved, so with a home reached through a
+    symlink (``/tmp`` is ``/private/tmp``) only that form holds it."""
     roots = {expand(CLOUD_STORAGE_ROOT)}
     account = _account_cloud_root()
     if account is not None:
         roots.add(account)
-    return tuple(sorted(roots))
+    return tuple(sorted(roots | {r.resolve() for r in roots}))
 
 
 def _is_cloud_tree(path: Path, roots: Sequence[Path]) -> bool:

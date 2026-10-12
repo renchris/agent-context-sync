@@ -401,6 +401,22 @@ def test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule()
 
 
 @pytest.mark.usefixtures("real_domain_check")
+def test_a_home_reached_through_a_symlink_keeps_the_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """b13 R1 review: a source path is stored resolved, so with HOME reached through a symlink (``/tmp`` is
+    ``/private/tmp``) the cloud folder's resolved path counts as a cloud tree too; a zero-child folder in a
+    domain read as known-empty (why earlier rehearsals never showed the empty-folder wait)."""
+    real = tmp_path / "real-home"
+    (tmp_path / "home-link").symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home-link"))
+    provider = file_provider_domain(real / "Library" / "CloudStorage" / "OneDrive-Contoso")
+    (provider / "Proj" / "Empty").mkdir(parents=True)
+    _write(provider / "Proj" / "a.txt")
+    assert _walk(provider / "Proj")[1].empty_cloud_dirs == ("Empty",)
+
+
+@pytest.mark.usefixtures("real_domain_check")
 def test_a_provider_folder_whose_attributes_cannot_be_read_keeps_the_rule(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
