@@ -1135,6 +1135,37 @@ def test_a_link_inside_the_cloud_tree_is_not_followed_under_a_linked_home(
         assert paths.is_cloud_path(kept) and kept.parts[-2:] == ("linked", "Projects")
 
 
+def test_a_home_through_a_link_lists_nothing_inside_the_cloud_tree_at_config_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F96 (the fix is F89's, c820e3a3): with HOME reached through a link (``/tmp`` is
+    ``/private/tmp``), the walk followed the link to the resolved form of ~/Library/CloudStorage, which the
+    lexical root never matched, and lstat'ed every folder below it. Both forms stop it now, for the ~ form and
+    the stored resolved one alike."""
+    real = tmp_path / "real"
+    (real / "home").mkdir(parents=True)
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", str(link / "home"))
+    proj = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Proj"
+    proj.mkdir(parents=True)
+    want = Path(os.path.realpath(proj))
+    roots = paths.cloud_storage_roots()
+    assert len(roots) == 2, "both forms of the root"
+    seen: list[Path] = []
+    real_is_symlink = Path.is_symlink
+
+    def spy(self: Path) -> bool:
+        seen.append(self)
+        return real_is_symlink(self)
+
+    monkeypatch.setattr(Path, "is_symlink", spy)
+    for given in (paths.expand(Path("~/Library/CloudStorage/OneDrive-Contoso/Proj")), want):
+        assert canonical_source_root(given) == want, given
+    inside = [p for p in seen if any(p != r and p.is_relative_to(r) for r in roots)]
+    assert inside == [], inside
+
+
 def test_proxy_from_the_shell_env_is_flagged_for_the_launchagent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
