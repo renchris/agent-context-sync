@@ -540,14 +540,15 @@ def test_the_registry_without_an_engine_enforces_the_same_policy(rule: PolicyCon
 
 @pytest.mark.parametrize("rule", LABEL_RULES.values(), ids=LABEL_RULES.keys())
 def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: PolicyConfig) -> None:
-    """An image can carry a sensitivity label the screen cannot read, so any label rule fails closed."""
+    """An image can carry a sensitivity label the screen cannot read, so any label rule fails closed.  A
+    binary .msg's label is not read either: under a rule .msg goes to msg-mime, which reads only one that
+    holds MIME text (B13 round 4 Q78)."""
     assert rule.labels_active
     reg = Registry.default(ConvertConfig(), policy=rule, ocr=_engine())
     assert all(reg.for_name(f"scan{ext}") is None for ext in IMAGE_SUFFIXES)
-    assert reg.for_name("Contoso thread.msg") is None, "a .msg label is not read either: no .msg converter"
-    plain = Registry.default(ConvertConfig()).extensions()
-    assert ".msg" in plain and reg.extensions() == tuple(ext for ext in plain if ext != ".msg")
-    assert len(reg.converters()) == 11, "the ten, and pandoc-gfm a second time: no image or .msg converter"
+    assert reg.for_name("Contoso thread.msg").converter_id == "msg-mime"  # type: ignore[union-attr]
+    assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
+    assert len(reg.converters()) == 12, "the ten, pandoc-gfm a second time and msg-mime: no image converter"
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 

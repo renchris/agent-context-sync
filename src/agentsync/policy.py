@@ -476,8 +476,48 @@ def read_eml_labels(path: Path) -> LabelReadout:
     return LabelReadout(capable=True, labels=_dedupe(labels))
 
 
+MIME_HEAD_BYTES = 64 * 1024
+"""How much of a file that is not a compound file is looked at for an RFC 822 header block.  A message's
+headers end well inside it; one routed through many servers can pass 8 KiB."""
+_HEADER_LINE = re.compile(rb"[!-9;-~]+:(?:[ \t]|$)")
+_MAIL_HEADERS = frozenset((b"from", b"subject", b"date", b"message-id", b"mime-version"))
+
+
+def rfc822_head(head: bytes) -> bool:
+    """True when ``head`` starts with an RFC 822 header block: from the first line, header lines (a name of
+    printable ASCII without a colon, a colon, then a space, a tab or the end of the line) or folded
+    continuations of them, ended by a blank line, with From, Subject, Date, Message-ID or MIME-Version among
+    the names.  A zip or other binary file fails at its first line; the ``.eml`` converter would make a page
+    of almost anything, so this is the only gate in front of it.  The label screen and the ``.msg``
+    converters share it, so they cannot disagree on which ``.msg`` is MIME text."""
+    names: set[bytes] = set()
+    lines = head.split(b"\n")
+    for raw in lines[:-1]:  # the last piece has no line end: cut at MIME_HEAD_BYTES, or no blank line came
+        line = raw.removesuffix(b"\r")
+        if not line:
+            return not names.isdisjoint(_MAIL_HEADERS)
+        if line[:1] in (b" ", b"\t"):
+            if not names:
+                return False
+            continue
+        if _HEADER_LINE.match(line) is None:
+            return False
+        names.add(line.split(b":", 1)[0].lower())
+    return False
+
+
+def mime_msg(path: Path) -> bool:
+    """True for a ``.msg`` that holds MIME text (mail saved as an ``.eml`` under a ``.msg`` name): no
+    compound-file magic, and :func:`rfc822_head` on its first :data:`MIME_HEAD_BYTES`.  Raises OSError."""
+    with path.open("rb") as fh:
+        head = fh.read(MIME_HEAD_BYTES)
+    return not head.startswith(CFB_MAGIC) and rfc822_head(head)
+
+
 def read_labels(path: Path, *, name: str, kind: ContainerKind | None = None) -> LabelReadout:
-    """Dispatch on content (and the name's suffix): OOXML zip, PDF or .eml; other formats carry no label."""
+    """Dispatch on content (and the name's suffix): OOXML zip, PDF, .eml, or a .msg that holds MIME text
+    (read as the .eml it is, B13 round 4 Q78); other formats, a binary .msg among them, carry no label read
+    here."""
     low = name.lower()
     try:
         kind = kind or sniff_container(path)
@@ -495,6 +535,13 @@ def read_labels(path: Path, *, name: str, kind: ContainerKind | None = None) -> 
         return read_pdf_labels(path)
     if low.endswith(".eml"):
         return read_eml_labels(path)
+    if low.endswith(".msg"):
+        try:
+            mime = mime_msg(path)
+        except OSError as exc:
+            return LabelReadout(capable=True, error=f"{type(exc).__name__}: {exc}")
+        if mime:
+            return read_eml_labels(path)
     return LabelReadout(capable=False)
 
 

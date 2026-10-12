@@ -2876,12 +2876,14 @@ class _Cycle:
         """True when ``result`` is one this cycle's registry would read ``name`` again for: the file was
         converted without something its converter has (past the OCR time, or after the engine failed), or by
         a converter the one claiming ``name`` now replaces.  For a file only the engine reads, that result is
-        the ``no converter`` refusal."""
+        the ``no converter`` refusal.  A ``no converter`` refusal the claiming converter gave itself (a binary
+        .msg under a label rule, B13 round 4 Q78) is settled, not lacking."""
         conv = self.registry.for_name(name)
         if conv is None:
             return False
         if result.status is ConversionStatus.REFUSED:
-            return (result.reason or "").startswith(NO_CONVERTER_PREFIX)
+            stub = (result.reason or "").startswith(NO_CONVERTER_PREFIX)
+            return stub and result.converter_id != conv.converter_id
         if result.status not in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             return False
         if result.converter_id in _replaced(conv):
@@ -2898,7 +2900,8 @@ class _Cycle:
         """What to look for among ``source_id``'s files (``Manifest.reread_candidates``): each (converter
         id, version, stub reason or None, suffix) a converter of this cycle's registry calls outdated or
         replaces (for that converter's suffixes only), and each ``no converter`` refusal of a suffix that has
-        a converter now.
+        a converter now, other than the converter that gave it (B13 round 4 Q78: ``msg-mime`` refuses a
+        binary .msg so, and reading it again would only fail again).
 
         The suffixes of the recording converter are left to the recording pass (spec S0 rule 4), which asks
         for them alone with ``recordings``."""
@@ -2910,7 +2913,7 @@ class _Cycle:
                 targets.update(
                     (converter_id, version, reason, ext)
                     for ext in extensions
-                    if ext.endswith(suffix) or suffix.endswith(ext)
+                    if (ext.endswith(suffix) or suffix.endswith(ext)) and self._claims(ext) != converter_id
                 )
                 continue
             for conv in converters:
@@ -2920,6 +2923,11 @@ class _Cycle:
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
         mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
         return sorted(mine, key=lambda t: (t[0], t[1], t[2] or "", t[3]))
+
+    def _claims(self, suffix: str) -> str:
+        """The id of the converter this cycle's registry gives a file ending in ``suffix``, "" for none."""
+        conv = self.registry.for_name(f"file{suffix}")
+        return conv.converter_id if conv is not None else ""
 
     def _reread_over(self) -> bool:
         """True once this cycle starts no more re-reads: their time is used up, the cycle's OCR time is,
@@ -4135,7 +4143,7 @@ class _Cycle:
             return None
         stub = _same_stub(outs, fresh, result) if keeps else None
         if stub is not None:  # the stub it has says what this conversion says
-            self._move_key(sid, stable, outs, result.action_key, stub)
+            self._move_key(sid, stable, outs, result.action_key, stub, made_by=result)
             return result
         if not again:
             acc.converted += 1
@@ -4166,16 +4174,29 @@ class _Cycle:
         )
 
     def _move_key(
-        self, sid: str, stable: str, outs: Sequence[OutputRow], key: str, status: OutputStatus
+        self,
+        sid: str,
+        stable: str,
+        outs: Sequence[OutputRow],
+        key: str,
+        status: OutputStatus,
+        *,
+        made_by: ConversionResult | None = None,
     ) -> None:
         """Give ``key`` to the item's output rows of ``status``, which stay as they are otherwise: the
-        conversion under that key gave the pages they already describe."""
-        if any(o.action_key != key for o in outs if o.status is status):
-            self.manifest.replace_outputs(
-                sid,
-                stable,
-                [dataclasses.replace(o, action_key=key) if o.status is status else o for o in outs],
-            )
+        conversion under that key gave the pages they already describe.  ``made_by``: a stub's conversion,
+        which leaves no cache row to say which converter gave it, so its rows take that converter as well
+        (B13 round 4 Q78: a ``no converter`` stub msg-mime gives a binary .msg is then not read again)."""
+
+        def keyed(o: OutputRow) -> OutputRow:
+            if made_by is None:
+                return dataclasses.replace(o, action_key=key)
+            made = (made_by.converter_id, made_by.converter_version)
+            return dataclasses.replace(o, action_key=key, converter_id=made[0], converter_version=made[1])
+
+        moved = [keyed(o) if o.status is status else o for o in outs]
+        if moved != list(outs):
+            self.manifest.replace_outputs(sid, stable, moved)
 
     def _suppress_purged_content(self, src: SourceConfig, row: ItemRow, acc: _SourceAcc) -> None:
         """The fetched bytes are content purged for erasure/DLP/label reasons (a copy, or a re-upload under

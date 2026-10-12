@@ -2337,9 +2337,10 @@ KICKOFF_MSG = "projects/Contoso kickoff.msg"
 def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A ``.msg`` can carry a sensitivity label nothing here reads, so a label rule fails closed: no ``.msg``
-    converter. The [policy] re-screen covers ``.msg``, so the page published before the rule does not stay,
-    and a ``.msg`` that arrives under the rule is not fetched."""
+    """A binary ``.msg`` can carry a sensitivity label nothing here reads, so a label rule fails closed: it
+    gets the no-converter stub. The [policy] re-screen covers ``.msg``, so the page published before the rule
+    does not stay.  A ``.msg`` that arrives under the rule is fetched, since one that holds MIME text is read
+    (msg-mime, B13 round 4 Q78), and a binary one is not converted."""
     recap = msg_bytes(subject="Contoso kickoff recap", plain="Renewal is in March.\n")
     (local_source_dir / KICKOFF_MSG).write_bytes(recap)
     open_config = config_with(tmp_path, local_source_dir)
@@ -2351,7 +2352,7 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     late = "projects/Contoso renewal.msg"
     (local_source_dir / late).write_bytes(msg_bytes(plain="The price is agreed.\n"))
     fetched = _fetches(monkeypatch)
-    assert run(labelled).exit_code == 0 and not [rel for rel in fetched if rel.endswith(".msg")]
+    assert run(labelled).exit_code == 0 and late in fetched, "fetched: one that holds MIME text is read"
     for rel in (KICKOFF_MSG, late):
         fm, body = _mirror_page(labelled, rel)
         assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
@@ -2366,6 +2367,43 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
     fm, body = _mirror_page(open_config, KICKOFF_MSG)
     assert fm["status"] == "current" and "Renewal is in March." in body
+
+
+def test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files_reread(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 4 Q78: under a label rule msg-mime now claims .msg, so every ``no converter for .msg`` stub
+    made with no converter is read again once.  A binary one gets the same refusal from msg-mime, which
+    settles it: it is not counted as a failed read (three in a row would stop every other re-read of the
+    cycle) and is not read again.  A .vtt stub listed after them is still read into its page."""
+    stubs = [f"projects/zz/Contoso note {n}.msg" for n in (1, 2, 3)]
+    (local_source_dir / "projects" / "zz").mkdir()
+    for rel in stubs:
+        (local_source_dir / rel).write_bytes(msg_bytes(plain="Not for the page.\n"))
+    standup = "projects/zz/Contoso standup.vtt"
+    (local_source_dir / standup).write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n<v Ann Contoso>The rollout starts Monday.\n",
+        encoding="utf-8",
+    )
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    with monkeypatch.context() as old:  # stubs made before msg-mime and the .vtt converter existed
+        old.setattr(msg_mod.MsgMimeConverter, "extensions", ())
+        old.setattr(vtt_mod.VttConverter, "extensions", ())
+        assert run(labelled).exit_code == 0
+    with Manifest(labelled.state_paths.db) as m:
+        ids = {r.rel_path: r.stable_id for r in m.iter_items(SID)}
+    assert max(ids[rel] for rel in stubs) < ids[standup], "the .vtt is read after the three .msg stubs"
+    fetched = _fetches(monkeypatch)
+    assert run(labelled).exit_code == 0
+    assert {*stubs, standup} <= set(fetched)
+    fm, body = _mirror_page(labelled, standup)
+    assert fm["status"] == "current" and "The rollout starts Monday." in body
+    for rel in stubs:
+        fm, body = _mirror_page(labelled, rel)
+        assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+        assert "Save the message as .eml to have it converted" in body and "Not for the page." not in body
+    fetched.clear()
+    assert run(labelled).exit_code == 0 and fetched == [], "a settled stub is not read again"
 
 
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(

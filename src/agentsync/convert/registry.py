@@ -48,10 +48,10 @@ _TEXT_SIDECAR_SUFFIXES = (".txt", ".md")
 
 
 def label_withheld_suffixes() -> frozenset[str]:
-    """The suffixes :meth:`Registry.default` registers no converter for while a ``[policy]`` label rule is on,
-    because their label cannot be read: ``.msg`` and every image (``ImageConverter.extensions``). Their stub
-    keeps the stored reason ``no converter for <suffix>``; the page and the setup report word it as the
-    label rule's (B13 round 3 R33)."""
+    """The suffixes whose files get no converter while a ``[policy]`` label rule is on, because their label
+    cannot be read: a binary ``.msg`` (``msg-mime`` reads one that holds MIME text) and every image
+    (``ImageConverter.extensions``). Their stub keeps the stored reason ``no converter for <suffix>``; the
+    page and the setup report word it as the label rule's (B13 round 3 R33)."""
     from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
     from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 
@@ -204,10 +204,11 @@ class Registry:
         msg, diagram), each behind the policy guard (``policy`` defaults to encryption detection only) and the
         banner.
 
-        ``.msg`` gets ``msg-olefile`` unless a ``[policy]`` label rule is active: a ``.msg`` carries its label
-        in a named MAPI property the screen does not read, so under a rule it stays the ``no converter`` stub
-        (plan D8, as for images).  It needs no engine, so a caller that leaves ``policy`` out reads every
-        ``.msg``: pass the effective policy.
+        ``.msg`` gets ``msg-olefile`` unless a ``[policy]`` label rule is active: a binary ``.msg`` carries
+        its label in a named MAPI property the screen does not read, so under a rule it stays the ``no
+        converter`` stub (plan D8, as for images), and ``msg-mime`` reads only a ``.msg`` that holds MIME
+        text, whose label header the screen reads as an ``.eml``'s (B13 round 4 Q78).  It needs no engine,
+        so a caller that leaves ``policy`` out reads every ``.msg``: pass the effective policy.
 
         With ``ocr`` (the engine the cycle resolved) the pandoc, pptx and pdf converters read with it, and
         raster images get a converter too, ``image-ocr``, unless a ``[policy]`` label rule is active: an image
@@ -254,6 +255,10 @@ class Registry:
             from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 
             converters.append(MsgConverter(cfg))
+        else:  # a .msg that holds MIME text only; a binary one keeps the no-converter refusal (B13 Q78)
+            from agentsync.convert.msg import MsgMimeConverter  # noqa: PLC0415
+
+            converters.append(MsgMimeConverter(cfg))
         if ocr is not None and not content_policy.labels_active:
             from agentsync.convert.image import ImageConverter  # noqa: PLC0415
 

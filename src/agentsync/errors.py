@@ -57,6 +57,12 @@ class UnreadableSourceError(ConversionError):
     """The bytes are encrypted / password-protected / IRM-protected: an UNREADABLE stub, a quarantined row."""
 
 
+class NotConvertibleError(ConversionError):
+    """The converter claims the file's name but not these bytes: the file gets the ``no converter for
+    <suffix>`` refusal a Mac with no converter for it gives, under this converter's id (a binary .msg under
+    a label rule, B13 round 4 Q78)."""
+
+
 class CurateError(AgentSyncError):
     """A curated page's frontmatter violates the ``sources:`` contract (unparseable, path escapes docs/)."""
 

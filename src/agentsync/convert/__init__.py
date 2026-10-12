@@ -10,7 +10,7 @@ from pathlib import Path
 from agentsync.convert.base import Converter, options_hash
 from agentsync.convert.cache import ConverterCache, action_key
 from agentsync.convert.registry import Registry
-from agentsync.errors import UnreadableSourceError
+from agentsync.errors import NotConvertibleError, UnreadableSourceError
 from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit
 
 log = logging.getLogger(__name__)
@@ -204,6 +204,9 @@ def convert_file(
         return dataclasses.replace(cached, content_sha256=content_sha256)
     try:
         units = tuple(conv.convert(src, name=name))
+    except NotConvertibleError:  # never cached, as the refusal with no converter is not
+        suffix = _suffix(name) or "files without an extension"
+        return make(ConversionStatus.REFUSED, reason=NO_CONVERTER_PREFIX + suffix)
     except UnreadableSourceError as exc:
         result = make(ConversionStatus.UNREADABLE, reason=_reason(exc))
     except Exception as exc:

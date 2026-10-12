@@ -19,7 +19,6 @@ import codecs
 import datetime as dt
 import hashlib
 import logging
-import re
 import struct
 import unicodedata
 from collections.abc import Mapping
@@ -28,6 +27,7 @@ from pathlib import Path
 
 import olefile
 
+from agentsync import policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import eml
 from agentsync.convert._common import (
@@ -44,7 +44,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
-from agentsync.errors import ConversionError, UnreadableSourceError
+from agentsync.errors import ConversionError, NotConvertibleError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 
 log = logging.getLogger(__name__)
@@ -53,11 +53,8 @@ _EMITTER_VERSION = "1.0.1"
 _REREAD_BELOW = "1.0.1"
 """A ``not-msg`` stub an emitter below this wrote is read again once (``MsgConverter.outdated``): 1.0.0 gave
 it to a file that holds MIME text, which 1.0.1 reads as an ``.eml``.  Never above ``_EMITTER_VERSION``."""
-_HEAD_BYTES = 64 * 1024
-"""How much of a file that is not a compound file is looked at for an RFC 822 header block.  A message's
-headers end well inside it; one routed through many servers can pass 8 KiB."""
-_HEADER_LINE = re.compile(rb"[!-9;-~]+:(?:[ \t]|$)")
-_MAIL_HEADERS = frozenset((b"from", b"subject", b"date", b"message-id", b"mime-version"))
+_HEAD_BYTES = policy.MIME_HEAD_BYTES
+_rfc822_head = policy.rfc822_head
 NOT_MSG_REASON = "not-msg (not an Outlook message)"
 DAMAGED_MSG_REASON = "damaged-msg (a compound file that cannot be read as an Outlook message)"
 _PROPS = "__properties_version1.0"
@@ -189,28 +186,6 @@ class _Msg:
             return format_datetime(_FILETIME_EPOCH + dt.timedelta(microseconds=filetime // 10))
         except (OverflowError, ValueError):
             return ""
-
-
-def _rfc822_head(head: bytes) -> bool:
-    """True when ``head`` starts with an RFC 822 header block: from the first line, header lines (a name of
-    printable ASCII without a colon, a colon, then a space, a tab or the end of the line) or folded
-    continuations of them, ended by a blank line, with From, Subject, Date, Message-ID or MIME-Version among
-    the names.  A zip or other binary file fails at its first line; the ``.eml`` converter would make a page
-    of almost anything, so this is the only gate in front of it."""
-    names: set[bytes] = set()
-    lines = head.split(b"\n")
-    for raw in lines[:-1]:  # the last piece has no line end: cut at _HEAD_BYTES, or no blank line came
-        line = raw.removesuffix(b"\r")
-        if not line:
-            return not names.isdisjoint(_MAIL_HEADERS)
-        if line[:1] in (b" ", b"\t"):
-            if not names:
-                return False
-            continue
-        if _HEADER_LINE.match(line) is None:
-            return False
-        names.add(line.split(b":", 1)[0].lower())
-    return False
 
 
 def _address(name: str, addr: str) -> str:
@@ -440,3 +415,37 @@ class MsgConverter:
             or any(r[0].lower().endswith(".rpmsg") for r in attachments)
         ):
             raise UnreadableSourceError("IRM-protected")
+
+
+class MsgMimeConverter:
+    """``.msg`` under a ``[policy]`` label rule (B13 round 4 Q78): a ``.msg`` that holds MIME text is read
+    as the ``.eml`` it is, since its ``msip_labels`` header is screened like an ``.eml``'s
+    (``policy.read_labels``).  A binary (compound file) ``.msg`` carries its label in a MAPI property nothing
+    reads, so it keeps the ``no converter for .msg`` refusal (NotConvertibleError), with this converter's id:
+    the cycle then does not read it again while this converter claims ``.msg``."""
+
+    converter_id = "msg-mime"
+    extensions: tuple[str, ...] = (".msg",)
+
+    def __init__(self, cfg: ConvertConfig) -> None:
+        """Bind converter options from config."""
+        self._eml = EmlConverter(cfg)
+
+    def version(self) -> str:
+        """The ``.eml`` converter's version: it renders every page this converter makes."""
+        return self._eml.version()
+
+    def options(self) -> Mapping[str, OptionValue]:
+        """The ``.eml`` converter's options."""
+        return self._eml.options()
+
+    def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
+        """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
+        try:
+            with src.open("rb") as fh:
+                head = fh.read(_HEAD_BYTES)
+        except OSError as exc:
+            raise ConversionError(f"cannot read: {exc}") from exc
+        if head[: len(olefile.MAGIC)] == olefile.MAGIC or not _rfc822_head(head):
+            raise NotConvertibleError(name)
+        return self._eml.convert(src, name=name)

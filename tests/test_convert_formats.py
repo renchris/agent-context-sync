@@ -93,6 +93,7 @@ from test_convert_builders import (
 )
 from test_convert_image import Recording, reads, text_png
 from test_ocr import calls, fake_engine
+from test_policy import LABEL, OTHER_LABEL, SITE
 
 CFG = ConvertConfig()
 
@@ -4000,21 +4001,58 @@ def test_msg_dates_and_ids_survive_a_rebuild(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "rule", [PolicyConfig(refuse_unlabelled=True), PolicyConfig(exclude_label_names=("Secret",))]
 )
-def test_under_a_label_rule_a_msg_is_the_no_converter_stub(tmp_path: Path, rule: PolicyConfig) -> None:
-    """A .msg label sits where the screen does not read it, so no rule can clear one: it is not converted."""
+def test_under_a_label_rule_a_binary_msg_is_the_no_converter_stub(tmp_path: Path, rule: PolicyConfig) -> None:
+    """A binary .msg's label sits in a MAPI property the screen does not read, so no rule can clear one: it
+    is not converted, and keeps the reason a Mac with no .msg converter gives (the stub's wording and the
+    setup report's count go by it), under msg-mime's id, which the cycle does not read again (B13 round 4
+    Q78)."""
     assert _msg_result(tmp_path, msg_bytes()).status is ConversionStatus.OK
     result = _msg_result(tmp_path, msg_bytes(), Registry.default(CFG, policy=rule))
     assert (result.status, result.reason) == (ConversionStatus.REFUSED, "no converter for .msg")
-    # A .msg that holds MIME text is read as an .eml, but the label screen reads .eml labels only for an
-    # .eml name: under a rule it stays the stub, never a page whose label nothing read (R87).
-    # The control has its own cache: the calls above share the action key "0"*64 under msg-olefile, so in
-    # their cache the MIME bytes would get the OLE message's page back.
-    (own := tmp_path / "mime").mkdir()
-    control = _msg_result(own, MIME_MSG)
-    assert (control.status, control.from_cache) == (ConversionStatus.OK, False), control.reason
-    assert control.units[0].title == "Q3 plan"
-    mime = _msg_result(tmp_path, MIME_MSG, Registry.default(CFG, policy=rule))
-    assert (mime.status, mime.reason, mime.units) == (ConversionStatus.REFUSED, "no converter for .msg", ())
+    assert (result.converter_id, result.units) == ("msg-mime", ())
+
+
+LABELLED_MIME_MSG = MIME_MSG.replace(
+    b"Subject: Q3 plan\r\n",
+    b"Subject: Q3 plan\r\nmsip_labels: MSIP_Label_"
+    + LABEL.encode()
+    + b"_Enabled=True; MSIP_Label_"
+    + LABEL.encode()
+    + b"_SiteId="
+    + SITE.encode()
+    + b"; MSIP_Label_"
+    + LABEL.encode()
+    + b"_Name=Highly Confidential;\r\n",
+)
+
+
+@pytest.mark.parametrize(
+    ("data", "rule", "reason"),
+    [
+        (LABELLED_MIME_MSG, PolicyConfig(exclude_label_ids=(LABEL,)), "is excluded by [policy]"),
+        (LABELLED_MIME_MSG, PolicyConfig(exclude_label_names=("Highly Confidential",)), "is excluded by"),
+        (LABELLED_MIME_MSG, PolicyConfig(exclude_label_ids=(OTHER_LABEL,)), None),
+        (LABELLED_MIME_MSG, PolicyConfig(refuse_unlabelled=True), None),
+        (MIME_MSG, PolicyConfig(refuse_unlabelled=True), "no sensitivity label; refuse_unlabelled = true"),
+        (MIME_MSG, PolicyConfig(exclude_label_ids=(LABEL,)), None),
+    ],
+    ids=["excluded-id", "excluded-name", "other-excluded", "labelled", "unlabelled-refused", "unlabelled"],
+)
+def test_under_a_label_rule_a_msg_that_holds_mime_text_is_screened_as_an_eml(
+    tmp_path: Path, data: bytes, rule: PolicyConfig, reason: str | None
+) -> None:
+    """B13 round 4 Q78: a .msg that holds MIME text carries its label in an ``msip_labels`` header, read as
+    an .eml's is, so under a label rule it is screened and read as the .eml it is (msg-mime), where it used
+    to be the no-converter stub; fail closed as an .eml does."""
+    readout = policy.read_labels(_write(tmp_path, "x.msg", data), name="x.msg")
+    assert readout.capable and len(readout.labels) == (data == LABELLED_MIME_MSG)
+    result = _msg_result(tmp_path, data, Registry.default(CFG, policy=rule))
+    if reason is None:
+        assert (result.status, result.converter_id) == (ConversionStatus.OK, "msg-mime"), result.reason
+        assert result.units[0].title == "Q3 plan"
+    else:
+        assert result.status is ConversionStatus.REFUSED and reason in (result.reason or ""), result.reason
+        assert result.reason.startswith("refused: ") and result.units == ()  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------------------------------------
