@@ -5164,14 +5164,16 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
     that already synced ``synced`` folders (:func:`synced_before`) nobody had to be asked for them, so the
     unlogged folder question is not counted. Nor is it for an attempt the installer ``stopped`` before the
     folder list (:func:`_stopped_before_the_list`), or one whose step 1 command stopped before
-    ``install.sh --log-start`` (a header-less attempt with no install.sh run): nobody was asked anything."""
+    ``install.sh --log-start`` (a header-less attempt with no install.sh run): nobody was asked anything.
+    An attempt that names no agent cannot vouch for zero approvals either: "not observable" (B13 round 3
+    R24)."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
     # v6: the folder question is not logged
     asked = 0 if att.layout.logs_expected_turns or synced or stopped else 1
     q = logged_q + asked
-    agent = att.said("Agent").lower()
-    hidden = a == 0 and any(t in agent for t in APPROVAL_HIDDEN_TOOLS)
+    agent = " ".join(att.said("Agent").split()).lower()
+    hidden = a == 0 and (not agent or any(t in agent for t in APPROVAL_HIDDEN_TOOLS))
     approvals = "approvals: not observable" if hidden else _plural(a, "approval")
     no_clicks = _no_clicks_why(run_type)
     if no_clicks is None:

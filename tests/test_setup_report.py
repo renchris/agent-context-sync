@@ -709,6 +709,11 @@ def test_approvals_are_counted_or_not_observable_by_tool(fake_mac: dict[str, Pat
         _text, summary = summary_of(fake_mac)
         line = next(ln for ln in summary.splitlines() if ln.startswith("- human turns:"))
         assert expected in line, (agent, line)
+    # No Agent: line names no tool that could vouch for zero approvals (B13 round 2 R24).
+    write_friction(fake_mac, V5_HAPPY.replace("Agent: Claude Code, claude-opus-5-5\n", ""))
+    _text, summary = summary_of(fake_mac)
+    line = next(ln for ln in summary.splitlines() if ln.startswith("- human turns:"))
+    assert "approvals: not observable" in line, line
 
 
 def test_installer_failure_is_failed_at_step_3(fake_mac: dict[str, Path]) -> None:
@@ -795,8 +800,8 @@ def test_v4_logs_are_legacy_and_never_counted(fake_mac: dict[str, Path]) -> None
         "no v5 event line (1 legacy v4 line(s)))"
     ), "a second Prompt: block is a second attempt (J5); legacy lines never make it fully one command"
     assert "- agent said: in progress" in summary and "- attempt: 2 of 2 (earlier: attempt 1 " in summary
-    assert "- human turns: 0 (0 questions; clicks: none possible; 0 approvals)" in summary, (
-        "no keyword guessing (J1)"
+    assert "- human turns: 0 (0 questions; clicks: none possible; approvals: not observable)" in summary, (
+        "no keyword guessing (J1); an attempt with no Agent: line cannot vouch for 0 approvals (R24)"
     )
     assert (
         "- expected turns: the folder question: not logged · Allow clicks: none possible (launchd " in summary
