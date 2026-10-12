@@ -9068,7 +9068,11 @@ pasted again. The second session's file replaces the first and leaves the patch 
 it: the receiver holds no patch with that hash. That costs one round and loses nothing. A marker file for
 "sent" was not built: it would start empty on the field Mac and send the patch a third time, and it would
 still record writing, not delivery. A list of known hashes in the checkout would put hashes of private
-patches in a public repo.
+patches in a public repo. (**amended 2026-10-11, §16.47 R132:** a session whose step 1 stops before
+`--log-start` writes no end line, so a patch it kept is sent again by the next attempt's report. That is a
+second review, not a lost round. An end line there would contradict the report's header-less note and
+`parse_friction`. An attempt that never finished keeps a later step 1 error, because there is no end line to
+measure the gap from.)
 
 Not done: section 2 has no such rule (see "The fix request marks each session's part").
 
