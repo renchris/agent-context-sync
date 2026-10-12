@@ -408,6 +408,8 @@ class SourceReport:
     deferred_online_only: int = 0  # of ``deferred``: online-only files (a download the budget did not allow)
     absent_marked: int = 0  # of the deletion candidates: local/inbox files absent for the first time (kept)
     absent_removed: int = 0  # of the deletion candidates: files removed this pass as deleted upstream
+    unreadable: int = 0  # of ``converted``: UNREADABLE stubs (encrypted, not the type its name says, ...)
+    conversion_failed: int = 0  # of ``converted``: conversions that failed (the FAILED stub)
 
 
 @dataclass(frozen=True, slots=True)

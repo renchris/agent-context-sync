@@ -2648,6 +2648,29 @@ def test_a_conversion_that_failed_is_counted_once_and_not_tried_again(
     assert "converted_seen" not in record
 
 
+def test_an_unreadable_conversion_is_counted_apart_from_a_failed_one(
+    sample_config: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """§16.45 R2: a file named ``.msg`` that is no Outlook message gets an UNREADABLE stub, which is not a
+    failed conversion: the run record counts it as ``converted_unreadable``, the source's report as
+    ``unreadable``, and the sync's last line says so after its usual words."""
+    from agentsync import cli  # noqa: PLC0415
+
+    (local_source_dir / "projects" / "Contoso budget.msg").write_text("not an Outlook message\n")
+    report = run(sample_config)
+    assert report.exit_code == 0
+    record = _run_record(sample_config)
+    assert record["converted_unreadable"] == 1 and "converted_failed" not in record, record
+    rep = source_report(report)
+    assert (rep.unreadable, rep.conversion_failed) == (1, 0)
+    capsys.readouterr()
+    cli._print_report(report)
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last == (
+        f"converted {rep.converted}, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)"
+    ), last
+
+
 def test_the_limit_marks_are_the_converters_own_wording() -> None:
     assert cycle_mod._PAGE_CAP_MARK in pdf_mod._SCANNED_OUTCOMES[pdf_mod._OCR_OVER_LIMIT]
     assert cycle_mod._PAGE_CAP_MARK in pdf_mod._NO_TEXT_PAST_LIMIT

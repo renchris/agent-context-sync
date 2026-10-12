@@ -2710,6 +2710,11 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         ),
         ("note=converted-3-deferred-0", "", "converted 3, deferred 0 online-only (install.log)"),
         ("", "first sync: converted 1, deferred 0 online-only, read again 4", "read again 4 (install.out)"),
+        (  # §16.45 R2: install.log's note has no breakdown; install.out's line of the same sync does
+            "note=converted-3-deferred-0",
+            "first sync: converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)",
+            "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed) (install.log)",
+        ),
     ):
         v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done {note}".rstrip())
         (fake_mac["setup"] / "install.out").write_text(
@@ -5397,6 +5402,9 @@ def test_a_reason_is_reported_as_one_of_the_fixed_classes(reason: str | None) ->
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
+    # run 4 read two files whose stub says unreadable: their own column, not "of them failed" (§16.45 R2)
+    four = {"converted": 6, "converted_seen": 6, "converted_again": 6, "converted_unreadable": 2}
+    seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 4", (json.dumps(four),))
     for created, last_used in ((1, 5), (2, 5), (1, 4), (3, 3), (1, 2)):
         seed.n = next(SEED_NUMBERS)
         seed.m._db.execute(
@@ -5414,14 +5422,16 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "of a loop; a copy of a file is a new file and is not counted)\n" in part
     )
     assert (
-        "| files converted | of them failed | the same file from the same bytes as an earlier run | of "
-        "those, as the run just before |\n" in part
+        "| files converted | of them failed | of them unreadable (stub, kept, not retried) | the same file "
+        "from the same bytes as an earlier run | of those, as the run just before |\n" in part
     )
     assert [ln for ln in part.splitlines() if re.match(r"\| \d", ln)] == [
-        "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 6 | 1 | 6 | 6 |",
-        "| 4 | poll | ok | 2026-10-06T10:00:00Z | 6 | 0 | 6 | 6 |",
-        "| 3 | poll | ok | 2026-09-30T10:00:00Z | not recorded | - | - | - |",
+        "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 6 | 1 | 0 | 6 | 6 |",
+        "| 4 | poll | ok | 2026-10-06T10:00:00Z | 6 | 0 | 2 | 6 | 6 |",
+        "| 3 | poll | ok | 2026-09-30T10:00:00Z | not recorded | - | - | - | - |",
     ]
+    unreadable = "- an unreadable file is not a failed conversion: its stub is kept and not tried again until"
+    assert unreadable in part and 'class its stub names ("encrypted", "not the type its name says"' in part
     assert (
         "- converter cache: 4 conversion(s) were used again by a later run than the one that made them (the "
         "same bytes converted again, by the same file or by a copy of it); 2 of them last by the newest run "
@@ -5431,9 +5441,12 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     note = "- a conversion that failed is counted in the run it failed in and is not tried again until"
     assert note in part and 'Quarantine by reason, class "conversion failed"\n' in part
     seed = Seed(fake_mac["config"])
-    seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 5", (json.dumps({"converted": 2}),))
+    seed.m._db.execute(
+        "UPDATE runs SET counts_json = ? WHERE run_id IN (4, 5)", (json.dumps({"converted": 2}),)
+    )
     seed.close()
-    assert note not in status_parts(fake_mac)[1]["Repeat conversions"], "no run shown has a failure"
+    plain = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert note not in plain and unreadable not in plain, "no run shown has a failure or an unreadable file"
 
 
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(

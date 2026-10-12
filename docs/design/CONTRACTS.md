@@ -7723,6 +7723,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
 | `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change |
+| `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
 | `reread`, `reread_kept` | files read again for what their converter has gained (§16.27), and those of them whose page was kept because the conversion failed |
@@ -7749,6 +7750,12 @@ other key that would be 0 is left out. No reader depended on the old content.
   retry that worked: the files are still stubs. The report's Quarantine by reason part counts them, class
   `conversion failed`, and its Repeat conversions part says so under the table when a run it shows has a
   failure. Whether a failed conversion should be tried again is older behavior and a separate decision.
+  **Amended 2026-10-12, §16.45 R2:** an UNREADABLE result was counted in `converted` only, so a run of encrypted or misnamed files
+  read like conversions that worked. It is now `converted_unreadable`, and `SourceReport` carries
+  `unreadable` and `conversion_failed` beside `converted`. The sync's last line ends
+  ` (of the converted: U unreadable, F failed)` when U > 0, after the words install.sh and setup-report match,
+  and setup-report's first-sync clause carries the same breakdown from install.out's line of that sync
+  (install.log's `converted-N-deferred-M` note, written by install.sh, has none).
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
   `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
@@ -8178,7 +8185,10 @@ the same file from the same bytes as an earlier run, and of those as the run jus
 for a run from before the run record). Then the converter cache: how many rows a later run used again than
 the one that made them, and how many of those the newest run and the one before it used last. That count
 needs no run record, so it also speaks for the runs of an earlier build; it is by the bytes alone, so a
-copy of a file counts there and the line says so.
+copy of a file counts there and the line says so. **Amended 2026-10-12, §16.45 R2:** a column `of them unreadable (stub, kept,
+not retried)` follows `of them failed`, and when a run shown has one, a note under the table says such a file
+is in Quarantine by reason under its stub's class (`encrypted`, `not the type its name says`, `empty`, a
+`no text` class), never `conversion failed`.
 
 **Background runs.** After the two job lines, for each job with a plist in this home folder: whether it is
 what this build would write (`launchd.render_plist` of `poll_spec` or `reconcile_spec`; doctor's line says

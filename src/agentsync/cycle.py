@@ -1380,6 +1380,8 @@ class _SourceAcc:
     absent_marked: int = 0
     absent_removed: int = 0
     converted: int = 0
+    unreadable: int = 0
+    conversion_failed: int = 0
     breaker_tripped: bool = False
     live_rows: int = 0
     staged_cursor: bool = False
@@ -1408,6 +1410,8 @@ class _SourceAcc:
             deferred_online_only=self.deferred_online_only,
             absent_marked=self.absent_marked,
             absent_removed=self.absent_removed,
+            unreadable=self.unreadable,
+            conversion_failed=self.conversion_failed,
         )
 
 
@@ -2144,9 +2148,12 @@ class _Cycle:
 
         ``converted``: files converted (the sum of ``SourceReport.converted``); ``converted_failed``: of
         those, conversions that failed (counted in the run they failed in: the file keeps its stub and is
-        not converted again until its bytes change); ``converted_seen``: of those, files whose own pages
-        were made from the same bytes by an earlier run (``_converted_before``; a copy of a file is not
-        one); ``converted_again``: of those, when the bytes were last converted in the run just before.
+        not converted again until its bytes change); ``converted_unreadable``: of those, conversions whose
+        result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
+        tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
+        of those, files whose own pages were made from the same bytes by an earlier run
+        (``_converted_before``; a copy of a file is not one); ``converted_again``: of those, when the bytes
+        were last converted in the run just before.
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
         of them that kept their page.  ``reread_left``: files on this Mac still to read again when the
         cycle stopped looking, over the sources it looked at (``_reread_source``); ``loop.next_step`` words
@@ -2217,6 +2224,8 @@ class _Cycle:
         self._tally["converted"] += 1
         if result.status is ConversionStatus.FAILED:
             self._tally["converted_failed"] += 1
+        elif result.status is ConversionStatus.UNREADABLE:
+            self._tally["converted_unreadable"] += 1
         if prior is not None and prior < self.run_id:
             self._tally["converted_seen"] += 1
             if prior == self.run_id - 1:
@@ -3993,6 +4002,10 @@ class _Cycle:
             return result
         if not again:
             acc.converted += 1
+            if result.status is ConversionStatus.UNREADABLE:
+                acc.unreadable += 1
+            elif result.status is ConversionStatus.FAILED:
+                acc.conversion_failed += 1
             self._tally_converted(result, prior)
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are

@@ -554,6 +554,7 @@ _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each 
 _CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?")  # install.log's note
 _CONVERTED_LINE_RE = re.compile(  # sync's last line
     r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b)?"
+    r"(?: \(of the converted: (\d+) unreadable, (\d+) failed\))?"
 )
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
@@ -1791,6 +1792,8 @@ class _Facts:
     out_counted: list[str] = dataclasses.field(default_factory=list)
     # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
     first_sync: tuple[int, int, int] | None = None
+    # that line's "(of the converted: U unreadable, F failed)" as (N, U, F); None: the line has none
+    first_sync_unreadable: tuple[int, int, int] | None = None
     # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
@@ -2668,6 +2671,12 @@ def _installer_output(r: _Run) -> list[str]:
             int(synced[-1].group(2)),
             int(synced[-1].group(3) or 0),
         )
+        if synced[-1].group(4) is not None:
+            r.facts.first_sync_unreadable = (
+                int(synced[-1].group(1)),
+                int(synced[-1].group(4)),
+                int(synced[-1].group(5)),
+            )
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     return [
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
@@ -4451,11 +4460,12 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             cells: tuple[object, ...] = (
                 x.n("converted"),
                 x.n("converted_failed"),
+                x.n("converted_unreadable"),
                 x.n("converted_seen"),
                 x.n("converted_again"),
             )
         else:
-            cells = ("not recorded", "-", "-", "-")
+            cells = ("not recorded", "-", "-", "-", "-")
         rows.append((x.run_id, x.mode, x.status, _iso(x.started), *cells))
     header = (
         "run",
@@ -4464,6 +4474,7 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "started (UTC)",
         "files converted",
         "of them failed",
+        "of them unreadable (stub, kept, not retried)",
         "the same file from the same bytes as an earlier run",
         "of those, as the run just before",
     )
@@ -4485,6 +4496,14 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "- a conversion that failed is counted in the run it failed in and is not tried again until the "
             "file's bytes change: later runs with no failure are not a retry that worked, and the files "
             'still without a page are in Quarantine by reason, class "conversion failed"',
+        ]
+    if any(x.n("converted_unreadable") for x in runs[:_RUNS_SHOWN]):
+        out += [
+            "",
+            "- an unreadable file is not a failed conversion: its stub is kept and not tried again until the "
+            "file's bytes change, and it is in Quarantine by reason under the class its stub names "
+            '("encrypted", "not the type its name says", "empty", a "no text" class), never '
+            '"conversion failed"',
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
@@ -5447,6 +5466,10 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
         reread = f", read again {again}" if again else ""
+        # install.log's note has no breakdown (install.sh writes it): install.out's line of the same sync does
+        split = r.facts.first_sync_unreadable
+        if split is not None and split[0] == converted and split[1]:
+            reread += f" (of the converted: {split[1]} unreadable, {split[2]} failed)"
         parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
