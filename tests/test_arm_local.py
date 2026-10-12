@@ -464,7 +464,7 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     assert alarm == (
         "2 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One', 'Two'; enumeration "
         "incomplete, no deletions this pass (each WAITING ON YOU line about local-test says what to do, and "
-        "agentsync status prints them)"
+        "`~/.local/bin/agentsync status` prints them)"
     )
 
 
@@ -503,22 +503,24 @@ def test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude() -
     assert alarm == _TODAY.format(
         n=2,
         names="'Locked', 'One'",
-        advice="grant the agent Files and Folders access for the other folders; for the empty ones, each "
-        "WAITING ON YOU line about local-test says what to do, and agentsync status prints them",
+        advice="grant the agent Files and Folders access for the other folders; for the empty one, the "
+        "WAITING ON YOU line about local-test says what to do, and `~/.local/bin/agentsync status` prints it",
     )
 
 
 def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:
     """b13 N27 (b): an inbox's empty cloud folders get a local source's WAITING ON YOU lines, and so its
-    alarm."""
+    alarm. One empty folder lands on one wait, so the pointer is singular (B13 round 5 F11), and status is
+    named by its full path, since ~/.local/bin may be off PATH (F44)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Inbox"
     (root / "One").mkdir(parents=True)
     res = al.InboxArm(_cfg(root, kind=SourceKind.INBOX)).scan(None, full=True)
     (alarm,) = res.alarms
+    assert " agentsync status" not in alarm
     assert alarm == (
         "1 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One'; enumeration "
-        "incomplete, no deletions this pass (each WAITING ON YOU line about local-test says what to do, and "
-        "agentsync status prints them)"
+        "incomplete, no deletions this pass (the WAITING ON YOU line about local-test says what to do, and "
+        "`~/.local/bin/agentsync status` prints it)"
     )
 
 
@@ -580,7 +582,8 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
         n=7,
         names=names,
         advice="grant the agent Files and Folders access for the other folders; for the empty ones, each "
-        "WAITING ON YOU line about local-test says what to do, and agentsync status prints them",
+        "WAITING ON YOU line about local-test says what to do, and `~/.local/bin/agentsync status` prints "
+        "them",
     )
 
 

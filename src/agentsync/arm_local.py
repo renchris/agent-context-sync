@@ -57,6 +57,7 @@ from agentsync.model import (
     SourceKind,
 )
 from agentsync.paths import _glob_regex, cloud_storage_roots, expand, glob_match, glob_strip, is_under
+from agentsync.skill import AGENTSYNC_BIN
 
 log = logging.getLogger(__name__)
 
@@ -1026,19 +1027,26 @@ class LocalArm:
             if stats.unknown_dirs == (".",):  # the root could not be listed, and a root cannot be excluded
                 advice = "grant the agent Files and Folders access"
             elif stats.empty_cloud_dirs:
-                # The loop's WAITING ON YOU lines name the empty cloud folders and the step for each, and warn
-                # against excluding one that held mirrored files (that retires its pages unchecked): point
-                # there, never at an exclude. Only an unreadable folder keeps the access advice.
+                # The loop's WAITING ON YOU lines give the step for the empty cloud folders and name the
+                # command that lists them, and warn against excluding one that held mirrored files (that
+                # retires its pages unchecked): point there, never at an exclude. Only an unreadable folder
+                # keeps the access advice. Each folder lands on one wait, so one folder means one line (B13
+                # round 5 F11); two or more can make two. Status by its full path, which works with
+                # ~/.local/bin off PATH (round 5 F44, as §16.51 Q49).
+                status = f"`{AGENTSYNC_BIN} status`"
                 where = (
-                    f"each WAITING ON YOU line about {self.source_id} says what to do, and agentsync status "
+                    f"the WAITING ON YOU line about {self.source_id} says what to do, and {status} prints it"
+                    if len(stats.empty_cloud_dirs) == 1
+                    else f"each WAITING ON YOU line about {self.source_id} says what to do, and {status} "
                     "prints them"
                 )
                 if stats.unknown_dirs == stats.empty_cloud_dirs:
                     cause, advice = "empty cloud folder(s), zero children in a cloud tree", where
                 else:
+                    empty = "one" if len(stats.empty_cloud_dirs) == 1 else "ones"
                     advice = (
                         "grant the agent Files and Folders access for the other folders; for the empty "
-                        f"ones, {where}"
+                        f"{empty}, {where}"
                     )
             alarms.append(
                 f"{len(stats.unknown_dirs)} unknown dir(s) — {cause}: {shown}{more}; enumeration "
