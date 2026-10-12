@@ -1444,6 +1444,12 @@ fallback_body() {
 	v="$(command -v uv 2>/dev/null || true)"
 	[ -n "$v" ] || { [ ! -x "$HOME/.local/bin/uv" ] || v="$HOME/.local/bin/uv"; }
 	say "- uv: ${v:-not found}"
+	# the places lints.gitleaks_lookup looks after PATH (B13 round 4 Q81); the builtin patterns always run
+	v="$(command -v gitleaks 2>/dev/null || true)"
+	for c in /opt/homebrew/bin/gitleaks /usr/local/bin/gitleaks /opt/local/bin/gitleaks "$HOME/.local/bin/gitleaks" "$HOME/go/bin/gitleaks"; do
+		[ -n "$v" ] || [ ! -x "$c" ] || v="$c"
+	done
+	say "- gitleaks: ${v:-not found (builtin patterns only)}"
 	if have_devtools; then
 		v="$(command -v python3 2>/dev/null || true)"
 		say "- python3: ${v:-not found}"

@@ -32,6 +32,7 @@ from agentsync import (
     cycle,
     governance,
     it_request,
+    lints,
     loop,
     materialise,
     net,
@@ -6593,6 +6594,39 @@ def test_pid_alive_reads_this_process_and_a_reaped_one() -> None:
     child.wait()  # reaped: an unreaped zombie still exists
     assert setup_report._pid_alive(child.pid) is False
     assert setup_report._pid_alive(0) is None and setup_report._pid_alive(1) is None
+
+
+@pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
+def test_environment_says_what_the_secret_scan_can_use(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """B13 round 4 Q81: whether this Mac has gitleaks changes what every install's re-screen does, yet no
+    report said. The Environment line says what the scan can use, by the lookups doctor makes (this shell's
+    and launchd's), with the builtin patterns always; and the manifest's record of what the last re-screen
+    used. A path under the home folder reads as ~."""
+    exe = Path.home() / ".local" / "bin" / "gitleaks"
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text(
+        "#!/bin/sh\n" + ("exit 3\n" if case == "version fails" else "echo 8.30.1\n"), encoding="utf-8"
+    )
+    exe.chmod(0o755)
+    found = {"none": (None, None), "shell only": (exe, None)}.get(case, (exe, exe))
+    monkeypatch.setattr(lints, "gitleaks_lookup", lambda path=None: found[path is not None])
+    seed = Seed(fake_mac["config"])
+    seed.m.set_meta(cycle._SECRET_RULES_META, json.dumps({"gitleaks": None, "builtin": 2}))
+    seed.close()
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
+    want = {
+        "none": "builtin patterns only (no gitleaks found)",
+        "both": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks; shell and background runs)",
+        "shell only": "builtin patterns + gitleaks 8.30.1 (~/.local/bin/gitleaks) in this shell only; "
+        "background runs use the builtin patterns alone (fix: agentsync sync from this shell)",
+        "version fails": "builtin patterns + gitleaks (version unknown) (~/.local/bin/gitleaks; shell and "
+        "background runs)",
+    }[case]
+    assert line == f"- secret scan: {want}; last re-screen: builtin patterns only", line
+    assert cycle._SECRET_RULES_META == "secret_rules", "the key _last_rescreen reads"
 
 
 def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str, Path]) -> None:

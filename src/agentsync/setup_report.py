@@ -2542,6 +2542,29 @@ def _legacy_tree(lines: Sequence[str]) -> str | None:
     return None
 
 
+def _last_rescreen(r: _Run) -> str:
+    """What the last secret-scan re-screen used, from the manifest's ``secret_rules`` meta (``cycle``'s
+    ``_SECRET_RULES_META``, ``lints.secret_rules_identity()``): "with gitleaks" or "builtin patterns only".
+    One read of a read-only connection; the identity's path, size and time are never printed."""
+    if r.config is None:
+        return "not read (the config does not load)"
+    db = expand(r.config.state_paths.db)
+    if not db.exists():
+        return "none recorded (no manifest yet)"
+    try:
+        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'secret_rules'").fetchone()
+        finally:
+            conn.close()
+        stored = json.loads(row[0]) if row and row[0] else None
+    except (sqlite3.Error, ValueError) as exc:
+        return f"not read ({type(exc).__name__})"
+    if not isinstance(stored, dict):
+        return "none recorded"
+    return "with gitleaks" if stored.get("gitleaks") else "builtin patterns only"
+
+
 def _environment(r: _Run) -> list[str]:
     out: list[str] = []
 
@@ -2600,6 +2623,33 @@ def _environment(r: _Run) -> list[str]:
             return "not found"
         rc, text = r.run([exe, "--version"], 3.0)
         return f"{text} ({exe})" if rc == 0 else f"{exe} --version {_exited(rc, text)}"
+
+    def secret_scan() -> str:
+        """What the secret scan can use, the way doctor's gitleaks check looks (B13 round 4 Q81): the builtin
+        patterns always read every page, gitleaks too when a run finds it. What it can use, not what ran:
+        the manifest's record of the last re-screen says that."""
+        from agentsync import lints  # noqa: PLC0415 - lazy, as the other checks
+        from agentsync.ops import launchd  # noqa: PLC0415
+
+        shell, bg = lints.gitleaks_lookup(), lints.gitleaks_lookup(path=launchd.LAUNCHD_PATH)
+        found = shell or bg
+        if found is None:
+            text = "builtin patterns only (no gitleaks found)"
+        else:
+            rc, out = r.run([str(found), "version"], 3.0)
+            first = out.splitlines()[0].strip() if rc == 0 and out.strip() else ""
+            ver = f"gitleaks {first}" if first else "gitleaks (version unknown)"
+            if shell is not None and bg is not None:
+                where = f"{shell}" + ("" if bg == shell else f", background runs: {bg}")
+                text = f"builtin patterns + {ver} ({where}; shell and background runs)"
+            elif shell is not None:
+                text = (
+                    f"builtin patterns + {ver} ({shell}) in this shell only; background runs use the builtin "
+                    "patterns alone (fix: agentsync sync from this shell)"
+                )
+            else:
+                text = f"builtin patterns + {ver} ({bg}) in background runs only; this shell has none"
+        return f"{text}; last re-screen: {_last_rescreen(r)}"
 
     def pandoc() -> str:
         if r.config is not None and r.config.convert.pandoc_path is not None:
@@ -2681,6 +2731,7 @@ def _environment(r: _Run) -> list[str]:
     fact("Xcode Command Line Tools", clt)
     fact("shell", shell)
     fact("uv", uv)
+    fact("secret scan", secret_scan)
     fact("python (agentsync's)", lambda: f"{platform.python_version()} ({sys.executable})")
     fact("pandoc", pandoc)
     fact("OneDrive.app", app("OneDrive"))

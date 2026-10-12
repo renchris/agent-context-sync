@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import setup_report
+from agentsync import lints, setup_report
 from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.ops import doctor
@@ -833,6 +833,32 @@ def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
     assert "- uv-managed Pythons: 1\n" in report_path(env).read_text()
+
+
+def test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use(env: dict[str, str]) -> None:
+    """B13 round 4 Q81: the shell report says which gitleaks the secret scan can use: the one on PATH, else
+    the first of the places ``lints.gitleaks_lookup`` looks, else none (the builtin patterns only)."""
+    home = Path(env["HOME"])
+    places = [
+        Path("/opt/homebrew/bin/gitleaks"),
+        Path("/usr/local/bin/gitleaks"),
+        Path("/opt/local/bin/gitleaks"),
+        home / ".local/bin/gitleaks",
+        home / "go/bin/gitleaks",
+    ]
+    assert [str(p).replace(str(home), "~") for p in places] == [str(p) for p in lints._GITLEAKS_CANDIDATES]
+    on_mac = next((p for p in places if os.access(p, os.X_OK)), None)
+    assert install_sh(env, "--report-only").returncode == 0
+    gitleaks = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- gitleaks: ")]
+    assert gitleaks == [
+        f"- gitleaks: {on_mac}" if on_mac else "- gitleaks: not found (builtin patterns only)"
+    ]
+    stub = Path(env["PATH"].split(":", 1)[0]) / "gitleaks"
+    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.chmod(0o755)
+    assert install_sh(env, "--report-only").returncode == 0
+    [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- gitleaks: ")]
+    assert line.startswith("- gitleaks: /") and line.endswith("/stubbin/gitleaks"), "PATH's comes first"
 
 
 def _background_part(env: dict[str, str]) -> str:
