@@ -2991,6 +2991,7 @@ def _configuration(r: _Run) -> list[str]:
     tenant = c.graph.tenant not in ("", "organizations", "common")
     out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
     out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
+    out.append(_policy_line(c))
     out.append(
         f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
     )
@@ -3003,6 +3004,26 @@ def _configuration(r: _Run) -> list[str]:
             "configured source folders (a configured one is a placeholder like any other)"
         )
     return out
+
+
+def _policy_line(c: Config) -> str:
+    """Whether a ``[policy]`` label rule is on, as counts (B13 round 4 Q31): never a label's name (tenant
+    vocabulary), its id or the policy's fingerprint (a hash of a short name list can be guessed)."""
+    from agentsync import policy  # noqa: PLC0415 - lazy, as in _ocr_helper
+
+    beside = (c.config_path.parent / policy.POLICY_FILE_NAME).exists()
+    sidecar = "; policy.toml beside sources.toml: yes" if beside else ""
+    try:
+        pol = policy.load_policy(c)
+    except Exception as exc:  # the type only: a message may name a label
+        return f"- [policy] label rule: not read ({type(exc).__name__}){sidecar}"
+    if not pol.labels_active:
+        return f"- [policy] label rule: off{sidecar}"
+    return (
+        f"- [policy] label rule: on ({len(pol.exclude_label_ids)} excluded id(s), "
+        f"{len(pol.exclude_label_names)} name(s), "
+        f"refuse_unlabelled={'true' if pol.refuse_unlabelled else 'false'}){sidecar}"
+    )
 
 
 def _doctor(r: _Run) -> list[str]:

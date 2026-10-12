@@ -436,6 +436,7 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     assert "sources: 3 (by kind: inbox 1, local 2" in conf  # init keeps the inbox (KISS K05)
     assert "2 under ~/Library/CloudStorage" in conf
     assert "client_id: not set" in conf and "a git repo" in conf
+    assert "- [policy] label rule: off\n" in conf
     doctor = section(text, "Doctor")
     m = re.search(r"^(\d+) ok: (.+)$", doctor, re.MULTILINE)
     assert re.search(r"\d+ check\(s\): \d+ ok", doctor) and m and "python" in m.group(2).split(", ")
@@ -6575,6 +6576,32 @@ def test_pid_alive_reads_this_process_and_a_reaped_one() -> None:
     child.wait()  # reaped: an unreaped zombie still exists
     assert setup_report._pid_alive(child.pid) is False
     assert setup_report._pid_alive(0) is None and setup_report._pid_alive(1) is None
+
+
+def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str, Path]) -> None:
+    """B13 round 4 Q31: a [policy] label rule changes what is mirrored, yet Configuration did not say one was
+    set. It says so in counts: never a label's name, its id or the policy's fingerprint."""
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[policy]\nexclude_label_names = ["Contoso Highly Confidential"]\n',
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    conf = section(text, "Configuration")
+    assert "- [policy] label rule: on (0 excluded id(s), 1 name(s), refuse_unlabelled=false)\n" in conf, conf
+    assert "Highly Confidential" not in text and "sha256:" not in conf
+    (cfg.parent / "policy.toml").write_text("[policy]\nrefuse_unlabelled = true\n", encoding="utf-8")
+    conf = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Configuration")
+    assert (
+        "- [policy] label rule: on (0 excluded id(s), 1 name(s), refuse_unlabelled=true); policy.toml beside "
+        "sources.toml: yes\n" in conf
+    ), conf
+    (cfg.parent / "policy.toml").write_text("[policy]\nexclude_label_ids = [1]\n", encoding="utf-8")
+    conf = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Configuration")
+    assert "- [policy] label rule: not read (ConfigError); policy.toml beside sources.toml: yes\n" in conf, (
+        conf
+    )
 
 
 def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: dict[str, Path]) -> None:
