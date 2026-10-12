@@ -221,6 +221,8 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     04e363c, never a FAIL."""
     monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
     monkeypatch.setattr(sys, "platform", "darwin")
+    for key in speech._PROXY_VARS:  # a developer's proxy would send the build to curl first
+        monkeypatch.delenv(key, raising=False)
     tools = tmp_path / "tools"
     (tools / "Developer").mkdir(parents=True)
     script(tools / "xcode-select", f'echo "{tools}/Developer"')
@@ -239,7 +241,10 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     assert str(error.value) == reason
     helper = ocr._helper_path(cache, speech.SPEECH)
     assert not helper.exists()
-    assert (tools / "swift.calls").read_text() == "package resolve\n", "nothing is built past the refusal"
+    [call] = (tools / "swift.calls").read_text().splitlines()
+    assert call.startswith("package --cache-path ") and call.endswith(" resolve"), (
+        "nothing built past the refusal"
+    )
     assert speech.probe(sample_config.convert, cache) == ("failed", reason)
 
     old = json.dumps({"engine": "fluidaudio", "fluidaudio": _OLD_COMMIT, "helper": "0.1.0"})
