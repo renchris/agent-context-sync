@@ -834,6 +834,30 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
         assert full_name not in text
 
 
+def test_the_shell_report_shows_run_ids_without_their_process_id(env: dict[str, str]) -> None:
+    """B13 round 5 F5, F15: the Python report shows install.sh's run ids without their ``-<pid>`` suffix (a
+    fingerprint, not a finding); the shell report printed the install log's tail and its failed steps raw, so
+    the pid reached setup-report.md and bring-back.md. Both places now cut it, and only from a run id."""
+    log = Path(env["HOME"]) / "agent-context" / "setup" / "install.log"
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        "2026-10-12T09:01:00Z run=20261012T090100Z-4242 start install.sh compat=12 args=--keep-4242\n"
+        "2026-10-12T09:01:06Z run=20261012T090100Z-4242 step=uv seconds=6 result=failed rc=1\n"
+        "2026-10-12T09:01:06Z run=20261012T090100Z-4242 end rc=1 seconds=6\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    text = report_path(env).read_text()
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    errors = text.split("\n## Recent errors\n", 1)[1].split("\n## ", 1)[0]
+    assert "(run ids without their process id):" in installer
+    for part in (installer, errors):
+        assert "run=20261012T090100Z " in part and "-4242 " not in part, part
+    assert "args=--keep-4242" in installer, "a number that is not a run id's pid is kept"
+    back = (report_path(env).parent / "bring-back.md").read_text()
+    assert "20261012T090100Z-4242" not in back
+
+
 def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[str, str]) -> None:
     """uv keeps a hidden ``.temp`` folder, a ``.lock`` file and minor-version links beside its Pythons: one
     installed Python reads 1, not 2 (B13 round 2 R5)."""

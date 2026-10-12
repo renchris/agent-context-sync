@@ -1566,7 +1566,7 @@ fallback_body() {
 	say "## Installer"
 	say ""
 	if [ -f "$SETUP_LOG" ]; then
-		say "The last 60 lines of $SETUP_LOG:"
+		say "The last 60 lines of $SETUP_LOG (run ids without their process id):"
 		say ""
 		say "~~~"
 		tail -60 "$SETUP_LOG"
@@ -1741,6 +1741,10 @@ scrub_exclude_lists() {
 			print out rest
 		}'
 }
+# A run id is "<UTC stamp>-<pid>" (RUN_ID): the shell report shows it without its process id, as the Python
+# report does (setup_report._PID_SUFFIX_RE; B13 round 5 F5, F15), in the Installer tail and in Recent errors
+# alike. Anchored to the run id's shape, so no other number is touched; LC_ALL=C, as every stage here.
+strip_run_pids() { LC_ALL=C sed -E 's/(run=[0-9]{8}T[0-9]{6}Z)-[0-9]+([^0-9A-Za-z_-]|$)/\1\2/g'; }
 write_fallback_report() { # RC WHY
 	local dir tmp friction c
 	# --report-only reads no SOURCE: its Summary names this installer's checkout, as --version does. Only here,
@@ -1762,7 +1766,7 @@ write_fallback_report() { # RC WHY
 	(
 		umask 077
 		{
-			fallback_body "$1" "$2" "$friction" | redact_stream | scrub_exclude_lists
+			fallback_body "$1" "$2" "$friction" | strip_run_pids | redact_stream | scrub_exclude_lists
 			fallback_redaction
 			printf '\n%s\n' "$ISSUE_URL" # the issue form, after redaction (a login may match the URL's owner)
 		} >"$tmp"
