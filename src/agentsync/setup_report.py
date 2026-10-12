@@ -64,10 +64,18 @@ words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-
 hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
 (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
 MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
-proxy hosts, those in git's config files included, and the system PAC URL after its scheme (``<proxy-N>``) and
-this account's temporary folder (``$TMPDIR``, any ``/var/folders/<x>/<y>``: ``<tmp>``).
+proxy hosts, those in git's config files included, and the LaunchAgent's own (``launchctl setenv``) proxy,
+and the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
+``/var/folders/<x>/<y>``: ``<tmp>``). A dotless generic host (``proxy``, ``wpad``, ``gateway``:
+:data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL names it (after ``//`` or ``@``, or before
+``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable; any other dotless host is matched bare.
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
-CamelCase variants, and the shell-escaped form install.sh logs its arguments in (``Client\\ Alpha``). A
+CamelCase variants, in NFC, NFD, mixed or unaccented spelling, and the shell-escaped form install.sh logs its
+arguments in (``Client\\ Alpha``). A full name's joined form that spells a word the report prints
+(:data:`_JOINED_WORDS`: "Ho, Me" is "home") is matched with a separator or a CamelCase boundary only. A
+placeholder already in the text (any numbered kind, the unnumbered kinds, ``<path>`` and the IT template
+fields: :data:`_HELD_RE`) is left whole on a second pass, and this repository's own ``github.com`` locator is
+kept whole, so a full name that matches its owner does not cut the issue link. A
 ``--source-local`` argument is also unquoted (``printf %q`` writes some names as ``$'...'`` with octal bytes)
 and cut to ``<path>`` at the first path component the Redactor does not know. Names
 nested below a source are registered nowhere, so agentsync's own WARNING and ERROR log lines (Recent errors,

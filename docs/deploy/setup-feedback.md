@@ -58,7 +58,7 @@ Redaction is on by default and consistent within one report, so the same value i
 | `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label |
 | `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except agentsync's own words such as `inbox` or `mail`; in the shell fallback report, a generic name such as `Documents` only as a whole word |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know; in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word, how install.log writes a name with a curly apostrophe, a dash or an accent, and a relative `--source-local` argument from install.log that names no CloudStorage folder |
-| `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files included) and the system PAC URL after its scheme |
+| `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files and the LaunchAgent's proxy included; a generic dotless host such as `proxy` or `wpad` only inside a URL) and the system PAC URL after its scheme |
 | `<mdmhost>` | the MDM server's host (`profiles status -type enrollment`), when it has a dot; the whole host, no vendor suffix kept |
 | `(source N)`, `(not in the config, N)` | in the evidence parts only: a configured source id the redaction does not know, by its place in sources.toml; a source id that is in the manifest or the purge queue and no longer in sources.toml |
 
@@ -67,8 +67,8 @@ unnumbered ones (`~`, `<user>`, `<name>`, `<serial>`, `<host>`, `<mdmhost>`, `<t
 replaced. The agent's `friction.md` is redacted with the same mapping when the report embeds it, and since setup
 prompt v11 the prompt has the agent name a folder, a file, a person, its organization or a customer in a friction
 line by its role in plain words, never by its real name, a short form of it or a placeholder (lines from older
-sessions stay as written: the log is append-only). A name matches in either Unicode form, so an accented folder
-name is the same placeholder however it was typed. Before sending, read the whole file once. Redaction only covers
+sessions stay as written: the log is append-only). A name matches in either Unicode form or without its accents, so an
+accented folder name is the same placeholder however it was typed. Before sending, read the whole file once. Redaction only covers
 values agentsync knows about, so a project or customer name it has never seen (inside a log line or in the agent's
 words) is yours to remove. The CLI always redacts.
 
