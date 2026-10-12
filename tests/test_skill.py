@@ -269,3 +269,16 @@ def test_procedure_carries_the_meeting_block_and_the_citation_row() -> None:
         assert basis in meetings.replace("\n   ", " "), basis
     added = text[text.index("   `CITE-*`") :]
     assert len(added.splitlines()) <= 55
+
+
+def test_the_baseline_draft_allows_fewer_questions_on_a_small_mirror() -> None:
+    """B13 round 4 Q37: "about 15" with no allowance made an honest agent on a 4-page mirror log a deviation
+    for drafting 10. The target stays 15 and the keep stays about 10; a small mirror drafts fewer, never
+    padded, and the operator then keeps them all. No per-page formula."""
+    text = skill.skill_text(Path("/srv/docs"))
+    draft = text.split("1. Draft (", 1)[1].split("\n2. Run (", 1)[0]
+    flat = " ".join(draft.split())
+    assert "write about 15 candidate questions (fewer when the mirror is too small to hold that many" in flat
+    assert "never pad with questions a file name alone answers" in flat
+    assert "The operator keeps about 10 (all of them when fewer were drafted)" in flat
+    assert "per page" not in flat

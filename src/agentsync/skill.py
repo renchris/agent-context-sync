@@ -163,11 +163,13 @@ Subject pages are worth writing only if they make answers better, so the first b
 10 real questions, asked once before any subject page exists and once after the first 20.
 
 1. Draft (when asked to draft the baseline questions): read `mirror/` and write about 15 candidate questions
-   to `_eval/questions.md` (questions only, numbered) and, under the same numbers, a draft answer and the
-   mirror paths that hold it to `_eval/answers.md`. Prefer questions the operator would really ask whose
-   answer is spread over several files or buried in a long one; skip any a file name alone answers. Put
-   `status: draft` on the first line of both files. The operator keeps about 10, corrects the answers and
-   changes both to `status: confirmed`. Never run a baseline on a draft.
+   (fewer when the mirror is too small to hold that many distinct ones; never pad with questions a file name
+   alone answers) to `_eval/questions.md` (questions only, numbered) and, under the same numbers, a draft
+   answer and the mirror paths that hold it to `_eval/answers.md`. Prefer questions the operator would really
+   ask whose answer is spread over several files or buried in a long one; skip any a file name alone answers.
+   Put `status: draft` on the first line of both files. The operator keeps about 10 (all of them when fewer
+   were drafted), corrects the answers and changes both to `status: confirmed`. Never run a baseline on a
+   draft.
 2. Run (when asked, in a fresh session): read only `_eval/questions.md` and answer each question with the
    look-up steps above. Record each answer, the paths it cites and the number of searches and files opened in
    `_eval/results-<yyyy-mm-dd>-<before|after>.md`. Only once every answer is recorded, open `_eval/answers.md`
