@@ -12213,8 +12213,8 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   configured CloudStorage folder would lose its number when the listing fails); registering folders outside
   CloudStorage before the listing (its fuzzy variants would stop being redacted); the fallback's folders last
   (the number would look reliable without being reliable). **Amended (2026-10-11, §16.46 R135):** `<org-N>`
-  differs between the two reports as well: the shell fallback numbers every CloudStorage entry in glob order,
-  a repeat included, and never reads `graph.tenant` or SharePoint site hosts. A one-word organisation is
+  differs between the two reports as well: the shell fallback numbers the CloudStorage entries in glob order
+  (a repeated organisation takes no number, §16.47) and never reads `graph.tenant` or SharePoint site hosts. A one-word organisation is
   redacted as a whole word wherever it stands (`Microsoft` in `Microsoft Graph`) on purpose, since that fails
   closed; no common-word exemption is made.
 
