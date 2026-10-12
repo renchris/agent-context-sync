@@ -213,12 +213,14 @@ def _holder_path(lock_path: Path) -> Path:
     return lock_path.with_name(lock_path.name + ".json")
 
 
-_UNRECORDED_HOLDER = (
-    "an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)"
+EMPTY_BODY_HOLDER = (
+    "an unrecorded holder (install.sh while it reinstalls agentsync, a status or doctor check, or a cycle "
+    "starting)"
 )
 """A held lock with an empty body: install.sh's reinstall (lockf writes no body, for up to its wait plus the
-uv run), an ``is_held`` probe, or a holder between its flock and its body write or releasing. The same fixed
-words name it on the stderr line, in the WARNING and in doctor."""
+uv run), an ``is_held`` probe from status or doctor, or a cycle between its flock and its body write or
+releasing. The same fixed words (no pid, no time, so the report's Recent errors merges the WARNING) name it on
+the stderr line, in the WARNING and in doctor (B13 round 2 R62; round 3 R50 named the probe and the cycle)."""
 
 
 def _holder_identity(body: str) -> str:
@@ -226,8 +228,10 @@ def _holder_identity(body: str) -> str:
     alone. Its pid, start, host, beat and stage stay on the stderr line; any of them would make each holder
     run (or each skip) a new line that the report's Recent errors cannot merge."""
     info = LockInfo.parse(body)
-    if info is None:  # empty: install.sh's reinstall (lockf), a probe, a starting or releasing holder
-        return "an unidentified holder (unparseable lock body)" if body.strip() else _UNRECORDED_HOLDER
+    if info is None:
+        if not body.strip():  # install.sh's reinstall, a status or doctor probe, or a cycle starting
+            return EMPTY_BODY_HOLDER
+        return "an unidentified holder (unparseable lock body)"
     return info.label
 
 
@@ -236,7 +240,7 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     info = LockInfo.parse(body)
     if info is None:
         if not body.strip():  # held with no body: install.sh's reinstall (lockf), a probe, a starting cycle
-            return _UNRECORDED_HOLDER
+            return EMPTY_BODY_HOLDER
         return f"{body.strip()!r} (unparseable lock body)"
     out = f"pid {info.pid} ({info.label}) since {info.started_at}"
     if holder is not None and holder.get("pid") == info.pid:

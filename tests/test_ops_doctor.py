@@ -30,7 +30,7 @@ from agentsync.convert import media, ocr, speech
 from agentsync.model import PassKind, SourceKind, SourceState
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
-from agentsync.ops.lock import LockInfo, SingleWriterLock, boot_time, write_heartbeat
+from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
 from conftest import config_text, fails_without_a_fix
 from media_kit import fake_media
 from speech_kit import fake_speech, place_models
@@ -1333,6 +1333,24 @@ def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> 
     lock_path.write_text(LockInfo(99999, boot_time(), "2026-09-29T10:00:00Z", "poll").render() + "\n")
     r = by_name(run_checks(sample_config))["lock"]
     assert not r.ok and "without releasing" in r.detail and "FULL" in r.detail
+
+
+def test_lock_held_with_an_empty_body_names_no_cycle(sample_config: Config) -> None:
+    """R50: install.sh's lockf holds the lock and writes no body, so doctor names the unrecorded holder, says
+    no cycle is running, and reads no dead cycle's sidecar (no kill of an unrelated pid)."""
+    lock_path = sample_config.state_paths.lock
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text("")
+    holder = lock_path.with_name(lock_path.name + ".json")
+    holder.write_text('{"pid": 99999, "last_beat_at": "2000-01-01T00:00:00Z"}')
+    fd = os.open(lock_path, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        r = by_name(run_checks(sample_config))["lock"]
+    finally:
+        os.close(fd)
+    assert r.ok and r.detail == f"held by {EMPTY_BODY_HOLDER}" and r.fix is None
+    assert "a cycle is running" not in r.detail
 
 
 # ------------------------------------------------------------------------------------------------ heartbeat

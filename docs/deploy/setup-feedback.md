@@ -400,7 +400,7 @@ On a re-run, step 2 waits for a background sync before it reinstalls agentsync, 
 `agentsync: reinstalling after the background sync ends, still running, <N>s`. A poll that exits 75 at that
 time was skipped on purpose: the reinstall held its lock, and launchd starts the next at its interval. The
 report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock held by an unrecorded holder
-(install.sh while it reinstalls agentsync, or a check for an instant)`, and doctor's lock line during the wait
+(install.sh while it reinstalls agentsync, a status or doctor check, or a cycle starting)`, and doctor's lock line during the wait
 reads `held by an unrecorded holder (...)` with no cycle named: the reinstall writes no lock body.
 The install log's `step=agentsync` line notes what step 2 saw: `waited-for-a-background-sync`,
 `wait-ran-out-after-<N>s` (the reinstall then ran without the lock) or `lock-not-taken-rc<N>`; with no note, the

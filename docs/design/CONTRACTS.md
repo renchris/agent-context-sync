@@ -11084,6 +11084,11 @@ still tell a stuck holder from repeated slow runs. Amends §9 step 2 (dated line
 (`test_lock_held_warning_names_the_holder_and_repeats_verbatim`), `tests/test_ops_lock.py`
 (`test_second_instance_in_same_process_is_refused`,
 `test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`).
+**Amended 2026-10-12, §16.45 R50:** an empty body reads `an unrecorded holder (install.sh while it reinstalls
+agentsync, a status or doctor check, or a cycle starting)` in `who`, in the stderr line and in doctor alike
+(one constant, `agentsync.ops.lock.EMPTY_BODY_HOLDER`); install.sh's lockf, an `is_held` probe and a cycle
+between its flock and its body write all leave the body empty. A non-empty body that does not parse keeps `an
+unidentified holder (unparseable lock body)`.
 
 #### N26: the empty-cloud-folder wait and the report count the files the last walk did not list (`agentsync.manifest`, `agentsync.loop`, `agentsync.setup_report`)
 
@@ -11622,6 +11627,9 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     probe, a cycle between flock and its write) reads `an unrecorded holder (install.sh while it reinstalls
     agentsync, or a check for an instant)`, not `'<empty body>' (unparseable lock body)`; a non-empty body
     that does not parse keeps the old text. The module docstring says so.
+    **Amended 2026-10-12, §16.45 R50:** the empty-body text is now `an unrecorded holder (install.sh while it
+    reinstalls agentsync, a status or doctor check, or a cycle starting)`, the same as N24's `who`, and
+    doctor's held line adds `(a cycle is running)` only when the body parses as a cycle's record.
   - The setup log is unchanged: `step=agentsync seconds=N` carries the wait. The header's run-time sentence
     says a re-run may spend up to 2 minutes of the first sync's time in step 2 (the first sync would
     otherwise wait up to 600 s for the same sync). (**amended 2026-10-11, §16.47 R34:** the line now carries

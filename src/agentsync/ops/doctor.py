@@ -34,7 +34,7 @@ from agentsync.loop import NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
-from agentsync.ops.lock import SingleWriterLock, read_heartbeat
+from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
 from agentsync.paths import expand, is_cloud_path
 
 log = logging.getLogger(__name__)
@@ -1499,6 +1499,10 @@ def _check_lock(config: Config) -> list[CheckResult]:
     body = SingleWriterLock.read_body(path).strip()
     desc = SingleWriterLock.describe(path)
     if held:
+        if LockInfo.parse(body) is None:
+            # No cycle's record: install.sh's reinstall, a probe, or a cycle before its body write. A sidecar
+            # here is a dead cycle's, so its pid and beat say nothing about this holder.
+            return [_ok("lock", f"held by {desc}")]
         holder = SingleWriterLock.read_holder(path)
         age = _age_s(holder.get("last_beat_at"), _now()) if holder else None
         limit = max(2 * config.reconcile_interval_s, 3600)
