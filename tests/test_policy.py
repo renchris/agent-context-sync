@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from agentsync import policy
+from agentsync import cycle, policy
 from agentsync.config import ConvertConfig
 from agentsync.convert import ConverterCache, Registry, convert_file
 from agentsync.convert.canonical import canonical_hash
@@ -527,10 +527,20 @@ def test_label_refusal_through_the_default_registry(fixture_files: dict[str, Pat
     assert plain.action_key != ok.action_key and not plain.from_cache
 
 
+@pytest.mark.parametrize("suffix", [".vsdx", ".vsdm"])
 @pytest.mark.parametrize("where", ["custom.xml", "LabelInfo"])
-def test_a_visio_drawing_is_screened_for_labels_like_any_office_file(tmp_path: Path, where: str) -> None:
-    """A .vsdx is an Office package and carries a label where the others do: an excluded one is refused before
-    the converter runs, and under refuse_unlabelled an unlabelled drawing is refused too (N47)."""
+def test_a_visio_drawing_is_screened_for_labels_like_any_office_file(
+    tmp_path: Path, where: str, suffix: str
+) -> None:
+    """A .vsdx, or a .vsdm (the same package with macros, which are never run), is an Office package and
+    carries a label where the others do: an excluded one is refused before the converter runs, under
+    refuse_unlabelled an unlabelled drawing is refused too, a name whose bytes are not a zip is never
+    converted, and a policy change re-screens it (N47, R86)."""
+    assert suffix in policy.OOXML_SUFFIXES and suffix in cycle._LABEL_CAPABLE
+    renamed = tmp_path / f"Contoso Renamed{suffix}"
+    renamed.write_bytes(b"not a zip")
+    r = run_convert(renamed, renamed.name, Registry.default(CFG), tmp_path / "c")
+    assert r.reason == policy.NOT_OOXML_REASON
     if where == "custom.xml":
         extra = {"docProps/custom.xml": custom_xml((LABEL, SITE, "Highly Confidential", "true"))}
         rel = f'<Relationship Id="rIdC" Type="{policy.CUSTOM_PROPS_REL_TYPE}" Target="docProps/custom.xml"/>'
@@ -540,16 +550,16 @@ def test_a_visio_drawing_is_screened_for_labels_like_any_office_file(tmp_path: P
             f'<Relationship Id="rIdL" Type="{policy.LABELINFO_REL_TYPE}" '
             'Target="/docMetadata/LabelInfo.xml"/>'
         )
-    labelled = build_vsdx(tmp_path / "Contoso Plan.vsdx", extra=extra, root_rels=rel)
-    plain = build_vsdx(tmp_path / "Contoso Open.vsdx")
+    labelled = build_vsdx(tmp_path / f"Contoso Plan{suffix}", extra=extra, root_rels=rel)
+    plain = build_vsdx(tmp_path / f"Contoso Open{suffix}")
     excluded = Registry.default(CFG, policy=PolicyConfig(exclude_label_ids=(LABEL,)))
-    r = run_convert(labelled, "Contoso Plan.vsdx", excluded, tmp_path / "c")
+    r = run_convert(labelled, labelled.name, excluded, tmp_path / "c")
     assert r.status is ConversionStatus.REFUSED and "is excluded by [policy]" in str(r.reason)
-    assert run_convert(plain, "Contoso Open.vsdx", excluded, tmp_path / "c").status is ConversionStatus.OK
+    assert run_convert(plain, plain.name, excluded, tmp_path / "c").status is ConversionStatus.OK
     strict = Registry.default(CFG, policy=PolicyConfig(refuse_unlabelled=True))
-    unlabelled = run_convert(plain, "Contoso Open.vsdx", strict, tmp_path / "c")
+    unlabelled = run_convert(plain, plain.name, strict, tmp_path / "c")
     assert unlabelled.status is ConversionStatus.REFUSED and "no sensitivity label" in str(unlabelled.reason)
-    assert run_convert(labelled, "Contoso Plan.vsdx", strict, tmp_path / "c").status is ConversionStatus.OK
+    assert run_convert(labelled, labelled.name, strict, tmp_path / "c").status is ConversionStatus.OK
 
 
 # ---------------------------------------------------------------------------------------------------------

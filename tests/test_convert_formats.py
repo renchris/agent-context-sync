@@ -3978,6 +3978,36 @@ def test_a_visio_drawing_is_its_shape_text_and_connections_per_page(tmp_path: Pa
     assert (u.title, u.summary) == ("", "Visio drawing: 2 page(s); pages: Site plan; Frame")
 
 
+def test_a_macro_enabled_visio_drawing_is_read_like_a_vsdx_and_its_macros_never_opened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A .vsdm is the .vsdx package plus a macro project: the same page, read as a Visio drawing (not as
+    draw.io XML), and no step from the label screen to the page opens ``vbaProject.bin``."""
+    opened: list[str] = []
+    real_open = zipfile.ZipFile.open
+
+    def spy(self: zipfile.ZipFile, name: str | zipfile.ZipInfo, *args: Any, **kwargs: Any) -> Any:
+        opened.append(name.filename if isinstance(name, zipfile.ZipInfo) else name)
+        return real_open(self, name, *args, **kwargs)
+
+    src = build_vsdx(
+        tmp_path / "Contoso Macros.vsdm", extra={"visio/vbaProject.bin": b"\xd0\xcf\x11\xe0 macros"}
+    )
+    monkeypatch.setattr(zipfile.ZipFile, "open", spy)
+    r = convert_file(
+        src,
+        name=src.name,
+        content_sha256=hashlib.sha256(src.read_bytes()).hexdigest(),
+        canonical_sha256="c" * 64,
+        registry=Registry.default(CFG),
+        cache=ConverterCache(tmp_path / "cache"),
+    )
+    assert r.status is ConversionStatus.OK
+    assert "\n- Contoso router -> Server 42: uplink\n" in _one(r.units).body
+    assert _one(r.units).summary == "Visio drawing: 2 page(s); pages: Site plan; Frame"
+    assert "visio/pages/page1.xml" in opened and not [n for n in opened if "vbaProject" in n]
+
+
 def test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order(tmp_path: Path) -> None:
     """Groups nested 5000 deep are read, every shape in the file's order (a group, then its members, then
     what follows the group), where walking them by recursion failed as a ``corrupt Visio package``."""

@@ -384,7 +384,7 @@ LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05 09:00:00,000 WARNING agentsyn
 def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
     """A file at the top of a source has no slash to know it by: its extension is all the scrub has. A file
     the cycle fetches and converts is a file its WARNING lines can name, so every claimed suffix is known."""
-    assert len(CONVERTED_SUFFIXES) == 39 and {".bmp", ".heif", ".webp", ".yml", ".log"} <= {
+    assert len(CONVERTED_SUFFIXES) == 40 and {".bmp", ".heif", ".webp", ".yml", ".log", ".vsdm"} <= {
         *CONVERTED_SUFFIXES
     }
     for name in (f"Contoso Roadmap{suffix}", f"Fabrikam Org Chart{suffix.upper()}"):

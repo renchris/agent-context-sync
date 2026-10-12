@@ -359,6 +359,7 @@ engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.42):** `.url` → `text-plain`.
 **SUPERSEDED (2026-10-11, §16.42):** with no label rule, `.msg` → `msg-olefile`.
 **SUPERSEDED (2026-10-11, §16.42):** `.drawio .vsdx` → `diagram-stdlib`.
+**SUPERSEDED (2026-10-11, §16.48):** `.vsdm` → `diagram-stdlib`.
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -4676,8 +4677,8 @@ file), and `gitops.COMMIT_PATHSPECS` includes it.
 earlier conversions from the cache (`ConverterCache.delete(keys)`) and queues a `LABEL_ESCALATION` purge. The
 manifest meta keeps `policy_fingerprint`; when the effective policy changes, every label-capable file
 (`OOXML_SUFFIXES`, `.pdf`, `.eml`; **amended 2026-10-06, §16.26:** and the image suffixes; **amended
-2026-10-11, §16.42:** and `.msg`; `OOXML_SUFFIXES` gains `.vsdx`) that is
-published or refused by policy is re-screened (content hashes
+2026-10-11, §16.42:** and `.msg`; `OOXML_SUFFIXES` gains `.vsdx`; **amended 2026-10-11, §16.48:** and
+`.vsdm`) that is published or refused by policy is re-screened (content hashes
 forgotten, verdict MAYBE_CHANGED); STATE.md shows `## Content policy` until the backlog is empty (**amended
 2026-10-06:** and not again until the next policy change, §16.23). An OOXML name
 whose bytes are not a ZIP at offset 0 is never converted: `policy.screen_file` refuses it by label when labels
@@ -11969,8 +11970,8 @@ committed.
 
 Amends §7's routing, §16.6's label-capable list and §16.26's setup-report scrub. Supersedes the refusal of
 `.drawio` and `.vsdx` (2026-10-08 triage D9.d, whose reasons were effort, not harm). `Registry.default`
-routes `.drawio .vsdx` to `diagram-stdlib` (`agentsync.convert.diagram.DiagramConverter`) under any policy
-and with or without an OCR engine: it reads no picture, and a Visio label is read (below), so unlike
+routes `.drawio .vsdx .vsdm` to `diagram-stdlib` (`agentsync.convert.diagram.DiagramConverter`) under any
+policy and with or without an OCR engine: it reads no picture, and a Visio label is read (below), so unlike
 `.msg` it stays registered under a label rule and the `without_ocr` and `without_speech` registries hold
 it too. It uses the standard library only: no new dependency.
 
@@ -12010,18 +12011,21 @@ it too. It uses the standard library only: no new dependency.
   name an undefined entity or the declared encoding). Entity expansion is bounded by expat's
   amplification limit (a billion-laughs file is a `not well-formed XML` failure); external entities are
   never fetched.
-- **Labels.** `.vsdx` joins `policy.OOXML_SUFFIXES`, so a Visio drawing is screened like any Office file
-  (an excluded label refuses it, `refuse_unlabelled` refuses an unlabelled one, a name whose bytes are not
-  a ZIP is `not-ooxml`) and, through `cycle._LABEL_CAPABLE`, is re-screened when the policy changes.
-  Routing it without that would convert a drawing the policy excludes, so the two land together.
-  `canonical.OOXML_SUFFIXES` is not changed: a `.vsdx` is hashed by its bytes. A `.drawio` carries no
-  sensitivity label (plain XML, like `.xml`), so label rules do not apply to it.
-- **Report.** `_PATH_IN_LOG_RE` gains `drawio` (`vsdx` was already in it), so a fetch warning naming a
-  diagram at a source's top is `<path>`; the per-suffix scrub test now covers 39 suffixes. Both suffixes
-  stay in `_REFUSED_TYPE_LIST`: a stub can be older than its converter.
+- **Labels.** `.vsdx` and `.vsdm` join `policy.OOXML_SUFFIXES`, so a Visio drawing is screened like any
+  Office file (an excluded label refuses it, `refuse_unlabelled` refuses an unlabelled one, a name whose
+  bytes are not a ZIP is `not-ooxml`) and, through `cycle._LABEL_CAPABLE`, is re-screened when the policy
+  changes. Routing it without that would convert a drawing the policy excludes, so the two land together.
+  `canonical.OOXML_SUFFIXES` is not changed: a `.vsdx` or `.vsdm` is hashed by its bytes. A `.drawio`
+  carries no sensitivity label (plain XML, like `.xml`), so label rules do not apply to it.
+- **Report.** `_PATH_IN_LOG_RE` gains `drawio` and `vsdm` (`vsdx` was already in it), so a fetch warning
+  naming a diagram at a source's top is `<path>`; the per-suffix scrub test now covers 40 suffixes. The
+  three suffixes stay in `_REFUSED_TYPE_LIST`: a stub can be older than its converter.
 - **Old stubs.** An existing `no converter for .drawio` or `.vsdx` stub becomes a page with no operator
   step: on this Mac through the re-read pass (§16.27), online-only through the work queue under the byte
-  budget. `.vsd`, `.vsdm`, stencils and templates are still refused.
+  budget. So does a `no converter for .vsdm` stub. `.vsd`, stencils and templates are still refused.
+
+Amended 2026-10-11 by §16.48 (R86): `.vsdm` is routed with `.vsdx` (routing, labels, report, old stubs and
+the extensions tuple below); it was refused here.
 
 Version: `1.0.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
 
@@ -12030,7 +12034,7 @@ Version: `1.0.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `ma
 ```python
 class DiagramConverter:
     converter_id = "diagram-stdlib"
-    extensions: tuple[str, ...] = (".drawio", ".vsdx")
+    extensions: tuple[str, ...] = (".drawio", ".vsdx", ".vsdm")
 
     def __init__(self, cfg: ConvertConfig) -> None: ...
     def version(self) -> str: ...
@@ -13084,6 +13088,27 @@ file changes: a failed conversion is not retried (§16.28 "The run record"), and
 Tests: `tests/test_convert_formats.py` (`test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order`,
 groups 5000 deep with shapes before, inside and after each; §16.42's
 `test_a_visio_drawing_is_its_shape_text_and_connections_per_page` still passes).
+
+**A macro-enabled Visio drawing is read like a `.vsdx` (R86, part c; amends §7's routing, §16.6's
+label-capable list and §16.42 "Diagrams: draw.io and Visio").** A `.vsdm` is the `.vsdx` package plus a
+macro project (`visio/vbaProject.bin`). It lands as one change, because routing it alone would convert a
+drawing the label policy excludes and would read it as draw.io XML: `.vsdm` joins `policy.OOXML_SUFFIXES`
+(so `policy.screen_file` screens it as it does a `.vsdx`: an excluded label refuses it, `refuse_unlabelled`
+refuses an unlabelled one, a name whose bytes are not a ZIP is `not-ooxml`) and through it
+`cycle._LABEL_CAPABLE` (a policy change re-screens it); `DiagramConverter.extensions` is
+`(".drawio", ".vsdx", ".vsdm")` and `convert()` reads a name ending `.vsdx` or `.vsdm` as Visio;
+`setup_report._PATH_IN_LOG_RE` matches `vsd[xm]?`. Only the parts a `.vsdx` has are read (`pages.xml`, its
+relationships and the pages, and the label parts): `vbaProject.bin` is never opened and no macro runs.
+`canonical.OOXML_SUFFIXES` is not changed. A `no converter for .vsdm` stub becomes a page through the
+re-read pass, as §16.42 "Old stubs" says of `.vsdx`. No page any other file had changes, so the
+converter's version stays `1.0.0+python-<x.y.z>`.
+
+Tests: `tests/test_convert_formats.py`
+(`test_a_macro_enabled_visio_drawing_is_read_like_a_vsdx_and_its_macros_never_opened`), `tests/test_policy.py`
+(`test_a_visio_drawing_is_screened_for_labels_like_any_office_file`, now for `.vsdx` and `.vsdm`, with the
+not-a-zip refusal and `cycle._LABEL_CAPABLE`), `tests/test_convert_core.py`
+(`test_default_registry_routes_exactly_the_contract_set`) and `tests/test_setup_report.py`
+(`test_a_log_line_never_names_a_file_a_converter_reads`, 40 suffixes).
 
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 

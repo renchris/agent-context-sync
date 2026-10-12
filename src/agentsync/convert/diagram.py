@@ -1,5 +1,5 @@
-"""Converter: diagrams read with the standard library: draw.io (``.drawio``) and Visio (``.vsdx``) (owner:
-convert).
+"""Converter: diagrams read with the standard library: draw.io (``.drawio``) and Visio (``.vsdx``, and
+``.vsdm``, whose macro project is never opened) (owner: convert).
 
 One WHOLE unit: per page a ``## <page name>`` heading, the text of each shape that has text (one line, in the
 file's order), then ``Connections:`` with one ``- <from> -> <to>: <label>`` line per connector that has a
@@ -278,10 +278,11 @@ def _link(a: str, b: str, label: str) -> str:
 
 
 class DiagramConverter:
-    """``.drawio`` (draw.io / diagrams.net, plain or compressed pages) and ``.vsdx`` (Visio 2013+) as text."""
+    """``.drawio`` (draw.io / diagrams.net, plain or compressed pages) and ``.vsdx`` / ``.vsdm`` (Visio
+    2013+) as text."""
 
     converter_id = "diagram-stdlib"
-    extensions: tuple[str, ...] = (".drawio", ".vsdx")
+    extensions: tuple[str, ...] = (".drawio", ".vsdx", ".vsdm")
 
     def __init__(self, cfg: ConvertConfig) -> None:
         """Bind converter options from config."""
@@ -301,7 +302,7 @@ class DiagramConverter:
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
-        if name.lower().endswith(".vsdx"):
+        if name.lower().endswith((".vsdx", ".vsdm")):
             pages, kind = _vsdx_pages(src), "Visio drawing"
         else:
             pages, kind = _drawio_pages(src), "draw.io diagram"

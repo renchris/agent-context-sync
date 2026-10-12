@@ -194,6 +194,7 @@ OOXML_SUFFIXES: tuple[str, ...] = (
     ".pptm",
     ".potx",
     ".vsdx",
+    ".vsdm",
 )
 
 _ENCRYPTED_PACKAGE = "EncryptedPackage".encode("utf-16-le")

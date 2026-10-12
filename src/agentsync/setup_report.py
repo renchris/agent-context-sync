@@ -5048,7 +5048,7 @@ def _background(r: _Run) -> list[str]:
 # the image and recording converters): a file the cycle reads is a file its log lines can name.
 _PATH_IN_LOG_RE = re.compile(
     r"\S/|/\S|\.(?:docx?|docm|xlsx?|xlsm|xlsb|pptx?|pptm|pdf|eml|msg|txt|md|markdown|csv|tsv|rtf|odt|ods|odp|"
-    r"pages|numbers|key|vsdx?|one|html?|json|xml|ya?ml|log|vtt|zip|png|jpe?g|gif|bmp|webp|hei[cf]|tiff?|mp4|"
+    r"pages|numbers|key|vsd[xm]?|one|html?|json|xml|ya?ml|log|vtt|zip|png|jpe?g|gif|bmp|webp|hei[cf]|tiff?|mp4|"
     r"mov|m4v|m4a|wav|url|drawio)\b",
     re.IGNORECASE,
 )

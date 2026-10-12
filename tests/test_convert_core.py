@@ -426,7 +426,7 @@ def test_default_registry_routes_exactly_the_contract_set() -> None:
         "eml-stdlib": (".eml",),
         "msg-olefile": (".msg",),
         "teams-month": (".teams.json",),
-        "diagram-stdlib": (".drawio", ".vsdx"),
+        "diagram-stdlib": (".drawio", ".vsdx", ".vsdm"),
     }
     assert ids == {ext: cid for cid, exts in routes.items() for ext in exts}
     assert reg.extensions() == tuple(sorted(ids))
