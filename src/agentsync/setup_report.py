@@ -4565,18 +4565,32 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 functools.partial(arm_local._unexcluded, src, checked),
                 timeout=min(_FOLDERS_S, max(0.3, m.left())),
             )
-            excluded = f"{len(checked) - len(reached)} of the checked folder(s) excluded in sources.toml now"
+            gone = len(checked) - len(reached)
+            # a zero is said in words, not dropped: "none excluded" is a measurement (B13 round 4 Q17)
+            excluded = (
+                f"{gone} of the checked folder(s) excluded in sources.toml now"
+                if gone
+                else "none of them excluded in sources.toml now"
+            )
         except TimeoutError:
             excluded = f"excluded in sources.toml now: {NOT_MEASURED}"
-        rest = ", ".join(
-            f"{kinds[kind]} {kind}" for kind in ("gone", "not readable", "not a folder", "not checked")
+        # the head (dataless, materialised-and-empty, checked) always stays; a kind with no folder does not
+        rest = "".join(
+            f"{kinds[kind]} {kind}, "
+            for kind in ("gone", "not readable", "not a folder", "not checked")
+            if kinds[kind]
+        )
+        rest = f"{rest[:-2]}; " if rest else ""
+        holds = (
+            f"the mirror still holds {held} file(s) below {folders} of the checked folder(s)"
+            if held
+            else "the mirror holds no file below them"
         )
         out.append(
             f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
             f"{kinds['materialised']} materialised-and-empty ({no_entry} of them with a link count of 2: no "
-            f"entry by the folder's own metadata); {rest}; {len(checked)} of {len(names)} checked; "
-            f"{excluded}; the mirror still holds {held} file(s) below {folders} of the checked folder(s); "
-            f"{missed}"
+            f"entry by the folder's own metadata); {rest}{len(checked)} of {len(names)} checked; "
+            f"{excluded}; {holds}; {missed}"
         )
     if not out:
         return ["- none: no source's last walk held a zero-child cloud folder as unknown"]

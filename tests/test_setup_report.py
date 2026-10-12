@@ -5697,6 +5697,24 @@ def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: 
     assert "exclude list prunes the inner folder: no;" in status_parts(fake_mac)[1]["Overlapping sources"]
 
 
+def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
+    """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
+    dataless count is the measured answer to the open question) and "1 of 1 checked", drops the kinds with
+    no folder, and says "none excluded" and "no file below them" rather than printing zeros."""
+    (fake_mac["one"] / "Wingtip merger").mkdir()
+    seed = Seed(fake_mac["config"])
+    seed.m.set_meta("empty_cloud_dirs:" + seed.ids()[0], json.dumps(["Wingtip merger"]))
+    seed.close()
+    part = status_parts(fake_mac)[1]["Empty cloud folders"]
+    line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
+    assert line.split(": ", 1)[1] == (
+        "1 unknown: 0 dataless, 1 materialised-and-empty (1 of them with a link count of 2: no entry by the "
+        "folder's own metadata); 1 of 1 checked; none of them excluded in sources.toml now; the mirror holds "
+        "no file below them; no walk of it is recorded"
+    ), line
+    assert "0 gone" not in line and "0 of the checked" not in line and "0 file(s)" not in line
+
+
 def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5738,9 +5756,9 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
     assert line.split(": ", 1)[1] == (
         "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them with a link count of 2: no entry by the "
-        "folder's own metadata); 1 gone, 0 not readable, 1 not a folder, 1 not checked; 6 of 6 checked; 0 "
-        "of the checked folder(s) excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of "
-        "the checked folder(s); no walk of it is recorded"
+        "folder's own metadata); 1 gone, 1 not a folder, 1 not checked; 6 of 6 checked; none of them "
+        "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s); no "
+        "walk of it is recorded"
     )
     assert part.count("\n- ") == 1, "a source whose walk held none has no line"
     # N26: the files the mirror holds that the last walk (the newest FULL pass) did not list; no path.
@@ -5842,7 +5860,7 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
         release.set()
     part = parts["Empty cloud folders"]
     assert "60 unknown: 0 dataless, 0 materialised-and-empty" in part and "; 50 of 60 checked;" in part
-    assert f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror still holds" in part
+    assert f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
     assert '- evidence: 1 line(s) at the end of Status say "not measured"' in section(text, "Summary")
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
