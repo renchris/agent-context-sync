@@ -1014,6 +1014,35 @@ def test_the_shell_short_name_lists_are_the_reports() -> None:
     assert lists == [set(setup_report._SHORT_WORDS), set(setup_report._SHORT_CAPS)]
 
 
+def test_the_shell_joined_word_list_is_the_reports() -> None:
+    """install.sh's joined_word holds setup_report._JOINED_WORDS, word for word (B13 round 4 Q72)."""
+    body = INSTALL_SH.read_text().split("\njoined_word() {\n", 1)[1].split("\n}\n", 1)[0]
+    [line] = [ln.strip() for ln in body.splitlines() if ln.strip().endswith(") return 0 ;;")]
+    assert set(line.removesuffix(") return 0 ;;").split(" | ")) == set(setup_report._JOINED_WORDS)
+
+
+def test_the_shell_report_leaves_a_report_word_a_short_name_spells_alone(
+    env: dict[str, str], folder: Path
+) -> None:
+    """B13 round 4 Q72: "Ho, Me" run together is "home": the shell report keeps "home" and "HOME" and still
+    redacts the name's spaced, joined-with-a-separator and CamelCase forms."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / "id",
+        '#!/bin/bash\n[ "$1" = -F ] && { echo "Ho, Me"; exit 0; }\nexec /usr/bin/id "$@"\n',
+    )
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | your home folder; HOME set; Ho Me, HoMe, ho_me, Me Ho agreed "
+        "| -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(folder))
+    assert cp.returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "your home folder; HOME set; <name>, <name>, <name>, <name> agreed" in text, text
+
+
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
 def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, str], locale: str) -> None:
     """A CloudStorage folder of any provider: the part after the app's name is <org-N> in the shell fallback

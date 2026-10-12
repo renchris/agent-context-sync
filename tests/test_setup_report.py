@@ -1784,6 +1784,57 @@ def test_a_full_name_written_last_comma_first_registers_both_names(
     assert "jane" not in text.lower()
 
 
+def test_the_module_docstring_describes_the_redaction_the_code_does() -> None:
+    """B13 round 4 Q41: the redaction paragraph described round 2. It now names the LaunchAgent's proxy, the
+    generic dotless host matched only in a URL, the unaccented spellings, the held placeholders and the kept
+    locator, and every constant it cites by :data: is one the module has."""
+    doc = " ".join((setup_report.__doc__ or "").split())
+    for said in (
+        "LaunchAgent's own (``launchctl setenv``) proxy",
+        "is replaced only where a URL names it",
+        "in NFC, NFD, mixed or unaccented spelling",
+        "is left whole on a second pass",
+        "own ``github.com`` locator is kept whole",
+    ):
+        assert said in doc, said
+    cited = re.findall(r":data:`(\w+)`", doc)
+    assert {"_GENERIC_PROXY_HOSTS", "_HELD_RE", "_JOINED_WORDS"} <= set(cited)
+    assert all(hasattr(setup_report, name) for name in cited), cited
+
+
+def test_a_short_names_joined_form_that_spells_a_report_word_leaves_the_word_alone(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 4 Q72: "Ho, Me" run together is "home", so every "home", "HOME" and "Home" in the report was
+    <name>, the report's own sentences included. A joined form that spells a report word (_JOINED_WORDS) is
+    matched with a separator or a CamelCase boundary only: the name is still <name> in every other form."""
+
+    class Entry:
+        pw_gecos = "Ho, Me"
+
+    monkeypatch.setattr(setup_report, "_full_name", _REAL_FULL_NAME)
+    monkeypatch.setattr(setup_report.pwd, "getpwuid", lambda _uid: Entry())
+    write_install_log(fake_mac)
+    said = "your home folder; HOME set; the Home key; homepage; Ho Me, HoMe, ho_me, ho-me, HO_ME, Me Ho, meho"
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {said} |"))
+    text, _summary = summary_of(fake_mac)
+    friction = section(text, "Agent friction log")
+    shown = "your home folder; HOME set; the Home key; homepage; " + ", ".join(["<name>"] * 7)
+    assert f"| {shown} |" in friction, friction
+    assert "<name> folder" not in text and "<name> set" not in text
+
+    red = setup_report.Redactor()
+    for form in ("Li, Jo", "Li Jo", "Jo Li"):
+        red.add("name", form, fuzzy=True)
+    assert red.redact("LiJo li_jo lijo LIJO") == "<name> <name> <name> <name>", "no report word: as before"
+    red = setup_report.Redactor()
+    for form in ("Ho, Me", "Ho Me", "Me Ho"):
+        red.add("name", form, fuzzy=True)
+    red.add("folder", "Home", fuzzy=True)  # registered after the name: a folder of its own, in every case
+    assert red.redact("home HOME Home HoMe") == "<folder-1> <folder-1> <folder-1> <folder-1>"
+    assert {"home", "main", "done", "login"} <= setup_report._JOINED_WORDS
+
+
 def test_a_short_first_part_of_a_comma_name_keeps_the_last_name_fuzzy(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -936,6 +936,15 @@ short_name() {
 		;;
 	esac
 }
+# WORD (lower case): whether a full name's parts run together spell a word the report prints,
+# setup_report._JOINED_WORDS (a test keeps them equal): name_forms then registers that join with a CamelCase
+# boundary only ("HoMe"), never as the word in one case ("home", "HOME"; B13 round 4 Q72).
+joined_word() {
+	case "$1" in
+	above | added | adds | after | again | agent | alias | allow | alone | alpha | also | back | bare | before | below | beyond | budget | build | built | bytes | canary | cannot | case | change | check | class | click | clicks | client | cloud | code | column | commit | config | copy | could | count | counts | cycle | data | detail | differ | docs | doctor | does | domain | done | draft | each | edit | else | email | empty | ended | ends | engine | entry | error | event | events | every | exists | exit | exited | fail | failed | fails | field | fields | file | files | first | fixed | folder | form | found | from | full | fully | gave | github | gives | gone | graph | group | hash | have | head | header | held | helper | here | holds | home | host | human | image | inbox | inside | into | issue | item | items | itself | keeps | kept | kind | kinds | label | last | later | latest | layer | leaves | left | legacy | letter | like | limit | line | lines | link | list | listed | live | loaded | local | logged | login | logs | long | looked | loop | lower | made | main | many | media | mirror | mode | module | more | most | name | named | names | never | newest | next | none | note | number | older | once | ones | online | only | open | option | order | origin | other | output | over | page | pages | part | parts | past | path | paths | person | policy | prints | probe | prompt | proxy | purge | queue | queued | read | reads | ready | real | reason | record | report | reread | result | round | rows | rule | runs | same | says | scan | second | select | serial | setup | shape | shell | short | shown | shows | signal | since | source | stable | stage | start | starts | state | stated | status | step | steps | still | stub | such | suffix | sync | synced | table | text | than | that | their | them | then | there | these | they | this | those | time | turns | type | types | under | used | user | value | values | wait | waits | walk | warn | were | what | when | where | which | whole | whose | with | word | words | worked | would | write | writes | wrote) return 0 ;;
+	esac
+	return 1
+}
 # A folder name every OneDrive or Google Drive has: setup_report._GENERIC_FOLDERS (a test keeps them equal). A
 # configured one is still redacted, as the Python report does, but only as a whole word.
 generic_folder() {
@@ -1090,6 +1099,13 @@ redaction_pairs() {
 			c=""
 			for x in "$@"; do v="${v:+$v$s}$x"; done
 			for x in "${caps[@]}"; do c="${c:+$c$s}$x"; done
+			if [ -z "$s" ] && [ "$#" -ge 2 ] && joined_word "$(recase lower "$v")"; then
+				# run together they spell a report word: only a CamelCase join is the name (B13 round 4 Q72)
+				for x in "$v" "$c"; do
+					case "$x" in *[[:lower:]][[:upper:]]*) add_pair "$x" "<name>" w ;; esac
+				done
+				continue
+			fi
 			add_pair "$v" "<name>" w
 			add_pair "$(recase lower "$v")" "<name>" w
 			add_pair "$(recase upper "$v")" "<name>" w

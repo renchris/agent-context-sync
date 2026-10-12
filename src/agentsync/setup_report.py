@@ -429,6 +429,32 @@ _SHORT_CAPS = frozenset(
 ("AI", "OS", the doctor line's "subject.OU", a suffix "II"). A two-letter part of the full name that is one of
 them ("Ai", "Ip", "Ou") is registered in its written form, not in its upper-case one. install.sh's
 ``short_name`` holds the same list."""
+_JOINED_WORD_LIST = """
+    above added adds after again agent alias allow alone alpha also back bare before below beyond budget
+    build built bytes canary cannot case change check class click clicks client cloud code column commit
+    config copy could count counts cycle data detail differ docs doctor does domain done draft each edit
+    else email empty ended ends engine entry error event events every exists exit exited fail failed
+    fails field fields file files first fixed folder form found from full fully gave github gives gone
+    graph group hash have head header held helper here holds home host human image inbox inside into
+    issue item items itself keeps kept kind kinds label last later latest layer leaves left legacy
+    letter like limit line lines link list listed live loaded local logged login logs long looked loop
+    lower made main many media mirror mode module more most name named names never newest next none note
+    number older once ones online only open option order origin other output over page pages part parts
+    past path paths person policy prints probe prompt proxy purge queue queued read reads ready real
+    reason record report reread result round rows rule runs same says scan second select serial setup
+    shape shell short shown shows signal since source stable stage start starts state stated status step
+    steps still stub such suffix sync synced table text than that their them then there these they this
+    those time turns type types under used user value values wait waits walk warn were what when where
+    which whole whose with word words worked would write writes wrote
+"""
+_JOINED_WORDS = frozenset(_JOINED_WORD_LIST.split())
+"""Lower-case words of 4 to 6 letters that the report's own lines and an agent's sentences print (every such
+word its static text uses 8 or more times, and the common short words "home", "main", "done", "login" ...),
+which two or more short parts of a full name can spell run together ("Ho, Me" is "home"). Such a joined form
+is matched with a separator or a CamelCase boundary only ("Ho Me", "ho_me", "HoMe"), never as the bare word
+in one case, which is the same text as the word: "home", "HOME" and "Home" stay (B13 round 4 Q72). Leaving a
+word off only keeps the old over-redaction. install.sh's ``joined_word`` holds the same list."""
+
 _GENERIC_IDS = frozenset(
     {
         "agent",
@@ -514,6 +540,8 @@ _SEP_RE = re.compile(r"[ \t_\\-]+")
 _FUZZY_SEP = r"[ \t_\\-]*"
 """Between the words of a fuzzy value. The backslash covers ``printf %q`` text (install.log's ``args=``,
 install.out's run header and re-run lines): ``Client\\ Alpha`` is ``Client Alpha``."""
+_JOINED_SEP = r"[ \t_\\-]+"  # between the words of a joined form that spells a report word (_JOINED_WORDS)
+_CAMEL = r"(?-i:(?<=[a-z\u00df-\u00f6\u00f8-\u00ff\u0300-\u036f]))"  # a small letter before (case-sensitive)
 _Q_ESCAPE_RE = re.compile(r"[^A-Za-z0-9]")  # in a word: ``printf %q`` may put a backslash before it
 _MARK = "[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]"  # a combining mark (an accent)
 _NAME_BRACKET_RE = re.compile(r"\s*[(\[{]([^()\[\]{}]*)[)\]}]")
@@ -708,13 +736,16 @@ class Redactor:
         self._exact: dict[str, str] = {}  # _bare(value) -> placeholder (case-sensitive kinds)
         self._folded: dict[str, str] = {}  # _bare(value).lower() -> placeholder (case-insensitive kinds)
         self._fuzzy: dict[str, str] = {}  # _norm(value) -> placeholder (normalization-aware kinds)
+        # _norm(value) -> placeholder of a name's joined form that spells a report word (_JOINED_WORDS):
+        # apart, so a later folder or organisation spelled the same ("Home") is registered under its own kind
+        self._joined: dict[str, str] = {}
         # _bare(value).lower() -> placeholder of a host matched only inside a URL (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
         self._url_hosts: dict[str, str] = {}
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
         self._pattern_values: dict[tuple[str, str], str] = {}
-        self._literals: list[tuple[str, str]] = []  # (value, "exact" | "fold" | "fuzzy")
+        self._literals: list[tuple[str, str]] = []  # (value, "exact" | "fold" | "fuzzy" | "url" | "joined")
         self._commits: dict[str, str] = {}  # 7-hex prefix -> placeholder
         self._used: set[str] = set()
         self._regex: re.Pattern[str] | None = None
@@ -789,6 +820,9 @@ class Redactor:
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
+        joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in _JOINED_WORDS
+        if joined and _norm(value) in self._joined:
+            return
         known = self._known(value)
         # An accented spelling of a known value ("Société" after "Societe") keeps that placeholder, but is
         # matched as written too: the unaccented value's pattern has no accented letters.
@@ -800,7 +834,10 @@ class Redactor:
             return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
-        if fuzzy and len(_norm(value)) >= 3 and _tokens(value):
+        if joined:  # matched with a separator or a CamelCase boundary only (_JOINED_WORDS)
+            self._joined[_norm(value)] = placeholder
+            self._literals.append((value, "joined"))
+        elif fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy.setdefault(_norm(value), placeholder)
             self._literals.append((value, "fuzzy"))
         elif url:
@@ -855,6 +892,15 @@ class Redactor:
             for form, edge, mode in forms:
                 if mode == "fuzzy":
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(form))
+                elif mode == "joined":  # "Ho Me", "ho_me", "HoMe"; never "home", "HOME" or "Home"
+                    words = _tokens(form)
+                    camel = "".join(
+                        _word_pattern(w)
+                        if not k
+                        else f"{_CAMEL}(?-i:{_word_pattern(w[0].upper())}){_word_pattern(w[1:])}"
+                        for k, w in enumerate(words)
+                    )
+                    body = f"(?:{_JOINED_SEP.join(_word_pattern(w) for w in words)}|{camel})"
                 else:
                     body = _word_pattern(form, shell=mode != "exact")
                 if mode == "url":  # "http://proxy:8080" and "user@proxy", never HTTPS_PROXY or network.proxy
@@ -899,7 +945,12 @@ class Redactor:
         elif groups.get("hash") is not None:
             placeholder = self._pattern("hash", text)
         else:
-            placeholder = self._known(text) or self._url_hosts.get(_bare(text).lower()) or text
+            placeholder = (
+                self._known(text)
+                or self._joined.get(_norm(text))
+                or self._url_hosts.get(_bare(text).lower())
+                or text
+            )
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
