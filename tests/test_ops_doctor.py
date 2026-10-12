@@ -1072,18 +1072,67 @@ def test_cloud_source_without_sentinel_and_tcc_note(sample_config: Config) -> No
     (root / "a.docx").write_bytes(b"x")
     src = dataclasses.replace(sample_config.sources[0], path=root, sentinel=None)
     r = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))
-    # Bring-back S9: add-source writes no sentinel, and the walk already holds deletions for a cloud folder
-    # it finds empty or cannot list, so the missing sentinel is an ok line, not a warn with a hand edit.
+    # Bring-back S9: add-source writes no sentinel, and the walk already holds back deletions for a cloud
+    # folder it finds empty or cannot list, so the missing sentinel is an ok line, not a warn to edit by hand.
     sentinel = r["source.local-fixture.sentinel"]
     assert sentinel.ok and sentinel.fix is None and "optional" in sentinel.detail
+    # B13 round 5 F3: agentsync holds the deletions back, not the folder (the provider folder reads as a
+    # File Provider domain here, as conftest makes every test's).
+    assert sentinel.detail == (
+        "no sentinel configured (optional: agentsync already holds back deletions under a cloud folder that "
+        "is empty or cannot be listed)"
+    )
     # B13 round 4 Q2: the value is the APFS volume's UUID, whatever the folder is, so it is named as one.
     volume = r["source.local-fixture.volume"].detail
     assert volume.startswith("volume UUID ") and "File Provider" not in volume
-    # Bring-back S21: an [ok] line is a note, never the Full Disk Access instruction, and points at lines
-    # that exist in every branch.
-    assert r["tcc"].ok and "needs its own" in r["tcc"].detail
-    assert "grant Full Disk Access" not in r["tcc"].detail and "tcc.<source>" not in r["tcc"].detail
-    assert r["tcc"].detail.endswith("(the launcher and tcc.* lines below report it)")
+    # Bring-back S21: an [ok] line is a note, never the Full Disk Access instruction. B13 round 5 F2: with no
+    # LaunchAgent installed or pending, it names none as running, nor this interpreter: a cloud root needs the
+    # signed launcher.
+    tcc = r["tcc"].detail
+    assert r["tcc"].ok and "grant Full Disk Access" not in tcc and "tcc.<source>" not in tcc
+    assert "the LaunchAgent runs" not in tcc and "python" not in tcc.lower(), tcc
+    assert tcc == (
+        "cloud roots were listed with this terminal's privacy grants; background sync is not installed: if "
+        "it is turned on, its LaunchAgents run the signed launcher (agentsync-launcher), which needs its own "
+        "grants"
+    )
+
+
+def test_the_tcc_note_names_the_lines_below_when_background_sync_is_wanted(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F2: with the agent step pending (or a LaunchAgent installed), the note says the
+    LaunchAgent needs its own grants and points at the launcher and tcc.* lines, which report it."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    root.mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")
+    src = dataclasses.replace(sample_config.sources[0], path=root, sentinel=None)
+    tcc = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))["tcc"]
+    assert tcc.ok and "the LaunchAgent runs " in tcc.detail and "needs its own" in tcc.detail
+    assert tcc.detail.endswith("(the launcher and tcc.* lines below report it)")
+    assert "python" not in tcc.detail.lower(), "a cloud root needs the launcher, never the interpreter"
+
+
+@pytest.mark.usefixtures("real_domain_check")
+def test_a_plain_provider_folder_holds_back_deletions_only_for_a_folder_it_cannot_list(
+    sample_config: Config,
+) -> None:
+    """B13 round 5 F50: outside a File Provider domain (a plain folder, as a sandbox's mkdir makes) the walk
+    reads an empty folder as empty, so the sentinel line says only that a folder it cannot list holds the
+    deletions back."""
+    root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    root.mkdir(parents=True)
+    (root / "a.docx").write_bytes(b"x")
+    src = dataclasses.replace(sample_config.sources[0], path=root, sentinel=None)
+    sentinel = by_name(run_checks(dataclasses.replace(sample_config, sources=(src,))))[
+        "source.local-fixture.sentinel"
+    ]
+    assert sentinel.ok and sentinel.fix is None
+    assert sentinel.detail == (
+        "no sentinel configured (optional: agentsync already holds back deletions under a cloud folder that "
+        "cannot be listed)"
+    )
 
 
 def test_cloud_source_empty_hints_fda(sample_config: Config) -> None:
