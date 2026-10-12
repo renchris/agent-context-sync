@@ -602,10 +602,10 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A config may name any folder for its cache and its logs. One that is the home folder, or holds it,
-    is not agentsync's alone, so nothing in it is changed: the check reports it, and the chmod is the
-    person's decision. The file system says which folder a path is, not its spelling (review, 2026-10-07):
-    ``~/x/..``, a path through a symlink and, where the volume takes a name in any case, another case all
-    passed a comparison of the paths as written, and the home folder and what is in it were made
+    is not agentsync's alone, so nothing in it is changed: the check reports the config key, and offers no
+    chmod of it (§16.45 R79). The file system says which folder a path is, not its spelling (review,
+    2026-10-07): ``~/x/..``, a path through a symlink and, where the volume takes a name in any case, another
+    case all passed a comparison of the paths as written, and the home folder and what is in it were made
     owner-only."""
     repo, home = tmp_path / "docs", tmp_path / "volume" / "people" / "me"
     repo.mkdir()
@@ -626,7 +626,9 @@ def test_tightening_leaves_a_log_folder_that_is_the_home_folder(
         assert {path: mode(path) for path in loose} == loose, log_dir
         assert cycle_mod._sync_leaves(config, [mine]) == [mine]
     assert not cycle_mod._holds_home(home / "x") and not cycle_mod._holds_home(tmp_path / "missing")
-    assert "chmod -R go-rwx" in (permissions(dataclasses.replace(config, log_dir=home)).fix or "")
+    results = {r.name: r for r in doctor._check_permissions(dataclasses.replace(config, log_dir=home))}
+    assert results["config.log_dir"].fix is not None and "chmod" not in results["config.log_dir"].fix
+    assert "~" not in (results["docs_repo.permissions"].fix or "").split()
     monkeypatch.setenv("HOME", str(tmp_path / "link" / "me"))  # a home folder reached through a symlink
     assert cycle_mod._holds_home(tmp_path / "volume"), "the folder above where it really is holds it too"
     assert cycle_mod._holds_home(home) and not cycle_mod._holds_home(repo)

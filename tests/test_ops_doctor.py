@@ -855,6 +855,42 @@ def test_the_permissions_fix_under_home_runs_as_the_report_shows_it(tmp_path: Pa
     assert not (work / "~").exists()
 
 
+def test_a_cache_or_log_folder_that_holds_home_is_a_fail_and_no_chmod_target(tmp_path: Path) -> None:
+    """§16.45 R79: a cache_dir that is the home folder and a log_dir above it are left out of the walk and of
+    the chmod, as the sync leaves them (cycle._holds_home); each is a FAIL whose fix names its config key."""
+    ctx = Path.home() / "agent-context"
+    repo = ctx / "docs"
+    repo.mkdir(parents=True)
+    ctx.chmod(0o700)
+    repo.chmod(0o700)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    page = repo / "mirror" / "x" / "page.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("Contoso\n", encoding="utf-8")
+    page.chmod(0o644)
+    (Path.home() / "Public").mkdir(mode=0o755)  # the person's own: never reported as tenant data
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    cfg = parse_config(
+        config_text(repo, state, tmp_path / "cache", tmp_path / "source"), config_path=ctx / "sources.toml"
+    )
+    cfg = dataclasses.replace(cfg, cache_dir=Path.home(), log_dir=Path.home().parent)
+    results = by_name(doctor._check_permissions(cfg))
+    assert set(results) == {"config.cache_dir", "config.log_dir", "docs_repo.permissions"}
+    for key in ("cache_dir", "log_dir"):
+        r = results[f"config.{key}"]
+        assert not r.ok and r.severity is Severity.ERROR and r.fix is not None
+        assert r.fix.startswith(f"set {key} in ~/'agent-context/sources.toml' to a folder of its own")
+        assert "chmod" not in r.fix
+    perms = results["docs_repo.permissions"]
+    assert not perms.ok and "Public" not in perms.detail and "page.md" in perms.detail
+    homes = {str(Path.home()), str(Path.home().parent), "/"}
+    for r in results.values():
+        words = shlex.split((r.fix or "").replace(";", " "))
+        assert "~" not in words and not homes.intersection(words), r.fix
+    assert perms.fix is not None and perms.fix.startswith("chmod -R go-rwx ~/'agent-context' ")
+
+
 def test_state_db_modes(sample_config: Config) -> None:
     db = sample_config.state_paths.db
     db.write_bytes(b"")

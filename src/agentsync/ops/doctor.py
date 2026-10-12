@@ -29,14 +29,14 @@ from pathlib import Path
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig, canonical_source_root
-from agentsync.cycle import _sync_leaves
+from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
-from agentsync.paths import expand, is_cloud_path
+from agentsync.paths import default_cache_dir, default_log_dir, expand, is_cloud_path
 
 log = logging.getLogger(__name__)
 
@@ -1713,15 +1713,31 @@ def _group_other_readable(root: Path, own_roots: frozenset[Path] = frozenset()) 
 def _check_permissions(config: Config) -> list[CheckResult]:
     """The docs repo (worktree + .git), ~/agent-context, the cache and the logs are owner-only: they hold a
     plaintext copy of tenant data (audit critic-mirror-world-readable-tcc-downgrade).  Read-only: the fix
-    names the sync that clears the paths found, or a chmod when a sync would leave one of them."""
+    names the sync that clears the paths found, or a chmod when a sync would leave one of them.
+
+    A cache or log folder that is the home folder or holds it (the sync's own rule, ``cycle._holds_home``) is
+    not agentsync's alone: it is neither walked nor named in a chmod, and gets a FAIL of its own,
+    ``config.<key>``, whose fix is to give the key a folder of its own (§16.45 R79)."""
     repo = expand(config.docs_repo)
-    roots = [
-        repo,
-        repo / ".git" / "objects",
-        repo / "mirror",
-        expand(config.cache_dir),
-        expand(config.log_dir),
-    ]
+    out: list[CheckResult] = []
+    roots = [repo, repo / ".git" / "objects", repo / "mirror"]
+    for key, folder, default in (
+        ("cache_dir", expand(config.cache_dir), default_cache_dir()),
+        ("log_dir", expand(config.log_dir), default_log_dir()),
+    ):
+        if not _holds_home(folder):
+            roots.append(folder)
+            continue
+        out.append(
+            _bad(
+                f"config.{key}",
+                f"{key} is the home folder or a folder that holds it, so agentsync leaves its modes alone",
+                fix=(
+                    f"set {key} in {_shell_path(config.config_path)} to a folder of its own, such as "
+                    f"{_shell_path(default)}"
+                ),
+            )
+        )
     ctx = expand(config.config_path).parent
     if ctx != Path.home() and ctx in repo.parents:
         roots.insert(0, ctx)
@@ -1739,11 +1755,15 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         targets = " ".join(_shell_path(r) for r in roots if r.exists())
         # A sync makes agentsync's own paths owner-only, and a setup agent may run it; the chmod is the
         # person's, for a path a sync leaves (in mirror/ or .git, or another user's).
-        fix = "agentsync sync (it makes these owner-only)"
+        fix: str | None = "agentsync sync (it makes these owner-only)"
         if _sync_leaves(config, bad):
-            fix = f"chmod -R go-rwx {targets}; git -C {_shell_path(repo)} config core.sharedRepository 0600"
-        return [_bad("docs_repo.permissions", f"group/other can read tenant data: {shown}", fix=fix)]
-    return [_ok("docs_repo.permissions", "docs repo, cache and logs are owner-only")]
+            fix = (
+                f"chmod -R go-rwx {targets}; git -C {_shell_path(repo)} config core.sharedRepository 0600"
+                if targets
+                else None
+            )
+        return [*out, _bad("docs_repo.permissions", f"group/other can read tenant data: {shown}", fix=fix)]
+    return [*out, _ok("docs_repo.permissions", "docs repo, cache and logs are owner-only")]
 
 
 _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
