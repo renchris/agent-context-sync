@@ -73,8 +73,14 @@ _OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 # reads this note, with no ``fix:``. A FAIL keeps its fix.
 _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # Also under NO_NEXT_HINT_ENV: a local folder's listing that stays incomplete is the person's to settle (an
-# empty cloud folder, a folder without access), and install.sh prints the loop's line for it.
-_LISTING_YOURS_NOTE = "yours: see WAITING ON YOU"
+# empty cloud folder, a folder without access), and install.sh prints the loop's line for it. That status runs
+# before install.sh's sync and reads the last walk's stored state, which the sync can clear (a file added, a
+# folder no longer a File Provider domain): the note promises no line, it says where the answer is, true
+# whether the wait stays, goes, or a FAIL skips the sync (B13 round 4 Q26, Q32). No parentheses: the
+# report's fix parser strips one level.
+_LISTING_YOURS_NOTE = (
+    "held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is"
+)
 
 # The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
 # macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start.

@@ -6123,6 +6123,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   incomplete local source reads `agentsync sync; another full walk lists it`. Without
   `loop_checks` (the setup report's Doctor section) a local source, and an inbox R53 reads as held, keep the
   WAITING ON YOU fix.
+  **Amended 2026-10-12, §16.53 Q26, Q32:** the note under `AGENTSYNC_NO_NEXT_HINT=1` reads `held at its last
+  walk: the WAITING ON YOU lines at the end of this run say whether it still is`.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
   that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
@@ -13800,6 +13802,22 @@ item amends an older section, a dated line sits at that section too.
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
   and a report that could not be written leave it. Same tests.
+
+#### What step 2 prints before and after its sync
+
+- **The pre-sync heartbeat note** (Q26, Q32, one defect). install.sh's status (step 5, under
+  `AGENTSYNC_NO_NEXT_HINT=1`) runs before its sync, because it gates the sync and the agent step, and reads the
+  last walk's stored state. A folder held for 3 passes and since given a file (or no longer a File Provider
+  domain) still reads as held there; the sync then lists it complete and no WAITING ON YOU line follows, so
+  `yours: see WAITING ON YOU` pointed at a line the run never printed. The note (`doctor._LISTING_YOURS_NOTE`)
+  now reads `held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is`:
+  true whether the wait stays (the loop's line follows), goes (none follows), or a FAIL skips the sync (the
+  final status still prints the stored wait). No fix, no `sync`, no parentheses. Built as Q32's verifier
+  corrected it: the wording only, no new variable and no install.sh change; Q26's re-print of heartbeat lines
+  after the sync is not built (the loop's own WAITING ON YOU line already shows a wait that stays). The setup
+  report's yours/unexpected tally keys on the detail, not the note. Tests:
+  `test_the_pre_sync_listing_note_promises_no_waiting_line` (tests/test_ops_doctor.py) and the pins in
+  test_ops_doctor, test_loop and test_setup_report (test_cli's pin is the purge queue's own note, unchanged).
 
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 

@@ -574,7 +574,7 @@ def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
     checks = {c.name: c for c in doctor._check_heartbeat(config)}
     assert (checks["heartbeat.drop"].fix, checks["heartbeat.drop"].note) == (
         None,
-        "yours: see WAITING ON YOU",
+        doctor._LISTING_YOURS_NOTE,
     )
     assert checks["heartbeat.bare"].fix is not None and checks["heartbeat.bare"].note is None
 

@@ -1591,9 +1591,29 @@ def test_heartbeat_incomplete_fix_by_source_kind(
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
     assert not r.ok and r.severity is Severity.WARN and r.fix is None
-    assert r.note == "yours: see WAITING ON YOU"
+    assert r.note == doctor._LISTING_YOURS_NOTE
     [line] = format_results([r]).splitlines()
-    assert line.endswith("consecutive passes (deletions held) (yours: see WAITING ON YOU)")
+    assert line.endswith(f"consecutive passes (deletions held) ({doctor._LISTING_YOURS_NOTE})")
+
+
+def test_the_pre_sync_listing_note_promises_no_waiting_line(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """install.sh's status runs before its sync and reads the last walk's stored state: a folder held for 3
+    passes, then given a file, still reads as held there, and the sync then lists it complete and no WAITING
+    ON YOU line follows. The note says where the answer is instead of pointing at a line (B13 round 4 Q26,
+    Q32), and names no fix: the sync below runs anyway, or a FAIL skipped it."""
+    for _ in range(3):
+        _beat(sample_config, enumeration_complete=False)
+    root = sample_config.sources[0].path
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "now-filled.docx").write_bytes(b"x")
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    name = "heartbeat.local-fixture"
+    r = by_name(doctor._check_heartbeat(sample_config, loop_checks=(name,)))[name]
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
+    assert "see WAITING ON YOU" not in r.note and "yours" not in r.note and "sync" not in r.note
+    assert "whether it still is" in r.note and "(" not in r.note, "the report's fix parser strips one level"
 
 
 def test_heartbeat_incomplete_follows_the_loop_checks(
@@ -1619,7 +1639,7 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about local-fixture ")
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=(name,)))[name]
-    assert r.fix is None and r.note == "yours: see WAITING ON YOU"
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
     assert r.note is None and r.fix == "agentsync sync; another full walk lists it"
 

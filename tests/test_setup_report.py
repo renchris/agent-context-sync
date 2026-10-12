@@ -7140,7 +7140,7 @@ def _yours_step() -> loop.NextStep:
     [
         " (fix: each WAITING ON YOU line about project-x says what stops the listing and what to do: "
         "another sync does not clear it)",
-        " (yours: see WAITING ON YOU)",
+        " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is)",
     ],
     ids=["by-hand", "install.sh"],
 )
