@@ -533,3 +533,46 @@ def test_the_build_gives_swiftpm_the_shells_proxy_and_the_helper_never_gets_it(
     assert speech.probe(CFG, cache)[0] == "ready"
     names = {ln.split("=", 1)[0] for ln in lines_of(Path(f"{helper}.env"))}
     assert "PATH" in names and not set(SHELL_PROXY) & names
+
+
+SHELL_CA = {
+    "GIT_SSL_CAINFO": "/Users/contoso/certs/contoso-inspection.pem",
+    "GIT_SSL_CAPATH": "/Users/contoso/certs",
+    "CURL_SSL_BACKEND": "secure-transport",
+}
+IGNORED_CA = {
+    "SSL_CERT_FILE": "/Users/contoso/certs/contoso-inspection.pem",
+    "SSL_CERT_DIR": "/Users/contoso/certs",
+    "CURL_CA_BUNDLE": "/Users/contoso/certs/contoso-inspection.pem",
+    "GIT_SSL_NO_VERIFY": "1",
+    "DEVELOPER_DIR": "/Applications/Contoso.app/Contents/Developer",
+}
+
+
+def test_the_build_gives_git_the_shells_ca_and_never_turns_verification_off(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R84: behind TLS inspection the shell's git may trust the inspecting CA only through GIT_SSL_CAINFO,
+    GIT_SSL_CAPATH or CURL_SSL_BACKEND (Xcode's git reads those three and ignores SSL_CERT_* and
+    CURL_CA_BUNDLE, measured), so SwiftPM's clone of FluidAudio gets them too.  GIT_SSL_NO_VERIFY and
+    DEVELOPER_DIR never reach the build, an empty value is not passed, and the helpers keep ocr._env()."""
+    plain = ocr._env()
+    for key, value in {**SHELL_CA, **IGNORED_CA}.items():
+        monkeypatch.setenv(key, value)
+    assert ocr._env() == plain, "the OCR, media and speech helpers never see a CA variable"
+    assert speech._build_env() == {**plain, **SHELL_CA}
+
+    monkeypatch.setenv("GIT_SSL_CAPATH", "")
+    assert "GIT_SSL_CAPATH" not in speech._build_env(), "an empty value is not passed"
+
+    script(tools / "swift", 'env > "$0.$1.env"\n' + SWIFT_OK)
+    helper = speech.build(tmp_path / "cache")
+    for step in ("package", "build"):
+        seen = dict(ln.split("=", 1) for ln in lines_of(tools / f"swift.{step}.env"))
+        assert seen.get("GIT_SSL_CAINFO") == SHELL_CA["GIT_SSL_CAINFO"], step
+        assert seen.get("CURL_SSL_BACKEND") == "secure-transport", step
+        assert not set(IGNORED_CA) & set(seen) and "GIT_SSL_CAPATH" not in seen, step
+    git_seen = dict(ln.split("=", 1) for ln in lines_of(tools / "git.env"))
+    assert git_seen.get("GIT_SSL_CAINFO") == SHELL_CA["GIT_SSL_CAINFO"]
+    assert not set(IGNORED_CA) & set(git_seen)
+    assert helper.is_file()

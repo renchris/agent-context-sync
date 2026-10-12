@@ -422,11 +422,17 @@ _PROXY_VARS = (
 """The shell's proxy variables, which the build's tools get and the helper never does: SwiftPM clones
 FluidAudio with git, which reads them, as step 1's git does (setup prompt step 1 names HTTPS_PROXY)."""
 
+_CA_VARS = ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "CURL_SSL_BACKEND")
+"""The shell's CA variables the build's git reads (Xcode's git, libcurl 8.7.1 with LibreSSL): behind TLS
+inspection they are how the shell's git trusts the inspecting CA, so SwiftPM's clone needs them too.
+SSL_CERT_FILE, SSL_CERT_DIR and CURL_CA_BUNDLE are left out because that git ignores them (measured), and
+GIT_SSL_NO_VERIFY and DEVELOPER_DIR never reach the build."""
+
 
 def _build_env() -> dict[str, str]:
-    """:func:`ocr._env` plus whichever of :data:`_PROXY_VARS` the shell sets."""
+    """:func:`ocr._env` plus whichever of :data:`_PROXY_VARS` and :data:`_CA_VARS` the shell sets."""
     env = ocr._env()
-    env.update({key: value for key in _PROXY_VARS if (value := os.environ.get(key))})
+    env.update({key: value for key in (*_PROXY_VARS, *_CA_VARS) if (value := os.environ.get(key))})
     return env
 
 

@@ -12087,9 +12087,18 @@ The speech build's `swift` and `git` run in `ocr._env()` plus whichever of the s
 FluidAudio's binary artifact is downloaded by SwiftPM itself, which ignores these variables and uses the macOS
 proxy settings, so a Mac whose only route out is a proxy set in the environment still cannot build the helper
 (measured 2026-10-10, Swift 6.2.4: with every proxy variable set and no system proxy, the download went direct).
-`DEVELOPER_DIR`, `GIT_SSL_*`, `SSL_CERT_*`, `CURL_*` and everything else stays dropped. The OCR, media and
-speech helpers, and the OCR and media builds, keep `ocr._env()` and never see a proxy. A failure's reason is
-SwiftPM's first `error:` line and names no proxy host.
+The build's `swift` and `git` also get whichever of the shell's `GIT_SSL_CAINFO`, `GIT_SSL_CAPATH` and
+`CURL_SSL_BACKEND` are set to a non-empty value (`speech._CA_VARS`): behind TLS inspection these are how the
+shell's git trusts the inspecting CA. `DEVELOPER_DIR`, `GIT_SSL_NO_VERIFY`, `SSL_CERT_FILE`, `SSL_CERT_DIR`,
+`CURL_CA_BUNDLE` and everything else stays dropped: Xcode's git (libcurl 8.7.1 with LibreSSL) ignores
+`SSL_CERT_*` and `CURL_CA_BUNDLE` (measured 2026-10-11 with `git ls-remote` under `env -i`: each pointed at an
+empty file still succeeded, while an empty `GIT_SSL_CAINFO` failed), so passing them would claim a trust they do
+not give. SwiftPM's own binary-artifact download uses the keychain and reads none of these variables. The OCR,
+media and speech helpers, and the OCR and media builds, keep `ocr._env()` and never see a proxy or a CA
+variable. A failure's reason is SwiftPM's first `error:` line and names no proxy host.
+
+Amended 2026-10-11 by §16.48 (R84): the build passes `GIT_SSL_CAINFO`, `GIT_SSL_CAPATH` and `CURL_SSL_BACKEND`;
+`GIT_SSL_NO_VERIFY`, `SSL_CERT_*` and `CURL_CA_BUNDLE` stay dropped, with the measured reason.
 
 #### A cited commit is on the trunk (`tests/test_deploy_pack.py`) (N38)
 
@@ -12881,7 +12890,12 @@ Track 1 text goes here.
 
 #### The speech build and the build watcher
 
-Track 2 text goes here.
+The speech build trusts the shell's CA (R84). `speech._build_env` is `ocr._env()` plus the non-empty values of
+`speech._PROXY_VARS` and `speech._CA_VARS` (`GIT_SSL_CAINFO`, `GIT_SSL_CAPATH`, `CURL_SSL_BACKEND`). A Mac
+behind TLS inspection whose shell exports one of these clones from the shell; without them SwiftPM's clone of
+FluidAudio failed certificate verification and speech stayed off. `GIT_SSL_NO_VERIFY` and `DEVELOPER_DIR` never
+reach the build, and `ocr._env()` is unchanged. Pinned by
+`tests/test_speech.py::test_the_build_gives_git_the_shells_ca_and_never_turns_verification_off`.
 
 #### PDF pictures and diagrams
 
