@@ -996,11 +996,17 @@ redaction_pairs() {
 		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null |
 			LC_ALL=C grep -oE -e "--source-local \\\$'([^'\\\\]|\\\\.)*'" | LC_ALL=C sed "s/\\\\'/'/g" | LC_ALL=C sort -u)
 	fi
-	emit_pair() { # VALUE PLACEHOLDER [w]: the pair and its printf %q form
+	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
-		local q
+		local q u
 		q="$(printf '%q' "$1")"
 		[ "$q" = "$1" ] || printf '%s\t%s\t%s\n' "$q" "$2" "${3:-}"
+		# install.log's %q is the logging run's locale: under UTF-8 a non-ASCII word is plain ("Café\ Notes"),
+		# under C a $'..' word, which redact_stream makes <path> first. So a report written under C needs the
+		# UTF-8 form too (B13 R111). bash 3.2 ignores a prefix assignment for a builtin: set inside the $(..).
+		[ -n "${4:-}" ] || return 0
+		u="$(LC_ALL=en_US.UTF-8 && printf '%q' "$1")"
+		[ "$u" = "$1" ] || [ "$u" = "$q" ] || printf '%s\t%s\t%s\n' "$u" "$2" "${3:-}"
 	}
 	add_pair() { # VALUE PLACEHOLDER [w]: add_forms for a value of 3 or more characters
 		[ "${#1}" -ge 3 ] || return 0
@@ -1013,8 +1019,8 @@ redaction_pairs() {
 		# Any length: only a two-letter name part, which short_name screens, comes here without add_pair.
 		local v nfc="" nfd="" bare ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 		ascii+=' !"#$%&'\''()*+,./:;<=>?@[\]^_`{|}~-'
-		emit_pair "$@"
-		case "$1" in *[!"$ascii"]*) ;; *) return 0 ;; esac
+		case "$1" in *[!"$ascii"]*) ;; *) emit_pair "$@" && return 0 ;; esac
+		emit_pair "$1" "$2" "${3:-}" utf8
 		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""
 		nfc="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8-MAC -t UTF-8 2>/dev/null)" || nfc=""
 		# And without its accents ("Cafe Plans" for "Café Plans", B13 R115): the NFD form without its combining
@@ -1024,7 +1030,7 @@ redaction_pairs() {
 		[ "$bare" != "$nfd" ] || bare=""
 		[ "$nfc" != "$nfd" ] || nfc=""
 		for v in "$nfd" "$nfc" "$bare"; do
-			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}"
+			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 		done
 	}
 	recase() { # upper|lower TEXT, as Python's str.upper and str.lower write it ("ÅL" for "Ål"): tr in UTF-8,
@@ -1059,7 +1065,10 @@ redaction_pairs() {
 	fi
 	add_pair "$HOME" "~"
 	for w in ${loose[@]+"${loose[@]}"}; do # only as the argument: a short relative name is also a common word
-		printf '%s\t%s\t\n' "--source-local $(printf '%q' "$w")" "--source-local <path>"
+		v="$(printf '%q' "$w")"
+		printf '%s\t%s\t\n' "--source-local $v" "--source-local <path>"
+		u="$(LC_ALL=en_US.UTF-8 && printf '%q' "$w")" # as a UTF-8 run logged it (emit_pair, B13 R111)
+		[ "$u" = "$v" ] || printf '%s\t%s\t\n' "--source-local $u" "--source-local <path>"
 	done
 	if [ -d "$cs" ]; then
 		# The organisation, team or account after the app's name ("<app>-<domain>", as setup_report._org_of

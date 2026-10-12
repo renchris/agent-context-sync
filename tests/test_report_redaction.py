@@ -5,6 +5,7 @@ Every case is tested in both, with made-up names (B13 round 3, CONTRACTS §16.46
 from __future__ import annotations
 
 import re
+import subprocess
 import unicodedata
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import pytest
 
 from agentsync import cli, setup_report
 from test_install_oneshot import (  # noqa: F401  (fixture)
+    BASH32,
     INSTALL_SH,
     _stub_id,
     _write_exe,
@@ -500,3 +502,41 @@ def test_the_shell_report_leaves_a_particle_in_capitals(env: dict[str, str]) -> 
     _stub_id(env, "Jean de Fontaine")
     text = _shell_report(env, "Prompt: v10\nF1 | step 1 | clean | 1 | DE and de stay; Jean Fontaine | -\n")
     assert "| DE and de stay; <name> |" in text, text
+
+
+# ---- install.log written in another locale (R111) ----------------------------------------------------------
+
+
+@pytest.mark.parametrize("where", ["loose", "cloudstorage"])
+def test_the_shell_report_matches_a_name_logged_in_utf8_and_reported_in_c(
+    env: dict[str, str],  # noqa: F811
+    where: str,
+) -> None:
+    """bash 3.2's ``printf %q`` writes "Café Notes" as ``Café\\ Notes`` under UTF-8 and as ``$'Caf\\303\\251
+    Notes'`` under C. The shell built its %q pairs in the report's locale only, so a name a UTF-8 Terminal
+    logged printed in clear in a report written under C (B13 R111). The Python report needs no change."""
+    home = Path(env["HOME"])
+    org = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    (org / "Café Notes").mkdir(parents=True)
+    typed = "Café Notes" if where == "loose" else f"{org}/Café Notes"
+    if where == "loose":
+        (org / "Café Notes").rmdir()
+    word = subprocess.run(
+        [BASH32, "-c", 'printf "%q" "$1"', "_", typed],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**env, "LC_ALL": "en_US.UTF-8"},
+    ).stdout
+    assert "\\ Notes" in word and "$'" not in word, word
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+    (setup / "install.log").write_text(f"2026-10-10T01:00:00Z {head}{word}\n", encoding="utf-8")
+    said = "a relative folder" if where == "loose" else "Café Notes"  # a loose word: only as the argument
+    text = _shell_report(env, f"Prompt: v10\nF1 | step 1 | clean | 1 | {said} | -\n", LC_ALL="C")
+    assert "Caf" not in text, text
+    if where == "loose":
+        assert "args=--source-local <path>\n" in text
+    else:
+        assert re.search(r"OneDrive-<org-1>/<folder-\d+>\n", text), text
