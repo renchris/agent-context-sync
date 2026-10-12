@@ -990,6 +990,9 @@ git_proxy_values() {
 			true
 	done 2>/dev/null
 }
+# Source ids that are agentsync's own words (setup_report._GENERIC_IDS; a test holds the two equal).
+GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive files graph inbox local mail mirror notes"
+GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
@@ -1171,6 +1174,29 @@ redaction_pairs() {
 			add_pair "$part" "<folder-$n>" "$whole"
 		done
 	done
+	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
+	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
+	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
+	# agentsync's own words is kept unless its source is a cloud folder (setup_report._GENERIC_IDS), so "the
+	# docs repo" and "inbox" stay readable. Only ids inside [[source]] tables: the graph and policy ones are not.
+	if [ -f "$CONFIG" ]; then
+		while IFS=$'\t' read -r i v f; do
+			case " $GENERIC_SOURCE_IDS " in
+			*" $v "*) case "$f" in "$cs"/* | \~/Library/CloudStorage/*) ;; *) continue ;; esac ;;
+			esac
+			add_pair "$v" "<source-$i>" w
+		done < <(LC_ALL=C awk '
+			function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
+			/^[[:space:]]*\[/ {
+				flush()
+				inside = ($0 ~ /^[[:space:]]*\[\[[[:space:]]*source[[:space:]]*\]\]/)
+				if (inside) n++
+				next
+			}
+			inside && /^[[:space:]]*id[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v); id = v; next }
+			inside && /^[[:space:]]*path[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/"[^"]*$/, "", v); path = v; next }
+			END { flush() }' "$CONFIG" 2>/dev/null)
+	fi
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
 	# name run together ("janedoe" for "Jane Doe") is <user>, as in the Python report.
 	user="$(id -un 2>/dev/null || true)"
@@ -1695,12 +1721,12 @@ fallback_redaction() {
 	say "(<user>), the full name and its joined forms (<name>), the organisation or team after the app's name in a"
 	say "CloudStorage folder (OneDrive-<org-N>, Dropbox-<org-N>; an account's email address too), the MDM server's host"
 	say "(<mdmhost>), proxy hosts (one named like proxy or wpad only inside a URL) and the system PAC URL after its"
-	say "scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local, sources.toml or"
-	say "install.log name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it"
-	say "stands as a whole word), a --source-local argument in install.log that names no CloudStorage folder (<path>),"
-	say "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe,"
-	say "an en dash or an accent (<path>). Read the report before sending it: anything else confidential is yours to"
-	say "remove."
+	say "scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local, sources.toml or install.log"
+	say "name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole"
+	say "word), a configured source id (<source-N>; one of agentsync's own words, such as docs or inbox, only for a cloud"
+	say "folder), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
+	say "bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or an"
+	say "accent (<path>). Read the report before sending it: anything else confidential is yours to remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).

@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from agentsync import cli, net, setup_report
+from agentsync.config import load_config
 from test_install_oneshot import (  # noqa: F401  (fixture)
     BASH32,
     INSTALL_SH,
@@ -239,6 +240,57 @@ def test_the_shell_report_redacts_an_unaccented_folder_name(env: dict[str, str])
     said = f"Cafe Resume, Café Résumé, {_nfd('Café Résumé')}"
     text = _shell_report(env, f"Prompt: v10\nF1 | step 1 | clean | 1 | {said} | -\n")
     assert "| <folder-1>, <folder-1>, <folder-1> |" in text, text
+
+
+# ---- configured source ids (B13 round 5 F6) ---------------------------------------------------------------
+
+_ID_FRICTION = (
+    "Prompt: v13\n"
+    '2026-10-12T10:00:00Z | step 2 | deviation | in [[source]] id = "{id}"; I did not apply it; '
+    "~/.local/bin/agentsync exclude-empty {id} | -\n"
+    "2026-10-12T10:01:00Z | step 2 | deviation | the inbox source and the docs repo are fine | -\n"
+)
+
+
+def test_the_python_report_redacts_a_configured_source_id(fake_mac: dict[str, Path]) -> None:  # noqa: F811
+    """A source id is its folder's name in slug form, and the empty-folder wait an agent quotes names it."""
+    [sid, *_] = [s.id for s in load_config(fake_mac["config"]).sources]
+    write_install_log(fake_mac)
+    write_friction(fake_mac, _ID_FRICTION.format(id=sid))
+    text, _summary = summary_of(fake_mac)
+    assert sid not in section(text, "Agent friction log"), text
+    assert "the inbox source and the docs repo are fine" in text
+
+
+def test_the_shell_report_redacts_a_configured_source_id(env: dict[str, str]) -> None:  # noqa: F811
+    """The shell report read only ``path`` from sources.toml, so a quoted id showed the folder's name in slug
+    form where the Python report showed a placeholder. Every id in a ``[[source]]`` table is <source-N>, as a
+    whole word ("-" is no word character); one of agentsync's own words (``inbox``) is kept for a source that
+    is not a cloud folder, and an id outside a ``[[source]]`` table is not read."""
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(
+        '[graph]\nid = "graph-tenant"\n\n'
+        f'[[source]]\nid = "project-alpha"\nkind = "local"\npath = "{folder}"\n\n'
+        f'[[source]]\nid = "inbox"\nkind = "inbox"\npath = "{home}/agent-context/inbox"\n',
+        encoding="utf-8",
+    )
+    text = _shell_report(env, _ID_FRICTION.format(id="project-alpha"))
+    friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+    assert "project-alpha" not in text, friction
+    assert 'id = "<source-1>"' in friction and "exclude-empty <source-1> |" in friction, friction
+    assert "the inbox source and the docs repo are fine" in friction
+    assert "a configured source id (<source-N>" in text
+
+
+def test_the_shell_generic_source_ids_are_the_reports() -> None:
+    """install.sh keeps the same source ids as agentsync's own words as setup_report does."""
+    pattern = r'^GENERIC_SOURCE_IDS="(?:\$GENERIC_SOURCE_IDS )?([^"]*)"'
+    found = re.findall(pattern, INSTALL_SH.read_text(), re.M)
+    assert set(" ".join(found).split()) == set(setup_report._GENERIC_IDS)
 
 
 # ---- the parts of a full name (R71, R72, R73) -------------------------------------------------------------
