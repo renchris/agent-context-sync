@@ -2389,6 +2389,28 @@ def test_the_inbox_line_names_the_stored_path_beside_the_typed_one(
     assert [s.path for s in load_config(cfg).sources if s.kind is SourceKind.INBOX] == [stored]
 
 
+def test_the_added_source_line_names_the_stored_path_beside_the_typed_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 5 F49: a folder typed through a link is stored resolved; the ``added source`` line keeps the
+    config path and its colon, and adds the typed and the stored forms, as the inbox line does (Q36). A folder
+    typed as stored gets no note."""
+    real = tmp_path / "OneDrive-Contoso"
+    (real / "Project Alpha").mkdir(parents=True)
+    (tmp_path / "OneDrive-Link").symlink_to(real)
+    (tmp_path / "Plain").mkdir()
+    cfg = tmp_path / "agent-context" / "sources.toml"
+    typed = tmp_path / "OneDrive-Link" / "Project Alpha"
+    stored = real.resolve() / "Project Alpha"
+    assert cli.main(["add-source", str(typed), "--config", str(cfg)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert f"added source 'project-alpha' to {cfg} ({typed}, stored as {stored}):\n" in out, out
+    plain = (tmp_path / "Plain").resolve()
+    assert cli.main(["add-source", str(plain), "--config", str(cfg)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert f"added source 'plain' to {cfg}:\n" in out and "stored as" not in out.split("added source")[1], out
+
+
 def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inbox(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

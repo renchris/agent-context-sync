@@ -693,7 +693,12 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
         except ConfigError as exc:
             _err(f"add-source {raw}: refused, sources.toml would not load: {exc}")
             return EXIT_USAGE
-        _out(f"added source {sid!r} to {config.config_path}:")
+        # The folder as typed when the stored form differs (a link resolved, /tmp as /private/tmp), as the
+        # inbox line says it (Q36; B13 round 5 F49): the table below names only the stored one.
+        typed = expand(raw)
+        typed = typed if typed.is_absolute() else Path.cwd() / typed
+        note = "" if typed == path else f" ({typed}, stored as {path})"
+        _out(f"added source {sid!r} to {config.config_path}{note}:")
         _out(table.strip("\n"))
     return _ensure_setup(config)
 
