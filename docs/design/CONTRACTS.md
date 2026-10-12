@@ -14216,6 +14216,24 @@ entries" and `docs/deploy/setup-feedback.md`'s "the entries a run would keep are
 queued:` line" now hold. Tests:
 `tests/test_cli.py::test_purge_queue_preview_does_not_keep_a_covered_upstream_deletion`.
 
+**F64, F100: the absent-file counts name files, and the alarms read right for one** (`agentsync.cli`,
+`agentsync.cycle`). `absent_marked` and `absent_removed` count stable ids, which are files (`SourceReport`'s own
+comment), but §16.51 Q16's sync line called the second `K page(s) turned into deletion notice(s)`: a removed
+workbook of three pages read `1 page(s)` beside `3 change(s)`. Status's `· absent N (each becomes a deletion notice
+...)` counts item rows (`Manifest.absent_counts`), files as well. The sync line now prints `M file(s) marked absent`
+and `K file(s) removed upstream (their page(s) are now deletion notice(s))`, and status `· absent N file(s) (their
+page(s) become deletion notice(s) on a later complete pass if still missing)`. Q16 kept the alarms' "their pages"
+wording; for one file that read "their pages ... deletion notices" under a line that said "page(s)". The marking
+alarm now reads `N file(s) absent from this complete pass: their page(s) become deletion notice(s) only if still
+absent next pass`, the removing alarm `N file(s) still absent from this complete pass: their page(s) are now
+deletion notice(s) (deleted upstream; purge queued)`, and the re-read alarm of the same family `... could not be
+converted; their page(s) are kept as they were`. This amends the text quoted in §16.12 (status), §16.37, §16.39, §16.45
+R105, §16.51 Q16 and the §16.27 re-read table row; the counts are unchanged. Tests: `tests/test_cli.py`
+(`test_the_sync_line_counts_a_removed_file_of_several_pages_as_one_file`, a three-page workbook removed;
+`test_the_sync_line_tells_the_marking_pass_from_the_removing_pass`,
+`test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass`), `tests/test_cycle.py` (the
+alarm pins, with the negative pin `are now deletion notice` kept biting).
+
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
 Wave B13 round 5, lane B: 18 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in

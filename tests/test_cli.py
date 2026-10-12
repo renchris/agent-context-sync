@@ -312,7 +312,11 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     does not."""
     cfg = str(initialised.config_path)
     # B13 round 4 Q16: words that hold for any count, one file included
-    held = " · absent 1 (each becomes a deletion notice on a later complete pass if still missing)"
+    # B13 round 5 F64: N counts files, and a file of several pages becomes several notices
+    held = (
+        " · absent 1 file(s) (their page(s) become deletion notice(s) on a later complete pass if still "
+        "missing)"
+    )
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -323,7 +327,7 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert (
-        "    alarm: 1 file(s) still absent from this complete pass: their pages are now deletion notices "
+        "    alarm: 1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
         "(deleted upstream; purge queued)\n"
     ) in out
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
@@ -348,10 +352,30 @@ def test_the_sync_line_tells_the_marking_pass_from_the_removing_pass(
         lines.append(line)
     marking, removing, after = lines
     assert "deletion_candidate=1" in marking and "deletion_candidate=1" in removing
-    assert " · 1 marked absent · " in marking and "deletion notices" not in marking, marking
-    removed = " · 1 page(s) turned into deletion notice(s) (deleted upstream) · "
+    assert " · 1 file(s) marked absent · " in marking and "deletion notice" not in marking, marking
+    removed = " · 1 file(s) removed upstream (their page(s) are now deletion notice(s)) · "
     assert removed in removing and "marked absent" not in removing, removing
     assert "absent" not in after and "removed" not in after, after
+
+
+def test_the_sync_line_counts_a_removed_file_of_several_pages_as_one_file(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F64 (B13 round 5): the removing pass's count is of files (stable ids), but the line called it
+    "page(s) turned into deletion notice(s)": a workbook of three pages read "1 page(s)" beside "3 change(s)".
+    The line names files, so a removed file of several pages reads one file."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (local_source_dir / "projects" / "sample.xlsx").unlink()
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    changes = int(re.search(r" · (\d+) change\(s\)", out[0]).group(1))  # type: ignore[union-attr]
+    (line,) = [x for x in out if x.startswith("  source: ")]
+    assert changes > 1, out[0]
+    assert " · 1 file(s) removed upstream (their page(s) are now deletion notice(s)) · " in line, line
+    assert "page(s) turned into" not in line, line
 
 
 def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
@@ -370,14 +394,14 @@ def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
     report = CycleReport(run_id=4, mode=CycleMode.POLL, sources=(src,), changes=(), commit_sha=None)
     cli._print_report(report)
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 2 marked absent · cursor held · "
+        "  src: full_enumeration · complete · 2 file(s) marked absent · cursor held · "
         "deletion_candidate=2, unchanged=1"
     )
     both = dataclasses.replace(src, absent_marked=1, absent_removed=3)
     cli._print_report(dataclasses.replace(report, sources=(both,)))
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 1 marked absent · 3 page(s) turned into deletion notice(s) "
-        "(deleted upstream) · cursor held · deletion_candidate=2, unchanged=1"
+        "  src: full_enumeration · complete · 1 file(s) marked absent · 3 file(s) removed upstream (their "
+        "page(s) are now deletion notice(s)) · cursor held · deletion_candidate=2, unchanged=1"
     )
     neither = dataclasses.replace(src, absent_marked=0)
     cli._print_report(dataclasses.replace(report, sources=(neither,)))

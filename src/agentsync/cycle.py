@@ -3144,7 +3144,7 @@ class _Cycle:
         if self._reread_kept > kept:
             acc.alarms.append(
                 f"{self._reread_kept - kept} file(s) read again for what their converter has gained could "
-                "not be converted; their pages are kept as they were"
+                "not be converted; their page(s) are kept as they were"
             )
         # Done when no file on this Mac is left to read again: none the cycle's time ran out before, none
         # that is pending, none this pass did not list and none whose read failed fewer times than it may.
@@ -3883,15 +3883,15 @@ class _Cycle:
             self.manifest.mark_absent(src.id, first, self.run_id)
             acc.absent_marked += len(first)
             acc.alarms.append(
-                f"{len(first)} file(s) absent from this complete pass: their pages become deletion notices "
-                "only if still absent next pass"
+                f"{len(first)} file(s) absent from this complete pass: their page(s) become deletion "
+                "notice(s) only if still absent next pass"
             )
         if confirmed:
             acc.absent_removed += len(confirmed)
             purge = "; purge queued" if self.gov.purge_on_upstream_delete else ""  # off under archive
             acc.alarms.append(
-                f"{len(confirmed)} file(s) still absent from this complete pass: their pages are now "
-                f"deletion notices (deleted upstream{purge})"
+                f"{len(confirmed)} file(s) still absent from this complete pass: their page(s) are now "
+                f"deletion notice(s) (deleted upstream{purge})"
             )
         return confirmed
 

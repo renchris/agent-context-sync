@@ -433,9 +433,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             bits.append("BREAKER TRIPPED")
         # the counts line's deletion_candidate=N is the same on the marking and the removing pass: say which
         if s.absent_marked:
-            bits.append(f"{s.absent_marked} marked absent")
+            bits.append(f"{s.absent_marked} file(s) marked absent")
         if s.absent_removed:
-            bits.append(f"{s.absent_removed} page(s) turned into deletion notice(s) (deleted upstream)")
+            bits.append(
+                f"{s.absent_removed} file(s) removed upstream (their page(s) are now deletion notice(s))"
+            )
         if s.pass_kind is not None:
             bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
@@ -953,8 +955,8 @@ def _status_lines(config: Config) -> list[str]:
             f"breaker {st.breaker} · auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
             + (
-                f" · absent {waiting} (each becomes a deletion notice on a later complete pass if still "
-                "missing)"
+                f" · absent {waiting} file(s) (their page(s) become deletion notice(s) on a later complete "
+                "pass if still missing)"
                 if waiting
                 else ""
             )

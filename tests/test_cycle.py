@@ -260,7 +260,7 @@ def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
     assert report.exit_code == 0 and kept in git(repo, "ls-files")
     # archive queues no purge, so the alarm does not claim one
     assert (
-        "1 file(s) still absent from this complete pass: their pages are now deletion notices "
+        "1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
         "(deleted upstream)"
     ) in source_report(report).alarms
     assert "\nstatus: archived\n" in (repo / kept).read_text(encoding="utf-8")
@@ -1673,11 +1673,9 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
         assert rep.counts[Verdict.DELETION_CANDIDATE] == 2
         assert (rep.absent_marked, rep.absent_removed) == (1, 0)
         assert (source_report(second).absent_marked, source_report(second).absent_removed) == (0, 1)
-        assert not any("are now deletion notices" in a for a in rep.alarms), (
-            "the marking pass removes nothing"
-        )
+        assert not any("are now deletion notice" in a for a in rep.alarms), "the marking pass removes nothing"
         assert (
-            "1 file(s) still absent from this complete pass: their pages are now deletion notices "
+            "1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
             "(deleted upstream; purge queued)"
         ) in source_report(second).alarms
         assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
@@ -3134,7 +3132,7 @@ def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
     report = run(sample_config)
     [rep] = report.sources
     assert (report.exit_code, report.commit_sha, rep.errors, rep.converted) == (0, None, (), 0)
-    kept = "1 file(s) read again for what their converter has gained could not be converted; their pages"
+    kept = "1 file(s) read again for what their converter has gained could not be converted; their page(s)"
     assert [a for a in rep.alarms if a.startswith(kept)] == ([] if fault.startswith("the helper") else [ANY])
     assert _mirror_bytes(sample_config, SITE_PLAN) == before
     assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
@@ -3202,7 +3200,7 @@ def test_a_re_read_that_fails_keeps_the_page_and_a_file_is_given_up_after_two_cy
     [rep] = report.sources
     assert (report.exit_code, report.commit_sha, rep.errors) == (0, None, ())
     assert rep.alarms == (
-        "3 file(s) read again for what their converter has gained could not be converted; their pages are "
+        "3 file(s) read again for what their converter has gained could not be converted; their page(s) are "
         "kept as they were",
     )
     assert _mirror_bytes(sample_config, *pages) == pages
@@ -3360,7 +3358,7 @@ def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(
     with monkeypatch.context() as fault:
         fault.setattr(pdf_mod.PdfConverter, "convert", broken)
         [rep] = run(sample_config).sources
-    kept = "3 file(s) read again for what their converter has gained could not be converted; their pages"
+    kept = "3 file(s) read again for what their converter has gained could not be converted; their page(s)"
     assert len(fetched) == 3 and rep.errors == () and rep.alarms == (f"{kept} are kept as they were",)
     assert _reread_record(sample_config) == (False, []) and len(_reread_failed(sample_config)) == 3
     assert run(sample_config).commit_sha is not None and len(fetched) == 9, "the fault passed: all six"
