@@ -12090,26 +12090,33 @@ The speech build's `swift` and `git` run in `ocr._env()` plus whichever of the s
 `~/.gitconfig` (`http.proxy`) still wins in git. `[network] proxy` and `net.resolve_proxy` are not used.
 FluidAudio's binary artifact is downloaded by SwiftPM itself, which ignores these variables and uses the macOS
 proxy settings (measured 2026-10-10, Swift 6.2.4: with every proxy variable set and no system proxy, the download
-went direct). So when a variable that names a proxy is set (`NO_PROXY` alone names none) and SwiftPM's cache does
-not hold the artifact, the build first fetches it with `/usr/bin/curl`, which reads them, in the same environment
-(`speech._seed`, before `swift package resolve`), checks its SHA-256 against `speech.NEMO_SHA256` and only then
+went direct). So when a variable that routes an https url through a proxy is set (`HTTPS_PROXY` or `ALL_PROXY`,
+either case, `speech._PROXIES`: curl and git ignore `HTTP_PROXY` for an https url, and `NO_PROXY` names none) and
+SwiftPM's cache does not hold the artifact, the build first fetches it with `/usr/bin/curl`, which reads them, in
+the same environment plus the shell's CA bundle (`speech._seed`, before `swift package resolve`), checks its SHA-256 against `speech.NEMO_SHA256` and only then
 renames it into `<cache>/speech/swiftpm/cache/artifacts/` under SwiftPM's own file name, where SwiftPM takes it
 ("Fetched ... from cache") instead of downloading. A failed fetch or a wrong checksum removes the temporary file
 and SwiftPM downloads as before.
 The build's `swift` and `git` also get whichever of the shell's `GIT_SSL_CAINFO`, `GIT_SSL_CAPATH` and
 `CURL_SSL_BACKEND` are set to a non-empty value (`speech._CA_VARS`): behind TLS inspection these are how the
-shell's git trusts the inspecting CA. `DEVELOPER_DIR`, `GIT_SSL_NO_VERIFY`, `SSL_CERT_FILE`, `SSL_CERT_DIR`,
-`CURL_CA_BUNDLE` and everything else stays dropped: Xcode's git (libcurl 8.7.1 with LibreSSL) ignores
-`SSL_CERT_*` and `CURL_CA_BUNDLE` (measured 2026-10-11 with `git ls-remote` under `env -i`: each pointed at an
-empty file still succeeded, while an empty `GIT_SSL_CAINFO` failed), so passing them would claim a trust they do
-not give. SwiftPM's own binary-artifact download uses the keychain and reads none of these variables. The OCR,
+shell's git trusts the inspecting CA. `swift` and `git` do not get `SSL_CERT_FILE`, `SSL_CERT_DIR` or
+`CURL_CA_BUNDLE`: Xcode's git (libcurl 8.7.1 with LibreSSL) ignores them (measured 2026-10-11 with
+`git ls-remote` under `env -i`: each pointed at an empty file still succeeded, while an empty `GIT_SSL_CAINFO`
+failed). `/usr/bin/curl` 8.7.1 does read all three (measured 2026-10-11 under `env -i`: `CURL_CA_BUNDLE` or
+`SSL_CERT_FILE` at an empty file failed with exit 77, "error setting certificate verify locations", and
+`SSL_CERT_DIR` became its CApath), so the seed's curl, and only it, gets their non-empty values
+(`speech._CURL_CA_VARS`). `DEVELOPER_DIR`, `GIT_SSL_NO_VERIFY` and everything else stays dropped. SwiftPM's own binary-artifact download uses the keychain and reads none of these variables. The OCR,
 media and speech helpers, and the OCR and media builds, keep `ocr._env()` and never see a proxy or a CA
 variable. A failure's reason is SwiftPM's first `error:` line and names no proxy host.
 
 Amended 2026-10-11 by §16.48 (R84): the build passes `GIT_SSL_CAINFO`, `GIT_SSL_CAPATH` and `CURL_SSL_BACKEND`;
-`GIT_SSL_NO_VERIFY`, `SSL_CERT_*` and `CURL_CA_BUNDLE` stay dropped, with the measured reason.
+`GIT_SSL_NO_VERIFY` stays dropped, and `SSL_CERT_*` and `CURL_CA_BUNDLE` stay away from `swift` and `git`, with
+the measured reason.
 Amended 2026-10-11 by §16.48 (R83): "a Mac whose only route out is a proxy set in the environment still cannot
 build the helper" is replaced by the curl fetch that seeds SwiftPM's cache with the checked artifact.
+Amended 2026-10-11 by §16.48 (R84, R83): "stays dropped ... would claim a trust they do not give" no longer holds
+for curl: the seed's `/usr/bin/curl` reads `CURL_CA_BUNDLE`, `SSL_CERT_FILE` and `SSL_CERT_DIR` (measured) and
+gets them; the fetch's trigger is `HTTPS_PROXY` or `ALL_PROXY`, no longer `HTTP_PROXY`.
 
 #### A cited commit is on the trunk (`tests/test_deploy_pack.py`) (N38)
 
@@ -12925,9 +12932,10 @@ FluidAudio's one remote binary target, `NemoTextProcessing.xcframework.zip` from
 its own networking, which ignores the proxy variables, so such a Mac could not build the helper. `speech.NEMO_URL`
 and `speech.NEMO_SHA256` are pinned next to `FLUIDAUDIO_FLOOR`, copied from FluidAudio's `Package.swift` and
 `Package@swift-6.2.swift` at 04e363c (both name the same url and checksum). Before `swift package resolve`, when
-one of `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` (either case) is set and `<cache>/speech/swiftpm/cache/artifacts/`
-holds no file for that url, `speech._seed` runs `/usr/bin/curl --fail --location --proto =https` (a minute below
-1 KB/s ends it) under `speech._build_env`, so curl reads the proxy, into a temporary file in that folder. Only a
+one of `HTTPS_PROXY` or `ALL_PROXY` (either case, `speech._PROXIES`) is set and
+`<cache>/speech/swiftpm/cache/artifacts/` holds no file for that url, `speech._seed` runs `/usr/bin/curl --fail
+--location --proto =https` (a minute below 1 KB/s ends it) under `speech._build_env` plus the shell's CA bundle,
+so curl reads the proxy, into a temporary file in that folder. Only a
 file whose SHA-256 is `NEMO_SHA256` is renamed to `speech._artifact_name(NEMO_URL)`, the url with every character
 that is not a letter or digit made `_`; that name is SwiftPM's internal cache layout, measured on Swift 6.2.4
 (the user's own SwiftPM cache holds the zip under that name, and its SHA-256 is the pinned checksum). Any failure
@@ -12935,8 +12943,9 @@ removes the temporary file and SwiftPM downloads as before; SwiftPM checks the c
 fetch counts against the build's twenty minutes. Measured 2026-10-11, Swift 6.2.4: with the seeded file in a
 fresh `--cache-path` and `HTTPS_PROXY` pointing at a closed port, `swift package --cache-path ... --config-path
 ... --security-path ... resolve` printed "Fetched ... from cache" and exited 0. A SwiftPM mirror is not used: it
-rewrites urls and does not change the route. curl verifies TLS with its own trust: of the three CA variables it
-reads `CURL_SSL_BACKEND` (`secure-transport` trusts the keychain), not `GIT_SSL_*`. Spec correction: the
+rewrites urls and does not change the route. curl verifies TLS with its own trust: of `speech._CA_VARS` it reads
+`CURL_SSL_BACKEND` (`secure-transport` trusts the keychain), not `GIT_SSL_*`, and it reads `CURL_CA_BUNDLE`,
+`SSL_CERT_FILE` and `SSL_CERT_DIR`, which it alone gets (below). Spec correction: the
 verifier's fix put `--cache-path` at `<agentsync cache>/speech/swiftpm`; the build uses R90's one folder, whose
 `cache/` subfolder is the cache path. Pinned by
 `tests/test_speech.py::test_behind_a_proxy_the_build_seeds_swiftpms_cache_with_the_checked_artifact`,
@@ -12944,6 +12953,27 @@ verifier's fix put `--cache-path` at `<agentsync cache>/speech/swiftpm`; the bui
 `test_without_a_proxy_the_build_fetches_nothing_itself` and
 `test_the_seeded_artifact_is_the_one_the_pinned_fluidaudio_names` (a new `FLUIDAUDIO_PIN` is a KeyError there
 until its manifest is read again).
+
+The seed's curl trusts what the shell's curl trusts, fetches only behind an https proxy, and leaves no partial
+file behind (R84, R83, review of both). `/usr/bin/curl` 8.7.1 reads `CURL_CA_BUNDLE`, `SSL_CERT_FILE` and
+`SSL_CERT_DIR` (measured 2026-10-11 under `env -i`: the first two at an empty file failed with exit 77, "error
+setting certificate verify locations", and `SSL_CERT_DIR` at a missing folder became its CApath), and those are
+the usual way a shell behind TLS inspection trusts the inspecting CA. Without them the seed's curl failed
+verification where the shell's worked, and SwiftPM's direct download failed after it, so the R83 fetch did not
+reach the Mac it is for. The curl step alone now runs in `speech._build_env()` plus their non-empty values
+(`speech._CURL_CA_VARS`, through `_step`'s `env`); `swift` and `git` still do not get them, since Xcode's git
+ignores them. The fetch's trigger is `speech._PROXIES`, `HTTPS_PROXY` and `ALL_PROXY` in either case: curl and git
+both ignore `HTTP_PROXY` and `http_proxy` for an https url (measured: either at a closed port still fetched
+https://github.com directly, while `HTTPS_PROXY` or `ALL_PROXY` there failed to connect), so a shell with only
+`HTTP_PROXY` made a direct 87 MB fetch before SwiftPM's own. The build still passes `HTTP_PROXY` to `swift` and
+`git` (`speech._PROXY_VARS`). An install stopped by SIGTERM or SIGKILL mid-fetch never runs the seed's `finally`,
+and each such run left another random `.seed-*` file of up to 87 MB in the artifacts folder that nothing
+removed; `speech._seed` now first removes every `.seed-*` file there, whether or not it then fetches. Two builds
+at once would at worst remove each other's temporary file, and that fetch then falls through to SwiftPM's own
+download. Pinned by
+`tests/test_speech.py::test_the_seeds_curl_trusts_the_shells_ca_and_swiftpm_and_git_never_see_curls_variables`,
+`test_without_a_proxy_the_build_fetches_nothing_itself` (its `HTTP_PROXY` and `http_proxy` cases) and
+`test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build`.
 
 #### PDF pictures and diagrams
 

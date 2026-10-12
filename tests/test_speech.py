@@ -43,7 +43,7 @@ def _speech_on(monkeypatch: pytest.MonkeyPatch) -> None:
     """These tests are about speech being on: the suite's off switch is set per test where it matters."""
     monkeypatch.delenv("AGENTSYNC_OCR", raising=False)
     monkeypatch.setattr(sys, "platform", "darwin")
-    for key in (*speech._PROXY_VARS, *speech._CA_VARS):  # a developer's proxy would send a build to curl
+    for key in (*speech._PROXY_VARS, *speech._CA_VARS, *speech._CURL_CA_VARS):  # a developer's proxy or CA
         monkeypatch.delenv(key, raising=False)
 
 
@@ -717,11 +717,75 @@ def test_a_wrong_or_failed_fetch_leaves_nothing_and_swiftpm_downloads_as_before(
     assert lines_of(tools / "swift.calls")[0].startswith("package ")
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("NO_PROXY", "intranet.contoso.example"),
+        ("HTTP_PROXY", "http://proxy.contoso.example:8080"),
+        ("http_proxy", "http://proxy.contoso.example:8080"),
+    ],
+)
 def test_without_a_proxy_the_build_fetches_nothing_itself(
-    curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str, value: str
 ) -> None:
-    """No proxy variable (NO_PROXY alone names no proxy): SwiftPM downloads the artifact as before."""
-    monkeypatch.setenv("NO_PROXY", "intranet.contoso.example")
+    """No variable that routes an https url through a proxy: SwiftPM downloads the artifact as before.
+    NO_PROXY alone names no proxy, and curl and git both ignore HTTP_PROXY for an https url (measured with
+    /usr/bin/curl 8.7.1: HTTP_PROXY at a closed port still fetched https://github.com directly), so a shell
+    with only HTTP_PROXY would get a direct fetch of the artifact before SwiftPM's own."""
     monkeypatch.setenv("HTTP_PROXY", "")
+    monkeypatch.setenv(key, value)
     assert speech.build(tmp_path / "cache").is_file()
     assert not curl.with_name("curl.calls").exists()
+
+
+CURL_CA = {
+    "CURL_CA_BUNDLE": "/Users/contoso/certs/contoso-inspection.pem",
+    "SSL_CERT_FILE": "/Users/contoso/certs/contoso-inspection.pem",
+    "SSL_CERT_DIR": "/Users/contoso/certs",
+}
+
+
+def test_the_seeds_curl_trusts_the_shells_ca_and_swiftpm_and_git_never_see_curls_variables(
+    curl: Path, tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R84 x R83: /usr/bin/curl 8.7.1 reads CURL_CA_BUNDLE, SSL_CERT_FILE and SSL_CERT_DIR (measured under
+    env -i: each pointed at a missing path changed its CAfile or CApath), so behind TLS inspection a shell
+    that trusts the inspecting CA through them fetches with curl, and the seed's curl must too or it fails
+    verification and SwiftPM's direct download fails after it.  Xcode's git ignores them, so swift and git
+    still do not get them; an empty value is not passed, and verification is never turned off."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    for key, value in {**CURL_CA, **SHELL_CA, "GIT_SSL_NO_VERIFY": "1"}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SSL_CERT_DIR", "")
+    cache = tmp_path / "cache"
+    assert speech.build(cache).is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    passed = {key: seen.get(key) for key in CURL_CA}
+    assert passed == {**CURL_CA, "SSL_CERT_DIR": None}, "curl gets the shell's non-empty CA bundle"
+    assert seen.get("GIT_SSL_CAINFO") == SHELL_CA["GIT_SSL_CAINFO"] and "GIT_SSL_NO_VERIFY" not in seen
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    assert (artifacts / NEMO_CACHE_NAME).read_bytes() == PAYLOAD
+    for tool in ("swift", "git"):
+        tool_seen = {ln.split("=", 1)[0] for ln in lines_of(tools / f"{tool}.env")}
+        assert not set(CURL_CA) & tool_seen, tool
+
+
+@pytest.mark.parametrize("state", ["fetches", "no proxy", "already seeded"])
+def test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build(
+    curl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """R83: install.sh stopped by SIGTERM or SIGKILL mid-fetch never runs the seed's ``finally``, so a partial
+    ``.seed-*`` file of up to 87 MB stays in the artifacts folder.  The next build removes every one of them
+    first, whether or not it fetches, so interrupted runs do not pile them up."""
+    if state != "no proxy":
+        monkeypatch.setenv("HTTPS_PROXY", "http://proxy.contoso.example:8080")
+    cache = tmp_path / "cache"
+    artifacts = cache / "speech" / "swiftpm" / "cache" / "artifacts"
+    artifacts.mkdir(mode=0o700, parents=True)
+    for name in (".seed-k3j2h1ab", ".seed-p9q8r7cd"):
+        (artifacts / name).write_bytes(b"partial made-up Contoso bytes")
+    if state == "already seeded":
+        (artifacts / NEMO_CACHE_NAME).write_bytes(PAYLOAD)
+    assert speech.build(cache).is_file()
+    assert sorted(artifacts.glob(".seed-*")) == []
+    assert curl.with_name("curl.calls").exists() == (state == "fetches")

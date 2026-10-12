@@ -436,24 +436,37 @@ FluidAudio with git, which reads them, as step 1's git does (setup prompt step 1
 _CA_VARS = ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "CURL_SSL_BACKEND")
 """The shell's CA variables the build's git reads (Xcode's git, libcurl 8.7.1 with LibreSSL): behind TLS
 inspection they are how the shell's git trusts the inspecting CA, so SwiftPM's clone needs them too.
-SSL_CERT_FILE, SSL_CERT_DIR and CURL_CA_BUNDLE are left out because that git ignores them (measured), and
-GIT_SSL_NO_VERIFY and DEVELOPER_DIR never reach the build."""
+SSL_CERT_FILE, SSL_CERT_DIR and CURL_CA_BUNDLE are left out of swift and git because that git ignores them
+(measured); only the seed's curl gets them (:data:`_CURL_CA_VARS`).  GIT_SSL_NO_VERIFY and DEVELOPER_DIR never
+reach the build."""
+
+_CURL_CA_VARS = ("CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
+"""The shell's CA variables /usr/bin/curl 8.7.1 reads and Xcode's git ignores (both measured under env -i:
+each pointed at a missing path changed curl's CAfile or CApath, and git still cloned): behind TLS inspection
+they are how the shell's curl trusts the inspecting CA, so :func:`_seed`'s curl gets them, and nothing else
+does."""
+
+
+def _shell(keys: Sequence[str]) -> dict[str, str]:
+    """The shell's non-empty values of ``keys``."""
+    return {key: value for key in keys if (value := os.environ.get(key))}
 
 
 def _build_env() -> dict[str, str]:
     """:func:`ocr._env` plus whichever of :data:`_PROXY_VARS` and :data:`_CA_VARS` the shell sets."""
-    env = ocr._env()
-    env.update({key: value for key in (*_PROXY_VARS, *_CA_VARS) if (value := os.environ.get(key))})
-    return env
+    return {**ocr._env(), **_shell((*_PROXY_VARS, *_CA_VARS))}
 
 
-def _step(argv: Sequence[str], *, cwd: Path, deadline: float, what: str) -> str:
-    """Run one build tool in the build tree within the build's time; its stdout, or SpeechError."""
+def _step(
+    argv: Sequence[str], *, cwd: Path, deadline: float, what: str, env: dict[str, str] | None = None
+) -> str:
+    """Run one build tool in the build tree within the build's time (in ``env``, else :func:`_build_env`);
+    its stdout, or SpeechError."""
     left = deadline - _clock()
     if left <= 0:
         raise SpeechError("the speech helper's build ran out of time")
     try:
-        cp = ocr._run_build(argv, cwd=cwd, timeout=left, env=_build_env())
+        cp = ocr._run_build(argv, cwd=cwd, timeout=left, env=_build_env() if env is None else env)
     except subprocess.TimeoutExpired:
         raise SpeechError("the speech helper's build ran out of time") from None
     except OSError as exc:
@@ -475,8 +488,11 @@ _CURL_FLAGS = (
 )
 """HTTPS only, through redirects (GitHub serves releases from another host); a stall of a minute below
 1 KB/s ends the fetch rather than the build's twenty minutes."""
-_PROXIES = tuple(key for key in _PROXY_VARS if key.lower() != "no_proxy")
-"""The variables that name a proxy; NO_PROXY alone names none."""
+_PROXIES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
+"""The variables that route an https url through a proxy, for curl and git alike: both ignore HTTP_PROXY for
+an https url (measured with /usr/bin/curl 8.7.1: HTTP_PROXY at a closed port still fetched directly), and
+NO_PROXY names none."""
+_SEED_PREFIX = ".seed-"
 
 
 def _artifact_name(url: str) -> str:
@@ -488,16 +504,21 @@ def _artifact_name(url: str) -> str:
 
 def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
     """Behind a proxy set in the environment, put FluidAudio's binary artifact where SwiftPM looks before it
-    downloads (it then prints "Fetched ... from cache"): curl, which reads the proxy variables, fetches
+    downloads (it then prints "Fetched ... from cache"): curl, which reads the proxy and CA variables, fetches
     :data:`NEMO_URL` to a temporary file, and only a file whose SHA-256 is :data:`NEMO_SHA256` is renamed into
     place.  Any failure removes the temporary file and leaves SwiftPM to download it as before; SwiftPM checks
-    the checksum again either way."""
+    the checksum again either way.  A run stopped mid-fetch by SIGTERM or SIGKILL never reaches the
+    ``finally``, so every run first removes the temporary files earlier runs left."""
+    with contextlib.suppress(OSError):
+        for stale in artifacts.glob(f"{_SEED_PREFIX}*"):
+            with contextlib.suppress(OSError):
+                stale.unlink()
     final = artifacts / _artifact_name(NEMO_URL)
-    if not any(os.environ.get(key) for key in _PROXIES) or final.exists():
+    if not _shell(_PROXIES) or final.exists():
         return
     try:
         artifacts.mkdir(mode=0o700, parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=".seed-", dir=artifacts)
+        fd, name = tempfile.mkstemp(prefix=_SEED_PREFIX, dir=artifacts)
     except OSError:
         return
     os.close(fd)
@@ -508,6 +529,7 @@ def _seed(artifacts: Path, *, cwd: Path, deadline: float) -> None:
             cwd=cwd,
             deadline=deadline,
             what="curl",
+            env={**_build_env(), **_shell(_CURL_CA_VARS)},
         )
         if _file_sha(temporary) != NEMO_SHA256:
             log.info("the NemoTextProcessing artifact fetched through the proxy has the wrong checksum")
