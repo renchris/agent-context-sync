@@ -1122,9 +1122,10 @@ redaction_pairs() {
 			if [ "${#tok}" -ge 3 ]; then
 				[ "$u" = "$tok" ] || add_pair "$u" "<name>" w
 				add_pair "$c" "<name>" w
-			else
+			elif [ "${#tok}" -eq 2 ] && case "$tok" in [[:upper:]][[:alpha:]]) true ;; *) false ;; esac; then
 				# A two-letter part ("Li", "LI") too, each form that is no word of the report's (short_name), as
-				# setup_report does: add_forms has no 3-character floor (B13 R72).
+				# setup_report does: add_forms has no 3-character floor (B13 R72). A part written in lower case
+				# is a particle ("de"): alone it names no one, in no case.
 				kept=" "
 				for v in "$tok" "$u" "$c"; do
 					case "$kept" in *" $v "*) continue ;; esac

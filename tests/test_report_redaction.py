@@ -463,3 +463,40 @@ def test_the_shell_report_redacts_the_launchagents_own_proxy(env: dict[str, str]
     text = _shell_report(env, friction, AGENTSYNC_LAUNCHCTL=str(stub))
     assert "fabrikam" not in text
     assert re.search(r"\| the LaunchAgent resolves http://<proxy-\d+>:8080 \|", text), text
+
+
+# ---- review of the round's own changes ---------------------------------------------------------------------
+
+
+def test_an_accented_spelling_of_a_known_value_is_still_matched() -> None:
+    """Keyed without accents, a value whose unaccented spelling was registered first was dropped, and the
+    earlier value's pattern has no accented letters: "Société Générale" printed in clear after a library
+    "Societe-Generale" (review of R115). It keeps the first placeholder and is matched as written."""
+    red = setup_report.Redactor()
+    red.add("library", "Societe-Generale", fuzzy=True)
+    red.add("org", "Société Générale", fuzzy=True)
+    assert red.redact("OneDrive-Société Générale/Plans") == "OneDrive-<library-1>/Plans"
+    red = setup_report.Redactor()
+    red.add("name", "Jose")
+    red.add("folder", "José", fuzzy=True)
+    assert red.redact("José, josé, Jose") == "<name>, <name>, <name>"
+
+
+def test_a_value_written_in_angle_brackets_is_matched_whole() -> None:
+    """The placeholder hold took any ``<word>``, so a folder named ``<Draft>`` was never matched (review of
+    R69): only placeholder shapes are held."""
+    red = setup_report.Redactor()
+    red.add("folder", "<Draft>", fuzzy=True)
+    red.add("org", "contoso", fuzzy=True)
+    assert (
+        red.redact("see <Draft> and <Draft> Plans; <contoso>")
+        == "see <folder-1> and <folder-1> Plans; <<org-1>>"
+    )
+
+
+def test_the_shell_report_leaves_a_particle_in_capitals(env: dict[str, str]) -> None:  # noqa: F811
+    """A lower-case two-letter part ("de") names no one alone, in any case: the shell registered its upper
+    case, which the Python report never does (review of R72)."""
+    _stub_id(env, "Jean de Fontaine")
+    text = _shell_report(env, "Prompt: v10\nF1 | step 1 | clean | 1 | DE and de stay; Jean Fontaine | -\n")
+    assert "| DE and de stay; <name> |" in text, text

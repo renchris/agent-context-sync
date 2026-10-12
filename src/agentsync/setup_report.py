@@ -488,15 +488,15 @@ _LEGEND = {
     "proxy": "<proxy-N> proxy host, or the system PAC URL after its scheme",
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }
-_HELD_RE = r"<[A-Za-z]+(?:-(?:\d+|N))?>"
-"""The shape of a placeholder: one this Redactor issued, or one of :data:`_FIXED_PLACEHOLDERS`, is held."""
 _FIXED_PLACEHOLDERS = frozenset(
     {*(f"<{k}>" for k in _UNNUMBERED), "<path>", "<org>", "<Org>", "<team>", "<TEAMID>"}
 )
 _KIND_PLACEHOLDER_RE = re.compile(rf"<(?:{'|'.join(k for k in _LEGEND if k not in _UNNUMBERED)})-(?:\d+|N)>")
-"""Placeholders held whoever wrote them (an earlier report's, a template's): the unnumbered kinds, a numbered
-kind with any number or ``N``, the shell report's ``<path>`` and the IT request's template fields, as
-``scripts/install.sh``'s ``redact_stream`` holds them. Their words are kind names, never a person's value."""
+_HELD_RE = "|".join([_KIND_PLACEHOLDER_RE.pattern, *map(re.escape, sorted(_FIXED_PLACEHOLDERS))])
+"""Placeholders held whoever wrote them (this Redactor, an earlier report, a template): the unnumbered
+kinds, a numbered kind with any number or ``N``, the shell report's ``<path>`` and the IT request's template
+fields, as ``scripts/install.sh``'s ``redact_stream`` holds them. Their words are kind names, never a
+person's value, and no other bracketed word is held: a folder named ``<Draft>`` is still matched whole."""
 _TEMPLATE_NOTE = (
     "Unnumbered <org>, <team>, <Org>, <TEAMID>, <serial> and the IT request's other <field> names inside "
     "doctor fixes or the IT-draft line are template placeholders, not redactions."
@@ -706,7 +706,6 @@ class Redactor:
         self._commits: dict[str, str] = {}  # 7-hex prefix -> placeholder
         self._used: set[str] = set()
         self._regex: re.Pattern[str] | None = None
-        self._inner: re.Pattern[str] | None = None  # _regex without the placeholder hold
         self._counting = True
 
     @property
@@ -778,18 +777,23 @@ class Redactor:
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
-        if self._known(value) is not None:
+        known = self._known(value)
+        # An accented spelling of a known value ("Société" after "Societe") keeps that placeholder, but is
+        # matched as written too: the unaccented value's pattern has no accented letters.
+        if known is not None and (
+            _bare(value) == _nfc(value) or any(_nfc(v) == _nfc(value) for v, _mode in self._literals)
+        ):
             return
-        placeholder = self._placeholder(kind)
-        self._kind_of[placeholder] = kind
+        placeholder = known or self._placeholder(kind)
+        self._kind_of.setdefault(placeholder, kind)
         if fuzzy and len(_norm(value)) >= 3 and _tokens(value):
-            self._fuzzy[_norm(value)] = placeholder
+            self._fuzzy.setdefault(_norm(value), placeholder)
             self._literals.append((value, "fuzzy"))
         elif ignore_case or fuzzy or url:
-            self._folded[_bare(value).lower()] = placeholder
+            self._folded.setdefault(_bare(value).lower(), placeholder)
             self._literals.append((value, "url" if url else "fold"))
         else:
-            self._exact[_bare(value)] = placeholder
+            self._exact.setdefault(_bare(value), placeholder)
             self._literals.append((value, "exact"))
         self._regex = None
 
@@ -812,11 +816,11 @@ class Redactor:
             # This repository's own locator first, kept whole: on a Mac whose full name run together is its
             # public owner ("Jane Doe", "doejane/..."), the name forms cut every copy of the issue link and
             # the source URL to github.com/<name>/... Only this owner's: a fork's owner stays a name (R20).
-            alts = [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]+{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
+            alts = [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
             # A placeholder's shape is tried before all of these (prepended below), so a second pass over
             # redacted text (the Summary's item lines; a friction log that copied an earlier report) leaves a
             # placeholder whole: a value spelled like its word ("Host" in "<host>", "Folder 1" in
-            # "<folder-1>") made it <<folder-1>>. Only one issued or fixed is held (:meth:`_replace`):
+            # "<folder-1>") made it <<folder-1>>. Only the shapes :data:`_FIXED_PLACEHOLDERS` names are held:
             # "<contoso>" still has its value replaced (R69).
             alts += [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
             if self._commits:
@@ -851,7 +855,6 @@ class Redactor:
                 alts.append("(?P<lit>" + "|".join(dict.fromkeys(literals)) + ")")
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
-            self._inner = re.compile("|".join(alts))
             self._regex = re.compile("|".join([f"(?P<hold>{_HELD_RE})", *alts]))
         return self._regex
 
@@ -866,14 +869,8 @@ class Redactor:
     def _replace(self, m: re.Match[str]) -> str:
         text = m.group(0)
         groups = m.groupdict()
-        if groups.get("keep") is not None:
+        if groups.get("keep") is not None or groups.get("hold") is not None:
             return text
-        if groups.get("hold") is not None:
-            if text in self._kind_of or text in _FIXED_PLACEHOLDERS or _KIND_PLACEHOLDER_RE.fullmatch(text):
-                return text
-            if self._inner is None:
-                return text
-            return f"<{self._inner.sub(self._replace, text[1:-1])}>"
         if groups.get("email") is not None:
             placeholder = self._pattern("email", text)
         elif groups.get("guid") is not None:
