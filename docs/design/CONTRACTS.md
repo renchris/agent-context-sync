@@ -14682,6 +14682,10 @@ was not reproducible (that sentence is appended unredacted), and its org `Link` 
 `Status`, since F42 keeps a word-named organisation out of fixed text. Test:
 `test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
 
+**F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
+sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
+so an older agentsync and the shell fallback are covered alike. This lane's F20 shares their stopped-copy case.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)
