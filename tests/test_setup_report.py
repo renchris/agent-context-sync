@@ -7372,6 +7372,52 @@ def test_the_report_doctor_never_points_at_the_end_of_its_run(
     assert "(" not in doctor.LISTING_YOURS_REPORT_NOTE, "the report's fix parser strips one level"
 
 
+def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_one_does_not(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 5 F39: step 2's doctor warned on a heartbeat, the report's own doctor (run later) did not,
+    and nothing tied the two. The line names install.sh's pre-sync warns of the attempt's last install run
+    that the report's doctor does not report, says when each doctor ran, and claims no cause. An older
+    run's warn, a warn after the sync line and a warn the report's doctor still gives are not named."""
+    old, new = "20261001T100000Z-11", "20261009T100100Z-22"
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)
+    write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
+    first = V6_HAPPY.replace("2026-09-29T", "2026-10-01T")
+    second = V10_HAPPY.replace("2026-09-29T09:58:00Z", "2026-10-09T09:59:00Z").replace(
+        "2026-09-29T10:01:10Z", "2026-10-09T10:02:00Z"
+    )
+    write_friction(fake_mac, first + second)
+    out = [
+        f"# run={old} 2026-10-01T10:00:00Z install.sh --source-local x",
+        "[warn] heartbeat.project-q — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
+        "NEXT: done",
+        f"# run={new} 2026-10-09T10:01:00Z install.sh --source-local x",
+        _INCOMPLETE
+        + " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it "
+        "still is)",
+        "[warn] heartbeat.project-z — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
+        "first sync: converted 1, deferred 0 online-only",
+        "[warn] heartbeat.project-y — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
+        "NEXT: done",
+    ]
+    (fake_mac["setup"] / "install.out").write_text("\n".join(out) + "\n", encoding="utf-8")
+    still = ["[ok  ] python — fine", "[warn] heartbeat.project-z — no successful pass yet (fix: x)"]
+    hooks = setup_report.ReportHooks(doctor=lambda config: still)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- doctor: ")]
+    assert line.startswith("- doctor: 0 FAIL, 1 warn (2 checks, run when this report was written) · "), line
+    assert line.endswith(
+        "· install.sh's doctor before its first sync (run 20261009T100100Z): 1 warn not in this one: "
+        "heartbeat.project-x"
+    ), line
+    assert "project-q" not in line and "project-y" not in line and line.count("project-z") == 1
+    assert "cleared" not in line
+    still.append(_INCOMPLETE)  # the report's doctor gives it too: nothing more to say
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- doctor: ")]
+    assert "install.sh's doctor" not in line and "run when this report" not in line, line
+
+
 def test_no_yours_group_without_the_loops_checks(fake_mac: dict[str, Path]) -> None:
     """A hook that gives lines (an older CLI), fails or times out names no check: the warn is unexpected."""
 

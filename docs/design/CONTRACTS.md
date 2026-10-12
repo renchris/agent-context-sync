@@ -14577,6 +14577,16 @@ section, the run list and the Summary's install line, and the total reads `(runs
 report step not counted)`. A `--report-only` report, and any later read, see the final line and are unchanged.
 install.sh is unchanged. Test: `test_the_report_install_sh_writes_says_its_run_time_is_before_its_report_step`.
 
+**F39: the doctor line names the checks install.sh's doctor printed that the report's does not.** Read with
+§16.39 N16 and Q26 (round 4 left its install.sh half unbuilt). In the attempt's last install run's install.out
+lines, the `[warn]` and `[FAIL]` checks printed before the run's first `sync:` or `first sync:` line that the
+report's own doctor does not report add `· install.sh's doctor before its first sync (run <id>): N warn not in this
+one: <check>, ...`, and the counts are labelled `(K checks, run when this report was written)`. It states the
+difference and never a cause ("cleared by its first sync" is not provable: a `--report-only` report can follow
+later syncs or an `exclude-empty`). An older run's warns, warns after the sync line and a check the report's doctor
+still gives (already under `yours` or `unexpected`) are not named; with none, the line is unchanged. Test:
+`test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_one_does_not`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)

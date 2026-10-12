@@ -5846,7 +5846,45 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if yours:
         parts.append(f"yours {len(yours)}: {', '.join(yours)} (see WAITING ON YOU)")
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
+    gone = _install_doctor_only(r, runs)
+    if gone is not None:  # the two doctors differ: say when each ran, never why (B13 round 5 F39)
+        run, named = gone
+        parts[0] = parts[0][:-1] + ", run when this report was written)"
+        tags = Counter(tag for tag, _name in named)
+        counts = ", ".join(f"{tags[t]} {t}" for t in ("FAIL", "warn") if tags[t])
+        parts.append(
+            f"install.sh's doctor before its first sync (run {run.display_id}): {counts} not in this one: "
+            + ", ".join(name for _tag, name in named)
+        )
     return "- doctor: " + " · ".join(parts)
+
+
+def _install_doctor_only(
+    r: _Run, runs: Sequence[InstallRun]
+) -> tuple[InstallRun, list[tuple[str, str]]] | None:
+    """The ``[warn]`` and ``[FAIL]`` checks install.sh's doctor printed in install.out during the last install
+    run of ``runs`` (the attempt's), before that run's first ``sync:`` line, that the report's own doctor
+    does not report: (that run, [(tag, check)]), or None when there are none or the run's output is not in
+    the install.out lines read. A check the report's doctor still reports is left to its own clauses."""
+    installs = install_runs_only(runs)
+    if not installs or not r.facts.out_counted:
+        return None
+    last = installs[-1]
+    lines = r.facts.out_counted
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(f"# run={last.run_id} ")), None)
+    if start is None:
+        return None
+    now = {name for _tag, name, _detail in r.facts.doctor_problems}
+    named: list[tuple[str, str]] = []
+    for ln in lines[start + 1 :]:
+        text = ln.strip()
+        if _OUT_RUN_RE.match(ln) or text.startswith(("first sync:", "sync:")):
+            break
+        m = _DOCTOR_TAG_RE.match(text)
+        found = (m.group(1), m.group(2)) if m is not None else None
+        if found is not None and found[0] in ("warn", "FAIL") and found[1] not in now and found not in named:
+            named.append(found)
+    return (last, named) if named else None
 
 
 def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = False) -> str:
