@@ -1548,9 +1548,9 @@ _TURNED = PdfPicture(60, "0 96 -64 0 214 20", pixels=_TURNED_PIXELS)
 _ROWS = ["Units by region", "North 12", "South 9"]
 
 
-def _down(text: str) -> dict[str, Any]:
+def _down(text: str, confidence: float = 1.0) -> dict[str, Any]:
     """What the helper reports for a picture it was given on its side: one line taller than it is wide."""
-    return {"lines": [{"text": text, "confidence": 1.0, "x": 0.45, "y": 0.1, "w": 0.1, "h": 0.8}]}
+    return {"lines": [{"text": text, "confidence": confidence, "x": 0.45, "y": 0.1, "w": 0.1, "h": 0.8}]}
 
 
 def _images_read(engine: ocr.OcrEngine) -> int:
@@ -1602,6 +1602,40 @@ def test_a_turned_picture_keeps_its_first_reading_unless_the_other_one_runs_acro
     assert _images_read(engine) == (1 if first is None else 2)
 
 
+@pytest.mark.parametrize(
+    "said",
+    [
+        _down("•"),  # a bullet or a dot, read with full confidence: one character, its box tall
+        _down("19059", confidence=0.3),  # digits seen in a gradient
+        # Two marks the reading order drops as noise do not lift seven characters to enough text.
+        {"lines": [_down(t, c)["lines"][0] for t, c in (("ab", 0.3), ("cd", 0.3), ("North 12", 1.0))]},
+    ],
+    ids=["one glyph", "a few characters", "noise does not count"],
+)
+def test_a_turned_photo_with_stray_marks_costs_one_read(tmp_path: Path, said: dict[str, Any]) -> None:
+    """A text-free picture the helper finds a stray mark in, tall as one glyph's box is: so little text says
+    nothing about which way the picture is turned, and it is not read again (measured with the real helper:
+    a dot at confidence 1.0 in a turned chart of bars, and five digits at 0.3 in a wallpaper)."""
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    engine = shade_engine(tmp_path / "bin", {61: said, 60: _ROWS})
+    _ocr_one(src, engine)
+    assert _images_read(engine) == 1
+
+
+def test_a_second_reading_counts_once_against_the_pictures_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With room for one picture, a turned picture read twice is still one picture: both readings are made,
+    the one across is kept, and no picture is reported left unread."""
+    monkeypatch.setattr(pdf_mod, "_read_pictures", functools.partial(image._read_pictures, limit=1))
+    src = _staged(tmp_path, [(_TEXT, [_TURNED])])
+    engine = shade_engine(tmp_path / "bin", {61: _down(" ".join(_ROWS)), 60: _ROWS})
+    u = _ocr_one(src, engine)
+    assert _images_read(engine) == 2
+    assert u.body.endswith(f"{_OCR_PICTURE}\n" + "\n".join(_ROWS) + "\n")
+    assert u.summary == "PDF: 1 page(s); text of 1 picture(s) read by on-device OCR"
+
+
 def test_a_second_reading_is_charged_to_the_pixel_budget_and_the_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1650,10 +1684,17 @@ def test_a_picture_only_its_page_turns_is_not_read_twice(tmp_path: Path) -> None
 
 def test_which_way_lines_run_is_measured_in_pixels() -> None:
     """A box is in fractions of the picture, so on a wide picture a short line's fractions look tall."""
-    line = ocr.OcrLine(text="Q3 total", confidence=1.0, x=0.1, y=0.2, w=0.1, h=0.5)
+    line = ocr.OcrLine(text="Q3 total units", confidence=1.0, x=0.1, y=0.2, w=0.1, h=0.5)
     wide = ocr.OcrImage(width=2000, height=100, frames=1, frame=0, lines=(line,))  # 200 x 50 px: across
     tall = ocr.OcrImage(width=100, height=2000, frames=1, frame=0, lines=(line,))  # 10 x 1000 px: down
     assert (image._direction(wide), image._direction(tall)) == (1, -1)
+    # Under eight characters, less the noise the reading order drops, is too little to tell.
+    short = (replace(line, text="Q3 total"),)
+    noise = (ocr.OcrLine("ab", 0.3, 0.5, 0.2, 0.1, 0.5), ocr.OcrLine("cd", 0.3, 0.7, 0.2, 0.1, 0.5))
+    sure = replace(noise[1], confidence=0.5)  # read with confidence: two characters that count
+    assert image._direction(ocr.OcrImage(100, 2000, 1, 0, short)) == 0
+    assert image._direction(ocr.OcrImage(100, 2000, 1, 0, short + noise)) == 0
+    assert image._direction(ocr.OcrImage(100, 2000, 1, 0, (*short, noise[0], sure))) == -1
     # Weighed by characters: one long line across outweighs two short ones down.
     many = (
         line,

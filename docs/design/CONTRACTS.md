@@ -13043,8 +13043,13 @@ whose box is more than 1.5 times higher than wide, measured in pixels, the box's
 width against its height times the image's height, never in the fractions the helper gives), it is read
 once more the other way, after every other picture (`pdf._read_other_way`). That reading is kept when its
 lines run across by the same measure (more than 1.5 times wider than high); a tie, no lines, lines that run
-down again, or a helper failure on it keep the first reading. A picture whose first reading runs across or
-holds no text (a turned phone photo) costs one helper read, as before. The picture counts once toward
+down again, or a helper failure on it keep the first reading. The lines measured are those the reading
+order keeps (`ocr._kept` drops one or two characters read under confidence 0.35), and under 8 characters
+of them, less whitespace, decide neither way (`image._DIRECTION_MIN_CHARS`): one glyph's box is taller
+than wide, and the helper finds stray marks in pictures with no text (measured with the real helper: a dot
+at confidence 1.0 in a turned chart of bars, five digits at 0.3 in a wallpaper). So a picture whose first
+reading runs across, holds no text, or holds only such marks (a turned phone photo) costs one helper read,
+as before. The picture counts once toward
 `ocr_max_pictures`; its second reading is charged its pixels again against `ocr_picture_pixels` (the first
 reading stands when they would pass it) and shares the document's OCR time: none is started once that
 time is over. `image._PictureText` gains `down`, the digests whose lines run down; the other converters do
@@ -13058,7 +13063,9 @@ Tests: `tests/test_convert_formats.py`
 (`test_a_picture_stored_upright_and_drawn_turned_is_read_as_its_separate_lines`,
 `test_a_picture_stored_on_its_side_and_drawn_upright_is_still_read_once_as_shown`,
 `test_a_turned_picture_keeps_its_first_reading_unless_the_other_one_runs_across`, whose "no text" case is
-a turned photo that costs exactly one helper read, `test_a_second_reading_is_charged_to_the_pixel_budget_and_the_time`,
+a turned photo that costs exactly one helper read, `test_a_turned_photo_with_stray_marks_costs_one_read`,
+`test_a_second_reading_counts_once_against_the_pictures_read`,
+`test_a_second_reading_is_charged_to_the_pixel_budget_and_the_time`,
 `test_a_picture_only_its_page_turns_is_not_read_twice`, `test_which_way_lines_run_is_measured_in_pixels`,
 and `ocr_pdf_rules` 4 in `test_pdf_version_and_options_change_only_with_an_engine`) and `tests/test_ocr.py`
 (`test_the_real_helper_reads_a_pdf_picture_stored_upright_and_drawn_turned_as_its_separate_lines`; §16.42's

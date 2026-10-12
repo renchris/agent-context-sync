@@ -38,7 +38,7 @@ from typing import BinaryIO
 from agentsync.config import ConvertConfig
 from agentsync.convert._common import _FULL_TEXT_SIDECAR, _cap_body, _emitter, _escape_line
 from agentsync.convert.base import OptionValue, make_unit
-from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, text_lines
+from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, _kept, text_lines
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
 
@@ -185,21 +185,30 @@ _ON_ITS_SIDE = 1.5
 text was read on its side (the helper's boxes of such lines measured 2 to 9 times).  One this many times
 wider than high runs across."""
 
+_DIRECTION_MIN_CHARS = 8
+"""Fewer characters than this say nothing about which way a picture's lines run: one glyph's box is taller
+than wide, and the helper finds a stray dot or a few digits in a picture with no text (measured: a dot at
+confidence 1.0 in a turned chart of bars, five digits at 0.3 in a wallpaper)."""
+
 
 def _direction(image: OcrImage) -> int:
     """Which way the lines read in ``image`` run: 1 across, -1 down (the picture was read on its side), 0
-    neither, or no lines.  A way wins when most of the lines' characters are in lines that run that way
+    neither, or too little text to tell (``_DIRECTION_MIN_CHARS``).  The lines are those the reading order
+    keeps (``ocr._kept``: less the noise of one or two characters at low confidence), each weighed by its
+    characters, less whitespace.  A way wins when most of that weight is in lines that run that way
     (``_ON_ITS_SIDE``).  A box is measured in pixels, not in the fractions of the picture the helper gives:
     on a wide picture a short line's fractions look tall."""
     across = down = total = 0
-    for line in image.lines:
-        weight = len("".join(line.text.split()))
-        width, height = line.w * image.width, line.h * image.height
+    for box, _line in _kept(image.lines, image.width or 1000, image.height or 1000).values():
+        weight = len(box.text.replace(" ", ""))
+        width, height = box.right - box.left, box.height
         total += weight
         if width > _ON_ITS_SIDE * height:
             across += weight
         elif height > _ON_ITS_SIDE * width:
             down += weight
+    if total < _DIRECTION_MIN_CHARS:
+        return 0
     if 2 * across > total:
         return 1
     return -1 if 2 * down > total else 0
