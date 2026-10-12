@@ -621,10 +621,12 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         )
         if clear:
             waits.append(
+                # Each referent named, no pronoun (B13 round 4 Q11): "it" read as the folder, as if a sync
+                # would delete it, and excluding is not the only way the held deletions are released.
                 f"{len(clear)} empty cloud folder(s) keep the listing of {src.id} incomplete: an "
-                "empty folder in a cloud folder is expected and loses nothing, since deletions in "
-                f"{src.id} are only held until it is excluded, and another sync does not clear it; if "
-                "they are meant to be empty, "
+                "empty folder in a cloud folder is expected and loses nothing, but while the listing is "
+                f"incomplete, deletions in {src.id} are held, not applied, and another sync does not "
+                "complete it; if the folder(s) are meant to be empty, "
                 f"{exclude_advice(src, clear, _shown(config.config_path))}"
                 + (f"; {size}" if size and not gone else "")
             )

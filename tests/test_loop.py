@@ -283,8 +283,9 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         assert _lines(config) == [
             f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
             "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete: an empty folder in "
-            "a cloud folder is expected and loses nothing, since deletions in work are only held until it "
-            "is excluded, and another sync does not clear it; if they are meant to be empty, "
+            "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
+            "work are held, not applied, and another sync does not complete it; if the folder(s) are "
+            "meant to be empty, "
             f"set {paste} in [[source]] "
             'id = "work" in ~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later '
             "gains files",
@@ -462,8 +463,9 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
     waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert waits == [
         "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work incomplete: an empty folder in "
-        "a cloud folder is expected and loses nothing, since deletions in work are only held until it "
-        "is excluded, and another sync does not clear it; if they are meant to be empty, "
+        "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
+        "work are held, not applied, and another sync does not complete it; if the folder(s) are "
+        "meant to be empty, "
         'set exclude = ["~$*", "*.tmp", '
         f'".~lock.*#", "/Empty/"] in [[source]] id = "work" in {config.config_path}; an excluded folder is '
         "not mirrored if it later gains files",
@@ -510,8 +512,9 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
         lines = _lines(config)
         assert [ln for ln in lines if ln.startswith("WAITING ON YOU")] == [
             "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete: an empty folder in "
-            "a cloud folder is expected and loses nothing, since deletions in drop are only held until it "
-            "is excluded, and another sync does not clear it; if they are meant to be empty, "
+            "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
+            "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
+            "meant to be empty, "
             'set exclude = ["/Empty/"] in '
             f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
             "gains files",
@@ -591,8 +594,9 @@ def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> 
     run_cycle(config, mode=None)
     paste = (
         "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of drop incomplete: an empty folder in "
-        "a cloud folder is expected and loses nothing, since deletions in drop are only held until it "
-        "is excluded, and another sync does not clear it; if they are meant to be empty, "
+        "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
+        "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
+        "meant to be empty, "
         'set exclude = ["/Empty/"] in '
         f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
         "gains files"
