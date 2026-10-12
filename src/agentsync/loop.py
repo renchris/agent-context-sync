@@ -493,7 +493,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     def done(step: str, rule: int) -> NextStep:
         return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks))
 
-    # a kept upstream deletion is no wait: no run clears it while its file is listed, and it runs on its own
+    # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
+    # is a queued purge again, and the wait returns
     queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         waits.append(

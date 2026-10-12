@@ -1792,6 +1792,13 @@ def _cmd_uninstall(args: argparse.Namespace) -> int:
 
 
 def _print_purge(rep: governance.PurgeReport) -> None:
+    if rep.not_run:
+        # the queue kept this entry on purpose (a listed file, a hold, a failure): no run counts, no "NOT
+        # VERIFIED", which reads as a purge that ran and left something; its note says why it stays queued
+        _out(f"purge {rep.selector} ({rep.reason.value}): not run")
+        for n in rep.notes:
+            _out(f"  note: {n}")
+        return
     state = "dry run" if rep.dry_run else ("VERIFIED" if rep.verified else "NOT VERIFIED")
     # a dry run changed nothing: its commit count is in the note, its cache count is what would go
     rewritten = "" if rep.dry_run else f"{rep.commits_rewritten} commit(s) rewritten · "
@@ -1833,8 +1840,8 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         if dry_run:
             _out(f"{ran} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
             return EXIT_OK
-        # a kept upstream deletion is no failure: no run clears it while its file is listed, and it runs on
-        # its own once the file is gone
+        # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
+        # gone it is a queued purge again, and the wait returns
         stuck, kept = governance.partition_purges(config.state_paths, left)
         if left and not stuck:
             _out(f"{ran} queued purge(s) run; {len(kept)} stay queued while their file is listed")

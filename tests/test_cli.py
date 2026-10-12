@@ -1519,11 +1519,13 @@ def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert out.splitlines()[-1] == "0 queued purge(s) run; 1 still queued"
-    # R96: the held entry has a report line with its reason, as a kept one does
+    # R96: the held entry has a report line with its reason, as a kept one does; Q47: "not run", which is
+    # what happened, not NOT VERIFIED and run counts of zero
     assert (
-        "NOT VERIFIED · 0 item(s)" in out
-        and "  note: stays queued: purge suspended by legal/records hold: " in out
+        "purge stable-id (operator): not run\n  note: stays queued: purge suspended by legal/records hold: "
+        in out
     )
+    assert "NOT VERIFIED" not in out and "0 item(s)" not in out and "remote:" not in out
     assert sid not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
@@ -1555,12 +1557,15 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_coun
     assert check.ok and check.severity is doctor.Severity.INFO and check.fix is None and check.detail == kept
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
-    assert capsys.readouterr().out.splitlines()[-1] == (
-        "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
-    )
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    # Q47: a preview of a kept entry says it is skipped, not "dry run · ... would be removed"
+    assert "purge stable-id (upstream-deleted): not run\n  note: stays queued: " in out
+    assert "dry run ·" not in out and "would be removed" not in out
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "NOT VERIFIED · 0 item(s) · 0 docs path(s)" in out and "  note: stays queued: " in out
+    assert "purge stable-id (upstream-deleted): not run\n  note: stays queued: " in out
+    assert "NOT VERIFIED" not in out and "0 item(s)" not in out
     assert out.splitlines()[-1] == "0 queued purge(s) run; 1 stay queued while their file is listed"
     assert sid not in out and "sample" not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()

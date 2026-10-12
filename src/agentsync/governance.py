@@ -2393,7 +2393,8 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
     via = f", {later} of them under a later id" if later else ""
     return (
         f"stays queued: the manifest lists the file as live or online-only ({len(listed)} row(s){via}); "
-        "an upstream deletion is not run against a listed file, and runs once the file is gone again"
+        "an upstream deletion is not run against a listed file; a later `purge --queue` runs it once the "
+        "file is gone"
     )
 
 
@@ -2443,11 +2444,12 @@ def partition_purges(
 
 
 KEPT_PURGES = (
-    "upstream deletion(s) stay queued while their file is listed again; they run on their own once the "
-    "file is gone"
+    "upstream deletion(s) stay queued while their file is listed again; once the file is gone, they wait for "
+    "`agentsync purge --queue` like any queued purge"
 )
 """The note after the count of kept entries (:func:`partition_purges`) in the loop, status, doctor and
-STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait."""
+STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait until their file is
+gone.  Nothing runs them on its own: the history rewrite runs only from ``agentsync purge --queue``."""
 
 
 _HELD_WHY = "the purge failed; the log has the error"

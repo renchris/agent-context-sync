@@ -780,8 +780,8 @@ def test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once
 def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(world: World) -> None:
     """C8 (2026-10-07), CONTRACTS 16.30 'Not done here': `purge --queue` ran an upstream-deleted entry whose
     id names a listed file, by its own id or as an alias, and erased that live file's page and history. Such
-    an entry stays queued and NOT VERIFIED with its reason; a quarantined or refused row still runs, and so
-    does any other reason."""
+    an entry stays queued, not run and not verified, with its reason; a quarantined or refused row still runs,
+    and so does any other reason."""
     db = world.config.state_paths.db
     conn = sqlite3.connect(db)
     conn.execute("INSERT INTO item_aliases (source_id, alias_id, stable_id) VALUES ('src', 'K0', 'K1')")
@@ -802,7 +802,8 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     assert [r.verified for r in reports] == [False, False, True, True]
     assert reports[0].notes == (
         "stays queued: the manifest lists the file as live or online-only (1 row(s), 1 of them under a later "
-        "id); an upstream deletion is not run against a listed file, and runs once the file is gone again",
+        "id); an upstream deletion is not run against a listed file; a later `purge --queue` runs it once "
+        "the file is gone",
     )
     assert reports[0].items == () and reports[0].docs_paths == () and reports[0].commits_rewritten == 0
     assert [bool(r.not_run) for r in reports] == [True, True, False, False]
@@ -827,6 +828,15 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     assert all(r.verified for r in gv.run_purge_queue(world.config, now=NOW))
     assert gv.pending_purges(world.state) == []
     assert gv.pending_purges(world.state) == []
+
+
+def test_kept_purges_note_names_the_run_that_clears_them() -> None:
+    """Q45 (B13 round 4): the note after the kept count said the entries "run on their own once the file is
+    gone"; nothing runs them, the rewrite runs only from `purge --queue`, and then the wait returns."""
+    assert "on their own" not in gv.KEPT_PURGES
+    assert gv.KEPT_PURGES.endswith(
+        "once the file is gone, they wait for `agentsync purge --queue` like any queued purge"
+    )
 
 
 def _add_items(

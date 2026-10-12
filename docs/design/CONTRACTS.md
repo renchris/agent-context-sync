@@ -4324,7 +4324,7 @@ class Hold:
 class HoldActiveError(GovernanceError):
     """A legal/records hold covers the scope: purge and compaction are suspended until it is released."""
 
-KEPT_PURGES = 'upstream deletion(s) stay queued while their file is listed again; they run on their own once the file is gone'
+KEPT_PURGES = 'upstream deletion(s) stay queued while their file is listed again; once the file is gone, they wait for `agentsync purge --queue` like any queued purge'
 
 KEYCHAIN_SERVICE = 'agentsync'
 
@@ -10725,9 +10725,11 @@ live item with an outputs row at the path but no page there in HEAD still loses 
 `run_purge_queue` asks `_kept_upstream_deletion` before each entry. For reason `upstream-deleted` only, the rows a
 purge of the entry would delete (`_resolve_manifest`: its own id, an alias followed to the current id) are read;
 one in state `live` or `dataless` keeps the entry queued with a `PurgeReport` that is not verified (`not_run`, new
-field, "" when the entry ran; `remote` "not run"; the note `stays queued: the manifest lists the file as live or
-online-only (N row(s)[, K of them under a later id]); an upstream deletion is not run against a listed file, and
-runs once the file is gone again`), in a dry run too. The note names no id and no path. `quarantined` and
+field, "" when the entry ran; `remote` "not run"; the note ``stays queued: the manifest lists the file as live or
+online-only (N row(s)[, K of them under a later id]); an upstream deletion is not run against a listed file; a
+later `purge --queue` runs it once the file is gone``; **Amended 2026-10-12, §16.50 Q45:** was `..., and runs
+once the file is gone again`, which read as a run nobody starts), in a dry run too. The note names no id and no
+path. `quarantined` and
 `refused` rows still run: after a file comes back refused, the queued purge is the only erasure of its earlier
 text. `label-escalation`, `dlp-remediation`, `erasure-request` and `operator` entries are never judged. A kept
 entry exits 1 as a held one does and writes no audit line; `purge --queue`'s last line counts only the entries
@@ -12387,8 +12389,10 @@ entries a `purge --queue` would run and the ones it keeps queued, each with its 
 once and judges every entry with `_kept_why`, the rule `run_purge_queue` applies before each entry (a fresh read
 per entry there, since an earlier purge of the run changes the manifest), so the display and the run cannot
 differ. A manifest it cannot read (a schema from a newer build, a SQLite error) is logged and leaves every entry
-runnable, as before. `KEPT_PURGES` is the text after the kept count: `upstream deletion(s) stay queued while
-their file is listed again; they run on their own once the file is gone`.
+runnable, as before. `KEPT_PURGES` is the text after the kept count: ``upstream deletion(s) stay queued while
+their file is listed again; once the file is gone, they wait for `agentsync purge --queue` like any queued purge``
+(**Amended 2026-10-12, §16.50 Q45:** was `...; they run on their own once the file is gone`, but nothing runs
+them: the rewrite runs only from `purge --queue`).
 
 - The loop's wait and its `governance.purge_queue` check count only the runnable entries and appear only when
   there is one; the kept ones add the note `K <KEPT_PURGES>` (a note, not a wait).
@@ -13545,6 +13549,24 @@ manifest. Tests: `tests/test_governance.py`
 (`test_partition_purges_judges_a_cycle_entry_by_lookup_as_kept_why_does`, entry by entry against `_kept_why` over
 re-keyed, tombstoned, directory, second-source, dataless, quarantined and refused rows;
 `test_partition_purges_costs_rows_plus_entries`).
+
+**Q45, Q47: a kept queued purge says it was not run and what runs it** (`agentsync.governance`, `agentsync.cli`).
+`KEPT_PURGES` (loop note, status, doctor info line, STATE.md) said the kept entries "run on their own once the file
+is gone", and `_kept_why`'s note said the entry "runs once the file is gone again"; nothing runs them, the history
+rewrite runs only from `agentsync purge --queue`, and once the file is gone the entry is a queued purge again and the
+wait returns. `KEPT_PURGES` is now ``upstream deletion(s) stay queued while their file is listed again; once the
+file is gone, they wait for `agentsync purge --queue` like any queued purge`` and the note ends ``an upstream
+deletion is not run against a listed file; a later `purge --queue` runs it once the file is gone`` (§16.38's
+`_kept_why` text and §16.44's `KEPT_PURGES` text carry dated amendments; the §16 stub carries the new constant).
+`_print_purge` printed a report the queue did not run (a kept upstream deletion, a held or failed entry: `not_run`
+set) as `NOT VERIFIED · 0 item(s) · ... · remote: not run`, which reads as a purge that ran and left something, and
+under `--dry-run` as `dry run · ... would be removed`. It now prints `purge <selector> (<reason>): not run` and the
+entry's `note:` lines, in both modes; exit codes, counts and the last line are unchanged, and a purge that ran and
+left something still prints NOT VERIFIED. Tests: `tests/test_governance.py`
+(`test_kept_purges_note_names_the_run_that_clears_them`,
+`test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again`), `tests/test_cli.py`
+(`test_purge_queue_skips_a_held_source_and_keeps_it_queued`,
+`test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run`).
 
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
