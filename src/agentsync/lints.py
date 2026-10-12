@@ -66,6 +66,17 @@ _HINT = "(?:{})".format(
 space holds none, so a long line with no closing bracket is read once, not once per space."""
 _MASK = r"[*x.•-]+[,;:!?)\]}>\"']*(?!\S)"
 """A masked value (``********``, ``XXXXXXXX``, ``••••••``), trailing punctuation allowed (``********,``)."""
+_PROSE = r"[A-Za-z]+,?\s+[a-z0-9]"
+"""After ``:`` only, a letters-only value followed by a lowercase word or a number: prose about the
+field (``minimum 12 characters, ...``, ``contact the Contoso service desk``, ``expires every 90 days``). A
+value with a digit or a symbol is still a hit when more words follow (``Welcome123 is the temporary one``),
+and so is one followed by a table bar, a bracket, a dash, a capital or a ``;`` (``| Password: Contoso |``,
+``Password=Contoso; Database=crm``, ``Password: Contoso (temporary)``)."""
+_STATUS = (
+    r"(?:required|optional|unknown|none|expired|blank|empty|same|provided|reset|sent|n/?a|tbd|tba|pending"
+    r"|disabled|enabled|changed|temporary|default|hidden|redacted)[,;.!?)\]]*(?!\S)"
+)
+"""A lone status word where the value would be (``Password: required``, ``pwd: unknown``): no credential."""
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
@@ -73,15 +84,22 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("azure-conn-string", re.compile(r"AccountKey=[A-Za-z0-9+/=]{40,}")),
     (
         "generic-password",
-        re.compile(rf"(?i)\b(?:password|pwd)\s*[=:]\s*(?:{_HINT}\s*)?(?!{_HINT})(?!{_MASK})\S{{6,}}"),
+        re.compile(
+            # case-blind but for the prose check, whose next word must be lowercase or a number
+            rf"\b(?i:password|pwd)\s*(?:=|:(?!\s*{_PROSE}))\s*"
+            rf"(?i:(?:{_HINT}\s*)?(?!{_HINT})(?!{_MASK})(?!{_STATUS}))\S{{6,}}"
+        ),
     ),
     ("slack-token", re.compile(r"\bxox[abprs]-[0-9A-Za-z-]{10,}\b")),
     ("github-token", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,}\b")),
 )
 """Built-in content secret scan: it reads every page ``lint_secrets`` scans, and gitleaks, when there is
 one, reads them as well (gitleaks misses a plain ``Password: Welcome123``).  ``generic-password`` passes over
-a bracketed hint (``_HINT``) and a masked value (``_MASK``); a bracketed value that is neither
-(``(Welcome123)``, ``<S3cr3t!x>``) is a hit, and so is a value after a hint (``(min 8 chars) Welcome123``)."""
+a bracketed hint (``_HINT``), a masked value (``_MASK``), prose (``_PROSE``) and a lone status word
+(``_STATUS``); a bracketed value that is neither (``(Welcome123)``, ``<S3cr3t!x>``) is a hit, and so is a
+value after a hint (``(min 8 chars) Welcome123``). No digit or symbol is required: gitleaks misses
+``changeme`` and ``password=Contoso``. Known miss (B13 round 4 Q44): a letters-only value followed by more
+words reads as prose (``Password: changeme until first login``); gitleaks may catch it."""
 
 _TEAMS_JOIN_URL = re.compile(
     r"(?i)(?<![^\s\"'<>(\[])https?://"

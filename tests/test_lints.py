@@ -480,6 +480,24 @@ def test_builtin_secret_scan_ignores_teams_join_pwd(
         ("password=••••••••", False),
         ("Password: ......", False),
         ("Password: -------- (hidden)", False),
+        # B13 round 4 Q44: policy prose and a lone status word are no credential; letters-only passwords
+        # (which gitleaks misses) and a value with a digit before more words still are.
+        ("Password: minimum 12 characters, changed every 90 days", False),
+        ("Reset password: contact the Contoso service desk", False),
+        ("Password: required", False),
+        ("Password: Required.", False),
+        ("Password: expires every 90 days", False),
+        ("pwd: unknown", False),
+        ("password: changeme", True),
+        ("password: letmein", True),
+        ("password=Contoso", True),
+        ("Password: Contoso!", True),
+        ("Password: Welcome123 is the temporary one", True),
+        # ... and a letters-only value followed by a bar, a bracket, a dash or a ";" (review of Q44)
+        ("| svc-backup | Password: Contoso |", True),
+        ("Server=db1; User Id=sa; Password=Contoso; Database=crm", True),
+        ("Password: Contoso (temporary)", True),
+        ("Password: Contoso - change on first login", True),
     ],
 )
 def test_the_password_pattern_passes_over_placeholders_and_masks(
