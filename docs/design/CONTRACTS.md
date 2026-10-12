@@ -13818,6 +13818,12 @@ item amends an older section, a dated line sits at that section too.
   report's yours/unexpected tally keys on the detail, not the note. Tests:
   `test_the_pre_sync_listing_note_promises_no_waiting_line` (tests/test_ops_doctor.py) and the pins in
   test_ops_doctor, test_loop and test_setup_report (test_cli's pin is the purge queue's own note, unchanged).
+- **The inbox line under a linked home** (Q36). The inbox is stored resolved (`canonical_source_root`, how a
+  OneDrive link reaches the CloudStorage checks), so a home reached through a link printed `/private/tmp/...`
+  beside a docs repo and config printed as `/tmp/...`. Storage is unchanged (`ensure_inbox` dedupes by exact
+  path); when the two differ, the line reads `added inbox source 'inbox' (<typed>, stored as <stored>): drop
+  files you save by hand here`. `test_the_inbox_line_names_the_stored_path_beside_the_typed_one`
+  (tests/test_cli.py).
 
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 

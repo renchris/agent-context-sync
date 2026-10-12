@@ -583,7 +583,13 @@ def _ensure_inbox(config: Config) -> Config:
         _err(f"inbox: not added: {exc}")
         return config
     if added is not None and added.path is not None:
-        _out(f"added inbox source {added.id!r} ({added.path}): drop files you save by hand here")
+        # The path is stored resolved (canonical_source_root: how a OneDrive link reaches the CloudStorage
+        # checks), so a home reached through a link stores /private/tmp/... beside a docs repo and config
+        # printed as /tmp/...: the line leads with the form the other lines use and names what is stored
+        # (B13 round 4 Q36).
+        typed = expand(config.docs_repo).parent / "inbox"
+        shown = f"{added.path}" if typed == added.path else f"{typed}, stored as {added.path}"
+        _out(f"added inbox source {added.id!r} ({shown}): drop files you save by hand here")
     return config
 
 

@@ -2342,6 +2342,29 @@ def test_init_and_add_source_keep_exactly_one_inbox(
     assert cli.main(["add-source", "--config", cfg]) == cli.EXIT_USAGE  # PATH is required
 
 
+def test_the_inbox_line_names_the_stored_path_beside_the_typed_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A home reached through a link: the inbox is stored resolved (canonical_source_root), while the docs
+    repo and config lines print the home as given. The inbox line leads with that form and names what
+    sources.toml holds, which is unchanged (B13 round 4 Q36)."""
+    real = tmp_path / "real-home"
+    real.mkdir()
+    link = tmp_path / "home-link"
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", str(link))
+    folder = link / "Notes"
+    folder.mkdir()
+    cfg = link / "agent-context" / "sources.toml"
+    assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    typed, stored = link / "agent-context" / "inbox", real.resolve() / "agent-context" / "inbox"
+    assert (
+        f"added inbox source 'inbox' ({typed}, stored as {stored}): drop files you save by hand here\n" in out
+    ), out
+    assert [s.path for s in load_config(cfg).sources if s.kind is SourceKind.INBOX] == [stored]
+
+
 def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inbox(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
