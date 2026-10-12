@@ -13749,6 +13749,17 @@ item amends an older section, a dated line sits at that section too.
   approval rules write it, and stays absolute elsewhere. The `~` is outside `printf %q`, which would write `\~`,
   a path that never expands. `test_a_checkout_under_home_is_named_with_a_tilde` (the checkout linked under the
   test home; the command it prints runs under bash).
+- **One deadline for step 2's wait** (Q39, Q63, one defect). The reinstall holds the lock of this run's config
+  and of each job's config, nested; each nested `lockf -t` started its timer when the lock before was taken, so
+  the caps added up (two busy configs: up to 4 minutes against the "up to 2 minutes" of the README's step 2,
+  §16.49, §16.43, setup-feedback and the installer's own lines). Each `lockf` is now started by a small `sh`
+  (`HOLD_SH`) that gives it the seconds left of one deadline, `REINSTALL_WAIT` from the call (the "once more"
+  retry gets a fresh one), and execs it. No lock is let go between the probe and the hold: the rejected variant,
+  probe all then hold at `-t 0`, let a sync started in between end the wait at once (measured by the verifier).
+  `lockf`'s exit codes pass through `exec`; a deadline already past gives `-t 0`, so `0` still never waits. The
+  README and prompt text are unchanged: they are now true. The header says the wait is "for all its locks
+  together". `test_the_reinstall_waits_once_however_many_locks_are_busy` (the first lock freed at 3.8 s, the
+  second held, a 4 s wait: the step took 5 s or more without the fix).
 
 #### A stopped copy's report
 

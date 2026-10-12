@@ -101,8 +101,8 @@
 #      held with /usr/bin/lockf, which writes nothing in it.
 #      It holds the lock of this run's config and of the config each LaunchAgent's plist names after --config
 #      (they can differ).
-#      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s, for each lock; 0
-#      never waits), with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines.
+#      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s, for all its locks
+#      together; 0 never waits), with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines.
 #      A background sync that starts meanwhile and reaches its lock is skipped (exit 75); a launchd tick that
 #      starts while the environment is being recreated ends in the launcher's SPAWN_FAILED (exit 71) or an
 #      import error instead, and uv itself may fail on the half-removed environment, so a failed locked
@@ -2350,6 +2350,20 @@ EOF
 # the install source (direct_url.json), and the report's install source, its git proxy reading and
 # it-request's checkout guard all read the checkout from there (B13 round 3 R114, measured).
 # AGENTSYNC_NOTE is the step's install.log note: what the script saw of the lock (B13 round 3 R34).
+# The wait has one deadline, however many locks (B13 round 4 Q39, Q63): nested lockf -t timers each start when
+# the lock before is taken, so their caps added up. Each lockf is started by a small sh that gives it the
+# seconds left when it is reached and execs it: no lock is let go between the probe and the hold (a probe of
+# all, then a hold at -t 0, let a sync started in between end the wait at once), and lockf's exit codes pass
+# through. A deadline already past gives -t 0, so a wait of 0 still never waits.
+# shellcheck disable=SC2016 # expanded by the sh that runs it
+HOLD_SH='n=$(($1 - $(date +%s))); [ "$n" -gt 0 ] || n=0; k=$2; f=$3; shift 3; exec "$k" -k -n -s -t "$n" "$f" "$@"'
+hold_locks() { # LOCKS: sets the caller's held to the nested holds, with one deadline REINSTALL_WAIT from now
+	local l deadline=$(($(date +%s) + REINSTALL_WAIT))
+	held=()
+	while IFS= read -r l; do
+		held+=(/bin/sh -c "$HOLD_SH" sh "$deadline" "$LOCKF" "$l")
+	done <<<"$1"
+}
 uv_tool_install() {
 	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE") locks l
 	local held=() busy=0 rc=0
@@ -2362,7 +2376,6 @@ uv_tool_install() {
 	if [ -n "$locks" ] && [ -x "$LOCKF" ]; then
 		while IFS= read -r l; do
 			[ "$busy" -eq 75 ] || { "$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || busy=$?; }
-			held+=("$LOCKF" -k -n -s -t "$REINSTALL_WAIT" "$l")
 		done <<<"$locks"
 		[ "$busy" -eq 75 ] || busy=0
 		if [ "$busy" -eq 75 ]; then
@@ -2372,6 +2385,7 @@ uv_tool_install() {
 			ticker "agentsync: reinstalling" &
 		fi
 		TICKER=$!
+		hold_locks "$locks"
 		uv_run "${held[@]}" "$UV" "${args[@]}" || rc=$?
 		# A tick that starts the tool's Python while uv deletes the environment fails uv ("Directory not
 		# empty") and leaves no interpreter: once more, still under the locks.
@@ -2379,6 +2393,7 @@ uv_tool_install() {
 			[ -d "$TOOL_DIR/agentsync" ]; then
 			say "agentsync: uv left the tool environment half removed (a background run started in it?); installing once more"
 			rc=0
+			hold_locks "$locks" # a deadline of its own: the first one may be past
 			uv_run "${held[@]}" "$UV" "${args[@]}" || rc=$?
 		fi
 		kill "$TICKER" 2>/dev/null || true

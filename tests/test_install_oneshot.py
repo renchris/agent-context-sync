@@ -4960,6 +4960,48 @@ def test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with(
     assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e))
 
 
+def test_the_reinstall_waits_once_however_many_locks_are_busy(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """The run's config and a job's config each have a running sync. Nested lockf timers each started when
+    the lock before was taken, so the caps added up: 3.8 s for the first lock and 4 more for the second
+    against a promised 4. The wait has one deadline (B13 round 4 Q39, Q63)."""
+    e, lock = _held_sync(env)
+    lock.write_text("")
+    home = Path(env["HOME"])
+    job_cfg = home / "contoso-job" / "sources.toml"
+    job_cfg.parent.mkdir()
+    job_cfg.write_text("# stub\n")
+    job_lock = home / "contoso-job" / "agentsync.lock"
+    job_lock.write_text("")
+    plist = home / "Library" / "LaunchAgents" / "com.agentsync.poll.plist"
+    plist.parent.mkdir(parents=True)
+    argv = ["/x/agentsync-launcher", "--", "/x/python", "-m", "agentsync", "sync", "--config", str(job_cfg)]
+    plist.write_bytes(plistlib.dumps({"Label": "com.agentsync.poll", "ProgramArguments": argv}))
+    e = {**e, "STUB_JOB_CONFIG": str(job_cfg), "STUB_JOB_LOCK": str(job_lock)}
+    e["AGENTSYNC_REINSTALL_WAIT_SECONDS"] = "4"
+    first = SingleWriterLock(lock, "poll")
+    first.acquire()
+    timer = threading.Timer(3.8, first.release)
+    try:
+        with SingleWriterLock(job_lock, "poll"):
+            timer.start()
+            cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    finally:
+        timer.cancel()
+        timer.join()
+        if first.held:
+            first.release()
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        "agentsync: the background sync is still running after 4s; reinstalling without waiting longer"
+        in (cp.stdout.splitlines())
+    )
+    assert ("agentsync", "done", "0", "wait-ran-out-after-4s") in steps(install_log(e))
+    assert sum(c.startswith("uv tool install") for c in calls(e)) == 1, "the reinstall still runs"
+    assert _step_seconds(e, "agentsync") <= 6, "one 4 s deadline, not 3.8 s plus 4"
+
+
 def test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
