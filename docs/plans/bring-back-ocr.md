@@ -453,6 +453,7 @@ Landed (2026-10-11), every item built, none left as not-built; each lane's note 
 | C | `a406dbc..e3cf983`, 26 commits | green |
 | D | `e3cf983..cd506e5`, 7 commits | green (ci on `f46fd53`, which contains them) |
 | E | `5b8330a..f46fd53`, 9 commits | green |
+| B | `1d0dcb0..fc3da74`, 17 commits (H23 `5540345`); review added two credential-leak fixes beside N5 (a failed re-read, the safe-save rekey) | green |
 
 Learnings: every review caught at least one real defect in its own lane (A: two purge fixes interacting in a queue
 run; C: a git-config regex that read the next section's header as a proxy; F: an empty git proxy registered as a
@@ -460,6 +461,37 @@ redaction value). Six lanes pushing to one trunk cost each later lane a rebase a
 for an hour inside its push call was re-running the gate after losing the race, not stuck. Under the ruling the
 lanes' "stated, not built" notes are captured items too: they go to the next round with the v11 rehearsal's and a
 cross-lane review's findings, until a round finds nothing new.
+
+### B13 round 2: v11 rehearsal, cross-lane review, harvest (2026-10-11)
+
+Run `wf_97bc35ac-295` on `fc3da74` (161 agents, 0 errors): five rehearsals with the real installer in sandbox homes
+(new Mac; a field-state Mac at `4a42af9` pulled to v11; v10 and v9 copies refused; a failing `git pull`; a reinstall
+while a sync holds the lock, plus the new converters), four cross-lane reviewers (report, core, converters, docs), one
+harvest of every lane's not-built notes, then an adversarial verifier per finding. Reports:
+`~/.cache/agentsync-bring-back/b13/round2/`; per-item specs `round2/items/R<n>.md` (the verifier's corrected fix is
+the one to build); lane map `round2/lanes.json`.
+
+Every rehearsal passed with no name, login or host name in any report; every targeted check read right (the H1 stop
+logs a step 1 error and reports "failed at step 1"; N6 waits for the held lock; old copies refused with
+`bring-back.md` unchanged; the new converters make pages and fail closed under a label rule). 151 findings, 127
+confirmed, 24 refuted: 3 turn, 23 wrong, 101 small; 10 need prompt text, so the prompt the operator pastes is v12.
+For 27 the verifier judged any fix makes things worse: the lane builds a fix that does not, or records the measured
+reason. The three turn items: an empty subfolder in a chosen project folder keeps its listing incomplete on every
+sync (R1; every earlier rehearsal missed it because its HOME sat under the `/tmp` symlink); the git stop never tells
+the person to paste the prompt again once git works (R22); a kept upstream deletion (N2) leaves a WAITING ON YOU line
+that a queue run cannot clear (R49).
+
+Round 3 lanes (dispatched sessions, CONTRACTS §16.44 to §16.49), items by id in `round2/lanes.json`:
+
+| Lane | Count | Area | Account |
+|---|---|---|---|
+| A | 8 | purge, governance | next4 |
+| B | 29 | cycle, loop, cli, lints, doctor | next2 |
+| RA | 21 | report redaction, both reports | next2 |
+| RB | 32 | setup report and installer, other | next |
+| E | 16 | converters, speech, OCR | next |
+| P | 21 | prompt v12, README, docs/deploy | next4 |
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

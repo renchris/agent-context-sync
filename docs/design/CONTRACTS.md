@@ -12075,3 +12075,27 @@ Tests: `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`,
 `test_every_friction_time_is_the_second_of_the_call_that_wrote_it`; an old copy is refused: 10 against 11) and
 `tests/test_setup_report.py` (`test_a_proxy_only_git_knows_is_redacted`,
 `test_a_go_ahead_in_the_chat_is_a_turn_and_what_it_allowed_is_agent_friction`; v11 read with v7's layout).
+
+### 16.44 Round 3: purge (2026-10-11, wave B13 round 3 lane A)
+
+Reserved for round 3 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 2").
+
+### 16.45 Round 3: sync, status and doctor (2026-10-11, wave B13 round 3 lane B)
+
+Reserved for round 3 lane B of B13.
+
+### 16.46 Round 3: report redaction (2026-10-11, wave B13 round 3 lane RA)
+
+Reserved for round 3 lane RA of B13.
+
+### 16.47 Round 3: setup report and installer (2026-10-11, wave B13 round 3 lane RB)
+
+Reserved for round 3 lane RB of B13.
+
+### 16.48 Round 3: converters and speech (2026-10-11, wave B13 round 3 lane E)
+
+Reserved for round 3 lane E of B13.
+
+### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
+
+Reserved for round 3 lane P of B13.
