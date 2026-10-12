@@ -6,7 +6,8 @@ file's order), then ``Connections:`` with one ``- <from> -> <to>: <label>`` line
 labelled end or a label of its own.  A Visio shape with no ``<Text>`` of its own shows its master shape's
 text (``visio/masters``; an empty ``<Text/>`` stays empty).  A draw.io label's ``%name%`` placeholders are
 filled in as draw.io shows them: only for an object with ``placeholders="1"``, from its own attributes or its
-containers', draw.io's own variables (``%page%``, ``%date%`` …) and unknown names left as written.  Pictures,
+containers', draw.io's own variables (``%page%``, ``%date%`` …) and unknown names left as written; such an
+object with a ``placeholder="<name>"`` attribute shows that attribute's value instead of its label.  Pictures,
 shape data, links and layer names are not read; text on a hidden layer is read like any other.  The title is
 left empty, so the page takes the file's name; the summary counts pages and names them.  No XML part is
 inflated past ``_MAX_PART_BYTES`` and no file is read past ``_MAX_TOTAL_BYTES`` of XML in all, so a deflate
@@ -184,12 +185,19 @@ def _expand(label: str, cid: str, shape: bool, lookup: Callable[[str], str | Non
 
 
 def _drawio_label(el: ET.Element, cid: str, cell: ET.Element, lookup: Callable[[str], str | None]) -> str:
-    label = el.get("label") if el is not cell else cell.get("value")
+    asks = el is not cell and el.get("placeholders") == "1"  # only an object wrapper holds data
+    shown = el.get("placeholder") if asks else None
+    if shown is not None:
+        # draw.io's Graph.convertValueToString: the object shows its own or its nearest container's attribute
+        # of that name instead of its label, as written (not filled in), or nothing when none has it
+        label = lookup(shown) or ""
+    else:
+        label = (el.get("label") if el is not cell else cell.get("value")) or ""
     if not label:
         return ""
-    # draw.io fills in %name% only for an object that asks for it (placeholders="1") and has no placeholder
-    # attribute, on the label as written: an HTML label's tags are read after, values and all
-    if el is not cell and el.get("placeholders") == "1" and el.get("placeholder") is None:
+    # draw.io fills in %name% only for an object that asks for it (placeholders="1"), on the label as
+    # written: an HTML label's tags are read after, values and all
+    if asks and shown is None:
         label = _expand(label, cid, cell.get("vertex") == "1", lookup)
     # draw.io renders a label as HTML only when the cell's style says html=1; otherwise ``<`` is a character
     html_label = "html=1" in (cell.get("style") or "").split(";")

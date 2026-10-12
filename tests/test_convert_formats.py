@@ -4262,7 +4262,11 @@ def test_a_drawio_bracket_that_opens_no_tag_is_a_character(tmp_path: Path) -> No
         ('label="Owner: %owner%" owner="Contoso Ops" placeholders="1"', "", "Owner: Contoso Ops"),
         ('label="Owner: %owner%" owner="Contoso Ops"', "", "Owner: %owner%"),
         ('label="Owner: %owner%" owner="Contoso Ops" placeholders="0"', "", "Owner: %owner%"),
-        ('label="Owner: %owner%" owner="Contoso Ops" placeholders="1" placeholder="1"', "", "Owner: %owner%"),
+        (
+            'label="Owner: %owner%" owner="Contoso Ops" placeholders="1" placeholder="owner"',
+            "",
+            "Contoso Ops",
+        ),
         (
             'label="%page% of %pagecount%, %pagenumber%, %date%, %date{yyyy}%, %filename%, %label%, '
             '%tooltip%" placeholders="1"',
@@ -4378,6 +4382,35 @@ def test_a_drawio_placeholder_is_found_on_the_object_then_its_containers(tmp_pat
         "## Overview\n\n- West wing\n- Contoso Ops (Contoso Platform, West)\n- Contoso Platform in East\n"
         "- %team%\n\nConnections:\n\n"
         "- Contoso Ops (Contoso Platform, West) -> Contoso Platform in East: HTTPS to East\n\n## Notes"
+    )
+
+
+def test_a_drawio_placeholder_attribute_shows_that_attribute_instead_of_the_label(tmp_path: Path) -> None:
+    """An object with ``placeholders="1"`` and ``placeholder="<name>"`` shows the attribute ``<name>`` of
+    itself or the nearest object around it (an empty one included), not its label, and nothing when none has
+    it; that value is not filled in, and ``html=1`` still reads its tags.  Without ``placeholders="1"`` the
+    ``placeholder`` attribute does nothing."""
+    model = (
+        '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+        '<object id="g" label="Contoso West" region="West" placeholders="1"><mxCell style="group" vertex="1" '
+        'parent="1"/></object>'
+        '<object id="2" label="Region: %region%" placeholders="1" placeholder="region">'
+        '<mxCell vertex="1" parent="g"/></object>'
+        '<object id="3" label="Owner" owner="%region% team" placeholders="1" placeholder="owner">'
+        '<mxCell vertex="1" parent="g"/></object>'
+        '<object id="4" label="Hidden" placeholders="1" placeholder="missing"><mxCell vertex="1" parent="g"/>'
+        "</object>"
+        '<object id="5" label="Shadowed" region="" placeholders="1" placeholder="region">'
+        '<mxCell vertex="1" parent="g"/></object>'
+        '<object id="6" label="Shown" owner="Ops" placeholder="owner"><mxCell vertex="1" parent="g"/>'
+        "</object>"
+        '<object id="7" label="Site" site="Contoso&lt;br&gt;East" placeholders="1" placeholder="site">'
+        '<mxCell style="html=1;" vertex="1" parent="1"/></object>'
+        "</root></mxGraphModel>"
+    )
+    src = build_drawio(tmp_path / "Contoso Owners.drawio", model=model)
+    assert _one(DiagramConverter(CFG).convert(src, name=src.name)).body.startswith(
+        "## Overview\n\n- Contoso West\n- West\n- %region% team\n- Shown\n- Contoso / East\n\n## Notes"
     )
 
 

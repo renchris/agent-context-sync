@@ -12032,7 +12032,8 @@ Amended 2026-10-11 by §16.48 (R86, part b): a Visio shape with no `<Text>` show
 ("Page" said a master's default text was not read); the version below is `1.1.0`.
 
 Amended 2026-10-11 by §16.48 (R86, part d): a draw.io object with `placeholders="1"` has its label's
-`%name%` placeholders filled in ("draw.io" read the label as written); the version below is `1.2.0`.
+`%name%` placeholders filled in, or with `placeholder="<name>"` shows that attribute's value instead of its
+label ("draw.io" read the label as written); the version below is `1.2.0`.
 
 Version: `1.2.0+python-<x.y.z>`; options `max_page_bytes`, `max_part_bytes`, `max_total_bytes`.
 
@@ -13152,6 +13153,11 @@ its source:
 - Only an `object` or `UserObject` wrapper with `placeholders="1"` and no `placeholder` attribute is filled
   in; without it (or with `placeholders="0"`) every `%…%` stays as written. A bare `mxCell` holds no data,
   so its `value` is never filled in, whatever attributes it carries.
+- A wrapper with `placeholders="1"` and `placeholder="<name>"` does not show its label at all
+  (`Graph.convertValueToString`): it shows the attribute `<name>` of itself or of the nearest object around
+  it that has one (an empty one included), as written and not filled in, or nothing when none has it, and
+  an HTML label (`html=1`) then has its tags read as usual. Without `placeholders="1"` the `placeholder`
+  attribute does nothing.
 - A placeholder is draw.io's pattern `%(date\{.*\}|[^%{}"'=;]+)%`. Its name is looked up in the object's
   own attributes, then in each object around it in turn (its container, its layer, the diagram's root
   object `id="0"`, by `parent`), the nearest that has the attribute giving the value (an empty one
@@ -13181,7 +13187,9 @@ Tests: `tests/test_convert_formats.py` (`test_a_drawio_placeholder_is_expanded_a
 in, no `placeholders`, `placeholders="0"`, a `placeholder` attribute, the built-ins, the geometry names, an
 unknown and an empty value, the `%` escape, `%id%`, an HTML label and a plain one;
 `test_a_drawio_placeholder_is_found_on_the_object_then_its_containers`, a container, a layer, the root, an
-edge and a bare `mxCell`; `test_a_drawio_placeholder_label_is_read_in_linear_time`;
+edge and a bare `mxCell`; `test_a_drawio_placeholder_attribute_shows_that_attribute_instead_of_the_label`,
+the attribute found on a container, a value not filled in, a name none has, an own empty value, the
+attribute without `placeholders="1"` and an HTML value; `test_a_drawio_placeholder_label_is_read_in_linear_time`;
 `test_a_drawio_placeholder_in_a_deep_container_is_looked_up_once`; §16.42's
 `test_a_drawio_diagram_is_its_shape_text_and_connections_per_page` still passes).
 
