@@ -6037,6 +6037,9 @@ def _loop_line(r: _Run) -> str:
 
 def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     if not r.install_runs:
+        # no log at all is not a log with no run in it, as the shell report says it (B13 round 5 F29)
+        if not r.install_log.is_file():
+            return "- install.sh: no install log"
         return "- install.sh: no run in the install log"
     if scoped and not runs:
         return f"- install.sh: no run during this attempt ({len(r.install_runs)} earlier in the install log)"

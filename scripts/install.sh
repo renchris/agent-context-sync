@@ -1452,25 +1452,55 @@ last_install_run() {
 			for (i = n; i > 0; i--) if (!(order[i] in lists)) { print at[order[i]] " " rc[order[i]]; exit }
 		}' "$SETUP_LOG" 2>/dev/null || true
 }
+# When the friction log's latest attempt began, as parse_friction draws it (Attempt.begin): its Attempt: time,
+# else its first timed line's; an attempt opens at an Attempt: line, at a step 1 error track() reads as another
+# session's, and at a step 1 error dated more than NEW_SESSION_GAP after an end line. Nothing when there is no
+# friction log or no time.
+friction_attempt_begin() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
+		{ q = track($0) }
+		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; ended = ""; next }
+		q { b = substr($0, 1, 20); ended = ""; next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = substr($0, 1, 20); ended = ""; restate($0); next }
+		$0 !~ (stamp " [|]") { next }
+		b == "" { b = substr($0, 1, 20) }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20) }
+		END { print b }' "$f" 2>/dev/null || true
+}
 # The Summary's install.sh line. A --report-only run only writes the report, so its own exit 0 says nothing of
 # the setup: it gives the last install run's instead, dated, so an earlier run's is not read as this
-# attempt's (B13 round 4 Q23).
+# attempt's (B13 round 4 Q23). A run that started before the friction log's latest attempt began is said to be
+# an earlier one, as setup_report._install_line scopes runs to the attempt (B13 round 5 F30); no install log is
+# not "no install run in the install log" (F29).
 fallback_install_line() { # RC
 	local head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}" last at rc
+	local begin what
 	if [ "$REPORT_ONLY" -eq 0 ]; then
 		say "$head, exit $1 ($(rc_meaning "$1"))"
 		return 0
 	fi
 	head="$head; this --report-only run only writes the report"
+	if [ ! -f "$SETUP_LOG" ]; then
+		say "$head; no install log (no install run on this Mac)"
+		return 0
+	fi
 	last="$(last_install_run)"
 	at="${last%% *}"
 	rc="${last#* }"
 	if [ -z "$last" ]; then
 		say "$head; no install run in the install log"
-	elif [ -z "$rc" ]; then
-		say "$head; the last install run (started $at) has no end line (stopped or still running)"
+		return 0
+	fi
+	if [ -z "$rc" ]; then what="has no end line (stopped or still running)"; else what="exit $rc ($(rc_meaning "$rc"))"; fi
+	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	if [ -n "$begin" ] && [ -n "$(utc_stamp "$at")" ] && [[ "$at" < "$begin" ]]; then
+		say "$head; no install run during this attempt (began $begin); the last one, started $at, $what"
 	else
-		say "$head; the last install run (started $at) exit $rc ($(rc_meaning "$rc"))"
+		say "$head; the last install run (started $at) $what"
 	fi
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.

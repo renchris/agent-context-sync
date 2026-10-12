@@ -911,6 +911,7 @@ def test_the_shell_report_only_gives_the_last_install_runs_exit(env: dict[str, s
         assert "; this --report-only run only writes the report; " in found and ", exit 0 (ok)" not in found
         return found.split("; this --report-only run only writes the report; ", 1)[1]
 
+    assert line() == "no install log (no install run on this Mac)", "no log is not a log with no run (F29)"
     log.write_text(
         "2026-10-12T09:00:00Z run=a1 start install.sh compat=12 args=--list-folders\n"
         "2026-10-12T09:00:01Z run=a1 step=list-folders seconds=1 result=done rc=0 note=listed-4\n"
@@ -933,6 +934,54 @@ def test_the_shell_report_only_gives_the_last_install_runs_exit(env: dict[str, s
         )
     assert line() == (
         "the last install run (started 2026-10-12T09:03:00Z) has no end line (stopped or still running)"
+    )
+
+
+def test_the_shell_report_only_says_the_last_install_run_was_before_this_attempt(env: dict[str, str]) -> None:
+    """B13 round 5 F30: after a step 1 stop the shell report's one status line read "exit 0 (ok)" of an
+    earlier session's install run, where the Python report says "no run during this attempt". The attempt
+    begins where parse_friction begins it, and a run that started before that is said to be an earlier one;
+    a run of the attempt itself, or a log with no friction log beside it, keeps the plain line."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    (setup / "install.log").write_text(
+        "2026-10-12T20:02:18Z run=20261012T200218Z-41 start install.sh compat=12 args=\n"
+        "2026-10-12T20:04:00Z run=20261012T200218Z-41 end rc=0 seconds=102\n"
+    )
+    friction = setup / "friction.md"
+
+    def line() -> str:
+        cp = install_sh(env, "--report-only")
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        [found] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+        return found.split("; this --report-only run only writes the report; ", 1)[1]
+
+    plain = "the last install run (started 2026-10-12T20:02:18Z) exit 0 (ok)"
+    assert line() == plain, "no friction log: nothing to scope the run by"
+    friction.write_text(
+        "Attempt: 2026-10-12T20:01:00Z\nPrompt: v12\nAgent: Contoso Agent\n"
+        "2026-10-12T20:06:40Z | end | finished\n"
+        "2026-10-12T20:18:46Z | step 1 | error | git pull failed (exit 1) | -\n"
+    )
+    assert line() == (
+        "no install run during this attempt (began 2026-10-12T20:18:46Z); the last one, started "
+        "2026-10-12T20:02:18Z, exit 0 (ok)"
+    ), "a step 1 error more than ten minutes after the end line is another session's attempt"
+    friction.write_text(
+        "Attempt: 2026-10-12T20:01:00Z\nPrompt: v12\nAgent: Contoso Agent\n"
+        "2026-10-12T20:05:00Z | step 1 | error | git pull failed (exit 1) | -\n"
+    )
+    assert line() == plain, "a same-session step 1 error after the run: the run is the attempt's"
+    with (setup / "install.log").open("a") as fh:
+        fh.write("2026-10-12T20:30:00Z run=20261012T203000Z-42 start install.sh compat=12 args=\n")
+    friction.write_text("Attempt: 2026-10-12T20:29:00Z\nPrompt: v12\nAgent: Contoso Agent\n")
+    assert line() == (
+        "the last install run (started 2026-10-12T20:30:00Z) has no end line (stopped or still running)"
+    )
+    friction.write_text("Attempt: 2026-10-12T20:31:00Z\nPrompt: v12\nAgent: Contoso Agent\n")
+    assert line() == (
+        "no install run during this attempt (began 2026-10-12T20:31:00Z); the last one, started "
+        "2026-10-12T20:30:00Z, has no end line (stopped or still running)"
     )
 
 
@@ -2037,7 +2086,7 @@ def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], 
 
     assert summary() == (
         f"- install.sh: setup-prompt-compat {COMPAT}, source commit {sha}; this --report-only run only "
-        "writes the report; no install run in the install log"
+        "writes the report; no install log (no install run on this Mac)"
     )
     with (src / "scripts" / "install.sh").open("a") as fh:
         fh.write("# a local change\n")

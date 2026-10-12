@@ -800,9 +800,11 @@ def test_failure_before_the_installer_is_the_errors_step(fake_mac: dict[str, Pat
         '- WARNING: attempt 1 has no "end | finished" line (the agent\'s end line), so this report may be '
         "stale: it was written before prompt step 5" in summary
     )
-    assert "- install.sh: no run in the install log" in summary
+    assert "- install.sh: no install log" in summary, "no log at all, as the shell report says (F29)"
     assert "- time: session 20s (first to last timestamp); steps (start to end): " not in summary
     assert "- time: session 20s (first to last timestamp)" in summary
+    (fake_mac["setup"] / "install.log").write_text("")
+    assert "- install.sh: no run in the install log" in summary_of(fake_mac)[1], "a log with no run in it"
 
 
 def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[str, Path]) -> None:
