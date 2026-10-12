@@ -4446,6 +4446,31 @@ def install_run(start: str, rc: int | None, *, status_failed: bool = False) -> s
     return "\n".join(lines) + "\n"
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dict[str, Path]) -> None:
+    """B13 round 5 F37: a probe install.sh ran after the attempt's end line, and the Summary said "2 install
+    runs during this attempt" and summed its seconds into step 2's time beside a session time that does not
+    cover it. The run is still the attempt's (runs_for_attempt: the outcome is judged on it), so only the
+    words change: the install line says how many came after the end line, and the time clause sums only the
+    runs inside it and names the others apart."""
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(LIST_RUN + install_run("2026-09-29T09:59:00Z", 0), encoding="utf-8")
+    write_friction(fake_mac, V6_HAPPY)
+    _text, summary = summary_of(fake_mac)
+    assert "- install.sh: 1 install run (+1 --list-folders) during this attempt; the last exit 0" in summary
+    assert "after its end line" not in summary
+    both = LIST_RUN + install_run("2026-09-29T09:59:00Z", 0) + install_run("2026-09-29T10:05:00Z", 0)
+    log.write_text(both, encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 of them after its end line "
+        "(2026-09-29T10:01:10Z); the last exit 0 after 19s" in summary
+    ), summary
+    [time] = [ln for ln in summary.splitlines() if ln.startswith("- time: ")]
+    assert time.endswith("install 19s; after its end line: install 19s"), time
+    assert "install 19s + 19s" not in time and "during this attempt" not in summary
+
+
 RETRY_ERROR = (
     "2026-09-29T10:00:30Z | step 2 | error | install.sh exited 1: [FAIL] docs_repo.permissions | -\n"
 )
@@ -4488,7 +4513,10 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
         "- agent friction: 2 deviation, 0 prompt, 1 error (F4, F6, F7); none of these changes the outcome "
         "by itself" in summary
     )
-    assert "- install.sh: 2 install runs (+1 --list-folders) during this attempt; the last exit 0" in summary
+    assert (  # B13 round 5 F37: the run that ended 0 began after the end line, and the line says so
+        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 of them after its end line "
+        "(2026-09-29T10:01:10Z); the last exit 0" in summary
+    )
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
     assert items == (
         "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step; the same command was run "

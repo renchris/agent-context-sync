@@ -6091,7 +6091,21 @@ def _loop_line(r: _Run) -> str:
     return f"- Loop: {stage}; {text}"
 
 
-def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
+def _attempt_end(att: Attempt | None) -> datetime | None:
+    """The time of the attempt's latest ``end | finished`` line; None when it has none (or no time)."""
+    if att is None:
+        return None
+    return max((e.at for e in att.events if e.kind == "finished" and e.at is not None), default=None)
+
+
+def _after_end(runs: Sequence[InstallRun], end: datetime | None) -> list[InstallRun]:
+    """The runs that started after the attempt's end line. They are still the attempt's (the operator's own
+    ``--confirm-install-agent`` re-run is judged with it: :func:`runs_for_attempt`), but no session time
+    covers them, so the Summary names them apart (B13 round 5 F37)."""
+    return [run for run in runs if end is not None and run.started is not None and run.started > end]
+
+
+def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: datetime | None = None) -> str:
     if not r.install_runs:
         # no log at all is not a log with no run in it, as the shell report says it (B13 round 5 F29)
         if not r.install_log.is_file():
@@ -6103,7 +6117,12 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     installs = install_runs_only(pool)
     lists = len(pool) - len(installs)
     where = f"{len(installs)} install run{'' if len(installs) == 1 else 's'}"
-    where += (f" (+{lists} --list-folders)" if lists else "") + (" during this attempt" if scoped else "")
+    after = _after_end(pool, end) if scoped else []
+    where += f" (+{lists} --list-folders)" if lists else ""
+    if after:
+        where += f" for this attempt, {len(after)} of them after its end line ({_iso(end)})"
+    elif scoped:
+        where += " during this attempt"
     if not installs:
         return f"- install.sh: {where}"
     last = installs[-1]
@@ -6306,11 +6325,22 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         if steps:
             timing.append("steps (start to end): " + " · ".join(steps))
         elif not att.layout.logs_steps:
-            timed = _installer_step_times(runs, att.layout)
+            # only the runs inside the attempt's times are summed into its steps (B13 round 5 F37)
+            late = _after_end(runs, _attempt_end(att))
+            timed = _installer_step_times([run for run in runs if run not in late], att.layout)
             if timed:
                 timing.append("install.sh (install.log): " + " · ".join(timed))
+            later = [
+                f"{'--list-folders' if run.list_only else 'install'} {_secs(run.seconds)}"
+                for run in late
+                if run.seconds is not None
+            ]
+            if later:
+                timing.append("after its end line: " + " · ".join(later))
         out.append("- time: " + "; ".join(timing))
-    out.append(_install_line(r, runs, scoped=att is not None and att.begin is not None))
+    out.append(
+        _install_line(r, runs, scoped=att is not None and att.begin is not None, end=_attempt_end(att))
+    )
     folders = _folders_line(runs)
     if folders is not None:
         out.append(folders)

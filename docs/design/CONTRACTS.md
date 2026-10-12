@@ -8820,6 +8820,8 @@ comes before the ones about human turns. The rule is narrow on purpose:
   `install.sh --confirm-install-agent` run: it exits 3 while macOS waits for the launcher's click, and its
   re-run ends 0, long after the setup worked. Exits `0, 3, 0` are still "fully one command", and `1, 0, 3, 0`
   count one run.
+  Amended 2026-10-12 (§16.58, F37): which runs are the attempt's is unchanged; the Summary's words name the runs
+  that began after its end line apart.
 - **Only a run the installer ended itself.** The run has an end line and its exit is not one of
   `STOPPED_EXITS`. A run the agent's tool stopped has no end line, or the exit of `on_signal`. The prompt
   calls running the command again safe, and §16.14 already reads that case as "fully one command". A test
@@ -14555,6 +14557,16 @@ attempt's run headers is in the lines read: then `(earlier attempts' install.sh 
 install.sh)` when install.log has no run of the attempt (a stopped copy), or `(... none of this attempt's runs is
 in it)` when it has. The test is `_attempt_out_start`, shared with the Summary's `installer output:` line, which is
 unchanged. Test: `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only`.
+
+**F37: a run after the attempt's end line is named apart.** Amends the Summary's install line (K-series,
+`install.sh: N install run(s) ... during this attempt`) and the time clause: `runs_for_attempt` and every outcome,
+retry, first-sync and issue-link input are unchanged (the operator's `--confirm-install-agent` exit 3 then 0 is
+still judged with the attempt). When some of the attempt's runs began after its latest `end | finished` line, the
+install line reads `N install run(s) (+L --list-folders) for this attempt, K of them after its end line (<time>)`
+instead of `during this attempt`, and the time clause sums only the runs inside it into the step times and adds
+`after its end line: install Ns` (or `--list-folders Ns`), so no run is summed beside a session time that does not
+cover it. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
+`test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
 
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
