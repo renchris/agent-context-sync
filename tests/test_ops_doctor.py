@@ -1636,15 +1636,22 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
 def test_heartbeat_incomplete_fix_by_source_kind(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Bring-back S11: a Graph pass resumes and an inbox is incomplete while a file is being written, so
-    sync again is their fix. A local folder points at the loop's WAITING ON YOU line, the one place that
-    names the empty cloud folders and weighs what excluding them would retire: no folder name here, and no
-    walk of the source. Under install.sh the line is a note, since install.sh prints the loop's line."""
+    """Bring-back S11: an inbox is incomplete while a file is being written, so sync again is its fix; a
+    Graph source's is the full pass of reconcile. A local folder points at the loop's WAITING ON YOU line,
+    the one place that names the empty cloud folders and weighs what excluding them would retire: no folder
+    name here, and no walk of the source. Under install.sh the line is a note, since install.sh prints the
+    loop's line."""
     local = sample_config.sources[0]
-    for kind in (SourceKind.GRAPH_DRIVE, SourceKind.INBOX):
-        fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=kind))
-        assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
-        assert_fix_parses(fix)
+    fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.INBOX))
+    assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
+    assert_fix_parses(fix)
+    # B13 round 5 F69: a plain sync of a Graph source runs a delta pass, which never lists it in full.
+    fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.GRAPH_DRIVE))
+    assert fix == (
+        "~/.local/bin/agentsync reconcile --source team-drive (a full pass that lists all of team-drive "
+        "clears this)"
+    )
+    assert_fix_parses(fix)
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     (root / "Bids").mkdir(parents=True)
     (root / "a.docx").write_bytes(b"x")

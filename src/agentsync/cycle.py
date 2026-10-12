@@ -2328,13 +2328,18 @@ class _Cycle:
             if acc.src.id not in selected:
                 continue  # only an alarm about a page of it (the published-page rescan): never attempted
             row = self.manifest.get_source(acc.src.id)
+            # A Graph DELTA pass never claims a full listing, and holds nothing back for it: the deletions
+            # Graph reports apply on it, and only a FULL pass checks absences. So, for the heartbeat's count
+            # of incomplete passes alone (never the manifest's flag), it counts as listed; else every healthy
+            # Graph source would warn after three deltas with no command to clear it (B13 round 5 F69).
+            listed = acc.enumeration_complete or (acc.src.kind.is_graph and acc.pass_kind is PassKind.DELTA)
             try:
                 write_heartbeat(
                     hb,
                     acc.src.id,
                     run_id=self.run_id,
                     pass_kind=acc.pass_kind,
-                    enumeration_complete=acc.enumeration_complete,
+                    enumeration_complete=listed,
                     ok=ok,
                     auth_state=row.auth_state if row is not None else "ok",
                     now_iso=now_iso,

@@ -766,6 +766,49 @@ def drive_env(
     return config, go
 
 
+def test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F69: a Graph DELTA pass never lists a source in full, and reports no full listing; the
+    heartbeat counts it as listed (it holds no deletion back: tombstones apply on it), so a healthy Graph
+    source never drifts into a warn that ``sync -v`` (another delta) cannot clear. A FULL pass that stops
+    short still counts, and doctor says what an incomplete Graph listing keeps, never "deletions held"."""
+    from agentsync.ops.lock import read_heartbeat, write_heartbeat  # noqa: PLC0415
+
+    arm = FakeArm({"A": ("a.md", "ROOT", b"# A\n\nalpha\n")})
+    config, go = drive_env(tmp_path, arm, monkeypatch)
+    monkeypatch.setattr(doctor, "_now", clock)  # the cycles' own time: no line is stale
+    assert go().exit_code == 0
+    for _ in range(4):
+        arm.next_items = []
+        assert go().exit_code == 0
+    assert arm.fulls[1:] == [False] * 4
+    assert read_heartbeat(config.state_paths.heartbeat)[DRIVE]["consecutive_incomplete"] == 0
+    [line] = [r for r in doctor._check_heartbeat(config) if r.name == f"heartbeat.{DRIVE}"]
+    assert line.ok and "incomplete" not in line.detail, line
+
+    for _ in range(3):  # FULL passes that stop short do count
+        write_heartbeat(
+            config.state_paths.heartbeat,
+            DRIVE,
+            run_id=9,
+            pass_kind=PassKind.FULL,
+            enumeration_complete=False,
+            ok=True,
+            auth_state="ok",
+            now_iso=clock().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+    [line] = [r for r in doctor._check_heartbeat(config) if r.name == f"heartbeat.{DRIVE}"]
+    assert not line.ok and "deletions held" not in line.detail, line
+    assert line.detail == (
+        "enumeration incomplete for 3 consecutive passes (files missing from the listing are kept while "
+        "deletions Graph reports still apply)"
+    )
+    fix = f"~/.local/bin/agentsync reconcile --source {DRIVE} (a full pass that lists all of {DRIVE} clears "
+    fix += "this)"
+    assert line.fix == fix
+
+
 @pytest.mark.parametrize("why", ["moved-out-of-scope", "moved:ARCHIVE-FOLDER", "excluded"])
 def test_moves_are_tombstoned_as_moved_and_never_purged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, why: str

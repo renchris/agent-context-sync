@@ -1687,7 +1687,7 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
                 )
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
-            detail = f"enumeration incomplete for {incomplete} consecutive passes (deletions held)"
+            detail = f"enumeration incomplete for {incomplete} consecutive passes ({_held(src)})"
             # status passes the loop's own checks (R151): a wait the loop prints decides. Without them (the
             # setup report), an inbox held by empty cloud folders gets the loop's pointer too, read from the
             # manifest's stored state (B13 round 3 R53).
@@ -1708,11 +1708,20 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
             # last_success_at too, and the loop may already print a WAITING ON YOU line about this source.
             if isinstance(incomplete, int) and incomplete > 0:
                 detail += (
-                    f"; listing incomplete for the last {incomplete} pass(es), deletions held, "
+                    f"; listing incomplete for the last {incomplete} pass(es), {_held(src)}, "
                     f"a warn after {_INCOMPLETE_RUNS}"
                 )
             out.append(_ok(name, detail))
     return out
+
+
+def _held(src: SourceConfig) -> str:
+    """What an incomplete listing holds back, by the source's kind (B13 round 5 F69). A local or inbox
+    source's only removals are absence-based, so its deletions wait for a complete listing; a Graph source's
+    provider tombstones apply on any pass, and only a file missing from the listing is kept."""
+    if src.kind.is_graph:
+        return "files missing from the listing are kept while deletions Graph reports still apply"
+    return "deletions held"
 
 
 def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
@@ -1749,6 +1758,10 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
         )
     if src.kind is SourceKind.LOCAL:
         return f"{BIN} sync; another full walk lists it"
+    if src.kind.is_graph:
+        # A plain sync of a Graph source runs a delta pass, which never lists it in full: the command that
+        # does is reconcile (B13 round 5 F69).
+        return f"{BIN} reconcile --source {src.id} (a full pass that lists all of {src.id} clears this)"
     return f"{BIN} sync -v (a full pass that lists all of {src.id} clears this)"
 
 
