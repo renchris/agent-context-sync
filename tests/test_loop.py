@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import arm_local, cli, governance, loop, materialise, skill
+from agentsync import arm_local, cli, governance, loop, materialise, setup_report, skill
 from agentsync import cycle as cycle_module
 from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
@@ -33,8 +33,8 @@ BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section (also in ~/
 """Where rules 4, 6 and 8 send the agent: the skill's section, and the docs repo's AGENTS.md by its path
 (every test here keeps the default docs repo under its own HOME)."""
 DRAFT_WAIT = (
-    "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md, correct the "
-    "answers in answers.md, and change both files to status: confirmed"
+    "WAITING ON YOU: the baseline questions are a draft: in {}, keep up to about 10 in questions.md (all of "
+    "them if there are fewer), correct the answers in answers.md, and change both files to status: confirmed"
 )
 """The draft baseline's wait; ``{}`` is the docs repo's ``_eval`` folder as the line shows it."""
 NOTE_NAME = "Quarterly Note.txt"
@@ -286,7 +286,8 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
             "work are held, not applied, and another sync does not complete it; if the folder(s) are "
             "meant to be empty, "
             f"run `{BIN} exclude-empty work` (it adds them to that source's exclude in "
-            "~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later gains files)",
+            "~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later gains files); "
+            f"`{BIN} sync -v` names the folder(s)",
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
@@ -387,7 +388,7 @@ def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_pa
     config = _setup(tmp_path, local_source_table("work", root))
     run_cycle(config, mode=None)
     first = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s)"))
-    assert first.endswith("an excluded folder is not mirrored if it later gains files)"), "none missed yet"
+    assert first.endswith(f"later gains files); `{BIN} sync -v` names the folder(s)"), "none missed yet"
     for n in range(4):
         (root / "Planning" / f"plan {n}.txt").unlink()
     run_cycle(config, mode=None)
@@ -466,7 +467,7 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         "work are held, not applied, and another sync does not complete it; if the folder(s) are "
         "meant to be empty, "
         f"run `{BIN} exclude-empty work` (it adds them to that source's exclude in {config.config_path}; an "
-        "excluded folder is not mirrored if it later gains files)",
+        f"excluded folder is not mirrored if it later gains files); `{BIN} sync -v` names the folder(s)",
         "WAITING ON YOU: 1 empty cloud folder(s) in work held 2 file(s) the mirror still has (the listing "
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder(s) from the cloud drive too, and later syncs take the "
@@ -514,7 +515,8 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
             "meant to be empty, "
             f"run `{BIN} exclude-empty drop` (it adds them to that source's exclude in {config.config_path}; "
-            "an excluded folder is not mirrored if it later gains files)",
+            "an excluded folder is not mirrored if it later gains files); "
+            f"`{BIN} sync -v` names the folder(s)",
             "WAITING ON YOU: 1 empty cloud folder(s) in drop held 1 file(s) the mirror still has (the "
             "listing stays incomplete, so their deletion is held; another sync does not clear it): if the "
             "files were removed on purpose, remove the empty folder(s) from the cloud drive too, and later "
@@ -595,7 +597,7 @@ def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> 
         "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
         "meant to be empty, "
         f"run `{BIN} exclude-empty drop` (it adds them to that source's exclude in {config.config_path}; an "
-        "excluded folder is not mirrored if it later gains files)"
+        f"excluded folder is not mirrored if it later gains files); `{BIN} sync -v` names the folder(s)"
     )
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
     ahead = time.time() + 3600  # dated ahead of the clock: withheld by every walk, and never waited for
@@ -816,10 +818,46 @@ def test_rule_5_the_operator_confirms_a_draft(tmp_path: Path, folder: Path) -> N
     for questions, answers in (("draft", "draft"), ("confirmed", "draft"), ("", "")):
         _eval(config, questions, answers)
         assert _lines(config) == [
-            "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+            "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU line); "
             "session done",
             DRAFT_WAIT.format("~/agent-context/docs/_eval"),
         ], (questions, answers)
+
+
+def test_a_small_draft_is_not_asked_to_keep_ten(tmp_path: Path, folder: Path) -> None:
+    """B13 round 5 F1, F47: the skill drafts fewer than 15 for a small mirror and the operator then keeps all
+    of them, so a 7-question draft never reads "keep about 10" alone; the line reads no count, since the file
+    holds what is left after the operator's cuts, not what was drafted."""
+    config = _synced(tmp_path, folder)
+    root = config.docs_repo / "_eval"
+    _write(root / "questions.md", "status: draft\n\n" + "".join(f"{n}. Question {n}?\n" for n in range(1, 8)))
+    _write(root / "answers.md", "status: draft\n\n1. Finance.\n")
+    [wait] = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: the baseline questions")]
+    assert "keep about 10" not in wait
+    assert "keep up to about 10 in questions.md (all of them if there are fewer)" in wait
+
+
+def test_rule_5_names_one_wait_line_or_more_by_their_count(tmp_path: Path) -> None:
+    """B13 round 5 F10, F41: rule 5's NEXT says "line" over one wait and "lines" over two or more, with no
+    place word (Q74), and the setup report's prefix finds the draft under both."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(Path.home() / "agent-context", local_source_table("work", root))
+    run_cycle(config, mode=None)
+    _eval(config, "draft", "draft")
+    lines = _lines(config)
+    assert lines[0] == (
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+        "session done"
+    )
+    assert len([ln for ln in lines if ln.startswith("WAITING ON YOU: ")]) == 2
+    waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
+    assert setup_report._stopped_wait(lines[0], waits).startswith(setup_report._WAIT_DRAFT)
+    one = (
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU line); session done"
+    )
+    assert setup_report._stopped_wait(one, waits).startswith(setup_report._WAIT_DRAFT)
 
 
 def test_the_draft_wait_names_a_docs_repo_outside_the_home_folder_by_its_full_path(

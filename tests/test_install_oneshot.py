@@ -724,8 +724,9 @@ def test_the_closing_statuss_waits_are_printed_above_its_next(
     install.sh no longer rewrites it."""
     rule5 = "stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session done"
     waits = [
-        "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10 in "
-        "questions.md, correct the answers in answers.md, and change both files to status: confirmed",
+        "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep up to "
+        "about 10 in questions.md (all of them if there are fewer), correct the answers in answers.md, and "
+        "change both files to status: confirmed",
         "WAITING ON YOU: 2 queued purge(s): preview with `~/.local/bin/agentsync purge --queue --dry-run` "
         "(writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites history)",
     ]

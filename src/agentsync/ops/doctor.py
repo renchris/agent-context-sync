@@ -1705,12 +1705,12 @@ def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
 def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
     """The fix for a source whose listing stays incomplete. ``yours`` (default: a local source): a WAITING ON
     YOU line explains it. A local folder's walk is always a full pass, so the same folder stops it again: each
-    such line about the source says which case it is and what to do (they name the empty cloud folders). No
-    command and no "above": status prints the lines, and the setup report's Doctor section may have none
-    above. Otherwise a Graph pass resumes, and an inbox is most often incomplete while a file in it is still
-    being written, so another sync clears those; ``sync -v`` names any other cause. A local source with no
-    such line either changed since its last walk (its stopping folders are excluded now) or had no full walk
-    yet: the next full walk lists it.
+    such line about the source says which case it is and what to do (they count the empty cloud folders and
+    name the command that lists them). No command and no "above": status prints the lines, and the setup
+    report's Doctor section may have none above. Otherwise a Graph pass resumes, and an inbox is most often
+    incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names any
+    other cause. A local source with no such line either changed since its last walk (its stopping folders are
+    excluded now) or had no full walk yet: the next full walk lists it.
     No nested parentheses: the setup report's fix parser strips one level."""
     if yours is None:
         yours = src.kind is SourceKind.LOCAL

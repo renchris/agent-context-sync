@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
-from agentsync.arm_local import _unexcluded
+from agentsync.arm_local import _dir_excluded, _folder_glob, _unexcluded
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
@@ -401,6 +401,34 @@ def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, 
     return bool(names), below
 
 
+def _folders_holding_files(manifest: Manifest, source_id: str) -> set[str]:
+    """Every folder (relative POSIX path) with a mirrored file at or below it, from the manifest's rows."""
+    out: set[str] = set()
+    for row in manifest.iter_items(source_id, states=_PRESENT):
+        if row.is_dir:
+            continue
+        parts = row.rel_path.split("/")[:-1]
+        out.update("/".join(parts[: i + 1]) for i in range(len(parts)))
+    return out
+
+
+def _excludable(manifest: Manifest, src: SourceConfig, below: dict[str, int]) -> tuple[list[str], list[str]]:
+    """Of ``below`` (:func:`_empty_dirs`), the folders with no mirrored file below them, split in two: those
+    ``agentsync exclude-empty`` excludes, and those whose exclude glob would also prune a folder holding
+    mirrored files (a ``[`` is written as ``?``: ``arm_local._glob_literal``), which it leaves, since
+    excluding one would retire those pages at once. One rule for the command and the wait naming it (B13
+    round 5 F65), so the wait never names a command that refuses its folder."""
+    empty = [d for d, files in below.items() if not files]
+    if not empty:
+        return [], []
+    held = _folders_holding_files(manifest, src.id)
+    clear: list[str] = []
+    collides: list[str] = []
+    for d in empty:
+        (collides if any(_dir_excluded(h, [_folder_glob(d)]) for h in held) else clear).append(d)
+    return clear, collides
+
+
 def empty_cloud_folders_held(manifest: Manifest, src: SourceConfig) -> bool:
     """Whether ``src``'s listing stays incomplete because of empty cloud folders its last walk stored and
     today's exclude does not prune: the case :func:`next_step` gives WAITING ON YOU lines that say another
@@ -522,7 +550,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     incomplete: list[str] = []
     unlisted: list[tuple[str, int]] = []  # a local listing ran but could not finish: the operator's to fix
     root_unlisted: list[str] = []  # ... at the root folder itself, which no exclude can clear
-    empty: list[tuple[SourceConfig, dict[str, int], int]] = []  # ... because of these empty cloud folders
+    # ... because of these empty cloud folders: (source, files below each, the clear ones, the colliding ones,
+    # mirrored files the last walk missed)
+    empty: list[tuple[SourceConfig, dict[str, int], list[str], list[str], int]] = []
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
@@ -561,7 +591,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                         # An empty cloud folder is unknown on every pass in an inbox too: the same waits.
                         stored, below = _empty_dirs(manifest, src)
                         if below:
-                            empty.append((src, below, _missed(manifest, src.id)))
+                            clear, collides = _excludable(manifest, src, below)
+                            empty.append((src, below, clear, collides, _missed(manifest, src.id)))
                         elif src.kind is SourceKind.INBOX:
                             inbox_partial.append(src.id)
                         elif stored:
@@ -602,12 +633,13 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
         checks.extend(f"heartbeat.{s}" for s in sorted(held))
-    for src, below, missed in empty:
-        checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or both follow
-        # An empty cloud folder is unknown, never empty, on every pass. The line to paste names only the
-        # folders with nothing mirrored below them; one that held mirrored files gets no paste line, since
-        # excluding it retires those pages in one pass, past the deletion breaker (as for a held listing).
-        clear = [d for d, files in below.items() if not files]
+    for src, below, clear, collides, missed in empty:
+        checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or more follow
+        # An empty cloud folder is unknown, never empty, on every pass. The line naming exclude-empty counts
+        # only the folders that command excludes (:func:`_excludable`, one rule for both): one that held
+        # mirrored files gets no such line, since excluding it retires those pages in one pass, past the
+        # deletion breaker (as for a held listing), and one whose glob would also match a folder holding
+        # mirrored files gets its own line (B13 round 5 F65: the command left it, so the wait never cleared).
         gone = [files for files in below.values() if files]
         # What completing the listing will check (N26): the mirrored files the last walk did not list, a
         # count and never a path, once per source, on its last line: the gone line when there is one (its
@@ -631,8 +663,19 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 # One command, not a hand edit of sources.toml (B13 round 4 Q71): it excludes every such
                 # folder, so no second round for a sixth one, and checks the file before it writes it.
                 f"run `{BIN} exclude-empty {shlex.quote(src.id)}` (it adds them to that source's exclude in "
-                f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files)"
-                + (f"; {size}" if size and not gone else "")
+                f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
+                # Which folders, by the command that names them (B13 round 5 F43): the wait carries a count
+                # and never a path, and status prints no folder of the source.
+                f"`{BIN} sync -v` names the folder(s)"
+                + (f"; {size}" if size and not gone and not collides else "")
+            )
+        if collides:
+            waits.append(
+                f"{len(collides)} empty cloud folder(s) in {src.id} have a [ in the name, so an exclude of "
+                "one would also match a folder whose files are mirrored (the listing stays incomplete, so "
+                f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
+                "empty folder(s) in the cloud drive; "
+                f"`{BIN} sync -v` names them" + (f"; {size}" if size and not gone else "")
             )
         if gone:
             waits.append(
@@ -698,8 +741,12 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         # Where the two files are, not only their names: whoever confirms them did not write them (v9
         # rehearsal, 2026-10-07).
         waits.append(
-            f"the baseline questions are a draft: in {_shown(eval_dir)}, keep about 10 in questions.md, "
-            "correct the answers in answers.md, and change both files to status: confirmed"
+            # "up to", "all of them if there are fewer": the skill drafts fewer than 10 for a small mirror,
+            # and the file holds what is left after the operator's cuts, not what was drafted (B13 round 5
+            # F1, F47). No count is read: the operator edits the file by hand.
+            f"the baseline questions are a draft: in {_shown(eval_dir)}, keep up to about 10 in "
+            "questions.md (all of them if there are fewer), correct the answers in answers.md, and change "
+            "both files to status: confirmed"
         )
     if skill_state(docs) != "current":
         return done(
@@ -739,10 +786,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             4,
         )
     if questions is not None and not confirmed:
-        return done(
-            "stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session done",
-            5,
-        )
+        # The draft's wait is among ``waits``, so there is one line or more; no place word, since install.sh
+        # prints the waits above the NEXT and status below it (§16.51 Q74; B13 round 5 F10, F41).
+        seen = "the WAITING ON YOU line" if len(waits) == 1 else "the WAITING ON YOU lines"
+        return done(f"stop: the operator confirms the baseline questions (see {seen}); session done", 5)
     has_before = any(eval_dir.glob("results-*-before.md"))
     if not pages and not has_before:
         return done(

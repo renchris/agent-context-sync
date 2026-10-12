@@ -3429,7 +3429,7 @@ def test_loop_stage_and_next_text() -> None:
     assert text("NEXT: keep about 10 in _eval/questions.md") == "NEXT: keep about 10 in _eval/questions.md"
     # On its own, loop_next_text keeps the folder's last part; the Loop line names it in words first
     # (_eval_by_name).
-    wait = "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md"
+    wait = "WAITING ON YOU: the baseline questions are a draft: in {}, keep up to about 10 in questions.md"
     for folder in ("~/agent-context/docs/_eval", "/Volumes/Work/kb/docs/_eval"):
         assert text(wait.format(folder)) == wait.format("_eval")
 
@@ -3575,8 +3575,9 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
     # The v10 rehearsal: the exclude wait, then the draft under rule 5's NEXT. The draft is the one the loop
     # stopped on and comes first; the exclude wait follows it, still without its folder names.
     draft = (
-        "WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions.md, "
-        "correct the answers in answers.md, and change both files to status: confirmed"
+        "WAITING ON YOU: the baseline questions are a draft: in _eval, keep up to about 10 in questions.md "
+        "(all of them if there are fewer), correct the answers in answers.md, and change both files to "
+        "status: confirmed"
     )
     stop = (
         "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session "
@@ -3614,9 +3615,9 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert loop == (
         "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (see the WAITING "
-        "ON YOU lines); session done; WAITING ON YOU: the baseline questions are a draft: in the docs repo's "
-        "_eval folder, keep about 10 in questions.md, correct the answers in answers.md, and change both "
-        "files to status: confirmed"
+        "ON YOU line); session done; WAITING ON YOU: the baseline questions are a draft: in the docs repo's "
+        "_eval folder, keep up to about 10 in questions.md (all of them if there are fewer), correct the "
+        "answers in answers.md, and change both files to status: confirmed"
     ), loop
     # Path-free but findable: the Configuration part names the docs repo the Summary's words point at.
     config_part = section(text, "Configuration").splitlines()
@@ -3644,15 +3645,15 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
     (evals / "answers.md").write_text("status: draft\n\n1. Finance.\n", encoding="utf-8")
     written = loop.next_lines(load_config(cfg), count_queue=False)
     shown = "~/Client Alpha/kb docs/_eval" if under_home else f"{docs}/_eval"
-    draft = "WAITING ON YOU: the baseline questions are a draft: in {}, keep about 10 in questions.md, "
+    draft = "WAITING ON YOU: the baseline questions are a draft: in {}, keep up to about 10 in questions.md "
     assert [ln for ln in written if ln.startswith(draft.format(shown))], written
 
     hooks = setup_report.ReportHooks(loop_next=lambda config: loop.next_lines(config, count_queue=False))
     text, _red = setup_report.build_report(cfg, hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert line.endswith(
-        f"; {draft.format(setup_report._EVAL_SHOWN)}correct the answers in answers.md, and change both "
-        "files to status: confirmed"
+        f"; {draft.format(setup_report._EVAL_SHOWN)}(all of them if there are fewer), correct the answers in "
+        "answers.md, and change both files to status: confirmed"
     ), line
     assert "Client" not in line and "kb docs" not in line and "/" not in line.split("; WAITING ON YOU: ")[1]
 
@@ -3740,9 +3741,7 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         r"`~/\.local/bin/agentsync purge --queue` \(rewrites history\)$",
         line,
     ), line
-    assert (
-        line.index("macOS held") < line.index("queued purge") and "(see the WAITING ON YOU lines)" not in line
-    )
+    assert line.index("macOS held") < line.index("queued purge") and setup_report._WAIT_NAMED not in line
 
     # A draft baseline: rule 5's NEXT says the wait is below, and the loop prints that wait last.
     evals = expand(config.docs_repo) / "_eval"
@@ -3756,8 +3755,8 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     assert re.search(
         r"; NEXT: stop: the operator confirms the baseline questions \(see the WAITING ON YOU lines\); "
         r"session done; "
-        r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep about 10 "
-        r"in questions\.md, "
+        r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep up to "
+        r"about 10 in questions\.md \(all of them if there are fewer\), "
         r"correct the answers in answers\.md, and change both files to status: confirmed; the command prints "
         r"that one after the 2 wait\(s\) that follow, in their order: WAITING ON YOU: 1 "
         r"queued purge\(s\): preview with `~/\.local/bin/agentsync purge --queue --dry-run` \(writes "
@@ -3778,7 +3777,7 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
     )
     breaker = "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone)"
     held = "WAITING ON YOU: macOS held the listing of work for a privacy prompt: click Allow"
-    draft = "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10"
+    draft = "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep up to"
     rule5 = (
         "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session "
         "done"

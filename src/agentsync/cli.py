@@ -55,7 +55,7 @@ from agentsync import (
     skill,
 )
 from agentsync import policy as content_policy
-from agentsync.arm_local import _dir_excluded, _folder_glob, exclude_advice, exclude_globs
+from agentsync.arm_local import exclude_advice, exclude_globs
 from agentsync.config import (
     Config,
     append_to_config,
@@ -70,7 +70,6 @@ from agentsync.config import (
     set_source_exclude,
 )
 from agentsync.cycle import (
-    _PRESENT,
     INTERACTIVE_LOCK_WAIT_S,
     _acquire_waiting,
     _holds_home,
@@ -757,14 +756,10 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     try:
         with Manifest(db) as manifest:
             _stored, below = loop._empty_dirs(manifest, src)
-            held_dirs = _folders_holding_files(manifest, src.id)
-        # A folder's glob that would also prune a folder holding mirrored files (a "[" is written as "?") is
-        # left as well: excluding that folder would retire its pages at once.
-        clear = [
-            d
-            for d, files in below.items()
-            if not files and not any(_dir_excluded(h, [_folder_glob(d)]) for h in held_dirs)
-        ]
+            # A folder's glob that would also prune a folder holding mirrored files (a "[" is written as
+            # "?") is left as well: excluding that folder would retire its pages at once. The loop's wait
+            # names this command by the same rule (B13 round 5 F65).
+            clear, _collides = loop._excludable(manifest, src, below)
         gone = len(below) - len(clear)
         held = (
             f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "
@@ -792,17 +787,6 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         f"files; the next sync lists {src.id} without them{held}"
     )
     return EXIT_OK
-
-
-def _folders_holding_files(manifest: Manifest, source_id: str) -> set[str]:
-    """Every folder (relative POSIX path) with a mirrored file at or below it, from the manifest's rows."""
-    out: set[str] = set()
-    for row in manifest.iter_items(source_id, states=_PRESENT):
-        if row.is_dir:
-            continue
-        parts = row.rel_path.split("/")[:-1]
-        out.update("/".join(parts[: i + 1]) for i in range(len(parts)))
-    return out
 
 
 def _cmd_mat(args: argparse.Namespace) -> int:

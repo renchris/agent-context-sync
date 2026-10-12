@@ -5938,10 +5938,11 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     return line
 
 
-_WAIT_NAMED = "(see the WAITING ON YOU lines)"
+_WAIT_NAMED = "(see the WAITING ON YOU line"
 """In the loop's NEXT line when the step is one of its waits (``loop.next_step`` rule 5: the operator
 confirms the baseline questions). It names no place: status prints the waits below its NEXT, install.sh above
-it (B13 round 4 Q74)."""
+it (B13 round 4 Q74). A prefix, matched as a substring: rule 5 ends it ``line)`` when one wait is printed and
+``lines)`` for more (B13 round 5 F10, F41), and an earlier agentsync's ``lines)`` still matches."""
 _WAIT_DRAFT = "WAITING ON YOU: the baseline questions are a draft"
 _WAIT_HELD = "WAITING ON YOU: macOS held the listing "
 """How the two waits a setup stops on start, in ``loop.next_step``'s own words: the draft baseline that rule

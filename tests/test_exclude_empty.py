@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import cli
+from agentsync import cli, loop
 from agentsync.config import inbox_source_table, load_config, local_source_table, set_source_exclude
 from agentsync.cycle import run_cycle
 from agentsync.errors import ConfigError
@@ -184,3 +184,14 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK and out.startswith("exclude-empty work: nothing to exclude; 1 empty"), out
     assert cfg.read_bytes() == before
+    # B13 round 5 F65: the wait takes the command's rule, so it never names a command that leaves its folder
+    # (the wait would never clear); its own line says what does clear it, and names no folder.
+    run_cycle(load_config(cfg), mode=None)
+    lines = loop.next_lines(load_config(cfg), count_queue=False)
+    assert not any("exclude-empty" in ln for ln in lines), lines
+    (wait,) = [
+        ln for ln in lines if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s) in work have a [")
+    ]
+    assert "rename or remove the empty folder(s) in the cloud drive" in wait
+    assert "`~/.local/bin/agentsync sync -v` names them" in wait and "Plans" not in wait
+    assert "file(s) the mirror still has" not in wait, "not the gone line: the folder held no file"
