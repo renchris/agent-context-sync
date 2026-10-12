@@ -7584,6 +7584,8 @@ failed conversion.
   capabilities change, or when agentsync is upgraded (its version is part of them). **Amended 2026-10-11,
   §16.39 N4:** the version was 0.1.0 in every build, so an upgrade restarted nothing; what is part of them
   now is a digest of the installed package's files (`_build_digest`), so another build of agentsync does.
+  **Amended 2026-10-12, §16.45 R100:** so does an upgrade of a converter library alone (`cycle._CONVERTER_DISTS`: the installed
+  distribution version of each is part of them).
 
 **A file the pass calls maybe-changed** (`_outdated_in_queue`; amended 2026-10-06). `_reread_source` reads
 only a file listed `unchanged`. A file the walk calls maybe-changed in every pass (a volume that reports no
@@ -7608,7 +7610,12 @@ once a cycle (`_Cycle._reread_load`).
   converter, the engine's identity (`""` without one) and each converter's `outdated_key`. A new version,
   suffix, engine, emitter or floor is something new to look for, and a file given up under one build is
   tried by the next. **Amended 2026-10-11, §16.39 N4:** the build's part is `_build_digest`, a digest of the
-  installed package's files, not the version: another build is what is new to look for.
+  installed package's files, not the version: another build is what is new to look for. **Amended 2026-10-12, §16.45 R100:**
+  `for` also holds `deps`, the sorted `[name, version]` pairs of the converter libraries
+  (`cycle._CONVERTER_DISTS`: olefile, openpyxl, pdfminer.six, pypandoc_binary, pypdfium2, python-pptx), each
+  `convert._common._dist_version` (`unknown` when not installed). Distribution versions only: a converter's
+  `version()` also carries the OCR identity and an import failure's word, which would reopen the scan for
+  nothing. A library upgrade with no agentsync change is now something new to look for.
 - `done`: no file on this Mac is left to read again (`Manifest.reread_left` is false; a file that failed
   once is still left, one in `tried` is not). While the first record says so for the current capabilities,
   a cycle reads one meta value for the source and runs none of the queries below. **Amended 2026-10-11,
@@ -10870,7 +10877,10 @@ move it. A commit that changes no packaged file restarts nothing; the two deploy
 the installed tool hash differently (the record's second slot keeps both, so going between them costs a manifest
 query, not repeated attempts). A dependency upgrade alone does not move the digest and restarts nothing: `for`
 holds each converter's `outdated_key` (its emitter and floor), not its version string, so a file given up stays
-given up until a packaged file changes. A file or a folder that cannot be read (a tree an install is replacing
+given up until a packaged file changes. **Amended 2026-10-12, §16.45 R100:** no longer so: `for` holds the converter libraries'
+distribution versions (`deps`, §16.27 "The record"), so a library upgrade alone (a `uv sync` that moves pdfminer.six
+or pypdfium2) restarts the scan once, as a new build does, and a file given up under the old library gets its two
+attempts under the new one. A file or a folder that cannot be read (a tree an install is replacing
 under a running sync) counts as such: the digest is still made, and the next process starts over once more.
 
 The first sync on the build that carries this changes every source's `for` once: each scan runs again (a

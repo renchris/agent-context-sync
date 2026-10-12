@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import zlib
 from collections.abc import Iterator
 from pathlib import Path
@@ -36,6 +37,7 @@ from agentsync import curate, gitops, governance, loop, materialise, slug
 from agentsync import cycle as cycle_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
+from agentsync.convert import _common as convert_common
 from agentsync.convert import diagram as diagram_mod
 from agentsync.convert import image as image_mod
 from agentsync.convert import msg as msg_mod
@@ -3173,12 +3175,18 @@ def test_a_build_whose_folder_cannot_be_listed_still_has_a_digest(
         cycle_mod._build_digest.cache_clear()
 
 
+@pytest.mark.parametrize("upgrade", ["build", "library"])
 def test_a_file_given_up_is_read_again_by_another_build(
-    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    sample_config: Config,
+    local_source_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    upgrade: str,
 ) -> None:
     """An install that changes no version, suffix, engine or floor still starts the re-read over: two
     files given up under one build are read again by the next, and only once (16.39 N4).  ``__version__``
-    is the same in both, as it has been in every build."""
+    is the same in both, as it has been in every build.  A converter library's upgrade with no agentsync
+    change does the same (§16.45 R100): the library here is one no PDF converter version names."""
     other = "projects/Contoso gadget review.pdf"
     _commented(local_source_dir / REVIEW, "Contoso widget review")
     _commented(local_source_dir / other, "Contoso gadget review")
@@ -3204,15 +3212,29 @@ def test_a_file_given_up_is_read_again_by_another_build(
     broken_for.clear()
     assert run(sample_config).commit_sha is None and len(fetched) == 6
     before = _run_record(sample_config)["reread_for"]
-    build = tmp_path / "another-build"
-    build.mkdir()
-    (build / "cycle.py").write_text("# another build\n")
-    monkeypatch.setattr(cycle_mod, "_BUILD_ROOT", build, raising=False)
+    if upgrade == "build":
+        build = tmp_path / "another-build"
+        build.mkdir()
+        (build / "cycle.py").write_text("# another build\n")
+        monkeypatch.setattr(cycle_mod, "_BUILD_ROOT", build, raising=False)
+    else:
+        installed = convert_common._dist_version
+        monkeypatch.setattr(
+            convert_common, "_dist_version", lambda dist: "99.0" if dist == "openpyxl" else installed(dist)
+        )
     again = run(sample_config)
     assert again.commit_sha is not None and len(fetched) == 8
     assert COMMENTS in _mirror_page(sample_config, other)[1] and _reread_record(sample_config) == (True, [])
     assert _run_record(sample_config)["reread_for"] != before
     assert run(sample_config).commit_sha is None and len(fetched) == 8
+
+
+def test_the_converter_libraries_in_the_re_read_digest_are_dependencies() -> None:
+    """``_CONVERTER_DISTS`` names distributions pyproject.toml depends on, so none reads ``unknown``."""
+    project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text("utf-8"))
+    names = {re.split(r"[<>=\[ ]", dep, maxsplit=1)[0] for dep in project["project"]["dependencies"]}
+    assert set(cycle_mod._CONVERTER_DISTS) <= names
+    assert all(convert_common._dist_version(dist) != "unknown" for dist in cycle_mod._CONVERTER_DISTS)
 
 
 def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(

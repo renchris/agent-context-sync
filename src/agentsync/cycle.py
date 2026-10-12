@@ -68,6 +68,7 @@ from agentsync.classifier import (
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import BreakerConfig, Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX, convert_file, media, ocr, speech
+from agentsync.convert import _common as convert_common
 from agentsync.convert import recording as recording_mod
 from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
@@ -183,13 +184,20 @@ id>, ...]}``: the one the last cycle wrote, then the last one written for anothe
 also hold ``"failed": {<stable id>: <count>}`` and ``"reading": <stable id>``.
 
 ``for`` is ``_Cycle._capabilities``: this build (``_build_digest``), the suffixes that have a converter,
-the OCR engine's identity and each converter's ``outdated_key``.  ``failed``: the files whose re-read
+the OCR engine's identity, each converter's ``outdated_key`` and the installed version of each converter
+library (``_CONVERTER_DISTS``; §16.45 R100).  ``failed``: the files whose re-read
 failed, with the number of cycles it failed in.  ``tried``: those it failed in ``_REREAD_ATTEMPTS`` cycles;
 they are not read again for the same ``for``, and the second record keeps that true when an engine goes and
 comes back.  ``reading``: the file being read when the record was stored, cleared when its read ends; a
 cycle that finds one was killed in that read, and counts it as a failed one.  ``done`` counts in the first
 record only: no file on this Mac was left to read again, so no cycle looks until one leaves such a file."""
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
+_CONVERTER_DISTS = ("olefile", "openpyxl", "pdfminer.six", "pypandoc_binary", "pypdfium2", "python-pptx")
+"""The distributions the converters read files with (pyproject.toml's dependencies), whose installed
+versions are in ``_Cycle._capabilities``: a library upgrade (``uv sync`` with no agentsync change) may read a
+file the old one failed on, so it opens the re-read as a new build does.  Distribution versions only: a
+converter's ``version()`` also carries the OCR identity and an import failure's word, which change from
+run to run."""
 _REREAD_ATTEMPTS = 2
 """The cycles in which one file's re-read may fail before the file is given up for what this install has.
 One would make every passing fault final (a full disk, pandoc timing out under load); none would read a
@@ -2721,9 +2729,11 @@ class _Cycle:
     # ---- files converted before a capability existed: read again once ------------------------------------
     def _capabilities(self) -> str:
         """Digest of what a re-read looks for: this build (``_build_digest``), the suffixes that have a
-        converter, the OCR engine's identity and what each converter's ``outdated`` goes by besides (its
-        ``outdated_key``: an emitter and its floor).  ``_REREAD_META`` stores it per source.  The build is in
-        it so that an upgrade starts over: a file given up under one build is tried by the next."""
+        converter, the OCR engine's identity, what each converter's ``outdated`` goes by besides (its
+        ``outdated_key``: an emitter and its floor) and the converter libraries' versions
+        (``_CONVERTER_DISTS``, ``unknown`` for one not installed).  ``_REREAD_META`` stores it per source.
+        The build and the libraries are in it so that an upgrade of either starts over: a file given up
+        under one is tried by the next."""
         if self._capability is None:
             keys = {
                 (c.converter_id, str(getattr(getattr(c, "inner", c), "outdated_key", "")))
@@ -2731,6 +2741,7 @@ class _Cycle:
             }
             doc = {
                 "agentsync": _build_digest(_BUILD_ROOT),
+                "deps": sorted([dist, convert_common._dist_version(dist)] for dist in _CONVERTER_DISTS),
                 "extensions": list(self.registry.extensions()),
                 "ocr": self.ocr.identity if self.ocr is not None else "",
                 "rules": sorted(list(k) for k in keys if k[1]),
