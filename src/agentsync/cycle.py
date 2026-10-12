@@ -1531,6 +1531,7 @@ class _Cycle:
         self._reread_s = 0.0  # seconds spent reading files again
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._reread_n = 0  # files read again
+        self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
         self._reread_left = 0  # files still to read again, over the sources this cycle looked at
         self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
@@ -2310,6 +2311,7 @@ class _Cycle:
             checkpoint_blockers=self.checkpoint_blockers,
             snapshot_tag=self.snapshot_tag,
             read_again=self._reread_n,
+            read_first=self._reread_first,
         )
 
     def _after(self, report: CycleReport, status: str, *, ok_cycle: bool) -> None:
@@ -2364,7 +2366,9 @@ class _Cycle:
         (``_converted_before``; a copy of a file is not one); ``converted_again``: of those, when the bytes
         were last converted in the run just before.
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
-        of them that kept their page.  ``reread_left``: files on this Mac still to read again when the
+        of them that kept their page.  ``reread_first``: of the ``reread``, those whose bytes were read for
+        the first time (a no-converter stub's re-read is the first read of its bytes), so they are in
+        ``converted`` too.  ``reread_left``: files on this Mac still to read again when the
         cycle stopped looking, over the sources it looked at (``_reread_source``); ``loop.next_step`` words
         its "sync again" note from it.
         ``ocr_ms``: milliseconds the helper ran; ``ocr_budget_s``: the cycle's OCR time; ``ocr_over``: 1
@@ -2382,6 +2386,8 @@ class _Cycle:
         tally["converted"] = self._tally["converted"]
         if self._reread_n:
             tally["reread"] = self._reread_n
+        if self._reread_first:
+            tally["reread_first"] = self._reread_first
         if self._reread_kept:
             tally["reread_kept"] = self._reread_kept
         if self._reread_left:
@@ -4231,6 +4237,8 @@ class _Cycle:
             return result
         if not again:
             acc.converted += 1
+            if reread:  # a no-converter stub's first read (or new bytes): in N and in R alike
+                self._reread_first += 1
             if result.status is ConversionStatus.UNREADABLE:
                 acc.unreadable += 1
             elif result.status is ConversionStatus.FAILED:

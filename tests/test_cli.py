@@ -279,6 +279,15 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     assert capsys.readouterr().out.splitlines()[-1] == "converted 0, deferred 0 online-only, read again 2"
     cli._print_report(dataclasses.replace(report, read_again=0))
     assert capsys.readouterr().out.splitlines()[-1] == "converted 0, deferred 0 online-only"
+    # B13 round 4 Q28: a no-converter stub's re-read is the first read of its bytes, so it is in N as well
+    # as in R; the line says so, keeps R right after "read again" and adds no bare "converted" token.
+    cli._print_report(dataclasses.replace(report, read_first=1))
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line == (
+        "converted 0, deferred 0 online-only, read again 2 (1 of them read for the first time, also counted "
+        "above)"
+    )
+    assert re.findall(r"\bconverted\b", line) == ["converted"]
 
 
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(

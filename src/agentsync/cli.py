@@ -393,7 +393,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     """Print a cycle's report, ending with one line for the whole run, ``converted N, deferred M online-only``
     (N files read and converted, M online-only files left for a later run's download budget), then
     ``, read again R`` when R files were read again for what their converter has gained (a re-read of the
-    same bytes is never in N), then `` (of the converted: U unreadable, F failed)`` when U of the N are
+    same bytes is never in N; a no-converter stub's re-read is the first read of its bytes, so it is in N as
+    well, and `` (F of them read for the first time, also counted above)`` says how many: B13 round 4 Q28),
+    then `` (of the converted: U unreadable, F failed)`` when U of the N are
     UNREADABLE stubs (F: conversions that failed; §16.45 R2). With
     ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are one
     count per source: at 0 every changed online-only file would otherwise get one."""
@@ -441,6 +443,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""
+    if report.read_again and report.read_first:  # no bare "converted" token: install.sh's awk adds after one
+        again += f" ({report.read_first} of them read for the first time, also counted above)"
     unreadable = sum(s.unreadable for s in report.sources)
     failed = sum(s.conversion_failed for s in report.sources)
     # last, so install.sh's and setup-report's "converted N, deferred M online-only" patterns still match

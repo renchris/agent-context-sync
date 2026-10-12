@@ -3102,6 +3102,8 @@ def test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_
     fetched = _fetches(monkeypatch)
     again = run(sample_config)
     assert again.commit_sha is not None and fetched == [rel]
+    # B13 round 4 Q28: one file, read again and read for the first time, so converted as well
+    assert (again.read_again, again.read_first, again.sources[0].converted) == (1, 1, 1)
     fm, body = _mirror_page(sample_config, rel)
     assert (fm["status"], fm["source_title"]) == ("current", "Contoso Quarterly Template")
     assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "## Contoso Quarterly Template" in body

@@ -434,6 +434,9 @@ class CycleReport:
     checkpoint_blockers: tuple[LintFinding, ...] = ()  # held: what holds it (curate.checkpoint_blockers)
     snapshot_tag: str | None = None  # [governance] archive: the snapshot/<UTC> tag cut at the new commit
     read_again: int = 0  # files read again for what their converter has gained (the run tally's reread)
+    # of those, the ones whose bytes were read for the first time (a no-converter stub made from the name, or
+    # bytes that changed): also counted in their source's converted (B13 round 4 Q28)
+    read_first: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
