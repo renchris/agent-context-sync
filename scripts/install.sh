@@ -1790,12 +1790,23 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # setup-report.md of the last attempt that was not stopped keeps its bytes, as bring-back.md does. Its first
 # line says not to send it, and names that report only where one exists (B13 round 3 R17). Written after the
 # report's redaction, so it names no path under this home but as ~/.
+# Nor does its end invite sending it (B13 round 4 Q10, Q18): the "Send it:" line and the issue link are
+# dropped here, not by the writer, so an agentsync older than this installer (a stopped copy stops before the
+# install) and the shell fallback are covered alike. Both links start with ISSUE_URL, written after redaction;
+# index() and LC_ALL=C read them byte for byte.
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt that an out-of-date copy of the setup prompt started: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
 	[ ! -f "$1" ] || note="$note The report of the last attempt that was not stopped is $shown."
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
-	if { printf '%s\n\n' "$note" && cat "$REPORT_PATH"; } >"$tmp"; then
+	if {
+		printf '%s\n\n' "$note" &&
+			LC_ALL=C awk -v u="$ISSUE_URL" '
+				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
+				$0 == "" { blank++; next }
+				{ for (; blank > 0; blank--) print ""; print }
+				END { print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH"
+	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH"
 	else
 		rm -f "$tmp"
@@ -1836,6 +1847,10 @@ on_exit() {
 				# attempt's report writes it too.
 				[ ! -f "$back" ] || NEXT_MSG="$NEXT_MSG ($back was not touched: it still holds the report of the last attempt that was not stopped)"
 			else
+				# A stopped copy's report from before is stale from here (it names this file as the last
+				# report that was not stopped), and nothing this attempt prints names it (B13 round 4 Q20).
+				# A dry run (2) and a report not written (*) leave it.
+				rm -f "$SETUP_DIR/stopped-copy-report.md"
 				write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
 				link="$(report_issue_link)"
 				if [ -n "$link" ]; then

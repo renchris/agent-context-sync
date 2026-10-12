@@ -12912,6 +12912,9 @@ still holds the report of the last attempt that was not stopped)`: never "finish
 report writes it too. `test_the_report_of_a_stopped_copy_invites_no_bring_back`. The stop comment and
 `docs/deploy/setup-feedback.md` now say which copies still go on to a report (v9 and older, and a v10 copy taken
 before its step 3 named the stop; R21).
+Amended 2026-10-12 (§16.53, Q10, Q18, Q20): the Send-it line and the last-line issue link are no longer
+untouched: the stopped copy's report ends on `Not for sending: see the note at the top of this report.` instead,
+and the next report of an attempt that was not stopped deletes the file.
 
 #### Step 2's reinstall (R34, R114, R125)
 
@@ -13732,6 +13735,22 @@ item amends an older section, a dated line sits at that section too.
   approval rules write it, and stays absolute elsewhere. The `~` is outside `printf %q`, which would write `\~`,
   a path that never expands. `test_a_checkout_under_home_is_named_with_a_tilde` (the checkout linked under the
   test home; the command it prints runs under bash).
+
+#### A stopped copy's report
+
+- **It ends without inviting a send** (Q10, Q18, one defect). `stopped_report_note` drops every line that starts
+  with `Send it: ` or with `ISSUE_URL` (the agentsync report's filled link and the shell fallback's bare one are
+  both written after redaction, so both start with it), drops the blank lines that then end the file, and ends it
+  on `Not for sending: see the note at the top of this report.`. One LC_ALL=C awk with `index()`, byte for byte.
+  The installer does it, not a setup-report flag or variable: a stopped copy stops before the install, so the
+  agentsync on PATH can be older than the installer (a flag it does not know exits 2 and loses its report to
+  the thinner shell fallback). The report of an attempt that was not stopped keeps both. Tests:
+  `test_the_report_of_a_stopped_copy_invites_no_bring_back` (the shell fallback),
+  `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` (the real agentsync).
+- **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
+  finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
+  report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
+  and a report that could not be written leave it. Same tests.
 
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 

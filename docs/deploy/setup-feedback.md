@@ -304,7 +304,9 @@ version, and the installer wrote its own number into the log.
   report back and to copy the prompt again. That run writes the report to `~/agent-context/setup/stopped-copy-report.md`,
   whose first line says not to send it, so `setup-report.md` and `bring-back.md` keep the bytes of the last attempt
   that was not stopped (the `NEXT:` names `bring-back.md` as untouched only where one exists); it prints no `bring
-  back:` or issue link line. Triage such a report as `known K18`, not as a failed setup.
+  back:` or issue link line, and the file itself ends on `Not for sending: see the note at the top of this report.`
+  in place of the `Send it:` line and the issue link. The next report of an attempt that was not stopped deletes
+  it. Triage such a report as `known K18`, not as a failed setup.
 - That report counts no folder question. The copy was stopped before the folder list, so nobody was asked
   and no Allow click was announced: the Summary says `human turns: 0 (0 questions; ...)` and `expected turns:
   none (the installer stopped this copy of the prompt in step 1, before the folder list: no folder question

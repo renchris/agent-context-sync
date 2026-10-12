@@ -3623,9 +3623,13 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     )
     first = side.read_text().splitlines()[0]
     assert first.startswith(warning) and "not stopped is" not in first
+    _sends_nothing(side)
     _backdate(env, 11)
     assert install_sh(env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
+    dry = install_sh({**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}, "--report-only")
+    assert dry.returncode == 0 and side.exists(), "a dry run writes no report, so it leaves the side file"
     real = install_sh(env, "--report-only")
+    assert not side.exists(), "the stopped copy's report is stale once a real one is written (Q20)"
     assert last_line(real).startswith("NEXT: review ") and invites(real) == [
         "bring back",
         "issue link (review the report first)",
@@ -3644,6 +3648,41 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
         " The report of the last attempt that was not stopped is ~/agent-context/setup-report.md."
     )
     assert env["HOME"] not in side.read_text()
+    _sends_nothing(side)
+    text = report_path(env).read_text()
+    assert text.rstrip("\n").splitlines()[-1] == setup_report.ISSUE_URL, "a real report keeps its link"
+
+
+def _sends_nothing(side: Path) -> None:
+    """A stopped copy's report ends saying it is not for sending: no "Send it:" line and no issue link,
+    whichever writer wrote it (B13 round 4 Q10, Q18)."""
+    text = side.read_text()
+    assert "Send it:" not in text and "issues/new" not in text, text[-600:]
+    assert text.endswith("\nNot for sending: see the note at the top of this report.\n"), text[-300:]
+
+
+def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[str, str]) -> None:
+    """The same with the real agentsync's setup-report, whose Redaction part ends on a "Send it:" line and a
+    filled issue link (the rehearsal's file, B13 round 4 Q18); a later report that was not stopped keeps
+    both and removes the stopped copy's (Q20)."""
+    home = Path(real_env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(
+        home / ".local" / "bin" / "agentsync",
+        f'#!/bin/sh\nexec "{real_env["REAL_PYTHON"]}" -m agentsync "$@"\n',
+    )
+    side = report_path(real_env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(real_env, "--log-start", "x").returncode == 2
+    stopped = install_sh(real_env, "--report-only")
+    assert stopped.returncode == 0 and "(agentsync setup-report)" in stopped.stdout, stopped.stdout
+    assert "## Redaction" in side.read_text()
+    _sends_nothing(side)
+    _backdate(real_env, 11)
+    assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
+    real = install_sh(real_env, "--report-only")
+    assert real.returncode == 0 and not side.exists()
+    text = report_path(real_env).read_text()
+    assert "\nSend it: " in text and text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
 
 
 def test_a_stopped_copy_is_read_as_stopped_whatever_bytes_a_late_line_holds(env: dict[str, str]) -> None:
