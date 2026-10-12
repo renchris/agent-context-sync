@@ -584,6 +584,32 @@ the bare pane number.
 Round 5: the round 4 workflow again on `645f54e5` with prompt v13 (run `wf_565db0bd-e51`, outputs
 `~/.cache/agentsync-bring-back/b13/round5/`).
 
+### B13 round 5: v13 rehearsal, cross-lane review, harvest (2026-10-12)
+
+Run `wf_565db0bd-e51` on `645f54e5` (113 agents, 0 errors; script `round5/round5-workflow.js`, the round 4 script
+with v13, base `ffb42632` and the r4 notes). Every rehearsal met its expectations with no name, login or host name
+in any report; every round 4 fix the rehearsals could reach read right on real output (R1's wait now names
+`exclude-empty`). 102 findings, 99 confirmed (20 wrong, 79 small, none a turn), 3 refuted; 14 carry "a fix makes
+things worse". Five need prompt text (F24 to F28), so the next prompt is v14. Specs `round5/items/F<n>.md`, lane map
+`round5/lanes.json`, common brief `lanes/COMMON4.md`, CONTRACTS §16.56 to §16.61.
+
+Convergence: the confirmed count went 127 (round 2), 85 (round 4), 99 (round 5); turns 3, 0, 0; wrongs 23, 15, 20.
+Most new findings are text drift created by the previous round's fixes (bare `agentsync` in new fix text, docs that
+lag a converter change, wording around a new wait), so each round's diff seeds the next round's review. The loop
+stays the operator's frozen scope; this trend is recorded for the stop decision.
+
+| Lane | Count | Area |
+|---|---|---|
+| A | 9 | purge preview, exclude-empty lock, absent-file alarms, contracts stub test, bare commands in cycle/governance |
+| B | 18 | loop waits, doctor lines, arm_local alarm, config, cli sync line |
+| RA | 25 | setup_report.py (Summary, stopped report, org registration, joined-name rule) |
+| RB | 14 | install.sh (shell fallback report, stopped-copy report, newer-copy message) |
+| E | 14 | `.msg` stubs and their re-render, canonical hash, pptx templates, speech seed |
+| P | 18 | prompt v14, docs/deploy, CONTRACTS cross-references |
+
+The lead built F102 (round 4's seven landed worktrees and branches removed with `git worktree remove` and
+`git branch -d`, no force; the three off-main branches stay with the operator's cleanup step).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

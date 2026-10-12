@@ -14161,3 +14161,27 @@ images are `withheld by label rule` only once the OCR part reads `ready`; an att
 approvals as not observable (R24); an exclude line shows agentsync's own globs as written (R8). Tests:
 `tests/test_deploy_pack.py` (`test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs`,
 `test_setup_feedback_states_the_report_rules_of_round_3`).
+
+### 16.56 Round 5: purge (2026-10-12, wave B13 round 5 lane A)
+
+Reserved for round 5 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 5").
+
+### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
+
+Reserved for round 5 lane B of B13.
+
+### 16.58 Round 5: setup report (2026-10-12, wave B13 round 5 lane RA)
+
+Reserved for round 5 lane RA of B13.
+
+### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)
+
+Reserved for round 5 lane RB of B13.
+
+### 16.60 Round 5: converters, .msg stubs and speech (2026-10-12, wave B13 round 5 lane E)
+
+Reserved for round 5 lane E of B13.
+
+### 16.61 Round 5: setup prompt v14 and docs (2026-10-12, wave B13 round 5 lane P)
+
+Reserved for round 5 lane P of B13.
