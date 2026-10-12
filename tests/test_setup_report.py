@@ -2329,7 +2329,7 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
     ]
     (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
-    shown = section(text, "Installer").split("(what the agent saw)</summary>", 1)[1]
+    shown = section(text, "Installer").split("install.out (", 1)[1].split("</summary>", 1)[1]
     assert f"\n{first}then the list)\n" in shown
     cloud, name = "~/Library/CloudStorage", r"<folder-\d>"
     mine, shared = f"{cloud}/OneDrive-<org-1>", f"{cloud}/OneDrive-SharedLibraries-<org-1>/<library-1>"
@@ -2687,6 +2687,21 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
         "- installer output: no run of this attempt in the last 6 line(s) of install.out (the Installer "
         "section counts the 1 earlier run(s) read)\n" in summary
     )
+    # B13 round 5 F20: the tail it embeds is not "what the agent saw" then, but earlier attempts' output
+    saw = "<summary>the last 6 line(s) of ~/agent-context/setup/install.out ("
+    text, _summary = summary_of(fake_mac)
+    installer = section(text, "Installer")
+    assert saw + "earlier attempts' install.sh output: none of this attempt's runs is in it)" in installer
+    assert "(what the agent saw)" not in installer
+    write_install_log(fake_mac, start="2026-10-01T10:00:00Z", run=old)  # a stopped copy: attempt 2 ran none
+    text, summary = summary_of(fake_mac)
+    assert "no run of this attempt" in summary
+    installer = section(text, "Installer")
+    assert saw + "earlier attempts' install.sh output: this attempt ran no install.sh)</summary>" in installer
+    assert "(what the agent saw)" not in installer
+    out.write_text("\n".join([*block(old, 2), *block(new, 1)]) + "\n", encoding="utf-8")
+    write_install_log(fake_mac, start="2026-10-09T10:01:00Z", run=new, append=True)
+    assert "(what the agent saw)</summary>" in section(summary_of(fake_mac)[0], "Installer"), "its own run"
 
 
 V6_HAPPY = (

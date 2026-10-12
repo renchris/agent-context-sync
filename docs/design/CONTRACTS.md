@@ -14549,6 +14549,13 @@ no numeral for one, and no place word: the others follow on the same line. F9 an
 built once. Tests: `test_an_exclude_line_never_carries_its_folder_names_into_the_report` (with the middle case),
 `test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one`.
 
+**F20: the Installer section says whose install.out lines it embeds.** The `<details>` summary of the
+install.out tail reads `(what the agent saw)` unless the Summary is kept to an attempt with a time and none of that
+attempt's run headers is in the lines read: then `(earlier attempts' install.sh output: this attempt ran no
+install.sh)` when install.log has no run of the attempt (a stopped copy), or `(... none of this attempt's runs is
+in it)` when it has. The test is `_attempt_out_start`, shared with the Summary's `installer output:` line, which is
+unchanged. Test: `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)

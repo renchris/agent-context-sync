@@ -115,7 +115,7 @@ from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Literal, Protocol, TypeVar, cast
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
@@ -2903,6 +2903,24 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
     )
 
 
+def _attempt_out_start(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> int | Literal["unknown"] | None:
+    """Where the latest attempt's runs start in the install.out lines counted (``_Facts.out_counted``): the
+    index of the first header of one of ``runs``; None when none of them is there (the attempt ran no
+    install.sh, or its runs are older than what was read); ``"unknown"`` when runs cannot be told apart (the
+    attempt has no time, no run header was read, or install.log has no run)."""
+    if r.facts.instructions is None or not scoped or not r.facts.instructions[2] or not r.install_runs:
+        return "unknown"
+    ids = {run.run_id for run in runs}
+    return next(
+        (
+            i
+            for i, ln in enumerate(r.facts.out_counted)
+            if (m := _OUT_RUN_RE.match(ln)) is not None and m.group(1) in ids
+        ),
+        None,
+    )
+
+
 def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
     """The Summary's ``installer output:`` line: the Installer section's counts, kept to the latest attempt's
     runs when the attempt has a time (as the install.sh line is). install.out holds every run, earlier
@@ -2911,14 +2929,10 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     assert r.facts.instructions is not None
     counts, read, total, cut, pending = r.facts.instructions
     whole = f"- installer output: {_instruction_text(counts, read, total, cut, pending)}"
-    if not scoped or not total or not r.install_runs:  # nothing to tell runs apart by
+    start = _attempt_out_start(r, runs, scoped)
+    if start == "unknown":  # nothing to tell runs apart by
         return whole
     lines = r.facts.out_counted
-    ids = {run.run_id for run in runs}
-    start = next(
-        (i for i, ln in enumerate(lines) if (m := _OUT_RUN_RE.match(ln)) is not None and m.group(1) in ids),
-        None,
-    )
     if start is None:
         return (
             f"- installer output: no run of this attempt in the last {read} line(s) of install.out (the "
@@ -2969,13 +2983,23 @@ def _installer_output(r: _Run) -> list[str]:
         if read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
+    # An attempt that ran no install.sh (a stopped copy) saw none of these lines: say whose they are, as the
+    # Summary's installer output line does (B13 round 5 F20)
+    att = r.friction.latest if r.friction is not None else None
+    scoped = att is not None and att.begin is not None
+    saw = "what the agent saw"
+    mine = _latest_runs(r)
+    if scoped and _attempt_out_start(r, mine, scoped) is None:
+        saw = "earlier attempts' install.sh output: " + (
+            "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
+        )
     return [
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
         "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
-        f"<details><summary>the last {len(shown)} line(s) of {path} (what the agent saw)</summary>",
+        f"<details><summary>the last {len(shown)} line(s) of {path} ({saw})</summary>",
         "",
         *_fence(_utc_log_times(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown)),
         "",
