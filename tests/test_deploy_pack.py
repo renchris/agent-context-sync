@@ -2609,25 +2609,36 @@ def test_a_test_the_contract_cites_exists() -> None:
 def test_section_7_routes_every_suffix_where_the_registry_does() -> None:
     """B13 round 4 Q56: §7's routing list, read in order so a later SUPERSEDED line wins, gave `.vtt` to
     `text-plain` and named no route for recordings.  With an OCR engine, the media helper and recordings on,
-    every suffix the default registry claims is routed in §7 to that converter, and §7 routes no other."""
+    every suffix the default registry claims is routed in §7 to that converter, and §7 routes no other.
+    B13 round 5 F90: a label rule moves `.msg` to `msg-mime` and removes the image routes, and a pass with no
+    policy could not see that, so §7 named no route for `msg-mime`.  The test now reads §7 twice, by its
+    SUPERSEDED clauses: without a rule it skips a clause "with a label rule", and under a rule one for "no
+    label rule" (the recordings clause says "under a label rule" and holds in both)."""
     from agentsync.config import ConvertConfig  # noqa: PLC0415
     from agentsync.convert.media import MediaEngine  # noqa: PLC0415
     from agentsync.convert.ocr import OcrEngine  # noqa: PLC0415
     from agentsync.convert.registry import Registry  # noqa: PLC0415
+    from agentsync.policy import PolicyConfig  # noqa: PLC0415
 
-    routes: dict[str, str] = {}
-    for match in re.finditer(
-        r"`(\.[^`]+)`\s*→\s*`([a-z0-9-]+)`", _contracts_section("## 7. Conversion", "## 8. ")
-    ):
-        routes.update(dict.fromkeys(match.group(1).split(), match.group(2)))
-    reg = Registry.default(
-        ConvertConfig(recordings=True),
-        ocr=OcrEngine(Path("/nowhere/fake-ocr"), name="paper-vision", revision=2, helper_version="0.3.0"),
-        media=MediaEngine(Path("/nowhere/fake-media"), name="paper-media", helper_version="0.1.0"),
-    )
-    claimed = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
-    assert {".vtt", ".mp4", ".png", ".potx", ".msg"} <= set(claimed)
-    assert routes == claimed
+    clauses = re.split(r"(?=\*\*SUPERSEDED )", _contracts_section("## 7. Conversion", "## 8. "))
+    for rule, skip in ((None, "with a label rule"), (PolicyConfig(refuse_unlabelled=True), "no label rule")):
+        routes: dict[str, str] = {}
+        for clause in clauses:
+            if skip in " ".join(clause.split()):
+                continue
+            for match in re.finditer(r"`(\.[^`]+)`\s*→\s*`([a-z0-9-]+)`", clause):
+                routes.update(dict.fromkeys(match.group(1).split(), match.group(2)))
+        reg = Registry.default(
+            ConvertConfig(recordings=True),
+            policy=rule,
+            ocr=OcrEngine(Path("/nowhere/fake-ocr"), name="paper-vision", revision=2, helper_version="0.3.0"),
+            media=MediaEngine(Path("/nowhere/fake-media"), name="paper-media", helper_version="0.1.0"),
+        )
+        claimed = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
+        assert {".vtt", ".mp4", ".potx", ".msg"} <= set(claimed)
+        assert (".png" in claimed) == (rule is None), "a label rule removes the image routes"
+        assert claimed[".msg"] == ("msg-olefile" if rule is None else "msg-mime")
+        assert routes == claimed, rule
 
 
 def test_the_contracts_class_table_names_every_quarantine_class() -> None:
@@ -2703,6 +2714,39 @@ def test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs() ->
     readme = _page("README.md")
     assert "reaping never removes it" in readme, "the archive guarantee stays"
     assert "The one exception is a copy that the secret scan's new rules match, which is deleted" in readme
+
+
+def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
+    """B13 round 5 F75 and F81 (one defect): since round 4's Q78 a label rule routes `.msg` to `msg-mime`,
+    so every `.msg` is fetched and one that holds MIME text is screened and read as an `.eml`, while the docs
+    said no `.msg` is fetched or converted under a rule and none has its label read.  F87: Q45 retired "runs
+    once the file is gone again", which read as a run nobody starts.  F88: a tombstone and a credential, path
+    or redacted stub written before Q9 keep the heading above the banner."""
+    from agentsync.config import ConvertConfig  # noqa: PLC0415
+    from agentsync.convert.registry import Registry  # noqa: PLC0415
+    from agentsync.policy import PolicyConfig  # noqa: PLC0415
+
+    reg = Registry.default(ConvertConfig(), policy=PolicyConfig(refuse_unlabelled=True))
+    assert reg.for_name("x.msg").converter_id == "msg-mime"  # type: ignore[union-attr]
+    page = _page("docs/deploy/data-governance.md")
+    assert "is not fetched or converted" not in page
+    assert "No label is read from an Outlook `.msg`" not in page
+    assert "has its `msip_labels` header read as an `.eml`'s" in page
+    assert "every `.msg` is downloaded to staging, because only its bytes say which kind it is" in page
+    assert "as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it)" in page
+    assert "A policy change turns a binary `.msg` page published before it into that stub" in page
+    for readme in ("README.md", "docs/deploy/README.md"):
+        text = _page(readme)
+        assert "is set a `.msg` is not converted" not in text, readme
+        assert "(one saved as MIME text is screened and read like an `.eml`)" in text, readme
+        assert "Only `.eml`, a `.msg` saved as MIME text, `.pdf`" in text, readme
+    feedback = _page("docs/deploy/setup-feedback.md")
+    assert "so no converter is registered for it" not in feedback
+    assert "a `.msg` that holds MIME text is screened and read as an `.eml`" in feedback
+    assert "runs once the file is gone again" not in page
+    assert "once the file is gone, the next `agentsync purge --queue` runs it" in page
+    assert "may carry a one-line title heading above it" in page
+    assert "a credential, path or redacted stub" in page
 
 
 def test_setup_feedback_states_the_report_rules_of_round_3() -> None:

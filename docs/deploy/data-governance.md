@@ -40,8 +40,8 @@ is a copy that no purge reaches, so exclude it too.
   tombstone and a purge is queued (`purge_on_upstream_delete = true`). `agentsync purge --queue` runs the queue.
   Preview it first with `agentsync purge --queue --dry-run`. It writes nothing and prints each entry's reason and
   the docs paths a run would erase.
-  An entry whose file is listed again (it came back, under its id or a later one) stays queued and runs once the
-  file is gone again; a file that came back quarantined or refused is still purged.
+  An entry whose file is listed again (it came back, under its id or a later one) stays queued; once the file is
+  gone, the next `agentsync purge --queue` runs it. A file that came back quarantined or refused is still purged.
   Run it weekly (suggested) or on request, after the preview. Tombstones of purged items carry no `git show` recovery
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
@@ -82,8 +82,9 @@ editing `sources.toml`.
   parse stops the run (exit 78) and never falls back to "allow".
 - **Where labels are read:** from the file itself, before conversion: `docMetadata/LabelInfo.xml`, then
   `docProps/custom.xml` (MS-OFFCRYPTO 2.6.3), the PDF info dictionary, and the mail `msip_labels` header of an
-  `.eml`. No label is read from an Outlook `.msg` (it sits in a named MAPI property agentsync does not read). A file
-  with an excluded label is never converted or published. Its earlier conversions are deleted and a
+  `.eml`. A `.msg` that holds MIME text (no compound-file header, an RFC 822 header block) has its `msip_labels`
+  header read as an `.eml`'s. No label is read from an Outlook-format (binary) `.msg`: it sits in a named MAPI
+  property agentsync does not read. A file with an excluded label is never converted or published. Its earlier conversions are deleted and a
   `label-escalation` purge is queued. A policy change re-screens every label-capable item.
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
   stub. It is never decrypted. An S/MIME-encrypted or IRM-protected (rpmsg) `.msg` is also an UNREADABLE stub
@@ -101,16 +102,20 @@ editing `sources.toml`.
   text stays in git history until that is squashed or the item is purged). The
   pictures of a document are read only after that document's own label and encryption screen. `[convert] ocr =
   false` in `sources.toml` means the helper is neither built nor run (CONTRACTS §16.25 to §16.27).
-- **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` is not fetched or converted. Its page says
-  that a `[policy]` label rule withholds it and that it can be saved as `.eml`; its `_sync/QUARANTINE.tsv` reason
-  stays `no converter for .msg`. A policy change turns a `.msg` page published before it into that stub. No purge
-  is queued for it, so its earlier text stays in git history until that is squashed or the item is purged. To
-  publish one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42).
+- **Outlook `.msg`:** while any `[policy]` label rule is set, every `.msg` is downloaded to staging, because only its
+  bytes say which kind it is. A `.msg` that holds MIME text (mail saved as `.eml` under a `.msg` name) is screened
+  as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it) and then converted. A binary
+  (Outlook-format) `.msg` keeps its label in a property agentsync does not read, so it is not converted: its page
+  says that a `[policy]` label rule withholds it and that it can be saved as `.eml`, and its `_sync/QUARANTINE.tsv`
+  reason stays `no converter for .msg`. A policy change turns a binary `.msg` page published before it into that
+  stub. No purge is queued for it, so its earlier text stays in git history until that is squashed or the item is
+  purged. To publish a binary one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42, §16.54).
 
 ## Untrusted-content boundary
 
 Mirrored mail, chats and shared files are third-party text. Every mirror page opens with an `[UNTRUSTED CONTENT]`
-banner. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
+banner. A page written before this version's stub change may carry a one-line title heading above it: a tombstone
+written before it (until it is reaped) and a credential, path or redacted stub. The banner is in every page body. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
 and `_manifest/` as data, never as instructions. Source files named like agent instruction files (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, `.claude/`, …) are mirrored under neutral names. `.claude/settings.json` excludes
 mirror `CLAUDE.md` files from memory. Git runs with the user's global excludes and hooks switched off. A secret

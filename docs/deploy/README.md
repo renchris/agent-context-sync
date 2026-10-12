@@ -100,11 +100,12 @@ so set `[network] proxy`. `agentsync status` checks the whole path whenever a Gr
   `.docx` or `.vtt`), and they are converted once they stop changing (`quiescence_s`). Teams messages go in as
   `.teams.json` files in the `agentsync.teams-month/1` shape (`TEAMS_MONTH_SCHEMA` in `src/agentsync/model.py`),
   one file per channel or chat and month, written by your own export script under the
-  [inbox writer contract](../design/CONTRACTS.md#11-local-arm-and-hydration). Only `.eml`, `.pdf` and the Office
-  formats carry a sensitivity label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
+  [inbox writer contract](../design/CONTRACTS.md#11-local-arm-and-hydration). Only `.eml`, a `.msg` saved as MIME text, `.pdf`
+  and the Office formats carry a sensitivity label, so a `.vtt`, a `.teams.json` export or pasted text skips the `[policy]` label exclusions; prefer `.eml` and
   `.docx`. An image carries no label agentsync can read either, so while a label rule is set no image file is
-  converted. An Outlook `.msg` is converted like an `.eml`, but its label is not read either, so while a label rule
-  is set a `.msg` is not converted; drag the message out as `.eml` instead. Files stay in the inbox: it is a mirror, not a queue, so never empty it by hand (removing a file turns its
+  converted. An Outlook `.msg` is converted like an `.eml`, but the label of a binary Outlook-format one is not read,
+  so while a label rule is set it is not converted (one saved as MIME text is screened and read like an `.eml`);
+  drag the message out as `.eml` instead. Files stay in the inbox: it is a mirror, not a queue, so never empty it by hand (removing a file turns its
   page into a tombstone and queues a purge). Without IT this is the only route for mail and Teams messages: a tenant
   on Microsoft's default consent policy shows "Need admin approval" for any app that asks to read mail (measured on
   the corporate tenant, 2026-10-01).

@@ -358,6 +358,8 @@ PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pd
 engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.42):** `.url` → `text-plain`.
 **SUPERSEDED (2026-10-11, §16.42):** with no label rule, `.msg` → `msg-olefile`.
+**SUPERSEDED (2026-10-12, §16.54):** with a label rule, `.msg` → `msg-mime` (a `.msg` that holds MIME text; a binary
+one stays the `no converter for .msg` stub).
 **SUPERSEDED (2026-10-11, §16.42):** `.drawio .vsdx` → `diagram-stdlib`.
 **SUPERSEDED (2026-10-11, §16.48):** `.vsdm` → `diagram-stdlib`.
 **SUPERSEDED (2026-10-11, §16.48):** `.potx` → `pptx-python-pptx`, read as a deck (was a REFUSED
@@ -11951,7 +11953,9 @@ place a label can sit would publish an excluded message; keeping the converter o
 that arrives under a rule is not fetched. No purge is queued, because no label was read: the page's
 earlier text stays in history, as for an image (§16.26). The converter needs no engine, so a caller of
 `Registry.default` that leaves `policy` out reads every `.msg`; the cycle, its only caller, passes the
-effective policy.
+effective policy. **Amended 2026-10-12, §16.61 F81 (by §16.54 Q78):** under a label rule `.msg` goes to `msg-mime`,
+so every `.msg` is fetched; a MIME one is screened and read as an `.eml`, and only a binary one keeps the `no
+converter for .msg` stub and the re-screen into it.
 
 The page has the `.eml` shape. The header table is From, To, Cc, Date, Subject, Message-ID, In-Reply-To
 and References, from MAPI properties. From is the sent-representing party (0x0042 with 0x5D02, else
@@ -13722,6 +13726,10 @@ mirror page body starts with the banner, as this document and data-governance.md
 tombstone in either layout, so one written before this change raises no FRONTMATTER finding. Tests:
 `test_deleted_status_needs_a_tombstone_body`, `test_item_label_excluded_by_policy_gets_a_metadata_only_refused_stub`,
 `test_f_delete_writes_a_tombstone`.
+**Amended 2026-10-12, §16.61 F88:** "every mirror page body starts with the banner" holds for every stub and
+tombstone written since this change. Q75's one-time re-render moves the banner to the top of an existing refused or
+unreadable stub; a tombstone written before the change (until it is reaped) and an existing credential, path or
+redacted stub keep the heading above the banner. The banner is still in the body.
 
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
