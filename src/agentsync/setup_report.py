@@ -3046,6 +3046,30 @@ def _reached(run: InstallRun) -> str:
     )
 
 
+def _provisional(run: InstallRun, runs: Sequence[InstallRun]) -> bool:
+    """Whether ``run`` is the install.sh run writing this report, read before its report step: install.sh
+    writes a provisional ``end rc=N seconds=S`` line, runs the report, and only then logs the report step and
+    the final end line, whose seconds include the report (B13 round 5 F38). So: the newest run, named by
+    ``AGENTSYNC_REPORT_RUN``, with no ``step=report`` line and its end line last in the log."""
+    me = os.environ.get(REPORT_RUN_ENV, "").strip()
+    return (
+        bool(me)
+        and bool(runs)
+        and run is runs[-1]
+        and run.run_id == me
+        and run.rc is not None
+        and run.step("report") is None
+        and bool(run.lines)
+        and _END_RE.search(run.lines[-1]) is not None
+    )
+
+
+def _exit_text(run: InstallRun, runs: Sequence[InstallRun]) -> str:
+    """``exit N after Ss``, plus ``, before its report step`` when the end line is provisional."""
+    secs = f"{run.seconds if run.seconds is not None else '?'}s"
+    return f"exit {run.rc} after {secs}" + (", before its report step" if _provisional(run, runs) else "")
+
+
 def _run_list(runs: Sequence[InstallRun]) -> list[str]:
     """Every run on one line (the tables above show the last :data:`INSTALL_RUNS_SHOWN` only), and the runs
     with no end line by their start time, whether their process is gone, and the last step they logged."""
@@ -3057,9 +3081,7 @@ def _run_list(runs: Sequence[InstallRun]) -> list[str]:
             "list-folders" if run.list_only else "install",
             len(run.steps),
             _reached(run),
-            f"exit {run.rc} after {run.seconds if run.seconds is not None else '?'}s"
-            if run.rc is not None
-            else "no end line",
+            _exit_text(run, runs) if run.rc is not None else "no end line",
         )
         for run in listed
     ]
@@ -3105,17 +3127,14 @@ def _installer_runs(r: _Run) -> list[str]:
     r.facts.install_seconds = sum(totals)
     r.facts.launchd_simulated = runs[-1].simulated
     shown = runs[-INSTALL_RUNS_SHOWN:]
+    held = "; this run's report step not counted" if _provisional(runs[-1], runs) else ""
     out = [
-        f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line); "
+        f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line{held}); "
         f"the last {len(shown)} (run ids without their process id):"
     ]
     for run in shown:
         steps = [(k, v) for k, v in run.steps]
-        status = (
-            f"exit {run.rc} after {run.seconds if run.seconds is not None else '?'}s"
-            if run.rc is not None
-            else f"no end line ({_open_state(run)})"
-        )
+        status = _exit_text(run, runs) if run.rc is not None else f"no end line ({_open_state(run)})"
         if run.simulated:
             status += " · launchd: simulated"
         out += ["", f"run {run.display_id}: {status}", ""]
@@ -6126,11 +6145,7 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
     if not installs:
         return f"- install.sh: {where}"
     last = installs[-1]
-    status = (
-        f"exit {last.rc} after {last.seconds}s"
-        if last.rc is not None
-        else f"no end line ({_open_state(last)})"
-    )
+    status = _exit_text(last, r.install_runs) if last.rc is not None else f"no end line ({_open_state(last)})"
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts.
     steps = " · ".join(

@@ -4471,6 +4471,39 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     assert "install 19s + 19s" not in time and "during this attempt" not in summary
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_report_install_sh_writes_says_its_run_time_is_before_its_report_step(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 5 F38: install.sh writes a provisional end line, runs the report, and only then logs the
+    report step and the final end line, whose seconds include the report. The report written during the run
+    said "exit 0 after 41s" where install.log ends 43s. Only that run, read then, is labelled: a later read
+    has the final line, which includes the report step."""
+    log = fake_mac["setup"] / "install.log"
+    run = install_run("2026-09-29T09:59:00Z", 0)
+    provisional = "".join(ln for ln in run.splitlines(keepends=True) if "step=report" not in ln)
+    log.write_text(LIST_RUN + provisional, encoding="utf-8")
+    write_friction(fake_mac, V6_HAPPY)
+    monkeypatch.setenv(setup_report.REPORT_RUN_ENV, "20260929T095900Z-77")
+    text, summary = summary_of(fake_mac)
+    installer = section(text, "Installer")
+    assert "run 20260929T095900Z: exit 0 after 19s, before its report step\n" in installer, installer
+    assert "in total (runs with an end line; this run's report step not counted);" in installer
+    assert "the last exit 0 after 19s, before its report step" in summary
+    assert "| install | 3 |" in installer and "exit 0 after 19s, before its report step |" in installer
+    final = provisional + (
+        "2026-09-29T09:59:00Z run=20260929T095900Z-77 step=report seconds=2 rc=0 result=done note=agentsync\n"
+        "2026-09-29T09:59:00Z run=20260929T095900Z-77 end rc=0 seconds=21\n"
+    )
+    log.write_text(LIST_RUN + final, encoding="utf-8")
+    text, summary = summary_of(fake_mac)
+    assert "before its report step" not in text and "report step not counted" not in text
+    assert "the last exit 0 after 21s" in summary
+    log.write_text(LIST_RUN + provisional, encoding="utf-8")
+    monkeypatch.delenv(setup_report.REPORT_RUN_ENV)  # a report another command wrote: not this run's
+    assert "before its report step" not in summary_of(fake_mac)[0]
+
+
 RETRY_ERROR = (
     "2026-09-29T10:00:30Z | step 2 | error | install.sh exited 1: [FAIL] docs_repo.permissions | -\n"
 )

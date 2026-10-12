@@ -14568,6 +14568,15 @@ instead of `during this attempt`, and the time clause sums only the runs inside 
 cover it. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
 `test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
 
+**F38: the report install.sh writes says its run time is before its report step.** install.sh's `on_exit`
+writes a provisional `end rc=N seconds=S` line, runs the report, and only then logs the report step and the final
+end line, whose seconds include the report. A run is provisional only when it is the newest run in install.log,
+`AGENTSYNC_REPORT_RUN` names it, it has no `step=report` line, and its end line is the log's last line
+(`setup_report._provisional`); its status then reads `exit N after Ss, before its report step` in the Installer
+section, the run list and the Summary's install line, and the total reads `(runs with an end line; this run's
+report step not counted)`. A `--report-only` report, and any later read, see the final line and are unchanged.
+install.sh is unchanged. Test: `test_the_report_install_sh_writes_says_its_run_time_is_before_its_report_step`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)
