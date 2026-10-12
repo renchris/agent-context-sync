@@ -5539,6 +5539,12 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
         "below 1 of the checked folder(s); its last walk did not list 4 of the 5 file(s) the mirror holds "
         "for it"
     ), walked
+    # A walk that listed every mirrored file says so, not "did not list 0" (B13 round 2 R14).
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("UPDATE items SET last_seen_run = 2 WHERE source_id = ?", (one,))
+    seed.close()
+    walked = status_parts(fake_mac)[1]["Empty cloud folders"]
+    assert walked.rstrip().endswith("; its last walk listed all 5 file(s) the mirror holds for it"), walked
     # A newer walk that ended on an error may have stamped nothing: not counted against it.
     seed = Seed(fake_mac["config"])
     seed.run(3, {})

@@ -8158,7 +8158,7 @@ asked of the checked folders only and in a timed call: asked of every stored nam
 it took 44 s for 5,000 names against 506 globs, past the report's limit and the installer's. When it is
 stopped the line keeps the folders' own facts and says `excluded in sources.toml now: not measured (time
 limit)`. **Amended 2026-10-11, §16.39 N26:** the line ends with what the source's last walk did not list of
-the files the mirror holds for it.
+the files the mirror holds for it. **Amended 2026-10-11, §16.47 R14:** or, when it listed them all, says so.
 
 **Repeat conversions.** One row for each of the last five runs: files converted, of them failed, of them
 the same file from the same bytes as an earlier run, and of those as the run just before (`not recorded`
@@ -11038,6 +11038,8 @@ includes an exclude, which retires the rows under it at once.
 The setup report's per-source Empty cloud folders line (§16.28) ends, after `... below M of the checked
 folder(s)`, with one of `; its last walk did not list U of the T file(s) the mirror holds for it`, `; no walk
 of it is recorded`, or `; its last walk ended on an error, so the files it did not list are not counted`.
+(**amended 2026-10-11, §16.47 R14:** a fourth ending, `; its last walk listed all T file(s) the mirror holds for
+it`, replaces the first when U is 0.)
 There is no `since` there: the report states the fact, so the two counts can differ only after a `path`
 change.
 

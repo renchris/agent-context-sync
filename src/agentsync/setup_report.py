@@ -4337,7 +4337,11 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 "AND is_dir = 0 AND state != 'tombstone'",
                 (int(walk), src.id),
             )[0]
-            missed = f"its last walk did not list {unseen} of the {total} file(s) the mirror holds for it"
+            missed = (  # "did not list 0" read as a double negative (B13 round 3 R14)
+                f"its last walk listed all {total} file(s) the mirror holds for it"
+                if unseen == 0
+                else f"its last walk did not list {unseen} of the {total} file(s) the mirror holds for it"
+            )
         # The exclude rule costs names x folder levels x globs, and the sync's own advice for these folders
         # is one more glob each: asked of the checked folders only, and stopped like the lstat calls.
         try:
