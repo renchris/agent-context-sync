@@ -12124,4 +12124,89 @@ Reserved for round 3 lane E of B13.
 
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 
-Reserved for round 3 lane P of B13.
+The B13 round 2 items of lane P (specs `round2/items/R<n>.md`, the verifier's corrected fix built). Ten need
+prompt text, so the prompt is **setup prompt v12**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt
+v12` and `setup-prompt-compat 12`, the issue form's placeholder and the block's digest move together; a saved v11
+copy is stopped at step 1 like every older copy. v12 moves no step, so it has no `PROMPT_LAYOUTS` entry and is read
+with v7's rules. Every other lane of round 3 said it had no prompt words, so v12 carries only these.
+
+**Step 1's git stop** (R22, R29, R32). It read "show me its error (a corporate proxy may need HTTPS_PROXY set)
+and go to step 3's report", and nothing told the person what to do once git works. It now reads: show me its
+error and tell me "Once git can reach GitHub from a terminal, start a new session from that terminal and paste
+this prompt again" (a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in
+git's own settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may point at a
+network this Mac is not on), and go to step 3's report.
+- A new session, not the same one: HTTPS_PROXY must be in the environment of the shell the agent runs, and the
+  rules forbid editing the shell profile.
+- git's `http.proxy` wins over the environment (measured with both set: git used the config value). The setting
+  is named for the agent to read, written without backticks so it is no command the block runs; nothing tells
+  the agent to change `~/.gitconfig`.
+- No report-side `NEXT:` was added: a failed clone has no installer and no report, and after a failed pull the
+  report is the old checkout's code.
+- "Before going to the report from either of these two stops" followed three cases, the middle one a recovery;
+  it now names "the Xcode stop or the other-git-failure stop above".
+
+**The step 1 error names the prompt and the agent** (R25). That line is the only one a session writes when step 1
+stops before `--log-start`, so its attempt had no header and the Summary, the friction log section and the issue
+link said `not stated`. Step 1 now has the line's what-text start with `'prompt v12, <agent>: '` ("the same words
+as in step 1's command, then a colon"; the block names `--log-start` once, in the command). `parse_friction` reads
+`prompt vN, <agent>: ` (`_STEP1_STATED_RE`, case-insensitive, agent up to 100 characters with no colon) only on the
+step 1 error that starts a header-less attempt (more than 10 minutes after a finished attempt's end line), puts it
+in `Attempt.stated`, and keeps the rest as the line's what-text. `Attempt.said(key)` reads the header first, then
+`stated`; `Attempt.version`, `_prompt_version`, the Summary's `agent:` and `prompt:` (marked `(from the step 1
+error line)`), the friction section's attempt line, `_turns_line`'s approvals test and `_issue_link` all read
+through it. An attempt with a header, or a late line that stays in its attempt, is never read that way, and a line
+without the words reads `not stated` as before. Tests: `tests/test_setup_report.py`
+(`test_a_header_less_step_1_error_states_its_prompt_and_agent`), `tests/test_deploy_pack.py`
+(`test_readme_step1_is_one_command`: the prompt's words are the ones the regex reads).
+
+**Step 2** (R9, R40). "[warn] or WAITING ON YOU: lines about them may predate this session" covered only a Mac
+that already runs agentsync, while a new Mac's first sync prints one too (an empty cloud folder, which names a
+`sources.toml` edit). Now: "Any [warn] or WAITING ON YOU: line this command prints is mine (on such a Mac it may
+predate this session): show it to me and do not do what it says, neither its commands nor its sources.toml
+edits." After "run the same command again": "If another sync is running when it reinstalls, it says so and waits
+for that sync to end, up to 2 minutes, printing "still running" lines, and then goes on even if that sync has not
+ended; that is expected, not a deviation: do not log it." The 2 minutes is install.sh's `REINSTALL_WAIT` default,
+which the test reads.
+
+**Step 3's report is defined once** (R31): "Step 3's report, where every "go to step 3's report" in this prompt
+lands, has two parts, in this order. First, add a "## Not used" section ...; skip this part if
+~/agent-context/setup does not exist. Then the report, always, ...". The folder is missing only before step 1's
+`--log-start` ran on a new Mac, which has no report either.
+
+**The finish** (R11, R30): "the folders this Mac syncs, as full paths (those step 1's list marked [synced] and
+those step 2 added; if step 1 stopped before its list, the kind = "local" sources in
+~/agent-context/sources.toml; never the inbox or another kind = "inbox" folder), saying which ones this session
+added, or "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step)". The folders are
+the ones install.sh counts (`synced_folders`: live `kind = "local"` sources), the same N step 1 and step 2 print.
+"Every source folder in sources.toml" was not used: it would add the inbox and the person's own inbox folders.
+
+**Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
+block carries a dated line).
+
+**Not built: the finish's NEXT wording and "(WAITING ON YOU above)"** (R133, keep). "The last command's NEXT"
+would read "none" after a failure: the last command before the report is then `install.sh --log`, which prints no
+NEXT. The current wording shows the previous command's NEXT, where a re-run starts. The "above" mismatch shows only
+when the installer exited 0 and the loop's sync then printed no NEXT; it loses nothing.
+
+**Lock holder with no body** (R62; amends §16.39 N24 and §9 step 2 by dated lines). One constant names an empty
+body in `LockHeldError.who`, on the stderr line and in doctor; doctor adds `(a cycle is running)` only for a held
+lock with a body. Tests: `tests/test_ops_lock.py` (`test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`),
+`tests/test_ops_doctor.py` (`test_lock_states`).
+
+**Download hosts, checked weekly** (R119). `scripts/download_hosts.py` follows the redirect chains of the speech
+build's release file, uv's installer, uv itself (the installer's default `ARTIFACT_DOWNLOAD_URLS`), the Python
+3.11 uv installs and PyPI with curl HEAD requests, one hop at a time, and fails when the release file ends off the
+host it-request.md names for release files or any hop passes a host the "Installation downloads" bullet does not
+name. `.github/workflows/download-hosts.yml` runs it weekly and on `workflow_dispatch`, never on a push; it is
+outside the gate (CLAUDE.md says why). Test: `tests/test_deploy_pack.py`
+(`test_a_weekly_check_follows_the_download_hosts_the_it_request_names`, offline).
+
+**Docs** (R61, R63, R65, R66, R116): dated markers in §16.36, §16.37 and §16.43 and the corrected H8 sum (37
+minutes); data-governance.md covers an Outlook `.msg` under a label rule; setup-feedback.md's friction.md row shows
+the current version (`test_setup_feedback_shows_the_current_prompt_version`).
+
+**Not built: placeholder numbers that skip** (R138, keep). Compacting `<kind-N>` numbers by order of appearance
+would make a value's number depend on which other values a report mentions, a new cause of renumbering in every
+report, and the issue link, the Redaction legend and `fix-request.md` would no longer match the report text. N44's
+role-first naming already covers renumbering whatever its cause.
