@@ -4297,17 +4297,20 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         "prompt not stated, agent not stated" in fr and "prompt_version" not in link and "agent" not in link
     )
 
-    # Within 10 minutes and in the attempt's own words: the same session's late line. (Since B13 round 4 Q21
-    # a line whose words name another version or agent is another session's: the next test.)
+    # Within 10 minutes and in the attempt's own words, after its header: another session's (B13 round 5
+    # F23). The prefix is written only before --log-start, which writes the header, so the session that
+    # wrote the header never writes one; the new attempt is read from the line.
     own = "prompt v11, Claude Code, claude-opus-5-5: "
     late = stop.replace("10:20:00Z", "10:05:00Z").replace(f"prompt v12, {agent}: ", own)
-    parsed = setup_report.parse_friction(V11_HAPPY + late).attempts
-    assert len(parsed) == 1 and parsed[0].events[-1].what.startswith("prompt v11, ")
+    first, second = setup_report.parse_friction(V11_HAPPY + late).attempts
+    assert first.stated == {} and second.header == {}
+    assert second.stated == {"Prompt": "v11", "Agent": "Claude Code, claude-opus-5-5"}
+    assert second.events[0].what == "git pull exited 1"
     end = "2026-09-29T10:01:10Z | end"
     headed = V11_HAPPY.replace(end, f"2026-09-29T10:00:00Z | step 1 | error | {own}x | -\n{end}")
-    [attempt] = setup_report.parse_friction(headed).attempts
-    assert attempt.stated == {} and attempt.said("Agent") == "Claude Code, claude-opus-5-5"
-    assert attempt.events[0].what.startswith("prompt v11, "), "an attempt with a header keeps the line whole"
+    first, second = setup_report.parse_friction(headed).attempts
+    assert first.said("Agent") == "Claude Code, claude-opus-5-5" and first.events == ()
+    assert second.stated["Prompt"] == "v11" and second.events[0].what == "x"
 
     # B13 round 4 Q22, Q38, Q67: the step 1 error is the log's first line (a checkout cloned by hand, with no
     # friction.md until this line). Its words are read, and the attempt is no v4 log and no stale one.
@@ -4352,16 +4355,22 @@ def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_en
     assert second.events[0].what == "git pull exited 1"
     fr = setup_report.parse_friction(open_v11 + stop)
     assert setup_report._headerless_kind(fr, 1) == "open" and setup_report._headerless_kind(fr, 0) is None
-    # The same version and agent, 30 seconds on (case and spacing aside): one attempt.
+    # After a header, the same version and agent 30 seconds on (probe P3b) is another session too (B13 round
+    # 5 F23): the prefix is written only before --log-start.
     open_v12 = V12_HAPPY.replace("2026-09-29T10:01:10Z | end | finished\n", "")
     same = "2026-09-29T09:58:30Z | step 1 | error | prompt v12, claude code,  Claude-Opus-5-5: x | -\n"
-    [one] = setup_report.parse_friction(open_v12 + same).attempts
-    assert one.said("Agent") == agent and one.events[0].what.startswith("prompt v12, ")
-    # The same words more than 10 minutes after the attempt's latest time: another session.
-    assert len(setup_report.parse_friction(open_v12 + same.replace("09:58:30Z", "10:08:01Z")).attempts) == 2
-    # Another agent at once: another session.
+    headed, new = setup_report.parse_friction(open_v12 + same).attempts
+    assert headed.said("Agent") == agent and not headed.finished
+    assert new.said("Agent") == "claude code,  Claude-Opus-5-5" and new.events[0].what == "x"
+    # A header-less attempt with stated words: the same words 30 seconds on stay (case and spacing aside)...
+    words = "2026-09-29T09:58:00Z | step 1 | error | prompt v12, Claude Code, claude-opus-5-5: y | -\n"
+    [one] = setup_report.parse_friction(words + same).attempts
+    assert one.said("Agent") == agent and one.events[1].what.startswith("prompt v12, ")
+    # ...more than 10 minutes after the attempt's latest time they are another session's...
+    assert len(setup_report.parse_friction(words + same.replace("09:58:30Z", "10:08:01Z")).attempts) == 2
+    # ...and so is another agent at once.
     other = same.replace("claude code,  Claude-Opus-5-5", "Contoso Agent")
-    assert len(setup_report.parse_friction(open_v12 + other).attempts) == 2
+    assert len(setup_report.parse_friction(words + other).attempts) == 2
     # A stopped v11 copy closes its attempt; a v12 paste two minutes later is its own, within the gap too.
     copy = (
         "Attempt: 2026-09-29T10:00:00Z\nPrompt: v11\nAgent: x\n2026-09-29T10:00:00Z | step 1 | error | "
@@ -4373,6 +4382,26 @@ def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_en
         {},
         {"Prompt": "v12", "Agent": "x"},
     ]
+
+
+def test_a_prefixed_step_1_error_after_a_finished_attempt_is_reported_as_its_own(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 5 F23, probe P8: a finished attempt, then the same agent's prefixed step 1 error two minutes
+    later. It joined the finished attempt, which then read "failed at step 1" with its header's prompt; it is
+    another session's attempt, read from the line."""
+    v6_install_log(fake_mac)
+    late = "2026-09-29T10:03:10Z | step 1 | error | prompt v12, Claude Code, claude-opus-5-5: git pull failed"
+    late += " | -\n"
+    write_friction(fake_mac, V12_HAPPY + late)
+    now = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+    summary, fr = section(text, "Summary"), section(text, "Agent friction log")
+    assert "- prompt: v12 (from the step 1 error line) · run: " in summary, summary
+    assert re.search(r"· step 1 · error · git pull failed\b", summary)
+    assert "2 attempt(s):" in fr, fr
+    [first] = [ln for ln in fr.splitlines() if ln.startswith("- attempt 1 ")]
+    assert "failed at step 1" not in first, first
 
 
 def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac: dict[str, Path]) -> None:

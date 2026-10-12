@@ -489,8 +489,10 @@ NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
 # a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
 # called on every line first, keeps the open attempt's prompt number PV, agent AG and latest time LT, and is 1
-# for a step 1 error that states "prompt vN, <agent>:" words another session's: a version or agent that
-# differs from the attempt's, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
+# for a step 1 error that states "prompt vN, <agent>:" words another session's: after an Attempt: or Prompt:
+# header (HD) always, since a prefixed line is written only before --log-start, so after a header it is
+# always another session's (B13 round 5 F23); after a header-less attempt, a version or agent that differs
+# from its words, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
 # restate(LINE) gives an attempt a step 1 error opened the words that line states.
 FRICTION_AWK='
 		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
@@ -518,10 +520,10 @@ FRICTION_AWK='
 			if (length(c) > 100) return 0
 			SA = agent_key(a); return 1
 		}
-		function restate(line) { PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
+		function restate(line) { HD = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
-			if (line ~ /^Attempt:/) { SEEN = 1; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
-			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
+			if (line ~ /^Attempt:/) { SEEN = 1; HD = 1; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
+			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; HD = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
 			if (line ~ /^[-* ]*Agent:/) { # a no-break space around it goes, as parse_friction strips the value
 				SEEN = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
 				if (AG == "") AG = agent_key(a); return 0
@@ -530,9 +532,9 @@ FRICTION_AWK='
 			new = 0
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
 			else if (line ~ s1 && (PV != "" || AG != "") && stated(line)) {
-				if ((PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
+				if (HD || (PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
 			}
-			if (new) { PV = SV; AG = SA; LT = substr(line, 1, 20) }
+			if (new) { HD = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
 			else if (LT == "" || secs(line) > secs(LT)) LT = substr(line, 1, 20)
 			return new
 		}

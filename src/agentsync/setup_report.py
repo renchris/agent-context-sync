@@ -1222,10 +1222,12 @@ def parse_friction(text: str) -> Friction:
     :data:`_NEW_SESSION_GAP` after the previous attempt's ``end | finished`` line, starts a header-less
     attempt of its own (the lines after it, up to the next header, are its too): the session that failed is
     judged, not the one that had finished. So does a step 1 error that starts with ``prompt vN, <agent>: ``
-    (:data:`_STEP1_STATED_RE`) when the open attempt has a header or stated words and the line's version or
-    agent (casefolded, spaces collapsed, quotes dropped) differs from them, or the line is more than the gap
-    after the attempt's latest time (its ``Attempt:`` line or any event), whether or not the attempt has an
-    end line: a session that stopped at the folder question leaves none (B13 round 4 Q21). Any other line
+    (:data:`_STEP1_STATED_RE`) when the open attempt has a header or an ``Attempt:`` line, whatever the gap:
+    the prefix is written only before ``--log-start``, which writes the header, so after a header it is
+    always another session's (B13 round 5 F23). After a header-less attempt with stated words, it does when
+    the line's version or agent (casefolded, spaces collapsed, quotes dropped) differs from them, or the line
+    is more than the gap after the attempt's latest time, whether or not the attempt has an end line: a
+    session that stopped at the folder question leaves none (B13 round 4 Q21). Any other line
     stays in its attempt (a line logged late in the same session must not become the latest attempt), and
     :func:`stopping_error` does not judge it. When the step 1 error that starts a header-less attempt, or
     that is the log's first line, has those words, the attempt states that version and agent
@@ -1248,6 +1250,10 @@ def parse_friction(text: str) -> Friction:
         header, prior = cast("dict[str, str]", cur["header"]), cast("dict[str, str]", cur["stated"])
         if stated is None or not (header or prior):
             return False
+        # The prefix is written only before --log-start, which writes the header: after a header (or an
+        # Attempt: line) it is always another session's, whatever the gap (B13 round 5 F23)
+        if header or cur["started"] is not None:
+            return True
         said = header.get("Prompt") or prior.get("Prompt", "")
         version = re.search(r"\bv?(\d{1,3})\b", said, re.ASCII)  # ASCII digits, as install.sh's awk (F54)
         if version is not None and int(version.group(1)) != int(stated.group(1)):

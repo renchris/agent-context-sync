@@ -14595,6 +14595,21 @@ secret-scan purge and credential-page alarms became `alarm: ... <path>`, losing 
 that names an item path beside the binary is still `<path>`. Test:
 `test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole`.
 
+**F23: a prefixed step 1 error after a header is another session's.** Amends Q21 (§16.52) in
+`setup_report.parse_friction` and install.sh's `FRICTION_AWK`: the `prompt vN, <agent>:` prefix is written only
+before `--log-start`, which writes the `Attempt:`, `Prompt:` and `Agent:` header, so a session that wrote a header
+never writes one. A prefixed step 1 error therefore starts a new header-less attempt whenever the open attempt has a
+header (or an `Attempt:` line), whatever the gap and in the same words (probes P8: a finished attempt, the error 2
+minutes on; P3b: an open one, 30 seconds on). The version, agent and gap rules now apply only after a header-less
+attempt with stated words. In awk, `track()` sets `HD` on an `Attempt:` or `Prompt:` line, a stated line after it
+is new, and `restate()` and a new attempt clear it, matching Python's empty header for a header-less attempt; so
+`friction_earlier_end` prints the finished attempt's end time and section 3 does not send its patch again. Tests:
+`test_a_prefixed_step_1_error_after_a_finished_attempt_is_reported_as_its_own`,
+`test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line`,
+`test_a_header_less_step_1_error_states_its_prompt_and_agent`,
+`test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions`,
+`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)

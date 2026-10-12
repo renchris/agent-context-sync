@@ -1822,6 +1822,31 @@ def test_a_step_1_error_within_ten_minutes_of_the_end_line_is_the_same_attempts(
     assert _local_work(env) == expected
 
 
+@pytest.mark.parametrize("ended", [True, False], ids=["finished", "open"])
+def test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions(
+    env: dict[str, str], ended: bool
+) -> None:
+    """B13 round 5 F23 (probes P8 and P3b): the "prompt vN, <agent>:" prefix is written only before
+    --log-start, which writes the header, so after a header it is always another session's, whatever the gap
+    and in the same words. Its attempt is a new one: the finished attempt's end line is then an earlier end,
+    and its patch is not sent again; an open attempt has no end line, so nothing is held back."""
+    agent = "Claude Code, claude-opus-5-5"
+    end = f"{ENDED} | end | finished\n" if ended else ""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: {agent}\n{end}"
+        f"2026-10-06T16:4{'8' if ended else '3'}:11Z | step 1 | error | prompt v{COMPAT}, {agent}: git pull "
+        "failed | -\n",
+        encoding="utf-8",
+    )
+    attempts = setup_report.parse_friction(friction_path(env).read_text(encoding="utf-8")).attempts
+    assert len(attempts) == 2 and attempts[1].stated == {"Prompt": f"v{COMPAT}", "Agent": agent}
+    written = "2026-10-06T16:42:39Z"
+    patch = _keep_patch(env, written)
+    sent = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+    assert _local_work(env) == (_not_repeated(patch, written) if ended else sent)
+
+
 def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:
     """The rule's known limit, held as documented: this Mac cannot know what was copied back. A session
     keeps work and reports, nobody copies that file, and a second session starts. Its bring-back file
@@ -4188,10 +4213,15 @@ def test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line(env
         "a current attempt after it",
         "a v12 paste two minutes after the stop",
         "another agent's line, the version the same",
+        # B13 round 5 F23: after a header, a line that states its words is another session's, in any words
+        "the stopped session's own words",
+        "its own agent in curly quotes",
         "a v13 line in curly single quotes",
         "an accented capital in the header, small in the line",
         "a no-break space in the agent",
         "an agent of 100 accented characters at v12",
+        "a no-break space after the header's agent",
+        "a header version in Arabic-Indic digits",
     ]
 
 
