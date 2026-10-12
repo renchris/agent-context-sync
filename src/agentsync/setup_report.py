@@ -5938,9 +5938,10 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     return line
 
 
-_WAIT_BELOW = "(WAITING ON YOU below)"
+_WAIT_NAMED = "(see the WAITING ON YOU lines)"
 """In the loop's NEXT line when the step is one of its waits (``loop.next_step`` rule 5: the operator
-confirms the baseline questions)."""
+confirms the baseline questions). It names no place: status prints the waits below its NEXT, install.sh above
+it (B13 round 4 Q74)."""
 _WAIT_DRAFT = "WAITING ON YOU: the baseline questions are a draft"
 _WAIT_HELD = "WAITING ON YOU: macOS held the listing "
 """How the two waits a setup stops on start, in ``loop.next_step``'s own words: the draft baseline that rule
@@ -5950,12 +5951,12 @@ NEXT, by the same words)."""
 
 def _stopped_wait(found: str | None, waits: Sequence[str]) -> str:
     """The one of ``waits`` (not empty) the loop stopped on: the draft baseline's when the NEXT line
-    ``found`` says the wait is below, else a held listing's, else the first.
+    ``found`` names the waits, else a held listing's, else the first.
 
     The loop prints its waits in a fixed order, the queued purges first and a tripped breaker next. Shown
     by place, a queued purge hid the wait the NEXT line pointed at (field report 2026-10-07: "WAITING ON YOU
     below", then the purge queue and "+2 more")."""
-    if found is not None and _WAIT_BELOW in found:
+    if found is not None and _WAIT_NAMED in found:
         draft = next((wait for wait in waits if wait.startswith(_WAIT_DRAFT)), None)
         if draft is not None:
             return draft

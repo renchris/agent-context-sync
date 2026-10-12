@@ -3478,7 +3478,10 @@ def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[
         "on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear "
         "it; it does not block the next step"
     )
-    step = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    step = (
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session "
+        "done"
+    )
     wait = "WAITING ON YOU: the baseline questions are a draft"
     for note in (again, stuck):
         hooks = setup_report.ReportHooks(loop_next=lambda _config, note=note: [step, wait, online, note])
@@ -3574,7 +3577,10 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
         "WAITING ON YOU: the baseline questions are a draft: in _eval, keep about 10 in questions.md, "
         "correct the answers in answers.md, and change both files to status: confirmed"
     )
-    stop = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    stop = (
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session "
+        "done"
+    )
     hooks = setup_report.ReportHooks(loop_next=lambda config: [stop, wait, draft])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
@@ -3593,7 +3599,7 @@ def test_an_exclude_line_never_carries_its_folder_names_into_the_report(fake_mac
 
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Path], tmp_path: Path) -> None:
-    """Rule 5's NEXT says the wait is below: the Loop line carries it."""
+    """Rule 5's NEXT names the waits: the Loop line carries the one it stopped on."""
     for folder in (fake_mac["one"], fake_mac["two"]):
         (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
@@ -3606,10 +3612,10 @@ def test_a_draft_baseline_shows_its_wait_on_the_loop_line(fake_mac: dict[str, Pa
     assert rc == 0
     [loop] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert loop == (
-        "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU "
-        "below); session done; WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval "
-        "folder, keep about 10 in questions.md, correct the answers in answers.md, and change both files to "
-        "status: confirmed"
+        "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions (see the WAITING "
+        "ON YOU lines); session done; WAITING ON YOU: the baseline questions are a draft: in the docs repo's "
+        "_eval folder, keep about 10 in questions.md, correct the answers in answers.md, and change both "
+        "files to status: confirmed"
     ), loop
     # Path-free but findable: the Configuration part names the docs repo the Summary's words point at.
     config_part = section(text, "Configuration").splitlines()
@@ -3733,7 +3739,9 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         r"`~/\.local/bin/agentsync purge --queue` \(rewrites history\)$",
         line,
     ), line
-    assert line.index("macOS held") < line.index("queued purge") and "(WAITING ON YOU below)" not in line
+    assert (
+        line.index("macOS held") < line.index("queued purge") and "(see the WAITING ON YOU lines)" not in line
+    )
 
     # A draft baseline: rule 5's NEXT says the wait is below, and the loop prints that wait last.
     evals = expand(config.docs_repo) / "_eval"
@@ -3742,10 +3750,11 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     (evals / "answers.md").write_text("status: draft\n\n1. Finance.\n", encoding="utf-8")
     found = waits()
     assert len(found) == 3 and found[-1].startswith(setup_report._WAIT_DRAFT)
-    assert setup_report._WAIT_BELOW in loop.next_lines(config, count_queue=False)[0]
+    assert setup_report._WAIT_NAMED in loop.next_lines(config, count_queue=False)[0]
     line = loop_line()
     assert re.search(
-        r"; NEXT: stop: the operator confirms the baseline questions \(WAITING ON YOU below\); session done; "
+        r"; NEXT: stop: the operator confirms the baseline questions \(see the WAITING ON YOU lines\); "
+        r"session done; "
         r"WAITING ON YOU: the baseline questions are a draft: in the docs repo's _eval folder, keep about 10 "
         r"in questions\.md, "
         r"correct the answers in answers\.md, and change both files to status: confirmed; the command prints "
@@ -3769,7 +3778,10 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
     breaker = "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone)"
     held = "WAITING ON YOU: macOS held the listing of work for a privacy prompt: click Allow"
     draft = "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10"
-    rule5 = "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    rule5 = (
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session "
+        "done"
+    )
     other = "NEXT: run `~/.local/bin/agentsync curate` and follow its NEXT line"
     pick = setup_report._stopped_wait
     assert pick(rule5, [purge, breaker, held, draft]) == draft

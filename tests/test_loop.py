@@ -820,7 +820,8 @@ def test_rule_5_the_operator_confirms_a_draft(tmp_path: Path, folder: Path) -> N
     for questions, answers in (("draft", "draft"), ("confirmed", "draft"), ("", "")):
         _eval(config, questions, answers)
         assert _lines(config) == [
-            "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU below); session done",
+            "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+            "session done",
             DRAFT_WAIT.format("~/agent-context/docs/_eval"),
         ], (questions, answers)
 

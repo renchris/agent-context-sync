@@ -719,8 +719,10 @@ def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(
 def test_the_closing_statuss_waits_are_printed_above_its_next(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    """Rule 5's NEXT names the WAITING lines: they are printed (above it, so it says so), with one NEXT."""
-    rule5 = "stop: the operator confirms the baseline questions (WAITING ON YOU below); session done"
+    """Rule 5's NEXT names the WAITING lines: they are printed above it, with one NEXT. Its phrase names no
+    place (B13 round 4 Q74), so the finish, which lists the waits under the last NEXT, reads true too, and
+    install.sh no longer rewrites it."""
+    rule5 = "stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session done"
     waits = [
         "WAITING ON YOU: the baseline questions are a draft: in ~/agent-context/docs/_eval, keep about 10 in "
         "questions.md, correct the answers in answers.md, and change both files to status: confirmed",
@@ -734,7 +736,8 @@ def test_the_closing_statuss_waits_are_printed_above_its_next(
     at = lines.index(waits[0])
     assert lines[at : at + 2] == waits and at < len(lines) - 2
     assert last_line(cp) == (
-        "NEXT: stop: the operator confirms the baseline questions (WAITING ON YOU above); session done "
+        "NEXT: stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); "
+        "session done "
         f"[setup report: {report_path(env)}]"
     )
     assert one_next(cp) and "a later sync lists it" not in cp.stdout

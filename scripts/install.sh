@@ -3142,7 +3142,6 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	fi
 	if [ -n "$waits" ]; then # printed above the NEXT, which status puts first
 		printf '%s\n' "$waits"
-		next="${next//WAITING ON YOU below/WAITING ON YOU above}"
 	fi
 }
 EXIT_RC=0

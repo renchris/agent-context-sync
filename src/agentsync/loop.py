@@ -736,7 +736,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         )
     if questions is not None and not confirmed:
         return done(
-            "stop: the operator confirms the baseline questions (WAITING ON YOU below); session done", 5
+            "stop: the operator confirms the baseline questions (see the WAITING ON YOU lines); session done",
+            5,
         )
     has_before = any(eval_dir.glob("results-*-before.md"))
     if not pages and not has_before:
