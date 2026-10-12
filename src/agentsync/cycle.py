@@ -92,7 +92,7 @@ from agentsync.errors import (
     PublishError,
     SidecarPathError,
 )
-from agentsync.frontmatter import FrontmatterError, parse_frontmatter
+from agentsync.frontmatter import FrontmatterError, parse_frontmatter, parse_mirror_page
 from agentsync.graph.auth import MsalAuth, settings_from_config
 from agentsync.graph.client import GraphClient, user_agent
 from agentsync.graph.drive import DriveArm
@@ -138,6 +138,7 @@ from agentsync.policy import PolicyConfig
 from agentsync.publish import (
     ARCHIVE_DIR,
     DELETED_UPSTREAM,
+    STUB_RENDER,
     PlannedPage,
     Publisher,
     SourceStatus,
@@ -214,6 +215,8 @@ finishes).  The rest wait for later cycles.  Reading again also stops once the c
 _reread_clock = time.monotonic
 _recording_clock = time.monotonic  # the staging of a recording, charged to the recording allowance
 _POLICY_META = "policy_fingerprint"
+_STUB_RENDER_META = "stub_render"
+"""The ``publish.STUB_RENDER`` the stub pages were last re-rendered for (``Cycle._rerender_stubs``)."""
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
 _SCOPE_ROOT_META = "scope_root:"
@@ -1577,6 +1580,7 @@ class _Cycle:
             lints.remember_gitleaks()  # before the identity: a LaunchAgent run then uses this run's gitleaks
             self._check_secret_rules()
             self.publisher.ensure_scaffold()
+            self._rerender_stubs()
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
@@ -1816,6 +1820,82 @@ class _Cycle:
                 self.manifest.set_meta(_RESCREEN_META, current)
                 log.warning("[policy] changed: %d label-capable file(s) queued for a re-screen", marked)
         self.manifest.set_meta(_POLICY_META, current)
+
+    def _rerender_stubs(self) -> None:
+        """Re-render, once per ``publish.STUB_RENDER``, every stub whose text the stored state alone decides
+        (B13 round 4 Q75): an unchanged refused row is never planned again, so a stub published before a
+        rendering change (``refused: refused:``, the heading above the banner) kept it for good.
+
+        Only a stub rebuilt without a byte of its file: a refused or unreadable stub from its own page (its
+        ``reason:``, which holds the full text, and what it says of the read that made it; the row's cut
+        reason when the page has none), a ``no converter`` stub from its name. Never a credential stub, a
+        path stub or a redacted item: their text depends on more than the reason. A page
+        is written only where the plan differs from the intact page there (as ``_stub_stands`` compares);
+        no verdict or count moves. The meta key is written after the last row, so an interrupted run tries
+        again, and only on a run that covers every live source."""
+        if self.manifest.get_meta(_STUB_RENDER_META) == str(STUB_RENDER):
+            return
+        if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
+            return  # a run of some sources only: the next full one re-renders them all
+        rewritten = 0
+        for src in self.config.live_sources():
+            for row in list(
+                self.manifest.iter_items(src.id, states=(RowState.REFUSED, RowState.QUARANTINED))
+            ):
+                result = self._stub_again(src, row)
+                if result is None:
+                    continue
+                outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+                have = [
+                    (o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE
+                ]
+                try:  # one row that cannot be planned or written keeps its page; no sync stops on it
+                    pages = self.publisher.plan_pages(src, row, result)
+                    if [(p.output_path, p.page_sha256) for p in pages] == have:
+                        continue
+                    self.changes += self.publisher.write_pages(row, pages, self.run_id)
+                except (PublishError, OSError) as exc:
+                    log.warning("%s: a stub could not be rendered again (%s); it keeps its page", src.id, exc)
+                    continue
+                self.stub_pages.update(p.output_path for p in pages)
+                rewritten += 1
+        self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
+        if rewritten:
+            log.info("%d stub page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
+
+    def _stub_again(self, src: SourceConfig, row: ItemRow) -> ConversionResult | None:
+        """The result ``row``'s stub was published from, rebuilt from stored state alone, or None when it
+        cannot be (see ``_rerender_stubs``) or its page is not an intact single stub."""
+        if self.manifest.is_redacted(row.source_id, row.stable_id):
+            return None
+        reason = row.state_reason or ""
+        if reason.startswith((_CREDENTIAL, _SIDECAR_PATH)):
+            return None
+        outs = self.manifest.outputs_for(row.source_id, row.stable_id)
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        stub = OutputStatus.REFUSED if row.state is RowState.REFUSED else OutputStatus.QUARANTINED
+        if len(live) != 1 or live[0].status is not stub or not _pages_intact(self.repo, outs):
+            return None
+        if _no_converter_stub(row):
+            return self._no_converter(src, row)  # None once a converter claims it: the re-read reads it
+        try:
+            fm, _body = parse_mirror_page((self.repo / live[0].output_path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, FrontmatterError):
+            return None
+        # What the page already says about the read that made it (a local label refusal is a converter's,
+        # which read the label): carried over as it is, so only the rendering can differ.
+        converter_id, _, converter_version = (fm.converter or "").partition("@")
+        return ConversionResult(
+            status=ConversionStatus.REFUSED if row.state is RowState.REFUSED else ConversionStatus.UNREADABLE,
+            converter_id=converter_id,
+            converter_version=converter_version,
+            options_hash=fm.options_hash or "",
+            action_key=live[0].action_key or "",
+            content_sha256=fm.content_sha256 or "",
+            canonical_sha256=fm.canonical_sha256 or "",
+            units=(),
+            reason=fm.reason or reason,
+        )
 
     def _rescreen_lines(self) -> list[str]:
         """STATE.md lines while a [policy] re-screen is incomplete (cleared once nothing is left)."""

@@ -836,6 +836,66 @@ def test_label_policy_refuses_a_labelled_file_and_converts_the_rest(
     assert run(config).commit_sha is None  # settled: the refusal is not retried every cycle
 
 
+def test_a_label_stub_from_an_older_rendering_is_rendered_again_once(
+    tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 4 Q75: a stub published before a rendering change ("refused: refused:", R35) kept it for
+    good, since an unchanged refused row is never planned again. The cycle re-renders it once per
+    publish.STUB_RENDER, from stored state alone: one commit, the file never read, then nothing."""
+    import agentsync.policy as content_policy  # noqa: PLC0415
+    from agentsync import cycle as cycle_mod  # noqa: PLC0415
+    from agentsync import publish  # noqa: PLC0415
+    from agentsync.errors import PublishError  # noqa: PLC0415
+
+    class _OldPolicy:  # the publisher's view before fab41a75: it did not strip the reason's "refused: "
+        REFUSED_PREFIX = ""
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(content_policy, name)
+
+    label_ooxml(fixture_files["sample.docx"], local_source_dir / "projects" / "Board Pack.docx")
+    config = config_with(tmp_path, local_source_dir, f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n')
+    rel = mirror("projects/board-pack.docx.md")
+    with monkeypatch.context() as old:
+        old.setattr(publish, "policy", _OldPolicy())
+        assert run(config).exit_code == 0
+    assert page(config.docs_repo, rel)[0]["summary"].startswith("refused: refused: ")
+    fetched: list[str] = []
+    real_fetch = LocalArm.fetch
+
+    def spy(self: LocalArm, item: Any, *args: Any, **kwargs: Any) -> Any:
+        fetched.append(item.rel_path)
+        return real_fetch(self, item, *args, **kwargs)
+
+    monkeypatch.setattr(LocalArm, "fetch", spy)
+    with Manifest(config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+    report = run(config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.MODIFIED, rel)]
+    fm, body = page(config.docs_repo, rel)
+    assert (
+        fm["summary"].startswith("refused: sensitivity label ") and "refused: refused:" not in fm["summary"]
+    )
+    assert fm["reason"].startswith("refused: "), "the stored reason keeps its prefix"
+    assert body.startswith(UNTRUSTED_BANNER) and "did not convert this source: sensitivity label " in body
+    assert "projects/Board Pack.docx" not in fetched, "a re-render reads no byte of the file"
+    assert run(config).commit_sha is None
+    with Manifest(config.state_paths.db) as m:  # a stub already in the current form is not rewritten
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")
+    assert run(config).commit_sha is None
+
+    def no_path(*_args: Any, **_kwargs: Any) -> Any:
+        raise PublishError("no free mirror path")
+
+    with Manifest(config.state_paths.db) as m:  # review of Q75: a row that cannot be planned stops no sync
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")
+    monkeypatch.setattr(publish.Publisher, "plan_pages", no_path)
+    assert run(config).exit_code == 0
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish.STUB_RENDER)
+
+
 class _GateAuth:
     """MsalAuth stand-in for the cycle's own client (no MSAL, no Keychain)."""
 

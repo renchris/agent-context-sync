@@ -299,6 +299,12 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
+STUB_RENDER = 2
+"""The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
+for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
+re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
+2: the banner before the heading, a withheld file's summary, no ``refused: refused:`` (B13 round 4 Q9, Q27,
+Q75)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
