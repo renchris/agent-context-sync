@@ -13736,6 +13736,11 @@ item amends an older section, a dated line sits at that section too.
   run's success from reading as this attempt's. An install run keeps `, exit <rc> (<meaning>)`. Tests:
   `test_the_shell_report_only_gives_the_last_install_runs_exit`,
   `test_the_shell_report_only_names_this_checkouts_commit`.
+- **`<tmp>` in the legend** (Q40). `fallback_redaction` names `this account's temporary folder ($TMPDIR:
+  <tmp>)` after the home path, as the Python legend does: `redaction_pairs` writes `<tmp>` for `$TMPDIR` and its
+  `pwd -P` form. The legend is printed after `redact_stream`, so its `$` is escaped (`\$TMPDIR`): unescaped, bash
+  would print this account's real `/var/folders/...` path, unredacted. Only `$TMPDIR` is named: unlike the
+  Python report, the shell redacts no other `/var/folders` path. `test_shell_report_redacts_tmpdir`.
 
 #### The commands the installer prints
 

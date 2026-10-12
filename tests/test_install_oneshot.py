@@ -4566,6 +4566,10 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
     assert cp.returncode == 1
     text = report_path(env).read_text()
     assert "| <tmp>/x |" in text and str(tmpdir) not in text
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split())
+    assert "the home path (~), this account's temporary folder ($TMPDIR: <tmp>), the login name" in legend, (
+        "the legend names the placeholder its redaction writes, the $ kept literal (B13 round 4 Q40)"
+    )
 
 
 # ---- the shell report's MDM host has its own placeholder (N39) ---------------------------------------------

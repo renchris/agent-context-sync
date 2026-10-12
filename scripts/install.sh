@@ -1646,16 +1646,16 @@ fallback_body() {
 fallback_redaction() {
 	say "## Redaction"
 	say ""
-	say "Shell fallback redaction: the home path (~), the login name (<user>), the full name and its joined forms"
-	say "(<name>), the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
-	say "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>), proxy hosts (one"
-	say "named like proxy or wpad only inside a URL) and the system PAC URL after its scheme (<proxy-N>), the"
-	say "names of the folders under CloudStorage that --source-local, sources.toml or install.log name"
-	say "(<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a"
-	say "whole word), a --source-local argument in install.log that names no CloudStorage folder (<path>), and"
-	say "every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly"
-	say "apostrophe, an en dash or an accent (<path>). Read the report before sending it: anything else"
-	say "confidential is yours to remove."
+	say "Shell fallback redaction: the home path (~), this account's temporary folder (\$TMPDIR: <tmp>), the login name"
+	say "(<user>), the full name and its joined forms (<name>), the organisation or team after the app's name in a"
+	say "CloudStorage folder (OneDrive-<org-N>, Dropbox-<org-N>; an account's email address too), the MDM server's host"
+	say "(<mdmhost>), proxy hosts (one named like proxy or wpad only inside a URL) and the system PAC URL after its"
+	say "scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local, sources.toml or"
+	say "install.log name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it"
+	say "stands as a whole word), a --source-local argument in install.log that names no CloudStorage folder (<path>),"
+	say "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe,"
+	say "an en dash or an accent (<path>). Read the report before sending it: anything else confidential is yours to"
+	say "remove."
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).
