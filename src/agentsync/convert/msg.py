@@ -4,8 +4,10 @@ The page has the shape of an ``.eml`` page (``eml.py``): the header table, the p
 body through pandoc -> gfm), then the attachments listed by name, type, size and sha256, never converted.
 From is the sent-representing party (what an ``.eml``'s From header holds), else the sender.
 A rich-text-only body is not read (no RTF decompressor is shipped): the page says so.  An S/MIME-encrypted
-or IRM-protected message is UNREADABLE; a file that is not an Outlook message is UNREADABLE (``not-msg``),
-and a compound file that cannot be read as one is UNREADABLE (``damaged-msg``). A MemoryError fails the pass.
+or IRM-protected message is UNREADABLE.  A file that starts with an RFC 822 header block (mail saved as
+MIME text under a ``.msg`` name) is read by the ``.eml`` converter; any other file that is not an Outlook
+message is UNREADABLE (``not-msg``), and a compound file that cannot be read as one is UNREADABLE
+(``damaged-msg``). A MemoryError fails the pass.
 
 Never registered under a ``[policy]`` label rule (plan D8, as for images): a ``.msg`` can carry a sensitivity
 label in a named MAPI property that the policy screen does not read, so a rule fails closed.
@@ -17,6 +19,7 @@ import codecs
 import datetime as dt
 import hashlib
 import logging
+import re
 import struct
 import unicodedata
 from collections.abc import Mapping
@@ -31,12 +34,14 @@ from agentsync.convert._common import (
     _cap_body,
     _cell,
     _decode_text,
+    _emitter,
     _escape_line,
     _escape_plain,
     _gfm_table,
     _python_version,
 )
 from agentsync.convert.base import OptionValue, make_unit
+from agentsync.convert.eml import EmlConverter
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
@@ -44,6 +49,14 @@ from agentsync.model import RenderedUnit, UnitKind
 log = logging.getLogger(__name__)
 
 _EMITTER_VERSION = "1.0.1"
+_REREAD_BELOW = "1.0.1"
+"""A ``not-msg`` stub an emitter below this wrote is read again once (``MsgConverter.outdated``): 1.0.0 gave
+it to a file that holds MIME text, which 1.0.1 reads as an ``.eml``.  Never above ``_EMITTER_VERSION``."""
+_HEAD_BYTES = 64 * 1024
+"""How much of a file that is not a compound file is looked at for an RFC 822 header block.  A message's
+headers end well inside it; one routed through many servers can pass 8 KiB."""
+_HEADER_LINE = re.compile(rb"[!-9;-~]+:(?:[ \t]|$)")
+_MAIL_HEADERS = frozenset((b"from", b"subject", b"date", b"message-id", b"mime-version"))
 NOT_MSG_REASON = "not-msg (not an Outlook message)"
 DAMAGED_MSG_REASON = "damaged-msg (a compound file that cannot be read as an Outlook message)"
 _PROPS = "__properties_version1.0"
@@ -177,6 +190,28 @@ class _Msg:
             return ""
 
 
+def _rfc822_head(head: bytes) -> bool:
+    """True when ``head`` starts with an RFC 822 header block: from the first line, header lines (a name of
+    printable ASCII without a colon, a colon, then a space, a tab or the end of the line) or folded
+    continuations of them, ended by a blank line, with From, Subject, Date, Message-ID or MIME-Version among
+    the names.  A zip or other binary file fails at its first line; the ``.eml`` converter would make a page
+    of almost anything, so this is the only gate in front of it."""
+    names: set[bytes] = set()
+    lines = head.split(b"\n")
+    for raw in lines[:-1]:  # the last piece has no line end: cut at _HEAD_BYTES, or no blank line came
+        line = raw.removesuffix(b"\r")
+        if not line:
+            return not names.isdisjoint(_MAIL_HEADERS)
+        if line[:1] in (b" ", b"\t"):
+            if not names:
+                return False
+            continue
+        if _HEADER_LINE.match(line) is None:
+            return False
+        names.add(line.split(b":", 1)[0].lower())
+    return False
+
+
 def _address(name: str, addr: str) -> str:
     addr = addr if "@" in addr else ""
     if name and addr and name != addr:
@@ -194,6 +229,7 @@ class MsgConverter:
         """Bind converter options from config."""
         self._cfg = cfg
         self._pandoc = _PandocRunner(cfg.pandoc_path)
+        self._eml = EmlConverter(cfg)  # a .msg that holds MIME text (``_rfc822_head``)
 
     def version(self) -> str:
         """Version as run (emitter + olefile + python + pandoc)."""
@@ -210,21 +246,37 @@ class MsgConverter:
             "max_page_bytes": self._cfg.max_page_bytes,
         }
 
+    @property
+    def outdated_key(self) -> str:
+        """What ``outdated`` goes by: the running emitter and the floor.  The cycle keeps it in what it
+        remembers having looked for, so a new floor makes it look again."""
+        return f"{_EMITTER_VERSION}<{_REREAD_BELOW}"
+
     def outdated(self, produced: str, reason: str | None = None) -> bool:
         """True for a stub emitter 1.0.0 settled as ``not-msg (…): <exception type>`` (a damaged message,
-        or a MemoryError): an unchanged file is never converted again, so only this reads it again.  No
-        reason this emitter writes has the suffix, so the rule ends after one re-read.  ``produced`` is
-        not asked: the suffix alone names the emitter that wrote it."""
-        return reason is not None and reason.startswith(NOT_MSG_REASON + ": ")
+        or a MemoryError), and for a ``not-msg`` stub from an emitter below ``_REREAD_BELOW`` (a file that
+        holds MIME text, read as an ``.eml`` since 1.0.1).  An unchanged file is never converted again, so
+        only this reads it again.  No reason this emitter writes has the suffix, and what a re-read writes is
+        under the running emitter, so the rule ends after one re-read.  Never true for a page."""
+        if reason is None or not reason.startswith(NOT_MSG_REASON):
+            return False
+        if reason.startswith(NOT_MSG_REASON + ": "):
+            return True
+        emitter, running, floor = _emitter(produced), _emitter(_EMITTER_VERSION), _emitter(_REREAD_BELOW)
+        if emitter is None or running is None or floor is None:
+            return False
+        return reason == NOT_MSG_REASON and emitter < min(floor, running)
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
         try:
             with src.open("rb") as fh:
-                head = fh.read(8)
+                head = fh.read(_HEAD_BYTES)
         except OSError as exc:
             raise ConversionError(f"cannot read: {exc}") from exc
-        if head != olefile.MAGIC:
+        if head[: len(olefile.MAGIC)] != olefile.MAGIC:
+            if _rfc822_head(head):  # mail saved as MIME text under a .msg name: an .eml by another name
+                return self._eml.convert(src, name=name)
             raise UnreadableSourceError(NOT_MSG_REASON)
         try:
             ole = olefile.OleFileIO(str(src))

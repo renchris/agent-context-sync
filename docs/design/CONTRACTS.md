@@ -7509,7 +7509,11 @@ never asks for a re-read.
 - `MsgConverter.outdated`: true for a stub (never a page) whose reason starts `not-msg (not an Outlook
   message): `, the `<exception type>` form only emitter 1.0.0 wrote for a damaged message or a
   `MemoryError` (§16.48 R36). No reason a later emitter writes has that suffix, so the rule ends after one
-  re-read; `produced` is not asked.
+  re-read; for it `produced` is not asked. Also true for a stub whose reason is `not-msg (not an Outlook
+  message)` from an emitter below `msg._REREAD_BELOW = "1.0.1"` (§16.48 R87: 1.0.0 gave it to a `.msg`
+  that holds MIME text, which 1.0.1 reads as an `.eml`); a re-read writes under the running emitter, so a
+  file that is no message at all is read once more and no more. `MsgConverter.outdated_key` is
+  `1.0.1<1.0.1`.
 - **The field build's versions** (`image._field_build`, `image._FIELD_MARKS`). One Mac mirrored with a
   build of OCR that was never on main. Its document versions end in `+ocr-off` when it had no engine and
   otherwise in an identity that holds `+helper-` and `+macos-`; its pages can hold a helper's failure text
@@ -7533,6 +7537,9 @@ never asks for a re-read.
 
 Amended 2026-10-11 by §16.48 (R36): five converters answer `outdated`, not four; `MsgConverter.outdated`
 reads again a `.msg` stub settled as `not-msg (…): <exception type>`.
+
+Amended 2026-10-11 by §16.48 (R87): `MsgConverter.outdated` also reads again a plain `not-msg` stub from
+emitter 1.0.0, and `MsgConverter` has an `outdated_key`.
 
 **Which files** (`cycle._reread_source`, at the end of the source's work queue in `_sync_source`, so new and
 changed files had the cycle's OCR time first). A local or inbox source only.
@@ -11931,8 +11938,10 @@ type the screen reads is the storage's own 0x370E tag as `Message.get_content_ty
 cut at the first `;`, stripped, lower case. It is read for every attachment storage, also one listed as
 `application/vnd.ms-outlook` because it is marked method 5. No `smime-type` parameter is read from a
 `.msg`, so a PKCS #7 part outside the signed class fails closed. A file that
-does not start with the compound-file magic, or that has no root properties stream (a `.doc` renamed), is
-`NOT_MSG_REASON` (`not-msg (not an Outlook message)`). A compound file that olefile cannot open, or whose
+does not start with the compound-file magic but with an RFC 822 header block (mail saved as MIME text under
+a `.msg` name, §16.48 R87) is converted by `EmlConverter` and gets the `.eml` page, under `msg-olefile`'s id
+and version. Any other file that does not start with the compound-file magic, or one that has no root
+properties stream (a `.doc` renamed), is `NOT_MSG_REASON` (`not-msg (not an Outlook message)`). A compound file that olefile cannot open, or whose
 reading past the root properties stream raises, is `DAMAGED_MSG_REASON` (`damaged-msg (a compound file that
 cannot be read as an Outlook message)`); the exception's class is logged at info, never written into the
 reason. `MemoryError` is not a fact about the file: it fails the pass (FAILED, not cached, read again) and
@@ -11947,6 +11956,9 @@ every compound format and is not narrowed for `.msg`.
 Amended 2026-10-11 by §16.48 (R36, R55): a compound file that cannot be read is `damaged-msg` with no
 exception type in it, not `not-msg: <exception type>`; `MemoryError` fails the pass instead of settling as
 `not-msg`, and so does an `OSError` writing pandoc's temporary copy of an HTML body.
+
+Amended 2026-10-11 by §16.48 (R87): a `.msg` that starts with an RFC 822 header block is read as an `.eml`,
+not `not-msg`.
 
 `.msg` stays out of `slug.STRIP_SUFFIXES`: the page keeps the path of the stub it replaces. An existing
 `no converter for .msg` stub becomes a page with no operator step: on this Mac through the re-read pass
@@ -11976,13 +11988,16 @@ class MsgConverter:
     def __init__(self, cfg: ConvertConfig) -> None: ...
     def version(self) -> str: ...
     def options(self) -> Mapping[str, OptionValue]: ...
+    @property
+    def outdated_key(self) -> str: ...
+    def outdated(self, produced: str, reason: str | None = None) -> bool: ...
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]: ...
 ```
 
 Tests: `tests/test_convert_formats.py` (headers, body and the four kinds of attachment; From for a shared
 mailbox; an HTML-only and a rich-text-only body; a narrow string in a code page Python does not name;
 each protected kind, a type that carries a parameter and one on a method-5 storage, and a signed message
-read; two files that are not messages; three damaged ones; a MemoryError at the open and the read; an
+read; eight files that are not messages; a `.msg` that holds MIME text, read as an `.eml`; three damaged ones; a MemoryError at the open and the read; an
 encrypted Office attachment; equal output on a rebuild; the stub under each label rule), `tests/test_convert_core.py` (the
 route set, the counts, no `.msg` converter under a rule), `tests/test_cycle.py` (a page becomes the stub
 under a rule with no purge; a stub from before the converter is read once), `tests/test_setup_report.py`
@@ -11992,6 +12007,9 @@ committed.
 
 Amended 2026-10-11 by §16.48 (R36, R55): the tests list two files that are not messages (was three), three
 damaged ones and a MemoryError at the open and at the read.
+
+Amended 2026-10-11 by §16.48 (R87): eight files that are not messages (was two), a MIME `.msg` read as an
+`.eml`, and `outdated` and `outdated_key` in the signature.
 
 #### Diagrams: draw.io and Visio (N47)
 
@@ -12986,6 +13004,31 @@ temporary folder). Before, that reached the broad clause and a healthy message w
 change is shared by `.eml`, Teams and `.html` pages, which made such an error FAILED already. Tests:
 `tests/test_convert_formats.py` (`test_memory_error_on_a_msg_fails_the_pass_and_is_not_cached`, the open
 and the read; `test_a_full_disk_while_an_html_body_is_copied_for_pandoc_fails_the_pass_and_is_not_cached`).
+
+**A `.msg` that holds MIME text is read as an `.eml` (R87).** Amends §16.42 N46 and §16.27's `outdated`
+list. Some tools save mail as RFC 822 text under a `.msg` name; `MsgConverter.convert` raised `not-msg` for
+it, which the setup report calls `not the type its name says`. Now, when a file does not start with the
+compound-file magic, the converter reads its first 64 KiB (`msg._HEAD_BYTES`) and `msg._rfc822_head`
+looks for a header block from the very first line: header lines (`[!-9;-~]+:` then a space, a tab or the
+end of the line) or folded continuations of them, ended by a blank line, with at least one of From,
+Subject, Date, Message-ID or MIME-Version. When it finds one the file is converted by `EmlConverter` (the
+same page an `.eml` of those bytes gets, under `msg-olefile`'s id and version); otherwise it stays
+`not-msg`. The gate is strict because `EmlConverter` makes a page of almost anything: a zip or a binary
+file fails at its first line. The window is 64 KiB, not the 8 KiB the finding sketched, because a message
+routed through many servers can carry more than 8 KiB of headers. The label path does not change:
+`MsgConverter` stays unregistered under a `[policy]` label rule (plan D8), so such a file is still the `no
+converter for .msg` stub there. `policy.read_labels` picks the `.eml` label reader by name only, so if MIME
+`.msg` files are ever to be read under a rule it must first sniff the same block. The emitter stays 1.0.1
+(one bump past main, R36's): a version change reads nothing again by itself, so `MsgConverter.outdated`
+is also true for a plain `not-msg` stub from an emitter below `msg._REREAD_BELOW = "1.0.1"`, and
+`MsgConverter.outdated_key` (`1.0.1<1.0.1`) puts the floor in what the cycle remembers having looked for.
+Each such row is read once; one that is no message stays `not-msg` under 1.0.1 and is not read again.
+Tests: `tests/test_convert_formats.py` (`test_a_msg_that_holds_mime_text_is_read_as_an_eml`, CRLF and LF;
+`test_not_a_message_is_a_settled_unreadable_stub`, a zip, binary, a late header, no mail header, a broken
+block, no blank line, a blank first line; `test_under_a_label_rule_a_msg_is_the_no_converter_stub`, a MIME
+`.msg` under each rule), `tests/test_convert_core.py`
+(`test_a_not_msg_stub_from_before_mime_text_was_read_is_outdated_and_one_from_now_is_not`) and
+`tests/test_cycle.py` (`test_a_mime_msg_settled_as_not_msg_by_emitter_1_0_0_is_read_once_as_a_page`).
 
 #### The speech build and the build watcher
 

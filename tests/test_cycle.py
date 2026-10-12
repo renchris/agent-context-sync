@@ -2382,6 +2382,33 @@ def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
     assert run(sample_config).commit_sha is None and fetched == [KICKOFF_MSG], "no file is read a second time"
 
 
+def test_a_mime_msg_settled_as_not_msg_by_emitter_1_0_0_is_read_once_as_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R87: emitter 1.0.0 settled a ``.msg`` that holds MIME text as ``not-msg``.  The file is unchanged, so
+    only ``MsgConverter.outdated`` reads it again: once, into the page the ``.eml`` converter makes; a
+    binary ``.msg`` beside it is read again once too and stays ``not-msg``."""
+    plan, junk = "projects/Contoso plan.msg", "projects/Contoso junk.msg"
+    (local_source_dir / plan).write_bytes(
+        b"From: Ann Contoso <ann@contoso.example>\r\nSubject: Q3 plan\r\n\r\nHello Bob.\r\n"
+    )
+    (local_source_dir / junk).write_bytes(b"PK\x03\x04" + bytes(range(256)))
+    with monkeypatch.context() as old:
+        old.setattr(msg_mod, "_EMITTER_VERSION", "1.0.0")
+        old.setattr(msg_mod, "_rfc822_head", lambda _head: False)
+        assert run(sample_config).exit_code == 0
+        for rel in (plan, junk):
+            fm, _body = _mirror_page(sample_config, rel)
+            assert fm["reason"] == msg_mod.NOT_MSG_REASON and fm["converter"].startswith("msg-olefile@1.0.0+")
+    fetched = _fetches(monkeypatch)
+    assert run(sample_config).commit_sha is not None and sorted(fetched) == sorted([plan, junk])
+    fm, body = _mirror_page(sample_config, plan)
+    assert fm["status"] == "current" and fm["converter"].startswith("msg-olefile@1.0.1+")
+    assert "| From | Ann Contoso <ann@contoso.example> |" in body and "Hello Bob." in body
+    assert _mirror_page(sample_config, junk)[0]["reason"] == msg_mod.NOT_MSG_REASON
+    assert run(sample_config).commit_sha is None and len(fetched) == 2, "no file is read a second time"
+
+
 def test_a_helper_that_fails_on_everything_costs_no_image_its_reading(
     sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

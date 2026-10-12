@@ -627,8 +627,22 @@ def test_a_msg_stub_with_an_exception_type_in_its_reason_is_outdated_and_no_othe
     for exc in ("ValueError", "MemoryError", "OleFileError"):
         assert _outdated(reg, "a.msg", "1.0.0+x", f"{msg.NOT_MSG_REASON}: {exc}"), exc
         assert _outdated(reg, "a.msg", conv.version(), f"{msg.NOT_MSG_REASON}: {exc}"), exc
-    for reason in (msg.NOT_MSG_REASON, msg.DAMAGED_MSG_REASON, "encrypted-office", "empty output", None):
+    for reason in (msg.DAMAGED_MSG_REASON, "encrypted-office", "empty output", None):
         assert not _outdated(reg, "a.msg", "1.0.0+x", reason), reason
+
+
+def test_a_not_msg_stub_from_before_mime_text_was_read_is_outdated_and_one_from_now_is_not() -> None:
+    """Emitter 1.0.0 settled a ``.msg`` that holds MIME text as ``not-msg``; 1.0.1 reads it as an ``.eml``
+    (R87).  A version change reads nothing again by itself, so the rule does: a ``not-msg`` stub from an
+    emitter below ``msg._REREAD_BELOW`` is read again once.  What the re-read writes is under the running
+    emitter, which is never outdated, so a file that is no message at all is read once and no more."""
+    reg = Registry.default(ConvertConfig())
+    conv = reg.for_name("a.msg").inner  # type: ignore[union-attr]
+    assert msg._REREAD_BELOW == "1.0.1" and conv.outdated_key == "1.0.1<1.0.1"
+    assert _outdated(reg, "a.msg", "1.0.0+olefile-0.47+python-3.12.7+pandoc-3.5", msg.NOT_MSG_REASON)
+    for produced in (conv.version(), "unavailable", "1.0.1+x", "1.1.0+x"):
+        assert not _outdated(reg, "a.msg", produced, msg.NOT_MSG_REASON), produced
+    assert not _outdated(reg, "a.msg", "1.0.0+x"), "a page is never outdated"
 
 
 def test_a_stub_is_outdated_only_when_it_is_the_no_text_stub_of_a_pdf() -> None:

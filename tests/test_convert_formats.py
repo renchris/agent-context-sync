@@ -3747,14 +3747,49 @@ def test_signed_msg_is_read(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "data",
     [
-        b"From: someone\n\nnot a compound file\n",  # an .eml saved under a .msg name
         cfb_bytes({"WordDocument": b"\0" * 64}),  # a compound file that is not a message (.doc renamed)
+        b"PK\x03\x04" + bytes(range(256)) * 8,  # a zip
+        bytes(range(256)) * 8,  # binary
+        b"PK\x03\x04Subject: Q3 plan\r\n\r\nHello Bob.\r\n",  # a header after other bytes, not at the start
+        b"Note: not mail\n\nHello Bob.\n",  # a header block that names no mail header
+        b"From: Ann <ann@contoso.example>\nnot a header line\n\nHello Bob.\n",  # broken before a blank line
+        b"Subject: Q3 plan\nFrom: Ann <ann@contoso.example>\n",  # headers and no blank line after them
+        b"\nSubject: Q3 plan\n\nHello Bob.\n",  # a blank first line: no header block at the start
     ],
-    ids=["an eml", "a word document"],
-)
+    ids=["a word document", "a zip", "binary", "a late header", "no mail header", "a broken block",
+         "no blank line", "a blank first line"],
+)  # fmt: skip
 def test_not_a_message_is_a_settled_unreadable_stub(tmp_path: Path, data: bytes) -> None:
     result = _msg_result(tmp_path, data)
     assert result.status is ConversionStatus.UNREADABLE and result.reason == NOT_MSG_REASON
+
+
+MIME_MSG = (
+    b"From: Ann Contoso <ann@contoso.example>\r\n"
+    b"To: Bob <bob@contoso.example>\r\n"
+    b"Subject: Q3 plan\r\n"
+    b"X-Contoso-Note: a header folded\r\n"
+    b"\tover two lines\r\n"
+    b"Date: Mon, 14 Sep 2026 09:12:00 +0000\r\n"
+    b"Content-Type: text/plain; charset=utf-8\r\n"
+    b"\r\n"
+    b"Hello Bob.\r\n"
+)
+"""An RFC 822 message, as a tool that saves mail as MIME text under a ``.msg`` name writes it."""
+
+
+@pytest.mark.parametrize("data", [MIME_MSG, MIME_MSG.replace(b"\r\n", b"\n")], ids=["crlf", "lf"])
+def test_a_msg_that_holds_mime_text_is_read_as_an_eml(tmp_path: Path, data: bytes) -> None:
+    """A ``.msg`` that starts with an RFC 822 header block (a mail header among them, a blank line after)
+    is an ``.eml`` under another name: the page is the one the ``.eml`` converter makes of the same bytes,
+    under the ``.msg`` converter's id and version."""
+    result = _msg_result(tmp_path, data)
+    assert result.status is ConversionStatus.OK, result.reason
+    assert (result.converter_id, result.converter_version) == ("msg-olefile", MsgConverter(CFG).version())
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "m.msg", data), name="m.msg"))
+    eml = _one(EmlConverter(CFG).convert(_write(tmp_path, "m.eml", data), name="m.eml"))
+    assert (u.title, u.body, u.summary) == (eml.title, eml.body, eml.summary)
+    assert "| From | Ann Contoso <ann@contoso.example> |" in u.body and "Hello Bob." in u.body
 
 
 @pytest.mark.parametrize(
@@ -3858,6 +3893,11 @@ def test_under_a_label_rule_a_msg_is_the_no_converter_stub(tmp_path: Path, rule:
     assert _msg_result(tmp_path, msg_bytes()).status is ConversionStatus.OK
     result = _msg_result(tmp_path, msg_bytes(), Registry.default(CFG, policy=rule))
     assert (result.status, result.reason) == (ConversionStatus.REFUSED, "no converter for .msg")
+    # A .msg that holds MIME text is read as an .eml, but the label screen reads .eml labels only for an
+    # .eml name: under a rule it stays the stub, never a page whose label nothing read (R87).
+    assert _msg_result(tmp_path, MIME_MSG).status is ConversionStatus.OK
+    mime = _msg_result(tmp_path, MIME_MSG, Registry.default(CFG, policy=rule))
+    assert (mime.status, mime.reason, mime.units) == (ConversionStatus.REFUSED, "no converter for .msg", ())
 
 
 # ---------------------------------------------------------------------------------------------------------
