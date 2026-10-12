@@ -807,12 +807,14 @@ def _status_lines(config: Config) -> list[str]:
     gov = governance.load_governance(config.config_path)
     for h in governance.active_holds(config.state_paths.root, gov):
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
-    queued = governance.pending_purges(config.state_paths.root)
+    queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         out.append(
             f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
             f"`{loop.BIN} purge --queue`)"
         )
+    if kept:
+        out.append(f"queued purges kept: {len(kept)} {governance.KEPT_PURGES}")
     try:
         cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -1196,9 +1198,18 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     compact_fix = f"{loop.BIN} sync (its next full pass compacts); release any hold"
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
-    queued = governance.pending_purges(config.state_paths.root)
+    queued, kept = governance.partition_purges(config.state_paths)
+    also = f"; {len(kept)} {governance.KEPT_PURGES}" if kept else ""
+    if not queued and kept:
+        out.append(
+            _check(
+                "governance.purge_queue", True, f"{len(kept)} {governance.KEPT_PURGES}", doctor.Severity.INFO
+            )
+        )
     if queued:
-        detail = f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations)"
+        detail = (
+            f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations){also}"
+        )
         if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
             # install.sh prints the loop's WAITING ON YOU line for the queue: no second instruction here.
             out.append(
@@ -1772,12 +1783,19 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         for rep in reports:
             _print_purge(rep)
         left = governance.pending_purges(config.state_paths.root)
-        if dry_run:
-            _out(f"{len(reports)} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
-            return EXIT_OK
         ran = sum(1 for r in reports if not r.not_run)  # an entry the queue did not run stays queued
-        _out(f"{ran} queued purge(s) run; {len(left)} still queued")
-        return EXIT_OK if all(r.verified for r in reports) and not left else EXIT_FAILED
+        if dry_run:
+            _out(f"{ran} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
+            return EXIT_OK
+        # a kept upstream deletion is no failure: no run clears it while its file is listed, and it runs on
+        # its own once the file is gone
+        stuck, kept = governance.partition_purges(config.state_paths, left)
+        if left and not stuck:
+            _out(f"{ran} queued purge(s) run; {len(kept)} stay queued while their file is listed")
+        else:
+            also = f" ({len(kept)} of them while their file is listed)" if kept else ""
+            _out(f"{ran} queued purge(s) run; {len(left)} still queued{also}")
+        return EXIT_OK if all(r.verified or r.not_run for r in reports) and not stuck else EXIT_FAILED
     if not args.selector:
         _err("purge: SELECTOR (id=<stable_id> | path=<glob> | docs=<glob>) or --queue is required")
         return EXIT_USAGE

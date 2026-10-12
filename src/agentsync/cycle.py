@@ -2215,15 +2215,18 @@ class _Cycle:
         if retention:
             lines += ["## Retention", "", *retention, ""]
         lines += governance.hold_state_lines(self.config.state_paths.root, self.gov)
-        queued = governance.pending_purges(self.config.state_paths.root)
+        queued, kept = governance.partition_purges(self.config.state_paths)
+        if queued or kept:
+            lines += ["## Queued purges", ""]
         if queued:
-            lines += [
-                "## Queued purges",
-                "",
+            lines.append(
                 f"- {len(queued)} purge request(s) waiting; preview with "
-                "`agentsync purge --queue --dry-run`, then run `agentsync purge --queue` (rewrites history)",
-                "",
-            ]
+                "`agentsync purge --queue --dry-run`, then run `agentsync purge --queue` (rewrites history)"
+            )
+        if kept:
+            lines.append(f"- {len(kept)} {governance.KEPT_PURGES}")
+        if queued or kept:
+            lines.append("")
         return lines
 
     def _append_state(self, lines: Sequence[str]) -> None:

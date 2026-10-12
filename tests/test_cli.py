@@ -1474,7 +1474,14 @@ def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
     head = git(repo, "rev-parse", "HEAD").strip()
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
-    assert "0 queued purge(s) run; 1 still queued" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 still queued"
+    # R96: the held entry has a report line with its reason, as a kept one does
+    assert (
+        "NOT VERIFIED · 0 item(s)" in out
+        and "  note: stays queued: purge suspended by legal/records hold: " in out
+    )
+    assert sid not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
 
@@ -1483,7 +1490,9 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_coun
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """C8: an upstream deletion of a file the manifest lists again stays queued with its reason; the last line
-    counts only the entries that ran, as for a held one."""
+    counts only the entries that ran.  No run clears it while the file is listed, so it is no wait, no doctor
+    WARN and no failed exit, only a note (B13 round 2, R49: a WAITING ON YOU line sent the operator to a run
+    that exited 1 and cleared nothing, on every sync)."""
     cfg = _synced(initialised)
     repo = initialised.docs_repo
     page = "mirror/source/projects/sample.txt.md"
@@ -1492,14 +1501,81 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_coun
     reason = governance.PurgeReason.UPSTREAM_DELETED
     assert governance.enqueue_purge(initialised.state_paths.root, selector, reason)
     head = git(repo, "rev-parse", "HEAD").strip()
+    kept = f"1 {governance.KEPT_PURGES}"
+
+    step = loop.next_step(initialised)
+    assert not any("queued purge" in w for w in step.waits) and "governance.purge_queue" not in step.checks
+    assert kept in step.notes
+    lines = cli._status_lines(initialised)
+    assert f"queued purges kept: {kept}" in lines and not any(x.startswith("queued purges: ") for x in lines)
+    (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
+    assert check.ok and check.severity is doctor.Severity.INFO and check.fix is None and check.detail == kept
     capsys.readouterr()
-    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    )
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "NOT VERIFIED · 0 item(s) · 0 docs path(s)" in out and "  note: stays queued: " in out
-    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 still queued"
+    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 stay queued while their file is listed"
     assert sid not in out and "sample" not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
+
+
+def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_runnable_one(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """R49, the mixed case: one kept upstream deletion and one held operator purge.  The wait, status and
+    doctor count only the entry a run can clear; the run exits 1 for it and names both."""
+    cfg = _synced(initialised)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    root = initialised.state_paths.root
+    live = governance.PurgeSelector(stable_id=sid, source_id="source")
+    assert governance.enqueue_purge(root, live, governance.PurgeReason.UPSTREAM_DELETED)
+    other = governance.PurgeSelector(source_id="source", path_glob="nothing/*")
+    assert governance.enqueue_purge(root, other, governance.PurgeReason.OPERATOR)
+    assert cli.main(["hold", "source", "--reason", "matter 7", "--owner", "legal", "--config", cfg]) == 0
+
+    step = loop.next_step(initialised)
+    assert next(w for w in step.waits if "queued purge" in w).startswith("1 queued purge(s): ")
+    assert f"1 {governance.KEPT_PURGES}" in step.notes
+    lines = cli._status_lines(initialised)
+    assert any(x.startswith("queued purges: 1 (") for x in lines) and any(
+        x.startswith("queued purges kept: 1 ") for x in lines
+    )
+    (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
+    assert not check.ok and check.severity is doctor.Severity.WARN
+    assert check.detail.startswith("1 purge request(s) queued") and check.detail.endswith(
+        governance.KEPT_PURGES
+    )
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert "  note: stays queued: purge suspended by legal/records hold: " in out
+    assert (
+        out.splitlines()[-1] == "0 queued purge(s) run; 2 still queued (1 of them while their file is listed)"
+    )
+
+
+def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits_ok(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """R95: a label escalation then an erasure request for one file.  One purge runs, the second entry is a
+    note on its report, the queue ends empty and the run exits 0."""
+    cfg = _synced(initialised)
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    for reason in (governance.PurgeReason.LABEL_ESCALATION, governance.PurgeReason.ERASURE_REQUEST):
+        assert governance.enqueue_purge(initialised.state_paths.root, selector, reason)
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.count(": VERIFIED") == 1
+    assert "  note: also did the queued erasure-request purge of the same item: taken off the queue" in out
+    assert out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+    assert governance.pending_purges(initialised.state_paths.root) == []
 
 
 def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(
@@ -1516,7 +1592,9 @@ def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(
     head = git(repo, "rev-parse", "HEAD").strip()
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
-    assert "0 queued purge(s) previewed (dry run, nothing written); 1 queued" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    assert "  note: stays queued: purge suspended by legal/records hold: " in out and sid not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
 
@@ -1820,7 +1898,10 @@ def test_the_doctor_alias_prints_no_status_or_policy_detail(
     """install.sh copies doctor's output into install.out, whose tail setup-report embeds: no label names."""
     cfg = _synced(initialised)
     capsys.readouterr()
-    monkeypatch.setattr(governance, "pending_purges", lambda root: ["queued"])
+    queued = governance.QueuedPurge(
+        governance.PurgeSelector(path_glob="*"), governance.PurgeReason.OPERATOR, ""
+    )
+    monkeypatch.setattr(governance, "pending_purges", lambda root: [queued])
     _status(cfg, capsys)
     for argv, env in ((["doctor"], None), (["doctor"], "1"), (["status"], "1")):
         if env is None:

@@ -682,7 +682,12 @@ def test_purge_queue_runs_and_keeps_held_requests(world: World) -> None:
     assert not gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
     assert [q.selector for q in gv.pending_purges(world.state)] == [s1]
     gv.set_hold(world.state, "src", reason="hold", owner="legal", now=NOW)
-    assert gv.run_purge_queue(world.config, now=NOW) == []
+    (held,) = gv.run_purge_queue(world.config, now=NOW)
+    # R96: a held entry is reported, as a kept one is, and the report names the hold, not the item
+    assert not held.verified and held.not_run and held.items == () and held.remote == "not run"
+    assert held.notes == (f"stays queued: {held.not_run[len('stays queued: ') :]}",)
+    assert held.not_run.startswith("stays queued: purge suspended by legal/records hold: hold src")
+    assert "S1" not in held.not_run
     assert len(gv.pending_purges(world.state)) == 1
     gv.release_hold(world.state, "src", owner="legal", now=NOW)
     reports = gv.run_purge_queue(world.config, now=NOW)
@@ -726,6 +731,49 @@ def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
         gv.run_purge_queue(world.config, now=NOW)
     assert not (world.repo / "mirror/src/gone.md").exists()
     assert [q.selector for q in gv.pending_purges(world.state)] == [held, k1]
+
+
+def test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R95: a label escalation then an erasure request for one item.  The second entry was a full no-op purge
+    with its own audit summary; now it leaves the queue with a ``purge-covered`` audit line and a note on the
+    first report, and a stop after the first purge does not put it back."""
+    s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
+    k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
+    # the covered entry sits after the entry the run stops on (review of R95: it left the file unaudited)
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.ERASURE_REQUEST, now=NOW)
+    calls: list[gv.PurgeReason] = []
+    real = gv.purge
+
+    def counted(config: Config, selector: gv.PurgeSelector, **kwargs: Any) -> gv.PurgeReport:
+        if selector == k1:
+            raise RuntimeError("stopped part-way")
+        calls.append(kwargs["reason"])
+        return real(config, selector, **kwargs)
+
+    monkeypatch.setattr(gv, "purge", counted)
+    with pytest.raises(RuntimeError, match="stopped part-way"):
+        gv.run_purge_queue(world.config, now=NOW)
+    assert calls == [gv.PurgeReason.LABEL_ESCALATION]
+    assert [q.selector for q in gv.pending_purges(world.state)] == [k1]  # the covered entry is not put back
+    assert [a["reason"] for a in gv.read_audit(world.state) if a["action"] == "purge-covered"] == [
+        "erasure-request"
+    ]
+    monkeypatch.setattr(gv, "purge", real)
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.ERASURE_REQUEST, now=NOW)
+    rep, *rest = gv.run_purge_queue(world.config, now=NOW)
+    assert rest == [] and rep.verified and rep.items == (("src", "K1"),)
+    assert rep.notes[-1] == "also did the queued erasure-request purge of the same item: taken off the queue"
+    assert gv.pending_purges(world.state) == []
+    audit = [json.loads(x) for x in (world.state / "governance" / "audit.jsonl").read_text().splitlines()]
+    assert [(c["reason"], c["covered_by_sha256"]) for c in audit if c["action"] == "purge-covered"] == [
+        ("erasure-request", s1.fingerprint()),
+        ("erasure-request", k1.fingerprint()),
+    ]
+    assert sum(1 for c in audit if c["action"] == "purge-summary") == 2
 
 
 def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(world: World) -> None:

@@ -492,13 +492,16 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     def done(step: str, rule: int) -> NextStep:
         return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks))
 
-    queued = governance.pending_purges(config.state_paths.root)
+    # a kept upstream deletion is no wait: no run clears it while its file is listed, and it runs on its own
+    queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         waits.append(
             f"{len(queued)} queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
             f"before you run `{BIN} purge --queue` (rewrites history)"
         )
         checks.append("governance.purge_queue")
+    if kept:
+        notes.append(f"{len(kept)} {governance.KEPT_PURGES}")
 
     # Rule 1: status FAILs.
     live = config.live_sources()

@@ -1651,108 +1651,131 @@ def _connect(db: Path) -> sqlite3.Connection:
     return conn
 
 
+@dataclass(frozen=True, slots=True)
+class _ManifestRead:
+    """One read of the manifest tables a purge resolves its selector against (:func:`_read_manifest`)."""
+
+    rows: list[sqlite3.Row]
+    outputs: list[sqlite3.Row]
+    tombs: list[sqlite3.Row]
+    alias_to_current: dict[tuple[str, str], str]  # retired id -> current id
+    aliases_of: dict[tuple[str, str], set[str]]  # current id -> retired ids
+
+
+def _read_manifest(conn: sqlite3.Connection) -> _ManifestRead:
+    rows = conn.execute(
+        "SELECT i.source_id, i.stable_id, i.rel_path, i.is_dir, i.canonical_sha256, s.kind, i.state "
+        "FROM items i LEFT JOIN sources s ON s.source_id = i.source_id ORDER BY i.source_id, i.stable_id"
+    ).fetchall()
+    outputs = conn.execute(
+        "SELECT output_path, source_id, stable_id, action_key, rendered_sha256 FROM outputs"
+    ).fetchall()
+    tombs = conn.execute(
+        "SELECT output_path, source_id, stable_id, last_rendered_sha256 FROM tombstones"
+    ).fetchall()
+    # item_aliases: every id an item carried before a safe-save rekey (current id <- retired ids)
+    alias_to_current: dict[tuple[str, str], str] = {}
+    aliases_of: dict[tuple[str, str], set[str]] = {}
+    has_aliases = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'item_aliases'"
+    ).fetchone()
+    if has_aliases is not None:
+        for a in conn.execute("SELECT source_id, alias_id, stable_id FROM item_aliases").fetchall():
+            alias_to_current[(a["source_id"], a["alias_id"])] = a["stable_id"]
+            aliases_of.setdefault((a["source_id"], a["stable_id"]), set()).add(a["alias_id"])
+    return _ManifestRead(rows, outputs, tombs, alias_to_current, aliases_of)
+
+
 def _resolve_manifest(db: Path, selector: PurgeSelector, ids: set[tuple[str, str]]) -> _ManifestTargets:
     """Read-only: the manifest rows the selector (or already-known ids) names."""
-    empty = _ManifestTargets([], set(), set(), set(), set(), [])
     if not db.exists():
-        return empty
+        return _ManifestTargets([], set(), set(), set(), set(), [])
     Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
     conn = _connect(db)
     try:
-        items: list[tuple[str, str, str, bool]] = []
-        rows = conn.execute(
-            "SELECT i.source_id, i.stable_id, i.rel_path, i.is_dir, i.canonical_sha256, s.kind, i.state "
-            "FROM items i LEFT JOIN sources s ON s.source_id = i.source_id ORDER BY i.source_id, i.stable_id"
-        ).fetchall()
-        outputs = conn.execute(
-            "SELECT output_path, source_id, stable_id, action_key, rendered_sha256 FROM outputs"
-        ).fetchall()
-        tombs = conn.execute(
-            "SELECT output_path, source_id, stable_id, last_rendered_sha256 FROM tombstones"
-        ).fetchall()
-        # item_aliases: every id an item carried before a safe-save rekey (current id <- retired ids)
-        alias_to_current: dict[tuple[str, str], str] = {}
-        aliases_of: dict[tuple[str, str], set[str]] = {}
-        has_aliases = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'item_aliases'"
-        ).fetchone()
-        if has_aliases is not None:
-            for a in conn.execute("SELECT source_id, alias_id, stable_id FROM item_aliases").fetchall():
-                alias_to_current[(a["source_id"], a["alias_id"])] = a["stable_id"]
-                aliases_of.setdefault((a["source_id"], a["stable_id"]), set()).add(a["alias_id"])
-        selected: set[tuple[str, str]] = set(ids)
-        selected |= {(s, alias_to_current[(s, i)]) for s, i in ids if (s, i) in alias_to_current}
-        if selector.stable_id:
-            for (s, alias), current in alias_to_current.items():
-                if alias == selector.stable_id and selector.source_id in (None, s):
-                    selected.add((s, current))
-        if selector.docs_glob:
-            for r in [*outputs, *tombs]:
-                if glob_match(r["output_path"], selector.docs_glob) and (
-                    selector.source_id is None or r["source_id"] == selector.source_id
-                ):
-                    selected.add((r["source_id"], r["stable_id"]))
-        canonical: set[str] = set()
-        teams: list[tuple[str, str]] = []
-        for r in rows:
-            key = (r["source_id"], r["stable_id"])
-            hit = key in selected or (
-                not r["is_dir"]
-                and any(
-                    selector.matches_item(r["source_id"], sid, r["rel_path"])
-                    for sid in (r["stable_id"], *sorted(aliases_of.get(key, ())))
-                )
-            )
-            dir_hit = (
-                bool(r["is_dir"])
-                and selector.path_glob is not None
-                and selector.matches_item(r["source_id"], r["stable_id"], r["rel_path"])
-            )
-            if not hit and not dir_hit:
-                continue
-            items.append((r["source_id"], r["stable_id"], r["rel_path"], bool(r["is_dir"])))
-            if hit:
-                selected.add(key)
-            if r["canonical_sha256"]:
-                canonical.add(r["canonical_sha256"])
-            month = r["stable_id"].rsplit(":", 1)[-1]
-            if r["kind"] == "graph_teams" and re.fullmatch(r"\d{4}-\d{2}", month):
-                teams.append((r["source_id"], month))
-        docs_paths: set[str] = set()
-        keys: set[str] = set()
-        rendered: set[str] = set()
-        for r in outputs:
-            if (r["source_id"], r["stable_id"]) in selected:
-                docs_paths.add(r["output_path"])
-                if r["action_key"]:
-                    keys.add(r["action_key"])
-                if r["rendered_sha256"]:
-                    rendered.add(r["rendered_sha256"])
-        for r in tombs:
-            if (r["source_id"], r["stable_id"]) in selected:
-                docs_paths.add(r["output_path"])
-                if r["last_rendered_sha256"]:
-                    rendered.add(r["last_rendered_sha256"])
-        if canonical:
-            marks = ",".join("?" * len(canonical))
-            for r in conn.execute(
-                f"SELECT action_key FROM cache WHERE canonical_sha256 IN ({marks})",
-                sorted(canonical),
-            ):
-                keys.add(r["action_key"])
-        aliases = {(s, a) for (s, i) in selected for a in aliases_of.get((s, i), ())}
-        others = {
-            k
-            for r in rows
-            if r["state"] != "tombstone" and (r["source_id"], r["stable_id"]) not in selected
-            for k in [
-                (r["source_id"], r["stable_id"]),
-                *((r["source_id"], a) for a in aliases_of.get((r["source_id"], r["stable_id"]), ())),
-            ]
-        }
-        return _ManifestTargets(items, docs_paths, keys, canonical, rendered, teams, aliases, others)
+        return _resolve_read(conn, _read_manifest(conn), selector, ids)
     finally:
         conn.close()
+
+
+def _resolve_read(
+    conn: sqlite3.Connection, m: _ManifestRead, selector: PurgeSelector, ids: set[tuple[str, str]]
+) -> _ManifestTargets:
+    """:func:`_resolve_manifest` over a read already made (``conn`` serves the cache lookup)."""
+    rows, outputs, tombs = m.rows, m.outputs, m.tombs
+    alias_to_current, aliases_of = m.alias_to_current, m.aliases_of
+    items: list[tuple[str, str, str, bool]] = []
+    selected: set[tuple[str, str]] = set(ids)
+    selected |= {(s, alias_to_current[(s, i)]) for s, i in ids if (s, i) in alias_to_current}
+    if selector.stable_id:
+        for (s, alias), current in alias_to_current.items():
+            if alias == selector.stable_id and selector.source_id in (None, s):
+                selected.add((s, current))
+    if selector.docs_glob:
+        for r in [*outputs, *tombs]:
+            if glob_match(r["output_path"], selector.docs_glob) and (
+                selector.source_id is None or r["source_id"] == selector.source_id
+            ):
+                selected.add((r["source_id"], r["stable_id"]))
+    canonical: set[str] = set()
+    teams: list[tuple[str, str]] = []
+    for r in rows:
+        key = (r["source_id"], r["stable_id"])
+        hit = key in selected or (
+            not r["is_dir"]
+            and any(
+                selector.matches_item(r["source_id"], sid, r["rel_path"])
+                for sid in (r["stable_id"], *sorted(aliases_of.get(key, ())))
+            )
+        )
+        dir_hit = (
+            bool(r["is_dir"])
+            and selector.path_glob is not None
+            and selector.matches_item(r["source_id"], r["stable_id"], r["rel_path"])
+        )
+        if not hit and not dir_hit:
+            continue
+        items.append((r["source_id"], r["stable_id"], r["rel_path"], bool(r["is_dir"])))
+        if hit:
+            selected.add(key)
+        if r["canonical_sha256"]:
+            canonical.add(r["canonical_sha256"])
+        month = r["stable_id"].rsplit(":", 1)[-1]
+        if r["kind"] == "graph_teams" and re.fullmatch(r"\d{4}-\d{2}", month):
+            teams.append((r["source_id"], month))
+    docs_paths: set[str] = set()
+    keys: set[str] = set()
+    rendered: set[str] = set()
+    for r in outputs:
+        if (r["source_id"], r["stable_id"]) in selected:
+            docs_paths.add(r["output_path"])
+            if r["action_key"]:
+                keys.add(r["action_key"])
+            if r["rendered_sha256"]:
+                rendered.add(r["rendered_sha256"])
+    for r in tombs:
+        if (r["source_id"], r["stable_id"]) in selected:
+            docs_paths.add(r["output_path"])
+            if r["last_rendered_sha256"]:
+                rendered.add(r["last_rendered_sha256"])
+    if canonical:
+        marks = ",".join("?" * len(canonical))
+        for r in conn.execute(
+            f"SELECT action_key FROM cache WHERE canonical_sha256 IN ({marks})",
+            sorted(canonical),
+        ):
+            keys.add(r["action_key"])
+    aliases = {(s, a) for (s, i) in selected for a in aliases_of.get((s, i), ())}
+    others = {
+        k
+        for r in rows
+        if r["state"] != "tombstone" and (r["source_id"], r["stable_id"]) not in selected
+        for k in [
+            (r["source_id"], r["stable_id"]),
+            *((r["source_id"], a) for a in aliases_of.get((r["source_id"], r["stable_id"]), ())),
+        ]
+    }
+    return _ManifestTargets(items, docs_paths, keys, canonical, rendered, teams, aliases, others)
 
 
 def _manifest_apply(
@@ -2312,6 +2335,18 @@ _LISTED_STATES = ("live", "dataless")
 
 
 def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
+    """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest)."""
+    if q.reason is not PurgeReason.UPSTREAM_DELETED or not db.exists():
+        return ""
+    Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
+    conn = _connect(db)
+    try:
+        return _kept_why(conn, _read_manifest(conn), q)
+    finally:
+        conn.close()
+
+
+def _kept_why(conn: sqlite3.Connection, m: _ManifestRead, q: QueuedPurge) -> str:
     """Why the queue must not run ``q`` now, or "".
 
     Only an ``upstream-deleted`` entry is judged.  It is queued as its row becomes a tombstone, and a file
@@ -2322,21 +2357,9 @@ def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
     content on purpose and are never judged here."""
     if q.reason is not PurgeReason.UPSTREAM_DELETED:
         return ""
-    mt = _resolve_manifest(db, q.selector, set())
-    keys = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir]
-    if not keys:
-        return ""
-    conn = _connect(db)
-    try:
-        listed: list[tuple[str, str]] = []
-        for key in keys:
-            row = conn.execute(
-                "SELECT state FROM items WHERE source_id = ? AND stable_id = ?", key
-            ).fetchone()
-            if row is not None and row["state"] in _LISTED_STATES:
-                listed.append(key)
-    finally:
-        conn.close()
+    state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
+    mt = _resolve_read(conn, m, q.selector, set())
+    listed = [(s, i) for s, i, _r, is_dir in mt.items if not is_dir and state.get((s, i)) in _LISTED_STATES]
     if not listed:
         return ""
     later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
@@ -2345,6 +2368,46 @@ def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
         f"stays queued: the manifest lists the file as live or online-only ({len(listed)} row(s){via}); "
         "an upstream deletion is not run against a listed file, and runs once the file is gone again"
     )
+
+
+def partition_purges(
+    state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None
+) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
+    """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it
+    keeps queued with why: an upstream deletion of a file the manifest lists again (:func:`_kept_why`, the
+    rule the run itself applies).  Read-only, and the manifest is read once.  A manifest this build cannot
+    read leaves every entry runnable, as before the kept ones were told apart."""
+    entries = pending_purges(state_paths.root) if queue is None else list(queue)
+    db = state_paths.db
+    if not db.exists() or all(q.reason is not PurgeReason.UPSTREAM_DELETED for q in entries):
+        return entries, []
+    try:
+        Manifest(db).close()
+        conn = _connect(db)
+        try:
+            m = _read_manifest(conn)
+            whys = [_kept_why(conn, m, q) for q in entries]
+        finally:
+            conn.close()
+    except (AgentSyncError, sqlite3.Error) as exc:
+        log.warning("governance: cannot tell which queued purges stay queued: %s", exc)
+        return entries, []
+    return [q for q, why in zip(entries, whys, strict=True) if not why], [
+        (q, why) for q, why in zip(entries, whys, strict=True) if why
+    ]
+
+
+KEPT_PURGES = (
+    "upstream deletion(s) stay queued while their file is listed again; they run on their own once the "
+    "file is gone"
+)
+"""The note after the count of kept entries (:func:`partition_purges`) in the loop, status, doctor and
+STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait."""
+
+
+_HELD_WHY = "the purge failed; the log has the error"
+"""What a queued entry's report says when its purge raised a :class:`GovernanceError` that is not a hold: a
+git failure's text can name a path or an id, and the report is printed, so that text stays in the log."""
 
 
 def run_purge_queue(
@@ -2359,7 +2422,10 @@ def run_purge_queue(
 
     ``dry_run`` reports each queued purge without writing anything, and leaves the queue as it is.  The
     queue file is written after every purge that verified, so a run that stops part-way leaves no entry it
-    has already purged; the entry in flight stays in the file.
+    has already purged; the entry in flight stays in the file.  An entry a verified purge of this run already
+    did (:func:`_covers`) is not run again: it leaves the queue with a ``purge-covered`` audit line and a note
+    on the covering report.  An entry kept queued (a listed file's upstream deletion, a hold, a failure) gets
+    a report with ``not_run`` set.
     """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
@@ -2367,44 +2433,84 @@ def run_purge_queue(
     with _maybe_lock(sp, lock):
         remaining: list[QueuedPurge] = []
         stays: list[QueuedPurge] = []  # reported "stays queued": a later purge's cover must not drop them
+        covered: set[int] = (
+            set()
+        )  # indexes in ``queue`` of the later entries a verified purge of this run did
         queue = pending_purges(sp.root)
+
+        def not_run(q: QueuedPurge, why: str) -> None:
+            reports.append(
+                PurgeReport(
+                    selector=q.selector.kind(),
+                    reason=q.reason,
+                    dry_run=dry_run,
+                    items=(),
+                    docs_paths=(),
+                    remote="not run",
+                    notes=(why,),
+                    not_run=why,
+                )
+            )
+            remaining.append(q)
+            stays.append(q)
+
         for n, q in enumerate(queue):
             why = _kept_upstream_deletion(sp.db, q)
             if why:
                 log.warning("governance: %s", why)
-                reports.append(
-                    PurgeReport(
-                        selector=q.selector.kind(),
-                        reason=q.reason,
-                        dry_run=dry_run,
-                        items=(),
-                        docs_paths=(),
-                        remote="not run",
-                        notes=(why,),
-                        not_run=why,
-                    )
-                )
-                remaining.append(q)
-                stays.append(q)
+                not_run(q, why)
                 continue
+            if n in covered:
+                continue  # an earlier purge of this run did it: audited and noted when that purge verified
             try:
                 rep = purge(
                     config, q.selector, reason=q.reason, gov=gov, dry_run=dry_run, lock=False, now=now
                 )
             except GovernanceError as exc:
                 log.warning("governance: queued purge kept: %s", exc)
-                remaining.append(q)
+                not_run(q, f"stays queued: {exc if isinstance(exc, HoldActiveError) else _HELD_WHY}")
                 continue
             reports.append(rep)
             if not rep.verified:
                 remaining.append(q)
             elif not dry_run:
-                # purge() took off the file every entry it covered; keep none of them here either, except an
-                # entry this run already reported as staying queued: it stays, and the next run clears it
-                remaining = [
-                    e for e in remaining if any(e is k for k in stays) or not _covers(q.selector, rep, e)
+                # purge() took off the file every entry it covered: record each one as done (an erasure
+                # request keeps a record that it was fulfilled), except an entry this run already reported as
+                # staying queued: it stays, and the next run clears it
+                did = [e for e in remaining if not any(e is k for k in stays) and _covers(q.selector, rep, e)]
+                later = [
+                    i
+                    for i in range(n + 1, len(queue))
+                    if i not in covered and _covers(q.selector, rep, queue[i])
                 ]
-                _write_queue(sp.root, [*remaining, *queue[n + 1 :]])
+                for e in [*did, *(queue[i] for i in later)]:
+                    log.info(
+                        "governance: queued %s purge covered by an earlier purge in this run", e.reason.value
+                    )
+                    append_audit(
+                        sp.root,
+                        {
+                            "action": "purge-covered",
+                            "at": _iso(_now(now)),
+                            "covered_by_sha256": q.selector.fingerprint(),
+                            "reason": e.reason.value,
+                            "selector_sha256": e.selector.fingerprint(),
+                        },
+                    )
+                    rep = dataclasses.replace(
+                        rep,
+                        notes=(
+                            *rep.notes,
+                            f"also did the queued {e.reason.value} purge of the same item: "
+                            "taken off the queue",
+                        ),
+                    )
+                reports[-1] = rep
+                covered.update(later)
+                remaining = [e for e in remaining if not any(e is d for d in did)]
+                _write_queue(
+                    sp.root, [*remaining, *(queue[i] for i in range(n + 1, len(queue)) if i not in covered)]
+                )
         if not dry_run:
             _write_queue(sp.root, remaining)
     return reports
