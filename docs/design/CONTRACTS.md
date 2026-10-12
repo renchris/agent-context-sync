@@ -13425,7 +13425,10 @@ error and tell me "Once git can reach GitHub from a terminal (a corporate proxy 
 if the error names a proxy, the one in git's own settings, which git config --get http.proxy prints, comes
 before HTTPS_PROXY and may point at a network this Mac is not on), start a new session from that terminal and
 paste this prompt again", and go to step 3's report. The hint is inside the quoted words, so it reaches the
-person.
+person. **Amended (2026-10-12, §16.55 Q25):** the parenthetical is now one unconditional sentence, "a corporate
+proxy may need HTTPS_PROXY set there; a proxy in git's own settings, which git config --get http.proxy prints,
+wins over HTTPS_PROXY, so if git's error names a host other than github.com, check that setting: it may point at
+a network this Mac is not on".
 - A new session, not the same one: HTTPS_PROXY must be in the environment of the shell the agent runs, and the
   rules forbid editing the shell profile.
 - git's `http.proxy` wins over the environment (measured with both set: git used the config value). The setting
@@ -13537,4 +13540,60 @@ Reserved for round 4 lane E of B13.
 
 ### 16.55 Round 4: setup prompt v13 and docs (2026-10-12, wave B13 round 4 lane P)
 
-Reserved for round 4 lane P of B13.
+The B13 round 4 items of lane P (specs `round4/items/Q<n>.md`, the verifier's corrected fix built). Three need
+prompt text (Q8, Q24, Q25), so the prompt is **setup prompt v13**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's
+`prompt v13` and `setup-prompt-compat 13`, the issue form's placeholder and the block's digest move together; a
+saved v12 copy is stopped at step 1 like every older copy. v13 moves no step, so it has no `PROMPT_LAYOUTS` entry
+and is read with v7's rules. None adds a command, flag, installer option, config key or friction kind.
+
+**The deviation kind names step 1's stop** (Q8). Step 1 says that when the folder question cannot be asked or comes
+back unanswered, the agent logs a deviation, stops and waits; the kind list defined a deviation as "you did
+something this prompt did not say, or worked around a problem", which a run that followed the prompt then
+contradicted. The definition now ends "or stopped to wait for my folder answer as step 1 says", and
+setup-feedback.md's `deviation` row says the same. Step 1 and the report's counting (a deviation is agent
+friction) are unchanged. Test: `tests/test_deploy_pack.py` (`test_readme_friction_line_format_and_kinds`).
+
+**The finish names bring-back.md only when a report ran** (Q24). Only `install.sh --report-only` writes
+`~/agent-context/bring-back.md`, so after a failed clone there is none, and the stop for a copy that is not the
+installer's runs no report while an earlier session's file may still be there. The finish's clause now ends "; if
+no report ran this session, say "none" for that file instead, and do not point me to an older bring-back.md". The clause is tied
+to whether a report ran, not to the clone, so both no-report stops are covered. Test: `tests/test_deploy_pack.py`
+(`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+
+**The git stop's proxy hint is unconditional** (Q25; amends §16.49 "Step 1's git stop" by a dated line). "If the
+error names a proxy, the one in git's own settings ... comes before HTTPS_PROXY" put a condition on a fact that
+always holds, and "the one" could be read as the proxy the error named. The condition was also hard to check: an
+unreachable proxy in git's settings fails as `Failed to connect to <its host> port <N>`, without the word proxy
+(git 2.54, measured by the verifier), and only an unresolvable one says `Could not resolve proxy`. The quoted words
+now state the precedence first and base the check on what git prints: "if git's error names a host other than
+github.com, check that setting". The message stays one quote the agent repeats word for word; the agent is not
+asked to judge the error, and nothing tells it to change `~/.gitconfig`. Test: `tests/test_deploy_pack.py`
+(`test_readme_step1_is_one_command`).
+
+**Older contract sections, by dated lines** (Q50 and Q64, one defect; Q54, Q56, Q57, Q62, Q70). Each is pinned by a
+test in `tests/test_deploy_pack.py` that reads the contract against the code, except Q70's proxy prose:
+- §7 routes `.mp4 .m4v .mov` to `recording-av` (§16.34) and `.vtt` to `vtt-turns` (§16.35) by SUPERSEDED lines
+  (`test_section_7_routes_every_suffix_where_the_registry_does`: §7 read in order, a later line winning, routes
+  exactly what `Registry.default` claims with an OCR engine, the media helper and recordings on).
+- The `quarantine_class` table has a row for `withheld by label rule` (§16.47 R33) and lists `not-msg` and `not a
+  zip` beside `not-ooxml` (`test_the_contracts_class_table_names_every_quarantine_class`).
+- §9 step 2 and §16.49 carry §16.45 R50/R80 lines naming `EMPTY_BODY_HOLDER` and saying doctor adds `(a cycle is
+  running)` only for a body that parses as a cycle's record
+  (`test_every_section_quoting_the_old_empty_lock_body_text_states_the_constant`). §16.45's own "N24 and the
+  install.sh lock bullet carry dated amendments" is left as written: it was true of that round.
+- §16.48's `.potx` part says 41 suffixes; the two `.vsdm` sentences keep their 40 and gain "41 since `.potx`"
+  (`test_the_contracts_suffix_count_for_the_log_scrub_test_is_the_converters`).
+- §16.47 cites `test_install_sh_full_run_is_idempotent` in place of a wheel test that was deleted with the wheel
+  pre-build (`test_a_test_the_contract_cites_exists`: every backticked test name in this file is a test, the start
+  of one's name, or one of two names a dated line retires).
+- §16.43's SUPERSEDED line and §16.40's proxy paragraph point to §16.46 R42/R67/R68 and §16.47 R110.
+
+**Docs** (Q58, Q65, Q68, Q69). data-governance.md: only an Outlook-format `.msg` with an encrypted Office attachment
+is screened as a whole, and a MIME `.msg` is read as an `.eml` (§16.48 R87); the built-in secret patterns read every
+page (§16.45 R76); an archive copy the rescan matches is deleted and a purge queued (R74), which the README's archive
+guarantee names as its one exception; a withheld `.msg` page names the label rule and the `.eml` route (§16.47 R33).
+setup-feedback.md: every entry a purge run keeps has a `note: stays queued:` line and a run ends one of three ways;
+images are `withheld by label rule` only once the OCR part reads `ready`; an attempt that names no agent reads
+approvals as not observable (R24); an exclude line shows agentsync's own globs as written (R8). Tests:
+`tests/test_deploy_pack.py` (`test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs`,
+`test_setup_feedback_states_the_report_rules_of_round_3`).

@@ -31,6 +31,8 @@ from agentsync.ops import doctor, launchd
 REPO = Path(__file__).resolve().parents[1]
 BUILD_SH = REPO / "launcher" / "build.sh"
 INSTALL_SH = REPO / "scripts" / "install.sh"
+COMPAT = re.findall(r"^SETUP_PROMPT_COMPAT=(\d+) ", INSTALL_SH.read_text(encoding="utf-8"), re.MULTILINE)[0]
+"""The installer's setup prompt version, which its setup log's start line names."""
 BASH32 = "/bin/bash"
 
 
@@ -807,7 +809,7 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     lines = _setup_log_lines(log)
     assert len({run for run, _ in lines}) == 1 and len(lines) == 12
     start, end = lines[0][1], lines[-1][1]
-    head = f"start install.sh compat=12 commit=- kind=wheel source={wheel} args={wheel} --source-local "
+    head = f"start install.sh compat={COMPAT} commit=- kind=wheel source={wheel} args={wheel} --source-local "
     assert start.startswith(head)
     assert start.endswith("FY26\\ Projects"), "folder paths are kept (setup-report redacts them)"
     assert re.fullmatch(r"end rc=0 seconds=\d+", end)
@@ -865,7 +867,7 @@ def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp
         # a dirty checkout names its local changes: the first 12 hex of the SHA-256 of `git diff HEAD`
         commit = f"{sha}-dirty tree={hashlib.sha256(diff).hexdigest()[:12]}" if diff else sha
     assert (
-        start.startswith(f"start install.sh compat=12 commit={commit} kind=checkout")
+        start.startswith(f"start install.sh compat={COMPAT} commit={commit} kind=checkout")
         and f"kind=checkout source={REPO}" in start
     )
     assert _steps(lines) == [

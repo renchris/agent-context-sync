@@ -300,7 +300,7 @@ list marks them, the agent asks only whether to add one, and when it cannot ask 
 It stops and waits for your answer only on a Mac that syncs no folder yet.
 
 ```text
-Set up agentsync on this Mac (setup prompt v12). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v13). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -326,7 +326,8 @@ something other than which folders to sync, or I gave you a go-ahead or an answe
 telling you I clicked something; log a question and my answer to it as one line, and my go-ahead as a question
 line of its own even when you also log what it allowed as a deviation); click (I clicked something other than an
 Allow this prompt announced); approval (your tool asked me to approve a command, if you can see that); deviation
-(you did something this prompt did not say, or worked around a problem); error (a command failed; include its exit
+(you did something this prompt did not say, worked around a problem, or stopped to wait for my folder answer as
+step 1 says); error (a command failed; include its exit
 code); prompt (this prompt was wrong or unclear; include better wording). Do not log the steps themselves; the
 installer times them. These lines go into the report, which I may post in public, so in them name a folder, a
 file, a person, my organization or a customer by its role in plain words ("a project folder"), never by its real
@@ -334,7 +335,7 @@ name, a short form of it or a placeholder; if a name itself is the problem, stil
 the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
-   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v12, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v13, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -344,14 +345,14 @@ the name in fix-request.md.
    then tell me the branch name (my changes are safe on it, and copied as a patch to
    ~/agent-context/setup/local-work) and run step 1's command again. If git failed any
    other way, show me its error and tell me: "Once git can reach GitHub from a terminal (a corporate proxy may
-   need HTTPS_PROXY set there; if the error names a proxy, the one in git's own settings, which git config
-   --get http.proxy prints, comes before HTTPS_PROXY and may point at a network this Mac is not on), start a
-   new session from that terminal and paste this prompt again", and go to step 3's report. Before going to the
-   report from the Xcode stop or the other-git-failure stop above, log the failed command as a step 1 error if
-   ~/src/agent-context-sync exists, starting its what-text with prompt v12, <agent> and a colon (the same words
-   as in step 1's command; write no colon inside <agent>). If --version does not end with
-   "setup-prompt-compat 12", or the command says the pasted prompt is not the installer's, stop: this prompt is
-   v12, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
+   need HTTPS_PROXY set there; a proxy in git's own settings, which git config --get http.proxy prints, wins
+   over HTTPS_PROXY, so if git's error names a host other than github.com, check that setting: it may point at a
+   network this Mac is not on), start a new session from that terminal and paste this prompt again", and go to
+   step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, log the
+   failed command as a step 1 error if ~/src/agent-context-sync exists, starting its what-text with prompt v13,
+   <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>). If --version does
+   not end with "setup-prompt-compat 13", or the command says the pasted prompt is not the installer's, stop:
+   this prompt is v13, and an older copy must not be used. Tell me to copy the prompt again from README.md on the main branch
    of the Source above. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise show me the folders and
    ask which to sync, suggesting project folders rather than a whole library, and tell me that online-only files in
@@ -429,7 +430,8 @@ the name in fix-request.md.
    (if setup stopped before step 2, say at which step); the last NEXT: line printed before the report, or
    "none", and under it each WAITING ON YOU: line the same command printed; and ~/agent-context/bring-back.md,
    the one file I review and copy back (the redacted report, then your fix request and the patch of any work
-   step 1 kept).
+   step 1 kept); if no report ran this session, say "none" for that file instead, and do not point me to an
+   older bring-back.md.
 ```
 
 <details>

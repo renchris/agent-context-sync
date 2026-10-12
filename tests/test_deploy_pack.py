@@ -474,7 +474,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (12, "a6cdcb0f734d38240c20612b35ebfb724598ed3bf7ec4f2d9de2eef7964969ed")
+PROMPT = (13, "f30b21c941476ade4c31c4381c0e79f23ca688b526d6168bb253c5f70e0b1d2c")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -649,11 +649,16 @@ def test_readme_step1_is_one_command() -> None:
     # session from a terminal where git reaches GitHub, then pastes the prompt again.
     assert (
         'If git failed any other way, show me its error and tell me: "Once git can reach GitHub from a '
-        "terminal (a corporate proxy may need HTTPS_PROXY set there; if the error names a proxy, the one in "
-        "git's own settings, which git config --get http.proxy prints, comes before HTTPS_PROXY and may "
-        "point at a network this Mac is not on), start a new session from that terminal and paste this "
-        f"prompt again\", and go to step {report}'s report."
+        "terminal (a corporate proxy may need HTTPS_PROXY set there; a proxy in git's own settings, which "
+        "git config --get http.proxy prints, wins over HTTPS_PROXY, so if git's error names a host other "
+        "than github.com, check that setting: it may point at a network this Mac is not on), start a new "
+        f"session from that terminal and paste this prompt again\", and go to step {report}'s report."
     ) in flat
+    # B13 round 4 Q25: "if the error names a proxy, the one in git's own settings ... comes before" made an
+    # always-true fact conditional, and "the one" read as the proxy the error named. An unreachable proxy in
+    # git's settings fails as "Failed to connect to <its host> port <N>", which never says "proxy" (measured,
+    # git 2.54), so the check is a host other than github.com, and the quote stays unconditional.
+    assert "if the error names a proxy" not in flat
     # R29: git's own http.proxy comes before HTTPS_PROXY (measured: with both set, git used the config value),
     # so a hint naming only HTTPS_PROXY pointed the wrong way when git's error names a proxy. The setting is
     # named for the agent to read; the prompt does not tell it to change ~/.gitconfig.
@@ -741,6 +746,13 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert "}not repeated: a patch file last written $at," in SCRIPTS[0].read_text(encoding="utf-8")
     finish = _prompt_steps()[3].rsplit("Finish with:", 1)[1]
     assert "~/agent-context/bring-back.md, the one file I review and copy back" in finish
+    # B13 round 4 Q24: only --report-only writes bring-back.md, so a failed clone left none, and the stop for
+    # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
+    # ran.
+    assert finish.endswith(
+        'step 1 kept); if no report ran this session, say "none" for that file instead, and do not point me '
+        "to an older bring-back.md."
+    )
     step3 = _prompt_steps()[3]
     assert 'add a "## Not used" section to the end of ~/agent-context/setup/fix-request.md' in step3
     assert (
@@ -1571,6 +1583,14 @@ def test_readme_friction_line_format_and_kinds() -> None:
     table = _feedback_page().split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
     documented = re.findall(r"`([a-z]+)`", " ".join(re.findall(r"^\| (.+?) \|", table, flags=re.MULTILINE)))
     assert tuple(documented) == FRICTION_KINDS, "setup-feedback.md triages every kind, in the prompt's order"
+    # B13 round 4 Q8: step 1 says to log a deviation and wait when the folder question goes unanswered, but
+    # the kind list defined a deviation as doing what the prompt did not say. Both definitions name that stop.
+    assert (
+        "deviation (you did something this prompt did not say, worked around a problem, or stopped to wait "
+        "for my folder answer as step 1 says)"
+    ) in pre
+    assert "log a deviation, stop and wait for my answer" in _prompt_steps()[1]
+    assert "or stopped at step 1 to wait for the folder answer |" in " ".join(table.split())
     # 2026-10-07 C12 (B13 N42): the friction lines are the only agent prose in the report's public part, and
     # four short forms of registered names reached it. Roles only: a typed placeholder made both of C12's
     # false residue hits, and a name that is the problem still gets its line (a question or click there
