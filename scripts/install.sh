@@ -981,14 +981,20 @@ redaction_pairs() {
 		# report matches it: a Finder-made name is NFD on disk and an agent types it NFC, or the reverse.
 		# iconv's UTF-8-MAC is macOS's decomposed form; a value that is not UTF-8 adds no other form. Printable
 		# ASCII has one form: listed, not a range, which a UTF-8 locale would collate (no iconv run for it).
-		local v nfc="" nfd="" ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+		local v nfc="" nfd="" bare ascii='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 		ascii+=' !"#$%&'\''()*+,./:;<=>?@[\]^_`{|}~-'
 		[ "${#1}" -ge 3 ] || return 0
 		emit_pair "$@"
 		case "$1" in *[!"$ascii"]*) ;; *) return 0 ;; esac
 		nfd="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)" || nfd=""
 		nfc="$(printf '%s' "$1" | LC_ALL=C /usr/bin/iconv -f UTF-8-MAC -t UTF-8 2>/dev/null)" || nfc=""
-		for v in "$nfd" "$nfc"; do
+		# And without its accents ("Cafe Plans" for "Café Plans", B13 R115): the NFD form without its combining
+		# marks, U+0300-U+036F (bytes CC 80-BF, CD 80-AF). Text that mixes NFC and NFD letters is the Python
+		# report's alone: a value with k accents would need 2^k pairs here.
+		bare="$(printf '%s' "$nfd" | LC_ALL=C sed "s/$(printf '\314')[$(printf '\200')-$(printf '\277')]//g;s/$(printf '\315')[$(printf '\200')-$(printf '\257')]//g")"
+		[ "$bare" != "$nfd" ] || bare=""
+		[ "$nfc" != "$nfd" ] || nfc=""
+		for v in "$nfd" "$nfc" "$bare"; do
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}"
 		done
 	}

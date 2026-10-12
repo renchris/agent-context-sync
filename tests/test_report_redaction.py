@@ -4,6 +4,8 @@ Every case is tested in both, with made-up names (B13 round 3, CONTRACTS §16.46
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -159,3 +161,72 @@ def test_the_shell_report_holds_the_same_placeholders(env: dict[str, str]) -> No
     cfg.write_text(f'[[source]]\nid = "plans"\nkind = "local"\npath = "{org / "Host"}"\n')
     text = _shell_report(env, "Prompt: v10\nF1 | step 1 | clean | 1 | on <host>, <source-2>; <Contoso> | -\n")
     assert "| on <host>, <source-2>; <<org-1>> |" in text, text
+
+
+# ---- Unicode case boundaries and accents (R70, R115) ------------------------------------------------------
+
+
+def _nfd(text: str) -> str:
+    return unicodedata.normalize("NFD", text)
+
+
+def test_a_camelcase_name_with_an_accented_capital_splits() -> None:
+    """``CaféPlans`` and ``MonÉtude`` never split at their case boundary (an ASCII-only split), so their
+    spelled-apart forms printed in clear; NFD text splits as NFC does, and ASCII names split as before (B13
+    R70). The shell report registers no CamelCase forms: it has nothing to split."""
+    nfd_words = [unicodedata.normalize("NFC", w) for w in setup_report._tokens(_nfd("CaféPlans"))]
+    assert setup_report._tokens("CaféPlans") == nfd_words == ["Café", "Plans"]
+    assert setup_report._tokens("MonÉtude") == ["Mon", "Étude"]
+    ascii_names = {"ClientAlpha": ["Client", "Alpha"], "HTTPServer": ["HTTP", "Server"], "R2D2": ["R2", "D2"]}
+    ascii_names |= {"iPhone": ["i", "Phone"], "ABCDef": ["ABC", "Def"], "v2Plans": ["v2", "Plans"]}
+    for name, words in ascii_names.items():
+        assert setup_report._tokens(name) == words
+    red = setup_report.Redactor()
+    red.add("folder", "CaféPlans", fuzzy=True)
+    red.add("folder", "MonÉtude", fuzzy=True)
+    for text in ("Café Plans", "café-plans", "CAFÉ_PLANS", _nfd("Café Plans"), _nfd("café-plans")):
+        assert red.redact(text) == "<folder-1>", text
+    for text in ("Mon Étude", "mon-étude", "MON_ÉTUDE", _nfd("Mon Étude"), _nfd("mon-étude")):
+        assert red.redact(text) == "<folder-2>", text
+
+
+def test_an_unaccented_or_mixed_spelling_is_redacted() -> None:
+    """``Cafe Resume`` and a string that mixes NFC and NFD letters printed in clear: matching is now
+    accent-insensitive, and the bare letter never matches the front of an accented one (B13 R115)."""
+    red = setup_report.Redactor()
+    red.add("folder", "Café Résumé", fuzzy=True)
+    mixed = "Café " + _nfd("Résumé")
+    for text in ("Cafe Resume", "cafe-resume", mixed, "Caf" + _nfd("é") + " Résumé", "Café\\ Résumé"):
+        assert red.redact(text) == "<folder-1>", text
+    assert red.redact(f"~/x/{mixed}/y") == "~/x/<folder-1>/y"
+    red = setup_report.Redactor()
+    red.add("folder", "Café", fuzzy=True)
+    for text in ("Cafés", _nfd("Cafés"), "Cafeteria"):
+        assert red.redact(text) == text, "no partial match, no stray accent"
+    red = setup_report.Redactor()
+    red.add("name", "José")
+    assert red.redact(f"José, Jose, {_nfd('José')}; jose") == "<name>, <name>, <name>; jose", (
+        "exact: case kept"
+    )
+
+
+def test_the_python_report_redacts_an_unaccented_folder_name(fake_mac: dict[str, Path]) -> None:  # noqa: F811
+    (fake_mac["home"] / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Café Résumé").mkdir()
+    write_install_log(fake_mac)
+    said = "Cafe Resume, " + "Café " + _nfd("Résumé")
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| {said} |"))
+    text, _summary = summary_of(fake_mac)
+    assert re.search(r"\| (<folder-\d+>), \1 \|", section(text, "Agent friction log")), text
+    assert "Caf" not in text and "Resume" not in text
+
+
+def test_the_shell_report_redacts_an_unaccented_folder_name(env: dict[str, str]) -> None:  # noqa: F811
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Café Résumé"
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "plans"\nkind = "local"\npath = "{folder}"\n', encoding="utf-8")
+    said = f"Cafe Resume, Café Résumé, {_nfd('Café Résumé')}"
+    text = _shell_report(env, f"Prompt: v10\nF1 | step 1 | clean | 1 | {said} | -\n")
+    assert "| <folder-1>, <folder-1>, <folder-1> |" in text, text

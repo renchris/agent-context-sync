@@ -506,7 +506,7 @@ _FUZZY_SEP = r"[ \t_\\-]*"
 """Between the words of a fuzzy value. The backslash covers ``printf %q`` text (install.log's ``args=``,
 install.out's run header and re-run lines): ``Client\\ Alpha`` is ``Client Alpha``."""
 _Q_ESCAPE_RE = re.compile(r"[^A-Za-z0-9]")  # in a word: ``printf %q`` may put a backslash before it
-_CAMEL_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_MARK = "[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]"  # a combining mark (an accent)
 _NAME_BRACKET_RE = re.compile(r"\s*[(\[{]([^()\[\]{}]*)[)\]}]")
 """A bracketed part of a full name ("Doe, Jane (Contoso)"): its inner text is group 1."""
 _PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
@@ -601,10 +601,23 @@ class ReportHooks:
 
 
 def _tokens(value: str) -> list[str]:
-    """The words of ``value``: split at spaces, hyphens and underscores, and at CamelCase boundaries."""
+    """The words of ``value``: split at spaces, hyphens and underscores, and at CamelCase boundaries, in any
+    script ("CaféPlans", "MonÉtude"): a capital after a small letter or a digit, or the last capital of a run
+    before a small letter ("HTTPServer"). Combining marks are skipped, so NFD text splits as NFC does (B13
+    R70: an ASCII-only split left "Café Plans" and "mon-étude" in clear)."""
     out: list[str] = []
     for chunk in _SEP_RE.split(value):
-        out += [t for t in _CAMEL_RE.split(chunk) if t]
+        letters = [(i, ch) for i, ch in enumerate(chunk) if not unicodedata.combining(ch)]
+        start = 0
+        for k, (i, ch) in enumerate(letters):
+            prev = letters[k - 1][1] if k else ""
+            nxt = letters[k + 1][1] if k + 1 < len(letters) else ""
+            after_run = prev.isupper() and nxt.islower()  # "HTTPServer": the S starts a word
+            if i > start and ch.isupper() and (prev.islower() or prev.isdigit() or after_run):
+                out.append(chunk[start:i])
+                start = i
+        if chunk[start:]:
+            out.append(chunk[start:])
     return out
 
 
@@ -619,16 +632,39 @@ def _forms(value: str) -> list[str]:
     return list(dict.fromkeys((value, _nfc(value), unicodedata.normalize("NFD", value))))
 
 
+def _bare(text: str) -> str:
+    """``text`` without its accents (NFD, combining marks dropped): what the NFC, NFD, mixed and unaccented
+    spellings of a value share ("Café", "Cafe")."""
+    return "".join(ch for ch in unicodedata.normalize("NFD", text) if not unicodedata.combining(ch))
+
+
 def _norm(text: str) -> str:
-    """``text`` lower-cased without spaces, hyphens, underscores and backslashes, in NFC (what all variants
-    of a value share; NFC after the backslashes go, since one between a letter and its accent stops NFC)."""
-    return _nfc(_SEP_RE.sub("", text)).lower()
+    """``text`` lower-cased without spaces, hyphens, underscores, backslashes and accents (what all variants
+    of a value share; the accents after the backslashes go, since one between a letter and its accent stops
+    it composing)."""
+    return _bare(_SEP_RE.sub("", text)).lower()
 
 
-def _word_pattern(word: str) -> str:
-    """A regex for one word of a fuzzy value, or for a whole case-insensitive value, also as ``printf %q``
-    writes it (``R&D`` and ``R\\&D``; ``Old Plans/in tray`` and ``Old\\ Plans/in\\ tray``)."""
-    return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), word)
+def _q_escape(text: str) -> str:
+    return _Q_ESCAPE_RE.sub(lambda m: r"\\?" + re.escape(m.group()), text)
+
+
+def _word_pattern(word: str, *, shell: bool = True) -> str:
+    """A regex for one word of a fuzzy value, or for a whole value, also as ``printf %q`` writes it (``R&D``
+    and ``R\\&D``; ``Old Plans/in tray`` and ``Old\\ Plans/in\\ tray``; not for an exact value, ``shell``
+    False), and with each accented letter in NFC, in NFD or without its accent, so an NFC, NFD, mixed or
+    unaccented spelling matches (B13 R115). The bare letter never matches the front of an accented one: NFD
+    "Cafés" is not cut to a placeholder, a stray accent and "s"."""
+    esc, opt = (_q_escape, r"\\?") if shell else (re.escape, "")
+    out: list[str] = []
+    for ch in _nfc(word):
+        nfd = unicodedata.normalize("NFD", ch)
+        base = _bare(ch)
+        if nfd == ch or not base:
+            out.append(esc(ch))
+        else:
+            out.append(f"(?:{esc(ch)}|{esc(nfd)}|{esc(base)}(?!{opt}{_MARK}))")
+    return "".join(out)
 
 
 def _short_word(form: str) -> bool:
@@ -657,8 +693,8 @@ class Redactor:
         """An empty redactor; :meth:`add` and :meth:`add_commit` register values."""
         self.enabled = enabled
         self.counts: Counter[str] = Counter()
-        self._exact: dict[str, str] = {}  # value -> placeholder (case-sensitive kinds)
-        self._folded: dict[str, str] = {}  # value.lower() -> placeholder (case-insensitive kinds)
+        self._exact: dict[str, str] = {}  # _bare(value) -> placeholder (case-sensitive kinds)
+        self._folded: dict[str, str] = {}  # _bare(value).lower() -> placeholder (case-insensitive kinds)
         self._fuzzy: dict[str, str] = {}  # _norm(value) -> placeholder (normalization-aware kinds)
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
@@ -711,8 +747,8 @@ class Redactor:
         return f"<{kind}-{self._numbers[kind]}>"
 
     def _known(self, value: str) -> str | None:
-        plain = _nfc(value.replace("\\", ""))  # the shell-escaped form of a fold value
-        value = _nfc(value)
+        plain = _bare(value.replace("\\", ""))  # the shell-escaped form of a fold value
+        value = _bare(value)
         return (
             self._exact.get(value)
             or self._folded.get(value.lower())
@@ -738,10 +774,10 @@ class Redactor:
             self._fuzzy[_norm(value)] = placeholder
             self._literals.append((value, "fuzzy"))
         elif ignore_case or fuzzy:
-            self._folded[_nfc(value).lower()] = placeholder
+            self._folded[_bare(value).lower()] = placeholder
             self._literals.append((value, "fold"))
         else:
-            self._exact[_nfc(value)] = placeholder
+            self._exact[_bare(value)] = placeholder
             self._literals.append((value, "exact"))
         self._regex = None
 
@@ -786,17 +822,15 @@ class Redactor:
             for form, edge, mode in forms:
                 if mode == "fuzzy":
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(form))
-                elif mode == "fold":
-                    body = _word_pattern(form)
                 else:
-                    body = re.escape(form)
+                    body = _word_pattern(form, shell=mode == "fold")
                 lead = r"(?<![A-Za-z0-9])" if edge[0].isalnum() else ""
                 trail = r"(?![A-Za-z0-9._-])" if edge.startswith("/") else r"(?![A-Za-z0-9])"
                 if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
                 literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
-            if literals:
-                alts.append("(?P<lit>" + "|".join(literals) + ")")
+            if literals:  # the forms of one value make one pattern now (_word_pattern): once each
+                alts.append("(?P<lit>" + "|".join(dict.fromkeys(literals)) + ")")
             alts.append(f"(?P<tmp>{_TMP_RE})")
             alts.append(f"(?P<hash>{_HASH_RE})")
             self._inner = re.compile("|".join(alts))
@@ -806,7 +840,7 @@ class Redactor:
     def _pattern(self, kind: str, value: str) -> str:
         key = (kind, value.lower())
         if key not in self._pattern_values:
-            known = self._exact.get(value) or self._folded.get(value.lower())
+            known = self._exact.get(_bare(value)) or self._folded.get(_bare(value).lower())
             self._pattern_values[key] = known or self._placeholder(kind)
             self._kind_of.setdefault(self._pattern_values[key], kind)
         return self._pattern_values[key]
