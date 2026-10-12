@@ -5188,15 +5188,23 @@ def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
         encoding="utf-8",
     )
     part = status_parts(fake_mac)[1]["Quarantine by reason"]
-    assert table_counts(part) == {"<folder-2>": 1}, part
-    assert any(ln.split(" | ")[2:4] == ["withheld by label rule", "2"] for ln in part.splitlines()), part
+    # This Mac has no OCR engine: no image converter exists without one, so the image is no converter's.
+    assert table_counts(part) == {"<folder-2>": 2}, part
+    assert any(ln.split(" | ")[2:4] == ["withheld by label rule", "1"] for ln in part.splitlines()), part
     assert (
         "- `withheld by label rule`: a [policy] label rule is set and the label of a .msg or an image" in part
     )
     assert [ln for ln in part.splitlines() if ln.startswith("- <")] == [
-        "- <folder-2>, no converter by type: .mp4 1"
+        "- <folder-2>, no converter by type: .mp4 1 · .png 1"
     ]
     assert registry_mod.label_withheld_suffixes() == setup_report._LABEL_WITHHELD
+    # With the engine ready the image is the rule's too (the OCR part adds the image suffixes).
+    withheld = setup_report._LABEL_WITHHELD
+    assert (
+        setup_report.quarantine_class("no converter for .png", withheld=withheld) == "withheld by label rule"
+    )
+    assert setup_report._refused_type("no converter for .png", withheld=withheld) is None
+    assert setup_report.quarantine_class("no converter for .png") == "no converter"
 
 
 def residue_free(text: str) -> bool:
@@ -5381,7 +5389,9 @@ def test_a_reason_is_reported_as_one_of_the_fixed_classes(reason: str | None) ->
     the text does: a duplicate's mirror path or a label's name that says "too large" is still what it is."""
     assert setup_report.quarantine_class(reason) == REASONS[reason]
     assert REASONS[reason] in setup_report.QUARANTINE_CLASSES
-    assert set(REASONS.values()) == set(setup_report.QUARANTINE_CLASSES), "every class has a case here"
+    # "withheld by label rule" is given only while a label rule is on (B13 round 2 R33): its own test.
+    rule_only = {"withheld by label rule"}
+    assert set(REASONS.values()) | rule_only == set(setup_report.QUARANTINE_CLASSES), "every class has a case"
 
 
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:

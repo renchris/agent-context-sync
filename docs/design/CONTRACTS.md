@@ -11561,8 +11561,9 @@ brings every row back; an unfinished scan with every count 0 keeps the table).
     new build under any cycle still running) while a job may run from it (2026-10-08 U7; v10 E3).
   - Residuals: a cycle longer than the wait still meets the rebuild (today's behavior, said in one line); a
     job that starts inside the rebuild can fail at exec or import before it takes the lock (exit 1, as today).
-    (**amended 2026-10-11, §16.47 R114, R125:** the rebuild window is shorter, the locks are those of every
-    config a job runs with, and a run killed with SIGKILL during the wait is said in the header; see §16.47.)
+    (**amended 2026-10-11, §16.47 R114, R125:** the locks are those of every config a job runs with, a locked
+    install that leaves no interpreter runs once more, and a run killed with SIGKILL during the wait is said
+    in the header; see §16.47.)
   - Tests: `tests/test_install_oneshot.py` (the wait, released on the first tick; a wait that runs out; no
     lock file, none created; a free lock held while uv runs; a crash marker kept; a bad
     `AGENTSYNC_REINSTALL_WAIT_SECONDS` is a usage error) and `tests/test_ops_lock.py`
@@ -12194,11 +12195,13 @@ before its step 3 named the stop; R21).
 
 - The reinstall holds the lock of this run's config and of the config each LaunchAgent's plist names after
   `--config` (PlistBuddy), once each; a busy probe on any of them is the wait. The wait is per lock.
-- Over a tool environment the jobs run from, a checkout is built into a wheel first (`uv build --wheel`, outside
-  the lock) and the wheel installed: measured at load 500 (uv 0.12.17), the environment was missing about 6 s
-  for a checkout and about 0.9 s for a wheel. A first install, and a wheel source, build nothing first. A wheel
-  that does not build leaves the install to the checkout. uv's receipt then names the removed temporary wheel;
-  nothing here runs `uv tool upgrade`.
+- Not built: building the checkout into a wheel first. Measured at load 500 (uv 0.12.17), it would cut the
+  time the environment is missing from about 6 s to about 0.9 s, but uv then records the temporary wheel as the
+  install source (`direct_url.json`: `archive_info` instead of the checkout's `dir_info`), and
+  `setup_report._installed_from` (the report's install source and checkout facts), `_git_proxy_urls` (that
+  checkout's proxy) and `it_request.source_checkout` (its refusal to write inside the checkout) all read the
+  checkout from there. Restoring it would mean rewriting a file RECORD hashes, and uv's receipt. A tick in the
+  window ends as the next bullet says, and launchd's next interval recovers.
 - A locked install that fails and leaves no interpreter (a tick started Python while uv removed the
   environment: "Directory not empty") runs once more under the locks; a second failure says the environment was
   left without its interpreter and to run the command again, not network, proxy or TLS.
@@ -12250,7 +12253,9 @@ before its step 3 named the stop; R21).
   stub identity, no label escalation). The page says `a [policy] label rule is set and the label of a <suffix>
   file cannot be read, so its content is withheld (content policy)` and names the route (save as .eml, export
   as a PDF). The report counts such rows as `withheld by label rule` while the rule is on, with a line naming
-  those routes. `convert.registry.label_withheld_suffixes()` defines the set beside the gates;
+  those routes. An image is the rule's only where an OCR engine exists (the cycle's `Publisher.images_readable`;
+  the report's OCR part reading `ready`): without one no image converter is registered whatever the policy
+  says, and the image keeps the `no converter` words and class. `convert.registry.label_withheld_suffixes()` defines the set beside the gates;
   `setup_report._LABEL_WITHHELD` is held equal to it by a test.
 - **The exclude line** (R8): an allowlist. Agentsync's shipped globs show as written; every other entry is
   `"<path>"` or `"/<path>/"`. The Loop line cuts a path to its last part first (K16b), so a nested

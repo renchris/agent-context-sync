@@ -100,11 +100,6 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
   b="$HOME/.local/bin"
   printf 'warning: `%s` is not on your PATH. To use installed tools, run ' "$b" >&2
   printf '`export PATH="%s:$PATH"` or `uv tool update-shell`.\n' "$b" >&2
-elif [ "$1" = build ]; then
-  o=""
-  while [ $# -gt 0 ]; do [ "$1" != -o ] || o="$2"; shift; done
-  [ -z "${STUB_UV_BUILD_RC:-}" ] || exit "$STUB_UV_BUILD_RC"
-  : > "$o/agentsync-0.1.0-py3-none-any.whl"
 elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
 elif [ "$1 $2" = "tool dir" ]; then
@@ -3795,11 +3790,13 @@ def test_a_saved_v6_prompt_still_closes_and_reports(env: dict[str, str]) -> None
     assert reported.returncode == 0
     assert last_line(reported).startswith(
         "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started, so do not "
-        f'bring it back: copy the prompt again from {PROMPT_SOURCE} ("Set up on a new Mac: one prompt"; this '
-        f"installer is for setup prompt v{COMPAT}) and paste it into a new session [setup report: "
+        f'send it or bring it back: copy the prompt again from {PROMPT_SOURCE} ("Set up on a new Mac: one '
+        f'prompt"; this installer is for setup prompt v{COMPAT}) and paste it into a new session '
+        "[setup report: "
     )
     assert sum(ln.endswith(" | end | finished") for ln in friction_path(env).read_text().splitlines()) == 1
-    assert report_path(env).is_file()
+    # The report is written beside the friction log, not over setup-report.md (B13 round 2 R17).
+    assert (friction_path(env).parent / "stopped-copy-report.md").is_file() and not report_path(env).exists()
 
 
 def test_no_report_is_ignored(env: dict[str, str], folder: Path, wheel: Path) -> None:
@@ -4725,31 +4722,6 @@ def test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with(
         cp.stdout.splitlines()
     )
     assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e))
-
-
-def test_a_checkout_over_a_tool_environment_is_built_into_a_wheel_first(
-    env: dict[str, str], folder: Path
-) -> None:
-    """uv --force deletes the environment the jobs run from before it builds: a checkout is built first, and
-    the built wheel installed, so the environment is missing only while uv recreates it; the wheel's folder is
-    removed after (B13 round 2 R114). A first install, with no environment, builds nothing first (the first
-    install of tests/test_launcher.py::test_install_sh_full_run_is_idempotent pins its uv calls)."""
-    e, _ = _held_sync(env)
-    cp = install_sh(e, "--source-local", str(folder))
-    assert cp.returncode == 0, cp.stdout + cp.stderr
-    log = calls(e)
-    [build] = [c for c in log if c.startswith("uv build --wheel -o ")]
-    out = build.split(" -o ", 1)[1].split(" ", 1)[0]
-    assert build.endswith(f" {REPO}")
-    [inst] = [c for c in log if c.startswith("uv tool install")]
-    assert log.index(build) < log.index(inst) and inst.endswith(f" {out}/agentsync-0.1.0-py3-none-any.whl")
-    assert not Path(out).exists()
-    Path(e["STUB_LOG"]).unlink()
-    e = {**e, "STUB_UV_BUILD_RC": "1"}
-    cp = install_sh(e, "--source-local", str(folder))
-    assert cp.returncode == 0, cp.stdout + cp.stderr
-    [inst] = [c for c in calls(e) if c.startswith("uv tool install")]
-    assert inst.endswith(f" {REPO}"), "a wheel that does not build leaves the install to the checkout"
 
 
 def test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more(

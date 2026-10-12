@@ -940,7 +940,7 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
     last = report.stdout.rstrip().splitlines()[-1]
     assert last.startswith(
         "NEXT: this report is of an attempt that an out-of-date copy of the setup prompt started, so do "
-        f"not bring it back: copy the prompt again from {source} "
+        f"not send it or bring it back: copy the prompt again from {source} "
     ), report.stdout
 
 

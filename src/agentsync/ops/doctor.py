@@ -1583,7 +1583,9 @@ def _check_heartbeat(config: Config) -> list[CheckResult]:
 
 def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
     """:func:`agentsync.loop.empty_cloud_folders_held` from the manifest's stored state (no folder is listed);
-    False when there is no manifest or it cannot be read."""
+    False when there is no manifest or it cannot be read. The manifest is opened as status's ``next_step``
+    opens it, so an older schema is migrated here as there; only an inbox incomplete for
+    ``_INCOMPLETE_RUNS`` passes opens it."""
     db = config.state_paths.db
     if not db.exists():
         return False

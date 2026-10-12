@@ -1459,6 +1459,7 @@ class _Cycle:
         # The OCR engine is looked for once per cycle, here, and never under a dry run: looking runs the
         # helper's --version. Without one every converter is what it was before OCR existed.
         self.ocr = None if self.dry else _cycle_ocr(config)
+        self.publisher.images_readable = self.ocr is not None
         # The media helper likewise (its --version runs), beside an OCR engine only; the piece store is a
         # folder of the cache, created when a piece is first stored.
         self.media = _cycle_media(config, self.ocr)

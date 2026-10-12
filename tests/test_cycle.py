@@ -2308,6 +2308,9 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
         fm, body = _image_page(labelled, rel)
         assert (fm["status"], fm["reason"]) == ("refused", f"no converter for {suffix}")
         assert "Loading dock" not in body and "Visitor" not in body
+        # With an engine, the rule is why: the page says so and names the PDF route (B13 round 2 R33).
+        assert f"a [policy] label rule is set and the label of a {suffix} file cannot be read" in body
+        assert "Export it as a PDF to have it converted" in body
     assert len(reads(engine.helper)) == 1, "the helper is not run under a label rule"
     assert governance.pending_purges(labelled.state_paths.root) == [], "no label was read: nothing to purge"
     with Manifest(labelled.state_paths.db) as m:

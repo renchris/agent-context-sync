@@ -3015,16 +3015,16 @@ _EMPTY_DIRS_META = "empty_cloud_dirs:"  # cycle._EMPTY_DIRS_META
 _PRESENT_SQL = "('live', 'dataless')"
 
 
-def quarantine_class(reason: str | None, *, labels_active: bool = False) -> str:
+def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> str:
     """The fixed class (one of :data:`QUARANTINE_CLASSES`) of a manifest row's ``state_reason``. A reason is
     free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
-    so the report prints the class and never the reason. While a label rule is on (``labels_active``), a
-    ``.msg`` or an image with no converter is ``withheld by label rule``: the rule is why none is registered
-    (:data:`_LABEL_WITHHELD`)."""
+    so the report prints the class and never the reason. A file with no converter whose suffix is in
+    ``withheld`` is ``withheld by label rule``: the suffixes a label rule now leaves without one
+    (:data:`_LABEL_WITHHELD`; images only on a Mac whose OCR engine is ready, see :class:`_Mirror`)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
-    if labels_active and text.startswith(_NO_CONVERTER) and text[len(_NO_CONVERTER) :] in _LABEL_WITHHELD:
+    if withheld and text.startswith(_NO_CONVERTER) and text[len(_NO_CONVERTER) :] in withheld:
         return "withheld by label rule"
     starts = (
         (_NO_CONVERTER, "no converter"),
@@ -3100,7 +3100,7 @@ _REFUSED_BARE = "no extension"
 _TYPES_SHOWN = 12
 
 
-def _refused_type(reason: str | None, *, labels_active: bool = False) -> str | None:
+def _refused_type(reason: str | None, *, withheld: Collection[str] = ()) -> str | None:
     """What a ``no converter`` reason says the file is: its suffix when that is one of
     :data:`_REFUSED_TYPES`, ``no extension``, else ``other``. None for a reason of any other class
     (:func:`quarantine_class` reads the text the same way, so the two agree on which rows these are, a file
@@ -3109,7 +3109,7 @@ def _refused_type(reason: str | None, *, labels_active: bool = False) -> str | N
     if not text.startswith(_NO_CONVERTER):
         return None
     tail = text[len(_NO_CONVERTER) :]
-    if labels_active and tail in _LABEL_WITHHELD:
+    if tail in withheld:
         return None
     if tail == _NO_EXTENSION:
         return _REFUSED_BARE
@@ -3195,7 +3195,10 @@ class _Mirror:
         self, db: Path, budget_s: float, *, latest: float | None = None, labels_active: bool = False
     ) -> None:
         self.db = db
-        self.labels_active = labels_active  # how reason_class and refused_type read a .msg or an image
+        # The suffixes reason_class and refused_type read as withheld by a label rule: .msg while one is on,
+        # and the images once the OCR part finds the engine ready (without it no image converter exists).
+        self.labels_active = labels_active
+        self.withheld: set[str] = {".msg"} if labels_active else set()
         self.deadline = time.monotonic() + budget_s
         self.latest = latest
         self.steps = 0
@@ -3222,16 +3225,8 @@ class _Mirror:
                 raise _NoManifestError
             conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
             conn.set_progress_handler(self._tick, _STEP_TICK)
-            active = self.labels_active
-            conn.create_function(
-                "reason_class",
-                1,
-                functools.partial(quarantine_class, labels_active=active),
-                deterministic=True,
-            )
-            conn.create_function(
-                "refused_type", 1, functools.partial(_refused_type, labels_active=active), deterministic=True
-            )
+            conn.create_function("reason_class", 1, lambda r: quarantine_class(r, withheld=self.withheld))
+            conn.create_function("refused_type", 1, lambda r: _refused_type(r, withheld=self.withheld))
             conn.create_function("refused_shape", 1, _refused_shape, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
             self._conn = conn
@@ -3943,6 +3938,8 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     helper, state, label_rule = _ocr_helper(r, m)
+    if state == "ready" and m.labels_active:  # before any file count: Quarantine by reason reads it too
+        m.withheld |= _LABEL_WITHHELD
     return [
         *helper,
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),

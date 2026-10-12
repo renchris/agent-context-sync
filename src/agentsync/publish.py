@@ -636,6 +636,9 @@ class Publisher:
         self._layout = config.layout
         self._root = config.docs_repo
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        # Whether this cycle has an OCR engine (the cycle sets it): without one no image converter is
+        # registered whatever the policy says, so an image's stub is not the label rule's (B13 round 3 R33).
+        self.images_readable = False
         # collision_key -> owner (source_id, stable_id) of paths allocated by THIS instance (one cycle)
         self._claimed: dict[str, tuple[str, str]] = {}
 
@@ -1074,6 +1077,7 @@ class Publisher:
             and self._policy.labels_active
             and result.reason == NO_CONVERTER_PREFIX + suffix
             and suffix in label_withheld_suffixes()
+            and (suffix == ".msg" or self.images_readable)
         )
         if withheld:
             route = (
