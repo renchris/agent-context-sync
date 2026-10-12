@@ -3190,6 +3190,7 @@ def _configuration(r: _Run) -> list[str]:
     out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
     out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
     out.append(_policy_line(c))
+    out.append(_excludes_line(c, r.red))
     out.append(
         f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
     )
@@ -3207,6 +3208,35 @@ def _configuration(r: _Run) -> list[str]:
             "other"
         )
     return out
+
+
+def _excludes_line(c: Config, red: Redactor) -> str:
+    """The local and inbox sources' ``exclude`` entries beyond agentsync's own (:data:`_SHIPPED_EXCLUDES`), as
+    counts by source label (B13 round 5 F40): an ``exclude-empty`` folder glob changes what is mirrored for
+    good (the folder is not mirrored if it later gains files), and once the next walk prunes it the Empty
+    cloud folders part says "none". Never a glob's text, a folder name or a glob's depth: counts only, as
+    the label line (:func:`_policy_line`)."""
+    labels = _Labels(c, red)
+    counted: list[str] = []
+    others = 0
+    for src in c.sources:
+        if src.kind.value not in ("local", "inbox"):
+            continue
+        extra = [g for g in src.exclude if g not in _SHIPPED_EXCLUDES]
+        if not extra:
+            others += 1
+            continue
+        folders = sum(1 for g in extra if len(g) > 2 and g.startswith("/") and g.endswith("/"))
+        counted.append(
+            f"{labels.of(src.id)} {len(extra)}" + (f" ({folders} folder glob(s))" if folders else "")
+        )
+    if not counted:
+        return "- source excludes beyond agentsync's own: none"
+    rest = f"; 0 on the other {others} source(s)" if others else ""
+    return (
+        f"- source excludes beyond agentsync's own: {', '.join(counted)}{rest} (globs not shown; an excluded "
+        "folder is not mirrored if it later gains files)"
+    )
 
 
 def _policy_line(c: Config) -> str:

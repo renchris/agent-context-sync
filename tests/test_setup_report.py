@@ -39,7 +39,7 @@ from agentsync import (
     policy,
     setup_report,
 )
-from agentsync.config import Config, ConvertConfig, load_config
+from agentsync.config import DEFAULT_EXCLUDES, Config, ConvertConfig, load_config, set_source_exclude
 from agentsync.convert import image, media, msg, ocr, pdf, recording, speech, vtt
 from agentsync.convert import registry as registry_mod
 from agentsync.convert.cache import ConverterCache
@@ -6959,6 +6959,30 @@ def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str
     assert "- [policy] label rule: not read (ConfigError); policy.toml beside sources.toml: yes\n" in conf, (
         conf
     )
+
+
+def test_configuration_counts_the_source_excludes_beyond_agentsyncs_own(fake_mac: dict[str, Path]) -> None:
+    """B13 round 5 F40: exclude-empty wrote a folder glob, the next walk pruned the folder, and the report
+    said "Empty cloud folders: none" with nothing about a folder that will not be mirrored if it gains
+    files. The Configuration counts each local or inbox source's excludes beyond agentsync's own, with no
+    glob text and no folder name; a zero is said."""
+    cfg = fake_mac["config"]
+    conf = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Configuration")
+    assert "- source excludes beyond agentsync's own: none\n" in conf, conf
+    loaded = load_config(cfg)
+    [src, *rest] = [s for s in loaded.sources if s.kind.value in ("local", "inbox")]
+    set_source_exclude(
+        cfg, src.id, [*DEFAULT_EXCLUDES, "/Empty Subfolder/", "*.bak"]
+    )  # as exclude-empty does
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- source excludes")]
+    label = line.split(": ", 1)[1].split(" ", 1)[0]
+    assert re.fullmatch(r"<(?:source|folder)-\d+>|\(source", label), line
+    assert line.endswith(
+        f" 2 (1 folder glob(s)); 0 on the other {len(rest)} source(s) (globs not shown; an excluded folder "
+        "is not mirrored if it later gains files)"
+    ), line
+    assert "Empty Subfolder" not in text and "*.bak" not in text
 
 
 def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: dict[str, Path]) -> None:

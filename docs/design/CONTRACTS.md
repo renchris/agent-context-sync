@@ -14624,6 +14624,18 @@ embedded H1s and H2s no longer outrank or match them. No heading is rewritten, s
 section 2 still compares line for line (the triage rule's dated line). Not a three-tilde fence: the report's own
 `~~~text` blocks would close it. Test: `test_the_bring_back_file_fences_each_file_it_embeds`.
 
+**F40: the Configuration counts the source excludes beyond agentsync's own.** Read with Q31's counts-only rule
+and Q71 (`exclude-empty`): after the `[policy]` line, `- source excludes beyond agentsync's own: <label> N (K folder
+glob(s)), ...; 0 on the other M source(s) (globs not shown; an excluded folder is not mirrored if it later gains
+files)`, or `none`, over the local and inbox sources, counting `exclude` entries not in `_SHIPPED_EXCLUDES`; a
+folder glob is one that starts and ends with `/` (the form `exclude-empty` writes). A source is named by its
+evidence label (`_Labels`); never a glob's text, a folder name or a glob's depth. Once the next walk prunes an
+excluded folder, the Empty cloud folders part says `none`, so this line is where the lasting change shows. The
+shell report's Configuration prints the same line from sources.toml (`source_excludes_line`, with the existing
+`SHIPPED_EXCLUDES`; a source is `(source N)` by its place). Tests:
+`test_configuration_counts_the_source_excludes_beyond_agentsyncs_own`,
+`test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own`.
+
 **F62.** A test comment that still said rule 5's NEXT puts the wait below now says it names no place (Q74).
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)

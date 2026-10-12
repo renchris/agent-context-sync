@@ -1716,6 +1716,7 @@ fallback_body() {
 	if [ -f "$CONFIG" ]; then
 		say "- config: $CONFIG (exists)"
 		say "- [[source]] tables: $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
+		say "$(source_excludes_line "$CONFIG")"
 	else
 		say "- config: $CONFIG (missing)"
 	fi
@@ -1967,6 +1968,39 @@ embed() { # FILE INFO: the file inside its fence, the fence's info string INFO
 	cat "$1"
 	[ -z "$(tail -c 1 "$1")" ] || printf '\n'
 	printf '%s\n' "$fence"
+}
+# setup_report._excludes_line for the shell report (B13 round 5 F40): each local or inbox [[source]]'s exclude
+# entries beyond SHIPPED_EXCLUDES, counted, with the source by its place in sources.toml. Never a glob's text.
+source_excludes_line() { # CONFIG
+	SHIPPED="$SHIPPED_EXCLUDES" LC_ALL=C awk 'BEGIN { shipped = ENVIRON["SHIPPED"] } # not -v, which reads the \r of Icon\r as a CR
+
+		function flush() {
+			if (!open) return
+			if (kind == "local" || kind == "inbox") {
+				if (extra) { out = out (out == "" ? "" : ", ") "(source " n ") " extra (folders ? " (" folders " folder glob(s))" : "") }
+				else others++
+			}
+			open = 0
+		}
+		function take(text,    g) {
+			while (match(text, /"([^"\\]|\\.)*"|\047[^\047]*\047/)) {
+				g = substr(text, RSTART + 1, RLENGTH - 2); text = substr(text, RSTART + RLENGTH)
+				if (index(shipped, "\"" g "\"")) continue
+				extra++
+				if (length(g) > 2 && substr(g, 1, 1) == "/" && substr(g, length(g)) == "/") folders++
+			}
+		}
+		/^[[:space:]]*\[\[source\]\]/ { flush(); open = 1; n++; kind = "local"; extra = 0; folders = 0; inlist = 0; next }
+		/^[[:space:]]*\[/ { flush(); inlist = 0; next }
+		open && /^[[:space:]]*kind[[:space:]]*=/ { kind = $0; sub(/^[^=]*=[[:space:]]*["\047]?/, "", kind); sub(/["\047].*$/, "", kind) }
+		open && /^[[:space:]]*exclude[[:space:]]*=/ { line = $0; sub(/^[^=]*=/, "", line); take(line); inlist = (line !~ /\]/); next }
+		open && inlist { take($0); if ($0 ~ /\]/) inlist = 0 }
+		END {
+			flush()
+			if (out == "") { print "- source excludes beyond agentsync\047s own: none"; exit }
+			print "- source excludes beyond agentsync\047s own: " out (others ? "; 0 on the other " others " source(s)" : "") \
+				" (globs not shown; an excluded folder is not mirrored if it later gains files)"
+		}' "$1" 2>/dev/null || true
 }
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence shown="$SETUP_DIR"

@@ -1212,6 +1212,30 @@ def test_the_shell_short_name_lists_are_the_reports() -> None:
     assert lists == [set(setup_report._SHORT_WORDS), set(setup_report._SHORT_CAPS)]
 
 
+def test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own(env: dict[str, str]) -> None:
+    """B13 round 5 F40: setup_report's Configuration line in the shell report, from sources.toml: each local
+    or inbox source's excludes beyond agentsync's own, counted by its place, never a glob's text."""
+    config = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        '[[source]]\nid = "a"\nkind = "local"\npath = "/x"\n'
+        'exclude = ["~$*", "Icon\\r", "/Empty Subfolder/", "*.bak"]\n\n'
+        '[[source]]\nid = "b"\nkind = "inbox"\npath = "/y"\nexclude = [\n  "*.part",\n]\n\n'
+        '[[source]]\nid = "c"\nkind = "graph-drive"\nexclude = ["/z/"]\n',
+        encoding="utf-8",
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text(encoding="utf-8")
+    assert (
+        "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob(s)); 0 on the other 1 "
+        "source(s) (globs not shown; an excluded folder is not mirrored if it later gains files)\n" in text
+    ), text
+    assert "Empty Subfolder" not in text and "*.bak" not in text
+    config.write_text('[[source]]\nid = "a"\nkind = "local"\npath = "/x"\n', encoding="utf-8")
+    assert install_sh(env, "--report-only").returncode == 0
+    assert "- source excludes beyond agentsync's own: none\n" in report_path(env).read_text(encoding="utf-8")
+
+
 def test_the_shell_joined_word_list_is_the_reports() -> None:
     """install.sh's joined_word holds setup_report._JOINED_WORDS, word for word (B13 round 4 Q72)."""
     body = INSTALL_SH.read_text().split("\njoined_word() {\n", 1)[1].split("\n}\n", 1)[0]
