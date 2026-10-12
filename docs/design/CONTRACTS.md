@@ -12322,7 +12322,227 @@ The §16 stub of `PurgeReport` now carries `not_run: str = ''` after `taken_path
 
 ### 16.45 Round 3: sync, status and doctor (2026-10-11, wave B13 round 3 lane B)
 
-Reserved for round 3 lane B of B13.
+Wave B13 round 3, lane B: 29 items (`~/.cache/agentsync-bring-back/b13/round2/items/R<n>.md`, lanes in
+`round2/lanes.json`). Each item below is built with a test that fails without it, or names why a part is not built.
+Items that describe one defect from two or three finders are built once: R37, R50 and R80 (the lock holder); R46,
+R47 and R57 (the credential alarm's tail). R144's refusal and R1's `exclude-empty` command are not built (see
+each).
+
+**R52, R94, R54: the purge queue preview counts as the run does (`agentsync.cli`).** `purge --queue --dry-run`
+counts as previewed only the entries a run would run (an upstream deletion of a live file and a held entry stay
+queued), the same count the real run prints; its `M queued` stays the whole queue (a preview leaves it as it is).
+`_print_purge` prints a `taken:` line right after its `path:` line in both modes. The `accept-deletions` help line
+says a pass that does not list SOURCE in full applies no removal and keeps the breaker. Tests:
+`test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewed`,
+`test_purge_marks_a_taken_path_after_its_path_line`,
+`test_accept_deletions_help_says_an_incomplete_pass_applies_none`.
+
+**R58: the reviewer's guide reads the preview's last line right.** docs/deploy/setup-feedback.md's Purge queue row
+quotes both last lines as the CLI prints them; pinned by
+`test_setup_feedback_reads_the_purge_preview_last_line_as_the_cli_prints_it`.
+
+**R46, R47, R57: the credential alarm names the preview first (`agentsync.cycle`).** The credential rescan's alarm
+ends with `cycle._PURGE_QUEUE_STEPS` (dated line in §16.38); pinned in `tests/test_credential_rescreen.py`.
+
+**R77: an unreadable once-a-credential record is rebuilt (`agentsync.cycle`).** An unreadable
+`secret_once_credential` value is logged (WARNING) and rebuilt from the rows quarantined as a credential plus
+`secret_rescreen_waiting`, and the files of queued `DLP_REMEDIATION` purges, then written back at once
+(`_Cycle._rebuilt_once`); pinned by
+`test_an_unreadable_once_a_credential_record_is_rebuilt_from_the_manifest_and_logged`. The other meta reads that
+swallow a bad value (the waiting list, the rules identity) are unchanged: each already falls back to a re-screen,
+not to a weaker scan.
+
+**R105: an absent file's pages become deletion notices, and the words say so (`agentsync.cycle`,
+`agentsync.cli`).** A local or inbox file absent from two complete passes is tombstoned. Its page stays in the
+mirror as a `[DELETED UPSTREAM]` stub until `tombstone_reap_days`. Four messages used to say "removed"; they now
+say "deletion notices", plural because an `.eml` tombstones its attachment pages with it. The four messages are the
+marking alarm (`N file(s) absent from this complete pass: their pages become deletion notices only if still absent
+next pass`), the removing alarm (`N file(s) still absent from this complete pass: their pages are now deletion
+notices (deleted upstream; purge queued)`), the sync line (`K turned into deletion notices (deleted upstream)`) and
+the status suffix (`· absent N (turned into deletion notices by a later complete pass if still missing)`). `; purge
+queued` is printed only when `purge_on_upstream_delete` is on: it is on by default, and `archive = true` turns it
+off. `absent_removed` keeps its name. The §16.37 and §16.39 H23 literals are amended in place. Tests:
+`tests/test_cli.py` (status suffix, alarm, marking and removing lines, line order),
+`tests/test_cycle.py::test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes` and
+`::test_archive_on_upstream_delete_survives_a_head_moved_by_hand` (under archive, no "purge queued").
+
+**R51: a source the run did not select reads `skipped (not in this run)` (`agentsync.cycle`, `agentsync.cli`,
+`agentsync.publish`).** The published-page rescan can raise an alarm about a page of a source the run did not list:
+`sync --source`, `reconcile --source`, `accept-deletions SOURCE` or `materialise`. That source then gets a line,
+which used to read `skipped (-) · INCOMPLETE · cursor held`. `_Cycle._report` now gives its SourceReport
+`skipped_reason="not in this run"`. The reason is set only in the frozen report: `_acc` does not set it and
+`run_sources` does not record it, so heartbeats and `loop` are unchanged. The sync line prints
+`complete`/`INCOMPLETE` and the cursor word only for a source with `pass_kind`. The CHANGELOG prints
+`complete`/`INCOMPLETE` only for such a source. A paused, retired or client-less source therefore reads `skipped
+(<reason>)` followed by its alarms. STATE.md's `pass: skipped` is unchanged. Test:
+`tests/test_credential_rescreen.py::test_a_source_the_run_did_not_select_reads_not_in_this_run_with_no_completeness_word`.
+
+**R2: an unreadable conversion is counted apart from a failed one (`agentsync.cycle`, `agentsync.cli`,
+`agentsync.setup_report`).** The run record adds `converted_unreadable`, the UNREADABLE results among `converted`.
+`converted` and `converted_failed` keep their meanings. `SourceReport` carries `unreadable` and
+`conversion_failed`. When U > 0, the sync's last line ends ` (of the converted: U unreadable, F failed)`. This
+comes after the `converted N, deferred M online-only[, read again R]` words, so install.sh's `SYNC_SUMMARY_RE`, its
+awk note and setup-report's `_CONVERTED_LINE_RE` all still match. The Repeat conversions table gets an `of them
+unreadable (stub, kept, not retried)` column. When a run it shows has such a file, a note says that the file is in
+Quarantine under its stub's class (`encrypted`, `not the type its name says`, `empty`, a `no text` class), never
+`conversion failed`. The first-sync clause takes the breakdown from install.out's line of the same sync.
+install.log's `converted-N-deferred-M` note has none, since install.sh writes it. Tests:
+`tests/test_cycle.py::test_an_unreadable_conversion_is_counted_apart_from_a_failed_one`,
+`tests/test_setup_report.py::test_repeat_conversions_part_reads_the_run_records_and_the_cache` and
+`::test_first_sync_clause_carries_the_read_again_count`.
+
+**R100: a converter library upgrade reopens the re-read (`agentsync.cycle`).** `_Cycle._capabilities` adds `deps`:
+the sorted `[name, convert._common._dist_version(name)]` pairs of `cycle._CONVERTER_DISTS` (olefile, openpyxl,
+pdfminer.six, pypandoc_binary, pypdfium2, python-pptx). A library that is not installed reads `unknown`. The pairs
+use distribution versions only, never a converter's `version()`. A `uv sync` that moves one of these libraries
+therefore restarts the scan once, as a new build does. A file in `tried` gets its two attempts again. Amends §16.27
+("tried" bullet and "The record" `for` bullet) and §16.39 N4 (its "a dependency upgrade alone ... restarts nothing"
+paragraph). Tests: `tests/test_cycle.py::test_a_file_given_up_is_read_again_by_another_build[library]` and
+`::test_the_converter_libraries_in_the_re_read_digest_are_dependencies`.
+
+**R59.** §16.37's paragraph on the alarm of a source whose unknown folders are all empty cloud folders now carries
+a dated line (`**Amended 2026-10-11, §16.39 N27:**`) that quotes the pointer the code prints, for an inbox as for a
+local source, and the mixed-case ending; N27's closing clause reads "(dated lines in §16.20, §16.22 and §16.37)".
+Doc only; the alarm texts stay pinned by `tests/test_arm_local.py`
+(`test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them`,
+`test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`,
+`test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`).
+
+**R103.** An empty source root, plain or cloud, gets one alarm and never an exclude: with files mirrored, the
+empty-root alarm `source root <root> is empty but N file(s) are mirrored (unmounted volume?): enumeration
+incomplete, nothing is deleted` alone (a cloud root got the generic alarm instead, which advised excluding a
+deliberately empty cloud folder); with nothing mirrored, a cloud root reads `source root <root> has zero children
+in a cloud tree: enumeration incomplete, nothing is deleted`. A root that cannot be listed (`'.'` the only unknown
+folder) keeps the generic cause with the advice `(grant the agent Files and Folders access)` only.
+`WalkStats.empty_cloud_root` says the root itself had zero children in a cloud tree. This retires N27's "Not
+changed: an empty cloud source root still gets the old alarm's exclude advice" and N27's third alarm bullet ("...
+an empty cloud root): the old text, byte for byte"); both carry dated lines. Test:
+`tests/test_arm_local.py::test_an_empty_root_alarm_never_advises_an_exclude`.
+
+**R102.** The wait for a local source whose listing a folder blocks (no access, a missing folder or sentinel) is
+per source when the source's last walk missed mirrored files (`loop._missed` > 0): `a folder in <id> could not be
+listed (no access, or a missing folder or sentinel; another sync does not clear it): `agentsync sync -v` names it;
+grant Files and Folders access (the safe fix); the last walk of <id> did not list N file(s) the mirror still has,
+and adding the folder to that source's exclude retires the pages under it at once, with no deletion check and no
+purge queued`. Sources with nothing missed share today's line, byte for byte. Test:
+`tests/test_loop.py::test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclude_retires`
+(today's text: `test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`).
+
+**R101.** An inbox pass stamps `last_seen_run`, and only that, on the present file rows of the files its walk
+withheld as changed within `quiescence_s` or future-dated (`ScanResult.withheld`, stable ids;
+`Manifest.touch_withheld`, in the pass's transaction). `Manifest.unlisted_count`, so `loop._missed` and the setup
+report's Empty cloud folders count, no longer count such a file, and `unseen_live` never offers it as a deletion
+candidate. A withheld file with no row (a new file still being written) stamps nothing, so a file deleted upstream
+still counts. §16.39 N26's Known limit carries a dated line (`**Amended 2026-10-12, §16.45 R101:**`). Tests:
+`tests/test_loop.py::test_an_inbox_file_the_walk_withheld_is_not_in_the_count` (was
+`..._is_in_the_count_until_a_sync_lists_it`), `test_withheld_inbox_files_leave_a_real_deletion_in_the_count`.
+
+**R1.** A zero-child folder is unknown, never empty, only in a File Provider domain: its provider folder
+(`~/Library/CloudStorage/<provider>`, the first component below a cloud root) carries a File Provider extended
+attribute (a real domain root carries `com.apple.file-provider-domain-id`), or the attribute read fails for any
+reason (EPERM, ENOSYS off macOS: fail-safe, the old rule). A clean read with no such attribute (a plain folder, as
+a rehearsal sandbox's `mkdir` makes) makes a zero-child folder an ordinary empty one, so the listing completes. The
+walk reads the attribute once per provider folder per walk (`arm_local._is_domain`, cached in `walk`);
+`file_provider_marker` moved from `setup_report` to `materialise` and both import it from there. A zero-child cloud
+root with no provider folder above it keeps the rule. Decision 71d3e66ef726 is unchanged. The empty cloud folder
+wait now reads `N empty cloud folder(s) keep the listing of <id> incomplete: an empty folder in a cloud folder is
+expected and loses nothing, since deletions in <id> are only held until it is excluded, and another sync does not
+clear it; if they are meant to be empty, set exclude = [...] ...`. Dated lines in §11 and in the §16.22 rule's
+restatement. Not built: the spec's `exclude-empty` command (the CLI command set is frozen). Tests:
+`tests/test_arm_local.py` (`test_an_empty_folder_in_a_plain_provider_folder_is_just_empty`, macOS only;
+`test_a_provider_folder_whose_attributes_cannot_be_read_keeps_the_rule`), `tests/test_loop.py`
+(`test_an_empty_folder_in_a_plain_provider_folder_gets_no_wait`, macOS only). `tests/conftest.py` reads every
+provider folder as a domain in-process (autouse `_provider_folders_are_domains`); the R1 tests opt out with
+`real_domain_check`, and `file_provider_domain(path)` sets the real attribute for a walk in another process.
+
+**Review fixes (R1, R102, R103).**
+- R1: `_is_domain` also counts an entry that is not a real folder on lstat (a symlinked provider entry, whose own
+  attributes say nothing) as a domain, and the walk keeps the rule for any path with a `..` in it under a cloud
+  root. Test: `tests/test_arm_local.py::test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule`
+  (macOS only).
+- R1 (pre-existing): `arm_local._cloud_roots` also holds each cloud root's resolved path, so a source stored
+  resolved under a home reached through a symlink (`/tmp` is `/private/tmp`) is still in a cloud tree. Test:
+  `tests/test_arm_local.py::test_a_home_reached_through_a_symlink_keeps_the_rule`.
+- R102/R103: a source whose last walk could not list its root, or found it empty, or could not walk it at all
+  (manifest meta `root_unlisted:<id>` = "1", `cycle._ROOT_UNLISTED_META`, written beside `empty_cloud_dirs:<id>`
+  only on a change) gets its own wait with no exclude: `the folder of <id> itself could not be listed or is empty
+  (an unmounted volume, a sync client that has not filled it yet, or no access; another sync does not clear it):
+  mount it or let the sync client fill it, or grant Files and Folders access; to stop syncing it on purpose, set
+  state = "paused" in [[source]] id = "<id>" in <sources.toml>`, and its `heartbeat.<id>` check. Every other wait
+  is byte-identical. Test: `tests/test_loop.py::test_a_source_root_a_sync_cannot_list_never_offers_an_exclude`.
+
+**R37, R50, R80: an empty-body lock holder is named one way and runs no cycle** (`agentsync.ops.lock`,
+`agentsync.ops.doctor`). A held lock with an empty body (install.sh's lockf, a status or doctor `is_held` probe, or
+a cycle between its flock and its body write) reads `an unrecorded holder (install.sh while it reinstalls
+agentsync, a status or doctor check, or a cycle starting)` in `LockHeldError`'s text, in its `who` (the CLI's
+`skipped: lock held by ...` WARNING) and in doctor: one constant, `EMPTY_BODY_HOLDER`, with no pid or time, so
+Recent errors still merges the WARNING. A non-empty body that does not parse keeps `an unidentified holder
+(unparseable lock body)`. Doctor's held `lock` line adds `(a cycle is running)` only when the body parses as a
+cycle's record (`LockInfo.parse`); for any other body it reads `held by <desc>` and reads no holder sidecar, so a
+dead cycle's leftover sidecar never yields a `kill <pid>` fix while install.sh holds the lock. N24 and the
+install.sh lock bullet carry dated amendments. Tests: `tests/test_ops_lock.py`
+(`test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`), `tests/test_ops_doctor.py`
+(`test_lock_held_with_an_empty_body_names_no_cycle`).
+
+**R38: status's own fix names no command** (`agentsync.ops.doctor`). A local source's incomplete-listing fix reads
+`each WAITING ON YOU line about <id> says what stops the listing and what to do: another sync does not clear it`:
+status prints it, so `agentsync status (...)` sent the reader to the command they had just run, and "above" does
+not hold in the setup report's Doctor section. N27's "each" and the source id stay; the text has no parentheses,
+since the report's fix parser strips one level. §16.39 is amended. Tests: `tests/test_ops_doctor.py`
+(`test_heartbeat_states`, `test_heartbeat_incomplete_fix_by_source_kind`), `tests/test_setup_report.py`
+(`test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected`).
+
+**R151: doctor follows the loop's waits instead of re-deriving them** (`agentsync.cli`, `agentsync.ops.doctor`).
+status reads `loop.next_step` before its checks and passes `NextStep.checks` to `doctor.run_checks(config, ...,
+loop_checks=...)` (a keyword; `None`, the default, keeps the old wording). An incomplete listing gets the WAITING
+ON YOU fix, or under `AGENTSYNC_NO_NEXT_HINT=1` the note `yours: see WAITING ON YOU`, only when its
+`heartbeat.<id>` is among those checks, whatever the source kind (an inbox with empty cloud folders included); any
+other incomplete local source reads `agentsync sync; another full walk lists it`, which holds both right after the
+exclude line was pasted (no sync since) and after a pass that was not FULL. That first read skips rule 9's count of
+the curation queue (`count_queue=False`); `NextStep.checks` depends on neither that count nor the FAILs. status
+prints that read's NEXT only when no check failed and its step came before rule 9; otherwise it reads the loop
+again exactly as before (`next_lines(fixes=...)`), so NEXT is byte for byte the old one and the queue is counted no
+more often than before (rule 1 counts none). The setup report's Doctor section passes no loop checks and keeps the
+default. Tests: `tests/test_ops_doctor.py` (`test_heartbeat_incomplete_follows_the_loop_checks`),
+`tests/test_loop.py` (`test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it`,
+`test_status_next_is_the_loops_with_and_without_a_fail`).
+
+**R78: a fix command quotes a path by what it holds** (`agentsync.ops.doctor`, `agentsync.setup_report`). The docs
+repo fixes (`mkdir -p`, `move ... aside`, `git -C ... rm --cached`) and a cloud root's `open ... in Finder once`
+print the path through `_shell_path`, never raw, so a space no longer splits it. `_shell_path` keeps `~/'<rest>'`
+(or `'<path>'`) for a path with no `'`; a path with a `'` and none of `!$`\"` is `~/"<rest>"` (or `"<path>"`),
+still the raw path in one piece for the redaction; any other is spliced with `'\''`, which splits a name holding a
+quote for the redaction. Each form reads back as the exact path in sh, bash, zsh and dash. The setup report's
+`_HOME_CONTAINER_RE` takes either quote after `~/`, so `~/"Development/<folder-1>"` is no residue hit. Tests:
+`tests/test_ops_doctor.py` (`test_shell_path_quotes_by_content_and_every_shell_reads_the_path_back`,
+`test_docs_repo_fixes_quote_the_path`), `tests/test_setup_report.py`
+(`test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted`).
+
+**R79: a cache or log folder that holds home is a FAIL, never a chmod target** (`agentsync.ops.doctor`). The
+permissions check applies the sync's rule, `cycle._holds_home` (same file, not same spelling; the home folder or
+any folder above it): such a `cache_dir` or `log_dir` is neither walked (the person's own entries are not tenant
+data) nor named in the chmod, and gets its own FAIL, `config.<key>`: `<key> is the home folder or a folder that
+holds it, so agentsync leaves its modes alone`, fix `set <key> in <sources.toml> to a folder of its own, such as
+<the default>`. With no chmod target left, `docs_repo.permissions` offers no chmod. Test:
+`tests/test_ops_doctor.py` (`test_a_cache_or_log_folder_that_holds_home_is_a_fail_and_no_chmod_target`).
+
+**R144: two sources holding the same files is an advisory, never a refusal** (`agentsync.ops.doctor`,
+`agentsync.manifest`). The duplicate refusal stays inbox versus live Graph row (design failure-mode row 24):
+between two other sources neither copy is the real one, and stubbing one by an unproven inference would cost its
+citations. Doctor adds `sources.shared_content`, an ok (info) line shown only when two live non-inbox sources share
+live or dataless files by canonical hash: `<n> file(s) in <a> have the same content as a file in <b>; ...: both are
+kept; if one source copies the other, removing it from sources.toml retires its pages`. One grouped query,
+`Manifest.shared_canonical_counts(source_ids)`, which joins each file with the distinct (source, hash) set of the
+other sources, never with every copy (a join of copies with copies grows as their product, on every status); no
+line before the first sync or when the manifest cannot be read. Tests: `tests/test_manifest.py`
+(`test_shared_canonical_counts_pairs_the_given_sources_in_one_query`,
+`test_shared_canonical_counts_meets_each_copy_once`), `tests/test_ops_doctor.py`
+(`test_two_sources_holding_the_same_files_is_an_info_line`).
+
+**R144 and R1, the parts not built.** R144's refusal of a duplicate between two non-inbox sources: its verifier
+measured that a refusal would stub a source's copy on an unproven inference and cost its citations (only the
+advisory above is built). R1's `agentsync exclude-empty <id>` command: the CLI command set is frozen (tests pin
+it); the wait's paste line stays the one step, and in a plain folder the turn no longer arises.
 
 ### 16.46 Round 3: report redaction (2026-10-11, wave B13 round 3 lane RA)
 
