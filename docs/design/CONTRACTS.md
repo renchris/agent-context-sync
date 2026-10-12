@@ -13725,6 +13725,14 @@ item amends an older section, a dated line sits at that section too.
   `- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, com.agentsync.reconcile plist
   absent (Background runs has each job's state)`. `test_failure_without_agentsync_writes_the_shell_report`.
 
+#### The commands the installer prints
+
+- **`~/` for a checkout under this home** (Q7). `SELF`, the script's own path in every NEXT and re-run line,
+  reads `~/src/agent-context-sync/scripts/install.sh` when the checkout is under `$HOME`, as the README's
+  approval rules write it, and stays absolute elsewhere. The `~` is outside `printf %q`, which would write `\~`,
+  a path that never expands. `test_a_checkout_under_home_is_named_with_a_tilde` (the checkout linked under the
+  test home; the command it prints runs under bash).
+
 ### 16.54 Round 4: converters, speech and tests (2026-10-12, wave B13 round 4 lane E)
 
 Items are the round 4 harvest's and reviews' (`docs/plans/bring-back-ocr.md`, "B13 round 4"). Where a part corrects

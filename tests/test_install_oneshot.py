@@ -1981,6 +1981,33 @@ def test_list_folders_prints_depth_2_and_3_folders_sorted(env: dict[str, str]) -
     assert re.search(r" end rc=0 seconds=\d+$", log[-1])
 
 
+def test_a_checkout_under_home_is_named_with_a_tilde(env: dict[str, str]) -> None:
+    """A checkout under this home is named ~/..., as the README's approval rules write it, so an agent that
+    copies the NEXT command matches them; the ~ is outside the shell quoting, so the command still runs
+    (B13 round 4 Q7). A checkout elsewhere keeps the absolute form (every other test)."""
+    home = Path(env["HOME"])
+    (home / "src").mkdir()
+    (home / "src" / "agent-context-sync").symlink_to(REPO)
+    (_cloud(env) / "OneDrive-Contoso" / "Project Alpha").mkdir(parents=True)
+    script = home / "src" / "agent-context-sync" / "scripts" / "install.sh"
+    cp = subprocess.run(
+        [BASH32, str(script), "--list-folders"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    tilde = "~/src/agent-context-sync/scripts/install.sh"
+    assert f'then run: {tilde} --source-local "<folder>"' in last_line(cp)
+    run = subprocess.run(
+        [BASH32, "-c", f"{tilde} --version"], capture_output=True, text=True, check=False, env=env
+    )
+    assert run.returncode == 0 and f"setup-prompt-compat {COMPAT}" in run.stdout, run.stdout + run.stderr
+
+
 def test_list_folders_caps_the_list_at_200(env: dict[str, str]) -> None:
     lib = _cloud(env) / "OneDrive-Contoso"
     for i in range(205):

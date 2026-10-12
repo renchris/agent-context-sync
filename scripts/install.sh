@@ -543,7 +543,14 @@ done
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
-SELF="$(printf '%q' "$here/$(basename "${BASH_SOURCE[0]}")")" # this script, absolute, for re-run commands
+# This script, for the commands NEXT and re-run lines name: ~/... under this home, as the README's approval
+# rules write it (Bash(~/src/agent-context-sync/scripts/install.sh *)), else absolute. The ~ stays outside
+# %q, which would write it as \~, a path that never expands (B13 round 4 Q7).
+SELF="$here/$(basename "${BASH_SOURCE[0]}")"
+case "$SELF" in
+"$HOME"/*) SELF='~'"$(printf '%q' "${SELF#"$HOME"}")" ;;
+*) SELF="$(printf '%q' "$SELF")" ;;
+esac
 
 DRY_RUN=0
 [ "${AGENTSYNC_INSTALL_DRY_RUN:-}" != "1" ] || DRY_RUN=1 # the dry run (see the header)
