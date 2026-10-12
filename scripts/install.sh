@@ -1545,8 +1545,14 @@ fallback_body() {
 	v="$(command -v uv 2>/dev/null || true)"
 	[ -n "$v" ] || { [ ! -x "$HOME/.local/bin/uv" ] || v="$HOME/.local/bin/uv"; }
 	say "- uv: ${v:-not found}"
-	# the places lints.gitleaks_lookup looks after PATH (B13 round 4 Q81); the builtin patterns always run
-	v="$(command -v gitleaks 2>/dev/null || true)"
+	# The gitleaks lints.gitleaks_lookup uses (B13 round 4 Q81): the path remember_gitleaks recorded in the
+	# default state folder, when it is still an absolute executable file (B13 round 5 F58), then PATH, then the
+	# fixed places; the builtin patterns always run. read trims the blanks around it, as .strip() does.
+	v=""
+	p=""
+	{ read -r p || [ -n "$p" ]; } <"$HOME/Library/Application Support/agentsync/gitleaks-path" 2>/dev/null || p=""
+	case "$p" in /*) [ ! -f "$p" ] || [ ! -x "$p" ] || v="$p" ;; esac
+	[ -n "$v" ] || v="$(command -v gitleaks 2>/dev/null || true)"
 	for c in /opt/homebrew/bin/gitleaks /usr/local/bin/gitleaks /opt/local/bin/gitleaks "$HOME/.local/bin/gitleaks" "$HOME/go/bin/gitleaks"; do
 		[ -n "$v" ] || [ ! -x "$c" ] || v="$c"
 	done

@@ -36,6 +36,7 @@ import unicodedata
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -888,8 +889,10 @@ def test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder(env: dict[
 
 
 def test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use(env: dict[str, str]) -> None:
-    """B13 round 4 Q81: the shell report says which gitleaks the secret scan can use: the one on PATH, else
-    the first of the places ``lints.gitleaks_lookup`` looks, else none (the builtin patterns only)."""
+    """B13 round 4 Q81: the shell report says which gitleaks the secret scan can use: the one
+    ``remember_gitleaks`` recorded, when it is still an executable file (B13 round 5 F58), else the one on
+    PATH, else the first of the places ``lints.gitleaks_lookup`` looks, else none (the builtin patterns
+    only)."""
     home = Path(env["HOME"])
     places = [
         Path("/opt/homebrew/bin/gitleaks"),
@@ -911,6 +914,23 @@ def test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use(env: dict[s
     assert install_sh(env, "--report-only").returncode == 0
     [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- gitleaks: ")]
     assert line.startswith("- gitleaks: /") and line.endswith("/stubbin/gitleaks"), "PATH's comes first"
+    custom = home / "tools" / "gitleaks"
+    custom.parent.mkdir()
+    custom.write_text("#!/bin/sh\nexit 0\n")
+    custom.chmod(0o755)
+    record = home / "Library" / "Application Support" / "agentsync" / "gitleaks-path"
+    record.parent.mkdir(parents=True)
+    record.write_text(f"{custom}\n")
+    with patch.dict(os.environ, {"HOME": str(home), "PATH": env["PATH"]}):
+        assert lints.gitleaks_lookup() == custom, "the record is what every sync uses"
+    assert install_sh(env, "--report-only").returncode == 0
+    [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- gitleaks: ")]
+    assert line == "- gitleaks: ~/tools/gitleaks", "the recorded path comes first"
+    for broken in ("tools/gitleaks", str(home / "tools" / "missing")):
+        record.write_text(broken)
+        assert install_sh(env, "--report-only").returncode == 0
+        [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- gitleaks: ")]
+        assert line.endswith("/stubbin/gitleaks"), (broken, line)
 
 
 def test_the_shell_report_only_gives_the_last_install_runs_exit(env: dict[str, str]) -> None:
