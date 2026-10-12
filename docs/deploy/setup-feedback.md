@@ -42,7 +42,7 @@ section 2. If the checkout is missing too (step 1 stopped before the clone), the
 log, and the agent tells you setup stopped before the code was downloaded. Two stops have no report: a new Mac
 whose agent is waiting for the folder answer of step 1, and a copy of the prompt that step 1 stopped because it
 is not the installer's, by either check: the `--version` line, or the `--log-start` error (the prompt says so
-since v10, and names both checks since v11). Without an agent, run
+since the second v10 text, and names both checks since v11). Without an agent, run
 step 3's command yourself, and log what happened with `install.sh --log` first (or write `friction.md` in your
 own words).
 
@@ -288,7 +288,9 @@ version, and the installer wrote its own number into the log.
 - The version leads the value, and is read in the shape the agent gave it (`Prompt v12: <agent>` and `prompt v12 -
   <agent>` are v12). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it.
-- An older copy's own text still goes on to its report. That report's Summary says
+- A copy whose step 3 does not name this stop as one with no report (v9 and older, and a v10 copy taken before its
+  step 3 named it) still goes on to its own report; a later copy stops without one, as the installer's stop
+  message says. That report's Summary says
   `prompt: v7 or older (older than the installer's v12: the pasted copy was not the current README)`, its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. That run writes the report to `~/agent-context/setup/stopped-copy-report.md`,

@@ -354,8 +354,9 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			[ -z "$p" ] || [ "$p" -lt "$SETUP_PROMPT_COMPAT" ] || what="this checkout is older than the prompt"
 			what="$said and this installer is for setup prompt v$SETUP_PROMPT_COMPAT: $what"
 			fix="copy the prompt again from $PROMPT_SOURCE"
-			# The attempt is closed here: the agent is told to run no other step, so no --report-only may
-			# follow, and a later session's line must not join an attempt left open.
+			# The attempt is closed here: the agent is told to run no other step, so an agent that obeys runs
+			# no --report-only (an older copy's step 3 may still run one, and that report reads this closed
+			# attempt), and a later session's line must not join an attempt left open.
 			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
 			# The last sentence is for a current copy whose agent changed the value. It names no value that
 			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
