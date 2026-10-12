@@ -83,7 +83,7 @@ def fake_mac(monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     run = "20260929T100000Z-4242"
     (setup / "install.log").write_text(
         f"2026-09-29T10:00:00Z run={run} start install.sh commit=0123456789ab kind=checkout "
-        f"source={home}/src/agent-context-sync args=--source-local {one}\n"
+        f"source={home}/src/agent-context-sync args=--source-local {one} --source-local {two}\n"
         f"2026-09-29T10:00:00Z run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
         f"2026-09-29T10:00:00Z run={run} step=agentsync seconds=41 rc=0 result=done\n"
         f"2026-09-29T10:00:41Z run={run} step=launcher seconds=12 rc=0 result=done\n"
@@ -173,14 +173,18 @@ def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Pat
     for raw in RAW:
         assert raw not in text, f"{raw!r} leaked into the redacted report"
     assert str(fake_mac["home"]) not in text
-    for placeholder in ("<org-1>", "<folder-1>", "<library-1>", "<user>", "<name>", "<email-1>", "<guid-1>"):
+    for placeholder in ("<org-1>", "<folder-1>", "<user>", "<name>", "<email-1>", "<guid-1>"):
         assert placeholder in text, placeholder
     assert "<serial>" in text and "<host>" in text and "~/Library/CloudStorage/OneDrive-<org-1>/" in text
     # the install log names the source folder as placeholders; a job log line never carries a path at all
     path_one = "~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>/<folder-2>"
     assert path_one in section(text, "Installer")
     assert "<email-1> (<name>, <user>) owns <path>" in section(text, "Recent errors")
-    assert "OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>" in text
+    # From install.log's args, not Doctor's lines: Doctor runs last, on what is left of the budget, and a
+    # loaded machine timed it out (B13 R45). The leak check above still covers Doctor when it finishes.
+    assert "~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>" in section(
+        text, "Installer"
+    )
     assert not re.search(r"<folder-[4-9]>", text), "three folders, three placeholders"
     m = re.search(r"^(\d+) replacement\(s\) of (\d+) value\(s\)", section(text, "Redaction"), re.MULTILINE)
     assert m and int(m.group(1)) > 10 and 10 <= int(m.group(2)) < int(m.group(1))
