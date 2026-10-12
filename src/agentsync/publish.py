@@ -518,10 +518,11 @@ def _tombstone_body(row: TombstoneRow, title: str, *, archived: bool = False) ->
         )
     else:
         heading, what = "DELETED UPSTREAM", f"its source was removed upstream ({row.reason})"
+    # The banner first, as on every mirror page (B13 round 4 Q9): the title is third-party text.
     lines = [
-        f"# [{heading}] {title}",
-        "",
         policy.UNTRUSTED_BANNER,
+        "",
+        f"# [{heading}] {title}",
         "",
         f"This page is a tombstone: {what} and agentsync recorded the "
         f"removal on {row.deleted_at}. The body was replaced so no search hit here can be mistaken for "
@@ -1105,7 +1106,7 @@ class Publisher:
                 "The source exists but its content is not in docs/: it is unreadable, not absent. "
                 "See `_sync/QUARANTINE.tsv`.\n"
             )
-        body = f"# [{label}] {title}\n\n{policy.UNTRUSTED_BANNER}\n\n{text_lines}"
+        body = f"{policy.UNTRUSTED_BANNER}\n\n# [{label}] {title}\n\n{text_lines}"  # banner first (Q9)
         h2 = _sha256_text(body)
         has_converter = bool(result.converter_id) and bool(result.converter_version)
         fm = MirrorFrontmatter(

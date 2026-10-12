@@ -15,6 +15,7 @@ from agentsync import gitops, lints, slug
 from agentsync.frontmatter import MirrorFrontmatter, render_mirror_page
 from agentsync.model import LintFinding, PageStatus, RenderedUnit, UnitKind
 from agentsync.ops.launchd import LAUNCHD_PATH
+from agentsync.policy import UNTRUSTED_BANNER
 from conftest import copy_docs_repo
 
 # ---------------------------------------------------------------------------------------------------------
@@ -244,8 +245,11 @@ def test_deleted_status_needs_a_tombstone_body(repo: Path) -> None:
     )
     write(repo, "mirror/src/a.md", render_mirror_page(fm, "still the old body\n"))
     write(repo, "mirror/src/b.md", render_mirror_page(fm, "# [DELETED UPSTREAM] b\n"))
+    # B13 round 4 Q9: a tombstone opens with the banner, then its heading; one written before still passes.
+    write(repo, "mirror/src/c.md", render_mirror_page(fm, f"{UNTRUSTED_BANNER}\n\n# [RETIRED] c\n"))
+    write(repo, "mirror/src/d.md", render_mirror_page(fm, f"{UNTRUSTED_BANNER}\n\nstill the old body\n"))
     found = lints.lint_mirror_frontmatter(repo)
-    assert [f.path for f in found] == ["mirror/src/a.md"]
+    assert [f.path for f in found] == ["mirror/src/a.md", "mirror/src/d.md"]
 
 
 def test_foreign_files_in_mirror_are_blocking(repo: Path) -> None:

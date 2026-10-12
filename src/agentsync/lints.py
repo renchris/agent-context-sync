@@ -17,7 +17,7 @@ import subprocess
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
-from agentsync import gitops, slug
+from agentsync import gitops, policy, slug
 from agentsync.convert.registry import Registry
 from agentsync.errors import AgentSyncError, UnreadableSourceError
 from agentsync.frontmatter import (
@@ -256,7 +256,10 @@ def _lint_one_page(repo: Path, path: str) -> list[LintFinding]:
                 f"restore it with `git checkout -- {path}`",
             )
         )
-    if status is PageStatus.DELETED and not body.lstrip("\n").startswith(
+    # A tombstone opens with the banner, then its heading (B13 round 4 Q9); one written before that opens
+    # with the heading. Both are tombstones.
+    tomb = body.lstrip("\n").removeprefix(policy.UNTRUSTED_BANNER).lstrip("\n")
+    if status is PageStatus.DELETED and not tomb.startswith(
         ("# [DELETED UPSTREAM]", "# [MOVED OUT OF SCOPE]", "# [RETIRED]")
     ):
         findings.append(

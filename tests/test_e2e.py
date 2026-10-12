@@ -29,6 +29,7 @@ from agentsync.frontmatter import parse_frontmatter, parse_mirror_page
 from agentsync.graph.client import GraphClient
 from agentsync.manifest import Manifest, cursor_fingerprint
 from agentsync.model import ChangeOp, CycleMode, CycleReport, OutputStatus, PageStatus, RowState, Verdict
+from agentsync.policy import UNTRUSTED_BANNER
 from conftest import config_text
 
 SID = "local-fixture"
@@ -338,7 +339,8 @@ def test_f_delete_writes_a_tombstone(synced: Config, local_source_dir: Path) -> 
     assert report.commit_sha is not None
     fm, body = page(repo, rel)
     assert fm["status"] == "deleted" and fm["deleted_at"] == "2026-09-29"
-    assert body.startswith("# [DELETED UPSTREAM]") and "git show " in body
+    assert body.startswith(UNTRUSTED_BANNER) and body.split("\n")[2].startswith("# [DELETED UPSTREAM]")
+    assert "git show " in body
     with Manifest(synced.state_paths.db) as m:
         tomb = m.get_tombstone(rel)
         assert tomb is not None and tomb.reason == "deleted-upstream"

@@ -503,7 +503,8 @@ def test_plan_stub_pages(
     assert fm.status is page_status and fm.reason == expect
     assert p.status is out_status and p.unit_id == "whole"
     assert p.output_path == "mirror/src/odd/file.xyz.md"
-    assert body.startswith(f"# [{page_status.value.upper()}] file.xyz")
+    assert body.startswith(policy.UNTRUSTED_BANNER)  # B13 round 4 Q9: the banner first, then the heading
+    assert body.split("\n")[2].startswith(f"# [{page_status.value.upper()}] file.xyz")
     assert fm.rendered_sha256 == sha(body) == p.rendered_sha256
     env.pub.write_pages(item, [p], env.run_id)
     assert_pages_valid(env)
@@ -582,7 +583,7 @@ def test_removed_unit_is_tombstoned_and_can_come_back(env: Env) -> None:
     assert (ChangeOp.DELETED, q4) in [(c.op, c.path) for c in ch]
     fm, body = parse_mirror_page(env.text(q4))
     assert fm.status is PageStatus.DELETED and fm.reason == "unit-removed"
-    assert body.startswith("# [DELETED UPSTREAM] Q4")
+    assert body.startswith(policy.UNTRUSTED_BANNER) and body.split("\n")[2] == "# [DELETED UPSTREAM] Q4"
     t = env.manifest.get_tombstone(q4)
     assert t is not None and t.reason == "unit-removed" and t.reap_after == "2027-03-28"
     rows = {o.unit_id: o.status for o in env.manifest.outputs_for("src", "vol:1")}
@@ -1045,7 +1046,10 @@ def test_tombstone_replaces_the_body_and_records_rows(env: Env) -> None:
     assert fm.status is PageStatus.DELETED and fm.deleted_at == TODAY
     assert fm.last_rendered_sha256 == sha(B("# Acme pricing\n\nunit price 42\n"))
     assert "unit price" not in body
-    assert body.startswith("# [DELETED UPSTREAM] Acme pricing")
+    assert (
+        body.startswith(policy.UNTRUSTED_BANNER)
+        and body.split("\n")[2] == "# [DELETED UPSTREAM] Acme pricing"
+    )
     assert f"git show {'f' * 40}:{path}" in body
     assert f"git log -S'<term>' -- {path}" in body
     row = env.manifest.get_item("src", "vol:1")
@@ -1877,7 +1881,10 @@ def test_item_label_excluded_by_policy_gets_a_metadata_only_refused_stub(env: En
     fm, body = parse_mirror_page(env.text(pages[0].output_path))
     assert fm.status is PageStatus.REFUSED and fm.reason is not None and fm.reason.startswith("refused: ")
     assert "unit price" not in env.text(pages[0].output_path)  # never content
-    assert body.startswith("# [REFUSED] Pricing.docx") and policy.has_banner(body)
+    # B13 round 4 Q9: the banner first, as every mirror page body; the third-party title only after it.
+    assert body.startswith(policy.UNTRUSTED_BANNER) and body.split("\n")[2].startswith(
+        "# [REFUSED] Pricing.docx"
+    )
     row = env.manifest.get_item("lib", "01A")
     assert row is not None and row.state is RowState.REFUSED
     pub.write_quarantine()
