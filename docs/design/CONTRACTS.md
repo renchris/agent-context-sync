@@ -12872,7 +12872,20 @@ the last; the friction options' speed is CPU time.
 
 ### 16.48 Round 3: converters and speech (2026-10-11, wave B13 round 3 lane E)
 
-Reserved for round 3 lane E of B13.
+Amends §16.42 where each part says so; items are the round 2 harvest's (`docs/plans/bring-back-ocr.md`,
+"B13 round 2").
+
+#### Outlook messages and decks
+
+Track 1 text goes here.
+
+#### The speech build and the build watcher
+
+Track 2 text goes here.
+
+#### PDF pictures and diagrams
+
+Track 3 text goes here.
 
 ### 16.49 Round 3: setup prompt v12 and docs (2026-10-11, wave B13 round 3 lane P)
 
