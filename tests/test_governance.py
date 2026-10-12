@@ -6,10 +6,12 @@ Every git test runs real git on repos under tmp_path.  The only Keychain writes 
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import pwd
+import secrets
 import sqlite3
 import subprocess
 import sys
@@ -1261,53 +1263,58 @@ def _login_keychain() -> Path:
     sys.platform != "darwin" or not _login_keychain().exists(), reason="needs the macOS login Keychain"
 )
 def test_offboard_deletes_real_keychain_items_of_its_service(world: World) -> None:
+    """Q83 (B13 round 4): the login keychain is one per user, outside the isolated HOME, so gates running at
+    once shared this test's fixed service and deleted each other's items. Each run uses its own service, and
+    holds a lock across processes so no sibling writes the keychain while this run's dump reads it."""
     kc = _login_keychain()
-    service = "agentsync-test"
+    service = f"agentsync-test-{secrets.token_hex(4)}"
     accounts = ["governance-test-a", "governance-test-b"]
-    try:
-        for a in accounts:
-            subprocess.run(
-                [
-                    "/usr/bin/security",
-                    "add-generic-password",
-                    "-U",
-                    "-s",
-                    service,
-                    "-a",
-                    a,
-                    "-w",
-                    "not-a-secret",
-                    str(kc),
-                ],
-                check=True,
-                capture_output=True,
+    with (Path("/tmp") / f"agentsync-keychain-test-{os.getuid()}.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            for a in accounts:
+                subprocess.run(
+                    [
+                        "/usr/bin/security",
+                        "add-generic-password",
+                        "-U",
+                        "-s",
+                        service,
+                        "-a",
+                        a,
+                        "-w",
+                        "not-a-secret",
+                        str(kc),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+            plan = gv.offboard_plan(world.config, keychain_service=service, keychain=kc)
+            items = [loc.location for loc in plan if loc.kind == "keychain-item"]
+            assert items == [f"keychain:{service}/{a}" for a in accounts]
+            rep = gv.offboard(
+                world.config,
+                dry_run=False,
+                confirm=str(world.repo),
+                keychain_service=service,
+                keychain=kc,
+                launchd_uninstall=lambda label: False,
             )
-        plan = gv.offboard_plan(world.config, keychain_service=service, keychain=kc)
-        items = [loc.location for loc in plan if loc.kind == "keychain-item"]
-        assert items == [f"keychain:{service}/{a}" for a in accounts]
-        rep = gv.offboard(
-            world.config,
-            dry_run=False,
-            confirm=str(world.repo),
-            keychain_service=service,
-            keychain=kc,
-            launchd_uninstall=lambda label: False,
-        )
-        assert set(items) <= set(rep.removed)
-        for a in accounts:
-            rc = subprocess.run(
-                ["/usr/bin/security", "find-generic-password", "-s", service, "-a", a, str(kc)],
-                capture_output=True,
-                check=False,
-            ).returncode
-            assert rc == 44
-    finally:
-        for a in accounts:
-            subprocess.run(
-                ["/usr/bin/security", "delete-generic-password", "-s", service, "-a", a, str(kc)],
-                capture_output=True,
-                check=False,
-            )
+            assert set(items) <= set(rep.removed)
+            for a in accounts:
+                rc = subprocess.run(
+                    ["/usr/bin/security", "find-generic-password", "-s", service, "-a", a, str(kc)],
+                    capture_output=True,
+                    check=False,
+                ).returncode
+                assert rc == 44
+        finally:
+            for a in accounts:
+                subprocess.run(
+                    ["/usr/bin/security", "delete-generic-password", "-s", service, "-a", a, str(kc)],
+                    capture_output=True,
+                    check=False,
+                )
 
 
 def test_time_machine_exclusions_batch_and_fallback(

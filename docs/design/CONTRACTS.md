@@ -13592,6 +13592,17 @@ purge verifies, and the run's "earlier entry" half exists only for an earlier pu
 that fails in the real run leaves the later entry to run itself, which a preview cannot know; every preview makes
 that presumption. Tests: `tests/test_cli.py::test_purge_queue_preview_counts_a_covered_entry_as_the_run_does`.
 
+**Q83: the real-keychain offboard test does not collide with a sibling gate** (`tests/test_governance.py`). The
+login keychain is one per user, outside the isolated HOME, and the test used a fixed service (`agentsync-test`):
+`offboard` deletes every item of its service and the test's `finally` deletes fixed pairs, so gates running at once
+deleted each other's items (measured: 4 copies at once, 4 of 4 failed). Each run now uses its own service
+(`agentsync-test-<8 hex>`) and holds an exclusive `flock` on `/tmp/agentsync-keychain-test-<uid>.lock` across the
+add, plan, offboard and cleanup, so no sibling writes the keychain while this run's `dump-keychain` reads it (a
+unique name alone left dumps that found none of their own items under concurrent writes). Measured after: 4 copies
+at once, twice, 8 of 8 passed, and no `agentsync-test-` item was left. A run killed between add and cleanup leaves
+one uniquely named dummy item (`not-a-secret`) that no later run removes. Tests:
+`tests/test_governance.py::test_offboard_deletes_real_keychain_items_of_its_service`.
+
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 
 Reserved for round 4 lane B of B13.
