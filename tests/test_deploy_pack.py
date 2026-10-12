@@ -2413,3 +2413,116 @@ def test_a_cited_commit_is_on_the_trunk() -> None:
             continue
         off_trunk.append(f"{word} in {', '.join(sorted(cited[word]))}")
     assert off_trunk == []
+
+
+# ---- what the contract states, against the code ------------------------------------------------------------
+
+CONTRACTS = ROOT / "docs" / "design" / "CONTRACTS.md"
+
+_RETIRED_TEST_NAMES = {
+    "test_an_empty_git_proxy_takes_no_line_after_it": "§16.40 says it was merged into another test",
+    "test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it": "§16.45 R101's dated line",
+}
+"""Test names CONTRACTS.md cites as history: a dated line beside each says the test is gone or replaced."""
+
+
+def _contracts_section(heading: str, following: str) -> str:
+    text = CONTRACTS.read_text(encoding="utf-8")
+    start = text.index(heading)
+    return text[start : text.index(following, start)]
+
+
+def test_a_test_the_contract_cites_exists() -> None:
+    """B13 round 4 Q62: §16.47 cited a test the commit that dropped the wheel pre-build had deleted, and no
+    gate read the name.  Every backticked test name in CONTRACTS.md is a test under tests/, or the start of
+    one's name (`test_sg04` names a group), or a name a dated line retires (:data:`_RETIRED_TEST_NAMES`)."""
+    defined = {
+        name
+        for path in (ROOT / "tests").rglob("*.py")
+        for name in re.findall(r"def (test_\w+)", path.read_text())
+    }
+    cited = set(re.findall(r"`(?:tests/[\w/]+\.py::)?(test_\w+)`", CONTRACTS.read_text(encoding="utf-8")))
+    assert len(cited) > 100, "the contract cites tests (the scan found few, so it is broken)"
+    missing = sorted(
+        name
+        for name in cited - defined - set(_RETIRED_TEST_NAMES)
+        if not any(found.startswith(name) for found in defined)
+    )
+    assert missing == []
+    assert set(_RETIRED_TEST_NAMES) <= cited - defined, (
+        "a retired name is cited and gone, or the list is stale"
+    )
+
+
+def test_section_7_routes_every_suffix_where_the_registry_does() -> None:
+    """B13 round 4 Q56: §7's routing list, read in order so a later SUPERSEDED line wins, gave `.vtt` to
+    `text-plain` and named no route for recordings.  With an OCR engine, the media helper and recordings on,
+    every suffix the default registry claims is routed in §7 to that converter, and §7 routes no other."""
+    from agentsync.config import ConvertConfig  # noqa: PLC0415
+    from agentsync.convert.media import MediaEngine  # noqa: PLC0415
+    from agentsync.convert.ocr import OcrEngine  # noqa: PLC0415
+    from agentsync.convert.registry import Registry  # noqa: PLC0415
+
+    routes: dict[str, str] = {}
+    for match in re.finditer(
+        r"`(\.[^`]+)`\s*→\s*`([a-z0-9-]+)`", _contracts_section("## 7. Conversion", "## 8. ")
+    ):
+        routes.update(dict.fromkeys(match.group(1).split(), match.group(2)))
+    reg = Registry.default(
+        ConvertConfig(recordings=True),
+        ocr=OcrEngine(Path("/nowhere/fake-ocr"), name="paper-vision", revision=2, helper_version="0.3.0"),
+        media=MediaEngine(Path("/nowhere/fake-media"), name="paper-media", helper_version="0.1.0"),
+    )
+    claimed = {ext: reg.for_name(f"x{ext}").converter_id for ext in reg.extensions()}  # type: ignore[union-attr]
+    assert {".vtt", ".mp4", ".png", ".potx", ".msg"} <= set(claimed)
+    assert routes == claimed
+
+
+def test_the_contracts_class_table_names_every_quarantine_class() -> None:
+    """B13 round 4 Q57: the `quarantine_class` table had no row for `withheld by label rule`.  Its Class
+    column names every value of `QUARANTINE_CLASSES`; `(OCR found no text)` after `no text layer (OCR not
+    run)` is short for `no text layer (OCR found no text)`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    table = _contracts_section("**`quarantine_class`.**", "\n\n**OCR.**")
+    named: set[str] = set()
+    for row in re.findall(r"^\| (`.+?`) \|", table, flags=re.MULTILINE):
+        stem = ""
+        for cell in re.findall(r"`([^`]+)`", row):
+            name = stem + cell if cell.startswith("(") and stem else cell
+            stem = name.split("(", 1)[0] if "(" in name else ""
+            named.add(name)
+    assert named == set(setup_report.QUARANTINE_CLASSES)
+
+
+def test_every_section_quoting_the_old_empty_lock_body_text_states_the_constant() -> None:
+    """B13 round 4 Q50 and Q64: §9 step 2 quoted the empty-lock-body text that §16.45 R50 replaced, with no
+    dated line.  A section of CONTRACTS.md that quotes the old text also states `EMPTY_BODY_HOLDER`."""
+    from agentsync.ops.lock import EMPTY_BODY_HOLDER  # noqa: PLC0415
+
+    old = "an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)"
+    text = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    sections = re.split(r" (?=#{2,3} \d)", text)
+    quoting = [section for section in sections if old in section]
+    assert quoting, "the old text is quoted somewhere as history (the split found none, so it is broken)"
+    assert [section[:40] for section in quoting if EMPTY_BODY_HOLDER not in section] == []
+
+
+def test_the_contracts_suffix_count_for_the_log_scrub_test_is_the_converters() -> None:
+    """B13 round 4 Q54: a clause citing the per-suffix scrub test said 40 suffixes after `.potx` made 41.
+    The last count each clause gives (a dated amendment's, when it has one) is the number of suffixes a
+    converter claims."""
+    from agentsync.config import ConvertConfig  # noqa: PLC0415
+    from agentsync.convert.image import ImageConverter  # noqa: PLC0415
+    from agentsync.convert.recording import RecordingConverter  # noqa: PLC0415
+    from agentsync.convert.registry import Registry  # noqa: PLC0415
+
+    suffixes = {*Registry.default(ConvertConfig()).extensions(), *ImageConverter.extensions}
+    suffixes |= {*RecordingConverter.extensions}
+    clauses = re.findall(
+        r"`test_a_log_line_never_names_a_file_a_converter_reads`([^)]*)\)",
+        CONTRACTS.read_text(encoding="utf-8"),
+    )
+    counts = [re.findall(r"(\d+) (?:suffixes|since)", clause) for clause in clauses]
+    assert counts and all(counts), clauses
+    assert {int(found[-1]) for found in counts} == {len(suffixes)}

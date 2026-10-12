@@ -362,6 +362,10 @@ engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.48):** `.vsdm` → `diagram-stdlib`.
 **SUPERSEDED (2026-10-11, §16.48):** `.potx` → `pptx-python-pptx`, read as a deck (was a REFUSED
 `no converter for .potx` stub).
+**SUPERSEDED (2026-10-07, §16.34):** with an OCR engine, the media helper and `[convert] recordings` on, `.mp4
+.m4v .mov` → `recording-av` (it stays registered under a label rule); otherwise the `no converter for .mp4`
+REFUSED stub.
+**SUPERSEDED (2026-10-08, §16.35):** `.vtt` → `vtt-turns` (was `text-plain`, which it replaces).
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -387,6 +391,10 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    **Amended (2026-10-11, §16.39 N24):** the logged WARNING is `skipped: lock held by <label>`.
    **Amended (2026-10-11, §16.49, R62):** a holder that wrote no body (install.sh's reinstall, a probe) is named
    `an unrecorded holder (install.sh while it reinstalls agentsync, or a check for an instant)` there.
+   **Amended (2026-10-12, §16.45 R50):** the text is now `an unrecorded holder (install.sh while it reinstalls
+   agentsync, a status or doctor check, or a cycle starting)` (one constant, `agentsync.ops.lock.EMPTY_BODY_HOLDER`),
+   in the WARNING, the stderr line and doctor alike: install.sh's lockf, an `is_held` probe from status or doctor,
+   and a cycle between its flock and its body write all leave the body empty.
    **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
    exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
    truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
@@ -8125,6 +8133,7 @@ decides before a word inside the text does.
 
 | Class | Reason |
 |---|---|
+| `withheld by label rule` | starts `no converter for ` and the suffix after it is in the report's withheld set: `_LABEL_WITHHELD` (`.msg` and the image suffixes) while a `[policy]` label rule is on, with images counted only when the OCR part reads `ready` (§16.47 R33); tried before every prefix |
 | `no converter` | starts `no converter for ` (`NO_CONVERTER_PREFIX`) |
 | `label policy` | starts `refused: ` (`policy.REFUSED_PREFIX`) |
 | `credential` | `contains a credential` |
@@ -8136,12 +8145,17 @@ decides before a word inside the text does.
 | `too large` | holds `too large` or `exceeds` |
 | `no text in image`, `image not readable` | the image stubs of §16.26 |
 | `encrypted` | holds `encrypted`, `password-protected` or `IRM-protected` |
-| `empty`, `not the type its name says` | `empty-output`, `empty PDF`; `not-ooxml` |
+| `empty`, `not the type its name says` | `empty-output`, `empty PDF`; `not-ooxml` (`policy.NOT_OOXML_REASON`), `not-msg` (`msg.NOT_MSG_REASON`) or `not a zip` |
 | `damaged` | starts `damaged-msg` (`msg.DAMAGED_MSG_REASON`), tried before `not-msg` |
 | `no reason recorded`, `other` | no text; anything else |
 
 Amended 2026-10-11 by §16.48 (R36): the class `damaged`, between `empty` and `not the type its name says` in
 `QUARANTINE_CLASSES`.
+Amended 2026-10-11 by §16.47 (R33): the class `withheld by label rule`, between `label policy` and `too large` in
+`QUARANTINE_CLASSES`.
+Amended 2026-10-12 by §16.55: the not-the-type row lists `not-msg` and `not a zip` as the code always did. No
+reason written today starts with `not a zip`: policy's `NOT_ZIP_AT_OFFSET_0` reaches a stub only inside a
+`refused: ` reason, which is `label policy`.
 
 **OCR.**
 
@@ -11310,7 +11324,9 @@ that the shell fallback report does not read git's config yet. Redaction only gr
 `test_a_proxy_only_git_knows_is_redacted`, `test_the_shell_report_redacts_the_pac_url_and_proxy_hosts` and
 `test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale`. Not changed: the Python report still
 registers a dotless proxy host, and the LaunchAgent's own proxy (`launchctl getenv`) is printed but not
-registered. An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
+registered. **Amended (2026-10-12, §16.46 "Proxies" R42/R67 and R68, §16.47 R110):** the shell now registers a
+dotless proxy host too (R42/R67), both reports read a linked worktree's `<common dir>/config` and `<git
+dir>/config.worktree` besides `.git/config` (R110), and the LaunchAgent's own proxy is registered (R68). An empty `proxy =` (git's way to turn a proxy off) registers nothing: the
 match stays on its own line, and does not take the next line's first token (`[user]`, `sslVerify`). A proxy value
 that `urlsplit` rejects (`http://[x`) is skipped. Before this, either case made the whole redactor fail, so the
 report fell back to redacting the home folder only. Tests: `test_an_unreadable_proxy_value_keeps_the_redaction`
@@ -12077,7 +12093,8 @@ it too. It uses the standard library only: no new dependency.
   `canonical.OOXML_SUFFIXES` is not changed: a `.vsdx` or `.vsdm` is hashed by its bytes. A `.drawio`
   carries no sensitivity label (plain XML, like `.xml`), so label rules do not apply to it.
 - **Report.** `_PATH_IN_LOG_RE` gains `drawio` and `vsdm` (`vsdx` was already in it), so a fetch warning
-  naming a diagram at a source's top is `<path>`; the per-suffix scrub test now covers 40 suffixes. The
+  naming a diagram at a source's top is `<path>`; the per-suffix scrub test now covers 40 suffixes
+  (**amended 2026-10-12, §16.55:** 41 since `.potx`, §16.48 R85). The
   three suffixes stay in `_REFUSED_TYPE_LIST`: a stub can be older than its converter.
 - **Old stubs.** An existing `no converter for .drawio` or `.vsdx` stub becomes a page with no operator
   step: on this Mac through the re-read pass (§16.27), online-only through the work queue under the byte
@@ -12235,7 +12252,10 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   shell fallback report does not read git's config yet. **SUPERSEDED (2026-10-11, §16.40):** the shell
   fallback's `redaction_pairs` reads the same git config files (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`,
   `/etc/gitconfig`, its own checkout's `.git/config` and `~/src/agent-context-sync/.git/config`) and registers
-  each proxy host with a dot.
+  each proxy host with a dot. **Amended (2026-10-12, §16.46 "Proxies" R42/R67, §16.47 R110):** the shell also
+  registers a proxy host with no dot (a generic word such as proxy or wpad only where a URL names it, any other
+  host as a whole word), and both reports, the Python one above included, read a linked worktree's git config
+  (`<common dir>/config` and `<git dir>/config.worktree`) besides `.git/config`.
 - **Step 3's second no-report case names both of step 1's version checks** (H2; amends §16.36 "Step 3 names the
   two stops with no report"). It reads "when step 1 stops because this prompt is not the installer's (either
   check: the --version line does not end with this prompt's number, or the command says so)". In step 1's one
@@ -12902,7 +12922,8 @@ before its step 3 named the stop; R21).
   is unchanged: an edit would rebuild it, a new TCC identity.
 - Tests: the wait, ran-out and free-lock tests (their notes),
   `test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with`,
-  `test_a_checkout_over_a_tool_environment_is_built_into_a_wheel_first`,
+  `tests/test_launcher.py::test_install_sh_full_run_is_idempotent` (the reinstall's source is the checkout,
+  not a wheel),
   `test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more`,
   `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 
@@ -13104,7 +13125,7 @@ suffix nothing claims), `tests/test_convert_core.py` (`test_default_registry_rou
 `test_a_registry_with_an_engine_keeps_the_one_without`, `.potx` among the suffixes OCR reads in) and
 `tests/test_setup_report.py`
 (`test_the_suffixes_and_keys_the_evidence_goes_by_are_the_codes_own`, `.potx` in `_OCR_DOCUMENTS`;
-`test_a_log_line_never_names_a_file_a_converter_reads`, now 40 suffixes).
+`test_a_log_line_never_names_a_file_a_converter_reads`, now 41 suffixes).
 
 The report follows the new suffix in two more places, both pinned to the registry by those tests.
 `_PATH_IN_LOG_RE` gains `potx`: a file the cycle fetches is a file its warnings can name, so a template at a
@@ -13312,7 +13333,8 @@ Tests: `tests/test_convert_formats.py`
 (`test_a_visio_drawing_is_screened_for_labels_like_any_office_file`, now for `.vsdx` and `.vsdm`, with the
 not-a-zip refusal and `cycle._LABEL_CAPABLE`), `tests/test_convert_core.py`
 (`test_default_registry_routes_exactly_the_contract_set`) and `tests/test_setup_report.py`
-(`test_a_log_line_never_names_a_file_a_converter_reads`, 40 suffixes).
+(`test_a_log_line_never_names_a_file_a_converter_reads`, 40 suffixes; **amended 2026-10-12, §16.55:** 41 since
+`.potx`, R85 above).
 
 **A Visio shape without text of its own shows its master's (R86, part b; amends §16.42 "Diagrams: draw.io
 and Visio", "Page").** A shape dropped from a stencil often carries no `<Text>` element: it shows the text of
@@ -13464,6 +13486,10 @@ when the installer exited 0 and the loop's sync then printed no NEXT; it loses n
 body in `LockHeldError.who`, on the stderr line and in doctor; doctor adds `(a cycle is running)` only for a held
 lock with a body. Tests: `tests/test_ops_lock.py` (`test_a_holder_with_no_lock_body_yet_is_named_as_unidentified`),
 `tests/test_ops_doctor.py` (`test_lock_states`).
+**Amended (2026-10-12, §16.45 R50/R80):** the text is now `EMPTY_BODY_HOLDER`'s (§9 step 2), and doctor adds
+`(a cycle is running)` only when the body parses as a cycle's record (`LockInfo.parse`); a non-empty body that does
+not parse reads `held by <desc>` with no suffix and no sidecar read. Test: `tests/test_ops_doctor.py`
+(`test_lock_held_with_an_empty_body_names_no_cycle`).
 
 **Download hosts, checked weekly** (R119). `scripts/download_hosts.py` follows the redirect chains of the speech
 build's release file, uv's installer, uv itself (the installer's default `ARTIFACT_DOWNLOAD_URLS`), the Python
