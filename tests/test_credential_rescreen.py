@@ -201,7 +201,7 @@ def test_a_page_edited_in_the_run_the_rules_move_still_queues_the_purge_of_its_e
     with monkeypatch.context() as mp:
         _without_aws(mp)
         run(config)
-    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\nrotated by Fabrikam ops\n", encoding="utf-8")
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\nrotated by Contoso ops\n", encoding="utf-8")
     again = run(config)
     assert again.exit_code == 0 and again.commit_sha is not None
     assert page_fm(config, "mirror/src/keys.txt.md")["reason"] == "contains a credential"
@@ -214,7 +214,7 @@ def test_a_page_read_again_in_the_run_the_rules_move_still_queues_the_purge_of_i
     """B13 R48: an update usually moves the rules and an emitter at once, so the rescan run reads the file
     again (CONTRACTS 16.27) and rewrites its page; the committed page still gets its purge."""
     config, src = make_env(tmp_path)
-    note = "/Subtype /Text /Rect [400 700 420 720] /T (Roe, John) /Contents (Check the key)"
+    note = "/Subtype /Text /Rect [400 700 420 720] /T (Contoso reviewer) /Contents (Check the key)"
     build_annotated_pdf(src / "keys.pdf", [([f"deploy key {AWS_KEY}"], [note])])
     with monkeypatch.context() as mp:
         _without_aws(mp)
@@ -227,6 +227,50 @@ def test_a_page_read_again_in_the_run_the_rules_move_still_queues_the_purge_of_i
     assert again.exit_code == 0 and again.commit_sha is not None
     assert page_fm(config, "mirror/src/keys.pdf.md")["reason"] == "contains a credential"
     _purged_with_alarm(config, again, "keys.pdf")
+
+
+_HISTORY_ALARM = (
+    "a published page matches the secret scan's new rules: the text committed before this run does"
+)
+
+
+def test_a_key_the_edit_removes_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R48 fix pass: the edit removes the key, so the page written in the run the rules move is clean and
+    published, but the committed text holds the key: its purge is queued, with an alarm that names no file."""
+    config, src = make_env(tmp_path)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\nowner: Contoso ops\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+    (src / "keys.txt").write_text("deploy key rotated\nowner: Contoso ops\n", encoding="utf-8")
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert _state(config, "keys.txt") == (RowState.LIVE, None)
+    assert queued(config) == [(item_id(config, "keys.txt"), "dlp-remediation")]
+    alarms = [a for s in again.sources for a in s.alarms if a.startswith(_HISTORY_ALARM)]
+    assert alarms and all(a.endswith(cycle._PURGE_QUEUE_STEPS) and "keys" not in a for a in alarms)
+
+
+def test_a_file_deleted_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 R48 fix pass: the run the rules move is the run that turns the page into a deletion notice; the
+    committed page held the key, so its purge is queued as a credential's."""
+    config, src = make_env(tmp_path)
+    (src / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    with monkeypatch.context() as mp:
+        _without_aws(mp)
+        run(config)
+        stable = item_id(config, "keys.txt")
+        (src / "keys.txt").unlink()
+        run(config)  # the first absence marks it; the second, in the next run, removes it
+    again = run(config)
+    assert again.exit_code == 0 and again.commit_sha is not None
+    assert page_fm(config, "mirror/src/keys.txt.md")["status"] == "deleted"
+    assert (stable, "dlp-remediation") in queued(config)
+    assert any(a.startswith(_HISTORY_ALARM) for s in again.sources for a in s.alarms)
 
 
 def test_a_key_the_edit_brings_in_the_run_the_rules_move_is_a_stub_with_no_purge(

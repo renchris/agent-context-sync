@@ -302,6 +302,7 @@ _RECORDING_NOT_DOWNLOADED = (
     "{path}: an online-only recording could not be downloaded; in Finder choose Always Keep on This Device"
 )
 _NOW_A_STUB = "it is a `contains a credential` stub now"
+_HISTORY_MATCHES = "the text committed before this run does"
 _TEXT_SIDECARS = (".txt", ".md", ".csv")
 """The sidecars the secret scan reads (spec S10 rule 2): a keyframe's bytes are never scanned as text."""
 
@@ -1947,8 +1948,9 @@ class _Cycle:
         text, read under the earlier rules, is in the docs repo's history.  The paths are the pages written
         and every path this run's changes name (a rename's earlier path included), with the text sidecars
         HEAD holds under each page; the blobs are read into the private staging folder, never the docs
-        repo.  An item whose committed text hits is recorded in ``_history_hits``, and gets the purge when
-        its page is stubbed (``_quarantine_secrets``); one whose key the run brought in gets a stub alone."""
+        repo.  An item whose committed text hits is recorded in ``_history_hits`` and gets the purge, whether
+        its page is stubbed or not (``_quarantine_secrets``); one whose key the run brought in gets a stub
+        alone."""
         if gitops.head_sha(self.repo) is None:
             return
         owner: dict[str, tuple[str, str]] = {}
@@ -4354,6 +4356,7 @@ class _Cycle:
             self._archived_credential(page)
         hit_pages = [p for p in hit_pages if p not in self.archive_pages]
         stubbed: list[tuple[str, str]] = []
+        purged: set[tuple[str, str]] = set()
         for sid, stable in _owners(self.manifest, hit_pages):
             pages_of = {o.output_path for o in self.manifest.outputs_for(sid, stable)}
             if pages_of and pages_of <= (self.stub_pages - self.ok_pages):
@@ -4366,6 +4369,12 @@ class _Cycle:
                 stubbed.append((sid, stable))
                 if prior or rewritten:  # published under the earlier rules: its text is in the repo's history
                     self._published_credential(sid, stable, ok if rewritten else prior)
+                    purged.add((sid, stable))
+        for sid, stable in sorted(self._history_hits - purged):
+            # the committed text matches and the page this run wrote does not: an edit removed the key, the
+            # file is another stub now, or it was deleted; the key is in the docs repo's history all the same
+            earlier = [o for o in self.manifest.outputs_for(sid, stable) if o.status is not OutputStatus.OK]
+            self._published_credential(sid, stable, earlier, now_is=_HISTORY_MATCHES)
         stub_paths = sorted(
             o.output_path
             for sid, stable in stubbed
