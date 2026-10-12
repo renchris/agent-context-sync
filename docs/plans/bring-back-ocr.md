@@ -150,8 +150,10 @@ corporate network. A third-round surprise would come from there.
 
 Known limits, recorded in CONTRACTS §16.26–16.27: a scanned page under a stamped header of 20 or more characters
 is not read; a picture the page shows on its side (turned on purpose to fit) is read on its side (B13 N45 reads a
-picture the way up the page shows it); image types outside the raster table are stubs; a long scan past the time
-limit converts without OCR.
+picture the way up the page shows it; fixed by §16.48 R82: a quarter-turned picture whose lines run down is read
+once more the other way; still a limit: a picture drawn upright on a page whose /Rotate alone turns it is read as
+the page shows it, because there is no other orientation to try); image types outside the raster table are stubs;
+a long scan past the time limit converts without OCR.
 
 Open operator decisions (filed, each with a default that keeps what is built): empty cloud folders
 (`71d3e66ef726`) and online-only images (`085fac870dd6`).
@@ -491,6 +493,36 @@ Round 3 lanes (dispatched sessions, CONTRACTS §16.44 to §16.49), items by id i
 | RB | 32 | setup report and installer, other | next |
 | E | 16 | converters, speech, OCR | next |
 | P | 21 | prompt v12, README, docs/deploy | next4 |
+
+Changed at fire time (operator, 2026-10-11): every round 3 lane runs on account next3. The first fires of P and A
+(next4) and B (next2) were halted before any edit and fired again on next3; RA, RB and E were fired there first.
+
+### B13 round 3 landed (2026-10-12)
+
+All six lanes landed with CI green; every one of the 127 items is built with a test that fails without it, or
+carries a measured not-built reason in its lane note `~/.cache/agentsync-bring-back/b13/lanes/r3-<lane>.md` and in
+its CONTRACTS section (§16.44 to §16.49). Prompt v12 is on main (lane P, `9db6ce3..f55256a`).
+
+| Lane | Landed | Not built, with a measured reason |
+|---|---|---|
+| P | `9db6ce3..f55256a`, 11 commits | R133, R138 |
+| RB | `f55256a..d1904e1`, 26 commits | R114, R44, R127, R148 (R60 covered by P) |
+| A | `bb545be9`, `7149798e`, `369deedd` | R123, R124 |
+| B | `b9bb8ee8` (25 items), `d06690bf` (R75 R76 R48 R74) | R144 (an advisory built instead); R1's exclude command (CLI freeze) |
+| RA | `a044eed6..a0e1b038`, 14 commits | R135, R141 |
+| E | `dd954d59..9ac78425`, 30 commits (R13 built once with R36) | R130, R140 |
+
+Learnings: the reviews inside the lanes kept finding real regressions (RA's two fresh reviews found four); the
+auto-mode classifier refused one lane's `git fetch && git rebase` after a lost push race, which the operator cleared
+in that pane. R1's fix holds empty folders only in a real File Provider domain (its root xattr), so a sandbox
+rehearsal must mark the provider folder to reach that wait.
+
+Next (round 4, loop until dry): run the round-2 shape again on the landed tip with prompt v12: rehearse v12 (new
+Mac; field-state Mac at `4a42af9` pulled to v12; v11 and v10 copies refused; failing `git pull`; reinstall under a
+held lock plus the converters; an empty folder in a marked File Provider folder), a cross-lane review of
+`9db6ce3..<tip>` in four areas, and a harvest of the round 3 notes' not-built and adjacent items; verify each finding;
+build what survives; stop when a round confirms nothing new. Script to adapt: the round-2 workflow
+(`wf_97bc35ac-295`, args `{head}`); its rehearsal text names v11 and must say v12.
 
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
