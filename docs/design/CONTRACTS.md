@@ -12491,7 +12491,8 @@ each).
 **R52, R94, R54: the purge queue preview counts as the run does (`agentsync.cli`).** `purge --queue --dry-run`
 counts as previewed only the entries a run would run (an upstream deletion of a live file and a held entry stay
 queued), the same count the real run prints; its `M queued` stays the whole queue (a preview leaves it as it is).
-`_print_purge` prints a `taken:` line right after its `path:` line in both modes. The `accept-deletions` help line
+**Amended 2026-10-12, §16.50 Q61:** an entry an earlier purge of the run covers is folded into the covering
+report in a preview too, as the run folds it, so it is not counted as a preview of its own. `_print_purge` prints a `taken:` line right after its `path:` line in both modes. The `accept-deletions` help line
 says a pass that does not list SOURCE in full applies no removal and keeps the breaker. Tests:
 `test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewed`,
 `test_purge_marks_a_taken_path_after_its_path_line`,
@@ -13579,6 +13580,17 @@ those fields. The first stub of each class in the python blocks under a ``#### `
 `dataclasses.fields()` of the class, in order; a later partial block that repeats a class to add a field is not the
 stub. There is no allowlist: a field added in code is added to its stub in the same commit. Tests:
 `tests/test_contracts.py::test_dataclass_stubs_list_the_code_fields`.
+
+**Q61: the purge queue preview folds a covered entry as the run does** (`agentsync.governance`). `run_purge_queue`
+applied `_covers` only when not a dry run, so a preview of a label escalation then an erasure request for one file
+previewed two purges (`2 queued purge(s) previewed`) where the run runs one (`1 queued purge(s) run`), against
+§16.45 R52's "the same count the real run prints". In a dry run each previewed purge now folds every later entry it
+covers into its report with the note `would also do the queued <reason> purge of the same item: the run takes it off
+the queue`, and the loop skips those entries, so the CLI's previewed count equals the run's. It writes no audit line
+and no queue file, and the queue stays whole. Only the run's "later entry" half applies: a preview presumes each
+purge verifies, and the run's "earlier entry" half exists only for an earlier purge that failed. A covering purge
+that fails in the real run leaves the later entry to run itself, which a preview cannot know; every preview makes
+that presumption. Tests: `tests/test_cli.py::test_purge_queue_preview_counts_a_covered_entry_as_the_run_does`.
 
 ### 16.51 Round 4: sync, status and doctor (2026-10-12, wave B13 round 4 lane B)
 

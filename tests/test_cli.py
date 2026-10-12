@@ -1626,6 +1626,35 @@ def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits
     assert governance.pending_purges(initialised.state_paths.root) == []
 
 
+def test_purge_queue_preview_counts_a_covered_entry_as_the_run_does(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Q61 (B13 round 4): the preview previewed an entry an earlier purge of the run covers as a purge of its
+    own (2 previewed) while the run ran it once (1 run), against R52's "the same count the real run prints".
+    The preview now folds it into the covering report as the run does, and writes nothing."""
+    cfg = _synced(initialised)
+    root = initialised.state_paths.root
+    sid = _stable_id(initialised, "projects/sample.txt")
+    selector = governance.PurgeSelector(stable_id=sid, source_id="source")
+    for reason in (governance.PurgeReason.LABEL_ESCALATION, governance.PurgeReason.ERASURE_REQUEST):
+        assert governance.enqueue_purge(root, selector, reason)
+    queue = governance.pending_purges(root)
+    head = git(initialised.docs_repo, "rev-parse", "HEAD").strip()
+    capsys.readouterr()
+    assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "1 queued purge(s) previewed (dry run, nothing written); 2 queued"
+    (line,) = [x for x in out.splitlines() if x.startswith("purge ")]
+    assert line.startswith("purge stable-id (label-escalation): dry run · ")
+    note = "would also do the queued erasure-request purge of the same item: the run takes it off the queue"
+    assert f"  note: {note}" in out
+    assert governance.pending_purges(root) == queue
+    assert git(initialised.docs_repo, "rev-parse", "HEAD").strip() == head
+    assert not any(a["action"] == "purge-covered" for a in governance.read_audit(root))
+    assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
+    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+
+
 def test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewed(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

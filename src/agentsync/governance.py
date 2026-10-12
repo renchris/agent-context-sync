@@ -2471,8 +2471,8 @@ def run_purge_queue(
     queue file is written after every purge that verified, so a run that stops part-way leaves no entry it
     has already purged; the entry in flight stays in the file.  An entry a verified purge of this run already
     did (:func:`_covers`) is not run again: it leaves the queue with a ``purge-covered`` audit line and a note
-    on the covering report.  An entry kept queued (a listed file's upstream deletion, a hold, a failure) gets
-    a report with ``not_run`` set.
+    on the covering report; a dry run notes it the same way and does not preview it on its own.  An entry
+    kept queued (a listed file's upstream deletion, a hold, a failure) gets a report with ``not_run`` set.
     """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
@@ -2518,9 +2518,32 @@ def run_purge_queue(
                 not_run(q, f"stays queued: {exc if isinstance(exc, HoldActiveError) else _HELD_WHY}")
                 continue
             reports.append(rep)
-            if not rep.verified:
+            if dry_run:
+                # a preview folds a later entry this purge covers into its report, as the run does, so it
+                # counts what the run would run; each previewed purge is presumed to verify, so the run's
+                # "earlier entry" half (an earlier purge that failed) has nothing to fold here
+                later = [
+                    i
+                    for i in range(n + 1, len(queue))
+                    if i not in covered and _covers(q.selector, rep, queue[i])
+                ]
+                rep = dataclasses.replace(
+                    rep,
+                    notes=(
+                        *rep.notes,
+                        *(
+                            f"would also do the queued {queue[i].reason.value} purge of the same item: the "
+                            "run takes it off the queue"
+                            for i in later
+                        ),
+                    ),
+                )
+                reports[-1] = rep
+                covered.update(later)
                 remaining.append(q)
-            elif not dry_run:
+            elif not rep.verified:
+                remaining.append(q)
+            else:
                 # purge() took off the file every entry it covered: record each one as done (an erasure
                 # request keeps a record that it was fulfilled), except an entry this run already reported as
                 # staying queued: it stays, and the next run clears it
