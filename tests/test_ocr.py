@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from importlib import resources
 from pathlib import Path
@@ -1027,6 +1027,56 @@ def test_a_stop_of_the_whole_process_group_leaves_no_compiler_running(
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
+
+
+def test_a_ctrl_c_while_popen_starts_the_tool_still_stops_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A KeyboardInterrupt that lands after the tool has started but before Popen returns leaves no Popen
+    object (R89).  The tool runs in the watcher's group, which a Ctrl-C does not reach: before the fix the
+    watcher was told "done" and the tool ran to its end unwatched.  Now the group is told to stop.  The stub
+    tool sets its own SIGINT handler, as swiftc does, so the test holds when pytest itself was started with
+    SIGINT ignored (a ``cmd &`` launch): a shell tool could not trap it then."""
+    base = tmp_path / "tool"
+    tool = (
+        "import os, signal, sys, time\n"
+        "base = sys.argv[1]\n"
+        "def say(word):\n"
+        "    open(base + '.tmp', 'w').write(word)\n"
+        "    os.replace(base + '.tmp', base + '.mark')  # whole, never half-written\n"
+        "def stop(*_):\n"
+        "    say('got-int')\n"
+        "    sys.exit(130)\n"
+        "signal.signal(signal.SIGINT, stop)\n"
+        "open(base + '.pid', 'w').write(str(os.getpid()))\n"
+        "open(base + '.ready', 'w').close()\n"
+        "time.sleep(3)\n"
+        "say('finished-unwatched')\n"
+    )
+    argv = [sys.executable, "-I", "-c", tool, str(base)]
+    ready, mark = Path(f"{base}.ready"), Path(f"{base}.mark")
+    real = subprocess.Popen._execute_child  # type: ignore[attr-defined]
+
+    def interrupted(self: subprocess.Popen[bytes], args: Sequence[str], *rest: object, **kw: object) -> None:
+        real(self, args, *rest, **kw)  # the tool has started: exec succeeded
+        if list(args) == argv:
+            deadline = time.monotonic() + 10
+            while not ready.exists() and time.monotonic() < deadline:  # its SIGINT handler is set
+                time.sleep(0.01)
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess.Popen, "_execute_child", interrupted)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            ocr._run_build(argv, cwd=tmp_path, timeout=30)
+        deadline = time.monotonic() + 10
+        while not mark.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists(), "the tool never set its SIGINT handler"
+        assert mark.read_text() == "got-int", "the tool ran on unwatched after a Ctrl-C"
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            os.kill(int(Path(f"{base}.pid").read_text()), signal.SIGKILL)
 
 
 def test_build_keeps_other_helpers_for_a_week_and_tightens_them(tools: Path, tmp_path: Path) -> None:

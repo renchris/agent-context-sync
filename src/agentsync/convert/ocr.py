@@ -558,13 +558,14 @@ def _run_build(
     own and stop them on SIGINT only: a SIGTERM or SIGKILL leaves them running (a coding tool that stops
     install.sh's whole process group, bring-back B12 E1.d).  So the tool runs outside that group, in the
     group of a watcher (``_WATCH``) that sends its group SIGINT when this process ends before the tool has:
-    killed by any signal or interrupted.  The tool joins that group as it starts, so no pid is handed over
-    (a Ctrl-C in the milliseconds Popen takes still leaves it unwatched), and the group is the watcher's
-    while the watcher runs, so the signal reaches no other process.  The tool's output goes to unlinked
-    temporary files, not pipes: both tools die of SIGPIPE, and a line written after this process died would
-    end the tool before the SIGINT reached it.  Out of time, this process sends the tool SIGINT, then its
-    group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.
-    A tool that does not start raises OSError as before."""
+    killed by any signal or interrupted.  The tool joins that group as it starts, so no pid is handed over,
+    and the group is the watcher's while the watcher runs, so the signal reaches no other process.  An
+    interrupt that lands while Popen starts the tool leaves no Popen object: the group is then told to stop
+    at once (only a signal sent in the microseconds before the child joins the group misses the tool).  The
+    tool's output goes to unlinked temporary files, not pipes: both tools die of SIGPIPE, and a line written
+    after this process died would end the tool before the SIGINT reached it.  Out of time, this process sends
+    the tool SIGINT, then its group SIGKILL after ``_STOP_S``, and TimeoutExpired is raised as before.  A
+    tool that does not start raises OSError as before."""
     env = _env() if env is None else env
     r, w = os.pipe()
     try:
@@ -608,7 +609,14 @@ def _run_build(
             err.seek(0)
             return subprocess.CompletedProcess(list(argv), proc.returncode, out.read(), err.read())
     finally:
-        ended = proc is None or proc.returncode is not None
+        failed = sys.exc_info()[0]
+        if proc is not None:
+            ended = proc.returncode is not None
+        else:  # no tool started (OSError: exec failed, the child is reaped) or an interrupt landed mid-Popen
+            ended = failed is None or issubclass(failed, OSError)
+            if not ended:  # only the watcher (it ignores SIGINT) and perhaps the tool are in its group
+                with contextlib.suppress(OSError):
+                    os.killpg(watcher.pid, signal.SIGINT)
         if ended:
             with contextlib.suppress(OSError):
                 os.write(w, b"done\n")

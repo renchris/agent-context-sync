@@ -12975,6 +12975,22 @@ download. Pinned by
 `test_without_a_proxy_the_build_fetches_nothing_itself` (its `HTTP_PROXY` and `http_proxy` cases) and
 `test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build`.
 
+A Ctrl-C while Popen starts a build tool still stops the tool (R89). `ocr._run_build`'s `finally` treated "no
+Popen object" as "the tool ended", so a KeyboardInterrupt that landed after the fork but before `proc` was set
+(mainly the error-pipe read inside `Popen._execute_child`) told the watcher "done", and the tool ran on to its
+end in the watcher's group, which the terminal's Ctrl-C never reaches. Now, with no Popen object, the tool
+counts as ended only when nothing is in flight or the exception is OSError (exec failed; Popen has already
+reaped the child). Otherwise the watcher is not told "done", so its end-of-input path stops the group, and
+`_run_build` also sends `os.killpg(watcher.pid, SIGINT)` at once, so the stop does not wait for this process to
+exit. Only the watcher, which ignores SIGINT, and perhaps the tool are in that group. One race remains: on macOS
+the child joins the group after the fork, so a signal sent in the microseconds before it joins misses it. The
+docstring's "a Ctrl-C in the milliseconds Popen takes still leaves it unwatched" is narrowed to that race.
+Pinned by `tests/test_ocr.py::test_a_ctrl_c_while_popen_starts_the_tool_still_stops_it`, which wraps
+`subprocess.Popen._execute_child` to raise KeyboardInterrupt after the real call for the tool's argv only. Its
+stub tool, which sets its own SIGINT handler as swiftc does, writes `got-int`; before the fix it wrote
+`finished-unwatched`.
+
+
 #### PDF pictures and diagrams
 
 Track 3 text goes here.
