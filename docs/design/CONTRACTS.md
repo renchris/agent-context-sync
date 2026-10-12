@@ -4637,7 +4637,7 @@ checks the two lines below against it: adding, hiding or removing a command is a
 same commit.
 
 - Visible: `sync`, `curate`, `status`, `add-source`, `accept-deletions`, `adopt`, `purge`, `hold`, `offboard`
-- Hidden: `init`, `reconcile`, `doctor`, `policy`, `curate-queue`, `lint`, `refresh-queue`, `checkpoint`, `install-skill`, `materialise`, `migrate`, `compact-history`, `install-agent`, `uninstall-agent`, `graph`, `login`, `logout`, `whoami`, `discover`, `it-request`, `setup-report`
+- Hidden: `init`, `exclude-empty`, `reconcile`, `doctor`, `policy`, `curate-queue`, `lint`, `refresh-queue`, `checkpoint`, `install-skill`, `materialise`, `migrate`, `compact-history`, `install-agent`, `uninstall-agent`, `graph`, `login`, `logout`, `whoami`, `discover`, `it-request`, `setup-report`
 
 ### 16.11 Open contract gaps (recorded, not implemented)
 

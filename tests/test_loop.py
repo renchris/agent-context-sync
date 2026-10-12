@@ -277,7 +277,6 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
     config = _setup(Path.home() / "agent-context", local_source_table("work", root))
     assert config.config_path == Path.home() / "agent-context" / "ctx" / "sources.toml"
     assert 'id = "work"\n' in config.config_path.read_text(encoding="utf-8")
-    paste = 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]'
     for _ in range(2):
         run_cycle(config, mode=None)
         assert _lines(config) == [
@@ -286,23 +285,23 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
             "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
             "work are held, not applied, and another sync does not complete it; if the folder(s) are "
             "meant to be empty, "
-            f"set {paste} in [[source]] "
-            'id = "work" in ~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later '
-            "gains files",
+            f"run `{BIN} exclude-empty work` (it adds them to that source's exclude in "
+            "~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later gains files)",
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
         assert manifest.get_meta("empty_cloud_dirs:work") == '["Empty"]', "what the sync's walk found"
     state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert _lines(config)[1] in state.splitlines(), "STATE.md and status give the same wait"
-    # The names come from that walk: status lists no folder of the source, here not even a missing one.
+    # The wait comes from that walk: status lists no folder of the source, here not even a missing one.
     shutil.move(root, root.with_name("Work moved"))
-    assert '"/Empty/"] in [[source]] id = "work" in ~/' in _lines(config)[1]
+    assert f"run `{BIN} exclude-empty work`" in _lines(config)[1]
     shutil.move(root.with_name("Work moved"), root)
-    # The line is ready to paste. With it in the source's table the wait is gone and the step is to sync;
-    # that pass is complete.
+    # B13 round 4 Q71: the command the line names writes the exclude (the default globs kept). The wait is
+    # gone and the step is to sync; that pass is complete.
     path = config.config_path
-    path.write_text(path.read_text(encoding="utf-8") + paste + "\n", encoding="utf-8")
+    assert cli.main(["exclude-empty", "work", "--config", str(path)]) == cli.EXIT_OK
+    assert 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]\n' in path.read_text(encoding="utf-8")
     config = load_config(path)
     assert _lines(config) == [
         f"NEXT: 1 source(s) not fully listed or converted yet (work): run `{BIN} sync` again"
@@ -388,7 +387,7 @@ def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_pa
     config = _setup(tmp_path, local_source_table("work", root))
     run_cycle(config, mode=None)
     first = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s)"))
-    assert first.endswith("an excluded folder is not mirrored if it later gains files"), "none missed yet"
+    assert first.endswith("an excluded folder is not mirrored if it later gains files)"), "none missed yet"
     for n in range(4):
         (root / "Planning" / f"plan {n}.txt").unlink()
     run_cycle(config, mode=None)
@@ -466,9 +465,8 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
         "work are held, not applied, and another sync does not complete it; if the folder(s) are "
         "meant to be empty, "
-        'set exclude = ["~$*", "*.tmp", '
-        f'".~lock.*#", "/Empty/"] in [[source]] id = "work" in {config.config_path}; an excluded folder is '
-        "not mirrored if it later gains files",
+        f"run `{BIN} exclude-empty work` (it adds them to that source's exclude in {config.config_path}; an "
+        "excluded folder is not mirrored if it later gains files)",
         "WAITING ON YOU: 1 empty cloud folder(s) in work held 2 file(s) the mirror still has (the listing "
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder(s) from the cloud drive too, and later syncs take the "
@@ -515,9 +513,8 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
             "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
             "meant to be empty, "
-            'set exclude = ["/Empty/"] in '
-            f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
-            "gains files",
+            f"run `{BIN} exclude-empty drop` (it adds them to that source's exclude in {config.config_path}; "
+            "an excluded folder is not mirrored if it later gains files)",
             "WAITING ON YOU: 1 empty cloud folder(s) in drop held 1 file(s) the mirror still has (the "
             "listing stays incomplete, so their deletion is held; another sync does not clear it): if the "
             "files were removed on purpose, remove the empty folder(s) from the cloud drive too, and later "
@@ -597,9 +594,8 @@ def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> 
         "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
         "drop are held, not applied, and another sync does not complete it; if the folder(s) are "
         "meant to be empty, "
-        'set exclude = ["/Empty/"] in '
-        f'[[source]] id = "drop" in {config.config_path}; an excluded folder is not mirrored if it later '
-        "gains files"
+        f"run `{BIN} exclude-empty drop` (it adds them to that source's exclude in {config.config_path}; an "
+        "excluded folder is not mirrored if it later gains files)"
     )
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
     ahead = time.time() + 3600  # dated ahead of the clock: withheld by every walk, and never waited for

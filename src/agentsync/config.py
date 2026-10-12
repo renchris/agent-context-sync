@@ -721,10 +721,17 @@ def append_to_config(config_path: Path, table: str) -> Config:
         text += "\n"
     new_text = text + table if table.endswith("\n") else text + table + "\n"
     config = parse_config(new_text, config_path=p)  # validate before writing anything
+    _replace_config(target, new_text, mode)
+    return config
+
+
+def _replace_config(target: Path, text: str, mode: int) -> None:
+    """Write ``text`` over ``target`` atomically: a temporary file in the same directory, fsync, then
+    ``os.replace``, with ``mode`` kept (0600 when it is 0)."""
     fd, tmp_name = tempfile.mkstemp(prefix=".sources.", suffix=".toml.tmp", dir=target.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(new_text)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:  # line endings as given
+            fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
         tmp = Path(tmp_name)
@@ -734,7 +741,100 @@ def append_to_config(config_path: Path, table: str) -> Config:
         with contextlib.suppress(OSError):
             Path(tmp_name).unlink()
         raise
+
+
+_TABLE_LINE = re.compile(r"^\s*\[")
+_SOURCE_TABLE_LINE = re.compile(r"^\s*\[\[\s*source\s*\]\]\s*(?:#.*)?$")
+_EXCLUDE_KEY_LINE = re.compile(r"^\s*exclude\s*=")
+_ID_KEY_LINE = re.compile(r"^\s*id\s*=")
+
+
+def set_source_exclude(config_path: Path, source_id: str, exclude: Collection[str]) -> Config:
+    """Set the ``exclude`` of the ``[[source]]`` table whose id is ``source_id`` to ``exclude``, as one line,
+    editing the file's text so every other byte and comment stays (B13 round 4 Q71): an existing ``exclude``
+    key's whole span (one line or an array over several) is replaced, else the line goes after the table's
+    ``id`` line.  The result must load (:func:`parse_config`), give this source exactly ``exclude`` and leave
+    every other table and key as it was, BEFORE anything is written; then the file is replaced atomically
+    with its mode kept.  Raises ConfigError (and writes nothing) otherwise."""
+    p = expand(config_path)
+    target = p.resolve()  # a symlinked sources.toml keeps its link
+    try:
+        with target.open(encoding="utf-8", newline="") as fh:  # a CRLF file stays CRLF
+            text = fh.read()
+        mode = target.stat().st_mode & 0o777
+    except FileNotFoundError:
+        raise ConfigError(f"{p}: not found") from None
+    except OSError as exc:
+        raise ConfigError(f"{p}: cannot read: {exc.strerror}") from None
+    eol = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += eol
+    span = _source_table_span(lines, source_id)
+    if span is None:
+        raise ConfigError(f"{p}: no [[source]] table with id {source_id!r} that can be edited as text")
+    start, end = span
+    new_line = f"exclude = [{', '.join(json.dumps(g, ensure_ascii=False) for g in exclude)}]"
+    key = next((i for i in range(start + 1, end) if _EXCLUDE_KEY_LINE.match(lines[i])), None)
+    if key is not None:
+        stop = next((j for j in range(key + 1, end + 1) if _loads("".join(lines[key:j])) is not None), None)
+        if stop is None:
+            raise ConfigError(f"{p}: the exclude key of source {source_id!r} does not end inside its table")
+        lines[key:stop] = [new_line + _trailing_comment(lines[key:stop]) + eol]
+    else:
+        at = next((i for i in range(start + 1, end) if _ID_KEY_LINE.match(lines[i])), None)
+        if at is None:
+            raise ConfigError(f"{p}: the [[source]] table of {source_id!r} has no id line to follow")
+        lines.insert(at + 1, new_line + eol)
+    new_text = "".join(lines)
+    before, after = _loads(text), _loads(new_text)
+    if before is None or after is None:
+        raise ConfigError(f"{p}: the edit of source {source_id!r}'s exclude does not load")
+    for table in before.get("source", []):
+        if isinstance(table, dict) and table.get("id") == source_id:
+            table["exclude"] = list(exclude)
+    if before != after:
+        raise ConfigError(f"{p}: the edit of source {source_id!r}'s exclude would change another key")
+    config = parse_config(new_text, config_path=p)
+    if config.source(source_id).exclude != tuple(exclude):
+        raise ConfigError(f"{p}: the edit of source {source_id!r}'s exclude does not read back")
+    _replace_config(target, new_text, mode)
     return config
+
+
+def _trailing_comment(span: list[str]) -> str:
+    """The comment after a key's value on its last line (``]  # keep backups out``), with the space before
+    it, or "": the first ``#`` before which the span parses (one inside a string leaves it unterminated)."""
+    last = span[-1].rstrip("\r\n")
+    head = "".join(span[:-1])
+    for at, char in enumerate(last):
+        if char == "#" and _loads(head + last[:at]) is not None:
+            gap = len(last[:at]) - len(last[:at].rstrip())
+            return " " * max(gap, 1) + last[at:].rstrip()
+    return ""
+
+
+def _loads(text: str) -> dict[str, Any] | None:
+    """``text`` parsed as TOML, or None when it does not parse."""
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+
+
+def _source_table_span(lines: list[str], source_id: str) -> tuple[int, int] | None:
+    """``(header line, end)`` of the one ``[[source]]`` table whose id is ``source_id`` (it ends at the next
+    table header), or None when none or more than one is (or a table does not parse on its own)."""
+    found: list[tuple[int, int]] = []
+    for start, line in enumerate(lines):
+        if not _SOURCE_TABLE_LINE.match(line):
+            continue
+        end = next((j for j in range(start + 1, len(lines)) if _TABLE_LINE.match(lines[j])), len(lines))
+        parsed = _loads("".join(lines[start:end]))
+        tables = parsed.get("source") if parsed is not None else None
+        if isinstance(tables, list) and len(tables) == 1 and tables[0].get("id") == source_id:
+            found.append((start, end))
+    return found[0] if len(found) == 1 else None
 
 
 _TEMPLATE = """\

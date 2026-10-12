@@ -40,12 +40,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
-from agentsync.arm_local import _unexcluded, exclude_advice
+from agentsync.arm_local import _unexcluded
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
@@ -627,7 +628,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "empty folder in a cloud folder is expected and loses nothing, but while the listing is "
                 f"incomplete, deletions in {src.id} are held, not applied, and another sync does not "
                 "complete it; if the folder(s) are meant to be empty, "
-                f"{exclude_advice(src, clear, _shown(config.config_path))}"
+                # One command, not a hand edit of sources.toml (B13 round 4 Q71): it excludes every such
+                # folder, so no second round for a sixth one, and checks the file before it writes it.
+                f"run `{BIN} exclude-empty {shlex.quote(src.id)}` (it adds them to that source's exclude in "
+                f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files)"
                 + (f"; {size}" if size and not gone else "")
             )
         if gone:

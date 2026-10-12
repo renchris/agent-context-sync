@@ -31,6 +31,7 @@ if _ssl.SSLContext is not _truststore.SSLContext:  # same effect as agentsync.ne
 import argparse
 import contextlib
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -54,6 +55,7 @@ from agentsync import (
     skill,
 )
 from agentsync import policy as content_policy
+from agentsync.arm_local import _dir_excluded, _folder_glob, exclude_advice, exclude_globs
 from agentsync.config import (
     Config,
     append_to_config,
@@ -65,8 +67,12 @@ from agentsync.config import (
     local_source_table,
     parse_config,
     parse_size,
+    set_source_exclude,
 )
 from agentsync.cycle import (
+    _PRESENT,
+    INTERACTIVE_LOCK_WAIT_S,
+    _acquire_waiting,
     _holds_home,
     _tighten_own_paths,
     run_cycle,
@@ -220,6 +226,15 @@ def build_parser() -> argparse.ArgumentParser:
         _cmd_accept_deletions,
     )
     p.add_argument("source", metavar="SOURCE", help="the source id the breaker tripped on")
+
+    p = add(
+        "exclude-empty",
+        "add SOURCE's empty cloud folders, those holding no mirrored file, to its exclude in sources.toml "
+        "(the empty-folder WAITING ON YOU line names this command)",
+        _cmd_exclude_empty,
+        hidden=True,
+    )
+    p.add_argument("source", metavar="SOURCE", help="the source id the WAITING ON YOU line names")
 
     p = add(
         "reconcile",
@@ -717,6 +732,77 @@ def _cmd_accept_deletions(args: argparse.Namespace) -> int:
         wait_for_lock=True,
         recordings="none",
     )
+
+
+def _cmd_exclude_empty(args: argparse.Namespace) -> int:
+    """Add SOURCE's empty cloud folders to its ``exclude`` in sources.toml (B13 round 4 Q71): the folders its
+    last walk stored as zero-child (manifest meta, never a folder read here) that today's exclude does not
+    prune and that hold no mirrored file, all of them, each as ``/<path>/``. A folder that held mirrored
+    files is left as it is: excluding it would retire its pages at once, with no deletion check. The file is
+    edited as text and checked before it is written (:func:`config.set_source_exclude`); under the cycle's
+    lock, as an interactive sync waits for it. Nothing to exclude exits 0; a refused edit prints the line to
+    paste instead and exits 78."""
+    config = _config(args)
+    src = next((s for s in config.sources if s.id == args.source), None)
+    if src is None or src.kind not in (SourceKind.LOCAL, SourceKind.INBOX):
+        _err(f"exclude-empty {args.source}: no local or inbox source with that id in {config.config_path}")
+        return EXIT_USAGE
+    where = loop._shown(config.config_path)
+    db = config.state_paths.db
+    if not db.is_file():
+        _out(f"exclude-empty {src.id}: nothing to exclude: no sync has stored an empty cloud folder yet")
+        return EXIT_OK
+    lock = SingleWriterLock(config.state_paths.lock, "exclude-empty")
+    _acquire_waiting(lock, INTERACTIVE_LOCK_WAIT_S)
+    try:
+        with Manifest(db) as manifest:
+            _stored, below = loop._empty_dirs(manifest, src)
+            held_dirs = _folders_holding_files(manifest, src.id)
+        # A folder's glob that would also prune a folder holding mirrored files (a "[" is written as "?") is
+        # left as well: excluding that folder would retire its pages at once.
+        clear = [
+            d
+            for d, files in below.items()
+            if not files and not any(_dir_excluded(h, [_folder_glob(d)]) for h in held_dirs)
+        ]
+        gone = len(below) - len(clear)
+        held = (
+            f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "
+            "still has, or its exclude would also match a folder that does (excluding such a folder retires "
+            f"its pages at once, with no deletion check); `{loop.BIN} sync -v` names them"
+            if gone
+            else ""
+        )
+        if not clear:
+            _out(f"exclude-empty {src.id}: nothing to exclude{held}")
+            return EXIT_OK
+        exclude = exclude_globs(src, clear)
+        try:
+            set_source_exclude(config.config_path, src.id, exclude)
+        except ConfigError as exc:
+            _err(f"exclude-empty {src.id}: sources.toml was not changed: {exc}")
+            _out(f"instead, {exclude_advice(src, clear, where)}")
+            return EXIT_CONFIG
+    finally:
+        lock.release()
+    listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in exclude)
+    _out(
+        f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
+        f"({len(clear)} empty cloud folder(s) added); an excluded folder is not mirrored if it later gains "
+        f"files; the next sync lists {src.id} without them{held}"
+    )
+    return EXIT_OK
+
+
+def _folders_holding_files(manifest: Manifest, source_id: str) -> set[str]:
+    """Every folder (relative POSIX path) with a mirrored file at or below it, from the manifest's rows."""
+    out: set[str] = set()
+    for row in manifest.iter_items(source_id, states=_PRESENT):
+        if row.is_dir:
+            continue
+        parts = row.rel_path.split("/")[:-1]
+        out.update("/".join(parts[: i + 1]) for i in range(len(parts)))
+    return out
 
 
 def _cmd_mat(args: argparse.Namespace) -> int:

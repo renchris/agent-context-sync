@@ -708,15 +708,31 @@ def exclude_advice(cfg: SourceConfig, empty: Sequence[str], where: str) -> str:
     in force (the configured or default ``exclude``, without the always-excluded ones, which a hand-written
     list cannot drop) and adds the first five folders, each anchored at the root (``/<path>/``) with its glob
     characters made literal; more than five are a count."""
-    kept = [g for g in cfg.exclude if g not in always_excluded(cfg.kind)]
-    globs = [f"/{_GLOB_CHARS.sub(_glob_literal, rel)}/" for rel in empty[:_EXCLUDE_SHOWN]]
-    listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in (*kept, *globs))
-    more = len(empty) - len(globs)
+    shown = exclude_globs(cfg, empty[:_EXCLUDE_SHOWN])
+    listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in shown)
+    more = len(empty) - min(len(empty), _EXCLUDE_SHOWN)
     rest = f" (+{more} more: status names them once these are excluded)" if more > 0 else ""
     return (
         f'set exclude = [{listed}] in [[source]] id = "{cfg.id}" in {where}{rest}; an excluded folder '
         "is not mirrored if it later gains files"
     )
+
+
+def exclude_globs(cfg: SourceConfig, empty: Sequence[str]) -> list[str]:
+    """The ``exclude`` list that keeps the globs in force (the configured or default ``exclude``, without the
+    always-excluded ones, which a hand-written list cannot drop) and adds each of ``empty`` (folders of the
+    source, relative POSIX paths) anchored at the root (``/<path>/``) with its glob characters made literal;
+    one already in the list is not added twice. :func:`exclude_advice` prints it, ``agentsync exclude-empty``
+    writes it."""
+    kept = [g for g in cfg.exclude if g not in always_excluded(cfg.kind)]
+    globs = [_folder_glob(rel) for rel in empty]
+    return [*kept, *(g for g in dict.fromkeys(globs) if g not in kept)]
+
+
+def _folder_glob(rel: str) -> str:
+    """The exclude glob of one folder of a source: ``/<path>/``, anchored at the root, glob characters literal
+    (``[`` as ``?``: :func:`_glob_literal`)."""
+    return f"/{_GLOB_CHARS.sub(_glob_literal, rel)}/"
 
 
 def _glob_literal(m: re.Match[str]) -> str:

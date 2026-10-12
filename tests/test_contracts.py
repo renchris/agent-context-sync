@@ -77,6 +77,7 @@ CLI_SURFACE: dict[str, dict[str, list[str]]] = {
         "materialise": ["--budget", "paths"],
         "migrate": [],
         "compact-history": ["--keep-days", "--dry-run"],
+        "exclude-empty": ["source"],
         "reconcile": ["--source", "--accept-deletions"],
         "install-skill": [],
         "checkpoint": [],
@@ -200,7 +201,7 @@ def test_help_lists_no_hidden_verb_and_each_still_parses(capsys: pytest.CaptureF
     listed = set(re.findall(r"(?m)^    (\S+)", capsys.readouterr().out))
     assert set(CLI_SURFACE["visible"]) <= listed
     assert not set(CLI_SURFACE["hidden"]) & listed
-    needs = {"graph": ["whoami"], "policy": ["show"]}  # the required positional
+    needs = {"graph": ["whoami"], "policy": ["show"], "exclude-empty": ["work"]}  # the required positional
     for name in CLI_SURFACE["hidden"]:
         args = cli.build_parser().parse_args([name, *needs.get(name, [])])
         assert args.command == name
