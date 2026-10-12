@@ -4305,6 +4305,8 @@ class Hold:
 class HoldActiveError(GovernanceError):
     """A legal/records hold covers the scope: purge and compaction are suspended until it is released."""
 
+KEPT_PURGES = 'upstream deletion(s) stay queued while their file is listed again; they run on their own once the file is gone'
+
 KEYCHAIN_SERVICE = 'agentsync'
 
 class OffboardLocation:
@@ -4349,6 +4351,7 @@ class PurgeReport:
     notes: tuple[str, ...] = ()
     paths_left: tuple[str, ...] = ()
     taken_paths: tuple[str, ...] = ()
+    not_run: str = ''
     @property
     def verified(self) -> bool:
         """True when this was a real run and nothing targeted remains readable in the repo."""
@@ -4428,6 +4431,9 @@ def offboard_plan(config: Config, *, purge_data: bool = False, keychain_service:
 
 def parse_governance(doc: Mapping[str, Any], *, where: str = 'sources.toml') -> GovernanceConfig:
     """Validate the ``[governance]`` table of parsed sources.toml (absent = defaults); raises ConfigError."""
+
+def partition_purges(state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
+    """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it"""
 
 def pending_purges(state_dir: Path) -> list[QueuedPurge]:
     """Queued purges, oldest first."""
@@ -12136,7 +12142,101 @@ Tests: `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`,
 
 ### 16.44 Round 3: purge (2026-10-11, wave B13 round 3 lane A)
 
-Reserved for round 3 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 2").
+Round 3 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 2"): items R49, R64, R91, R93, R95 and R96
+are built; R123 and R124 are kept not built, with the reasons below.
+
+#### A kept upstream deletion is a note, not a wait (`agentsync.governance`, `agentsync.loop`, `agentsync.cli`, `agentsync.cycle`; amends §16.38)
+
+`governance.partition_purges(state_paths, queue=None)` splits the queue (the file, or the entries passed) into the
+entries a `purge --queue` would run and the ones it keeps queued, each with its reason. It reads the manifest
+once and judges every entry with `_kept_why`, the rule `run_purge_queue` applies before each entry (a fresh read
+per entry there, since an earlier purge of the run changes the manifest), so the display and the run cannot
+differ. A manifest it cannot read (a schema from a newer build, a SQLite error) is logged and leaves every entry
+runnable, as before. `KEPT_PURGES` is the text after the kept count: `upstream deletion(s) stay queued while
+their file is listed again; they run on their own once the file is gone`.
+
+- The loop's wait and its `governance.purge_queue` check count only the runnable entries and appear only when
+  there is one; the kept ones add the note `K <KEPT_PURGES>` (a note, not a wait).
+- `status`: `queued purges: N (...)` counts only the runnable entries; a separate line `queued purges kept: K
+  <KEPT_PURGES>` follows.
+- doctor `governance.purge_queue`: WARN with its fix (or the `yours: see WAITING ON YOU` note) only when a runnable
+  entry exists, its detail ending `; K <KEPT_PURGES>` when there are kept ones too; with only kept ones, INFO, ok,
+  detail `K <KEPT_PURGES>`, no fix.
+- STATE.md's `## Queued purges` counts only the runnable entries in its waiting line and adds `- K <KEPT_PURGES>`.
+- `purge --queue` exits 0 when every report is verified or not run and every entry left on the queue is a kept
+  upstream deletion; its last line is then `N queued purge(s) run; K stay queued while their file is listed`. With
+  any other entry left: `N queued purge(s) run; M still queued`, plus ` (K of them while their file is listed)`
+  when some are kept, exit 1. The dry run's count (`N queued purge(s) previewed`) counts only the entries it
+  previewed, not the ones it reports as not run.
+
+Why: an entry kept because its file is listed again exits 1 on every run and clears nothing, yet the loop's
+`WAITING ON YOU` line, status and doctor's WARN told the operator (or an agent following the wait) to run it
+on every sync while the file existed. The kept entries stay visible, because each is a pending history erasure.
+Tests: `tests/test_cli.py::test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_count_it_as_run`,
+`::test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_runnable_one`.
+
+#### A held queue entry gets a report (`agentsync.governance`)
+
+An entry whose purge raises `GovernanceError` stays queued with a `PurgeReport` like a kept one: `items` and
+`docs_paths` empty, `remote` "not run", `not_run` and its one note `stays queued: <why>`. For a hold
+(`HoldActiveError`) the why is the error's text, which names the hold's scope, reason and owner and no item; for
+any other `GovernanceError` it is the fixed `the purge failed; the log has the error` (a git failure's text can
+name a path or an id), and the full text stays in the log's warning. The entry also joins the run's "stays
+queued" list, so a later verified purge in the run that covers it does not drop it. Why: a held entry printed
+nothing on stdout while a kept one printed its reason; the preview is where the operator reads why an entry
+stays. Tests: `tests/test_cli.py::test_purge_queue_skips_a_held_source_and_keeps_it_queued`,
+`::test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing`,
+`tests/test_governance.py::test_purge_queue_runs_and_keeps_held_requests`.
+
+#### A queued entry an earlier purge of the run did is not run again (`agentsync.governance`; amends §16.38 "A purge by selector takes the queue entries it did off the queue")
+
+When a purge of the run verifies, `run_purge_queue` takes every queue entry it covers (`_covers`), later in the
+queue or kept so far after a failed run, as done at that moment: each writes the audit line `{"action":
+"purge-covered", "at", "covered_by_sha256" (the covering selector's fingerprint), "reason", "selector_sha256"}`
+so an erasure request keeps a record that it was fulfilled, and adds the note `also did the queued <reason> purge
+of the same item: taken off the queue` to the covering report (no report of its own, never one with `not_run`,
+which would turn the exit code into a failure). A covered later entry is not run. An entry already reported as
+kept or held this run is never taken by a later cover. The queue file written after each verified purge leaves
+out every covered entry, so a run that stops part-way neither puts one back nor loses its audit line.
+Why: the run walked the original queue, so each covered entry cost a full no-op history pass and wrote a second
+`purge-summary` that read as an erasure that erased nothing. Test: `tests/test_governance.py::
+test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once`.
+
+#### A taken path spares every worktree's live file; a listed file's outputs row stays (`agentsync.governance`; amends §16.38)
+
+The taken map holds, per path, the identity of the page at that path in every worktree HEAD (it held only the
+first HEAD's), and every such identity is spared by the index scrubber; which paths are taken is unchanged. The
+purge's row deletion by path keeps an outputs row whose owner is a file the manifest lists that the purge did not
+select (`_ManifestTargets.others`); tombstones and depends rows at the path are still deleted by path, and a path
+whose HEAD holds no page is still not taken, so history's index lines naming it still go. This removes §16.38's
+residual "a live item with an outputs row at the path but no page there in HEAD still loses its row". Why: a
+second worktree's live file at a taken path lost its `_manifest` line under a VERIFIED report; and a live row
+left without its committed page (a crash between the manifest write and the commit, the tree then cleaned by
+hand) was deleted, so the next cycle's repair could not republish the page. Tests:
+`tests/test_governance.py::test_purge_keeps_the_manifest_line_of_each_worktree_heads_own_file_at_a_taken_path`,
+`::test_purge_keeps_a_listed_files_outputs_row_at_a_purged_path_with_no_page_in_head`.
+
+#### The `PurgeReport` stub lists `not_run`
+
+The §16 stub of `PurgeReport` now carries `not_run: str = ''` after `taken_paths`, as the code has since §16.38.
+
+#### Kept not built
+
+- History and log lines that name a taken path (R123). In history, a CHANGELOG `- A`/`- D` line or an older
+  DEPENDS.tsv row naming only the taken path stays: the path is the live page's own name in HEAD, and older
+  DEPENDS.tsv pinned hashes also survive in history's topic frontmatter, which a purge never rewrites, so nothing
+  new leaks. Scrubbing them would remove the live page's own lines (the defect §16.38 fixed), and doing it only in
+  commits before the live item appeared needs time-aware scrubbing per commit for a metadata-only gain. Logs and
+  run errors are diagnostics: a line naming the path cannot be told apart between the purged and the live item,
+  so scrubbing it is fail-closed. This replaces the reason "logs are regenerated": the scrubbed lines are deleted
+  for good.
+- A transient quarantine still runs its queued upstream deletion (R124). Treating a quarantined row as listed
+  would leave the earlier text in history where that text is what the purge must remove (a credential in the
+  name, secret-in-content after a re-screen, encrypted, label policy), and `state_reason` is free text, so a
+  narrow allowlist that missed would do the same; a "transient" reason can also be permanent and keep the entry
+  queued indefinitely. The cost of running is the file's earlier history only; the next cycle republishes its
+  page once the quarantine clears. Pinned by `tests/test_governance.py::
+  test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again` and `docs/deploy/data-governance.md`.
 
 ### 16.45 Round 3: sync, status and doctor (2026-10-11, wave B13 round 3 lane B)
 
