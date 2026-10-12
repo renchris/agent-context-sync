@@ -553,6 +553,73 @@ def test_upsert_inserts_all_observed_fields(m: Manifest) -> None:
     assert stored == '{"a":"b","z":1}'
 
 
+def test_shared_canonical_counts_pairs_the_given_sources_in_one_query(m: Manifest) -> None:
+    """§16.45 R144: per pair of the given sources, how many live files of the first have a live twin by
+    canonical hash in the second; a source left out (the inbox), a tombstoned row and a pair with none count
+    nothing."""
+    m.sync_sources([local_source(), local_source("team", "/tmp/team"), local_source("box", "/tmp/box")])
+    rows = [
+        ("src", "vol:1", H),
+        ("src", "vol:2", H2),
+        ("src", "vol:3", H3),
+        ("team", "vol:4", H),
+        ("team", "vol:5", H2),
+        ("team", "vol:6", H2),
+        ("box", "vol:7", H3),
+    ]
+    for sid, stable, canonical in rows:
+        m.upsert_observed(
+            item(stable, f"a/{stable}.docx", source_id=sid),
+            run_id=1,
+            verdict=Verdict.CREATED,
+            state=RowState.LIVE,
+        )
+        m.set_content(
+            sid,
+            stable,
+            content_sha256=canonical,
+            canonical_sha256=canonical,
+            canonical_method="m",
+            canonical_parts=[],
+        )
+    assert m.shared_canonical_counts(["team", "src"]) == [("src", "team", 2)]
+    assert m.shared_canonical_counts(["src"]) == []
+    m.upsert_observed(
+        item("vol:2", "a/vol:2.docx", deleted=True),
+        run_id=2,
+        verdict=Verdict.DELETED,
+        state=RowState.TOMBSTONE,
+    )
+    assert m.shared_canonical_counts(["src", "team"]) == [("src", "team", 1)]
+
+
+def test_shared_canonical_counts_meets_each_copy_once(m: Manifest) -> None:
+    """§16.45 R144 review: many identical files in each source (the same template, say) count once per file,
+    and the query joins each file with one row per other source and hash, not with every copy there (2,000
+    copies a side was 4,000,000 joined rows, read on every status)."""
+    m.sync_sources([local_source(), local_source("team", "/tmp/team")])
+    n = 2_000
+    with m.transaction():
+        for sid in ("src", "team"):
+            m.upsert_observed_many(
+                [
+                    (item(f"{sid}:{i}", f"a/{i}.docx", source_id=sid), Verdict.CREATED, RowState.LIVE)
+                    for i in range(n)
+                ],
+                run_id=1,
+            )
+            for i in range(n):
+                m.set_content(
+                    sid,
+                    f"{sid}:{i}",
+                    content_sha256=H,
+                    canonical_sha256=H,
+                    canonical_method="m",
+                    canonical_parts=[],
+                )
+    assert m.shared_canonical_counts(["src", "team"]) == [("src", "team", n)]
+
+
 def test_upsert_rename_records_prev_path_and_keeps_content(m: Manifest) -> None:
     m.upsert_observed(item(), run_id=1, verdict=Verdict.CREATED, state=RowState.LIVE)
     m.set_content(

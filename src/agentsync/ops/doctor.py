@@ -18,6 +18,7 @@ import logging
 import os
 import plistlib
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -30,7 +31,7 @@ from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
-from agentsync.errors import ConfigError
+from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.loop import NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import SourceKind
@@ -1558,6 +1559,33 @@ def _check_lock(config: Config) -> list[CheckResult]:
     return [_ok("lock", "free")]
 
 
+def _check_shared_content(config: Config) -> list[CheckResult]:
+    """An advisory, never a warn (§16.45 R144): live files that two non-inbox sources both hold, by content
+    (the canonical hash), counted per pair. Neither copy is refused (only an inbox drop of a live Graph file
+    is), since between two such sources no side is the real one; whether one source copies the other is the
+    person's to settle. Nothing when no pair shares a file, before the first sync, or when the manifest
+    cannot be read (the manifest checks report that)."""
+    db = config.state_paths.db
+    ids = [s.id for s in config.live_sources() if s.kind is not SourceKind.INBOX]
+    if len(ids) < 2 or not db.exists():
+        return []
+    try:
+        with Manifest(db) as manifest:
+            pairs = manifest.shared_canonical_counts(ids)
+    except (OSError, sqlite3.Error, AgentSyncError):
+        return []
+    if not pairs:
+        return []
+    shown = "; ".join(f"{n} file(s) in {a} have the same content as a file in {b}" for a, b, n in pairs)
+    return [
+        _ok(
+            "sources.shared_content",
+            f"{shown}: both are kept; if one source copies the other, removing it from sources.toml retires "
+            "its pages",
+        )
+    ]
+
+
 def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = None) -> list[CheckResult]:
     """Per live source: auth state, last success within 3 x cadence, enumeration completing.
 
@@ -1778,6 +1806,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("permissions", _check_permissions),
     ("state_dir", _check_state_dir),
     ("sources", _check_sources),
+    ("sources.shared_content", _check_shared_content),
     ("materialise", _check_materialise),
     ("graph", _check_graph),
     ("disk", _check_disk),

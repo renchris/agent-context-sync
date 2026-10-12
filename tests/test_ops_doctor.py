@@ -27,7 +27,8 @@ import pytest
 from agentsync import cli, gitops, setup_report
 from agentsync.config import Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
-from agentsync.model import PassKind, SourceKind, SourceState
+from agentsync.manifest import Manifest
+from agentsync.model import PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
@@ -1440,6 +1441,42 @@ def test_lock_held_with_an_empty_body_names_no_cycle(sample_config: Config) -> N
         os.close(fd)
     assert r.ok and r.detail == f"held by {EMPTY_BODY_HOLDER}" and r.fix is None
     assert "a cycle is running" not in r.detail
+
+
+def test_two_sources_holding_the_same_files_is_an_info_line(sample_config: Config) -> None:
+    """§16.45 R144: an advisory only (ok, never a warn), shown only when two non-inbox sources share live
+    files by content; it names both ids and the count, and refuses nothing."""
+    assert "sources.shared_content" not in by_name(run_checks(sample_config))
+    first = sample_config.sources[0]
+    cfg = dataclasses.replace(
+        sample_config,
+        sources=(first, dataclasses.replace(first, id="team-copy", path=first.path.parent / "copy")),  # type: ignore[union-attr]
+    )
+    with Manifest(cfg.state_paths.db) as manifest:
+        manifest.sync_sources(list(cfg.sources))
+        assert "sources.shared_content" not in by_name(doctor._check_shared_content(cfg))
+        for sid in ("local-fixture", "team-copy"):
+            manifest.upsert_observed(
+                SourceItem(
+                    source_id=sid,
+                    stable_id="vol:1",
+                    rel_path="a/brief.docx",
+                    name="brief.docx",
+                    size=10,
+                    mtime_ns=1_000,
+                    ctime_ns=1_000,
+                ),
+                run_id=1,
+                verdict=Verdict.CREATED,
+                state=RowState.LIVE,
+            )
+            h = "a" * 64
+            manifest.set_content(
+                sid, "vol:1", content_sha256=h, canonical_sha256=h, canonical_method="m", canonical_parts=[]
+            )
+    r = by_name(run_checks(cfg))["sources.shared_content"]
+    assert r.ok and r.severity is Severity.INFO and r.fix is None
+    assert r.detail.startswith("1 file(s) in local-fixture have the same content as a file in team-copy: ")
 
 
 # ------------------------------------------------------------------------------------------------ heartbeat

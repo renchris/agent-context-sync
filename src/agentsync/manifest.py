@@ -2413,6 +2413,28 @@ class Manifest:
         ).fetchall()
         return [_item_from_row(r) for r in rows]
 
+    def shared_canonical_counts(self, source_ids: Iterable[str]) -> list[tuple[str, str, int]]:
+        """Per pair of ``source_ids``, ``(a, b, n)`` with ``a < b``: ``n`` live files of ``a`` whose canonical
+        hash a live file of ``b`` also has, in one query (doctor's advisory, §16.45 R144); pairs with none
+        are left out."""
+        ids = sorted(set(source_ids))
+        if len(ids) < 2:
+            return []
+        marks = ", ".join("?" * len(ids))
+        # Each file of a meets each other source once per hash, never once per copy there: a join with the
+        # copies themselves grows as copies x copies (1,000 identical files a source: seconds, per status).
+        rows = self._db.execute(
+            "SELECT a.source_id, b.source_id, COUNT(*) FROM items a JOIN "
+            "(SELECT DISTINCT source_id, canonical_sha256 FROM items "
+            f"WHERE source_id IN ({marks}) AND is_dir = 0 AND state IN ('live', 'dataless') "
+            "AND canonical_sha256 IS NOT NULL) b "
+            "ON b.canonical_sha256 = a.canonical_sha256 AND b.source_id > a.source_id "
+            f"WHERE a.source_id IN ({marks}) AND a.is_dir = 0 AND a.state IN ('live', 'dataless') "
+            "GROUP BY a.source_id, b.source_id ORDER BY a.source_id, b.source_id",
+            (*ids, *ids),
+        ).fetchall()
+        return [(str(a), str(b), int(n)) for a, b, n in rows]
+
     # ---- outputs ----------------------------------------------------------------------------------------
     def outputs_for(self, source_id: str, stable_id: str) -> list[OutputRow]:
         """Output rows of one item ordered by unit_id."""
