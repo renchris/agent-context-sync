@@ -1305,6 +1305,69 @@ def test_purge_keeps_the_manifest_line_of_a_new_file_with_the_same_name(
     assert "ALPHA-GONE" not in history and '"stable_id":"A1"' not in history
 
 
+def test_purge_keeps_the_manifest_line_of_each_worktree_heads_own_file_at_a_taken_path(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """Two worktree HEADs each hold a different live file at the purged item's page path, with its source
+    path.  The taken map kept only the first HEAD's id, so the other HEAD's manifest line was erased under a
+    VERIFIED report (B13 round 2, R91)."""
+    repo, at, rel = tmp_docs_repo, "mirror/src/dir/report.md", "dir/report.txt"
+    write(repo / at, page("src", "A1", rel, "ALPHA-GONE"))
+    write(repo / "_manifest/src.jsonl", _shard_line("A1", rel, at))
+    commit_all(repo, "c1", "2026-06-01T10:00:00Z")
+    (repo / at).unlink()
+    write(repo / "_manifest/src.jsonl", "")
+    c2 = commit_all(repo, "c2", "2026-06-02T10:00:00Z")
+    side = tmp_path / "side"
+    git(repo, "worktree", "add", "-q", "-b", "side", str(side), c2)
+    write(side / at, page("src", "C1", rel, "CHARLIE-LIVE"))
+    write(side / "_manifest/src.jsonl", _shard_line("C1", rel, at))
+    commit_all(side, "c3 side", "2026-06-03T09:00:00Z")
+    write(repo / at, page("src", "B1", rel, "BRAVO-LIVE"))
+    write(repo / "_manifest/src.jsonl", _shard_line("B1", rel, at))
+    commit_all(repo, "c3", "2026-06-03T10:00:00Z")
+    config = make_config(tmp_path, repo, tmp_state_dir)
+    _seed_live(repo, config, [("B1", rel, at, "BRAVO-LIVE")])
+
+    rep = gv.purge(config, gv.PurgeSelector(source_id="src", stable_id="A1"), reason=gv.PurgeReason.OPERATOR)
+
+    assert rep.verified and rep.taken_paths == (at,)
+    assert git(repo, "show", "main:_manifest/src.jsonl") == _shard_line("B1", rel, at)
+    assert git(repo, "show", "side:_manifest/src.jsonl") == _shard_line("C1", rel, at)
+    assert "CHARLIE-LIVE" in git(repo, "show", f"side:{at}")
+    history = "".join(git(repo, "cat-file", "-p", s) for s in all_blobs(repo))
+    assert "ALPHA-GONE" not in history and '"stable_id":"A1"' not in history
+
+
+def test_purge_keeps_a_listed_files_outputs_row_at_a_purged_path_with_no_page_in_head(
+    tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
+) -> None:
+    """A live file's outputs row sits at the purged item's earlier page path, but HEAD has no page there (a
+    crash between the manifest write and the commit, the tree then cleaned by hand).  The path is not taken,
+    so the history's index lines naming it still go; the live file's row stays for the next cycle's repair
+    (B13 round 2, R93: it was deleted by path whoever owned it)."""
+    repo, at = tmp_docs_repo, "mirror/src/dir/report.md"
+    write(repo / at, page("src", "A1", "dir/report.txt", "ALPHA-GONE"))
+    write(repo / "CHANGELOG/2026-06.md", f"- A {at}\n")
+    commit_all(repo, "c1", "2026-06-01T10:00:00Z")
+    (repo / at).unlink()
+    write(repo / "CHANGELOG/2026-06.md", f"- A {at}\n- D {at}\n")
+    commit_all(repo, "c2", "2026-06-02T10:00:00Z")
+    config = make_config(tmp_path, repo, tmp_state_dir)
+    db = _seed_live(repo, config, [("B1", "new/report.txt", at, "BRAVO-LIVE")])
+
+    rep = gv.purge(config, gv.PurgeSelector(source_id="src", stable_id="A1"), reason=gv.PurgeReason.OPERATOR)
+
+    assert rep.verified and rep.taken_paths == () and rep.docs_paths == (at,)
+    assert rep.manifest_rows_removed["outputs"] == 0
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT stable_id FROM outputs WHERE output_path = ?", (at,)).fetchall() == [("B1",)]
+    conn.close()
+    assert at not in git(repo, "show", "HEAD:CHANGELOG/2026-06.md")
+    history = "".join(git(repo, "cat-file", "-p", s) for s in all_blobs(repo))
+    assert "ALPHA-GONE" not in history and at not in history
+
+
 def test_purge_marks_no_path_taken_that_the_rewrite_drops(
     tmp_path: Path, tmp_docs_repo: Path, tmp_state_dir: Path
 ) -> None:

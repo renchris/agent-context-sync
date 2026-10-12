@@ -44,7 +44,7 @@ import subprocess
 import tomllib
 import unicodedata
 import urllib.parse
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC as _UTC
 from datetime import datetime, timedelta
@@ -1387,12 +1387,13 @@ def _in_head(repo: Path, path: str) -> bool:
 
 def _taken_paths(
     rw: _Rewriter, heads: Iterable[str], paths: Iterable[str]
-) -> dict[str, tuple[str, str] | None]:
-    """The docs paths a worktree HEAD holds with a blob pass 1 did not target, each with the identity of the
-    page there (None for a page without one): another item's live page now at a path the purged item once
-    had.  The rewrite keeps that blob, so the purge keeps its manifest rows and its index lines too."""
+) -> dict[str, set[tuple[str, str] | None]]:
+    """The docs paths a worktree HEAD holds with a blob pass 1 did not target, each with the identities of the
+    pages there, one per HEAD that differs (None for a page without one): another item's live page now at a
+    path the purged item once had.  The rewrite keeps that blob, so the purge keeps its manifest rows and its
+    index lines too, on every worktree's HEAD."""
     wanted = sorted({p for p in paths if p and not p.endswith("/")})
-    out: dict[str, tuple[str, str] | None] = {}
+    out: dict[str, set[tuple[str, str] | None]] = {}
     if not wanted:
         return out
     trees: dict[str, dict[str, tuple[bytes, str]]] = {}
@@ -1423,7 +1424,7 @@ def _taken_paths(
             key = (ident["source_id"], ident["stable_id"]) if ident else None
             if key is not None and key in rw.plan.ids:
                 continue
-            out.setdefault(path, key)
+            out.setdefault(path, set()).add(key)
     return out
 
 
@@ -1764,8 +1765,13 @@ def _manifest_apply(
     commit_map: Mapping[str, str],
     squashed: set[str],
     tree_sha: str | None,
+    keep_owners: Collection[tuple[str, str]] = frozenset(),
 ) -> dict[str, int]:
-    """Delete the purged rows (secure_delete, checkpoint, VACUUM) and remap commit shas; return row counts."""
+    """Delete the purged rows (secure_delete, checkpoint, VACUUM) and remap commit shas; return row counts.
+
+    An outputs row at one of ``docs_paths`` whose owner is in ``keep_owners`` (a file the manifest lists that
+    the purge did not select) stays: its page may be missing from HEAD after a crash between the manifest
+    write and the commit, and the next cycle's repair republishes it from that row."""
     counts = {"items": 0, "outputs": 0, "tombstones": 0, "depends": 0, "cache": 0, "run_sources": 0}
     if not db.exists():
         return counts
@@ -1797,11 +1803,17 @@ def _manifest_apply(
                         (source_id, stable_id, stable_id),
                     )
             for path in sorted(docs_paths):
-                for table in ("outputs", "tombstones"):
-                    counts[table] += conn.execute(
-                        f"DELETE FROM {table} WHERE output_path = ?",
-                        (path,),
-                    ).rowcount
+                for r in conn.execute(
+                    "SELECT source_id, stable_id FROM outputs WHERE output_path = ?", (path,)
+                ).fetchall():
+                    if (r["source_id"], r["stable_id"]) not in keep_owners:
+                        counts["outputs"] += conn.execute(
+                            "DELETE FROM outputs WHERE output_path = ? AND source_id = ? AND stable_id = ?",
+                            (path, r["source_id"], r["stable_id"]),
+                        ).rowcount
+                counts["tombstones"] += conn.execute(
+                    "DELETE FROM tombstones WHERE output_path = ?", (path,)
+                ).rowcount
                 counts["depends"] += conn.execute("DELETE FROM depends WHERE source = ?", (path,)).rowcount
             for key in sorted(action_keys):
                 counts["cache"] += conn.execute("DELETE FROM cache WHERE action_key = ?", (key,)).rowcount
@@ -2043,7 +2055,7 @@ def _purge_locked(
     plan = _Plan(ids={(s, i) for s, i, _r, d in mt.items if not d} | mt.aliases)
     plan.rel_paths |= {(s, r) for s, _i, r, d in mt.items if not d}
     worktrees: list[_Worktree] = []
-    taken: dict[str, tuple[str, str] | None] = {}
+    taken: dict[str, set[tuple[str, str] | None]] = {}
     graph: list[tuple[str, list[str], int]] = []
     hlen = 20
     cat: _CatFile | None = None
@@ -2093,7 +2105,7 @@ def _purge_locked(
             plan.ids,
             rel_paths,
             standalone_rel_paths=False,
-            spare_ids={k for k in taken.values() if k is not None},
+            spare_ids={k for ks in taken.values() for k in ks if k is not None},
         )
         log_scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=True)
         cache_victims = _cache_entries(expand(config.cache_dir), mt.action_keys, mt.rendered | plan.rendered)
@@ -2176,6 +2188,7 @@ def _purge_locked(
             commit_map=cmap,
             squashed=set(),
             tree_sha=head_tree,
+            keep_owners=mt.others - plan.ids,
         )
         for entry in cache_victims:
             _rmtree(entry)
