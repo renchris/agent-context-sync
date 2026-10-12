@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from pptx import Presentation
 
 from agentsync import arm_local, cli, cycle, gitops, governance, lints, paths, policy, slug
 from agentsync import manifest as manifest_mod
@@ -44,7 +45,8 @@ from agentsync.model import (
     Verdict,
 )
 from agentsync.ops import doctor, launchd
-from test_convert_builders import build_potx
+from test_convert_builders import build_potx, build_vsdx
+from test_e2e import label_ooxml
 from test_policy import LABEL, OTHER_LABEL, SITE, labelinfo_xml, labelled_docx
 
 SID = "src"
@@ -294,6 +296,75 @@ def test_a_template_hashed_as_bytes_before_is_changed_once_and_keeps_its_page(tm
             row = m.get_item(SID, stable)
         assert row is not None and row.canonical_method == "ooxml-parts@1", stamp
         assert row.last_verdict is verdict, stamp
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        ("plan.potx", "Contoso Quarterly Plan"),
+        ("plan.vsdx", "Site plan"),
+        ("plan.pptx", "Contoso Quarterly Plan"),
+    ],
+)
+def test_a_save_that_only_adds_an_excluded_label_withholds_the_page(
+    tmp_path: Path, name: str, text: str
+) -> None:
+    """B13 round 5 F72 (and C15 req 29): H1 leaves a file's label parts out, so a save that only gives it an
+    excluded label was touched-not-changed, which publishes nothing: since B13 round 4 Q76 hashes a .potx,
+    .vsdx or .vsdm by parts, such a template or drawing kept its page, as an Office document already did.
+    The label screen now runs on those bytes too: the page becomes the refused stub, and lifting the
+    exclusion brings it back."""
+    rule = f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n'
+    config, src = make_env(tmp_path, extra=rule)
+    path = src / name
+    plain = tmp_path / f"plain-{name}"
+    if name.endswith(".vsdx"):
+        build_vsdx(plain)
+    elif name.endswith(".potx"):
+        build_potx(plain, text)
+    else:  # an Office document, whose H1 left the label out before Q76 too (C15 req 29)
+        deck = Presentation()
+        slide = deck.slides.add_slide(deck.slide_layouts[0])
+        assert slide.shapes.title is not None
+        slide.shapes.title.text = text
+        deck.save(str(plain))
+    path.write_bytes(plain.read_bytes())
+    assert run(config).exit_code == 0
+    mirror = f"mirror/src/{name}.md"
+    assert page_fm(config, mirror)["status"] == "current" and text in (config.docs_repo / mirror).read_text()
+    with path.open("r+b") as fh:  # the label is the only change: docProps/custom.xml, which H1 leaves out
+        fh.write(label_ooxml(plain, tmp_path / f"labelled-{name}", label_id=LABEL).read_bytes())
+        fh.truncate()
+    os.utime(path, ns=(1, 2_000_000_000))
+    assert run(config).exit_code == 0
+    fm = page_fm(config, mirror)
+    assert fm["status"] == "refused" and "is excluded by [policy]" in fm["reason"]
+    assert text not in (config.docs_repo / mirror).read_text(encoding="utf-8")
+    assert run(config).commit_sha is None, "settled: the same refusal is not published again"
+    lifted, _ = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{OTHER_LABEL}"]\n')
+    assert run(lifted).exit_code == 0
+    assert page_fm(lifted, mirror)["status"] == "current" and text in (lifted.docs_repo / mirror).read_text()
+
+
+def test_a_purged_template_that_is_relabelled_stays_suppressed(tmp_path: Path) -> None:
+    """B13 round 5 F72: the label screen on touched bytes leaves H1 as it is, so a purged template saved
+    again with only a new label still matches the purge and is never published again."""
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{OTHER_LABEL}"]\n')
+    potx = build_potx(src / "plan.potx", "Contoso Erased Plan")
+    plain = tmp_path / "plain.potx"
+    plain.write_bytes(potx.read_bytes())
+    assert run(config).exit_code == 0
+    rep = governance.purge(
+        config,
+        governance.PurgeSelector(source_id=SID, stable_id=item_id(config, "plan.potx")),
+        reason=governance.PurgeReason.ERASURE_REQUEST,
+    )
+    assert rep.verified
+    potx.write_bytes(label_ooxml(plain, tmp_path / "labelled.potx", label_id=LABEL).read_bytes())
+    os.utime(potx, ns=(1, 2_000_000_000))
+    assert run(config).exit_code == 0
+    assert not [p for p in git(config.docs_repo, "ls-files", "mirror").split() if "plan" in p]
+    assert not committed_blobs_containing(config.docs_repo, b"Contoso Erased Plan")
 
 
 def test_volume_uuid_change_keeps_the_page_id_and_purge_by_the_new_id_verifies(

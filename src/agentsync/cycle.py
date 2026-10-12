@@ -4234,7 +4234,7 @@ class _Cycle:
         # The stub of a page with no room for its sidecar is never the last word on the bytes: its cause is
         # the path, so every read plans the item again at the path it has now.
         intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
-        same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact
+        same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact and not self._relabelled(fresh, fetched)
         if same and not reread and not self._reads_anyway(fresh):
             result = None
             if self._outdated_in_queue(src, fresh):
@@ -4336,6 +4336,28 @@ class _Cycle:
         acc.counts[Verdict.CHANGED] += 1
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
         return result
+
+    def _relabelled(self, row: ItemRow, fetched: FetchResult) -> bool:
+        """True when, under a label rule, the label screen decides the staged bytes otherwise than ``row``'s
+        pages stand for: refused by a label where they are a page, a page where they are a label refusal, or
+        refused for another label (B13 round 5 F72).  H1 leaves a file's label parts out (canonical
+        VOLATILE_PARTS), so a save that only relabels it is TOUCHED_NOT_CHANGED, which publishes nothing:
+        an exclusion it gained left its page up.  Such bytes are converted, where the screen runs.  H1 stays
+        as it is (a purge keys on it, and a relabelled copy of purged content must stay purged)."""
+        policy = self.registry.policy
+        if not policy.labels_active or not row.name.lower().endswith(_LABEL_CAPABLE):
+            return False
+        try:
+            screening = content_policy.screen_file(fetched.path, name=row.name, policy=policy)
+        except OSError:
+            return False  # the conversion would fail on it the same way
+        refused = (
+            _one_line(screening.reason, 200)
+            if screening is not None and screening.status is content_policy.ScreenStatus.REFUSED
+            else None
+        )
+        stands = row.state_reason if row.state is RowState.REFUSED else None
+        return refused != (stands if content_policy.is_refusal_reason(stands) else None)
 
     def _reads_anyway(self, row: ItemRow) -> bool:
         """True when the recording pass converts ``row`` from the bytes its stored hash names all the same:
