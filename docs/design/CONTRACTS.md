@@ -12563,6 +12563,66 @@ line before the first sync or when the manifest cannot be read. Tests: `tests/te
 `test_shared_canonical_counts_meets_each_copy_once`), `tests/test_ops_doctor.py`
 (`test_two_sources_holding_the_same_files_is_an_info_line`).
 
+**R75: a background run finds the gitleaks the person's shell finds.** launchd gives a LaunchAgent run the PATH
+`/usr/bin:/bin:/usr/sbin:/sbin`, so a gitleaks that only a shell PATH reaches (`go install`, MacPorts, `~/bin`) was
+missed and every background run scanned with the builtin patterns alone. A run from the shell (`agentsync sync`,
+`agentsync install-agent`) now records (`lints.remember_gitleaks`) the path its PATH finds (`shutil.which`'s path,
+not the resolved one, so an upgrade keeps it) in `gitleaks-path` in the default state dir; a LaunchAgent run writes
+nothing there. `lints._gitleaks()` (`lints.gitleaks_lookup`) uses, in order: the recorded path when it is still an
+executable file (`lints.recorded_gitleaks`), PATH, then the fixed places, which now also include `/opt/local/bin`,
+`~/.local/bin` and `~/go/bin`. Because both kinds of run read the record first, they use the same gitleaks and
+`secret_rules_identity` does not move between them (no rescan from alternating runs). Doctor's `gitleaks` check
+WARNs when this shell finds a gitleaks that a LaunchAgent run would not (record, launchd's PATH and the fixed
+places all miss), with the fix `agentsync sync`; INFO with no fix when no LaunchAgent is installed; no line
+otherwise. Tests: `tests/test_lints.py::test_a_launchd_run_uses_the_gitleaks_a_shell_run_recorded`,
+`::test_a_launchd_run_records_nothing_and_a_stale_record_is_passed_over`,
+`::test_a_go_install_gitleaks_is_found_on_launchds_path`,
+`tests/test_ops_doctor.py::test_a_gitleaks_only_this_shell_finds_is_a_warn_until_a_shell_run_records_it`,
+`tests/test_credential_rescreen.py::test_a_sync_from_the_shell_records_the_gitleaks_its_path_finds`.
+
+**R76: the builtin patterns read every page, beside gitleaks.** gitleaks 8.30.1 does not flag a plain `Password:
+Welcome123`, and only a file once stubbed as a credential (`builtin_too=`) was read by the builtin patterns as
+well, so a copy or move of a stubbed file (a new id) and any new page with a plain password were published on a Mac
+with gitleaks. `lints.lint_secrets` now runs the builtin patterns over every page it scans and gitleaks beside
+them; `builtin_too=` is removed. In the same version bump, `generic-password` passes over a bracketed hint that
+holds a space or is one placeholder word (`(minimum 8 characters)`, `<your password>`, `{password}`, `[redacted]`)
+and over a value of mask characters only (`*`, `x`, `.`, `•`, `-`, trailing punctuation allowed: `********,`); a
+bracketed value that is neither (`(Welcome123)`, `<S3cr3t!x>`, `{Welcome123}`), a value after a hint (`(min 8
+chars) Welcome123`), `Password: Welcome123` and `pwd=Abc12345` are hits. `SECRET_RULES_VERSION` is 2: every install
+scans its published pages once more under both changes. Tests:
+`tests/test_credential_rescreen.py::test_a_new_file_with_a_password_gitleaks_misses_is_a_credential_stub`,
+`::test_a_copy_of_a_credential_stub_under_a_new_name_is_a_stub_too`,
+`::test_the_builtin_patterns_read_every_page_when_gitleaks_scans`,
+`tests/test_lints.py::test_the_password_pattern_passes_over_placeholders_and_masks`.
+
+**R48: a page rewritten in the run the rules move is checked against its committed text (§16.39 N5).** in the run
+the secret-scan rules move, a page the run rewrites (an edit, or a re-read for an emitter or capability change) is
+no longer skipped by the published-page rescan. While `secret_rescan_pending` is set,
+`_Cycle._scan_rewritten_history` reads, from HEAD, every page the run wrote and every path its changes name (a
+rename's earlier path included), with the text sidecars HEAD holds under each, into a private folder under the
+staging folder, and scans them with `lints.lint_secrets` as the rescan does. An item whose committed text hits is
+recorded; when its page then becomes a credential stub, its cached conversions are deleted and a `dlp-remediation`
+purge is queued with the rescan's alarm and WARNING. When the committed text hits but the page the run wrote does
+not (an edit removed the key, the file is another stub now, or it was deleted that run), the purge is queued all
+the same, with the alarm `a published page matches the secret scan's new rules: the text committed before this run
+does; ...`. A key the edit brings in (HEAD text clean) gives the stub alone, with no purge. Tests
+(`tests/test_credential_rescreen.py`):
+`test_a_page_edited_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text`,
+`test_a_page_read_again_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text`,
+`test_a_key_the_edit_brings_in_the_run_the_rules_move_is_a_stub_with_no_purge`,
+`test_a_key_the_edit_removes_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text`,
+`test_a_file_deleted_in_the_run_the_rules_move_still_queues_the_purge_of_its_earlier_text`.
+
+**R74: archive pages are scanned again when the rules move (§16.39 N5).** `[governance] archive` pages are scanned
+again when the rules move. Every `archive/` page whose frontmatter says `status: archived`, with the text sidecars
+under its `.files/` folder (symlinks skipped), joins the rescan apart from the output pages. A hit deletes the copy
+and its sidecars (committed as a deletion), rewrites the item's mirror tombstone without the line naming the copy
+when that tombstone is still there, deletes the item's cached conversions and queues a `dlp-remediation` purge
+named by the copy's own frontmatter ids, with the rescan's alarm head (`a published page matches the secret scan's
+new rules: its archive/ copy is deleted; ...`) and WARNING, naming the source id and the opaque id only. It never
+writes a stub for an item its source deleted. §16.39 N5 is amended in place (its archive residual is closed). Test:
+`test_an_archive_page_the_new_rules_match_is_deleted_and_queues_a_purge`.
+
 **R144 and R1, the parts not built.** R144's refusal of a duplicate between two non-inbox sources: its verifier
 measured that a refusal would stub a source's copy on an unproven inference and cost its citations (only the
 advisory above is built). R1's `agentsync exclude-empty <id>` command: the CLI command set is frozen (tests pin
