@@ -9,8 +9,10 @@ MIME text under a ``.msg`` name) is read by the ``.eml`` converter; any other fi
 message is UNREADABLE (``not-msg``), and a compound file that cannot be read as one is UNREADABLE
 (``damaged-msg``). A MemoryError fails the pass.
 
-Never registered under a ``[policy]`` label rule (plan D8, as for images): a ``.msg`` can carry a sensitivity
-label in a named MAPI property that the policy screen does not read, so a rule fails closed.
+``MsgConverter`` is never registered under a ``[policy]`` label rule (plan D8, as for images): a binary
+``.msg`` carries its sensitivity label in a named MAPI property the policy screen does not read, so a rule
+fails closed. Under a rule ``MsgMimeConverter`` (msg-mime) claims ``.msg`` and reads only one that holds MIME
+text, whose label is screened as an ``.eml``'s (B13 round 4 Q78).
 """
 
 from __future__ import annotations

@@ -5428,10 +5428,11 @@ def test_quarantine_part_names_the_file_types_no_converter_reads(fake_mac: dict[
 def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
     fake_mac: dict[str, Path],
 ) -> None:
-    """Under a label rule no converter is registered for a .msg or an image, because their label cannot be
-    read: the report counted them as missing a converter. While the rule is on they are `withheld by label
-    rule`, with a line naming the .eml and PDF routes, and are not in the by-type list; any other file with
-    no converter keeps its class (B13 round 2 R33)."""
+    """Under a label rule a binary .msg or an image gets no converter, because their label cannot be read (a
+    .msg that holds MIME text is read as an .eml, B13 round 4 Q78): the report counted them as missing a
+    converter. While the rule is on they are `withheld by label rule`, with a line naming the .eml and PDF
+    routes, and are not in the by-type list; any other file with no converter keeps its class (B13 round 2
+    R33)."""
     seed = Seed(fake_mac["config"])
     one = seed.ids()[0]
     refused = {"state": "refused", "page": "refused"}

@@ -2807,7 +2807,9 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     assert "is not fetched or converted" not in page
     assert "No label is read from an Outlook `.msg`" not in page
     assert "has its `msip_labels` header read as an `.eml`'s" in page
-    assert "every `.msg` is downloaded to staging, because only its bytes say which kind it is" in page
+    assert "a `.msg` on this Mac is read to staging, because only its bytes say which kind it is" in page
+    # B13 round 5 F73: one that reading means a download for is withheld by its name
+    assert "online-only, on a Graph source or one the OS will not hydrate is not downloaded" in page
     assert "as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it)" in page
     assert "A policy change turns a binary `.msg` page published before it into that stub" in page
     for readme in ("README.md", "docs/deploy/README.md"):
@@ -2821,7 +2823,7 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     assert "runs once the file is gone again" not in page
     assert "once the file is gone, the next `agentsync purge --queue` runs it" in page
     assert "may carry a one-line title heading above it" in page
-    assert "a credential, path or redacted stub" in page
+    assert "and a redacted stub; a credential or path stub is rendered again once" in page  # B13 round 5 F94
 
 
 def test_setup_feedback_states_the_report_rules_of_round_3() -> None:

@@ -4125,6 +4125,9 @@ def suggest_source_id(scope: DiscoveredScope, taken: set[str]) -> str:
   mirror page, stub and tombstone; the field is optional on read, and H2 hashes the body only.
 - Every mirror page body starts with `policy.UNTRUSTED_BANNER` (H2 covers it; the default registry's guard adds
   it, options `untrusted_banner`, and `label_policy` when label rules are active, so every action key moved once).
+  **Amended 2026-10-12, §16.60 F68:** a tombstone written before §16.51 Q9 opens with its heading until it is
+  reaped (`tombstone_reap_days`, default 180) or rendered again by repair or unarchive; only stubs are rendered
+  again once (Q75).
 - Instruction-file names (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, every leading-dot segment, …) are mirrored
   under neutral names via `policy.neutralise_rel_path` / `neutralise_name` before slugging.
 - **§12:** a root `AGENTS.md` states the untrusted boundary; `gitops.COMMIT_PATHSPECS` gains `AGENTS.md`. Every git
@@ -4686,7 +4689,9 @@ same commit.
   ImmutableId header).
 - C15 req 29: `convert/canonical.py` treats `LabelInfo.xml`/`docProps/*` as volatile, so a relabel-only save is
   TOUCHED_NOT_CHANGED and the stored label/policy decision is not refreshed (convert_file's pre-cache screen
-  covers only files that are converted again).
+  covers only files that are converted again). **Amended 2026-10-12, §16.60 F72:** closed: under a label rule
+  `_after_fetch` screens touched bytes of a label-capable name and converts them when the screen disagrees with
+  what the pages stand for; H1 is unchanged.
 - C15 req 1: `pyproject.toml` still declares `msal[broker]>=1.31,<2` (1.39.0 installed; the test checks the
   installed version). C15 req 7 (Entra manifest JSON) and req 22 (PPPC IT pack) are not shipped.
 
@@ -11994,7 +11999,8 @@ earlier text stays in history, as for an image (§16.26). The converter needs no
 `Registry.default` that leaves `policy` out reads every `.msg`; the cycle, its only caller, passes the
 effective policy. **Amended 2026-10-12, §16.61 F81 (by §16.54 Q78):** under a label rule `.msg` goes to `msg-mime`,
 so every `.msg` is fetched; a MIME one is screened and read as an `.eml`, and only a binary one keeps the `no
-converter for .msg` stub and the re-screen into it.
+converter for .msg` stub and the re-screen into it. **Amended 2026-10-12, §16.60 F73:** one that reading means
+a download for (online-only, a Graph item, a refused hydration) is still refused by its name.
 
 The page has the `.eml` shape. The header table is From, To, Cc, Date, Subject, Message-ID, In-Reply-To
 and References, from MAPI properties. From is the sent-representing party (0x0042 with 0x5D02, else
@@ -13144,7 +13150,8 @@ because `EmlConverter` makes a page of almost anything: a zip or a binary file f
 window is 64 KiB, not the 8 KiB the finding sketched, because a message
 routed through many servers can carry more than 8 KiB of headers. The label path does not change:
 `MsgConverter` stays unregistered under a `[policy]` label rule (plan D8), so such a file is still the `no
-converter for .msg` stub there. `policy.read_labels` picks the `.eml` label reader by name only, so if MIME
+converter for .msg` stub there. (**Amended 2026-10-12, §16.54 Q78:** no longer: under a rule `msg-mime` reads
+such a file as an `.eml`; only a binary `.msg` is that stub.) `policy.read_labels` picks the `.eml` label reader by name only, so if MIME
 `.msg` files are ever to be read under a rule it must first sniff the same block. The emitter stays 1.0.1
 (one bump past main, R36's): a version change reads nothing again by itself, so `MsgConverter.outdated`
 is also true for a plain `not-msg` stub from an emitter below `msg._REREAD_BELOW = "1.0.1"`, and
@@ -13770,7 +13777,10 @@ logged line. Dated lines in §16.30 (`_stopped_wait`) and at R133. Tests: `test_
 **Q9: stubs and tombstones open with the banner (`agentsync.publish`, `agentsync.lints`, `agentsync.policy`).**
 A stub's and a tombstone's body is `policy.UNTRUSTED_BANNER`, a blank line, then `# [<STATUS>] <title>`, so every
 mirror page body starts with the banner, as this document and data-governance.md say. `lints` accepts a
-tombstone in either layout, so one written before this change raises no FRONTMATTER finding. Tests:
+tombstone in either layout, so one written before this change raises no FRONTMATTER finding. **Amended
+2026-10-12, §16.60 F68:** such a tombstone keeps its heading-first layout until it is reaped
+(`tombstone_reap_days`, default 180) or rendered again by repair or unarchive; only stubs get the one-time
+re-render (Q75). Tests:
 `test_deleted_status_needs_a_tombstone_body`, `test_item_label_excluded_by_policy_gets_a_metadata_only_refused_stub`,
 `test_f_delete_writes_a_tombstone`.
 **Amended 2026-10-12, §16.61 F88:** "every mirror page body starts with the banner" holds for every stub and
@@ -13780,7 +13790,9 @@ redacted stub keep the heading above the banner. The banner is still in the body
 
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
-converted` (`export it as a PDF` for an image), not `refused: no converter for <suffix>`. The stored reason,
+converted` (`export it as a PDF` for an image), not `refused: no converter for <suffix>`. (**Amended 2026-10-12,
+§16.60 F33:** for a `.msg` it names `a binary (Outlook-format) .msg file, or of a .msg not on this Mac,`, in
+the body too.) The stored reason,
 QUARANTINE.tsv, the body and `rendered_sha256` are unchanged. Dated line at R33 (§16.47). Tests:
 `test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub`,
 `test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a_stub`.
@@ -13795,6 +13807,9 @@ made it). It never fetches or hydrates a file and skips a credential stub, a pat
 page is written only where the plan differs from the intact page; no verdict or count moves. A row that cannot
 be planned or written (`PublishError`, `OSError`) keeps its page and is logged; no sync stops on it. The meta key is
 written after the last row, so an interrupted run tries again. Bump `STUB_RENDER` whenever a stub's text changes.
+**Amended 2026-10-12, §16.60 F63 F94:** `STUB_RENDER` is 3. A `no converter` stub is rebuilt from its stored
+reason and output row even when a converter now claims the name (msg-mime claims `.msg` under a rule), and a
+credential or path stub from its own page, as any other; only a redacted item is skipped.
 Test: `test_a_label_stub_from_an_older_rendering_is_rendered_again_once`.
 
 **Q44: policy prose about a password is no credential (`agentsync.lints`).** `generic-password` passes over,
@@ -14113,6 +14128,8 @@ step; the check at fetch already holds every purge recorded so far). Pinned by
 `tests/test_convert_core.py::test_a_template_or_drawing_saved_again_unchanged_hashes_the_same`,
 `tests/test_review_fixes.py::test_a_template_purged_under_its_raw_bytes_hash_stays_suppressed` and
 `tests/test_review_fixes.py::test_a_template_hashed_as_bytes_before_is_changed_once_and_keeps_its_page`.
+**Amended 2026-10-12, §16.60 F72:** a save of these that only changes the label was touched, not changed, so under
+a label rule an exclusion it gained left its page up; the label screen now runs on such bytes.
 
 **A template with no slides says what its layouts and master hold (Q77; amends §16.48 R85).** Under
 `[empty presentation: no slides]` the page names the layouts (`Layouts: …`) and gives the fixed text of the
@@ -14136,7 +14153,9 @@ only when the converter now claiming its suffix is not the one that gave it, and
 converter of its conversion, which no cache row records for a stub. Without that, three binary `.msg` in a row
 stopped every other re-read of the cycle (`_REREAD_STREAK`) and each was read again every cycle. Lifting the rule
 reads them again through `msg-olefile`. Under a rule a `.msg` is now fetched, since only its bytes say which kind
-it is. Pinned by `tests/test_convert_formats.py::test_under_a_label_rule_a_binary_msg_is_the_no_converter_stub`,
+it is. (**Amended 2026-10-12, §16.60:** the re-read that settles a stub writes no page, so new stub wording reaches
+an existing binary `.msg` stub through the stub re-render (F63), not this re-read; and a `.msg` that reading means a
+download for is refused by its name again (F73).) Pinned by `tests/test_convert_formats.py::test_under_a_label_rule_a_binary_msg_is_the_no_converter_stub`,
 `tests/test_convert_formats.py::test_under_a_label_rule_a_msg_that_holds_mime_text_is_screened_as_an_eml` and
 `tests/test_cycle.py::test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files_reread`. 2026-10-12: §16.48 R87's
 `test_under_a_label_rule_a_msg_is_the_no_converter_stub` is replaced by the first two, since a MIME `.msg` under a
@@ -14549,7 +14568,90 @@ accented capital, no-break spaces, long agents and Arabic-Indic digits.
 
 ### 16.60 Round 5: converters, .msg stubs and speech (2026-10-12, wave B13 round 5 lane E)
 
-Reserved for round 5 lane E of B13.
+Builds round 5's converter, `.msg` stub and speech items (`docs/plans/bring-back-ocr.md`, "B13 round 5"). F33 and
+F99 describe one defect, as do F63 and F74; each pair is built once.
+
+**A withheld `.msg` says it is a binary one (F33, F99; amends §16.51 Q27).** Under a label rule msg-mime reads the
+label of a `.msg` that holds MIME text, so the stub's summary and body now say `the label of a binary
+(Outlook-format) .msg file, or of a .msg not on this Mac, cannot be read` (one not on this Mac is withheld unread,
+F73). An image's words are unchanged. The stored reason `no converter for
+.msg` and the `withheld by label rule` prefix are unchanged (the setup report, re-reads and stub identity key on
+them). Pinned by `tests/test_cycle.py::test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub`.
+
+**A withheld stub names no converter (F36).** Its front matter reads `converter: none@0`
+(`convert.NO_CONVERTER_ID` and `convert.NO_CONVERTER_VERSION`, now public) and carries no
+`options_hash`, as a withheld image's does; the output row keeps the converter whose refusal settles it (msg-mime
+for a binary `.msg`, Q78), which `_lacks` and `_reread_targets` read. Pinned by
+`tests/test_cycle.py::test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files_reread`.
+
+**Every rendering reaches a `no converter` stub (F63, F74; amends §16.51 Q75).** `Cycle._stub_again` returned
+`_no_converter`'s result for such a stub, which is None once a converter claims the name, so the one-time
+re-render skipped every binary `.msg` stub under a rule; the re-read that follows only moves its key. It now
+rebuilds the result from the stored reason and the output row's converter fields whenever the name-only refusal is
+None or names another converter than the row: the page gets the current rendering with the hashes the page
+already has (a stub made from the name has none, and a later rendering must not differ by them alone), and the
+row's converter stays, so a stub made before msg-mime is still read again once and one msg-mime settled is not. `publish.STUB_RENDER`
+is 3 (F33, F36). Pinned by `tests/test_cycle.py::test_a_binary_msg_stub_from_an_older_rendering_is_rendered_again_once_under_a_label_rule`
+(a stub made before msg-mime, and one msg-mime made).
+
+**Credential and path stubs are rendered again too (F94; amends §16.51 Q75).** Their page is made from the name,
+the path, the reason and the hashes alone, so `_stub_again` rebuilds them from their own page as any other stub;
+only a redacted item is skipped. The page's own hashes are kept (`mark_quarantined_rescreen` may have cleared the
+row's earlier in the same run). Pinned by
+`tests/test_cycle.py::test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once` (also with
+the secret-scan rules moved in the same run). So only a redacted stub, and a tombstone until it is reaped, keeps a heading above
+the banner; §16.61's F88 line, written beside this, still names credential and path stubs.
+
+**A `.msg` that reading means a download for is withheld by its name (F73; amends §16.54 Q78).** Under a label rule
+`Cycle._no_converter` refuses a `.msg` by its name, as before Q78, when it is online-only or a Graph item, unless
+`materialise PATH` names it (that asks for the download); a `DatalessRefusedError` on a `.msg` under a rule
+publishes that stub in the same run instead of deferring, and the next fetch is tried again as any other.
+`_keeps_page` never keeps a `.msg` page under a rule. So a page from before a
+new rule does not stay up until the bytes can be fetched. A `.msg` on this Mac is still read, and a MIME one gets
+its page. Cost: a MIME `.msg` that lives only on a Graph source is not read under a rule, as an image is not.
+Pinned by `tests/test_cycle.py::test_under_a_new_label_rule_a_msg_the_os_will_not_hydrate_is_withheld_at_once`
+and `tests/test_cycle.py::test_under_a_new_label_rule_an_online_only_msg_is_withheld_with_no_download`.
+
+**A save that only changes a label is screened (F72; closes §16.11 C15 req 29).** H1 leaves the label parts out
+(`docProps/*`, `docMetadata/LabelInfo.xml`), so a label-only save was touched, not changed, and returned before
+any screen; since §16.54 Q76 that held for `.potx`, `.vsdx` and `.vsdm` as well as Office documents. Under a label
+rule `_after_fetch` now runs `policy.screen_file` on touched bytes of a label-capable name (`_relabelled`) and
+converts them when its label refusal differs from what the pages stand for (a label refusal stub's stored reason,
+or none for a page). H1, and so purge suppression, is unchanged: folding `policy.label_fingerprint` into H1 would
+let a relabelled copy of purged content escape its purge. Pinned by
+`tests/test_review_fixes.py::test_a_save_that_only_adds_an_excluded_label_withholds_the_page` (`.potx`, `.vsdx`,
+`.pptx`, and lifting the exclusion restores the page) and
+`tests/test_review_fixes.py::test_a_purged_template_that_is_relabelled_stays_suppressed`.
+
+**Comments and docs say binary `.msg` (F76).** msg.py's module doc, `cycle._LABEL_CAPABLE`, publish's withheld
+comment, setup-feedback.md and a test docstring said `.msg` has no converter under a rule; they now say a binary
+one, and that msg-mime reads a MIME one. Dated lines at §16.42 and §16.48 R87; §7's line is §16.61's (lane P
+taught the routing test to read a "with a label rule" clause).
+
+**A template's fixed text is de-duplicated a shape at a time (F77; amends §16.54 Q77).** `pptx._fixed_blocks`
+gives one block of lines per shape; `_template_lines` de-duplicates whole blocks and puts a blank line after each,
+so a second table keeps its delimiter row and every row, and two text boxes stay two paragraphs. The title is the
+first fixed line that can be a title (never a table row), else the first layout name. Pinned by
+`tests/test_convert_formats.py::test_a_templates_fixed_text_keeps_every_table_whole_and_its_shapes_apart`.
+
+**The speech seed routes as git does (F78, F79).** `_git_config` asks git for `NEMO_URL`, the url curl fetches, so
+a proxy scoped to `https://github.com/FluidInference` counts and a host-wide one still does. An empty `http.proxy`
+is kept as `""`, git's way to turn the environment's proxy off: the seed then fetches nothing, and `_curl_env`
+drops every proxy variable for it. The tests' git stub runs the real git with `GIT_CONFIG_NOSYSTEM=1`, since
+`_build_env` drops conftest's; product code still reads the system config, as the build's git does. Pinned by
+`tests/test_speech.py::test_an_empty_proxy_in_gits_config_turns_the_proxy_off_for_the_seed_as_for_git`,
+`test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed` and
+`test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git`.
+
+**A MIME message with an encrypted Office attachment only lists it (F98).** Test only: an `.eml`, and a `.msg` that
+holds MIME text with and without a label rule, carrying a protected `.docx` is converted with the attachment
+listed by name, size and sha256, as data-governance.md says. Pinned by
+`tests/test_convert_formats.py::test_a_mime_message_with_an_encrypted_office_attachment_only_lists_it`.
+
+**Tombstones written before Q9 (F68).** Docs only: such a tombstone keeps its heading-first layout until it is
+reaped or rendered again by repair or unarchive (dated lines at §16.6 and §16.51 Q9, and data-governance.md). A
+one-time tombstone rewrite would add a second tombstone commit on the path, and the recovery line of a tombstone
+with no `last_commit` ("the commit before this tombstone") would then point at the old tombstone, not the content.
 
 ### 16.61 Round 5: setup prompt v14 and docs (2026-10-12, wave B13 round 5 lane P)
 

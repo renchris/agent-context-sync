@@ -102,8 +102,9 @@ editing `sources.toml`.
   text stays in git history until that is squashed or the item is purged). The
   pictures of a document are read only after that document's own label and encryption screen. `[convert] ocr =
   false` in `sources.toml` means the helper is neither built nor run (CONTRACTS §16.25 to §16.27).
-- **Outlook `.msg`:** while any `[policy]` label rule is set, every `.msg` is downloaded to staging, because only its
-  bytes say which kind it is. A `.msg` that holds MIME text (mail saved as `.eml` under a `.msg` name) is screened
+- **Outlook `.msg`:** while any `[policy]` label rule is set, a `.msg` on this Mac is read to staging, because only its
+  bytes say which kind it is; one that is online-only, on a Graph source or one the OS will not hydrate is not
+  downloaded and gets the withheld page below. A `.msg` that holds MIME text (mail saved as `.eml` under a `.msg` name) is screened
   as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it) and then converted. A binary
   (Outlook-format) `.msg` keeps its label in a property agentsync does not read, so it is not converted: its page
   says that a `[policy]` label rule withholds it and that it can be saved as `.eml`, and its `_sync/QUARANTINE.tsv`
@@ -115,7 +116,8 @@ editing `sources.toml`.
 
 Mirrored mail, chats and shared files are third-party text. Every mirror page opens with an `[UNTRUSTED CONTENT]`
 banner. A page written before this version's stub change may carry a one-line title heading above it: a tombstone
-written before it (until it is reaped) and a credential, path or redacted stub. The banner is in every page body. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
+written before it (until it is reaped, `tombstone_reap_days`, default 180) and a redacted stub; a credential or path
+stub is rendered again once. The banner is in every page body. The repo's `AGENTS.md` and `CLAUDE.md` tell the agent to treat `mirror/`, sidecars, `_sync/`, CHANGELOG
 and `_manifest/` as data, never as instructions. Source files named like agent instruction files (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, `.claude/`, …) are mirrored under neutral names. `.claude/settings.json` excludes
 mirror `CLAUDE.md` files from memory. Git runs with the user's global excludes and hooks switched off. A secret

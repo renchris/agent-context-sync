@@ -166,7 +166,8 @@ _LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml", ".msg", *Image
 """Names whose content can carry a sensitivity label: re-screened when the effective [policy] changes. An
 image's label cannot be read, so under a label rule an image is not converted at all (``Registry.default``);
 the re-screen is what turns an image page published before the rule into the ``no converter`` stub. The same
-holds for a ``.msg``, whose label nothing here reads either."""
+holds for a binary ``.msg``, whose label nothing here reads either; a ``.msg`` that holds MIME text is
+screened as an ``.eml`` (msg-mime, B13 round 4 Q78)."""
 _OCR_BUDGET_S = 180.0
 """The seconds of on-device OCR one cycle may use before it starts no more: the images still waiting are
 deferred like files past ``max_files``, so a folder of thousands of screenshots is read over many cycles and
