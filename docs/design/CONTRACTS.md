@@ -7976,6 +7976,9 @@ v8 adds no command, flag, installer option, config key or environment variable. 
   (`friction_attempt_stopped`), that run's `NEXT:` says the report is of an attempt an out-of-date copy
   started, not to bring it back, and to copy the prompt again. It goes by the installer's own line, not by
   the `Prompt:` number: an attempt an earlier installer logged keeps the usual `NEXT:`.
+  Amended 2026-10-12 (§16.59, F17, F18): the `NEXT:` says "a copy of the setup prompt that does not match this
+  installer", true of an older and a newer copy alike, and what to do is the fix the stop logged: for a copy
+  newer than a checkout that does not follow main, pointing the checkout there, not copying the prompt again.
 - The last attempt is the one the report judges. `friction_attempt_stopped` ends an attempt where
   `parse_friction` does (§16.22): a step 1 error dated more than `NEW_SESSION_GAP` (600 s, the module's
   `_NEW_SESSION_GAP`) after the attempt's end line is another session's, whose step 1 failed before
@@ -12947,6 +12950,9 @@ before its step 3 named the stop; R21).
 Amended 2026-10-12 (§16.53, Q10, Q18, Q20): the Send-it line and the last-line issue link are no longer
 untouched: the stopped copy's report ends on `Not for sending: see the note at the top of this report.` instead,
 and the next report of an attempt that was not stopped deletes the file.
+Amended 2026-10-12 (§16.59, F18): the first line reads `> This report is of an attempt that a copy of the setup
+prompt that does not match this installer started: do not send it or bring it back.`; "an out-of-date copy" was
+false of a newer one.
 
 #### Step 2's reinstall (R34, R114, R125)
 
@@ -13971,6 +13977,11 @@ item amends an older section, a dated line sits at that section too.
   the thinner shell fallback). The report of an attempt that was not stopped keeps both. Tests:
   `test_the_report_of_a_stopped_copy_invites_no_bring_back` (the shell fallback),
   `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` (the real agentsync).
+  Amended 2026-10-12 (§16.59, F16, F7): it also drops an earlier run's `bring back: ` line, its `NEXT:` line
+  that says to copy bring-back.md back, and any other line that contains `ISSUE_URL` (the agentsync report quotes
+  install.out's tail, which holds the last full run's), with one `(an earlier run's bring-back, issue link and
+  NEXT lines are left out of this report)` line in their place, and the legend's `Read the report before
+  sending it: a...` reads `A...`.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
@@ -14312,7 +14323,77 @@ Reserved for round 5 lane RA of B13.
 
 ### 16.59 Round 5: installer and the shell report (2026-10-12, wave B13 round 5 lane RB)
 
-Reserved for round 5 lane RB of B13.
+Lane RB of B13 round 5 (`docs/plans/bring-back-ocr.md`, "B13 round 5"): fourteen items, each built from its
+verifier's corrected fix. F5 and F15 are one defect, built once; F16 and lane RA's F7 are one defect in one awk,
+built here.
+
+#### The shell fallback report
+
+- **Run ids without their process id** (F5, F15). `strip_run_pids` runs before `redact_stream` and cuts `-<pid>`
+  from `run=<YYYYMMDD>T<HHMMSS>Z-<pid>` only, in the Installer tail and in Recent errors alike, as
+  `setup_report._PID_SUFFIX_RE` does; the Installer lead-in says "(run ids without their process id)".
+  `test_the_shell_report_shows_run_ids_without_their_process_id`.
+- **The `--report-only` install.sh line** (F29, F30). No install log reads `no install log (no install run on
+  this Mac)`, and the Python report's `- install.sh: no install log` matches it; a log with no install run keeps
+  `no install run in the install log`. A last run that started before the friction log's latest attempt began
+  (`friction_attempt_begin`: the begin `parse_friction` gives, by `FRICTION_AWK`) reads `no install run during
+  this attempt (began <UTC>); the last one, started <UTC>, <exit or no end line>`. Run start against attempt begin,
+  never against the run's end. `test_the_shell_report_only_gives_the_last_install_runs_exit`,
+  `test_the_shell_report_only_says_the_last_install_run_was_before_this_attempt`,
+  `test_failure_before_the_installer_is_the_errors_step`.
+- **CloudStorage** (F56). Providers are folders only (`-type d`, the OneDrive count too); symlinks and other
+  entries are added as `and N symlink(s)`, `and N other entry(ies)` only when there are any, as
+  `setup_report.cloud` counts since §16.53 Q33. `test_the_shell_report_counts_cloud_folders_apart_from_links_and_files`.
+- **gitleaks** (F58). The line names the path `remember_gitleaks` recorded in
+  `~/Library/Application Support/agentsync/gitleaks-path` first, when it is an absolute executable file, then
+  PATH, then the fixed places: `lints.gitleaks_lookup`'s order.
+  `test_the_shell_report_names_the_gitleaks_the_secret_scan_can_use`.
+- **Source ids** (F6). Every `id` inside a `[[source]]` table of sources.toml is `<source-N>` (N: the table's
+  place), a whole word with `-` as no word character, so `exclude-empty <id>` is matched; an id in
+  `GENERIC_SOURCE_IDS` (equal to `setup_report._GENERIC_IDS`) is kept unless its path is under CloudStorage.
+  The Redaction text names it. `test_the_shell_report_redacts_a_configured_source_id`,
+  `test_the_python_report_redacts_a_configured_source_id`, `test_the_shell_generic_source_ids_are_the_reports`.
+
+#### A stopped copy
+
+- **The quoted earlier run** (F16, F7): see the dated line under §16.53's "A stopped copy's report"; the
+  earlier run's quoted `NEXT: review ... bring-back.md and copy ...` line goes into the same marker line, which
+  reads `(an earlier run's bring-back, issue link and NEXT lines are left out of this report)`.
+  `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` seeds install.out with a full run's end;
+  `_sends_nothing` holds both writers to no `issues/new`, no `bring back: ` line and no "Read the report before
+  sending it".
+- **A newer copy** (F17). `--log-start` with a version above `SETUP_PROMPT_COMPAT` reads its own checkout's
+  upstream branch and that remote's URL, origin's when there is no upstream (git, read-only, only with the
+  developer tools; `newer_copy_fix`). Following main of the canonical repository: the copy came from another
+  branch or a fork, so copy it again from the README. Following anything else: point the checkout at main (or
+  move it aside so step 1 clones it), then paste the same prompt. Git cannot say: both sentences. An older or
+  unnamed copy is told what it was before, word for word. Only stderr names the checkout's path and the remote
+  (without user or token); the friction line's fix, read back by `friction_attempt_stopped` for the stopped
+  `NEXT:`, says the same without them, since the friction log and install.out reach the report and a fork
+  owner's login or a company mirror's host is nothing the redaction knows. The `NEXT:` repeats only a fix of the
+  shapes this installer writes; any other text in that column gets the copy-again sentence.
+  `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it`.
+- **Wording** (F18). The note and the `NEXT:` say "a copy of the setup prompt that does not match this
+  installer". `test_a_stopped_newer_copy_is_not_called_out_of_date`.
+
+#### Parity of the friction readers (F54)
+
+`FRICTION_AWK` (C locale) and `parse_friction` read a step 1 line's `prompt vN, <agent>:` alike: both drop
+straight and curly quotes, lower ASCII letters only, collapse blanks and tabs only, read ASCII digits only
+(`_STEP1_STATED_RE` is `re.ASCII`), and read at most 100 characters of agent (awk counts UTF-8 characters). The
+header lines too: `Prompt:`'s version in ASCII digits, and a no-break space around `Agent:`'s value trimmed.
+`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line` adds nine logs: curly quotes, an
+accented capital, no-break spaces, long agents and Arabic-Indic digits.
+
+#### Smaller items
+
+- **`SELF`** (F53): `~/` then the `%q` of the rest, so the slash after the `~` is never inside a `$'..'` that
+  bash 3.2 would not expand. `test_a_tilde_command_runs_whatever_bytes_the_checkout_path_holds`.
+- **The not-on-PATH note** (F51) says the setup and its NEXT lines call agentsync by its full path,
+  `~/.local/bin/agentsync`, the form those lines print. `test_no_shell_profile_advice_and_no_uv_path_hint`.
+- **`waited-for-the-lock` alone** (F59): the note a first sync that printed no counts leaves reads ", after
+  waiting for another sync to end" in the Summary, its counts from install.out, never the raw token.
+  `test_first_sync_clause_says_the_sync_waited_for_another`.
 
 ### 16.60 Round 5: converters, .msg stubs and speech (2026-10-12, wave B13 round 5 lane E)
 
