@@ -29,7 +29,7 @@ from agentsync.config import Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
 from agentsync.loop import BIN
 from agentsync.manifest import Manifest
-from agentsync.model import PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
+from agentsync.model import CycleMode, PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
@@ -1501,6 +1501,32 @@ def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> 
     lock_path.write_text(LockInfo(99999, boot_time(), "2026-09-29T10:00:00Z", "poll").render() + "\n")
     r = by_name(run_checks(sample_config))["lock"]
     assert not r.ok and "without releasing" in r.detail and "FULL" in r.detail
+
+
+@pytest.mark.parametrize("label", ["exclude-empty", "governance"])
+def test_lock_held_by_a_non_cycle_names_no_cycle(sample_config: Config, label: str) -> None:
+    """F71 (B13 round 5): any parseable body got "(a cycle is running)", so exclude-empty or a purge holding
+    the lock read as a cycle.  Only a sync mode's label (CycleMode) is a cycle."""
+    lk = SingleWriterLock(sample_config.state_paths.lock, label)
+    lk.acquire()
+    try:
+        r = by_name(run_checks(sample_config))["lock"]
+    finally:
+        lk.release()
+    assert r.ok and f"pid {os.getpid()} ({label})" in r.detail, r.detail
+    assert "a cycle is running" not in r.detail and r.detail.endswith(" (not a cycle)"), r.detail
+
+
+@pytest.mark.parametrize("mode", list(CycleMode))
+def test_lock_held_by_a_cycle_says_a_cycle_is_running(sample_config: Config, mode: CycleMode) -> None:
+    """F71: every sync mode, a dry run included, is a cycle."""
+    lk = SingleWriterLock(sample_config.state_paths.lock, mode.value)
+    lk.acquire()
+    try:
+        r = by_name(run_checks(sample_config))["lock"]
+    finally:
+        lk.release()
+    assert r.ok and r.detail.endswith(" (a cycle is running)"), r.detail
 
 
 def test_lock_held_with_an_empty_body_names_no_cycle(sample_config: Config) -> None:

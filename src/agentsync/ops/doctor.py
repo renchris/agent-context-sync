@@ -35,7 +35,7 @@ from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
-from agentsync.model import SourceKind
+from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
 from agentsync.paths import default_cache_dir, default_log_dir, expand, is_cloud_path
@@ -1591,7 +1591,8 @@ def _check_lock(config: Config) -> list[CheckResult]:
     body = SingleWriterLock.read_body(path).strip()
     desc = SingleWriterLock.describe(path)
     if held:
-        if LockInfo.parse(body) is None:
+        info = LockInfo.parse(body)
+        if info is None:
             # No cycle's record: an empty body (install.sh's reinstall, a probe, or a cycle before its body
             # write) or one that does not parse (a corrupt leftover under install.sh's lockf). A sidecar here
             # is a dead cycle's, so its pid and beat say nothing about this holder and none is read.
@@ -1609,7 +1610,10 @@ def _check_lock(config: Config) -> list[CheckResult]:
                     fix=f"if that process is hung: kill {pid}" if isinstance(pid, int) else None,
                 )
             ]
-        return [_ok("lock", f"held by {desc} (a cycle is running)")]
+        # only a sync mode's label is a cycle: exclude-empty and governance (a purge, uninstall's cleanup)
+        # hold the same lock under their own label (B13 round 5 F71)
+        running = "a cycle is running" if info.label in {m.value for m in CycleMode} else "not a cycle"
+        return [_ok("lock", f"held by {desc} ({running})")]
     if body:
         return [
             _bad(

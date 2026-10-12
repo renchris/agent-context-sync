@@ -14234,6 +14234,15 @@ R105, §16.51 Q16 and the §16.27 re-read table row; the counts are unchanged. T
 `test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass`), `tests/test_cycle.py` (the
 alarm pins, with the negative pin `are now deletion notice` kept biting).
 
+**F71: doctor's lock line calls only a sync mode a cycle** (`agentsync.ops.doctor`). The held `lock` line added
+`(a cycle is running)` to any body `LockInfo.parse` accepts, and it accepts any label, so `exclude-empty` and
+`governance` (a purge, uninstall's cleanup) read `held by pid N (exclude-empty) since ... (a cycle is running)`. The
+suffix is now `(a cycle is running)` only when the body's label is a cycle's (a `CycleMode` value: poll, reconcile,
+dry_run), and `(not a cycle)` otherwise. The empty or unparseable body and the silent-for warning are unchanged.
+This amends §16.41, §16.45 and §16.49's "only when the body parses as a cycle's record" and §16.55's "only for a body
+that parses as a cycle's record": the body parses and its label is a `CycleMode`. Tests: `tests/test_ops_doctor.py` (`test_lock_held_by_a_non_cycle_names_no_cycle`,
+`test_lock_held_by_a_cycle_says_a_cycle_is_running`).
+
 ### 16.57 Round 5: sync, status and doctor (2026-10-12, wave B13 round 5 lane B)
 
 Wave B13 round 5, lane B: 18 items (`~/.cache/agentsync-bring-back/b13/round5/items/F<n>.md`, lanes in
