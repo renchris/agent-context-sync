@@ -575,6 +575,31 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
 
+def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclude_retires(
+    tmp_path: Path, folder: Path
+) -> None:
+    """b13 R102: once a folder holding mirrored files cannot be listed, the wait counts them and says that
+    adding the folder to the exclude retires their pages at once, as the gone line does; it no longer offers
+    the exclude beside the access grant as an equal choice."""
+    for n in range(30):
+        _write(folder / "Locked" / f"memo {n:02d}.txt", f"Memo {n} for Project Alpha.\n")
+    config = _synced(tmp_path, folder)
+    (folder / "Locked").chmod(0)
+    try:
+        run_cycle(config, mode=None)
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        (folder / "Locked").chmod(0o755)
+    assert waits == [
+        "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or sentinel; "
+        f"another sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders access (the "
+        "safe fix); the last walk of work did not list 30 file(s) the mirror still has, and adding the "
+        "folder to that source's exclude retires the pages under it at once, with no deletion check and no "
+        "purge queued"
+    ]
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+
+
 def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

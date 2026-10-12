@@ -517,7 +517,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     db = config.state_paths.db
     files = _Files()
     incomplete: list[str] = []
-    unlisted: list[str] = []  # a local listing ran but could not finish: the operator's to fix
+    unlisted: list[tuple[str, int]] = []  # a local listing ran but could not finish: the operator's to fix
     empty: list[tuple[SourceConfig, dict[str, int], int]] = []  # ... because of these empty cloud folders
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
@@ -563,7 +563,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                         elif stored:
                             incomplete.append(src.id)  # all excluded since that walk: the next sync lists it
                         else:
-                            unlisted.append(src.id)
+                            unlisted.append((src.id, _missed(manifest, src.id)))
                     else:
                         incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
@@ -630,13 +630,23 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "folder instead retires its pages at once, with no deletion check and no purge queued. "
                 f"`{BIN} sync -v` names the folders" + (f"; in all, {size}" if size else "")
             )
-    if unlisted:
+    # A source whose last walk missed mirrored files gets its own line: excluding the folder retires their
+    # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
+    if bare := sorted(s for s, missed in unlisted if not missed):
         waits.append(
-            f"a folder in {', '.join(sorted(unlisted))} could not be listed (no access, or a missing folder "
+            f"a folder in {', '.join(bare)} could not be listed (no access, or a missing folder "
             f"or sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and "
             "Folders access, or add it to that source's exclude in sources.toml"
         )
-        checks.extend(f"heartbeat.{s}" for s in sorted(unlisted))
+    for sid, missed in sorted((s, m) for s, m in unlisted if m):
+        waits.append(
+            f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
+            f"sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders access (the safe "
+            f"fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and adding "
+            "the folder to that source's exclude retires the pages under it at once, with no deletion check "
+            "and no purge queued"
+        )
+    checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))
     if blocked:
         waits.append(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "
