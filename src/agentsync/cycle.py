@@ -1905,11 +1905,44 @@ class _Cycle:
             try:
                 raw = json.loads(self.manifest.get_meta(_SECRET_ONCE_META) or "[]")
                 once = {(str(a), str(b)) for a, b in raw}
-            except (ValueError, TypeError):
-                once = set()
+            except (ValueError, TypeError) as exc:
+                once = self._rebuilt_once(exc)
             # a file the manifest has forgotten leaves the record with the next one that joins it
             self._once = {p for p in once if self.manifest.get_item(*p) is not None}
         return self._once
+
+    def _rebuilt_once(self, exc: Exception) -> set[tuple[str, str]]:
+        """The record of ``_SECRET_ONCE_META`` when its stored value cannot be read: rebuilt from what the
+        manifest still says (every file row quarantined as a credential, and the online-only stubs waiting
+        for the re-screen) and written back at once, so the bad value is replaced on purpose and the log says
+        so. Read as empty instead, a file held as a credential once would be screened by gitleaks alone. A
+        file whose stub has another reason now (a later conversion failed) is found through the purge its
+        credential queued (``DLP_REMEDIATION``) while that purge waits; once it has run, it is not found."""
+        log.warning(
+            "manifest meta %s is unreadable (%s); the once-a-credential record is rebuilt from the manifest",
+            _SECRET_ONCE_META,
+            exc,
+        )
+        once = {
+            (row.source_id, row.stable_id)
+            for src in self.config.sources
+            for row in self.manifest.iter_items(src.id, states=(RowState.QUARANTINED,))
+            if not row.is_dir and row.state_reason == _CREDENTIAL
+        }
+        with contextlib.suppress(ValueError, TypeError):
+            once |= {
+                (str(a), str(b)) for a, b in json.loads(self.manifest.get_meta(_SECRET_WAITING_META) or "[]")
+            }
+        with contextlib.suppress(OSError, ValueError, TypeError, KeyError):
+            once |= {
+                (q.selector.source_id, q.selector.stable_id)
+                for q in governance.pending_purges(self.config.state_paths.root)
+                if q.reason is governance.PurgeReason.DLP_REMEDIATION
+                and q.selector.source_id
+                and q.selector.stable_id
+            }
+        self.manifest.set_meta(_SECRET_ONCE_META, json.dumps([list(p) for p in sorted(once)]))
+        return once
 
     def _remember_credential(self, sid: str, stable: str) -> None:
         """Record that this file is, or was until now, a credential stub.  The record outlives the stub's

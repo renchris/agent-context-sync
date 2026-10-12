@@ -9,12 +9,13 @@ import json
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from openpyxl import Workbook
 
-from agentsync import arm_local, cycle, lints
+from agentsync import arm_local, cycle, governance, lints
 from agentsync import materialise as mat
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, LintFinding, RowState
@@ -515,3 +516,33 @@ def test_gitleaks_reads_the_pre_write_screen_inside_its_private_folder(
     assert [f.path for f in hits] == ["vpn.md"]
     assert [d.parent for d in scanned] == [root.resolve()]
     assert sorted(f.name for f in root.iterdir()) == ["vpn.md"]  # and it is gone afterwards
+
+
+def test_an_unreadable_once_a_credential_record_is_rebuilt_from_the_manifest_and_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 R77: a ``secret_once_credential`` value that does not parse is not read as empty: the log says so,
+    the record is rebuilt from the rows quarantined as a credential, and the rebuilt value is written back."""
+    config, src = make_env(tmp_path)
+    (src / "vpn.txt").write_text(PASSWORD_PAGE, encoding="utf-8")
+    (src / "notes.txt").write_text("Contoso standup notes\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    assert _state(config, "vpn.txt") == (RowState.QUARANTINED, "contains a credential")
+    pair = ("src", item_id(config, "vpn.txt"))
+    # a file whose credential queued a purge and whose stub has another reason now: found through the queue
+    queued_pair = ("src", item_id(config, "notes.txt"))
+    assert governance.enqueue_purge(
+        config.state_paths.root,
+        governance.PurgeSelector(source_id=queued_pair[0], stable_id=queued_pair[1]),
+        governance.PurgeReason.DLP_REMEDIATION,
+    )
+    with Manifest(config.state_paths.db) as m:
+        m.set_meta(cycle._SECRET_ONCE_META, "not json")
+        reader = SimpleNamespace(_once=None, manifest=m, config=config)
+        reader._rebuilt_once = lambda exc: cycle._Cycle._rebuilt_once(reader, exc)  # type: ignore[arg-type]
+        with caplog.at_level("WARNING", logger="agentsync.cycle"):
+            once = cycle._Cycle._once_credential(reader)  # type: ignore[arg-type]
+        stored = json.loads(m.get_meta(cycle._SECRET_ONCE_META) or "null")
+    assert pair in once and queued_pair in once
+    assert sorted(tuple(p) for p in stored) == sorted([pair, queued_pair])
+    assert any("secret_once_credential is unreadable" in r.getMessage() for r in caplog.records)
