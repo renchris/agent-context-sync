@@ -1833,11 +1833,25 @@ def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> l
 
 
 def _domain_text(folder: Path) -> str:
-    """Whether a ~/Library/CloudStorage folder is a File Provider domain, from its own extended attributes."""
+    """Whether a ~/Library/CloudStorage folder is a File Provider domain, from its own extended attributes.
+    Read as the walk reads it (``arm_local._is_domain``): a symlink, an entry that is not a folder, and one
+    whose attributes cannot be read are domains, so the empty-folder rule stands (B13 round 4 Q33). A link's
+    target is never printed."""
     try:
+        mode = os.lstat(folder).st_mode
+        if stat.S_ISLNK(mode):
+            return (
+                "a symlink: read as a File Provider domain (a link's own attributes say nothing about its "
+                "target)"
+            )
+        if not stat.S_ISDIR(mode):
+            return "not a folder: read as a File Provider domain (the empty-folder rule stands)"
         marker = file_provider_marker(folder)
     except OSError as exc:
-        return f"File Provider domain: unknown ({exc.strerror or exc})"
+        return (
+            f"File Provider domain: unknown ({exc.strerror or exc}), read as a domain (the empty-folder rule "
+            "stands)"
+        )
     if marker is None:
         return "not a File Provider domain: no File Provider attribute (a plain folder)"
     return f"File Provider domain ({marker})"
@@ -2626,11 +2640,22 @@ def _environment(r: _Run) -> list[str]:
         if not root.exists():
             return f"{root} does not exist (no File Provider sync client signed in)"
         try:
-            names = sorted(p.name for p in root.iterdir() if not p.name.startswith("."))
+            with os.scandir(root) as listing:
+                entries = sorted(
+                    ((e.name, e.is_symlink(), e.is_dir(follow_symlinks=False)) for e in listing),
+                    key=lambda e: e[0],
+                )
         except OSError as exc:
             return f"this terminal cannot list {root}: {type(exc).__name__}: {exc.strerror or exc}"
+        names = [n for n, _link, _folder in entries if not n.startswith(".")]
+        # a link is no provider folder of its own (--list-folders lists folders only: B13 round 4 Q33)
+        links = sum(1 for n, link, _folder in entries if link and not n.startswith("."))
+        others = sum(1 for n, link, folder in entries if not (link or folder or n.startswith(".")))
+        counted = f"listable, {len(names) - links - others} provider folder(s)"
+        counted += f" and {links} symlink(s)" if links else ""
+        counted += f" and {others} other entry(ies)" if others else ""
         tagged = [f"{n} ({_domain_text(root / n)})" for n in names]
-        return f"listable, {len(names)} provider folder(s)" + (f": {', '.join(tagged)}" if names else "")
+        return counted + (f": {', '.join(tagged)}" if names else "")
 
     def bin_on_path() -> str:
         dirs = os.environ.get("PATH", "").split(os.pathsep)

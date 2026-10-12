@@ -4626,6 +4626,21 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     env = section(text, "Environment")
     assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain" in env
+    # B13 round 4 Q33: a symlink is read as the walk reads it (a domain), and is no provider folder of its own
+    root = setup_report.cloud_storage_root()
+    (root / "OneDrive-Zeta").symlink_to(root / f"OneDrive-{ORG}")
+    (root / "Icon\r").write_text("", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    env = section(text, "Environment")
+    assert "listable, 2 provider folder(s) and 1 symlink(s) and 1 other entry(ies): " in env, env
+    assert (
+        " (a symlink: read as a File Provider domain (a link's own attributes say nothing about its target))"
+        in env
+    )
+    assert "(not a folder: read as a File Provider domain (the empty-folder rule stands))" in env
+    assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
+    assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain: no File Provider attribute" in env
+    assert arm_local._is_domain(root / "OneDrive-Zeta"), "the walk's own rule"
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -5927,7 +5942,9 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
         release.set()
     part = parts["Empty cloud folders"]
     assert "60 unknown: 0 dataless, 0 materialised-and-empty" in part and "; 50 of 60 checked;" in part
-    assert f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
+    assert (
+        f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
+    )
     assert '- evidence: 1 line(s) at the end of Status say "not measured"' in section(text, "Summary")
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
