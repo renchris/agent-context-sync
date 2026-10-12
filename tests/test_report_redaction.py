@@ -540,3 +540,38 @@ def test_the_shell_report_matches_a_name_logged_in_utf8_and_reported_in_c(
         assert "args=--source-local <path>\n" in text
     else:
         assert re.search(r"OneDrive-<org-1>/<folder-\d+>\n", text), text
+
+
+# ---- the Redaction section's "Send it" sentence (R23) ------------------------------------------------------
+
+
+def _send_it(text: str) -> str:
+    return next(line for line in text.splitlines() if line.startswith("Send it: "))
+
+
+def test_the_issue_form_labels_are_the_templates() -> None:
+    template = (Path(__file__).parent.parent / ".github" / "ISSUE_TEMPLATE" / "setup-report.yml").read_text()
+    pairs = re.findall(r"\bid: (\w+)\n\s+attributes:\n\s+label: (.+)\n", template)
+    labels = {field: label.strip().strip("\"'") for field, label in pairs}
+    assert {f: labels[f] for f in setup_report.ISSUE_FIELD_LABELS} == setup_report.ISSUE_FIELD_LABELS
+    assert set(setup_report.ISSUE_FIELDS.values()) == set(setup_report.ISSUE_FIELD_LABELS)
+
+
+def test_the_send_it_sentence_names_only_the_fields_the_link_fills(
+    fake_mac: dict[str, Path],  # noqa: F811
+) -> None:
+    """The sentence said the link fills "the Outcome, Run type, Prompt and Agent fields (nothing else)"; a
+    friction log with no header gives a link with neither, and every link adds the Loop stage (B13 R23)."""
+    write_install_log(fake_mac)
+    write_friction(fake_mac, "2026-09-29T10:00:31Z | step 1 | error | git pull failed (exit 1) | -\n")
+    text, _summary = summary_of(fake_mac)
+    link = text.rstrip("\n").splitlines()[-1]
+    sentence = _send_it(text)
+    filled = setup_report.issue_link_fields(link)
+    assert "Outcome" in filled and "Prompt version" not in filled and "Agent tool and model" not in filled
+    assert "Prompt" not in sentence and "Agent" not in sentence, sentence
+    for label in filled:
+        assert label in sentence, (label, sentence)
+    assert setup_report.issue_link_fields(setup_report.ISSUE_URL) == []
+    blank = setup_report._redaction_section(setup_report.Redactor(), [], [])
+    assert 'Send it: the link on the last line opens a blank "Setup report" issue form;' in "\n".join(blank)

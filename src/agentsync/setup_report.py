@@ -107,7 +107,7 @@ from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast
-from urllib.parse import quote, unquote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
@@ -313,6 +313,14 @@ ISSUE_FIELDS = {
     "loop_stage": "loop_stage",
 }
 """What the report prefills -> the ``id`` of that field in .github/ISSUE_TEMPLATE/setup-report.yml."""
+ISSUE_FIELD_LABELS = {
+    "outcome": "Outcome",
+    "run_type": "Run type",
+    "prompt_version": "Prompt version",
+    "agent": "Agent tool and model",
+    "loop_stage": "Loop stage",
+}
+"""A prefilled field's ``id`` -> its label in the issue form, in the form's order."""
 LOOP_STAGES = (
     "installed",
     "synced",
@@ -1663,6 +1671,13 @@ def build_issue_url(
         if value:
             params.append((ISSUE_FIELDS[key], value))
     return ISSUE_URL + "&" + urlencode(params, quote_via=quote)
+
+
+def issue_link_fields(link: str) -> list[str]:
+    """The labels of the form fields ``link`` fills, in the form's order: what the Redaction section's "Send
+    it" sentence names, so it never names a field the link leaves empty (B13 R23)."""
+    filled = parse_qs(urlsplit(link).query)
+    return [label for field, label in ISSUE_FIELD_LABELS.items() if filled.get(field)]
 
 
 def issue_link(report: str) -> str | None:
@@ -6026,7 +6041,9 @@ def residue_by_section(report: str, *, ignore: frozenset[str] = frozenset()) -> 
     return out
 
 
-def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list[str]:
+def _redaction_section(
+    red: Redactor, hits: list[tuple[str, list[str]]], filled: Sequence[str] = ()
+) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
@@ -6037,6 +6054,13 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
         + "); check them."
         if hits
         else "Residue check: no capitalised or joined word next to a placeholder in this report."
+    )
+    names = ", ".join(filled[:-1]) + (" and " if len(filled) > 1 else "") + (filled[-1] if filled else "")
+    opens = (
+        f'a new "Setup report" issue with the {names} field{"s" if len(filled) > 1 else ""} filled in '
+        "(nothing else)"
+        if filled
+        else 'a blank "Setup report" issue form'
     )
     return [
         "",
@@ -6049,9 +6073,8 @@ def _redaction_section(red: Redactor, hits: list[tuple[str, list[str]]]) -> list
         f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
         "anything else confidential (a project name inside a log line, say) is yours to remove.",
         check,
-        'Send it: the link on the last line opens a new "Setup report" issue with the Outcome, Run type, '
-        "Prompt and Agent fields filled in (nothing else); paste this report into its Setup report field, or "
-        "send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
+        f"Send it: the link on the last line opens {opens}; paste this report into its Setup report field, "
+        "or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
         "automatically.",
     ]
 
@@ -6271,7 +6294,8 @@ def build_report(
         link = _issue_link(r, red)
     except Exception:  # the link is a convenience: the bare form always works
         link = ISSUE_URL
-    tail = [*_redaction_section(red, residue_by_section(main, ignore=r.provider_heads)), "", link]
+    hits = residue_by_section(main, ignore=r.provider_heads)
+    tail = [*_redaction_section(red, hits, issue_link_fields(link)), "", link]
     return main + "\n" + "\n".join(tail) + "\n", red
 
 
