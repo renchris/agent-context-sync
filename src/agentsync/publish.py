@@ -1783,8 +1783,11 @@ class Publisher:
                 r = reports.get(sid)
                 bits = [f"{_counts_text(per_source.get(sid, []))}"]
                 if r is not None:
-                    bits.append(r.pass_kind.value if r.pass_kind else f"skipped ({r.skipped_reason or '-'})")
-                    bits.append("complete" if r.enumeration_complete else "INCOMPLETE")
+                    if r.pass_kind is None:  # no listing this run: no completeness word
+                        bits.append(f"skipped ({r.skipped_reason or '-'})")
+                    else:
+                        bits.append(r.pass_kind.value)
+                        bits.append("complete" if r.enumeration_complete else "INCOMPLETE")
                     bits.append("breaker TRIPPED (removals held)" if r.breaker_tripped else "breaker ok")
                     if r.deferred:
                         bits.append(f"{r.deferred} deferred")

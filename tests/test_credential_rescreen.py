@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from openpyxl import Workbook
 
-from agentsync import arm_local, cycle, governance, lints
+from agentsync import arm_local, cli, cycle, governance, lints
 from agentsync import materialise as mat
 from agentsync.manifest import Manifest
 from agentsync.model import ConversionStatus, LintFinding, RowState
@@ -490,6 +490,41 @@ def test_a_rescan_hit_in_a_source_the_run_did_not_select_writes_it_no_heartbeat(
     hit = [a for s in again.sources for a in s.alarms if "matches the secret scan's new rules" in a]
     assert hit and all(a.endswith(cycle._PURGE_QUEUE_STEPS) for a in hit)
     assert dict(read_heartbeat(config.state_paths.heartbeat)["two"]) == before  # never attempted: no beat
+
+
+def test_a_source_the_run_did_not_select_reads_not_in_this_run_with_no_completeness_word(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """§16.45 R51: the rescan's alarm about a page of a source the run did not list gives that source a line;
+    the line says why it was skipped, not ``skipped (-) · INCOMPLETE · cursor held``, and keeps the alarm."""
+    two = tmp_path / "two"
+    two.mkdir()
+    (two / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    (two / "keys.txt").write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
+    second = (
+        f'\n[[source]]\nid = "two"\nkind = "local"\npath = "{two}"\nsentinel = "README.txt"\n'
+        'max_materialise_bytes = "50MB"\nmax_files = 100\n'
+    )
+    config, _src = make_env(tmp_path, source_extra=second)
+    with monkeypatch.context() as mp:
+        mp.setattr(
+            lints, "SECRET_PATTERNS", tuple(r for r in lints.SECRET_PATTERNS if r[0] != "aws-access-key")
+        )
+        assert run(config).exit_code == 0
+    again = run(config, only=["src"])
+    assert again.exit_code == 0
+    (rep,) = [s for s in again.sources if s.source_id == "two"]
+    assert (rep.pass_kind, rep.skipped_reason) == (None, "not in this run")
+    capsys.readouterr()
+    cli._print_report(again)
+    out = capsys.readouterr().out
+    (line,) = [x for x in out.splitlines() if x.startswith("  two: ")]
+    assert line.startswith("  two: skipped (not in this run)"), line
+    assert "INCOMPLETE" not in line and "complete" not in line and "cursor" not in line, line
+    assert "    alarm: a published page matches the secret scan's new rules" in out
+    (month,) = (config.docs_repo / "CHANGELOG").glob("*.md")
+    (entry,) = [x for x in month.read_text(encoding="utf-8").splitlines() if x.startswith("- two: ")][-1:]
+    assert "skipped (not in this run)" in entry and "complete" not in entry.lower(), entry
 
 
 def test_gitleaks_reads_the_pre_write_screen_inside_its_private_folder(

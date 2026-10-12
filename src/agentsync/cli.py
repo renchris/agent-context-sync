@@ -402,8 +402,10 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(f"{k.value}={v}" for k, v in sorted(s.counts.items(), key=lambda kv: kv[0].value))
-        state = s.pass_kind.value if s.pass_kind else f"skipped ({s.skipped_reason or '-'})"
-        bits = [state, "complete" if s.enumeration_complete else "INCOMPLETE"]
+        if s.pass_kind is None:  # no listing this run: no completeness word, no cursor
+            bits = [f"skipped ({s.skipped_reason or '-'})"]
+        else:
+            bits = [s.pass_kind.value, "complete" if s.enumeration_complete else "INCOMPLETE"]
         if s.deferred:
             bits.append(f"{s.deferred} deferred")
         if s.breaker_tripped:
@@ -413,7 +415,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             bits.append(f"{s.absent_marked} marked absent")
         if s.absent_removed:
             bits.append(f"{s.absent_removed} turned into deletion notices (deleted upstream)")
-        bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
+        if s.pass_kind is not None:
+            bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
         _out(f"  {s.source_id}: {' · '.join(bits)}" + (f" · {counts}" if counts else ""))
         over = [a for a in s.alarms if run_budget is not None and _OVER_BUDGET in a]
         for a in s.alarms:

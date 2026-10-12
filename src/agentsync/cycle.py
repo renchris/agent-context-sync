@@ -2068,10 +2068,17 @@ class _Cycle:
         return sum(1 for f in self.findings if f.blocking)
 
     def _report(self, commit_sha: str | None, *, promoted: bool = False) -> CycleReport:
-        sources = tuple(
-            acc.report(cursor_advanced=promoted and acc.staged_cursor and not acc.failed)
-            for acc in self.accs.values()
-        )
+        """Freeze the run.  A source this run did not select has an acc only for an alarm about a page of it
+        (the published-page rescan); its report says ``not in this run``, which neither ``_acc`` nor
+        ``run_sources`` records (§16.45 R51)."""
+        selected = {src.id for src in self.selected}
+        reports: list[SourceReport] = []
+        for acc in self.accs.values():
+            rep = acc.report(cursor_advanced=promoted and acc.staged_cursor and not acc.failed)
+            if acc.src.id not in selected and rep.skipped_reason is None:
+                rep = dataclasses.replace(rep, skipped_reason="not in this run")
+            reports.append(rep)
+        sources = tuple(reports)
         auth_required = any(a.auth_required for a in self.accs.values())
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
