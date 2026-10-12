@@ -350,7 +350,7 @@ label refusals start with `refused: `, empty output is `empty-output (…)`). To
 `convert.convert_file` is the only entry point the cycle uses. Routing by lower-case suffix
 (`Registry.default`): `.docx .odt .rtf .html .htm` → `pandoc-gfm` (the **pypandoc_binary bundled pandoc by absolute
 path**, measured 3.9 here; `[convert] pandoc_path` overrides); `.xlsx .xlsm` → `xlsx-openpyxl` (index + per-sheet
-units, streaming summary above 20 MB); `.pptx .potx` → `pptx-python-pptx`; `.pdf` → `pdf-pdfminer` (page anchors;
+units, streaming summary above 20 MB); `.pptx` → `pptx-python-pptx`; `.pdf` → `pdf-pdfminer` (page anchors;
 PyMuPDF is not used — AGPL); **SUPERSEDED (2026-09-29, §16.9): `.pdf` → `pdf-pypdfium2`;** `.md .markdown` → `markdown-passthrough`; `.txt .csv .tsv .log .vtt .json .xml .yaml
 .yml` → `text-plain`; `.eml` → `eml-stdlib`; `.teams.json` → `teams-month`. Anything else → REFUSED stub.
 **SUPERSEDED (2026-10-06, §16.26):** with an OCR engine and no label rule, `.png .jpg .jpeg .gif .bmp .tif
@@ -360,12 +360,11 @@ engine for `.docx .odt`, one without for `.rtf .html .htm`.
 **SUPERSEDED (2026-10-11, §16.42):** with no label rule, `.msg` → `msg-olefile`.
 **SUPERSEDED (2026-10-11, §16.42):** `.drawio .vsdx` → `diagram-stdlib`.
 **SUPERSEDED (2026-10-11, §16.48):** `.vsdm` → `diagram-stdlib`.
+**SUPERSEDED (2026-10-11, §16.48):** `.potx` → `pptx-python-pptx`, read as a deck (was a REFUSED
+`no converter for .potx` stub).
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
-
-Amended 2026-10-11 by §16.48 (R85): `.potx` routes to `pptx-python-pptx`, read as a deck (was a REFUSED
-`no converter for .potx` stub).
 
 ## 8. Classifier (design §4.3)
 
