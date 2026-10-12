@@ -2784,6 +2784,32 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         assert line.startswith("- first sync: done in 9s (install.log) · converted ") and want in line, line
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_first_sync_clause_says_the_sync_waited_for_another(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """install.sh ends the first-sync note ``-waited-for-the-lock`` when another sync held the config's lock
+    as it started: the counts still read, and the seconds are named as a wait (B13 round 4 Q29)."""
+    write_friction(fake_mac, V6_HAPPY)
+    for note, want in (
+        (
+            "converted-0-deferred-0-waited-for-the-lock",
+            "- first sync: done in 9s, after waiting for another sync to end (install.log) · converted 0, "
+            "deferred 0 online-only",
+        ),
+        (
+            "converted-2-deferred-1-reread-3-waited-for-the-lock",
+            "- first sync: done in 9s, after waiting for another sync to end (install.log) · converted 2, "
+            "deferred 1 online-only, read again 3",
+        ),
+    ):
+        v6_install_log(fake_mac, first_sync=f"seconds=9 rc=0 result=done note={note}")
+        (fake_mac["setup"] / "install.out").write_text("", encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+        assert line.startswith(want), line
+
+
 def _n25_run(minute: int, config: str | None, first_sync: str) -> str:
     """One install.sh run in install.log: its start, uv, the config step (none when ``config`` is None),
     status, first-sync and end lines."""

@@ -605,7 +605,9 @@ _INSTRUCTION_RES = (
     ("run:", re.compile(r"(?:^\s*|\()run:")),
 )
 _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each run, with its run id
-_CONVERTED_NOTE_RE = re.compile(r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?")  # install.log's note
+_CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited for another sync (Q29)
+    r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?"
+)
 _CONVERTED_LINE_RE = re.compile(  # sync's last line
     r"\bconverted (\d+), deferred (\d+) online-only\b(?:, read again (\d+)\b)?"
     r"(?: \(of the converted: (\d+) unreadable, (\d+) failed\))?"
@@ -5813,6 +5815,8 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
         if note is not None:
             counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
+            if note.group(4):
+                text += ", after waiting for another sync to end"
         elif v.get("note"):
             text += f" ({v['note']})"
         if borrowed:

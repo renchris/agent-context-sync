@@ -13742,7 +13742,7 @@ item amends an older section, a dated line sits at that section too.
   would print this account's real `/var/folders/...` path, unredacted. Only `$TMPDIR` is named: unlike the
   Python report, the shell redacts no other `/var/folders` path. `test_shell_report_redacts_tmpdir`.
 
-#### The commands the installer prints
+#### The installer's steps and commands
 
 - **`~/` for a checkout under this home** (Q7). `SELF`, the script's own path in every NEXT and re-run line,
   reads `~/src/agent-context-sync/scripts/install.sh` when the checkout is under `$HOME`, as the README's
@@ -13760,6 +13760,16 @@ item amends an older section, a dated line sits at that section too.
   README and prompt text are unchanged: they are now true. The header says the wait is "for all its locks
   together". `test_the_reinstall_waits_once_however_many_locks_are_busy` (the first lock freed at 3.8 s, the
   second held, a 4 s wait: the step took 5 s or more without the fix).
+- **The first sync's wait for another sync** (Q29). When step 2's wait runs out (or a sync starts since), the
+  first sync waits for the same lock, up to 10 minutes, and says so only on stderr; install.log and the Summary
+  put its seconds on conversion. Before it starts, step 6 probes this config's lock as `uv_tool_install` does
+  (`lockf -t 0`, exit 75 = held) and, on a sync that exits 0, ends the step's note `-waited-for-the-lock`, after
+  any `-reread-R` (`waited-for-the-lock` alone when the sync printed no counts). `setup_report`'s
+  `_CONVERTED_NOTE_RE` takes the suffix, so the counts still read, and the Summary's clause reads `- first sync:
+  done in <N>s, after waiting for another sync to end (install.log) · converted ...`. Tests:
+  `test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`,
+  `test_a_free_lock_file_is_held_while_uv_runs_without_a_wait_line` (no suffix),
+  `test_first_sync_clause_says_the_sync_waited_for_another` (tests/test_setup_report.py).
 
 #### A stopped copy's report
 

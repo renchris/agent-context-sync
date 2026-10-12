@@ -152,8 +152,8 @@
 #      no online-only file is downloaded here and this step's time does not grow with the folders' size; each
 #      later sync downloads and converts the online-only files it deferred, within its per-run budget. Its
 #      output is shown as its "converted N, deferred M online-only[, read again R]" line(s), each prefixed
-#      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0), else
-#      as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
+#      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0 and
+#      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
 #      installed here always has it
 #   With --confirm-install-agent and a first sync that ran:
 #   7. agent: agentsync install-agent
@@ -2832,9 +2832,18 @@ elif [ "$DRY_RUN" -eq 1 ]; then
 else
 	say "$SYNC_LABEL: $AGENTSYNC sync --once --materialise-budget 0 (downloads nothing: the files already on this Mac are converted now; each later sync downloads and converts the online-only ones)"
 	SYNC_OUT="$(mktemp)"
+	# A sync still running (step 2's wait ran out, or one started since) holds the config's lock, and this one
+	# waits for it, up to 10 minutes, saying so only on stderr: the note names the wait, so install.log and the
+	# Summary do not put its seconds on conversion (B13 round 4 Q29). The probe is uv_tool_install's.
+	SYNC_LOCK_BUSY=0
+	l="$(sync_lock "$CONFIG")"
+	if [ -n "$l" ] && [ -f "$l" ] && [ -x "$LOCKF" ]; then
+		"$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || [ $? -ne 75 ] || SYNC_LOCK_BUSY=1
+	fi
 	with_progress "$SYNC_LABEL" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then
+		[ "$SYNC_LOCK_BUSY" -eq 0 ] || FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-the-lock"
 		step_end "done" 0 "$FIRST_SYNC_NOTE"
 	elif [ "$SYNC_RC" -eq 80 ]; then
 		step_end failed 80 tcc-denied

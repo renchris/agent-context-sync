@@ -4883,6 +4883,9 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     )
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e)), "B13 round 2 R34"
+    # The first sync then waits for the same lock: its note says so, after the counts when the sync prints
+    # them (the stub prints none; setup_report's test reads the joined note) (B13 round 4 Q29).
+    assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(e))
 
 
 def test_no_lock_file_means_no_wait_and_none_is_created(
@@ -4912,6 +4915,7 @@ def test_a_free_lock_file_is_held_while_uv_runs_without_a_wait_line(
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
     assert ("agentsync", "done", "0", "") in steps(install_log(e)), "no wait: no note"
+    assert ("first-sync", "done", "0", "") in steps(install_log(e)), "a free lock: no wait to name"
 
 
 def test_a_stale_body_is_kept_for_the_next_sync(env: dict[str, str], folder: Path, wheel: Path) -> None:
