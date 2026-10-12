@@ -2828,6 +2828,15 @@ def test_first_sync_clause_says_the_sync_waited_for_another(
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
         assert line.startswith(want), line
+    # The note alone, when the sync printed no counts (B13 round 5 F59): no raw token; install.out's counts
+    v6_install_log(fake_mac, first_sync="seconds=9 rc=0 result=done note=waited-for-the-lock")
+    (fake_mac["setup"] / "install.out").write_text("converted 4, deferred 2 online-only\n", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+    assert line.startswith(
+        "- first sync: done in 9s, after waiting for another sync to end (install.log) · "
+    ), line
+    assert "(waited-for-the-lock)" not in line and "converted 4, deferred 2 online-only" in line, line
 
 
 def _n25_run(minute: int, config: str | None, first_sync: str) -> str:

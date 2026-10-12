@@ -606,7 +606,8 @@ _INSTRUCTION_RES = (
 )
 _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each run, with its run id
 _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited for another sync (Q29)
-    r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?"
+    # or the suffix alone, when the sync printed no counts (B13 round 5 F59): group 5, and no group 1
+    r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?|(waited-for-the-lock)"
 )
 _CONVERTED_LINE_RE = (
     re.compile(  # sync's last line; "; of the converted" after the Q28 clause (B13 round 5 F34)
@@ -5796,8 +5797,9 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
 
 def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = False) -> str:
     """The installer's first sync: its step from install.log, what it converted and left to background sync
-    (the step's ``converted-N-deferred-M[-reread-R]`` note, else the sync's own "converted N, deferred M
-    online-only[, read again R]" line in install.out), and how many sources status says have a complete
+    (the step's ``converted-N-deferred-M[-reread-R][-waited-for-the-lock]`` note, or ``waited-for-the-lock``
+    alone when the sync printed no counts, else the sync's own "converted N, deferred M online-only[, read
+    again R]" line in install.out), and how many sources status says have a complete
     baseline (``baseline complete``: one listing complete since the source's scope last changed), read when
     the report runs. Labelled ``sync`` when that run's config step says sources.toml already existed (note
     ``add-source`` or ``exists``), as install.sh's lines say since 2026-10-06.
@@ -5820,8 +5822,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             text += f", rc {v['rc']}"
         note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
         if note is not None:
-            counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
-            if note.group(4):
+            if note.group(1) is not None:
+                counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
+            if note.group(4) or note.group(5):
                 text += ", after waiting for another sync to end"
         elif v.get("note"):
             text += f" ({v['note']})"
