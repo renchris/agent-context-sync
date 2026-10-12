@@ -39,7 +39,7 @@ from agentsync import (
     setup_report,
 )
 from agentsync.config import Config, ConvertConfig, load_config
-from agentsync.convert import image, media, msg, ocr, pdf, speech
+from agentsync.convert import image, media, msg, ocr, pdf, recording, speech, vtt
 from agentsync.convert import registry as registry_mod
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
@@ -5409,6 +5409,45 @@ def test_a_reason_is_reported_as_one_of_the_fixed_classes(reason: str | None) ->
     assert set(REASONS.values()) | rule_only == set(setup_report.QUARANTINE_CLASSES), "every class has a case"
 
 
+def test_every_unreadable_reason_is_a_class_the_repeat_conversions_note_names() -> None:
+    """B13 round 4 Q3, Q66: the note on unreadable files names the classes their stubs get. Every reason a
+    converter raises ``UnreadableSourceError`` with is one of :data:`setup_report._UNREADABLE_CLASSES`, and
+    never "conversion failed", the class the note says it is not."""
+    reasons = [
+        policy.ENCRYPTED_OFFICE_REASON,
+        policy.ENCRYPTED_PDF_REASON,
+        policy.EMPTY_OUTPUT_REASON,
+        policy.NOT_OOXML_REASON,
+        msg.NOT_MSG_REASON,
+        msg.DAMAGED_MSG_REASON,
+        "encrypted",
+        "password-protected",
+        "IRM-protected",
+        "encrypted or legacy binary Office file (OLE container, not OOXML)",
+        f"{pdf._ENCRYPTED_PDF} (password-protected)",
+        f"{pdf._ENCRYPTED_PDF} (/Encrypt in the trailer)",
+        "empty PDF: no pages",
+        pdf._NO_TEXT,
+        pdf._NO_TEXT_FOUND,
+        pdf._NO_TEXT_PAST_LIMIT.format(pdf.MAX_PAGES),
+        image._NO_TEXT,
+        image._TOO_SMALL,
+        image._NOT_RASTER,
+        f"{image._NOT_READABLE} (not an image)",
+        f"{image._NOT_READABLE} (too large)",
+        vtt._NOT_VTT,
+        vtt._NO_CUE,
+        recording._NOT_RECORDING,
+        recording._NOTHING,
+        recording._UNDECODABLE,
+    ]
+    classes = {setup_report.quarantine_class(r) for r in reasons}
+    assert classes <= set(setup_report._UNREADABLE_CLASSES), classes - set(setup_report._UNREADABLE_CLASSES)
+    assert {"damaged", "image not readable", "too large", "other"} <= classes
+    assert "conversion failed" not in setup_report._UNREADABLE_CLASSES
+    assert set(setup_report._UNREADABLE_CLASSES) <= set(setup_report.QUARANTINE_CLASSES)
+
+
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
@@ -5441,7 +5480,10 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "| 3 | poll | ok | 2026-09-30T10:00:00Z | not recorded | - | - | - | - |",
     ]
     unreadable = "- an unreadable file is not a failed conversion: its stub is kept and not tried again until"
-    assert unreadable in part and 'class its stub names ("encrypted", "not the type its name says"' in part
+    assert unreadable in part and 'class its stub names (such as "encrypted", "damaged", ' in part
+    assert (
+        '"image not readable", "too large", a "no text" class or "other"), never "conversion failed"' in part
+    )
     assert (
         "- converter cache: 4 conversion(s) were used again by a later run than the one that made them (the "
         "same bytes converted again, by the same file or by a copy of it); 2 of them last by the newest run "

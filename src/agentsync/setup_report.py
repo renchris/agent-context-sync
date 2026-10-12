@@ -3099,6 +3099,30 @@ QUARANTINE_CLASSES = (
     "other",
 )
 """Every value of :func:`quarantine_class`: the fixed words a stub's reason is reported as."""
+_UNREADABLE_CLASSES = (
+    "encrypted",
+    "damaged",
+    "not the type its name says",
+    "empty",
+    "image not readable",
+    "too large",
+    "no text in image",
+    "no text layer (OCR not run)",
+    "no text layer (OCR found no text)",
+    "no text layer (over the OCR page limit)",
+    "other",
+)
+"""The classes :func:`quarantine_class` gives the reason of a converter's unreadable stub (an
+``UnreadableSourceError``; a test runs every such reason through it). The Repeat conversions part names them
+as examples (B13 round 4 Q3, Q66): a converter that adds a reason must not make its list a false one."""
+
+
+def _unreadable_examples() -> str:
+    """:data:`_UNREADABLE_CLASSES` as the Repeat conversions note writes them: the "no text" classes as
+    one."""
+    named = [f'"{c}"' for c in _UNREADABLE_CLASSES if not c.startswith("no text") and c != "other"]
+    return ", ".join([*named, 'a "no text" class']) + ' or "other"'
+
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
 """``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
@@ -4617,8 +4641,7 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "",
             "- an unreadable file is not a failed conversion: its stub is kept and not tried again until the "
             "file's bytes change, and it is in Quarantine by reason under the class its stub names "
-            '("encrypted", "not the type its name says", "empty", a "no text" class), never '
-            '"conversion failed"',
+            f'(such as {_unreadable_examples()}), never "conversion failed"',
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
