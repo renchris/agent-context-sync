@@ -93,7 +93,7 @@ def python_url() -> str | None:
     if uv is None:
         return None
     out = subprocess.run(
-        [uv, "python", "list", "--show-urls", "--all-platforms"],
+        [uv, "python", "list", "--show-urls", "--all-platforms", "--all-arches"],
         capture_output=True,
         text=True,
         check=True,
