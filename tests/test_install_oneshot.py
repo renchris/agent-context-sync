@@ -1088,9 +1088,10 @@ def test_the_shell_report_names_another_installs_job_as_not_this_setups(env: dic
     )
     part = _background_part(env)
     assert (
-        "- com.agentsync.poll: loaded, but the plist is absent (removed without launchctl bootout; agentsync "
-        "install-agent repairs it): state not running, runs 2183, last exit code 79" in part
-    )
+        "- com.agentsync.poll: loaded, but the plist is absent (removed without `launchctl bootout`; "
+        "`~/.local/bin/agentsync install-agent` repairs it): state not running, runs 2183, last exit code 79"
+        in part
+    ), "the full path, as the agentsync report's; its backticks printed, not run (B13 round 6 G74, G78)"
     assert "- com.agentsync.reconcile: plist absent · loaded: no" in part and "another install" not in part
     plist.parent.mkdir(parents=True)
     plist.write_text("")

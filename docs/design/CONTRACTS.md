@@ -12994,6 +12994,8 @@ an older section, a dated line sits at that section too.
   Amended 2026-10-12 (§16.53, Q5, Q6): every Background runs line starts with its job's label, the reconcile
   job has its own, and the Summary reads `- launchd: not simulated (the real launchctl); <label> plist
   present|absent, ...`.
+  Amended 2026-10-13, §16.65 G74: the plist-absent line reads ``(removed without `launchctl bootout`;
+  `~/.local/bin/agentsync install-agent` repairs it)``.
 - **uv's Pythons** (R5): the count skips uv's hidden `.temp` folder (`! -name '.*'`).
   `test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder`.
 - **A repeated organisation** (R44) takes no second `<org-N>`. Only the same bytes are a repeat: the shell
@@ -15332,7 +15334,15 @@ next number; it still never prints, in any case or inside a URL. Test:
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
-Reserved for round 6 lane RB of B13.
+Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scripts/install.sh`, each with a test in
+`tests/test_install_oneshot.py`.
+
+- **The plist-absent line names the full path** (G74, G78, one defect). The shell report's Background runs line
+  for a job loaded from this home's plist path whose file is gone reads ``(removed without `launchctl bootout`;
+  `~/.local/bin/agentsync install-agent` repairs it)``, as the agentsync report's does: the bare `agentsync`
+  fails where `~/.local/bin` is not on PATH. The backticks are escaped in the `say` line, so bash prints them;
+  unescaped they would run both commands. `$AGENTSYNC` is not used: it is empty when the fallback runs before
+  step 2. `test_the_shell_report_names_another_installs_job_as_not_this_setups`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

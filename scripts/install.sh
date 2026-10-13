@@ -1805,7 +1805,8 @@ fallback_body() {
 				if [ "$v" = present ]; then
 					say "- $l: plist present · loaded: $n"
 				else
-					say "- $l: loaded, but the plist is absent (removed without launchctl bootout; agentsync install-agent repairs it): $n"
+					# the full path, as every command this script prints; the backticks are escaped, so bash prints them
+					say "- $l: loaded, but the plist is absent (removed without \`launchctl bootout\`; \`~/.local/bin/agentsync install-agent\` repairs it): $n"
 				fi
 			fi
 		done
