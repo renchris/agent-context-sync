@@ -8029,6 +8029,28 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     )
 
 
+def test_the_installer_table_shows_the_config_steps_folder_counts() -> None:
+    """B13 round 7 H10: ``config | done (add-source)`` for a run that added no folder: the row dropped the
+    kept= and added= install.sh logs beside the note. It shows them now; a step without them is as before,
+    and install.sh's note (which the first-sync label reads) is unchanged."""
+
+    def row(fields: str) -> str:
+        v = dict(field.split("=", 1) for field in fields.split())
+        return setup_report._step_table([("config", v)])[-1]
+
+    assert row("seconds=3 rc=0 result=done note=add-source kept=2 added=0") == (
+        "| config |       3 | done (add-source: kept 2, added 0) |"
+    )
+    assert row("seconds=1 rc=0 result=skipped note=exists kept=1 added=0").endswith(
+        "| skipped (exists: kept 1, added 0) |"
+    )
+    assert row("seconds=1 rc=0 result=done note=created kept=0 added=2").endswith(
+        "| done (created: kept 0, added 2) |"
+    )
+    assert row("seconds=3 rc=0 result=done note=add-source") == "| config |       3 | done (add-source) |"
+    assert row("seconds=3 rc=0 result=done note=add-source kept=2").endswith("| done (add-source) |")
+
+
 def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) -> None:
     """B13 round 6 G27: "on origin/main: yes (as of the checkout's last fetch)" gave no date, and on a run
     whose pull had just failed that fetch was an earlier session's. One lstat of FETCH_HEAD, with real git:

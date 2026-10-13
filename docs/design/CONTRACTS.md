@@ -15727,6 +15727,13 @@ does not set it. `Outcome.title_label` says `Stopped at step N (<the layout's st
 `preflight and code`), so the title no longer contradicts the Summary; `form_label` keeps the Failed option, the
 only one the form has. Test: `tests/test_setup_report.py::test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
 
+**The Installer table shows the config step's folder counts** (H10). `_step_table` appended only the note, so a run
+that kept 2 folders and added none read `config | done (add-source)`. When a step logs both `kept=` and `added=` as
+digits, the row reads `done (add-source: kept 2, added 0)` (likewise `exists` and `created`); other steps and old
+logs are unchanged. install.sh's `note=add-source` stays: `_first_sync_line` labels the sync `sync` from it, so
+logging `note=kept` instead would relabel a re-run "first sync" (the verifier's measurement). Test:
+`tests/test_setup_report.py::test_the_installer_table_shows_the_config_steps_folder_counts`.
+
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 
 Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scripts/install.sh`, each with a test in

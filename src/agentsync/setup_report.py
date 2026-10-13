@@ -3071,8 +3071,13 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
         rc = v.get("rc", "0")
         if rc not in ("0", ""):
             result += f", rc {rc}"
-        if v.get("note"):
-            result += f" ({v['note']})"
+        kept, added = _count(v, "kept"), _count(v, "added")
+        # the config step's folder counts, which "(add-source)" alone hid: a run that added no folder read as
+        # one that did (B13 round 7 H10); install.sh's note stays, the first-sync label reads it
+        counts = f"kept {kept}, added {added}" if kept is not None and added is not None else ""
+        note = ": ".join(part for part in (v.get("note", ""), counts) if part)
+        if note:
+            result += f" ({note})"
         rows.append((name, v.get("seconds", "?"), result))
     widths = [max(len(row[i]) for row in rows) for i in range(3)]
     out = []
