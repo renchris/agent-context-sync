@@ -15052,7 +15052,89 @@ Reserved for round 6 lane RB of B13.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 
-Reserved for round 6 lane E of B13.
+Builds round 6's stub re-render, `.msg` and `.potx` stub, template and speech items (`docs/plans/bring-back-ocr.md`,
+"B13 round 6"). G7 and G28 describe one defect and are built once; lane P's G69 is G62 and is built here, with
+G69's words. Every line that corrects an older section is here, not in that section.
+
+**One page is one change (G7, G28).** The one-time stub re-render rewrote a `no converter` stub whose name a
+converter now claims, and the re-read in the same sync converted it, so one page was counted twice (commit subject
+`0a 2m`, two `- M` CHANGELOG lines, `M` twice `converted` in the run record). `cycle._one_change_per_page` keeps
+one added or modified change per page, at its first place, an add winning over a modify; it runs before the
+end-of-run flush, so the manifest's run changes, CHANGELOG, the report, the run record and the commit see one.
+Every stub is still re-rendered: skipping one the same run will read brings back §16.60 F63 under a label rule,
+and leaves it on the old rendering for good when that read is deferred or fails. Pinned by
+`tests/test_cycle.py::test_a_stub_rendered_again_and_read_in_one_sync_is_one_change` (a `.potx` and a `.msg`) and
+`::test_a_stub_rendered_again_whose_read_fails_in_that_sync_is_one_change_and_rendered_once`.
+
+**A withheld stub says so in `reason:` and `_sync/QUARANTINE.tsv` (G29).** A stub a label rule withholds (a
+`.msg`, or an image OCR could read) shows `withheld by label rule: the label of a binary .msg, or of a .msg not on
+this Mac, cannot be read` (an image: `the label of a <suffix> file cannot be read`) in its front matter's `reason:`
+and its QUARANTINE.tsv row, which kept `no converter for <suffix>`. The stored reason is unchanged: re-reads, stub
+identity, `mark_for_rescreen` and the setup report's class key on it. The text never starts `refused: `, which
+`policy.is_refusal_reason` would read as a label refusal; an image on a Mac without OCR still says `no converter`.
+`Publisher._withheld` is the one test `_plan_stub` and `write_quarantine` share; for an image it reads this run's
+OCR state, as the page does when it is planned, so a run with no engine writes an image's TSV row as `no converter`. Pinned by
+`tests/test_cycle.py::test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv`. Amends §16.42 R33's
+"only the words say why" and §16.60 F33: the stub's `reason:` is among those words.
+
+**`STUB_RENDER` is 4 (G29, G76, G77).** One bump for the three: a withheld stub's `reason:`, a redacted stub, and
+the tombstone layout.
+
+**A redacted stub is rendered again (G76; amends §16.51 Q75, §16.60 F94).** `Cycle._stub_again` no longer skips a
+redacted item: the publisher redacts the re-plan from the stored redaction (`_shown_name`, `_shown_path`,
+`_alloc_rel`), as it did the first page, and the secret scan's "survives redaction" check stands behind it. Its
+title, `source_path` and `redacted-<hash>` page name stay. Pinned by
+`tests/test_cycle.py::test_a_redacted_stub_from_an_older_rendering_is_rendered_again_once_and_stays_redacted`
+(the made-up secret is in no commit, CHANGELOG or QUARANTINE.tsv).
+
+**An old tombstone is rendered again (G77; amends §16.61 F88, §16.51 Q9).** `_rerender_stubs` also walks the
+intact tombstone pages of every configured source, a retired one's too (`Cycle._rerender_tombstones`), and
+`Publisher.rerender_tombstone` rebuilds each from its own front matter, as `unarchive_tombstone` does: the title (a
+unit's or a subject, never the file name the repair path uses), `source_path` and redaction stay; only the
+layout moves, banner first. The output row takes the new `page_sha256` and `rendered_sha256`, or the repair path
+would see drift and retitle the page. A missing or changed page stays the repair path's, and one this run
+reaps is only deleted (one `D`, not an `M` and a `D`). With G76, no stub or tombstone agentsync can rebuild keeps a
+heading above the banner, so §16.61 F88's "an existing credential, path or redacted stub keep
+the heading above the banner" and Q9's "Not built" re-render of old tombstones no longer hold;
+`docs/deploy/data-governance.md` says every one is rendered again once. Pinned by
+`tests/test_cycle.py::test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_with_its_own_title`.
+
+**A `.msg` withheld by its name is read once the rule is lifted (G52).** `Manifest.mark_for_rescreen` takes
+`withheld_suffixes`, and `_check_policy_change` passes `label_withheld_suffixes()`: a refused row whose reason is
+`no converter for <suffix>` with one of them is marked for the re-screen too. A Graph `.msg` withheld under a rule
+(§16.60 F73) was never pending work after the rule was lifted, since its hash had not moved and no re-read
+downloads, so it kept the stub through reconcile. Under a rule `_no_converter` stubs it again with no download;
+without one it is fetched and read. Marking happens only when the policy fingerprint moves. Measured: an online-only
+local `.msg` was already read after a lift (the `no converter` re-read reaches it); only a Graph one was stuck.
+Pinned by `tests/test_cycle.py::test_a_msg_withheld_by_its_name_is_read_once_the_label_rule_is_lifted` (a Graph
+source; online-only as a guard).
+
+**The deck emitter is 1.0.1 (G59; amends §16.60 F77).** F77's template rendering kept `pptx._EMITTER_VERSION` at
+1.0.0, so the action key of bytes round 4 cached did not move: a copy under another name, a page the repair path
+rebuilds or a label-only re-save got round 4's body back (a second table with no delimiter row). The bump moves
+every deck's key, so a new conversion of those bytes gets the new rendering. It reads nothing again by itself
+(`PptxConverter.outdated` is unchanged), so an existing page keeps round 4's rendering until its bytes change.
+Pinned by `tests/test_convert_formats.py::test_a_template_round_4_cached_gets_the_whole_table_rendering_under_a_new_name`
+and the `pptx-python-pptx@1.0.1+` pins in `tests/test_cycle.py`.
+
+**The template de-duplication is tested (G60).** `build_empty_template` puts the master's footer box on a second
+layout and `build_table_template` puts the first table, whole, on a third, so the existing assertions fail when
+`_template_lines` keeps a repeated block. No code changes.
+
+**A `.msg` not on this Mac is named in every text of the class (G62, G69).** The setup report's legend under the
+Quarantine table, setup-feedback.md's Quarantine row and the `_LABEL_WITHHELD` and `label_withheld_suffixes()`
+docstrings now say a `.msg` not on this Mac (online-only, a Graph item, one the OS will not hydrate) is
+`withheld by label rule` too, refused by its name unless `~/.local/bin/agentsync materialise PATH` names it (§16.60
+F73). Pinned by `tests/test_setup_report.py` (the legend) and
+`tests/test_deploy_pack.py::test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`.
+
+**A repository-path proxy scope routes the clone, not the seed (G63; amends §16.60 F78).** git matches
+`http.<url>.*` by path prefix, so a setting scoped to github.com or to a path `NEMO_URL` is under routes the seed,
+and one scoped to FluidAudio's own repository routes only the clone; the `_GIT_URL` docstring said "as it does for
+the clone". F78's test `test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed`, as §16.60 names
+it, is renamed `test_a_proxy_git_scopes_to_fluidinference_on_github_routes_the_seed`, and
+`tests/test_speech.py::test_a_proxy_git_scopes_to_fluidaudios_own_repository_routes_the_clone_and_not_the_seed`
+pins the repository case. Behavior is unchanged: the seed reads git's settings for the url its curl fetches.
 
 ### 16.67 Round 6: setup prompt v15 and docs (2026-10-13, wave B13 round 6 lane P)
 
