@@ -86,7 +86,12 @@ from agentsync.convert.media import MediaEngine
 from agentsync.convert.ocr import OcrEngine, OcrError, OcrImage
 from agentsync.convert.pieces import PieceStore
 from agentsync.convert.recording import RecordingConverter, RecordingNotFinished
-from agentsync.convert.registry import SIDECAR_DIGEST_PREFIX, Registry, sidecar_digest_lines
+from agentsync.convert.registry import (
+    SIDECAR_DIGEST_PREFIX,
+    Registry,
+    label_withheld_suffixes,
+    sidecar_digest_lines,
+)
 from agentsync.convert.speech import SpeechEngine
 from agentsync.errors import (
     AgentSyncError,
@@ -1859,7 +1864,7 @@ class _Cycle:
         if stored == current:
             return
         if stored is not None or policy.labels_active:
-            marked = self.manifest.mark_for_rescreen(_LABEL_CAPABLE)
+            marked = self.manifest.mark_for_rescreen(_LABEL_CAPABLE, sorted(label_withheld_suffixes()))
             if marked:
                 self.manifest.set_meta(_RESCREEN_META, current)
                 log.warning("[policy] changed: %d label-capable file(s) queued for a re-screen", marked)

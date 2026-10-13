@@ -2002,19 +2002,29 @@ class Manifest:
         ).fetchone()
         return str(r[0]) if r is not None else None
 
-    def mark_for_rescreen(self, suffixes: Sequence[str]) -> int:
+    def mark_for_rescreen(self, suffixes: Sequence[str], withheld_suffixes: Sequence[str] = ()) -> int:
         """Queue every published or policy-refused file named with one of ``suffixes`` for a re-screen.
 
         A ``[policy]`` change must re-decide label-capable files already in the mirror: their content
         hashes are forgotten (phase 2 then says CHANGED, so the converter runs again under the new policy
-        and the label screen decides) and their verdict becomes MAYBE_CHANGED.  Returns the row count."""
+        and the label screen decides) and their verdict becomes MAYBE_CHANGED.  Returns the row count.
+
+        ``withheld_suffixes``: a refused row whose reason is ``no converter for <suffix>`` with one of them
+        is a file a label rule may have withheld by its name, with no byte read (a Graph or online-only
+        ``.msg``, an image): it is decided again too, or it kept the stub after the rule was lifted, since
+        an unchanged Graph row is never pending work and no re-read downloads (B13 round 6 G52)."""
+        from agentsync.convert import NO_CONVERTER_PREFIX  # noqa: PLC0415 - the manifest imports no converter
+
         like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
+        withheld = [NO_CONVERTER_PREFIX + s.lower() for s in withheld_suffixes]
+        named = f" OR state_reason IN ({', '.join('?' for _ in withheld)})" if withheld else ""
         cur = self._db.execute(
             "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
             "canonical_parts = NULL, last_verdict = ? WHERE is_dir = 0 "
-            "AND (state IN ('live', 'dataless') OR (state = 'refused' AND state_reason LIKE 'refused: %')) "
+            "AND (state IN ('live', 'dataless') "
+            f"OR (state = 'refused' AND (state_reason LIKE 'refused: %'{named}))) "
             f"AND ({like})",
-            (Verdict.MAYBE_CHANGED.value, *(f"%{s.lower()}" for s in suffixes)),
+            (Verdict.MAYBE_CHANGED.value, *withheld, *(f"%{s.lower()}" for s in suffixes)),
         )
         return int(cur.rowcount)
 

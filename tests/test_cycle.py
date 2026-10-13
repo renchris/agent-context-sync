@@ -86,6 +86,7 @@ from test_convert_builders import (
     build_picture_pdf,
     build_potx,
     build_vsdx,
+    eml_bytes,
     msg_bytes,
     page_picture,
     pandoc_build,
@@ -2721,6 +2722,59 @@ def test_under_a_new_label_rule_an_online_only_msg_is_withheld_with_no_download(
     # ``materialise PATH`` asks for the download: the file is fetched (a binary one stays withheld)
     assert run(labelled, materialise_paths=[local_source_dir / rel]).exit_code == 0 and rel in fetched
     assert _mirror_page(labelled, rel)[0]["status"] == "refused"
+
+
+@pytest.mark.parametrize("where", ["a graph source", "online-only"])
+def test_a_msg_withheld_by_its_name_is_read_once_the_label_rule_is_lifted(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """B13 round 6 G52: a .msg not on this Mac is withheld by its name under a label rule (B13 round 5 F73),
+    with the stored reason ``no converter for .msg``. The [policy] re-screen marked only refusals that start
+    "refused: ", and an unchanged Graph or online-only row is never pending work, so after the rule was
+    lifted the stub stayed, through reconcile too. The re-screen decides it again now: fetched once, read
+    into its page."""
+    recap = eml_bytes(subject="Contoso renewal", plain="Renewal is in March.\n")
+    if where == "online-only":
+        (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+        _online_only(monkeypatch, local_source_dir / KICKOFF_MSG)
+        fetched = _fetches(monkeypatch)
+        extra, rel, only, client = "", KICKOFF_MSG, None, None
+    else:
+        drive = FakeDrive({"M1": ("Contoso renewal.msg", recap)})
+        client = GraphClient(
+            FakeTokens(),
+            user_agent="NONISV|test|agentsync/0",
+            transport=httpx.MockTransport(drive.handler),
+            sleep=lambda _s: None,
+        )
+        extra, rel, only = GRAPH_SOURCE, "projects/contoso-renewal.msg", ["drive"]
+
+    def go(rule: str, **kw: Any) -> list[str]:
+        """Run with or without the rule; the reads of the .msg it made."""
+        before = len(fetched) if where == "online-only" else len(drive.log)
+        assert (
+            run(
+                config_with(tmp_path, local_source_dir, extra + rule), client=client, only=only, **kw
+            ).exit_code
+            == 0
+        )
+        if where == "online-only":
+            return [f for f in fetched[before:] if f == rel]
+        return [e for e in drive.log[before:] if e.endswith("/items/M1/content")]
+
+    def status() -> str:
+        if where == "online-only":
+            fm, body = _mirror_page(config_with(tmp_path, local_source_dir), rel)
+        else:
+            fm, body = page(config_with(tmp_path, local_source_dir).docs_repo, f"mirror/drive/{rel}.md")
+        assert ("Renewal is in March." in body) == (fm["status"] == "current")
+        return str(fm["status"])
+
+    assert go(LABEL_RULE) == [] and status() == "refused", "withheld by its name: nothing downloaded"
+    assert len(go("")) == 1 and status() == "current", "the rule is lifted: read once"
+    assert go("") == [] and go("", mode=CycleMode.RECONCILE) == [] and status() == "current"
+    if client is not None:
+        client.close()
 
 
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
