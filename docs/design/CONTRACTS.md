@@ -15229,6 +15229,15 @@ at step 3 (sync loop and report) · …`, while the `outcome` field keeps v6's o
 report)` (KISS K16b), so old and new links stay valid options and triage counts stay in one bucket. v6 titles are
 unchanged. Test: `test_prompt_layout_is_picked_by_explicit_version`.
 
+**G20: a newer copy's cause comes from the installer's fix column.** The Summary's prompt clause for a copy newer than
+the installer no longer always blames the checkout. install.sh's error line says `this checkout is older than the
+prompt` in every newer-copy case; only its fix column (`newer_copy_fix`) names the cause, and the report matches its
+fixed words and shows its own: `(newer than the installer's vN: this Mac's checkout follows main, so the pasted copy
+came from another branch or a fork)` for a checkout on the repository's main, `(newer than the installer's vN: this
+Mac's checkout follows another remote or branch)` for a fix that starts `point this Mac's checkout at main of`, and
+`(newer than the installer's vN)` otherwise (no upstream, an older installer, an empty column). The column itself is
+never shown. Test: `test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.

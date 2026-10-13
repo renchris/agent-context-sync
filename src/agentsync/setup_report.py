@@ -5745,14 +5745,22 @@ def _prompt_copy_note(attempt: Attempt | None) -> str:
     if attempt is None:
         return ""
     stated = " or older" if re.fullmatch(r"v\d{1,3} or older", attempt.header.get("Prompt", "")) else ""
-    stops = (_PROMPT_STOP_RE.match(e.what) for e in attempt.events if e.kind == "error" and e.step == 1)
-    stop = next((found for found in stops if found is not None), None)
-    if stop is None:  # the header's fixed words are the installer's too: only its stop writes them
+    stops = ((e, _PROMPT_STOP_RE.match(e.what)) for e in attempt.events if e.kind == "error" and e.step == 1)
+    event, stop = next(((e, found) for e, found in stops if found is not None), (None, None))
+    if event is None or stop is None:  # the header's fixed words are the installer's too: only its stop
         return f"{stated} (the installer stopped this copy: it named no version)" if stated else ""
     theirs = f"the installer's v{int(stop.group(1))}"
     if stop.group(2).startswith("the pasted copy"):
         return f"{stated} (older than {theirs}: the pasted copy was not the current README)"
-    return f"{stated} (newer than {theirs}: this Mac's checkout is older than the pasted copy)"
+    # A newer copy: the error line says "this checkout is older than the prompt" whatever the cause; only the
+    # fix column (install.sh's newer_copy_fix) tells the checkout from the copy (B13 round 6 G20). Its fixed
+    # words are matched and this function's own are shown, never the column.
+    if "so a copy newer than it came from another branch or a fork" in event.fix:  # follows canonical main
+        why = "this Mac's checkout follows main, so the pasted copy came from another branch or a fork"
+        return f"{stated} (newer than {theirs}: {why})"
+    if event.fix.startswith("point this Mac's checkout at main of"):  # another remote or branch
+        return f"{stated} (newer than {theirs}: this Mac's checkout follows another remote or branch)"
+    return f"{stated} (newer than {theirs})"  # no upstream, or an installer whose fix names no cause
 
 
 def _doctor_fails(r: _Run) -> list[str]:

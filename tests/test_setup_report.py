@@ -3266,12 +3266,7 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7 or older, said Fabrikam", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
-        (
-            "v9",
-            8,
-            "v9 (newer than the installer's v8: this Mac's checkout is older than the pasted copy)",
-            "this checkout is older than the prompt",
-        ),
+        ("v9", 8, "v9 (newer than the installer's v8)", "this checkout is older than the prompt"),
         (
             "v9",
             16,
@@ -3297,6 +3292,34 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
         assert link["outcome"] == ["Failed at step 1 (preflight)"]
         assert link["prompt_version"] == [shown.split(" ", 1)[0]]
+    # B13 round 6 G20: a newer copy's cause is in the installer's fix column (newer_copy_fix), never in its
+    # error line, which says "this checkout is older than the prompt" in every case.
+    canon = (
+        'copy the prompt again from README.md ("Set up on a new Mac: one prompt") and paste it into a new '
+        "session: this Mac's checkout follows that branch, so a copy newer than it came from another branch "
+        "or a fork"
+    )
+    fork = (
+        "point this Mac's checkout at main of https://github.com/contoso/agent-context-sync (it follows "
+        "another remote or branch, so a fresh copy of the prompt would stop here again), or move the "
+        "checkout aside so step 1 clones it, then paste the same prompt into a new session"
+    )
+    for fix, said in (
+        (canon, "this Mac's checkout follows main, so the pasted copy came from another branch or a fork"),
+        (fork, "this Mac's checkout follows another remote or branch"),
+        ("", None),
+    ):
+        write_friction(
+            fake_mac,
+            "Attempt: 2026-09-29T09:58:00Z\nPrompt: v15\nAgent: Claude Code, claude-opus-5-5\n"
+            f"2026-09-29T09:58:00Z | step 1 | error | {what.format(said='v15')} v14: this checkout is older "
+            f"than the prompt; setup stopped | {fix or '-'}\n",
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- prompt: ")]
+        cause = f": {said}" if said else ""
+        assert line.startswith(f"- prompt: v15 (newer than the installer's v14{cause}) · run: "), line
+        assert "is older than the pasted copy" not in text and "contoso/agent-context-sync" not in line
     # The header's fixed words with no stop line (a log cut short): only the installer's stop writes them.
     write_friction(fake_mac, "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7 or older\nAgent: x\n")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
