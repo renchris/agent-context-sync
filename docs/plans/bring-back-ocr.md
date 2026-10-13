@@ -630,6 +630,36 @@ stopped-report awk, A and RA on bare commands in `setup_report.py`); no rebase c
 
 Round 6: the round 5 workflow again on `87d0d090` with prompt v14 (run `wf_4724e367-0da`, outputs `round6/`).
 
+### B13 round 6: v14 rehearsal, cross-lane review, harvest (2026-10-13)
+
+Run `wf_4724e367-0da` on `87d0d090`: every finder finished, then 10 of 83 verifiers died on next3's weekly limit
+and the script's post-processing crashed on their empty slots. The lead session moved to next4 by
+`/limit-recover`; the 73 finished verdicts were read from the run's journal and only the 10 lost ones re-ran
+(`wf_4b842dbe-8a7`), so nothing was spent twice. Every rehearsal met its expectations with no name, login or host
+name in any report. 83 findings, 79 confirmed (1 turn, 15 wrong, 63 small), 4 refuted; 13 carry "a fix makes things
+worse". The turn (G15): when the installer names the checkout as the cause of a newer-copy stop, the prompt's
+words send the person the other way. Eight need prompt text, so the next prompt is v15. Specs `round6/items/G<n>.md`,
+lane map `round6/lanes.json`, brief `lanes/COMMON5.md`, CONTRACTS §16.62 to §16.67.
+
+Convergence: confirmed 127, 85, 99, 79 over rounds 2, 4, 5, 6; turns 3, 0, 0, 1; wrongs 23, 15, 20, 15. Two of the
+wrongs are new by construction: a stub re-rendered and then re-read in the same sync is counted twice (G7, G28).
+
+| Lane | Count | Area |
+|---|---|---|
+| A | 4 | label-escalation purge, lock-wait warning, cycle alarms |
+| B | 12 | loop waits, doctor, arm_local and config under symlinks, cli help text (and G43's loop.py docstring) |
+| RA | 19 | setup_report.py (context-mode redaction, Summary, friction section) |
+| RB | 17 | install.sh (stopped-copy and newer-copy reports, shell fallback) |
+| E | 10 | stub re-render counted twice, `.msg` and `.potx` stubs, speech seed tests |
+| P | 15 | prompt v15, docs/deploy, CONTRACTS lines |
+
+Lead: G43 (the decision `71d3e66ef726` entry in `docs/research/corporate-bring-back-2026-10-08.md` gets a dated
+correction; round 7's scenario F expects the exclude-empty wait, not a paste line) and G83 (round 5's last
+worktree removed; the dated-line and shared-pair rules are in COMMON5).
+
+Waiting on the account: the operator's ruling sends every lane to next3, which is at 100% of its weekly limit until
+2026-10-13 12:00 UTC. The lanes fire at that reset.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

@@ -14943,3 +14943,27 @@ stands for its other reason, that retry needs nothing from anyone
 (`test_the_speech_marker_reason_says_the_freeze_allows_a_hidden_command`). This round's own dated lines read
 `Amended 2026-10-12, §16.61 F<n> (by §16.5N <item>)` where they record another round's change, so that test reads
 round 4's markers alone.
+
+### 16.62 Round 6: purge and cycle alarms (2026-10-13, wave B13 round 6 lane A)
+
+Reserved for round 6 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 6").
+
+### 16.63 Round 6: sync, status and doctor (2026-10-13, wave B13 round 6 lane B)
+
+Reserved for round 6 lane B of B13.
+
+### 16.64 Round 6: setup report (2026-10-13, wave B13 round 6 lane RA)
+
+Reserved for round 6 lane RA of B13.
+
+### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
+
+Reserved for round 6 lane RB of B13.
+
+### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
+
+Reserved for round 6 lane E of B13.
+
+### 16.67 Round 6: setup prompt v15 and docs (2026-10-13, wave B13 round 6 lane P)
+
+Reserved for round 6 lane P of B13.
