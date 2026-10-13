@@ -488,7 +488,8 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
 
 def build_empty_template(path: Path) -> Path:
     """A made-up Contoso template as PowerPoint saves one: no slides, a master with a fixed text box, a
-    layout renamed "Contoso Title" holding a fixed text box of its own, and the template content type."""
+    layout renamed "Contoso Title" holding a fixed text box of its own, a second layout repeating the
+    master's box, and the template content type."""
     boxes = Presentation()
     blank = boxes.slides.add_slide(boxes.slide_layouts[6])
 
@@ -502,6 +503,8 @@ def build_empty_template(path: Path) -> Path:
     layout = prs.slide_layouts[0]
     layout.name = "Contoso Title"
     layout.shapes._spTree.append(box("Contoso Quarterly Review"))
+    # A footer the master and a second layout both carry, on purpose: the page gives it once (B13 round 6 G60)
+    prs.slide_layouts[1].shapes._spTree.append(box("Contoso Ltd. Confidential"))
     deck = io.BytesIO()
     prs.save(deck)
     with zipfile.ZipFile(deck) as zin, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -533,7 +536,8 @@ def test_a_template_with_no_slides_says_what_its_layouts_and_master_hold(tmp_pat
 
 def build_table_template(path: Path, *, boxes: bool) -> Path:
     """A made-up Contoso template with no slides whose first two layouts each hold a two-column table (the
-    second repeats a row of the first) and, with ``boxes``, a third layout holding two text boxes."""
+    second repeats a row of the first), a third layout holding the first table again and, with ``boxes``,
+    two text boxes below it."""
     scratch = Presentation()
     blank = scratch.slides.add_slide(scratch.slide_layouts[6])
 
@@ -552,6 +556,8 @@ def build_table_template(path: Path, *, boxes: bool) -> Path:
     prs = Presentation()
     prs.slide_layouts[0].shapes._spTree.append(table([("Region", "Owner"), ("North", "Contoso")]))
     prs.slide_layouts[1].shapes._spTree.append(table([("Step", "Date"), ("North", "Contoso")]))
+    # The first table again, whole, on purpose: the page gives it once (B13 round 6 G60)
+    prs.slide_layouts[2].shapes._spTree.append(table([("Region", "Owner"), ("North", "Contoso")]))
     if boxes:
         prs.slide_layouts[2].shapes._spTree.append(box("Contoso Ltd.", 5.5))
         prs.slide_layouts[2].shapes._spTree.append(box("Internal use only", 6.5))
