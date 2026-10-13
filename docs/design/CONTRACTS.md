@@ -15082,7 +15082,94 @@ reads so, with the invariant in a comment. No behavior changes, so no test can f
 
 ### 16.63 Round 6: sync, status and doctor (2026-10-13, wave B13 round 6 lane B)
 
-Reserved for round 6 lane B of B13.
+Lane B's round 6 items: G13, G33, G35, G39, G40, G42, G44, G53, G54, G55, G57, G79, and G43 part (c). G13 and G42
+are one defect from two finders, built once (G42's verifier); G57 is built in the same commit as they are.
+
+**G13, G42: the empty-folder waits point where a plain sync names the folders (`agentsync.loop`,
+`agentsync.arm_local`, `agentsync.cli`, `agentsync.setup_report`).** The clear, collides and gone waits, both
+could-not-list waits and exclude-empty's tail said `` `~/.local/bin/agentsync sync -v` names ...``, a full sync,
+for names the plain sync's alarm line already prints. They now read `the alarm line a sync prints for <id>, also
+kept in <docs repo>/_sync/STATE.md, names <what> (the first five; \`~/.local/bin/agentsync sync -v\` logs each
+one)` (`loop._named`): every cycle, the background one too, writes the alarm to STATE.md, so the names are
+reachable with no write. The wait still names no folder (§16.20); `setup_report._eval_by_name` shows STATE.md as
+`_sync/STATE.md`. The alarm names the wait for the step, not status for the folders: `the WAITING ON YOU line about
+<id> at the end of a sync's output says what to do, and \`~/.local/bin/agentsync status\` prints it too`. G13's
+verifier (print the folders from `status`) is not built: install.sh and the setup report embed status's lines, and
+the round 5 research keeps names out of those. Tests:
+`test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders`, the pins in test_loop, test_arm_local
+and test_exclude_empty.
+
+**G57: the alarm's comment counts up to three waits per source (`agentsync.arm_local`).** Each folder lands on one
+of three waits (exclude-empty, `[` collision, held files), so N folders make at most min(N, 3) lines. Comment only.
+
+**G43 (c): loop.py's module docstring (`agentsync.loop`).** It said the empty-folder wait carries the `exclude =
+[...]` paste line; it now says no wait names a folder and exclude-empty prints that line only as its fallback.
+Docstring only. Parts (a) and (b) are the lead's.
+
+**G33: install.sh says when its sync cleared a held listing (`scripts/install.sh`, `agentsync.ops.doctor`).**
+`doctor._LISTING_YOURS_NOTE` reads `held at its last walk: the end of this run says whether this run's sync
+cleared it`, naming no line type. `loop_next` runs `cleared_listings` first: for each `heartbeat.<id>` the step-5
+status (DOCTOR_LOG) warned with `(deletions held)` and the closing status reads `[ok  ]`, it prints
+`heartbeat.<id>: this run's sync listed it in full; deletions are no longer held` above the NEXT. A [FAIL] that
+skips the sync, a privacy-held listing and the install-agent failure branches print none. The finder's "none
+means it is not" wording is not built: it is false on those three paths. Test:
+`test_a_listing_the_first_sync_cleared_is_said_and_never_inferred`.
+
+**G35: the sync line names the converted files that were refused (`agentsync.cycle`, `agentsync.model`,
+`agentsync.cli`, `agentsync.setup_report`).** `SourceReport.refused` counts the REFUSED results inside
+`_after_fetch`'s `if not again:` block (a label rule, a `.msg` whose label cannot be read, an inbox duplicate),
+which stay in `converted`: the re-screen count S and every parser of N depend on it. The split reads `of the
+converted: U unreadable, F failed, R refused` (refused after failed, so an older `_SPLIT_RE` still matches) and
+prints whenever U, F or R is non-zero; before, a run with failed conversions and no unreadable one printed none.
+`setup_report._SPLIT_RE` takes an optional `, R refused`; `first_sync_unreadable` is (N, U, F, R). Tests:
+`test_a_file_refused_after_its_read_is_named_in_the_sync_lines_split`,
+`test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`.
+
+**G39: a folder stored through a CloudStorage link is the folder by its real name (`agentsync.cli`,
+`scripts/install.sh`, `agentsync.setup_report`).** The stored path is kept and `canonical_source_root` is
+unchanged (it runs at config load and in the cycle, before the TCC canary). Where two paths are compared,
+`paths.provider_link_resolved` reads a path's provider entry through when that direct child of
+`~/Library/CloudStorage` links to another provider folder there: one `readlink` of the entry, nothing inside a
+domain and no target followed out of CloudStorage, so no privacy prompt or dead mount can hold it (the review
+found the first build's `stat`/`realpath` reached inside domains and, in the report, outside CloudStorage with no
+timeout). `cli._same_folder`, install.sh's `synced_folders` (its marks) and `_overlap_part` compare that form; a
+link deeper inside a domain is not read, as step 1's list never shows one. Tests: `test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folder`,
+`test_list_folders_marks_a_synced_folder_stored_through_a_link_in_cloud_storage`,
+`test_overlapping_sources_part_finds_a_folder_stored_through_a_link`.
+
+**G40: a symlinked provider entry is read by the provider folder it points into (`agentsync.arm_local`,
+`agentsync.setup_report`).** `_linked_is_domain` resolves the link in full and returns `_is_domain` of the
+provider folder the target sits in; a link that does not resolve, loops or points into no provider folder (the
+cloud root itself) is a domain. Reading the target's own marker would make things worse: only a domain root
+carries it, so a link to a subfolder of a domain would read as plain. The spec's "a chain of links" branch is not
+built: `resolve(strict=True)` leaves no link in the path. Test:
+`test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule`.
+
+**G44: doctor says "the line" for exactly one wait (`agentsync.loop`, `agentsync.cli`, `agentsync.ops.doctor`).**
+`NextStep.wait_counts` counts, per source, the waits that explain its `heartbeat.<id>` check (each clear,
+collides and gone line, the unlisted and root lines, the privacy-held line); status passes it with `checks`
+through `_status_checks` and `run_checks` to `_check_heartbeat`. `_incomplete_fix(..., waits=1)` reads `the
+WAITING ON YOU line about <id> ...`; no count (the setup report) or more keeps `each`. Tests:
+`test_status_says_each_wait_line_when_one_source_has_more_than_one`,
+`test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it`.
+
+**G53: heartbeat.json keeps the pass's own `enumeration_complete` (`agentsync.ops.lock`, `agentsync.cycle`).**
+`write_heartbeat(..., counts_as_listed=None)` decides `consecutive_incomplete` alone; `_after` passes the pass's
+flag and `counts_as_listed=listed`. F69's counter is unchanged. Test:
+`test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok`.
+
+**G54: a Graph source's incomplete-listing fix is `sync -v` again (`agentsync.ops.doctor`).** The reconcile
+branch is removed; see the dated line under §16.57 F69. Test: `test_heartbeat_incomplete_fix_by_source_kind`.
+
+**G55: the empty-folder waits read the rows once (`agentsync.loop`, `agentsync.cli`).** `_empty_dirs` returns
+`_EmptyDirs(stored, below, holding)` from one walk and counts a file below a stored folder in any case, as the
+glob matches; `_excludable(found)` takes it. The finder's '['-only gate is not built: a case-only rename collides
+with no '['. Test: `test_a_folder_renamed_in_case_upstream_counts_the_files_still_held_under_it`.
+
+**G79: help text and the template name `~/.local/bin/agentsync` (`agentsync.cli`, `agentsync.config`).** The
+`--help` epilog, the hidden commands' help and descriptions, and the sources.toml header use `loop.BIN` /
+`AGENTSYNC_BIN`; `prog="agentsync"` and `--version` stay. Dated lines at the two stale stderr quotes and at
+§16.56's "Left as they are". Test: `test_help_text_names_every_command_to_run_by_its_full_path`.
 
 ### 16.64 Round 6: setup report (2026-10-13, wave B13 round 6 lane RA)
 
