@@ -15247,6 +15247,17 @@ issue form has no such option, so `form_label` gives step 1's `Failed at step 1 
 run, an end line or a later step keeps `failed`. Seen in the Summary's `- attempt: N of N (earlier: …)` and the
 friction section's attempt lines. Test: `test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
 
+**G27: the origin/main clause dates the checkout's last fetch.** The run metadata's `install source` line ends `on
+origin/main: <yes|no|unknown> (<fetch>)`, from one lstat of the checkout's FETCH_HEAD (no new network, no write):
+`as of the checkout's last fetch, <UTC time>` when it holds data; `the checkout's last fetch, <UTC time>, failed;
+origin/main is from an earlier fetch` when it is empty (git truncates it when a fetch or pull fails, and its time is
+then the failed one's); `no fetch since the clone` when there is none (a clone writes none). A linked worktree has a
+FETCH_HEAD of its own but shares origin/main, so it reads the newer of its own (`git rev-parse --git-path
+FETCH_HEAD`) and the common one (`--git-common-dir`); one that cannot be read keeps `as of the checkout's last fetch`. The
+friction log's step 1 error is not merged in: the empty file already carries that fact. Test:
+`test_the_on_origin_main_line_dates_the_checkouts_last_fetch` (real `git pull`, against a missing path for the
+failure).
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.

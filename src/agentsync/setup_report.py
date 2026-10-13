@@ -2731,7 +2731,42 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     text += f" · origin: {origin_label(url.decode('utf-8', 'replace')) if rc == 0 else 'none'}"
     rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
-    return text + f" · on origin/main: {on_main} (as of the checkout's last fetch)"
+    return text + f" · on origin/main: {on_main} ({_last_fetch(r, directory)})"
+
+
+def _last_fetch(r: _Run, directory: Path) -> str:
+    """How old the checkout's origin/main is, from one lstat of its FETCH_HEAD (B13 round 6 G27): git writes
+    it on every fetch or pull, and truncates it to 0 bytes when one fails, which keeps origin/main from an
+    earlier fetch; a clone writes none. A worktree's comes from ``git rev-parse --git-path``; anything that
+    cannot be read keeps the undated words."""
+    undated = "as of the checkout's last fetch"
+    paths = [directory / ".git" / "FETCH_HEAD"]
+    if not (directory / ".git").is_dir():  # a linked worktree or a gitdir file
+        # a worktree's FETCH_HEAD is its own, but origin/main is shared: a fetch in the main checkout writes
+        # the common one, so the newer of the two dates origin/main
+        paths = []
+        for args in (("--git-path", "FETCH_HEAD"), ("--git-common-dir",)):
+            rc, out = _git_ro(r, directory, "rev-parse", *args)
+            if rc != 0:
+                return undated
+            found = Path(os.fsdecode(out.strip()))
+            found = found if found.is_absolute() else directory / found
+            paths.append(found if args[0] == "--git-path" else found / "FETCH_HEAD")
+    stats = []
+    for path in dict.fromkeys(paths):
+        try:
+            stats.append(path.lstat())
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return undated
+    if not stats:
+        return "no fetch since the clone"
+    st = max(stats, key=lambda s: s.st_mtime)
+    when = _iso(datetime.fromtimestamp(st.st_mtime, UTC))
+    if st.st_size == 0:
+        return f"the checkout's last fetch, {when}, failed; origin/main is from an earlier fetch"
+    return f"{undated}, {when}"
 
 
 def _legacy_tree(lines: Sequence[str]) -> str | None:

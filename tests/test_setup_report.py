@@ -5079,10 +5079,7 @@ def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:
     run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
     sha = git("rev-parse", "--short=12", "HEAD")
     facts = setup_report._checkout_facts(run, repo)
-    assert (
-        facts
-        == f" @ {sha} · origin: other (redacted) · on origin/main: yes (as of the checkout's last fetch)"
-    )
+    assert facts == f" @ {sha} · origin: other (redacted) · on origin/main: yes (no fetch since the clone)"
     assert "someone-else" not in facts
     (repo / "a.txt").write_text("two\n", encoding="utf-8")
     git("commit", "-q", "-am", "two")
@@ -7942,3 +7939,52 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     ):
         [only] = setup_report.parse_friction(log).attempts
         assert setup_report.compute_outcome(only, ()).kind == "failed", log
+
+
+def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) -> None:
+    """B13 round 6 G27: "on origin/main: yes (as of the checkout's last fetch)" gave no date, and on a run
+    whose pull had just failed that fetch was an earlier session's. One lstat of FETCH_HEAD, with real git:
+    a clone writes none, a pull that works writes it, and a pull that fails truncates it to 0 bytes (its
+    time is then the failed pull's, so the line says it failed)."""
+    upstream = tmp_path / "upstream"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(upstream)], check=True)
+    (upstream / "a.txt").write_text("one\n", encoding="utf-8")
+    ident = ["-c", "user.email=t@example.invalid", "-c", "user.name=t"]
+    subprocess.run(["git", "-C", str(upstream), "add", "a.txt"], check=True)
+    subprocess.run(["git", "-C", str(upstream), *ident, "commit", "-q", "-m", "one"], check=True)
+    repo = tmp_path / "checkout"
+    subprocess.run(["git", "clone", "-q", str(upstream), str(repo)], check=True)
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    assert setup_report._checkout_facts(run, repo).endswith(
+        " · on origin/main: yes (no fetch since the clone)"
+    )
+
+    subprocess.run(["git", "-C", str(repo), "pull", "-q"], check=True)
+    head = repo / ".git" / "FETCH_HEAD"
+    assert head.stat().st_size > 0
+    os.utime(head, (1_790_000_000, 1_790_000_000))
+    facts = setup_report._checkout_facts(run, repo)
+    assert facts.endswith(" · on origin/main: yes (as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), (
+        facts
+    )
+
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "set-url", "origin", str(tmp_path / "gone")], check=True
+    )
+    pulled = subprocess.run(["git", "-C", str(repo), "pull", "-q"], capture_output=True, check=False)
+    assert pulled.returncode != 0 and head.stat().st_size == 0, "git truncates FETCH_HEAD on a failed pull"
+    when = setup_report._iso(datetime.fromtimestamp(head.stat().st_mtime, UTC))
+    assert setup_report._checkout_facts(run, repo).endswith(
+        f" · on origin/main: yes (the checkout's last fetch, {when}, failed; origin/main is from an earlier "
+        "fetch)"
+    )
+
+    # A linked worktree has a FETCH_HEAD of its own, but shares origin/main: a fetch in the main checkout
+    # dates it too, so the newer of the two is read (B13 round 6 G27, a reviewer's finding)
+    subprocess.run(["git", "-C", str(repo), "remote", "set-url", "origin", str(upstream)], check=True)
+    tree = tmp_path / "tree"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", str(tree), "-b", "side"], check=True)
+    subprocess.run(["git", "-C", str(repo), "fetch", "-q"], check=True)
+    os.utime(head, (1_790_000_000, 1_790_000_000))
+    facts = setup_report._checkout_facts(run, tree)
+    assert facts.endswith("(as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), facts
