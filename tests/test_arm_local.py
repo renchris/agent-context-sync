@@ -599,7 +599,10 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
     warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert warned == [f"local-test: 2 folder(s) could not be listed: 'Shut' ({denied}), 'Zeta' ({denied})"]
     (alarm,) = res.alarms
-    names = "'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E' (+2 more)"
+    names = (
+        "'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E' (+2 more; `~/.local/bin/agentsync sync -v` "
+        "logs each one)"
+    )
     assert alarm == _TODAY.format(
         n=7,
         names=names,

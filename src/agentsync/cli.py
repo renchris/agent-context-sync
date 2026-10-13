@@ -808,7 +808,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         held = (
             f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "
             "still has, or its exclude would also match a folder that does (excluding such a folder retires "
-            f"its pages at once, with no deletion check); {loop._named(config, src.id, 'them')}"
+            f"its pages at once, with no deletion check); {loop._named(config, [src.id], 'them')}"
             if gone
             else ""
         )

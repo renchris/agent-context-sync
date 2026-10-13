@@ -31,13 +31,11 @@ from test_cli import _assert_fix_parses
 BIN = "~/.local/bin/agentsync"
 
 
-def _named(config: Config, ids: str, what: str) -> str:
-    """Where a wait says its folders are named (B13 round 6 G13, G42): the sync's alarm line and STATE.md."""
+def _named(config: Config, sid: str, what: str) -> str:
+    """Where a wait says its folders are named (B13 round 6 G13, G42): STATE.md first, then the plain sync's
+    alarm line (round 7 H35); ``sync -v`` only in the alarm, past its five names (round 7 H12)."""
     state = loop._shown(config.docs_repo / "_sync" / "STATE.md")
-    return (
-        f"the alarm line a sync prints for {ids}, also kept in {state}, names {what} "
-        f"(the first five; `{BIN} sync -v` logs each one)"
-    )
+    return f"{state} keeps the alarm line for {sid}, which names {what} (a plain `{BIN} sync` prints it too)"
 
 
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section (also in ~/agent-context/docs/AGENTS.md)'
@@ -342,17 +340,68 @@ def test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders(
     capsys.readouterr()
     assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
     (alarm,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("    alarm: ")]
-    assert all(f"'{n}'" in alarm for n in names[:5]) and "(+1 more)" in alarm
+    assert all(f"'{n}'" in alarm for n in names[:5])
+    assert f"(+1 more; `{BIN} sync -v` logs each one)" in alarm, "the alarm points past its five (H12)"
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert not any(n in wait for n in names), "the wait keeps a count and never a path"
     state_md = config.docs_repo / "_sync" / "STATE.md"
-    assert f"the alarm line a sync prints for work, also kept in {loop._shown(state_md)}, names " in wait
-    assert f"`{BIN} sync -v` names" not in wait
+    assert f"{loop._shown(state_md)} keeps the alarm line for work, which names " in wait
+    assert "sync -v" not in wait, "the alarm names it when it holds names back, never the wait (H12)"
     kept = [ln for ln in state_md.read_text(encoding="utf-8").splitlines() if ln.startswith("alarm: ")]
     assert any(all(f"'{n}'" in ln for n in names[:5]) for ln in kept), kept
     shown = setup_report._eval_by_name(wait, config)
-    assert "also kept in the docs repo's _sync/STATE.md, names " in shown, shown  # B13 round 7 H36
+    # B13 round 7 H36 (the report names the docs repo's STATE.md in words) and H35 (STATE.md first)
+    assert "the docs repo's _sync/STATE.md keeps the alarm line for work, which names " in shown, shown
     assert str(config.docs_repo) not in shown
+
+
+def test_one_empty_folder_is_never_sent_to_a_full_sync(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H12, H35: one empty folder's wait ended "(the first five; `sync -v` logs each one)", which
+    sends a reader with one folder to a full sync that downloads files, and named the alarm "a sync prints"
+    first, which step 2 and status do not show. The alarm names its one folder, and neither line names
+    ``sync -v``; the wait names STATE.md first."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    (alarm,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("    alarm: ")]
+    assert "'Empty A'" in alarm and "sync -v" not in alarm and "more" not in alarm
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert "sync -v" not in wait and "first five" not in wait
+    assert wait.endswith("; " + _named(config, "work", "the folder(s)"))
+
+
+def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H12: the alarm's five-name cap counts every unknown folder of the source, while each wait
+    counts only its own kind; three empty folders and three that held files make two waits of three. The
+    pointer at ``sync -v`` sits where the cap is applied, so the sixth folder is still reached from either
+    wait, through the alarm STATE.md keeps."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    for c in "ABC":
+        (root / f"Empty {c}").mkdir(parents=True)
+        _write(root / f"Held {c}" / f"memo {c}.txt", f"Memo {c} for Project Alpha.\n")
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    for c in "ABC":
+        (root / f"Held {c}" / f"memo {c}.txt").unlink()
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    (alarm,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("    alarm: ")]
+    assert alarm.count("'Empty ") + alarm.count("'Held ") == 5
+    assert f"(+1 more; `{BIN} sync -v` logs each one)" in alarm
+    waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert [w.split(" empty cloud folder(s)")[0] for w in waits] == ["WAITING ON YOU: 3"] * 2, waits
+    assert all(_named(config, "work", "").split(", which")[0] in w and "sync -v" not in w for w in waits)
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+    kept = [ln for ln in state_md.read_text(encoding="utf-8").splitlines() if ln.startswith("alarm: ")]
+    assert any(f"(+1 more; `{BIN} sync -v` logs each one)" in ln for ln in kept), kept
 
 
 def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
@@ -770,6 +819,32 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
     )
     # §16.39 N16: the wait explains that source's heartbeat warn
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+
+
+def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> None:
+    """B13 round 7 H50: two sources whose folder could not be listed shared one wait that read as one alarm
+    line ("the alarm line a sync prints for alpha, beta, also kept in ..."), one folder ("a folder in alpha,
+    beta") and one source ("that source's exclude"). Each source has its own alarm, so the line is plural
+    throughout and its ids are joined with "and"."""
+    tables = []
+    for sid in ("alpha", "beta"):
+        root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / sid.title()
+        _write(root / NOTE_NAME, "The purchase order is approved.\n")
+        tables.append(local_source_table(sid, root) + 'sentinel = "KEEP.txt"\n')
+    config = _setup(tmp_path, *tables)
+    run_cycle(config, mode=None)
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    state = loop._shown(config.docs_repo / "_sync" / "STATE.md")
+    assert wait == (
+        "WAITING ON YOU: a folder in each of alpha and beta could not be listed (no access, or a missing "
+        f"folder or sentinel; another sync does not clear it): {state} keeps the alarm lines for alpha and "
+        f"beta, which name them (a plain `{BIN} sync` prints them too); grant Files and Folders access, or "
+        "add each to its source's exclude in sources.toml"
+    )
+    alarms = [
+        ln for ln in (config.docs_repo / "_sync" / "STATE.md").read_text().splitlines() if "sentinel" in ln
+    ]
+    assert len([ln for ln in alarms if ln.startswith("alarm: ")]) == 2, "one alarm line per source"
 
 
 def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclude_retires(

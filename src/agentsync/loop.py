@@ -161,15 +161,24 @@ def _shown(path: Path) -> str:
         return path.as_posix()
 
 
-def _named(config: Config, ids: str, what: str) -> str:
-    """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the ``alarm:`` line a sync prints
-    under the source names them, and every cycle, the background one too, keeps it in the docs repo's
-    STATE.md. The alarm names five, so ``sync -v`` (a full sync, which downloads what a plain one does) is
-    named for the rest. The wait itself keeps a count and never a path (B13 round 5 F43)."""
+def _named(config: Config, ids: Sequence[str], what: str) -> str:
+    """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
+    ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there.
+    STATE.md comes first, since it holds the line wherever the wait prints: install.sh's closing step and
+    ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
+    points at ``sync -v`` for the rest, so the wait never does (round 7 H12). Two or more ids have one alarm
+    line each, joined with "and" (round 7 H50). The wait itself keeps a count and never a path (B13 round 5
+    F43)."""
     state = _shown(expand(config.docs_repo) / _STATE_MD)
+    if len(ids) == 1:
+        return (
+            f"{state} keeps the alarm line for {ids[0]}, which names {what} (a plain `{BIN} sync` prints it "
+            "too)"
+        )
+    listed = f"{', '.join(ids[:-1])} and {ids[-1]}"
     return (
-        f"the alarm line a sync prints for {ids}, also kept in {state}, names {what} "
-        f"(the first five; `{BIN} sync -v` logs each one)"
+        f"{state} keeps the alarm lines for {listed}, which name {what} (a plain `{BIN} sync` prints them "
+        "too)"
     )
 
 
@@ -704,7 +713,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
                 # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
                 # carries a count and never a path, and status prints no folder of the source.
-                + _named(config, src.id, "the folder(s)")
+                + _named(config, [src.id], "the folder(s)")
                 + (f"; {size}" if size and not gone and not collides else "")
             )
             names_source(src.id)
@@ -714,7 +723,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "one would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 "empty folder(s) in the cloud drive; "
-                + _named(config, src.id, "them")
+                + _named(config, [src.id], "them")
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
@@ -725,7 +734,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive "
                 "too, and later syncs take the pages out with the usual deletion check; excluding such a "
                 "folder instead retires its pages at once, with no deletion check and no purge queued; "
-                + _named(config, src.id, "the folders")
+                + _named(config, [src.id], "the folders")
                 + (f"; in all, {size}" if size else "")
             )
             names_source(src.id)
@@ -733,18 +742,25 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
     if bare := sorted(s for s, missed in unlisted if not missed):
         waits.append(
-            f"a folder in {', '.join(bare)} could not be listed (no access, or a missing folder "
-            f"or sentinel; another sync does not clear it): {_named(config, ', '.join(bare), 'it')}; grant "
-            "Files and Folders access, or add it to that source's exclude in sources.toml"
+            f"a folder in {bare[0]} could not be listed (no access, or a missing folder or sentinel; "
+            f"another sync does not clear it): {_named(config, bare, 'it')}; grant Files and Folders access, "
+            "or add it to that source's exclude in sources.toml"
+            if len(bare) == 1
+            # One line for every such source, plural throughout (B13 round 7 H50): "a folder in A, B" and
+            # "that source's exclude" read as one folder of one source.
+            else f"a folder in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed (no "
+            "access, or a missing folder or sentinel; another sync does not clear it): "
+            f"{_named(config, bare, 'them')}; grant Files and Folders access, or add each to its source's "
+            "exclude in sources.toml"
         )
         names_source(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
             f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
-            f"sync does not clear it): {_named(config, sid, 'it')}; grant Files and Folders access (the safe "
-            f"fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and adding "
-            "the folder to that source's exclude retires the pages under it at once, with no deletion check "
-            "and no purge queued"
+            f"sync does not clear it): {_named(config, [sid], 'it')}; grant Files and Folders access (the "
+            f"safe fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and "
+            "adding the folder to that source's exclude retires the pages under it at once, with no deletion "
+            "check and no purge queued"
         )
         names_source(sid)
     checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))

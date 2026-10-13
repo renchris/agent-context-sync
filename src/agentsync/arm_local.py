@@ -1038,7 +1038,14 @@ class LocalArm:
             )
         if stats.unknown_dirs and not empty_root:
             shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
-            more = f" (+{len(stats.unknown_dirs) - 5} more)" if len(stats.unknown_dirs) > 5 else ""
+            # The cap is applied here, so only here is it known that names were held back: the pointer at
+            # ``sync -v`` (which logs each folder) is given then, and the waits that point at this alarm
+            # never give it (B13 round 7 H12: they named it for a single folder).
+            more = (
+                f" (+{len(stats.unknown_dirs) - 5} more; `{AGENTSYNC_BIN} sync -v` logs each one)"
+                if len(stats.unknown_dirs) > 5
+                else ""
+            )
             cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
             advice = "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
             if stats.unknown_dirs == (".",):  # the root could not be listed, and a root cannot be excluded

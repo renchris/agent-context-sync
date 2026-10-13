@@ -6169,6 +6169,11 @@ or empty for this case (a source sat incomplete for 900 passes):
     **Amended 2026-10-13, §16.63 G42:** every "`agentsync sync -v` names ..." of these lines now reads `the alarm
     line a sync prints for <id>, also kept in <docs repo>/_sync/STATE.md, names ... (the first five;
     \`~/.local/bin/agentsync sync -v\` logs each one)`.
+    **Amended 2026-10-13, §16.68 H35:** they now read `<docs repo>/_sync/STATE.md keeps the alarm line for <id>,
+    which names ... (a plain \`~/.local/bin/agentsync sync\` prints it too)`; the alarm names `sync -v` past its
+    five (H12). **Amended 2026-10-13, §16.68 H50:** two or more such sources read `a folder in each of <A and B>
+    could not be listed (...): ... keeps the alarm lines for <A and B>, which name them (...); grant Files and
+    Folders access, or add each to its source's exclude in sources.toml`.
 - doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
   an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
@@ -14516,7 +14521,8 @@ wait names `exclude-empty` and no folder, and status prints no folder of the sou
 does. The wait keeps a count and never a path (STATE.md and the setup report carry it). Test:
 `test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`. **Amended 2026-10-13, §16.63 G13:** the
 pointer is now the sync's alarm line, kept in STATE.md, which a plain sync already prints; `sync -v` is named only
-for the folders past the alarm's five.
+for the folders past the alarm's five. **Amended 2026-10-13, §16.68 H12:** the alarm names it, as `(+N more;
+\`~/.local/bin/agentsync sync -v\` logs each one)`, and the wait never does.
 
 **F65: one rule for exclude-empty and its wait (`agentsync.loop`, `agentsync.cli`).** `loop._excludable(manifest,
 src, below)` splits the empty folders with no mirrored file below them into those `exclude-empty` excludes and
@@ -15197,7 +15203,8 @@ reachable with no write. The wait still names no folder (§16.20); `setup_report
 verifier (print the folders from `status`) is not built: install.sh and the setup report embed status's lines, and
 the round 5 research keeps names out of those. Tests:
 `test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders`, the pins in test_loop, test_arm_local
-and test_exclude_empty.
+and test_exclude_empty. **Amended 2026-10-13, §16.68 H12, H35:** the waits name STATE.md first and `sync -v`
+nowhere; the alarm names it when it holds names back (§16.68).
 
 **G57: the alarm's comment counts up to three waits per source (`agentsync.arm_local`).** Each folder lands on one
 of three waits (exclude-empty, `[` collision, held files), so N folders make at most min(N, 3) lines. Comment only.
