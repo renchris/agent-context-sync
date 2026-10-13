@@ -8473,9 +8473,14 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   same folder too (§16.13). The call has 10 s. It uses only names every build since 2026-09-29
   has (`load_config`, `canonical_source_root`, a source's `kind`, `state` and `path`): step 1 runs it before
   step 2 updates the tool, so it must work with the build an earlier setup left.
+  **Amended 2026-10-13, §16.70 H7:** `paths.provider_link_resolved` (§16.63 G39) is the one name outside that
+  list; its import is guarded, with a standard-library fallback for a build that lacks it.
 - **A config that cannot be read is never a guess.** No installed agentsync, or a config it does not load:
   one line on stderr, `warning: could not read which folders <config> already syncs (no installed agentsync
   loads it), so none is marked below`, and the unmarked list. The person is then asked, as on a new Mac.
+  **Amended 2026-10-13, §16.70 H14:** the bracket names one of four causes: `no agentsync is installed`, `the
+  reader took over 10 s`, `the installed agentsync is older than this installer (it has no <name>)` or `the
+  installed agentsync could not load it`.
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
   (`note=listed-25 synced=2`, and `result=failed note=denied synced=2` for a list that ends on a click). The
   note itself is unchanged, and so is a line written without a config.
@@ -15172,6 +15177,8 @@ timeout). `cli._same_folder`, install.sh's `synced_folders` (its marks) and `_ov
 link deeper inside a domain is not read, as step 1's list never shows one. Tests: `test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folder`,
 `test_list_folders_marks_a_synced_folder_stored_through_a_link_in_cloud_storage`,
 `test_overlapping_sources_part_finds_a_folder_stored_through_a_link`.
+Amended 2026-10-13, §16.70 H7: install.sh's `synced_folders` imports the function guarded and falls back to its
+own copy of the one `readlink` on an installed agentsync from before this section, which lacks it.
 
 **G40: a symlinked provider entry is read by the provider folder it points into (`agentsync.arm_local`,
 `agentsync.setup_report`).** `_linked_is_domain` resolves the link in full and returns `_is_domain` of the
@@ -15671,7 +15678,36 @@ Reserved for round 7 lane RA of B13.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 
-Reserved for round 7 lane RB of B13.
+Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scripts/install.sh`, each with a test in
+`tests/test_install_oneshot.py`.
+
+- **Step 1's synced-folder reader runs on the agentsync an earlier setup left** (H7; H15, H27 and H38 are the
+  same defect). `--list-folders` runs `synced_folders` through the installed agentsync's interpreter, and step 2
+  is what updates that agentsync. Round 6 (§16.63 G39) had the reader import `agentsync.paths.provider_link_resolved`
+  bare. No agentsync installed before 2026-10-13 has that name, so on every Mac set up earlier the import failed,
+  no folder was marked, no `already synced on this Mac:` line was printed, and an unattended agent stopped at the
+  folder question. The import now sits in `try` / `except ImportError`, and the fallback is the same single
+  `readlink` of the provider entry written with `os` and `pathlib` alone: it uses no other agentsync name
+  (`cloud_storage_roots` and `cloud_relative` date from 2026-10-12, so a fallback built on them would fail on a
+  Mac set up between 2026-09-29 and then). Only ImportError is caught: a config that does not load still reaches
+  the warning. Measured with the agentsync of `53824b3b` (2026-09-29), `4a42af93`, `cebf2775` and this build: the
+  same marks from all four, a folder stored through a provider link included.
+  **The rule for the next name:** the reader may import `load_config` and `canonical_source_root` from
+  `agentsync.config` with no guard; any other agentsync name is imported in a `try` whose `except ImportError`
+  defines it with the standard library alone. `test_the_synced_folder_reader_imports_no_agentsync_name_an_older_build_lacks`
+  parses the reader and fails on an import outside that rule;
+  `test_list_folders_marks_the_synced_folders_with_an_agentsync_from_before_round_6` runs the list with an
+  agentsync that lacks the name.
+- **The warning names its cause in fixed words** (H14 and H16, one defect; H27's half of H7). The line is
+  `warning: could not read which folders <config> already syncs (<cause>), so none is marked below`, and the
+  cause is one of four, checked in this order: `no agentsync is installed`; `the reader took over 10 s`; `the
+  installed agentsync is older than this installer (it has no <name>)`, where `<name>` is the identifier from
+  the reader's `cannot import name '<name>'` line; `the installed agentsync could not load it`. The reader's
+  stderr was thrown away before, and the one text, "no installed agentsync loads it", was false on a Mac that
+  has one. Nothing else of what the reader wrote is printed: an error line can quote the config, and an agent
+  copies a warning into the friction log. The prefix and the suffix are unchanged.
+  `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
+  `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 

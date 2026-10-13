@@ -17,6 +17,7 @@ and ``kickstart`` logs the launcher's canary lines as STUB_LC_CANARY_LOG says (`
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import hashlib
 import json
@@ -2998,11 +2999,143 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stderr
     assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{LIST_NEXT}\n"
+    # B13 round 7 H14, H16 and H27: the warning says which of the two it was, in fixed words
+    why = {
+        "no installed agentsync": "no agentsync is installed",
+        "a config that does not load": "the installed agentsync could not load it",
+    }[broken]
     assert cp.stderr == (
-        f"warning: could not read which folders {cfg} already syncs (no installed agentsync loads it), so "
-        "none is marked below\n"
+        f"warning: could not read which folders {cfg} already syncs ({why}), so none is marked below\n"
     )
     assert install_log(env)[-2].endswith(" result=done note=listed-1"), "no synced= count: it was not read"
+
+
+def _older_tool_python(env: dict[str, str], *missing: str) -> Path:
+    """:func:`_tool_python` as a Mac set up earlier has it: an agentsync whose ``agentsync.paths`` lacks the
+    names ``missing`` (they are removed before the ``-c`` code install.sh passes is run, so its import of one
+    raises ImportError, as it does on that Mac)."""
+    py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    py.parent.mkdir(parents=True, exist_ok=True)
+    drop = "".join(f"del _p.{name}\n" for name in missing)
+    run = 'exec(compile(sys.argv.pop(1), "<string>", "exec"))'
+    shim = f"import sys, agentsync.paths as _p\n{drop}del _p\n{run}\n"
+    return _write_exe(
+        py,
+        "#!/bin/bash\n"
+        '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+        'code="$3"\nshift 3\n'
+        f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+    )
+
+
+def test_list_folders_marks_the_synced_folders_with_an_agentsync_from_before_round_6(
+    env: dict[str, str],
+) -> None:
+    """B13 round 7 H7 (H15, H27 and H38 are the same defect): step 1 runs the reader with the agentsync an
+    earlier setup installed, and step 2 is what updates it. Round 6 had the reader import
+    ``agentsync.paths.provider_link_resolved``, which no agentsync installed before 2026-10-13 has: on every
+    such Mac the import failed, no folder was marked, no "already synced" line was printed, and an unattended
+    agent stopped at the folder question. The import is guarded, and the older agentsync gets the same single
+    readlink: a folder stored by its plain path and one stored through a provider link are both marked."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "Project Alpha" / "Inner").mkdir(parents=True)
+    (cs / "OneDrive-Contoso" / "Project Beta").mkdir(parents=True)
+    (cs / "OneDrive-Contoso" / "Project Gamma").mkdir(parents=True)
+    (cs / "OneDrive-Link").symlink_to(cs / "OneDrive-Contoso", target_is_directory=True)
+    _write_config(
+        env,
+        local_source_table("project-alpha", cs / "OneDrive-Link" / "Project Alpha"),
+        local_source_table("project-beta", cs / "OneDrive-Contoso" / "Project Beta"),
+        _inbox(env),
+    )
+    _older_tool_python(env, "provider_link_resolved")
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
+        f"[synced] {cs}/OneDrive-Contoso/Project Beta",
+        f"{cs}/OneDrive-Contoso/Project Gamma",
+    ]
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: ")
+    assert install_log(env)[-2].endswith(" result=done note=listed-4 synced=2")
+    _tool_python(env)  # step 2 updated it: the list is the same with agentsync's own function
+    again = install_sh(env, "--list-folders")
+    assert (again.returncode, again.stdout, again.stderr) == (0, cp.stdout, "")
+
+
+def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(env: dict[str, str]) -> None:
+    """B13 round 7 H14, H16 and H27 (one defect): the reader's stderr was thrown away and the warning said
+    "no installed agentsync loads it", which is false on a Mac that has one. An agentsync older than the
+    reader supports fails on an import: the warning says it is older and names what it lacks, and nothing
+    else of the error line (which holds a path) is printed. One that runs past its 10 s is said to."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "Project Alpha").mkdir(parents=True)
+    cfg = _write_config(env, local_source_table("project-alpha", cs / "OneDrive-Contoso" / "Project Alpha"))
+    head = f"warning: could not read which folders {cfg} already syncs ("
+    unmarked = f"{cs}/OneDrive-Contoso/Project Alpha\n{LIST_NEXT}\n"
+    _older_tool_python(env, "provider_link_resolved", "is_under")
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stdout) == (0, unmarked)
+    assert cp.stderr == (
+        f"{head}the installed agentsync is older than this installer (it has no is_under)), so none is "
+        "marked below\n"
+    )
+    py = _tool_python(env)
+    _write_exe(py, "#!/bin/sh\nexec sleep 30\n")
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stdout) == (0, unmarked)
+    assert cp.stderr == f"{head}the reader took over 10 s), so none is marked below\n"
+
+
+def _install_sh_python(function: str) -> ast.Module:
+    """The Python that install.sh's shell function ``function`` passes to ``-c``, parsed."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    body = text[text.index(f"\n{function}() {{") :]
+    code = body[body.index("-c '\n") + len("-c '\n") :]
+    return ast.parse(code[: code.index("\n' ")])
+
+
+BASELINE_AGENTSYNC_NAMES = {"agentsync.config": {"canonical_source_root", "load_config"}}
+"""What install.sh's step 1 reader may import from agentsync with no fallback: the names every agentsync
+since 2026-09-29 has. Step 1 runs it with the agentsync an earlier setup left."""
+
+
+def test_the_synced_folder_reader_imports_no_agentsync_name_an_older_build_lacks() -> None:
+    """B13 round 7 H7: the next name gets the same guard. Every ``from agentsync...`` import at the top of
+    the reader is a baseline name; any other sits in a ``try`` whose ``except ImportError`` defines every
+    name it imports, with nothing from agentsync."""
+    tree = _install_sh_python("synced_folders")
+    seen: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("agentsync"):
+            extra = {a.name for a in node.names} - BASELINE_AGENTSYNC_NAMES.get(node.module or "", set())
+            assert not extra, f"unguarded import of {sorted(extra)} from {node.module}"
+            seen |= {a.name for a in node.names}
+        elif isinstance(node, ast.Import):
+            assert not any(a.name.startswith("agentsync") for a in node.names), ast.unparse(node)
+        elif isinstance(node, ast.Try):
+            imported = {
+                a.asname or a.name for n in node.body if isinstance(n, ast.ImportFrom) for a in n.names
+            }
+            if not imported:
+                continue
+            [handler] = node.handlers
+            assert isinstance(handler.type, ast.Name) and handler.type.id == "ImportError", "ImportError only"
+            defined = {n.name for n in handler.body if isinstance(n, ast.FunctionDef)}
+            assert imported <= defined, f"no fallback for {sorted(imported - defined)}"
+            assert "agentsync" not in ast.unparse(handler), "a fallback uses the standard library alone"
+            seen |= imported
+    assert seen == {"canonical_source_root", "load_config", "provider_link_resolved"}
+    nested = [
+        n
+        for top in tree.body
+        if not isinstance(top, ast.Try)
+        for n in ast.walk(top)
+        if n is not top and isinstance(n, (ast.Import, ast.ImportFrom))
+    ]
+    assert not nested, "an import inside a function would not be seen here"
 
 
 STUB_FIND_HELD = """#!/bin/bash

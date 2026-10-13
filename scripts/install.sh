@@ -2410,14 +2410,43 @@ CONTAINS_MARK="[contains a synced folder]"
 # case and in either Unicode form (NFC + casefold, agentsync's own key for "the same path"): a config path
 # typed in lower case, or with a composed é where the disk holds e and an accent, is that folder. Fails when
 # that agentsync cannot load the config, and stops after 10 s. It uses only names every agentsync since
-# 2026-09-29 has: step 1 of the setup prompt runs this before step 2 updates the tool. -I: nothing from the
-# folder this runs in is imported.
+# 2026-09-29 has: step 1 of the setup prompt runs this before step 2 updates the tool. The one exception is
+# provider_link_resolved (2026-10-13), whose import is guarded: an older agentsync gets the same single
+# readlink written here with the standard library alone (B13 round 7 H7; round 6 imported it bare, so step 1
+# marked nothing on every Mac set up before that day). A new agentsync name goes in the same way, and
+# tests/test_install_oneshot.py pins the list. -I: nothing from the folder this runs in is imported.
 synced_folders() { # PYTHON LIST
 	with_timeout 10 "$1" -I -c '
 import os, sys, unicodedata
 from pathlib import Path
 from agentsync.config import canonical_source_root, load_config
-from agentsync.paths import provider_link_resolved
+
+try:
+    from agentsync.paths import provider_link_resolved
+except ImportError:  # an agentsync from before 2026-10-13: step 2 has not updated it yet
+
+    def provider_link_resolved(path):
+        p = Path(os.path.expanduser(str(path)))
+        base = Path(os.path.expanduser("~/Library/CloudStorage"))
+        roots = {base}
+        try:
+            roots.add(base.resolve())
+        except (OSError, RuntimeError):
+            pass
+        for root in sorted(roots):
+            try:
+                rel = p.relative_to(root)
+            except ValueError:
+                continue
+            if not rel.parts:
+                return p
+            entry = root / rel.parts[0]
+            try:
+                target = Path(os.path.normpath(entry.parent / os.readlink(entry)))
+            except OSError:
+                return p
+            return target.joinpath(*rel.parts[1:]) if target.parent in roots else p
+        return p
 
 
 def key(path):
@@ -2455,7 +2484,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py synced="" unlisted=""
+	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks synced="" unlisted=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -2495,14 +2524,29 @@ list_folders() {
 	# listed: a Mac whose synced folders are all elsewhere is set up all the same.
 	if [ -f "$CONFIG" ]; then
 		py="$(tool_python)"
-		if [ -n "$py" ] && synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>/dev/null; then
-			synced="$(sed -n 1p "$tmp/marked")"
-			unlisted="$(sed -n 2p "$tmp/marked")"
+		# The warning names the cause in fixed words (B13 round 7 H14, H16, H27): an agentsync that is installed
+		# and cannot run the reader is not a missing one. Of what the reader wrote, only the name of an import an
+		# older agentsync lacks is used: an error line can quote the config.
+		why="no agentsync is installed"
+		if [ -n "$py" ]; then
+			rc=0
+			synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>"$tmp/rerr" || rc=$?
+			lacks="$(LC_ALL=C sed -n "s/.*cannot import name '\([A-Za-z_][A-Za-z0-9_]*\)'.*/\1/p" "$tmp/rerr" | LC_ALL=C tail -1)"
+			if [ "$rc" -eq 0 ]; then
+				synced="$(sed -n 1p "$tmp/marked")"
+				unlisted="$(sed -n 2p "$tmp/marked")"
+			elif [ "$rc" -eq 124 ] || [ "$rc" -eq 143 ]; then
+				why="the reader took over 10 s"
+			elif [ -n "$lacks" ]; then
+				why="the installed agentsync is older than this installer (it has no $lacks)"
+			else
+				why="the installed agentsync could not load it"
+			fi
 		fi
 		case "$synced/$unlisted" in
 		/* | */ | *[!0-9/]*)
 			synced=""
-			warn "could not read which folders $CONFIG already syncs (no installed agentsync loads it), so none is marked below"
+			warn "could not read which folders $CONFIG already syncs ($why), so none is marked below"
 			;;
 		esac
 	fi
