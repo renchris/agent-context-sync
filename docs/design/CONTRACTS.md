@@ -14616,6 +14616,9 @@ read-again counts, and its source tag names the file: `(install.log; the first-r
 unreadable/failed split: install.out)`. install.sh's note is unchanged (no `-first-F` suffix). F8 and F32
 describe one defect and are built once. Tests: `test_first_sync_clause_carries_the_read_again_count`,
 `test_the_converted_line_parses_with_the_read_again_clause_in_either_form`.
+Amended 2026-10-13, §16.64 G34: the clauses have no bracket of their own, so the source tag is the clause's one
+trailing bracket: `read again R: F of them read for the first time, also in the converted count; of the converted: U
+unreadable, X failed (<source>)`, and a split alone reads `online-only; of the converted: …`.
 
 **F9, F46: the Loop line's order clause in plain words.** Amends Q13 (§16.52): the wait the loop stopped on
 still comes first (the 2026-10-07 field report: the loop prints queued purges first and the draft baseline last,
@@ -15268,6 +15271,13 @@ attempt and K install run(s) [and J --list-folders run(s)] after its end line (<
 this attempt and …`; "the last exit" still names the last run overall, and the outcome, retry and time logic are
 unchanged. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
 `test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
+
+**G34: one bracket in the first-sync clause.** Amends §16.58 F8, F32 (dated line there): the first-read clause
+follows `read again R` after a colon and the unreadable/failed split after `; `, so the source tag stays the clause's
+one trailing bracket, as on every other line: `converted 2, deferred 0 online-only, read again 2: 2 of them read for
+the first time, also in the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read
+count and the unreadable/failed split: install.out)`; with no re-read, `online-only; of the converted: …`. Test:
+`test_first_sync_clause_carries_the_read_again_count` (no `) (` in the line).
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 

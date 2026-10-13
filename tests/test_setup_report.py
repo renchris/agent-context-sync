@@ -2953,31 +2953,31 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "note=converted-3-deferred-0",
             "first sync: converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)",
             # B13 round 4 Q1: the source tag names install.out for the split, which install.log's note lacks
-            "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed) "
+            "converted 3, deferred 0 online-only; of the converted: 1 unreadable, 0 failed "
             "(install.log; the unreadable/failed split: install.out)",
         ),
         (  # B13 round 5 F8, F32: both clauses of the sync's line (F34's form), and the first read is kept
             "note=converted-2-deferred-0-reread-2",
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
             "time, also counted above); of the converted: 1 unreadable, 0 failed",
-            "converted 2, deferred 0 online-only, read again 2 (2 of them read for the first time, also in "
-            "the converted count; of the converted: 1 unreadable, 0 failed) (install.log; the first-read "
+            "converted 2, deferred 0 online-only, read again 2: 2 of them read for the first time, also in "
+            "the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read "
             "count and the unreadable/failed split: install.out)",
         ),
         (  # an older agentsync's two brackets in a row: the same two clauses
             "note=converted-2-deferred-0-reread-2",
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
             "time, also counted above) (of the converted: 1 unreadable, 0 failed)",
-            "read again 2 (2 of them read for the first time, also in the converted count; of the converted: "
-            "1 unreadable, 0 failed) (install.log; the first-read count and the unreadable/failed split: "
+            "read again 2: 2 of them read for the first time, also in the converted count; of the converted: "
+            "1 unreadable, 0 failed (install.log; the first-read count and the unreadable/failed split: "
             "install.out)",
         ),
         (  # the first read alone; nothing else changes
             "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
             "time, also counted above)",
-            "converted 1, deferred 0 online-only, read again 1 (1 of them read for the first time, also in "
-            "the converted count) (install.out)",
+            "converted 1, deferred 0 online-only, read again 1: 1 of them read for the first time, also in "
+            "the converted count (install.out)",
         ),
         (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept
             "note=converted-4-deferred-0",
@@ -3000,6 +3000,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
         assert line.startswith("- first sync: done in 9s (install.log) · converted ") and want in line, line
+        assert ") (" not in line, "B13 round 6 G34: the source tag is the clause's one bracket"
 
 
 def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -> None:

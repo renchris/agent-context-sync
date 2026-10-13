@@ -6202,26 +6202,24 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
         reread = f", read again {again}" if again else ""
         # install.log's note has no breakdown (install.sh writes it): install.out's line of the same sync
-        # does. Its clauses share one bracket (B13 round 5 F8, F32): a first read in "read again" is a file
-        # also in the converted count, so a reader adding them would count it twice
-        clauses: list[str] = []
+        # does (B13 round 5 F8, F32): a first read in "read again" is a file also in the converted count, so a
+        # reader adding them would count it twice. No bracket of their own: the source tag is the line's one
+        # trailing bracket, as on every other line (round 6 G34), and the CLI's line reads so too (F34)
         named: list[str] = []
         first = r.facts.first_sync_first_read
         if first is not None and first[:2] == (converted, again) and first[2]:
-            clauses.append(f"{first[2]} of them read for the first time, also in the converted count")
+            reread += f": {first[2]} of them read for the first time, also in the converted count"
             named.append("the first-read count")
         split = r.facts.first_sync_unreadable
         if split is not None and split[0] == converted and any(split[1:]):
             refused = f", {split[3]} refused" if split[3] else ""  # B13 round 6 G35
-            clauses.append(f"of the converted: {split[1]} unreadable, {split[2]} failed{refused}")
+            reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             named.append("the unreadable/failed split")
-        if clauses:
-            reread += f" ({'; '.join(clauses)})"
-            # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A
-            # borrowed run is matched to install.out's last sync line only by equal counts: say which line
-            if source.startswith("install.log"):
-                line = "install.out's last sync line" if borrowed else "install.out"
-                source += f"; {' and '.join(named)}: {line}"
+        # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A borrowed
+        # run is matched to install.out's last sync line only by equal counts: say which line
+        if named and source.startswith("install.log"):
+            line = "install.out's last sync line" if borrowed else "install.out"
+            source += f"; {' and '.join(named)}: {line}"
         parts.append(f"converted {converted}, deferred {deferred} online-only{reread} ({source}{later})")
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
