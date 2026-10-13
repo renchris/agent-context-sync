@@ -93,6 +93,9 @@ words) is yours to remove. The CLI always redacts.
   the Setup report field and tick the review box. Opened another way, copy the four values from the Summary. The
   form shows the report as a code block. The report fences command output with `~~~`, which the form's backtick
   fence does not break. Keep the agent's additions to `~~~` too.
+  Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
+  prints the issue link for it, the shell fallback report has none, and `--report-only`'s NEXT names only
+  bring-back.md. Send that one privately.
 - **Privately (no public post needed):** copy `~/agent-context/bring-back.md` back to the machine you administer
   this setup from (AirDrop, a USB stick, a shared folder you already use). It is the one file the prompt's last
   step names: section 1 is the redacted setup report, section 2 the agent's fix request and section 3 the patch

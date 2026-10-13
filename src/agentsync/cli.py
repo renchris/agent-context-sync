@@ -1624,17 +1624,21 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
         getattr(args, "config", None), hooks=_report_hooks(), friction_path=friction
     )
     link = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.issue_link(text) or setup_report.ISSUE_URL}"
+    if red.word_named_shown:  # the report says to send it privately: no public issue (B13 round 6 G47)
+        link = ""
     try:
         setup_report.write_report(out, text)
     except OSError as exc:
         _err(f"setup-report: cannot write {out}: {exc.strerror or exc}; the report follows on stdout")
         sys.stdout.write(text)
-        _out(link)
+        if link:
+            _out(link)
         return EXIT_FAILED
     what = f"{red.total} replacement(s) of {red.values} value(s)"
     embedded = "friction log embedded" if friction.is_file() else f"no friction log found at {friction}"
     _out(f"wrote {out} ({what}; {embedded})")
-    _out(link)  # always the last line: setup prompt step 3 (v5: step 5) shows it (no "next:" hint)
+    if link:
+        _out(link)  # the last line: setup prompt step 3 (v5: step 5) shows it (no "next:" hint)
     return EXIT_OK
 
 

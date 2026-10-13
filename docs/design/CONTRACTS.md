@@ -14787,6 +14787,8 @@ matches only after an app's name; a one-word organisation outside `_CONTEXT_ORG_
 (`Status`, `Context`) is matched everywhere and raises `Private only:`.
 Amended 2026-10-13, §16.65 G50: the shell report puts its send advice on one `Send it: privately (...), never as
 a public issue. Nothing is sent automatically.` line.
+Amended 2026-10-13, §16.65 G47, G65: a report with a `Private only:` line gets no printed issue link from
+`install.sh` or `agentsync setup-report --out`, and the shell report then ends without its issue link.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -15423,6 +15425,22 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   named `Status` is now an `<org-N>` pair that is a `report_word` and must raise the lines
   (`test_install_oneshot.py`'s G46 test checks that). Removing the branch would leave that report public, so the
   branch and the words `folder or organisation` stay.
+- **No line offers the public issue a private report rules out** (G47, G65, one defect). With F92's
+  `Private only:` line in the report, `install.sh` still printed `issue link (review the report first): <link>`
+  and `--report-only`'s NEXT read `... copy that one file back privately, or paste the setup report into the
+  issue the link above opens`; `agentsync setup-report --out` printed the link as its last line too. The person
+  reads those lines, not the Redaction part. `report_issue_link` now returns nothing for a report with a line that
+  starts `Private only:` (both writers write it at column 0), so `on_exit` prints no link line, on the install
+  path as on `--report-only`, and the NEXT keeps its bring-back-only default. It reads the report's own text,
+  so an agentsync older than the installer is covered. `_cmd_setup_report` prints no link line when
+  `red.word_named_shown`. The shell report sets `PRIVATE_ONLY` where it prints its lines and then ends without
+  the bare `ISSUE_URL` line; its `Send it:` line names no link. The agentsync report keeps its last-line link: its
+  `Send it:` line says "not through the link on the last line", and that file is lane RA's, so G65's proposal to
+  end it without the link (and reword that line) is not built. docs/deploy/setup-feedback.md section 3 says so;
+  the README prompt's "its last lines are an issue link and a NEXT: line" is lane P's to word in v15.
+  `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately`,
+  `test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line`,
+  `test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately` (tests/test_setup_report.py).
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

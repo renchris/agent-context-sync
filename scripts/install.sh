@@ -1835,6 +1835,7 @@ fallback_body() {
 	fi
 	say ""
 }
+PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a private copy only
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
 fallback_redaction() {
@@ -1865,6 +1866,7 @@ fallback_redaction() {
 		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."
 		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
+		PRIVATE_ONLY=1 # the report then ends with no issue link (the caller's subshell reads it)
 		break
 	done < <(redaction_pairs 2>/dev/null || true)
 }
@@ -1979,7 +1981,8 @@ write_fallback_report() { # RC WHY
 		{
 			fallback_body "$1" "$2" "$friction" | strip_run_pids | redact_stream | scrub_exclude_lists
 			fallback_redaction
-			printf '\n%s\n' "$ISSUE_URL" # the issue form, after redaction (a login may match the URL's owner)
+			# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65)
+			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$ISSUE_URL"
 		} >"$tmp"
 	) 2>/dev/null || {
 		rm -f "$tmp"
@@ -2301,8 +2304,13 @@ on_exit() {
 }
 # The issue link the setup report ends with (its last line, when it starts with $ISSUE_URL), else empty.
 # Byte-wise: the shell report can hold a byte that is not UTF-8 (a log line's), where BSD sed stops.
+# Empty too for a report that says it is for a private copy only (a "Private only:" line, either writer's,
+# at the start of a line): no line, issue link or NEXT, then offers the public issue (B13 round 6 G47, G65).
 report_issue_link() {
 	local l
+	# in the Redaction part only: a friction line that quotes an earlier report's is not this report's flag
+	! LC_ALL=C awk '$0 == "## Redaction" { r = 1 } r && index($0, "Private only:") == 1 { f = 1 } END { exit !f }' \
+		"$REPORT_PATH" 2>/dev/null || return 0
 	l="$(LC_ALL=C sed '/^[[:space:]]*$/d' "$REPORT_PATH" 2>/dev/null | LC_ALL=C tail -1)"
 	case "$l" in
 	"$ISSUE_URL"*) printf '%s' "$l" ;;

@@ -522,7 +522,7 @@ def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
 
 
 def test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately(
-    fake_mac: dict[str, Path],
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B13 round 5 F92: a folder named like a word the report prints is redacted everywhere, so the report's
     public template gives it back where its placeholder stands ("the <folder-3> of this report"). When such a
@@ -545,6 +545,12 @@ def test_a_word_named_folder_makes_the_redaction_section_advise_sending_privatel
     )
     assert "Send it: the link on the last line opens" not in redaction
     assert "Read the report before sending it: anything else confidential" in redaction, "the caveat stays"
+    # nor does `setup-report --out` print the issue link that offers the public issue (B13 round 6 G47, G65)
+    out = tmp_path / "setup-report.md"
+    capsys.readouterr()
+    assert cli.main(["setup-report", "--out", str(out), "--config", str(fake_mac["config"])]) == 0
+    printed = capsys.readouterr().out
+    assert setup_report.ISSUE_LINK_LABEL not in printed and printed.startswith(f"wrote {out} ("), printed
 
 
 def test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole() -> None:

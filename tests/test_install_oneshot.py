@@ -1397,7 +1397,8 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
     assert "Private only:" not in report_path(env).read_text(encoding="utf-8")
     word = cloud / "OneDrive-Contoso" / "Status"
     word.mkdir()
-    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(word)).returncode == 1
+    failed = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(word))
+    assert failed.returncode == 1
     text = report_path(env).read_text(encoding="utf-8")
     assert (
         "Private only: one of your folder or organisation names is also a word this report prints, so where "
@@ -1407,6 +1408,15 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
         "\nSend it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public "
         "issue. Nothing is sent automatically.\n" in text
     ), "one line, as the agentsync report's (G50)"
+    # No line offers the public issue the report says not to use: no issue link in the report or printed, and
+    # --report-only's NEXT names bring-back.md alone (B13 round 6 G47, G65)
+    assert setup_report.ISSUE_URL not in text and "issue link" not in failed.stdout, failed.stdout
+    reported = install_sh(env, "--report-only")
+    assert reported.returncode == 0 and "issue link" not in reported.stdout, reported.stdout
+    assert last_line(reported).startswith(
+        f"NEXT: review {report_path(env).parent}/bring-back.md and copy that one file back privately "
+        "(nothing is sent for you) [setup report: "
+    ), last_line(reported)
     # A stopped copy's report drops that one line whole, so it says nothing of sending it (G50)
     assert install_sh(env, "--log-start", "x").returncode == 2
     assert install_sh(env, "--report-only").returncode == 0
@@ -1414,6 +1424,28 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
     _sends_nothing(side)
     stopped = side.read_text(encoding="utf-8")
     assert "Private only:" in stopped and "privately" not in stopped and "public issue" not in stopped
+
+
+def test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """The agentsync report of a word-named folder says "Private only:" and ends with the issue link its Send
+    it line says not to use; install.sh printed that link and a NEXT offering the issue (B13 round 6 G47,
+    G65). It reads the report's own line, so an agentsync older than the installer is covered too."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    old = tmp_path / "report.md"
+    for private in (False, True):
+        old.write_text(
+            "# agentsync setup report\n\n## Agent friction log\n\nPrivate only: quoted from a report\n\n"
+            "## Redaction\n\n"
+            + "Private only: one of your folder, library or organisation names is ...\n" * private
+            + f"Send it: ...\n\n{ISSUE_LINK}\n"
+        )
+        cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+        assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout
+        assert ("issue link (review the report first)" in cp.stdout) is not private, cp.stdout
+        assert ("the issue the link above opens" in last_line(cp)) is not private, last_line(cp)
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
