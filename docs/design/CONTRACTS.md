@@ -16091,4 +16091,11 @@ sync ("skipped, lock busy") if it is still running then." Test: `tests/test_depl
 
 ### 16.73 Round 7: deploy docs and CONTRACTS cross-references (2026-10-13, wave B13 round 7 lane D)
 
-Reserved for round 7 lane D of B13.
+Docs and dated lines that lagged round 6's code (`docs/plans/bring-back-ocr.md`, "B13 round 7"); no behavior
+changes. Each item is pinned by a test in `tests/test_deploy_pack.py` that fails on the text it replaced.
+
+**A withheld `.msg`'s QUARANTINE.tsv row reads as the code writes it** (H53, H59: one defect). Since §16.66 G29 a
+`.msg` a label rule withholds has `withheld by label rule: ...` (`publish._withheld_reason`) as its page's
+`reason:` and as its `_sync/QUARANTINE.tsv` reason, also for one withheld without a download; data-governance.md
+still said the QUARANTINE.tsv reason stays `no converter for .msg`, which is now only the stored reason. Test:
+`test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`.
