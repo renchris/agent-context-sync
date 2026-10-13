@@ -5145,7 +5145,22 @@ def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:
     facts = setup_report._checkout_facts(run, repo)
     tree = setup_report.tree_fingerprint(diff)
     assert re.fullmatch(r"[0-9a-f]{12}", tree)
-    assert f"(uncommitted changes, tree={tree})" in facts and "on origin/main: no " in facts
+    assert f"(uncommitted changes, tree={tree})" in facts and "on origin/main: no, 1 ahead (" in facts
+
+    # B13 round 7 H22: "yes" is any ancestor of origin/main, so it says how far behind it is
+    git("checkout", "-q", "--", "a.txt")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("checkout", "-q", "--detach", "HEAD~1")
+
+    def facts() -> str:  # a fresh run each time: its 12 s budget covers one call, not the whole test
+        return setup_report._checkout_facts(
+            setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0), repo
+        )
+
+    assert " · on origin/main: yes, 1 behind (no fetch since the clone)" in facts()
+    (repo / "a.txt").write_text("four\n", encoding="utf-8")
+    git("commit", "-q", "-am", "four")
+    assert " · on origin/main: no, 1 ahead, 1 behind (" in facts()
 
 
 def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain(

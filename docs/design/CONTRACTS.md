@@ -5209,6 +5209,9 @@ line; the `my` of `<org-N>-my.sharepoint.com` is ignored.
 ends "(expected: <why>)"; the section says how many; unexpected warns and FAILs keep their fix. **Installer
 (V4).** A run whose `step=report` line follows its `end` line says the report step is logged after the run's end
 line (install.sh writes the report once the run is closed), so the run's seconds exclude it.
+Amended 2026-10-13, §16.69 H22: on origin/main reads `yes|no|unknown[, N ahead][, N behind]`: `git rev-list
+--left-right --count HEAD...origin/main` adds `N behind` when it is above 0, and `N ahead` to a `no`; no count when
+that call fails.
 
 KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
 second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced)` gives the furthest
@@ -15733,6 +15736,13 @@ digits, the row reads `done (add-source: kept 2, added 0)` (likewise `exists` an
 logs are unchanged. install.sh's `note=add-source` stays: `_first_sync_line` labels the sync `sync` from it, so
 logging `note=kept` instead would relabel a re-run "first sync" (the verifier's measurement). Test:
 `tests/test_setup_report.py::test_the_installer_table_shows_the_config_steps_folder_counts`.
+
+**On origin/main says how far behind** (H22; dated line at §16.14 L10). `merge-base --is-ancestor` passes for any
+ancestor, so a checkout 5 commits behind read `on origin/main: yes`, and in scenario D (a fetch that worked and a
+merge that failed) that invites "current". `_checkout_facts` now runs one more read-only `rev-list --left-right
+--count HEAD...origin/main` and reads `yes, 5 behind (…)` or `no, 1 ahead, 2 behind (…)`; the token stays first and
+the dated fetch last, and a failed count prints none. The count is against the local origin/main, which the fetch
+clause dates. Test: `tests/test_setup_report.py::test_install_source_names_origin_main_and_the_tree`.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 

@@ -2776,8 +2776,9 @@ def tree_fingerprint(diff: bytes) -> str:
 
 
 def _checkout_facts(r: _Run, directory: Path) -> str:
-    """`` @ <sha>[ (uncommitted changes) tree=<fp>] · origin: ... · on origin/main: yes|no|unknown`` for the
-    installed checkout (every git call read-only; the origin URL itself is never shown)."""
+    """`` @ <sha>[ (uncommitted changes) tree=<fp>] · origin: ... · on origin/main: yes|no|unknown[, N
+    ahead][, N behind] (<fetch>)`` for the installed checkout (every git call read-only; the origin URL itself
+    is never shown)."""
     rc, out = _git_ro(r, directory, "rev-parse", "--short=12", "HEAD")
     if rc != 0:
         return ""
@@ -2791,6 +2792,14 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
     text += f" · origin: {origin_label(url.decode('utf-8', 'replace')) if rc == 0 else 'none'}"
     rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
+    if rc in (0, 1):  # "yes" is any ancestor: say how far behind it is, and a "no" how far ahead (H22)
+        crc, out = _git_ro(r, directory, "rev-list", "--left-right", "--count", "HEAD...origin/main")
+        parts = out.decode("ascii", "replace").split() if crc == 0 else []
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            ahead, behind = int(parts[0]), int(parts[1])
+            extra = [f"{ahead} ahead"] * (rc == 1 and ahead > 0) + [f"{behind} behind"] * (behind > 0)
+            if extra:
+                on_main += ", " + ", ".join(extra)
     return text + f" · on origin/main: {on_main} ({_last_fetch(r, directory)})"
 
 
