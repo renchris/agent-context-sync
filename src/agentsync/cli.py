@@ -93,7 +93,7 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
-from agentsync.paths import DocsLayout, default_config_path, expand, is_under
+from agentsync.paths import DocsLayout, default_config_path, expand, is_under, provider_link_resolved
 from agentsync.publish import Publisher, archive_path
 from agentsync.slug import collision_key
 
@@ -641,16 +641,14 @@ def _same_folder(configured: Path, path: Path) -> bool:
     case, or with a composed é where the disk holds e and an accent, is not a second folder. The key is the
     one the manifest and the docs repo use for "the same path" (:func:`agentsync.slug.collision_key`); the
     file system then confirms it, so on a case-sensitive volume two folders that differ only in case stay
-    two (and a configured folder that is gone is not the one that exists). Paths under ~/Library/CloudStorage
-    whose keys differ are asked of the file system too: a folder stored through a link there (one that names
-    a provider folder) is the folder typed by its real name (B13 round 6 G39). Only there, where add-source
-    already reads the folder's domain: a folder elsewhere may sit behind a privacy prompt."""
+    two (and a configured folder that is gone is not the one that exists). A folder stored through a link
+    that is a provider entry in ~/Library/CloudStorage (``OneDrive-Link -> OneDrive-Contoso``) is compared
+    by its real name, read with one readlink of that entry (:func:`paths.provider_link_resolved`, B13 round
+    6 G39), so typing it by that name is not a second folder."""
     if configured == path:
         return True
-    keys = collision_key(str(configured)), collision_key(str(path))
-    root = Path.home() / "Library" / "CloudStorage"  # as written and resolved (a home under /tmp: F89)
-    clouds = tuple({collision_key(str(p)) + "/" for p in (root, Path(os.path.realpath(root)))})
-    if keys[0] != keys[1] and not all(k.startswith(clouds) for k in keys):
+    keys = [collision_key(str(provider_link_resolved(p))) for p in (configured, path)]
+    if keys[0] != keys[1]:
         return False
     try:
         return configured.samefile(path)

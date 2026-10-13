@@ -125,7 +125,7 @@ from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
 from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
-from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
+from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary, provider_link_resolved
 from agentsync.skill import AGENTSYNC_BIN
 
 REPORT_TITLE = "# agentsync setup report"
@@ -4793,19 +4793,17 @@ def _source_counts(m: _Mirror, source_id: str) -> list[str]:
 
 def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Pairs of sources whose configured folder is the same or one inside the other, with each one's file
-    counts and whether the outer source's exclude list prunes the inner folder. Folders are compared by
-    their real path, taken for the comparison alone: one stored through a link in CloudStorage is the
-    folder another source has by its real name (B13 round 6 G39)."""
+    counts and whether the outer source's exclude list prunes the inner folder. A folder stored through a
+    link that is a provider entry in CloudStorage is compared by its real name, read with one readlink of
+    that entry and nothing inside a domain (``paths.provider_link_resolved``, B13 round 6 G39)."""
     from agentsync import arm_local  # noqa: PLC0415 - _unexcluded: the walk's own pruning rule
 
-    def compared(path: Path) -> Path:
-        try:
-            return Path(os.path.realpath(expand(path)))
-        except (OSError, RuntimeError):  # a link loop, or a folder that cannot be read: the path as stored
-            return Path(os.path.normpath(expand(path)))
-
     config = cast(Config, r.config)
-    roots = [(src, compared(src.path)) for src in config.sources if src.path is not None]
+    roots = [
+        (src, Path(os.path.normpath(provider_link_resolved(src.path))))
+        for src in config.sources
+        if src.path is not None
+    ]
     out: list[str] = []
     pairs = 0
     for outer, outer_root in roots:

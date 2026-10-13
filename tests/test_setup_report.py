@@ -6225,10 +6225,12 @@ def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: 
 
 
 def test_overlapping_sources_part_finds_a_folder_stored_through_a_link(fake_mac: dict[str, Path]) -> None:
-    """B13 round 6 G39: two sources on one folder, one stored through a link to it, were compared as text
-    and the part said none; their real paths are compared, and the stored paths are kept."""
-    link = fake_mac["one"].with_name("Link to one")
-    link.symlink_to(fake_mac["one"], target_is_directory=True)
+    """B13 round 6 G39: two sources on one folder, one stored through a provider entry in CloudStorage that
+    links to the other's provider folder, were compared as text and the part said none. The entry is read
+    through (one readlink, nothing inside the domain), and the stored paths are kept."""
+    provider = fake_mac["one"].parents[1]
+    (provider.parent / "OneDrive-Link").symlink_to(provider, target_is_directory=True)
+    link = provider.parent / "OneDrive-Link" / fake_mac["one"].relative_to(provider)
     cfg = fake_mac["config"]
     cfg.write_text(
         cfg.read_text(encoding="utf-8")

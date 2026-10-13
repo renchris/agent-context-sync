@@ -29,6 +29,7 @@ from agentsync import (
     lints,
     loop,
     net,
+    paths,
     policy,
     skill,
 )
@@ -2468,8 +2469,14 @@ def test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folde
         capsys.readouterr().out
     )
     assert initialised.config_path.read_text(encoding="utf-8") == after, "no second source on that folder"
-    # a folder outside CloudStorage is not asked of the file system unless its key matches
+    # only a provider entry's own link is read: one out of CloudStorage is not followed, nor is a link inside
+    # a domain, and a folder outside CloudStorage is not the same folder
     assert not cli._same_folder(Path.home() / "Elsewhere" / "Project Alpha", real)
+    (Path.home() / "Elsewhere").mkdir()
+    (cloud / "OneDrive-Out").symlink_to(Path.home() / "Elsewhere", target_is_directory=True)
+    assert paths.provider_link_resolved(cloud / "OneDrive-Out" / "x") == cloud / "OneDrive-Out" / "x"
+    (real / "Inner").symlink_to(real, target_is_directory=True)
+    assert paths.provider_link_resolved(real / "Inner" / "x") == real / "Inner" / "x"
 
 
 def test_init_and_add_source_keep_exactly_one_inbox(

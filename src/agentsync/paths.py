@@ -82,6 +82,29 @@ def is_cloud_path(path: Path) -> bool:
     return any(is_under(path, r) for r in cloud_storage_roots())
 
 
+def provider_link_resolved(path: Path) -> Path:
+    """``path`` with its provider entry read through, when that direct child of ``~/Library/CloudStorage`` is
+    a symlink to another provider folder there (``OneDrive-Link -> OneDrive-Contoso``): the same folder by
+    its real name, for comparing two paths only, since a stored path keeps its link (B13 round 6 G39). One
+    ``readlink`` of that entry: nothing inside a File Provider tree is touched and the target is not
+    followed further, so no privacy prompt can hold it. Any other path, a link out of CloudStorage or to
+    the root itself, and an entry that is no link or cannot be read: ``path`` as given (expanded)."""
+    p = expand(path)
+    roots = cloud_storage_roots()
+    rel = cloud_relative(p)
+    if rel is None or not rel.parts:
+        return p
+    root = next(r for r in roots if is_under(p, r))
+    provider = root / rel.parts[0]
+    try:
+        target = Path(os.path.normpath(provider.parent / provider.readlink()))
+    except OSError:  # not a link (EINVAL), or unreadable
+        return p
+    if target.parent not in roots:
+        return p
+    return target.joinpath(*rel.parts[1:])
+
+
 def cloud_relative(path: Path) -> PurePosixPath | None:
     """``path`` relative to the :func:`cloud_storage_roots` entry that holds it (its first part is the
     provider folder, ``OneDrive-Contoso``); None outside every one."""
