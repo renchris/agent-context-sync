@@ -14962,6 +14962,9 @@ listed by name, size and sha256, as data-governance.md says. Pinned by
 reaped or rendered again by repair or unarchive (dated lines at §16.6 and §16.51 Q9, and data-governance.md). A
 one-time tombstone rewrite would add a second tombstone commit on the path, and the recovery line of a tombstone
 with no `last_commit` ("the commit before this tombstone") would then point at the old tombstone, not the content.
+**Amended 2026-10-13, §16.71 H77:** §16.66 G77 built that rewrite, so no intact tombstone keeps the heading-first
+layout. The recovery-line reason is answered there: a tombstone row with no `last_commit` first takes the newest
+commit on its path whose page is not a tombstone, and the line of one with none in history names no position.
 
 ### 16.61 Round 5: setup prompt v14 and docs (2026-10-12, wave B13 round 5 lane P)
 
@@ -15526,6 +15529,8 @@ heading above the banner, so §16.61 F88's "an existing credential, path or reda
 the heading above the banner" and Q9's "Not built" re-render of old tombstones no longer hold;
 `docs/deploy/data-governance.md` says every one is rendered again once. Pinned by
 `tests/test_cycle.py::test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_with_its_own_title`.
+**Amended 2026-10-13, §16.71 H77:** this rewrite also amends §16.60 F68, whose reason it had not answered: a row with
+no `last_commit` takes the commit that holds its content before the page is rendered (§16.71).
 
 **A `.msg` withheld by its name is read once the rule is lifted (G52).** `Manifest.mark_for_rescreen` takes
 `withheld_suffixes`, and `_check_policy_change` passes `label_withheld_suffixes()`: a refused row whose reason is
@@ -15670,7 +15675,54 @@ Reserved for round 7 lane RB of B13.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 
-Reserved for round 7 lane E of B13.
+Builds round 7's `.msg` re-screen, QUARANTINE.tsv, tombstone and convert-docstring items, and the timing-test skip
+(`docs/plans/bring-back-ocr.md`, "B13 round 7"; specs `round7/items/H<n>.md`, the verifier's corrected fix built).
+As in §16.66, a line that corrects §16.66 is here; the dated lines are the two H77's spec names.
+
+**A policy tweak that keeps the label rule reads no withheld `.msg` again (H47; corrects §16.66 G52).**
+`Manifest.mark_for_rescreen` takes `unread_only`, and `_check_policy_change` sets it while the new policy has a label
+rule on: a refused `no converter for <suffix>` row is marked only when no byte of it was read (no content hash). G52
+marked every such row, a binary `.msg` read on this Mac under the rule included, so a tweak that kept the rule on
+(a second label id) read each one again, and the sync line counted them as converted and refused but not as
+re-screened. Once the rule is lifted every such row is marked, as G52 built, a read one that has since gone
+online-only included; marking only unread rows always would leave that one's stub for good. Pinned by
+`tests/test_cycle.py::test_a_policy_tweak_that_keeps_the_label_rule_reads_no_binary_msg_again` and
+`test_a_binary_msg_read_under_the_rule_then_online_only_is_read_once_the_rule_is_lifted` (the guard against the
+narrower fix); `test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_is` stays green.
+
+**QUARANTINE.tsv copies the reason of the stub as published (H52; corrects §16.66 G29's last sentence).**
+`write_quarantine` no longer reads this run's OCR state. For a refused row a label rule may withhold (a rule on,
+its suffix in `label_withheld_suffixes()`, its stored reason `no converter for <suffix>`) it copies the `reason:` of
+the row's page (`Publisher._stub_reason`) when it is one of the two wordings, and otherwise keeps the stored reason.
+Whether an image's stub says `withheld by label rule` is decided by the run that planned it; the TSV, rewritten every
+run, followed each run's engine, so a run whose engine missed its `--version` made a TSV-only commit contradicting
+the page, and an engine that arrived after the stub left the two disagreeing for good. Re-planning stubs when the
+engine flaps would turn each flap into a page commit, so it is not done. Pinned by
+`tests/test_cycle.py::test_quarantine_tsv_keeps_the_wording_of_the_published_stub_whatever_this_runs_ocr` (engine
+on, on, off, off, on; and off, then on: one commit, page and TSV equal after every run).
+
+**The no-converter docstrings (H56).** `NO_CONVERTER_PREFIX` says its stub's stored reason keeps the prefix while a
+withheld stub's page, `reason:` and TSV row show `withheld by label rule: ...`; `label_withheld_suffixes()` says an
+image counts as withheld only while an OCR engine is ready, and names a `.msg` the OS refused to hydrate. Docstrings
+only.
+
+**A re-rendered tombstone with no `last_commit` names the commit that holds its content (H77; amends §16.60 F68,
+§16.66 G77).** Compaction leaves a tombstone row with no `last_commit` (its commit squashed; the page keeps the
+dangling sha), and G77's rewrite rendered "pick the commit before this tombstone", though the rewrite is itself a
+tombstone commit, so that commit opened the older tombstone. `Cycle._rerender_tombstones` first stores in the row
+the newest commit on the path whose page is not `status: deleted` (`_content_commit`: `git log --format=%H` and
+`cat-file`, read-only), so the page gets an exact `git show` line and later repair and unarchive renders agree. With
+none in history the page is still rewritten, banner first: skipping it would keep a third-party title above the
+banner (§16.51 Q9) for no working line. That line now reads "pick the newest commit whose page is not a tombstone,
+status: deleted", true after repair and unarchive commits too. `STUB_RENDER` is 5 (corrects §16.66's "is 4"), so an
+install at 4 renders once more. Dated lines at §16.60 F68 and §16.66 G77. Pinned by
+`tests/test_cycle.py::test_a_tombstone_with_no_last_commit_is_rendered_again_with_the_commit_that_holds_its_content`
+(content kept; squashed to one root commit).
+
+**A timing test reads the load when it starts (H78).** `tests/conftest.py` skips a `timing` test in
+`pytest_runtest_setup`, not once at collection: under `-n auto` each worker collects at startup, so a long run whose
+load rose later still ran them (a 6 s bound failed at 34 per core). Same threshold (4 per core) and
+`AGENTSYNC_TIMING=1` override. Pinned by `tests/test_perf.py::test_a_timing_test_reads_the_load_when_it_starts`.
 
 ### 16.72 Round 7: setup prompt v16 (2026-10-13, wave B13 round 7 lane P)
 
