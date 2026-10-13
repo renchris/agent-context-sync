@@ -422,9 +422,15 @@ def _tsv_field(text: str) -> str:
 
 def _quoted(text: str, limit: int = _REASON_MAX) -> str:
     """Third-party text (names, subjects, paths inside alarms/errors) as inert quoted data: one line, no
-    control characters, no backticks, inside a code span (markdown and links are not interpreted)."""
-    flat = "".join(c for c in _one_line(text, limit) if c.isprintable()).replace("`", "'")
-    return f"`{flat}`"
+    control characters, inside a code span (markdown and links are not interpreted). The text keeps its own
+    backticks, so an alarm reads as the terminal printed it (B13 round 7 H37: the command an alarm quotes
+    in backticks came out in single quotes): the fence is one backtick longer than the longest run of them
+    in the text, so none can close the span, and a text that starts or ends with one is padded with a space
+    each side (the CommonMark rule)."""
+    flat = "".join(c for c in _one_line(text, limit) if c.isprintable())
+    fence = "`" * (1 + max((len(run) for run in re.findall(r"`+", flat)), default=0))
+    pad = " " if not flat or flat.startswith("`") or flat.endswith("`") else ""
+    return f"{fence}{pad}{flat}{pad}{fence}"
 
 
 def _iso(dt_: datetime) -> str:
