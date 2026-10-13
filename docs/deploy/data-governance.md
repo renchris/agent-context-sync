@@ -40,8 +40,8 @@ is a copy that no purge reaches, so exclude it too.
   tombstone and a purge is queued (`purge_on_upstream_delete = true`). `agentsync purge --queue` runs the queue.
   Preview it first with `agentsync purge --queue --dry-run`. It writes nothing and prints each entry's reason and
   the docs paths a run would erase.
-  An entry whose file is listed again (it came back, under its id or a later one) stays queued; once the file is
-  gone, the next `agentsync purge --queue` runs it. A file that came back quarantined or refused is still purged.
+  An `upstream-deleted` entry whose file is listed again (it came back, under its id or a later one) stays queued;
+  once the file is gone, the next `agentsync purge --queue` runs it. A file that came back quarantined or refused is still purged.
   Run it weekly (suggested) or on request, after the preview. Tombstones of purged items carry no `git show` recovery
   hint.
 - **Bounded history:** mirror history older than `history_days` is squashed into one snapshot and the dropped
@@ -85,7 +85,12 @@ editing `sources.toml`.
   `.eml`. A `.msg` that holds MIME text (no compound-file header, an RFC 822 header block) has its `msip_labels`
   header read as an `.eml`'s. No label is read from an Outlook-format (binary) `.msg`: it sits in a named MAPI
   property agentsync does not read. A file with an excluded label is never converted or published. Its earlier conversions are deleted and a
-  `label-escalation` purge is queued. A policy change re-screens every label-capable item. Under a label rule, a
+  `label-escalation` purge is queued. If the policy stops refusing the file (the rule is taken out of `[policy]` or
+  the label comes off the file), the next sync publishes it again and the entry stays queued. While the file is
+  published, `agentsync purge --queue` skips it and prints `note: stays queued: ...`, because running it would
+  erase the current page and stop the file syncing. If the policy refuses the file again, the next `agentsync
+  purge --queue` runs the entry. To erase the file anyway, run `agentsync purge path=<its path> --source <its
+  source> --reason label-escalation`, which also takes the entry off the queue. A policy change re-screens every label-capable item. Under a label rule, a
   save that changes only a file's label, not its content, is screened at the next sync that fetches the file, and
   its page is withheld or restored to match the new label (CONTRACTS §16.60 F72).
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
