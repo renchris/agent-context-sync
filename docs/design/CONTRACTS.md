@@ -14489,7 +14489,7 @@ names the wait for the step and no longer sends the reader back for the folders:
 <id> at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` prints it too` (`each ...
 prints them too` for two or more). Its comment counts up to three waits per source (§16.63 G57). **Amended
 2026-10-13, §16.63 G44:** doctor's heartbeat fix says `the WAITING ON YOU line about <id>` when status knows exactly
-one wait explains it (`loop.NextStep.wait_counts`, counted per wait, not per check), and keeps `each ...`
+one wait names it (`loop.NextStep.wait_counts`, counted per wait, not per check), and keeps `each ...`
 otherwise, including the setup report's doctor, which has no count.
 
 **F2: the tcc ok line names no LaunchAgent that is not there (`agentsync.ops.doctor`).** When `agents_wanted` is
@@ -15146,8 +15146,8 @@ built: `resolve(strict=True)` leaves no link in the path. Test:
 `test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule`.
 
 **G44: doctor says "the line" for exactly one wait (`agentsync.loop`, `agentsync.cli`, `agentsync.ops.doctor`).**
-`NextStep.wait_counts` counts, per source, the waits that explain its `heartbeat.<id>` check (each clear,
-collides and gone line, the unlisted and root lines, the privacy-held line); status passes it with `checks`
+`NextStep.wait_counts` counts, per source, the waits that name it (each clear, collides and gone line, the
+unlisted, root and privacy-held lines, and the breaker, download and recording waits); status passes it with `checks`
 through `_status_checks` and `run_checks` to `_check_heartbeat`. `_incomplete_fix(..., waits=1)` reads `the
 WAITING ON YOU line about <id> ...`; no count (the setup report) or more keeps `each`. Tests:
 `test_status_says_each_wait_line_when_one_source_has_more_than_one`,

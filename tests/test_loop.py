@@ -378,6 +378,19 @@ def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
         "does not clear it"
     )
     assert loop.next_step(config, count_queue=False).wait_counts == {"work": 1}
+    # a breaker wait names work too, so two lines are about it: "each" (G44 review)
+    now = datetime.now(UTC)
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.trip_breaker(
+            "work",
+            candidates=1,
+            tripped_at=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            until=(now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+    assert loop.next_step(config, count_queue=False).wait_counts == {"work": 2}
+    assert (heartbeat().fix or "").startswith("each WAITING ON YOU line about work ")
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.clear_breaker("work")
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
     config = load_config(path)

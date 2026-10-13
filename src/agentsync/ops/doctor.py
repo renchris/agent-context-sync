@@ -1766,9 +1766,10 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int 
     incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names any
     other cause. A local source with no such line either changed since its last walk (its stopping folders are
     excluded now) or had no full walk yet: the next full walk lists it.
-    ``waits``: how many WAITING ON YOU lines explain it, when status knows (``loop.NextStep.wait_counts``):
-    "the line" only for exactly one, as the sync's alarm says it (B13 round 6 G44); unknown (the setup
-    report, which may show none) and more than one keep "each", true for any count.
+    ``waits``: how many WAITING ON YOU lines name the source, when status knows
+    (``loop.NextStep.wait_counts``): "the line" only for exactly one, as the sync's alarm says it (B13 round
+    6 G44); unknown (the setup report, which may show none) and more than one keep "each", true for any
+    count.
     No nested parentheses: the setup report's fix parser strips one level."""
     if yours is None:
         yours = src.kind is SourceKind.LOCAL
