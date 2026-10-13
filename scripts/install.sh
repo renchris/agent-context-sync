@@ -1852,7 +1852,9 @@ fallback_redaction() {
 	say "uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
-	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5).
+	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an
+	# organisation since G46 registers bare whatever is not context_org_word). The send advice is one "Send it: "
+	# line, as the agentsync report's, which a stopped copy's report drops whole (B13 round 6 G50).
 	local v p
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
@@ -1861,8 +1863,8 @@ fallback_redaction() {
 		case "$p" in "<folder-"*) ! generic_folder "$v" || continue ;; esac
 		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
 		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
-		say "placeholder stands in the report's own text it can be read back. Send this report privately"
-		say "(docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue."
+		say "placeholder stands in the report's own text it can be read back."
+		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
 		break
 	done < <(redaction_pairs 2>/dev/null || true)
 }

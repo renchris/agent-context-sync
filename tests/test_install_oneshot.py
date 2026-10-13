@@ -1403,7 +1403,17 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
         "Private only: one of your folder or organisation names is also a word this report prints, so where "
         "its\n" in text
     ), text
-    assert "(docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue." in text
+    assert (
+        "\nSend it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public "
+        "issue. Nothing is sent automatically.\n" in text
+    ), "one line, as the agentsync report's (G50)"
+    # A stopped copy's report drops that one line whole, so it says nothing of sending it (G50)
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh(env, "--report-only").returncode == 0
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    _sends_nothing(side)
+    stopped = side.read_text(encoding="utf-8")
+    assert "Private only:" in stopped and "privately" not in stopped and "public issue" not in stopped
 
 
 @pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])

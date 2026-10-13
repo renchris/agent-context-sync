@@ -14785,6 +14785,8 @@ was not reproducible (that sentence is appended unredacted), and its org `Link` 
 Amended 2026-10-13, §16.64 G45 (with G46, G75): "never lands in fixed text" holds because `context` mode now
 matches only after an app's name; a one-word organisation outside `_CONTEXT_ORG_WORDS` that is a report word
 (`Status`, `Context`) is matched everywhere and raises `Private only:`.
+Amended 2026-10-13, §16.65 G50: the shell report puts its send advice on one `Send it: privately (...), never as
+a public issue. Nothing is sent automatically.` line.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -15409,6 +15411,18 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   anything ...` stays on one line, which `stopped_report_note` rewrites. docs/deploy/setup-feedback.md's
   `<proxy-N>` row says the same for both reports (the agentsync report's rule is the URL alone).
   `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+- **The shell report's private-only send advice is one line** (G50). The advice, `Send this report privately ...
+  never as a public issue.`, ran on from the `Private only:` lines and survived in a stopped copy's report under
+  its `do not send it` note. It is now one unwrapped line, `Send it: privately (docs/deploy/setup-feedback.md in the
+  agentsync repository), never as a public issue. Nothing is sent automatically.`, as the agentsync report has it,
+  and `stopped_report_note` drops it whole; wrapped, its second half would stay behind.
+  `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately` (now also through a stopped copy).
+- **G71 is not built: its premise was removed by §16.64 G46.** G71 found the loop's `<org-` branch dead, since F42
+  and F55 registered a word-named organisation only in names and domains that hold `-` or `.`. Lane RA's G46
+  (landed first) registers every one-word organisation that is not `context_org_word` bare, so an organisation
+  named `Status` is now an `<org-N>` pair that is a `report_word` and must raise the lines
+  (`test_install_oneshot.py`'s G46 test checks that). Removing the branch would leave that report public, so the
+  branch and the words `folder or organisation` stay.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 
