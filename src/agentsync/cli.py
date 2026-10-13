@@ -637,10 +637,16 @@ def _same_folder(configured: Path, path: Path) -> bool:
     case, or with a composed é where the disk holds e and an accent, is not a second folder. The key is the
     one the manifest and the docs repo use for "the same path" (:func:`agentsync.slug.collision_key`); the
     file system then confirms it, so on a case-sensitive volume two folders that differ only in case stay
-    two (and a configured folder that is gone is not the one that exists)."""
+    two (and a configured folder that is gone is not the one that exists). Paths under ~/Library/CloudStorage
+    whose keys differ are asked of the file system too: a folder stored through a link there (one that names
+    a provider folder) is the folder typed by its real name (B13 round 6 G39). Only there, where add-source
+    already reads the folder's domain: a folder elsewhere may sit behind a privacy prompt."""
     if configured == path:
         return True
-    if collision_key(str(configured)) != collision_key(str(path)):
+    keys = collision_key(str(configured)), collision_key(str(path))
+    root = Path.home() / "Library" / "CloudStorage"  # as written and resolved (a home under /tmp: F89)
+    clouds = tuple({collision_key(str(p)) + "/" for p in (root, Path(os.path.realpath(root)))})
+    if keys[0] != keys[1] and not all(k.startswith(clouds) for k in keys):
         return False
     try:
         return configured.samefile(path)

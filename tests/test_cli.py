@@ -2407,6 +2407,33 @@ def test_add_source_takes_another_case_or_unicode_form_for_the_same_folder(
         assert load_config(initialised.config_path).sources[-1].path == spelling.resolve()
 
 
+def test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folder(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 6 G39: a folder added through a link in ~/Library/CloudStorage that names a provider folder
+    is stored with the link kept; added again by its real name, it became a second source, and every file in
+    it was mirrored twice. The file system is asked when the two paths are under CloudStorage, in either
+    order, and the stored path is left as it is."""
+    cloud = Path.home() / "Library" / "CloudStorage"
+    real = cloud / "OneDrive-Contoso" / "Project Alpha"
+    real.mkdir(parents=True)
+    (cloud / "OneDrive-Link").symlink_to(cloud / "OneDrive-Contoso", target_is_directory=True)
+    linked = cloud / "OneDrive-Link" / "Project Alpha"
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(linked), "--config", cfg]) == cli.EXIT_OK
+    added = load_config(initialised.config_path).sources[-1]
+    assert "OneDrive-Link" in str(added.path), "the stored path keeps the link"
+    after = initialised.config_path.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["add-source", str(real), "--config", cfg]) == cli.EXIT_OK
+    assert f"already configured: source {added.id!r} (local, live) has path {added.path} in " in (
+        capsys.readouterr().out
+    )
+    assert initialised.config_path.read_text(encoding="utf-8") == after, "no second source on that folder"
+    # a folder outside CloudStorage is not asked of the file system unless its key matches
+    assert not cli._same_folder(Path.home() / "Elsewhere" / "Project Alpha", real)
+
+
 def test_init_and_add_source_keep_exactly_one_inbox(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -6221,6 +6221,22 @@ def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: 
     assert "exclude list prunes the inner folder: no;" in status_parts(fake_mac)[1]["Overlapping sources"]
 
 
+def test_overlapping_sources_part_finds_a_folder_stored_through_a_link(fake_mac: dict[str, Path]) -> None:
+    """B13 round 6 G39: two sources on one folder, one stored through a link to it, were compared as text
+    and the part said none; their real paths are compared, and the stored paths are kept."""
+    link = fake_mac["one"].with_name("Link to one")
+    link.symlink_to(fake_mac["one"], target_is_directory=True)
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f'\n[[source]]\nid = "tailspin-deal"\nkind = "local"\npath = "{link}"\n',
+        encoding="utf-8",
+    )
+    part = status_parts(fake_mac)[1]["Overlapping sources"].strip()
+    assert " has the same folder as " in part and not part.startswith("- none"), part
+    assert "tailspin-deal" not in part
+
+
 def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Path]) -> None:
     """B13 round 4 Q17: one empty folder that is still there and holds nothing. The line keeps its head (the
     dataless count is the measured answer to the open question) and "1 of 1 checked", drops the kinds with

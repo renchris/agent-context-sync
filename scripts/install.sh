@@ -2318,22 +2318,42 @@ def key(path):
     return unicodedata.normalize("NFC", unicodedata.normalize("NFC", str(path)).casefold()).rstrip("/") + "/"
 
 
-synced = {}
+def ident(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
+# A folder stored through a link in CloudStorage is the folder listed by its real name: compare by identity
+# (and, for the inside/contains marks, by the real path), taken only for the comparison and only under
+# CloudStorage, which the listing has already read (B13 round 6 G39). The stored path is kept.
+root = Path.home() / "Library" / "CloudStorage"
+cloud = (key(root), key(os.path.realpath(root)))  # as written and resolved: a home under /tmp
+synced, by_ident, real = {}, {}, {}
 for s in load_config(Path(sys.argv[1])).sources:
     if s.kind.value == "local" and s.state.value == "live" and s.path is not None:
-        synced.setdefault(key(s.path), str(s.path))
+        k = key(s.path)
+        synced.setdefault(k, str(s.path))
+        if k.startswith(cloud):
+            by_ident.setdefault(ident(s.path), k)
+            real.setdefault(k, key(os.path.realpath(s.path)))
+by_ident.pop(None, None)
 with open(sys.argv[2], "rb") as fh:
     listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
 same, inside, contains = (mark + " " for mark in sys.argv[3:6])
 shown, body = set(), []
 for p in listed:
     folder = key(canonical_source_root(Path(p)))
-    if folder in synced:
-        shown.add(folder)
+    hit = folder if folder in synced else by_ident.get(ident(p))
+    there = key(os.path.realpath(p))
+    if hit is not None:
+        shown.add(hit)
         body.append(same + p)
-    elif any(folder.startswith(s) for s in synced):
+    elif any(folder.startswith(s) for s in synced) or any(there.startswith(r) for r in real.values()):
         body.append(inside + p)
-    elif any(s.startswith(folder) for s in synced):
+    elif any(s.startswith(folder) for s in synced) or any(r.startswith(there) for r in real.values()):
         body.append(contains + p)
     else:
         body.append(p)

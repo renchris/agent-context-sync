@@ -2738,6 +2738,29 @@ def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_f
     assert install_log(env)[-2].endswith(" result=done note=listed-3 synced=2")
 
 
+def test_list_folders_marks_a_synced_folder_stored_through_a_link_in_cloud_storage(
+    env: dict[str, str],
+) -> None:
+    """B13 round 6 G39: a source stored through a link in CloudStorage that names the provider folder is the
+    folder the list shows by its real name. Compared as text, the list printed the link form as a synced
+    folder outside it and left the real one unmarked, so step 1 offered it again. Folders are compared by
+    identity, and by their real path for the inside mark."""
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "Project Alpha" / "Inner").mkdir(parents=True)
+    (cs / "OneDrive-Contoso" / "Project Beta").mkdir(parents=True)
+    (cs / "OneDrive-Link").symlink_to(cs / "OneDrive-Contoso", target_is_directory=True)
+    _write_config(env, local_source_table("project-alpha", cs / "OneDrive-Link" / "Project Alpha"))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
+        f"{cs}/OneDrive-Contoso/Project Beta",
+    ]
+
+
 @pytest.mark.parametrize("cloud_storage", ["absent", "no folder yet"])
 def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     env: dict[str, str], cloud_storage: str

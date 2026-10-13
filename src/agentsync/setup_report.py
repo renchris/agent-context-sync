@@ -4780,13 +4780,19 @@ def _source_counts(m: _Mirror, source_id: str) -> list[str]:
 
 def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Pairs of sources whose configured folder is the same or one inside the other, with each one's file
-    counts and whether the outer source's exclude list prunes the inner folder."""
+    counts and whether the outer source's exclude list prunes the inner folder. Folders are compared by
+    their real path, taken for the comparison alone: one stored through a link in CloudStorage is the
+    folder another source has by its real name (B13 round 6 G39)."""
     from agentsync import arm_local  # noqa: PLC0415 - _unexcluded: the walk's own pruning rule
 
+    def compared(path: Path) -> Path:
+        try:
+            return Path(os.path.realpath(expand(path)))
+        except (OSError, RuntimeError):  # a link loop, or a folder that cannot be read: the path as stored
+            return Path(os.path.normpath(expand(path)))
+
     config = cast(Config, r.config)
-    roots = [
-        (src, Path(os.path.normpath(expand(src.path)))) for src in config.sources if src.path is not None
-    ]
+    roots = [(src, compared(src.path)) for src in config.sources if src.path is not None]
     out: list[str] = []
     pairs = 0
     for outer, outer_root in roots:
