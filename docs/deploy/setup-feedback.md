@@ -91,9 +91,9 @@ words) is yours to remove. The CLI always redacts.
 - **Public:** a new [Setup report issue](https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml)
   ([form](../../.github/ISSUE_TEMPLATE/setup-report.yml)). Step 3's `install.sh --report-only` prints, just before
   its `NEXT:` line (as `agentsync setup-report --out` does as its last line),
-  `issue link (review the report first): <link>`, a link that opens the form with the Summary's four values
+  `issue link (review the report first): <link>`, a link that opens the form with the Summary's five values
   already in their fields (the table below). Paste the whole redacted file into
-  the Setup report field and tick the review box. Opened another way, copy the four values from the Summary. The
+  the Setup report field and tick the review box. Opened another way, copy the five values from the Summary. The
   form shows the report as a code block. The report fences command output with `~~~`, which the form's backtick
   fence does not break. Keep the agent's additions to `~~~` too.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
