@@ -141,6 +141,7 @@ from agentsync.model import (
 )
 from agentsync.ops.launchd import rotate_logs
 from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read_heartbeat, write_heartbeat
+from agentsync.ops.lock import Stage as LockStage
 from agentsync.paths import expand
 from agentsync.policy import PolicyConfig
 from agentsync.publish import (
@@ -1621,7 +1622,7 @@ class _Cycle:
                     self._reread_n,
                     self._reread_kept,
                 )
-            self.lock.beat("secrets")
+            self.lock.beat(LockStage.SECRETS)
             rescan = bool(self.manifest.get_meta(_SECRET_RESCAN_META))
             if rescan:  # the secret-scan rules moved: every published page is scanned again too
                 self._add_published_pages()
@@ -1629,10 +1630,10 @@ class _Cycle:
             if rescan:
                 self.manifest.set_meta(_SECRET_RESCAN_META, "")
             self._flush_changes(rewrite=True)
-            self.lock.beat("curate")
+            self.lock.beat(LockStage.CURATE)
             pre_head, session_pages = self._session_topic_pages()  # before this run's banner rewrites
             self._curate()
-            self.lock.beat("surface")
+            self.lock.beat(LockStage.SURFACE)
             statuses = self._statuses(self.config.sources)
             shards = self.publisher.write_manifest_shards([s.id for s in self.config.sources])
             self.shard_sources = {Path(p).stem for p in shards if (self.repo / p).is_file()}
@@ -1640,7 +1641,7 @@ class _Cycle:
             self.publisher.write_index(statuses)
             if self.changes:
                 self.publisher.append_changelog(self.run_id, self.today(), self.changes, self._report(None))
-            self.lock.beat("land-gate")
+            self.lock.beat(LockStage.LAND_GATE)
             dirty = gitops.has_changes(self.repo)
             if dirty or self.mode is CycleMode.RECONCILE:
                 changed_paths = sorted(
@@ -1657,7 +1658,7 @@ class _Cycle:
                 self.manifest.discard_pending(self.run_id)
                 status = "failed"
             else:
-                self.lock.beat("commit")
+                self.lock.beat(LockStage.COMMIT)
                 commit_sha = self._commit(statuses, dirty=dirty)
                 self._retag_published()
                 self.manifest.clear_run_changes(self.run_id)
@@ -1669,7 +1670,7 @@ class _Cycle:
                     if removed:
                         log.info("converter cache: %d dead key(s) removed", removed)
                     self._prune_pieces()
-                    self.lock.beat("retention")
+                    self.lock.beat(LockStage.RETENTION)
                     commit_sha = self._retention(commit_sha)
         except Exception as exc:  # a cycle-level failure: nothing is promoted, the report says why
             log.exception("cycle %d failed", self.run_id)
@@ -3415,7 +3416,7 @@ class _Cycle:
         candidates = self._recording_candidates()
         if not candidates:
             return
-        self.lock.beat("recordings")
+        self.lock.beat(LockStage.RECORDINGS)
         self._in_recording_pass = True
         try:
             with recording_mod.work_allowance(

@@ -399,6 +399,32 @@ def test_a_log_line_never_names_a_file_a_converter_reads(suffix: str) -> None:
         )
 
 
+def test_the_lock_wait_warning_keeps_a_fixed_stage_word_and_redacts_a_source_stage() -> None:
+    """B13 round 6 G36: the lock-wait WARNING quotes the holder's stage with ``%r``, and the quoted-value rule
+    made ``stage 'acquired'`` read ``stage '<path>'``. A fixed stage word names no item and stays; a stage
+    built from a source id is still redacted, and so is a fixed word quoted anywhere but after ``stage``."""
+    head = f"{LOG_HEAD}cycle: another sync is running (lock held: pid 123 (poll) since 2026-10-05T08:59:00Z, "
+    tail = "); waiting for it to finish (30s of at most 300s)"
+    for stage in (
+        "acquired",
+        "secrets",
+        "curate",
+        "surface",
+        "land-gate",
+        "commit",
+        "retention",
+        "recordings",
+    ):
+        line = f"{head}last beat 2026-10-05T08:59:30Z (30s ago), stage {stage!r}{tail}"
+        assert setup_report._scrub_item_paths(line) == line, stage
+    for stage in ("work:project-alpha", "source:project-alpha", "fetch project-alpha"):
+        line = f"{head}stage {stage!r}{tail}"
+        scrubbed = setup_report._scrub_item_paths(line)
+        assert "project-alpha" not in scrubbed and "stage '<path>'" in scrubbed, scrubbed
+    named = f"{LOG_HEAD}cycle: src-x: folder 'commit' is empty"
+    assert setup_report._scrub_item_paths(named) == f"{LOG_HEAD}cycle: src-x: folder '<path>' is empty"
+
+
 @pytest.mark.parametrize("module", ["pdf", "xlsx", "pptx", "eml", "markdown", "image"])
 def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) -> None:
     """A logger is named after its module: ``agentsync.convert.pdf`` is not a document, and a line that

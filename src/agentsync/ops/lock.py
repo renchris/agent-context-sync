@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import enum
 import errno
 import fcntl
 import json
@@ -213,6 +214,21 @@ def _holder_path(lock_path: Path) -> Path:
     return lock_path.with_name(lock_path.name + ".json")
 
 
+class Stage(enum.StrEnum):
+    """The fixed words a holder records as its stage (:meth:`SingleWriterLock.beat`).  A stage that names a
+    source (``source:<id>``, ``work:<id>``) is built from its id and is not one of these, so the setup report,
+    which lets only these words through its scrub of quoted values, never prints a source's name (G36)."""
+
+    ACQUIRED = "acquired"
+    SECRETS = "secrets"
+    CURATE = "curate"
+    SURFACE = "surface"
+    LAND_GATE = "land-gate"
+    COMMIT = "commit"
+    RETENTION = "retention"
+    RECORDINGS = "recordings"
+
+
 EMPTY_BODY_HOLDER = (
     "an unrecorded holder (install.sh while it reinstalls agentsync, a status or doctor check, or a cycle "
     "starting)"
@@ -225,7 +241,7 @@ the stderr line, in the WARNING and in doctor (B13 round 2 R62; round 3 R50 name
 
 def _holder_identity(body: str) -> str:
     """``LockHeldError.who``, named by the CLI's ``skipped: lock held by ...`` WARNING: the holder's label
-    alone. Its pid, start, host, beat and stage stay on the stderr line; any of them would make each holder
+    alone. Its pid, start, beat and stage stay on the stderr line; any of them would make each holder
     run (or each skip) a new line that the report's Recent errors cannot merge."""
     info = LockInfo.parse(body)
     if info is None:
@@ -236,7 +252,9 @@ def _holder_identity(body: str) -> str:
 
 
 def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
-    """Human description of a lock holder for LockHeldError and doctor."""
+    """Human description of a lock holder for LockHeldError, the cycle's lock-wait WARNING and doctor.  The
+    sidecar's host is left out: the lock is a local flock, so the holder is always this Mac, and its name is
+    shown in the terminal and in chat for nothing (B13 round 6 G36; the sidecar keeps it)."""
     info = LockInfo.parse(body)
     if info is None:
         if not body.strip():  # held with no body: install.sh's reinstall (lockf), a probe, a starting cycle
@@ -244,11 +262,8 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
         return f"{body.strip()!r} (unparseable lock body)"
     out = f"pid {info.pid} ({info.label}) since {info.started_at}"
     if holder is not None and holder.get("pid") == info.pid:
-        host = holder.get("host")
         beat = holder.get("last_beat_at")
         stage = holder.get("stage")
-        if isinstance(host, str) and host:
-            out += f" on {host}"
         if isinstance(beat, str):
             out += f", last beat {beat}"
             parsed = _parse_iso(beat)
@@ -325,7 +340,7 @@ class SingleWriterLock:
         self._fd = fd
         self._info = info
         try:
-            self._write_holder(stage="acquired", now_iso=info.started_at)
+            self._write_holder(stage=Stage.ACQUIRED, now_iso=info.started_at)
         except OSError as exc:  # the sidecar is diagnostic only; the flock is what excludes writers
             log.warning("lock %s: cannot write holder sidecar: %s", self._path, exc)
         return LockAcquisition(broke_stale=broke_stale, previous=previous)

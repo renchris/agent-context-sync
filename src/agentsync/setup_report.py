@@ -124,6 +124,7 @@ from agentsync import __version__, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
 from agentsync.materialise import file_provider_marker
+from agentsync.ops.lock import Stage
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary
 from agentsync.skill import AGENTSYNC_BIN
 
@@ -5481,16 +5482,31 @@ def _own_line(line: str) -> bool:
     return _PY_LOG_RE.search(line) is not None or _SYNC_OUT_RE.match(line) is not None
 
 
+_STAGE_WORDS = frozenset({f"'{s.value}'" for s in Stage} | {f'"{s.value}"' for s in Stage})
+"""A lock holder's fixed stage words, quoted as ``%r`` prints them: no item's name (B13 round 6 G36)."""
+
+
+def _keep_stage(m: re.Match[str]) -> bool:
+    """Whether the quoted value ``m`` is a lock stage the scrub keeps: one of the fixed words
+    (:class:`~agentsync.ops.lock.Stage`), right after ``stage``. A stage built from a source id
+    (``work:<id>``) is no fixed word, so it is still redacted."""
+    return m.group(0) in _STAGE_WORDS and m.string[: m.start()].endswith("stage ")
+
+
 def _scrub_item_paths(line: str) -> str:
     """``line`` (``<log file>: <log line>``, or a log line alone) with item paths and document names replaced
     by ``<path>``. In one of agentsync's own lines (:func:`_own_line`) every quoted ``%r`` first, between its
     quotes: a folder one level below a source root has no slash and no extension to know it by. Then, per
     ``: ``-separated segment after the first: a ``key=`` value or an absolute path (``/…`` or ``~/…``, to the
     segment's end) in place, and any segment still naming a path or document whole. The local log keeps the
-    detail; the report, which may go to a public issue, never carries an item's path or name."""
+    detail; the report, which may go to a public issue, never carries an item's path or name. A lock holder's
+    fixed stage word stays (:func:`_keep_stage`): it names no item, and as ``<path>`` it told the reader
+    nothing."""
     name, sep, rest = line.partition(": ")
     if _own_line(line):
-        rest = _QUOTED_RE.sub(lambda m: f"{m.group(0)[0]}<path>{m.group(0)[-1]}", rest)
+        rest = _QUOTED_RE.sub(
+            lambda m: m.group(0) if _keep_stage(m) else f"{m.group(0)[0]}<path>{m.group(0)[-1]}", rest
+        )
     return name + sep + ": ".join(_scrub_segment(part) for part in rest.split(": "))
 
 

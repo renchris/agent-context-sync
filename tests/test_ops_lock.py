@@ -547,3 +547,13 @@ def test_heartbeat_validates_arguments(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="ISO-8601"):
         _hb(path, "s1", now_iso="yesterday")
     assert not path.exists()
+
+
+def test_the_holder_description_names_no_host() -> None:
+    """B13 round 6 G36: the lock is a local flock, so its holder is always this Mac. The description the
+    lock-wait WARNING, LockHeldError and doctor print leaves the sidecar's host out (the sidecar keeps it)."""
+    body = LockInfo(123, 1, "2026-10-05T08:59:00Z", "poll").render()
+    holder = {"pid": 123, "host": "contoso-mbp", "last_beat_at": "2026-10-05T08:59:30Z", "stage": "acquired"}
+    out = lockmod._describe_holder(body, holder)
+    assert out.startswith("pid 123 (poll) since 2026-10-05T08:59:00Z, last beat 2026-10-05T08:59:30Z"), out
+    assert out.endswith(", stage 'acquired'") and "contoso-mbp" not in out and " on " not in out, out
