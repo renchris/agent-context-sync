@@ -2641,6 +2641,7 @@ _RETIRED_TEST_NAMES = {
     "test_an_empty_git_proxy_takes_no_line_after_it": "§16.40 says it was merged into another test",
     "test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it": "§16.45 R101's dated line",
     "test_under_a_label_rule_a_msg_is_the_no_converter_stub": "§16.54 Q78's dated line",
+    "test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed": "§16.66 G63 renames it",
 }
 """Test names CONTRACTS.md cites as history: a dated line beside each says the test is gone or replaced."""
 

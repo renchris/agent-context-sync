@@ -972,11 +972,12 @@ def test_an_empty_proxy_in_gits_config_turns_the_proxy_off_for_the_seed_as_for_g
     assert not {"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} & set(env)
 
 
-def test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed(
+def test_a_proxy_git_scopes_to_fluidinference_on_github_routes_the_seed(
     curl: Path, tools: Path, tmp_path: Path
 ) -> None:
-    """B13 round 5 F78: a proxy scoped to a path under github.com routes git's clone of FluidAudio, and the
-    seed reads git's settings for the url it fetches, so it routes the seed as well."""
+    """B13 round 5 F78: a proxy scoped to the FluidInference owner path on github.com routes git's clone of
+    FluidAudio, and the seed reads git's settings for the url it fetches, which is under that path too, so
+    it routes the seed as well."""
     (Path.home() / ".gitconfig").write_text(
         '[http "https://github.com/FluidInference"]\n\tproxy = http://path-proxy.contoso.example:3128\n'
     )
@@ -984,6 +985,22 @@ def test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed(
     assert speech.build(tmp_path / "cache").is_file()
     seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
     assert seen.get("HTTPS_PROXY") == "http://path-proxy.contoso.example:3128"
+
+
+def test_a_proxy_git_scopes_to_fluidaudios_own_repository_routes_the_clone_and_not_the_seed(
+    curl: Path, tools: Path, tmp_path: Path
+) -> None:
+    """B13 round 6 G63: F78's docstring said a repository-path scope counts for the seed "as it does for the
+    clone". git matches by path prefix, so a proxy scoped to FluidAudio's repository routes the clone only;
+    the seed's curl, which fetches from another repository, gets no proxy from it."""
+    (Path.home() / ".gitconfig").write_text(
+        '[http "https://github.com/FluidInference/FluidAudio.git"]\n'
+        "\tproxy = http://repo-proxy.contoso.example:3128\n"
+    )
+    real_git_config(tools)
+    assert speech.build(tmp_path / "cache").is_file()
+    seen = dict(ln.split("=", 1) for ln in lines_of(curl.with_name("curl.env")))
+    assert "repo-proxy" not in seen.get("HTTPS_PROXY", "")
 
 
 @pytest.mark.parametrize("state", ["fetches", "no proxy", "already seeded"])

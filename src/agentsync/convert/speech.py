@@ -458,9 +458,11 @@ def _build_env() -> dict[str, str]:
 
 
 _GIT_URL = NEMO_URL
-"""The url whose settings :func:`_git_config` reads: the one the seed's curl fetches, so a setting git scopes
-to a path under github.com (``[http "https://github.com/FluidInference"]``) counts, as it does for the clone,
-and a host-wide one still does (git takes the most specific match; B13 round 5 F78)."""
+"""The url whose settings :func:`_git_config` reads: the one the seed's curl fetches. A setting git scopes to
+github.com, or to any path NEMO_URL is under (``[http "https://github.com/FluidInference"]``), counts. One
+scoped to FluidAudio's own repository path routes the clone but not the seed, and one scoped to the seed's
+repository routes the seed but not the clone: git matches by path prefix and takes the most specific match
+(B13 round 5 F78, round 6 G63)."""
 _GIT_SETTINGS = ("http.sslcainfo", "http.sslcapath", "http.sslbackend", "http.proxy")
 """The git settings the seed's curl follows, as ``git config`` names them.  http.sslVerify is never read:
 verification is never turned off."""
