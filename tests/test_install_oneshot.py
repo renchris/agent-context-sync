@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v15) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v16) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -346,11 +346,11 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
-    """README step 1: "If --version does not end with "setup-prompt-compat 15", ... stop"."""
+    """README step 1: "If --version does not end with "setup-prompt-compat 16", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 15" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 16" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -4269,7 +4269,7 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
             f"Stop here and run no other step of that prompt. Tell the person to copy the prompt again from "
             f'{PROMPT_SOURCE} ("Set up on a new Mac: one prompt") and paste it into a new session. If the '
             f'first line of your prompt says "setup prompt v{COMPAT}", the --log-start value was changed: '
-            "run step 1's command again exactly as the prompt writes it.\n"
+            "run step 1's command again once, exactly as the prompt writes it.\n"
         )
         assert newer_copy or told in cp.stderr
         assert "Stop here and run no other step of that prompt. Tell the person to " in cp.stderr

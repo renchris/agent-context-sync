@@ -15762,7 +15762,114 @@ load rose later still ran them (a 6 s bound failed at 34 per core). Same thresho
 
 ### 16.72 Round 7: setup prompt v16 (2026-10-13, wave B13 round 7 lane P)
 
-Reserved for round 7 lane P of B13.
+The B13 round 7 items of lane P (specs `round7/items/H<n>.md`, the verifier's corrected fix built). All ten need
+prompt text (H6, H9, H19, H21, H25, H26, H30, H65, H66, H70), so the prompt is **setup prompt v16**:
+`SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v16` and `setup-prompt-compat 16`, the issue form's
+placeholder and the block's digest move together; a saved v15 copy is stopped at step 1 like every older copy. v16
+moves no step, so it has no `PROMPT_LAYOUTS` entry and is read with v7's rules. None adds an agentsync command, an
+installer flag, a config key or a friction kind. This section amends the older sections it names here; the older
+text stays as the record of its version.
+
+**The finish's folder list is the config's** (H9 and H30, one defect, built once; amends §16.36 and §16.43's
+finish). v15 listed "those step 1's list marked [synced] and those step 2 added", with `sources.toml` only for a
+step 1 that stopped before its list. The list can run to its end and mark nothing (an installed agentsync too old
+for the reader's import, §16.70; the reader's 10 s timeout; a config the installed tool cannot load), and step 2
+then prints `folders: kept the N already synced (none added)`, so the literal answer was a false "none: this Mac
+syncs no folder". The finish now reads "the kind = "local" sources in ~/agent-context/sources.toml that are not
+paused or retired, read after step 2 or, if setup stopped before step 2, as they are (never the inbox or another
+kind = "inbox" folder), saying which of them this session added: those for which a run of step 2 this session
+printed an "added source" line; or, if sources.toml has no such kind = "local" source, "none: this Mac syncs no
+folder"". "Added" is add-source's own per-folder line (`added source '<id>' to <config>:`, printed only when it
+writes the folder), which step 2's `add_source_filter` passes on; the `folders:` line gives counts only, so H30's
+"as many as step 2's folders: line says" could not name the paths. H9's verifier keyed on the absence of the
+`already configured:` line instead; the lane's review measured that a re-run of step 2 (which the prompt allows)
+prints that line for every folder the first run added, so the positive line is the one built. Rejected: making step
+2 refuse an already-configured `--source-local` (exit 2 ends setup before install on the Mac where the reader
+fails, H9's verifier) and a second "already synced, not added" line (`already configured:` is that line). Test:
+`tests/test_deploy_pack.py` (`test_readme_step3_runs_the_loop_then_the_report`).
+
+**At the folder wait the NEXT item is "none"** (H6; amends §16.43's H3 paragraph, "The finish names one NEXT
+line"). Step 3 lists the folder wait as a case with no report, so "the last NEXT: line printed before the report"
+pointed at a report that never ran, while `--list-folders` had printed a NEXT: line that names install.sh with the
+folder left open. The item now adds "(also "none: waiting for your folder answer" while you wait for my folder
+answer in step 1; the folder list's NEXT: line is not a step for me)". Test: as H9.
+
+**The keep command keeps a local commit and moves main to the update** (H19; amends §16.30's "The bring-back sends
+local work once"). A checkout with a local commit behind origin fails the pull with "Not possible to fast-forward",
+which the prompt did not call local changes; v15's keep command then failed at its commit ("nothing to commit",
+exit 1) and left the checkout on its new branch with no upstream, so every later paste's pull said "no tracking
+information" and got the network message (measured, git 2.54, a throwaway home). Step 1 now names git's words for
+both kinds ("would be overwritten", "Not possible to fast-forward"), and the command is `... switch -c
+local-work-<time> && ... add -A && { ... diff --cached --quiet || ... commit ...; } && ... format-patch -q
+origin/main.. -o ~/agent-context/setup/local-work && ... fetch origin && ... switch -C main origin/main`, led by
+`... merge-base --is-ancestor main HEAD &&`: it commits only what is staged, writes one patch per commit the update
+lacks, and resets main to the update only after the branch and the patches exist (the old tip stays on the branch).
+The leading check is the lane review's: on a checkout that is not on main, with a commit on main the checked-out
+branch lacks, the reset left that commit on no branch and in no patch (measured); the check stops the command
+first, exit 1 with no output and nothing changed, and the prompt sends that case, with "no tracking information",
+to `git switch main` and step 1 again, where the keep runs from main. When only the fetch or the switch failed, the
+prompt names those two to run again; a checkout already left on a branch runs `git -C ~/src/agent-context-sync
+switch main` first. The Rules line's exception reads "keeping local changes on a branch and moving main to the
+update, as step 1 says, is none of these", since `-C` resets a branch. §16.30's "Not by file name" paragraph now
+holds for the commit of uncommitted changes only: a local commit's patch is named `NNNN-<its subject>.patch`, and a
+second keep overwrites a first keep's patch only where both get the same number and subject; the section 3 reader
+loops over every `*.patch` in name order and decides by each one's mtime whether to send it, so nothing there
+changes. Tests: `tests/test_deploy_pack.py` (`test_readme_keeps_a_local_commit_and_moves_main_to_the_update`,
+`test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is`,
+`test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`,
+`test_readme_keeps_local_work_then_runs_step_1_again`, `test_step1_keeps_local_changes_on_a_branch_and_updates`).
+
+**The git stop's quote is sentences, and its rewrite query is anchored** (H21, H25; amends §16.67's G73 paragraph).
+The quote was one 106-word sentence, 86 words of it one parenthesis nesting three sources, with the one action
+after all of it. It now reads "A corporate proxy may need HTTPS_PROXY set in your terminal. If git's error names a
+host other than github.com, git was told to use that host in one of three ways, and any of them may point at a
+network this Mac is not on: a URL rewrite, which `git config --get-regexp '^url\..*\.insteadof$'` prints; git's own
+proxy setting, which `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the
+terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy` shows.
+Once git can reach GitHub from a terminal, start a new session from that terminal and paste this prompt again". The
+unanchored `'url\..*insteadof'` also printed `url.<base>.pushinsteadof`, which never changes a fetch or pull URL
+(measured: `git remote get-url origin` resolved to the insteadOf host, only `--push` to the pushInsteadOf one); git
+lower-cases the key name, so the anchored query keeps every insteadOf, whatever its case. Test:
+`tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+
+**One `## Not used` line after a stop before step 2** (H26). Before step 2 no part of agentsync has run, so the
+line per part was twelve copies of one reason. Step 3 adds, after "saying why", "(if setup stopped before step 2,
+no part was used: one line saying so and naming the step it stopped at is enough)". Only that case shares a line:
+in any other session the per-part reasons are what triage reads. Test: `tests/test_deploy_pack.py`
+(`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+
+**The checkout sentence follows any error that does not name the checkout** (H65; amends §16.67's G15/G67
+paragraph). Installers v8 to v14 answer a newer copy with "Tell the person to copy the prompt again" (measured on
+trees at their commits), so v15's "tell me that, in its words" relayed only that, and the checkout sentence,
+reached only with no such error, never came for the checkout that follows a fork, the case it was written for. Step
+1 now reads "When step 1 stops here, if the command's error says what to tell me, tell me that, in its words;
+otherwise (--version printed another number and no such error), tell me to copy the prompt again from README.md on
+the main branch of the Source above. Either way, unless the error's words already mention this Mac's checkout, also
+tell me that if a fresh copy stops here too, this Mac's checkout (~/src/agent-context-sync) does not follow main of
+the Source: point it there, or move it aside so step 1 clones it, then paste the prompt again." A v15 or later
+installer's error for a newer copy names the checkout (`newer_copy_fix`), so it is relayed alone. Test: as H70.
+
+**A changed `--log-start` value runs step 1 once more** (H70). The installer's error ends, for every copy, "If the
+first line of your prompt says "setup prompt vN", the --log-start value was changed: run step 1's command again",
+while the stop said to run no other step. An exception keyed on that sentence would match every mismatched copy too
+(the verifier's measured objection: each rerun closes another attempt in the friction log). It keys on the
+installer's number instead: "But if the error says this installer is for v16, this prompt's own number, the copy
+matches and only step 1's command was changed: run it again once, exactly as written here, and stop as above if it
+stops the same way again." A copy that does not match never meets an installer for its own number. Step 3's
+no-report case reads "when step 1 stops (after at most that one rerun) because this prompt is not the installer's",
+and install.sh's sentence now says "run step 1's command again once, exactly as the prompt writes it". The words
+avoid "setup prompt v16" and "--log-start", which the block holds once each by test. Tests:
+`tests/test_deploy_pack.py` (`test_readme_prompt_names_its_version_and_the_installer_compat_line`,
+`test_readme_report_step_after_any_failure`).
+
+**The first sync's wait is its own sentence** (H66; amends §16.67's G37 paragraph). The installer probes the
+config's lock before its first sync every time ("step 2's wait ran out, or one started since"), and a re-run at the
+same commit reinstalls nothing, so v15's "its first sync then says ... waits for that sync again, up to 10 more
+minutes" covered only one of the cases. Step 2 now has two sentences: the reinstall's wait, then "If another sync
+is running when its first sync starts (that same one, or one that started since, such as a background sync on a Mac
+that already syncs), it says "another sync is still running" and waits for it, up to 10 minutes, and skips that
+sync ("skipped, lock busy") if it is still running then." Test: `tests/test_deploy_pack.py`
+(`test_readme_step2_is_the_one_install_command`).
 
 ### 16.73 Round 7: deploy docs and CONTRACTS cross-references (2026-10-13, wave B13 round 7 lane D)
 

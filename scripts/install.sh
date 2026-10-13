@@ -267,7 +267,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=15 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=16 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log
@@ -428,7 +428,7 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
 			# The last sentence is for a current copy whose agent changed the value. It names no value that
 			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
-			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again exactly as the prompt writes it.\n' "$what" "$TELL" "$SETUP_PROMPT_COMPAT" >&2
+			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again once, exactly as the prompt writes it.\n' "$what" "$TELL" "$SETUP_PROMPT_COMPAT" >&2
 			rc=2
 		fi
 		;;
