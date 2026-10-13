@@ -1207,6 +1207,45 @@ def test_inbox_drop_matching_a_graph_file_by_name_and_size_is_refused_unread(
     assert "duplicate-of drive" in (config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
 
 
+def test_an_inbox_duplicate_by_its_bytes_is_quarantined_on_the_sync_line_too(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H49: an inbox file whose bytes match a Graph file is read, then quarantined as a duplicate
+    (its row, the source line's ``quarantined=1`` and STATE.md say so), but the sync line's split counted it
+    "1 refused". It stays in N (its bytes were read) and is no longer in R."""
+    from agentsync import cli  # noqa: PLC0415
+    from agentsync.model import RowState  # noqa: PLC0415
+
+    notes = b"# Notes\n\nThe purchase order is approved.\n"
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "Contoso copy of the order.md").write_bytes(notes)  # another name: read, then H1 matches
+    config = config_with(tmp_path, local_source_dir, GRAPH_SOURCE + INBOX_SOURCE.format(path=inbox))
+    drive = FakeDrive({"I1": ("notes.md", notes)})
+    client = GraphClient(
+        FakeTokens(),
+        user_agent="NONISV|test|agentsync/0",
+        transport=httpx.MockTransport(drive.handler),
+        sleep=lambda _s: None,
+    )
+    try:
+        report = run(config, client=client, only=["drive", "inbox"])
+    finally:
+        client.close()
+    assert report.exit_code == 0, report
+    with Manifest(config.state_paths.db) as m:
+        (row,) = m.iter_items("inbox")
+    assert (row.state, row.last_verdict) == (RowState.QUARANTINED, Verdict.QUARANTINED)
+    assert row.state_reason is not None and row.state_reason.startswith("duplicate-of drive")
+    capsys.readouterr()
+    cli._print_report(report)
+    out = capsys.readouterr().out.splitlines()
+    (box,) = [ln for ln in out if ln.startswith("  inbox: ")]
+    assert "quarantined=1" in box and "refused=" not in box, box
+    assert "refused" not in out[-1], out[-1]
+    assert out[-1].startswith("converted 2, deferred 0 online-only"), out[-1]
+
+
 # ---------------------------------------------------------------------------------------------------------
 # the materialise byte budget charges downloads only (L3)
 # ---------------------------------------------------------------------------------------------------------

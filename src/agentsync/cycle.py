@@ -4425,7 +4425,9 @@ class _Cycle:
                 acc.unreadable += 1
             elif result.status is ConversionStatus.FAILED:
                 acc.conversion_failed += 1
-            elif result.status is ConversionStatus.REFUSED:  # still in N: S counts re-screens of it (G35)
+            # still in N: S counts re-screens of it (G35). An inbox duplicate is quarantined, as its row, its
+            # source line and STATE.md say, so it is not in R (B13 round 7 H49)
+            elif result.status is ConversionStatus.REFUSED and duplicate is None:
                 acc.refused += 1
             self._tally_converted(result, prior)
             if rescreen:

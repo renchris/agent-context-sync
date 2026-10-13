@@ -416,8 +416,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     so it is in N as well, and `` (F of them read for the first time, also counted above)`` says how many:
     B13 round 4 Q28), then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N
     are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were
-    read (R: a label rule, a .msg whose label cannot be read, an inbox duplicate; B13 round 6 G35, which
-    also prints the split for F or R alone), as ``; of the converted: ...`` after the Q28 clause, so
+    read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35, which also prints the split
+    for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49), as ``; of the converted:
+    ...`` after the Q28 clause, so
     two parentheses never stand side by side (B13 round 5 F34), then ``; re-screened S for a rule change
     (also counted above, K of them unchanged)``: a [policy] or secret-rule re-screen runs the converter on the
     same bytes, so it is in N, and counted again in S (F35). With
