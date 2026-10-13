@@ -1432,6 +1432,7 @@ class _SourceAcc:
     errors: list[str] = field(default_factory=list)
     auth_required: bool = False
     failed: bool = False
+    escalations: Counter[str] = field(default_factory=Counter)  # files, removed, queued: one alarm (G38)
 
     def report(self, cursor_advanced: bool) -> SourceReport:
         """Freeze into the model's SourceReport."""
@@ -4328,7 +4329,7 @@ class _Cycle:
                 self._tally["rescreened"] += 1
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
-            if rescreen and not again:
+            if rescreen:  # a re-screen is never a re-read, so never `again` (G58)
                 self._tally["rescreened_unchanged"] += 1
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
             if self._rewrite_if_moved(src, fresh, outs, acc):
@@ -4552,11 +4553,29 @@ class _Cycle:
             governance.PurgeReason.LABEL_ESCALATION,
             now=self.now(),
         )
-        self._acc(self.config.source(row.source_id)).alarms.append(
-            f"label escalation: a published file is now refused by the label policy; {removed} cached "
-            f"conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
+        # One alarm per source with running counts, replaced in place: a relabelled folder is one event, and
+        # an alarm per file named no file and read word for word the same (B13 round 6 G38).  The file is
+        # named on the INFO line (sync -v), the stable id only at DEBUG.
+        acc = self._acc(self.config.source(row.source_id))
+        tally = acc.escalations
+        tally.update(files=1, removed=removed, queued=int(queued))
+        files = tally["files"]
+        purges = [
+            *([f"{tally['queued']} purge(s) queued"] if tally["queued"] else []),
+            *([f"{files - tally['queued']} already queued"] if files > tally["queued"] else []),
+        ]
+        alarm = (
+            f"label escalation: {files} published file(s) now refused by the label policy; "
+            f"{tally['removed']} cached conversion(s) deleted; {', '.join(purges)} {_PURGE_QUEUE_STEPS}"
         )
-        log.warning("%s: label escalation of %s; purge queued", row.source_id, row.stable_id)
+        acc.alarms[:] = [a for a in acc.alarms if not a.startswith("label escalation:")] + [alarm]
+        log.info(
+            "%s: label escalation of %s; %s",
+            row.source_id,
+            row.rel_path,
+            "purge queued" if queued else "purge already queued",
+        )
+        log.debug("%s: label escalation of stable id %s", row.source_id, row.stable_id)
 
     # ---- secrets, curation, statuses ----------------------------------------------------------------------
     def _quarantine_secrets(self) -> None:

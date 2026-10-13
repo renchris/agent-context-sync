@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import plistlib
 import re
@@ -460,7 +461,7 @@ def test_sg04_label_escalation_queues_a_purge_and_drops_the_cached_plaintext(
     assert (item_id(config, "plan.docx"), "label-escalation") in queued(config)
     (alarm,) = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
     assert alarm.endswith(
-        "purge queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
+        "1 purge(s) queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
         "`~/.local/bin/agentsync purge --queue`)"
     )
     cached = [p for p in config.cache_dir.rglob("*") if p.is_file()]
@@ -494,6 +495,43 @@ def test_sg05_tightened_policy_rescreens_published_files(
     assert page_fm(loosened, "mirror/src/hr-review.docx.md")["status"] == "current"
     run(loosened)
     assert "## Content policy" not in (loosened.docs_repo / "_sync/STATE.md").read_text(encoding="utf-8")
+
+
+def test_a_relabelled_folder_raises_one_label_escalation_alarm_that_counts_its_files(
+    tmp_path: Path, fixture_files: dict[str, Path], caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 6 G38: every escalated file appended its own alarm, word for word the same and naming no
+    file, under a WARNING that printed the raw stable id. One alarm per source now counts the files; the
+    per-file line names the path at INFO (sync -v) and no WARNING carries a stable id."""
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n')
+    for name, phrase in (("alpha.docx", "PHRASE-ALPHA"), ("beta.docx", "PHRASE-BETA")):
+        (src / name).write_bytes(
+            _docx_with_phrase(fixture_files, tmp_path / f"v-{name}", phrase).read_bytes()
+        )
+    assert run(config).exit_code == 0
+    for name in ("alpha.docx", "beta.docx"):
+        doc = src / name
+        labelled = labelled_docx(
+            doc, tmp_path / f"l-{name}", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0"))
+        )
+        with doc.open("r+b") as fh:  # relabel in place (same inode)
+            fh.write(labelled.read_bytes())
+            fh.truncate()
+        os.utime(doc, ns=(1, 2_000_000_000))
+    ids = [item_id(config, "alpha.docx"), item_id(config, "beta.docx")]
+    caplog.set_level(logging.DEBUG, logger="agentsync")
+    report = run(config)
+    assert report.exit_code == 0
+    alarms = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
+    assert alarms == [
+        "label escalation: 2 published file(s) now refused by the label policy; 2 cached conversion(s) "
+        "deleted; 2 purge(s) queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
+        "`~/.local/bin/agentsync purge --queue`)"
+    ], alarms
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not [w for w in warnings if any(i in w for i in ids)], warnings
+    infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert f"{SID}: label escalation of alpha.docx; purge queued" in infos, infos
 
 
 def test_a_policy_rescreen_is_counted_apart_on_the_sync_line(
