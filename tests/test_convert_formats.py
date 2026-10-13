@@ -582,6 +582,35 @@ def test_a_templates_fixed_text_keeps_every_table_whole_and_its_shapes_apart(
         assert u.title == "Title Slide", "the first layout name, never the marker or a table row"
 
 
+def test_a_template_round_4_cached_gets_the_whole_table_rendering_under_a_new_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 6 G59: F77's rendering kept the deck emitter at 1.0.0, so the action key of bytes round 4
+    had converted did not move, and a copy under another name, a rebuilt page or a label-only re-save got
+    round 4's cached body back: a second table with no delimiter row of its own. The emitter is 1.0.1."""
+    real = pptx_mod._template_lines
+
+    def by_line(prs: Any) -> tuple[list[str], list[str]]:  # round 4: de-duplicated a line at a time
+        names, lines = real(prs)
+        return names, [line for n, line in enumerate(lines) if not line or line not in lines[:n]]
+
+    cache = tmp_path / "cache"
+    (tmp_path / "a").mkdir()
+    first = build_table_template(tmp_path / "a" / "Contoso Tables.potx", boxes=False)
+    with monkeypatch.context() as old:
+        old.setattr(pptx_mod, "_EMITTER_VERSION", "1.0.0")
+        old.setattr(pptx_mod, "_template_lines", by_line)
+        cached = _through_the_cache(first, Registry.default(CFG), cache)
+    assert cached.status is ConversionStatus.OK and cached.units[0].body.count("|---|---|") == 1
+    copy_dir = tmp_path / "b"
+    copy_dir.mkdir()
+    copied = copy_dir / "Contoso Tables Copy.potx"
+    copied.write_bytes(first.read_bytes())
+    result = _through_the_cache(copied, Registry.default(CFG), cache)
+    assert not result.from_cache and result.units[0].body.count("|---|---|") == 2
+    assert result.converter_version.startswith("1.0.1+")
+
+
 # ---------------------------------------------------------------------------------------------------------
 # pdf
 # ---------------------------------------------------------------------------------------------------------
@@ -2357,7 +2386,7 @@ def _deck_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG)
 
 def test_pptx_version_and_options_change_only_with_an_engine(tmp_path: Path) -> None:
     plain, reading = PptxConverter(CFG), PptxConverter(CFG, ocr=fake_engine(tmp_path / "bin"))
-    assert re.fullmatch(r"1\.0\.0\+python-pptx-\d+(\.\d+)+", plain.version())
+    assert re.fullmatch(r"1\.0\.1\+python-pptx-\d+(\.\d+)+", plain.version())
     assert plain.options() == {"max_page_bytes": CFG.max_page_bytes, "row_tolerance_emu": 45_720}
     assert reading.version() == f"{plain.version()}+{_OCR_IDENTITY}"
     assert reading.options() == {**plain.options(), **image._OCR_OPTIONS, "ocr_pptx_rules": 2}

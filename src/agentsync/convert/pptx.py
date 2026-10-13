@@ -48,7 +48,9 @@ from agentsync.model import RenderedUnit, UnitKind
 
 log = logging.getLogger(__name__)
 
-_EMITTER_VERSION = "1.0.0"
+_EMITTER_VERSION = "1.0.1"
+"""1.0.1: a template's fixed text is de-duplicated a shape at a time (B13 round 5 F77), so the action key of
+bytes 1.0.0 cached moves and a copy is converted again (B13 round 6 G59). Nothing is read again by itself."""
 _ROW_TOLERANCE_EMU = (
     45_720  # 0.05 in: shapes whose tops differ by less are on one visual row (Docling's rule)
 )

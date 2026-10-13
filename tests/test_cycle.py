@@ -2295,7 +2295,7 @@ def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it
     assert fm["summary"] == "Word document; text of 1 picture(s) read by on-device OCR; headings: Minutes"
     assert body.endswith("read by on-device OCR (Apple Vision):]\n\nOrders by month")
     fm, body = published("review.pptx")
-    assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "+ocr-paper-vision-" in fm["converter"]
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.1+") and "+ocr-paper-vision-" in fm["converter"]
     assert body.endswith("read by on-device OCR (Apple Vision):]\nUnits by region")
     rtf, rtf_body = published("minutes.rtf")
     assert rtf["converter"].startswith("pandoc-gfm@1.0.0+pandoc-") and "ocr" not in rtf["converter"]
@@ -3468,7 +3468,7 @@ def test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_
     assert (again.read_again, again.read_first, again.sources[0].converted) == (1, 1, 1)
     fm, body = _mirror_page(sample_config, rel)
     assert (fm["status"], fm["source_title"]) == ("current", "Contoso Quarterly Template")
-    assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "## Contoso Quarterly Template" in body
+    assert fm["converter"].startswith("pptx-python-pptx@1.0.1+") and "## Contoso Quarterly Template" in body
     assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
 
 
