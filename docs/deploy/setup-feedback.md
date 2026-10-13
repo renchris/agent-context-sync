@@ -96,6 +96,8 @@ words) is yours to remove. The CLI always redacts.
   the Setup report field and tick the review box. Opened another way, copy the five values from the Summary. The
   form shows the report as a code block. The report fences command output with `~~~`, which the form's backtick
   fence does not break. Keep the agent's additions to `~~~` too.
+  The shell fallback report ends its Redaction part on the same one-line `Send it:` advice as the agentsync
+  report, then the link.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
   prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.

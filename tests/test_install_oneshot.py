@@ -2324,6 +2324,42 @@ def test_the_shell_report_fences_the_friction_log_once(env: dict[str, str]) -> N
         assert install_sh(env, "--report-only").returncode == 0
         part = report_path(env).read_text().split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
         assert part.count("\n~~~") == 2 and "~ ~ ~" not in part, part
+    # B13 round 7 H41: so is a source id "text", which is no folder's name: the opener read "~~~<source-1>",
+    # the read-back kept it, and the section grew by a line a run. The opener is now passed through as
+    # written, and the read-back drops every fence line, one an earlier report holds in that form too.
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    notes.mkdir(parents=True)
+    (word.parent / "tex").mkdir()
+    config.write_text(
+        f'[[source]]\nid = "text"\nkind = "local"\npath = "{notes}"\n\n'
+        f'[[source]]\nid = "tex"\nkind = "local"\npath = "{word.parent / "tex"}"\n'
+    )
+    text = report_path(env).read_text()
+    report_path(env).write_text(text.replace("\n~~~text\n", "\n~~~<source-1>\n", 1))
+    for _ in range(3):
+        assert install_sh(env, "--report-only").returncode == 0
+        part = report_path(env).read_text().split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+        assert part.count("\n~~~") == 2 and "~ ~ ~" not in part, part
+        assert "\n~~~text\n" in part and "<source-" not in part, part
+
+
+def test_the_shell_report_says_how_to_send_it_before_its_link(env: dict[str, str]) -> None:
+    """B13 round 7 H4: the shell report that may be sent ended on a bare link: no private route, no "Nothing
+    is sent automatically" and no word that the form opens empty, all of which the agentsync report says.
+    Its Redaction part now ends on the same one-line "Send it: " advice, in that report's words for a link
+    that fills no field, with the legend's last sentence still closing its own paragraph."""
+    assert install_sh(env, "--report-only").returncode == 0
+    blank = 'a blank "Setup report" issue form'
+    assert blank in Path(setup_report.__file__).read_text(encoding="utf-8"), "the Python report's own words"
+    assert report_path(env).read_text().splitlines()[-5:] == [
+        "Read the report before sending it: anything else confidential is yours to remove.",
+        "",
+        f"Send it: the link on the last line opens {blank}; paste this report into its Setup report field, "
+        "or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
+        "automatically.",
+        "",
+        setup_report.ISSUE_URL,
+    ]
 
 
 def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: dict[str, str]) -> None:

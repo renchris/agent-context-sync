@@ -1125,8 +1125,20 @@ git_rewrite_bases() {
 		' "$g" || true
 	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
 }
-# What setup_report._norm keeps of an ASCII id or folder name: lower case, no blank, "_", "\" or "-".
-id_key() { printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
+# What setup_report._norm keeps of an id or folder name: no blank, "_", "\" or "-", no accent, lower case. The
+# accents go as add_forms drops them: the NFD form (iconv UTF-8-MAC) without its combining marks, U+0300-U+036F,
+# so the id "cafe-plans" is the folder "Café Plans" in either Unicode form (B13 round 7 H76). A value that is
+# not UTF-8 keeps its bytes, so it shares no folder's placeholder (the safe side).
+id_key() {
+	local k d
+	k="$(printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-')"
+	# Every value goes through iconv: a bash pattern for "not ASCII" follows the locale of the shell, and under
+	# a UTF-8 one a range such as a-z holds a precomposed é, so the accents would stay.
+	if d="$(printf '%s' "$k" | LC_ALL=C /usr/bin/iconv -f UTF-8 -t UTF-8-MAC 2>/dev/null)"; then
+		k="$(printf '%s' "$d" | LC_ALL=C sed "s/$(printf '\314')[$(printf '\200')-$(printf '\277')]//g;s/$(printf '\315')[$(printf '\200')-$(printf '\257')]//g")"
+	fi
+	printf '%s' "$k" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
 # Source ids that are agentsync's own words (setup_report._GENERIC_IDS; a test holds the two equal).
 GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive files graph inbox local mail mirror notes"
 GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
@@ -1601,7 +1613,9 @@ redact_stream() {
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
 		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
 	}
-	$0 in heading { print; next }
+	# and the opener of the friction fence, a line the report itself writes (a "~~~" in the log is broken up
+	# before it gets here): a folder or a source id named "text" does not turn it into a placeholder (B13 round 7 H41)
+	$0 in heading || $0 == "~~~text" { print; next }
 	{
 		m = 0; s = $0
 		while (1) {
@@ -1955,25 +1969,40 @@ fallback_redaction() {
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an
 	# organisation since G46 registers bare whatever is not context_org_word). The send advice is one "Send it: "
-	# line, as the agentsync report's, which a stopped copy's report drops whole (B13 round 6 G50).
-	local v p
+	# line in either case, as the agentsync report's, which a stopped copy's report drops whole (B13 round 6
+	# G50; round 7 H4: the report that may be sent had none, and ended on a bare link).
+	local v p pairs generic=" "
+	pairs="$(redaction_pairs 2>/dev/null || true)"
+	# A name every OneDrive or Google Drive has (Documents) reads back as nothing private (B13 round 6 G48), and
+	# so does whatever else shares its placeholder: its source id, which is that name in slug form (G8 gave
+	# the id "downloads" the folder's <folder-N>, and the id is a word this report prints; round 7 H39, H57).
+	# The folder's own name decides for the placeholder, in whatever order the pairs come.
+	while IFS=$'\t' read -r v p _; do
+		case "$p" in "<folder-"*) ! generic_folder "$v" || generic+="$p " ;; esac
+	done <<<"$pairs"
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
 		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
-		# a name every OneDrive or Google Drive has (Documents) reads back as nothing private (B13 round 6 G48)
-		case "$p" in "<folder-"*) ! generic_folder "$v" || continue ;; esac
+		case "$generic" in *" $p "*) continue ;; esac
 		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
 		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."
 		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
 		PRIVATE_ONLY=1 # the report then ends with no issue link (the caller's subshell reads it)
 		break
-	done < <(redaction_pairs 2>/dev/null || true)
+	done <<<"$pairs"
+	# One line that starts at column 0, in the agentsync report's words for a link that fills no field.
+	[ -n "$PRIVATE_ONLY" ] || {
+		say ""
+		say 'Send it: the link on the last line opens a blank "Setup report" issue form; paste this report into its Setup report field, or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent automatically.'
+	}
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
 # (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there), less
-# the fence either writer puts around it, so the new fence neither nests nor grows a pair a run (G6); a folder
-# named "text" turns the opener into "~~~<folder-N>" (the body is redacted after it is written).
+# the fence either writer puts around it, so the new fence neither nests nor grows a pair a run (G6). Every
+# line that starts with "~~~" is a fence: both writers break a "~~~" in the body up, and an opener written
+# before redact_stream passed "~~~text" through read "~~~<folder-N>" for a folder named "text" and
+# "~~~<source-N>" for a source id "text", which was kept and grew by a line a run (B13 round 7 H41).
 friction_text() {
 	local f
 	f="$(friction_file)"
@@ -1981,7 +2010,7 @@ friction_text() {
 		head -c 262144 "$f"
 	elif [ -f "$REPORT_PATH" ]; then
 		LC_ALL=C awk '/^## / { found = ($0 == "## Agent friction log"); next } found { print }' "$REPORT_PATH" |
-			LC_ALL=C grep -v -x -e '~~~text' -e '~~~' -e '~~~<folder-[0-9]*>' |
+			LC_ALL=C grep -v '^~~~' |
 			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi
 }
@@ -2296,7 +2325,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
 				NR == FNR {
 					if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
-					if (index($0, "- install.sh: no run during this attempt") == 1 || $0 == "- install.sh: no run in the install log") norun = 1
+					if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
 					if (!at && index($0, "<details><summary>the last ") == 1 && index($0, " line(s) of ") > 0) { at = FNR; inside = 1; next }
 					if (inside && $0 == "</details>") inside = 0
 					if (inside && left($0)) k++

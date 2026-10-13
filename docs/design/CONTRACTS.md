@@ -15461,6 +15461,8 @@ value is a `generic_folder` the same way, so the two reports agree (before, Docu
 private, Downloads only the shell's). An organisation is unaffected; `Status` stays private. Tests:
 `test_a_configured_generic_folder_leaves_the_report_public`,
 `test_the_shell_report_leaves_a_report_with_a_generic_folder_public`.
+Amended 2026-10-13, §16.70 H39: the skip covers every pair that shares a generic folder's placeholder, its slug
+id (G8) included.
 
 **G49: OneDrive's organisation stays <org-1> beside a custom-domain tenant.** Amends §16.58 F42: the custom-domain
 `graph.tenant` is registered whole after the organisations, not before them, so the first CloudStorage entry's
@@ -15546,6 +15548,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   agentsync repository), never as a public issue. Nothing is sent automatically.`, as the agentsync report has it,
   and `stopped_report_note` drops it whole; wrapped, its second half would stay behind.
   `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately` (now also through a stopped copy).
+  Amended 2026-10-13, §16.70 H4: a report that is not private only has a `Send it: ` line too, naming the
+  link and the private route.
 - **G71 is not built: its premise was removed by §16.64 G46.** G71 found the loop's `<org-` branch dead, since F42
   and F55 registered a word-named organisation only in names and domains that hold `-` or `.`. Lane RA's G46
   (landed first) registers every one-word organisation that is not `context_org_word` bare, so an organisation
@@ -15581,6 +15585,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   opener), so a fenced earlier report of either writer neither nests the
   new fence (an inner `~~~` would close it and leave every later section in an unclosed block) nor adds a pair a
   run. `test_the_shell_report_fences_the_friction_log_once`, `test_report_only_keeps_an_earlier_friction_log`.
+  Amended 2026-10-13, §16.70 H41: the read-back leaves out every line that starts with `~~~`, and
+  `redact_stream` no longer redacts the opener.
 - **A cloud folder's id reads as its folder** (G8). The shell report gave each `[[source]]` id `<source-N>` by its
   table's place and nothing tied it to its folder, so `exclude-empty <source-1>` and the `--source-local
   .../<folder-1>` it is about read as two things; the Python report's fuzzy folder pair makes such an id the
@@ -15596,6 +15602,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   **Amended 2026-10-13, §16.73 H69:** `reports-2` keeps a `<source-N>` of its own, as in the Python report, but the
   number can differ: the shell report numbers an id by its table's place (`<source-2>`), and the Python report
   numbers only the ids no folder pair covers (`<source-1>`; measured with `Redactor`).
+  Amended 2026-10-13, §16.70 H76: `id_key` also drops accents, as `_norm` does, so an accented folder's slug id
+  reads as its `<folder-N>` here too.
 - **A second Prompt: line opens an attempt in the shell readers too** (G81). `parse_friction` opens an attempt
   at a `Prompt:` line when the open one already has one, for any log version; `FRICTION_AWK`'s `track()` only set
   its header flag, so `friction_attempt_begin` dated the attempt from the first header (and the shell report's
@@ -16104,6 +16112,46 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   copies a warning into the friction log. The prefix and the suffix are unchanged.
   `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
   `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
+- **The shell report that may be sent says how** (H4). Its Redaction part ended on the legend and the report on a
+  bare link: no private route, no "Nothing is sent automatically", and no word that the form opens empty. After
+  the legend's paragraph `fallback_redaction` now writes one unwrapped line, `Send it: the link on the last line
+  opens a blank "Setup report" issue form; paste this report into its Setup report field, or send it privately
+  (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent automatically.`, the agentsync
+  report's words for a link that fills no field. A private-only report keeps its own `Send it: privately ...`
+  line and no link. One line at column 0, so `stopped_report_note` drops it whole, as it does G50's.
+  `test_the_shell_report_says_how_to_send_it_before_its_link`.
+- **A generic folder's id leaves the shell report public** (H39 and H57, one defect). G8 gave a cloud folder's
+  slug id its folder's `<folder-N>`, and G48's skip went by each pair's own value: the id `downloads` of a
+  configured Downloads is lower case, so no `generic_folder`, and it is a word install.sh prints, so the report
+  turned private only again, with no link. `fallback_redaction` reads `redaction_pairs` once, collects the
+  placeholder of every pair whose value is a `generic_folder`, and skips every pair with one of those
+  placeholders: the folder's own name decides for whatever shares its placeholder, in any pair order.
+  `generic_folder` stays exact case, equal to `_GENERIC_FOLDERS`. A report word's folder beside a generic one
+  (`Status`) is still private only. `test_the_shell_report_stays_public_with_a_generic_folders_id`,
+  `test_the_shell_report_is_private_with_a_report_words_folder_beside_a_generic_one`.
+- **An accented folder's id reads as its folder in the shell report too** (H76). `id_key` kept accents, so the
+  id `cafe-plans` of the cloud folder `Café Plans` was `<source-1>` in the shell report and `<folder-1>` in the
+  Python one (`_norm` drops them). `id_key` now removes blanks, `_`, `\` and `-`, then the accents the way
+  `add_forms` does (NFD through `iconv -t UTF-8-MAC`, combining marks U+0300 to U+036F dropped), then lowers
+  case. Every value goes through iconv: a bash pattern that asks "is this ASCII" follows the shell's locale, and
+  under a UTF-8 one `a-z` holds a precomposed é, so the review's first build left an NFC name's accent in place
+  in an ordinary terminal. A value that is not UTF-8 keeps its bytes, so it shares no folder's placeholder. In
+  either Unicode form of the name, under `C` and under `en_US.UTF-8`.
+  `test_the_shell_report_reads_an_accented_folders_id_as_the_folder`.
+- **The friction fence's opener is never a placeholder** (H41). The opener `~~~text` was written before
+  `redact_stream`, so a source id `text` made it `~~~<source-1>` (G6 covered only a folder named `text`), the
+  read-back kept that line, and the section grew by a line a run. `redact_stream` passes the exact line
+  `~~~text` through, as it does a heading, and `friction_text` drops every line that starts with `~~~`: both
+  writers break a `~~~` in the log up, so such a line is a fence, an earlier report's redacted opener included.
+  `test_the_shell_report_fences_the_friction_log_once`.
+- **A dead alternative is gone from the stopped copy's relabel** (H44). `stopped_report_note` set `norun` on
+  `- install.sh: no run during this attempt` or on the exact line `- install.sh: no run in the install log`, and
+  reads `norun` only under `noout` (the Summary's `- installer output: no run of this attempt in the last `
+  line). The agentsync report prints the second line only when install.log has no run, and then
+  `_attempt_out_start` is `unknown` and the output line is the whole-count one, in every renderer that has the
+  `noout` line; the shell report prints neither. So the pair never occurs, and the alternative could match only
+  a quoted line elsewhere in the report, where it would pick the wrong label. Behaviour is unchanged, so no test
+  fails without it; the stopped-report label tests pass as before.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 

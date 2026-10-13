@@ -317,6 +317,72 @@ def test_the_shell_report_keeps_a_deduplicated_ids_own_number(env: dict[str, str
     assert "| <folder-1> and <source-2> |" in friction, friction
 
 
+def _shell_report_with(
+    env: dict[str, str],  # noqa: F811
+    sources: dict[str, str],
+    said: str,
+    **extra: str,
+) -> str:
+    """The shell report of a Mac whose config has one cloud folder per ``sources`` item (id -> folder name
+    under OneDrive-Contoso), with ``said`` as the friction log's one line."""
+    home = Path(env["HOME"])
+    cloud = home / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    tables = []
+    for sid, name in sources.items():
+        (cloud / name).mkdir(parents=True)
+        tables.append(f'[[source]]\nid = "{sid}"\nkind = "local"\npath = "{cloud / name}"\n')
+    cfg.write_text("\n".join(tables), encoding="utf-8")
+    return _shell_report(env, f"Prompt: v13\n2026-10-12T10:00:00Z | step 2 | clean | {said} | -\n", **extra)
+
+
+def test_the_shell_report_stays_public_with_a_generic_folders_id(env: dict[str, str]) -> None:  # noqa: F811
+    """B13 round 7 H39 and H57 (one defect): round 6 G8 gave a cloud folder's slug id its folder's
+    <folder-N>, and G48's skip went by the pair's own value. So the id "downloads" of a configured Downloads
+    (lower case: not the generic name, and a word install.sh prints) made the shell report private only
+    again, with no issue link. The folder's own name now decides for everything that shares its
+    placeholder."""
+    text = _shell_report_with(
+        env,
+        {"documents": "Documents", "downloads": "Downloads", "shared": "Shared"},
+        "documents, downloads and shared synced",
+    )
+    friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+    assert "| <folder-1>, <folder-2> and <folder-3> synced |" in friction, friction
+    assert "Private only:" not in text, text.split("\n## Redaction\n", 1)[1]
+    assert text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
+
+
+def test_the_shell_report_is_private_with_a_report_words_folder_beside_a_generic_one(
+    env: dict[str, str],  # noqa: F811
+) -> None:
+    """The guard for H39: a folder whose name is a word the report prints, and is no generic name, still
+    makes the report private only, with a generic folder and its id beside it."""
+    text = _shell_report_with(env, {"downloads": "Downloads", "status": "Status"}, "downloads synced")
+    assert "Private only:" in text and setup_report.ISSUE_URL not in text, text
+
+
+@pytest.mark.parametrize("locale", ["C", "en_US.UTF-8"])
+@pytest.mark.parametrize("form", ["NFC", "NFD"])
+def test_the_shell_report_reads_an_accented_folders_id_as_the_folder(
+    env: dict[str, str],  # noqa: F811
+    form: str,
+    locale: str,
+) -> None:
+    """B13 round 7 H76: the shell's id key kept accents, so the id "cafe-plans" of the cloud folder "Café
+    Plans" (the slug has none) was not its folder's name to it: <source-1> here and <folder-1> in the Python
+    report, which drops them (``_norm``). In either Unicode form of the name on disk, and in the locale a
+    terminal has: a first build asked bash whether the key was ASCII, and under UTF-8 its a-z holds é."""
+    name = unicodedata.normalize(form, "Café Plans")
+    text = _shell_report_with(
+        env, {"cafe-plans": name}, "~/.local/bin/agentsync exclude-empty cafe-plans", LC_ALL=locale
+    )
+    friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+    assert "exclude-empty <folder-1> |" in friction and "<source-" not in friction, friction
+    assert setup_report._norm("cafe-plans") == setup_report._norm(name), "the Python report's rule"
+
+
 def test_the_shell_generic_source_ids_are_the_reports() -> None:
     """install.sh keeps the same source ids as agentsync's own words as setup_report does."""
     pattern = r'^GENERIC_SOURCE_IDS="(?:\$GENERIC_SOURCE_IDS )?([^"]*)"'
