@@ -977,7 +977,10 @@ def test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok(
         arm.next_items = []
         assert go().exit_code == 0
     assert arm.fulls[1:] == [False] * 4
-    assert read_heartbeat(config.state_paths.heartbeat)[DRIVE]["consecutive_incomplete"] == 0
+    entry = read_heartbeat(config.state_paths.heartbeat)[DRIVE]
+    assert entry["consecutive_incomplete"] == 0
+    # B13 round 6 G53: the entry keeps the delta pass's own flag; only the count reads it as listed.
+    assert entry["pass_kind"] == PassKind.DELTA.value and entry["enumeration_complete"] is False, entry
     [line] = [r for r in doctor._check_heartbeat(config) if r.name == f"heartbeat.{DRIVE}"]
     assert line.ok and "incomplete" not in line.detail, line
 

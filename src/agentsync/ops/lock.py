@@ -485,14 +485,18 @@ def write_heartbeat(
     ok: bool,
     auth_state: str,
     now_iso: str,
+    counts_as_listed: bool | None = None,
 ) -> None:
     """Update one source's entry in heartbeat.json atomically (tmp + rename, sorted keys): last_attempt_at,
-    and last_success_at only when ``ok``; also run_id, pass_kind, enumeration_complete, auth_state.
+    and last_success_at only when ``ok``; also run_id, pass_kind, enumeration_complete (the pass's own),
+    auth_state.
 
     Also kept per entry for the outward watcher (design 4.7): ``ok`` (last attempt's outcome),
-    ``consecutive_failures`` and ``consecutive_incomplete`` (passes with enumeration_complete false; a skipped
-    source, ``pass_kind=None``, leaves the counter unchanged).  Callers hold the single-writer lock, so the
-    read-modify-write is not racy; a corrupt file is logged and replaced.
+    ``consecutive_failures`` and ``consecutive_incomplete`` (passes that were not listed; a skipped source,
+    ``pass_kind=None``, leaves the counter unchanged). ``counts_as_listed`` (default:
+    ``enumeration_complete``) decides that count alone: a Graph delta pass counts as listed though its own
+    flag is false (B13 round 5 F69), and the entry keeps the flag (round 6 G53). Callers hold the
+    single-writer lock, so the read-modify-write is not racy; a corrupt file is logged and replaced.
     """
     if not source_id:
         raise ValueError("source_id must be non-empty")
@@ -508,8 +512,9 @@ def write_heartbeat(
     prev_incomplete = prev.get("consecutive_incomplete")
     failures = 0 if ok else (prev_failures if isinstance(prev_failures, int) else 0) + 1
     incomplete = prev_incomplete if isinstance(prev_incomplete, int) else 0
+    listed = enumeration_complete if counts_as_listed is None else counts_as_listed
     if pass_kind is not None:
-        incomplete = 0 if enumeration_complete else incomplete + 1
+        incomplete = 0 if listed else incomplete + 1
     entry: dict[str, object] = {
         "auth_state": auth_state,
         "consecutive_failures": failures,

@@ -3498,6 +3498,7 @@ def write_heartbeat(
     ok: bool,
     auth_state: str,
     now_iso: str,
+    counts_as_listed: bool | None = None,  # 2026-10-13 (§16.63 G53): the counter's reading, default the flag
 ) -> None:
     """Update one source's entry in heartbeat.json atomically (tmp + rename, sorted keys): last_attempt_at,
     and last_success_at only when ``ok``; also run_id, pass_kind, enumeration_complete, auth_state."""
