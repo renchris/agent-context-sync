@@ -665,6 +665,27 @@ functionality / config, its just for usage across the board." Every lane gets th
 only decides whose quota pays. Round 6's lanes fired at 07:00 UTC on next (panes 402 to 407); from round 7 lanes
 fire with `--account auto`.
 
+### B13 round 6 landed (2026-10-13)
+
+All six lanes landed; CI green on `52b86d93` (prompt v15). Notes `lanes/r6-<lane>.md`.
+
+| Lane | Landed | Not built |
+|---|---|---|
+| A | `4c19d9e5`, `9875bb32`, `30c81f68` | none (G58 is behavior-identical, so no failing test; reason in the note) |
+| E | `95eadf7e..0bda2d78` (G7 and G28 one fix; stub render version 4) | none |
+| B | `f26a1368..03a9431c`, 14 commits (with G43's docstring) | none |
+| P | `e2e80ed4`, `26ae33a7`, `3304993e`, `986b55de` (v15, with lane RB's words) | none |
+| RA | `2af947f9..0dd77157`, 16 commits | none |
+| RB | `174f5637..52b86d93`, 12 commits | G71 (lane RA's G46 made that organisation branch live again, measured; §16.65) |
+
+Learnings: lane RA deleted every lane's `/ship` backup branch with a glob (the third round with this incident); no
+work was lost, the lanes still landing were told to recreate theirs, and the lane brief (`lanes/COMMON.md`) now
+forbids deleting a branch by pattern. Lanes waiting on a full gate under load look idle in their panes; read the
+pane before suspecting a stall.
+
+Round 7: the round 6 workflow again on `52b86d93` with prompt v15 (run `wf_08dc4330-aab`, outputs `round7/`); its
+scenario F now expects the exclude-empty wait (G43), and its post-processing skips an empty verify slot.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
