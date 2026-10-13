@@ -610,6 +610,26 @@ stays the operator's frozen scope; this trend is recorded for the stop decision.
 The lead built F102 (round 4's seven landed worktrees and branches removed with `git worktree remove` and
 `git branch -d`, no force; the three off-main branches stay with the operator's cleanup step).
 
+### B13 round 5 landed (2026-10-12)
+
+All six lanes landed with CI green and none left an item not built (notes `lanes/r5-<lane>.md`). Prompt v14 is on
+main (lane P, digest `06eea5787a14`). The operator ran the round 3 cleanup (no b13 branch or worktree from rounds 1
+to 4 remains).
+
+| Lane | Landed |
+|---|---|
+| P | `065bdfe4..868ea775` |
+| B | `cb4b5e80..f21974ac`, 10 commits (F96 is lane P's F89: P's fix, B's test) |
+| E | `5534e047..ed1b1f96`, 7 commits |
+| A | `2bfa59c6..dfd21162`, 7 commits (its widened stub test caught lane B's new `CycleReport` fields) |
+| RB | `3a89922a..201134c5` (F16 also builds RA's F7) |
+| RA | `ed1b1f96..87d0d090`, 16 commits |
+
+Learning: lanes that share a file now split hunks by message through the lead before they edit (RB and RA on the
+stopped-report awk, A and RA on bare commands in `setup_report.py`); no rebase conflict followed.
+
+Round 6: the round 5 workflow again on `87d0d090` with prompt v14 (run `wf_4724e367-0da`, outputs `round6/`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
