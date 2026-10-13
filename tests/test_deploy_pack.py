@@ -3179,14 +3179,29 @@ def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
         "2026-10-13T10:01:00Z | end | finished\n"
         "2026-10-13T10:03:00Z | step 1 | error | prompt v15, Tool-A: x\n"
     )
-    for header, count in ((head + "Prompt: v15\nAgent: Tool-A\n", 2), (head, 1)):
+    # B13 round 7 H64: an `Outcome:` or `Run:` line (a v4 log's) is a header too (setup_report.FRICTION_KEYS)
+    for header, count in (
+        (head + "Prompt: v15\nAgent: Tool-A\n", 2),
+        (head + "Outcome: Failed at step 2\n", 2),
+        (head + "Run: 1\n", 2),
+        (head, 1),
+    ):
         assert len(setup_report.parse_friction(header + tail).attempts) == count, header
+    assert setup_report.FRICTION_KEYS == ("Prompt", "Agent", "Outcome", "Run")
     flat = " ".join(page.split())
-    assert "the open attempt has a header (a `Prompt:` or `Agent:` line), at any gap" in flat
-    assert (
-        "always starts its own attempt when the open attempt has a header (a `Prompt:` or `Agent:` line)"
-        in flat
+    header = (
+        "a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log)"
     )
+    assert "(a `Prompt:` or `Agent:` line)" not in flat
+    assert f"the open attempt has {header}, at any gap" in flat
+    assert f"always starts its own attempt when the open attempt has {header}" in flat
+    contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    for section in ("16.58", "16.67"):
+        dated = " ".join(dict(_contracts_numbered_sections())[section].split())
+        assert "§16.73 H64:** a header is a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line" in dated or (
+            "§16.73 H64:** the header is a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line" in dated
+        ), section
+    assert "a header (a Prompt:, Agent:, Outcome: or Run: line)" in contracts  # §16.64 G51
     assert "header or an `Attempt:` line" not in flat, "an Attempt: line alone splits nothing (orphan())"
     assert "after a headed attempt, at any gap (2 minutes after the end line is enough)" in flat
     assert "After a header-less attempt with stated words (round 4), it does so only when" in flat

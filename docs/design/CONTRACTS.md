@@ -14742,7 +14742,9 @@ attempt with stated words. In awk, `track()` sets `HD` on every header line Pyth
 `Attempt:` line" does not hold alone: `orphan()` returns before that check unless the attempt has a header (a
 `Prompt:` or `Agent:` line) or stated words, and `track()` clears `HD` on an `Attempt:` line, so an attempt with an
 `Attempt:` line and no header keeps the error (measured with `parse_friction`). `--log-start` writes the three lines
-together, so only a hand-written or cut header meets it; setup-feedback.md says "a header".)
+together, so only a hand-written or cut header meets it; setup-feedback.md says "a header". **Amended 2026-10-13,
+§16.73 H64:** a header is a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line (`setup_report.FRICTION_KEYS`, and
+`track()`'s `HD` in install.sh), as §16.64 G51 says; the last two appear only in a v4 log.)
 
 **F14: bring-back.md fences each file it embeds.** In install.sh's `write_bring_back`, the setup report
 (section 1) and fix-request.md (section 2) each sit inside a tilde fence with the info string `markdown`, and the
@@ -15708,7 +15710,9 @@ changes:
   leaves the limits and the labels item says what F72 does (G66).
 - setup-feedback.md gave round 4's rule for a stated step 1 error, while F23 (§16.58) makes one after a header
   (a `Prompt:` or `Agent:` line) a new attempt at any gap; three passages now give F23's rule first and round 4's for a
-  header-less attempt, and the pin that matched the stale sentence is replaced (G64). Its placeholder table
+  header-less attempt, and the pin that matched the stale sentence is replaced (G64; **Amended 2026-10-13,
+  §16.73 H64:** the header is a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line, as §16.64 G51 says, and the
+  three passages and the pin say so). Its placeholder table
   names the Configuration section's excludes line as a home of `(source N)`, which the shell report uses for
   every source, and says an own-word source id is redacted under `~/Library/CloudStorage` (G70).
 - Dated lines: §16.54 Q52 and Q77 by F78 and F77, and §16.60 F78 says what it amends (G61); §16.51 Q9's F88 line
@@ -16142,3 +16146,10 @@ agentsync report replaces a common-word proxy host only inside a URL; its url mo
 `:<port>`, as the shell report does, so the row now says "only where a URL or `host:port` names it, in both
 reports". The module docstring already gave that rule; the inner docstrings that say "only where a URL names it"
 are left to their lanes (comments only). Test: `test_the_proxy_row_gives_one_rule_for_both_reports`.
+
+**A header is any of the four friction keys** (H64; dated lines at §16.58 F23 and §16.67 G64). setup-feedback.md,
+the §16.58 F23 line §16.67 G64 wrote and §16.67's own bullet defined a header as a `Prompt:` or `Agent:` line, while
+`setup_report.FRICTION_KEYS` (and install.sh's `track()`) also count an `Outcome:` or `Run:` line, as §16.64 G51
+says: such a line splits an attempt exactly as `Prompt:` does (measured with `parse_friction`). Both passages now
+name the four, with the last two marked as a v4 log's. Test: `test_setup_feedback_states_the_report_rules_of_round_4`,
+whose `parse_friction` loop now runs an `Outcome:` and a `Run:` header too.
