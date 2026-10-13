@@ -3739,7 +3739,11 @@ _OCR_DOCUMENTS = {
 """The suffixes of the documents a converter reads pictures or page images in when it has an engine."""
 _OCR_MARK = "+ocr-"  # in a converter version: an engine's identity follows (``OcrEngine.identity``)
 _FIELD_MARKS = ("+ocr-off", "+helper-", "+macos-")  # versions of the field build of OCR (CONTRACTS 16.27)
-_VERSION_WORDS = ("without an OCR identity", "from the field build of OCR", "with an OCR identity")
+_FIELD_BUILD = "the early OCR build"
+"""What the report calls the field build of OCR (CONTRACTS 16.27), a term it never explained (B13 round 7
+H5); its first mention in the OCR part adds :data:`_FIELD_BUILD_SAID` (:func:`_ocr_part`)."""
+_FIELD_BUILD_SAID = "(an OCR build that was never released)"
+_VERSION_WORDS = ("without an OCR identity", f"from {_FIELD_BUILD}", "with an OCR identity")
 _IDENTITY_RE = re.compile(r"\+(ocr-[A-Za-z0-9._-]{1,80})")
 _WORD_RE = re.compile(r"[a-z][a-z_-]{0,23}")
 _DAY_RE = re.compile(r"\d{4}-\d\d-\d\d")
@@ -4425,7 +4429,7 @@ def _reread_lines(
         "source",
         "scan finished",
         "on this Mac, from before OCR",
-        "of them field build",
+        "of them early OCR build",
         "failed once",
         "given up",
         "given up (other engine or version)",
@@ -4448,7 +4452,7 @@ def _reread_lines(
     kinds = [
         *([] if label_rule else ["images with the no-converter stub"]),
         "scanned PDFs whose stub says OCR was not run",
-        "documents whose page has no OCR identity or is the field build's",
+        f"documents whose page has no OCR identity or comes from {_FIELD_BUILD}",  # never a possessive (H5)
     ]
     counted = f"{', '.join(kinds[:-1])} and {kinds[-1]}"
     if all(row[1:] == ("yes", 0, 0, 0, 0, 0, "no") for row in rows):
@@ -4472,9 +4476,9 @@ def _reread_lines(
             else "The helper did not say whether it is ready (its line above; Doctor's ocr line does)."
         )
         third = (
-            f"{why} Without an engine a cycle reads again only what needs none, such as a page of the field "
-            "build. The third column is the report's own count of files on this Mac from before OCR, which "
-            f"a re-read looks at when there is an engine: {counted}."
+            f"{why} Without an engine a cycle reads again only what needs none, such as a page of "
+            f"{_FIELD_BUILD}. The third column is the report's own count of files on this Mac from before "
+            f"OCR, which a re-read looks at when there is an engine: {counted}."
         )
     if label_rule:
         third += " A label rule is on, so no image is read and none is counted."
@@ -4516,8 +4520,8 @@ def _reread_finished(
             "an engine" if "ocr_ms" in looked.counts else "no engine, so a finished scan says nothing of OCR"
         )
         scan = (
-            f"`Finished` is for what run {looked.run_id} looked for, the newest run that says so (it had "
-            f"{had})."
+            f"Run {looked.run_id} is the newest run that records what its re-read looked for, and `finished` "
+            f"is measured against it; it had {had}."
         )
     if state == "ready":
         files = f"The files a re-read would look at are {counted}."
@@ -4529,12 +4533,12 @@ def _reread_finished(
         )
         files = f"{why} The files from before OCR that a re-read looks at with an engine are {counted}."
     rule = " A label rule is on, so no image is read and none is counted." if label_rule else ""
+    # short sentences, the same facts (B13 round 7 H5)
     return (
         f"- re-read, per source: finished in all {len(sources)} local or inbox source(s) with a record "
-        f"({named}), and every count of its table is 0, so the table is left out: no file from before OCR "
-        "is left on this Mac for a re-read (of the field build or not), none failed once, none was given up "
-        f"under this or another engine or version, and none was being read when a cycle died. {scan} "
-        f"{files}{rule}"
+        f"({named}). Every count is 0, so the table is left out. No file on this Mac from before OCR is "
+        f"waiting to be read again, from {_FIELD_BUILD} or not, none failed once, none was given up (under "
+        f"any engine or version), and no read was cut off when a cycle died. {scan} {files}{rule}"
     )
 
 
@@ -4692,11 +4696,16 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     helper, state, label_rule = _ocr_helper(r, m)
     if state == "ready" and m.labels_active:  # before any file count: Quarantine by reason reads it too
         m.withheld |= _LABEL_WITHHELD
-    return [
+    lines = [
         *helper,
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
         *_lines(lambda: _ocr_time(r, m)),
     ]
+    # the term is said once, where the part first uses it (B13 round 7 H5)
+    first = next((i for i, line in enumerate(lines) if _FIELD_BUILD in line), None)
+    if first is not None:
+        lines[first] = lines[first].replace(_FIELD_BUILD, f"{_FIELD_BUILD} {_FIELD_BUILD_SAID}", 1)
+    return lines
 
 
 # ---- quarantine, purge queue ----------------------------------------------------------------------------

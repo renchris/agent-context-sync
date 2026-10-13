@@ -5524,8 +5524,9 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     ), "the version is the cache row's when the page's key has one"
     assert (
         "- deck (.pptx) files with a page: 0 with an OCR identity, 0 without an OCR identity, 1 from the "
-        "field build of OCR\n" in ocr_part
-    )
+        "early OCR build (an OCR build that was never released)\n" in ocr_part
+    ), "the term's first mention says what it is (B13 round 7 H5)"
+    assert ocr_part.count("(an OCR build that was never released)") == 1 and "field build" not in ocr_part
     assert (
         "- Word (.docx) files with a page: 0 with an OCR identity, 1 without an OCR identity (1 "
         "online-only)\n" in ocr_part
@@ -5552,10 +5553,11 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     )
     assert (
         "The helper is not ready (its line above), so a cycle has no engine. Without an engine a cycle reads "
-        "again only what needs none, such as a page of the field build. The third column is the report's own "
-        "count of files on this Mac from before OCR, which a re-read looks at when there is an engine: "
+        "again only what needs none, such as a page of the early OCR build. The third column is the "
+        "report's own count of files on this Mac from before OCR, which a re-read looks at when there is an "
+        "engine: "
         "images with the no-converter stub, scanned PDFs whose stub says OCR was not run and documents "
-        "whose page has no OCR identity or is the field build's (fourth column)." in lead
+        "whose page has no OCR identity or comes from the early OCR build (fourth column)." in lead
     )
     assert (
         "- OCR time: of the last 3 run(s), 2 recorded these counts (a run of an earlier build did not) and 2 "
@@ -7749,23 +7751,25 @@ def test_an_all_zero_re_read_table_is_one_line(
     seed.close()
     part = status_parts(fake_mac)[1]["OCR"]
     names = list(reread_rows(part))
-    assert len(names) == len(ids) and "every count of its table is 0" not in part
+    assert len(names) == len(ids) and "Every count is 0, so the table is left out" not in part
+    # short sentences, the same facts, and "field build" said in words (B13 round 7 H5)
     assert (
         f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record "
-        f"({', '.join(names)}), and every count of its table is 0, so the table is left out: no file from "
-        "before OCR is left on this Mac for a re-read (of the field build or not), none failed once, none "
-        "was given up under this or another engine or version, and none was being read when a cycle died. "
-        "`Finished` is for what run 6 looked for, the newest run that says so (it had an engine). The files "
-        "a re-read would look at are images with the no-converter stub, scanned PDFs whose stub says OCR was "
-        "not run and documents whose page has no OCR identity or is the field build's.\n" in finished
-    )
+        f"({', '.join(names)}). Every count is 0, so the table is left out. No file on this Mac from before "
+        "OCR is waiting to be read again, from the early OCR build (an OCR build that was never released) "
+        "or not, none failed once, none was given up (under any engine or version), and no read was cut "
+        "off when a cycle died. Run 6 is the newest run that records what its re-read looked for, and "
+        "`finished` is measured against it; it had an engine. The files a re-read would look at are images "
+        "with the no-converter stub, scanned PDFs whose stub says OCR was not run and documents whose page "
+        "has no OCR identity or comes from the early OCR build.\n" in finished
+    ), finished
     # A scan that is not finished keeps the table too, with every count 0.
     seed = Seed(cfg)
     seed.m.set_meta("reread:" + ids[1], json.dumps([{"done": False, "for": now, "tried": []}]))
     seed.close()
     part = status_parts(fake_mac)[1]["OCR"]
     assert reread_rows(part)[names[1]] == ["no", "0", "0", "0", "0", "0", "no"]
-    assert "every count of its table is 0" not in part
+    assert "Every count is 0, so the table is left out" not in part
 
 
 # ---- §16.39 N16: the Summary's doctor line names the person's own waits -----------------------------------

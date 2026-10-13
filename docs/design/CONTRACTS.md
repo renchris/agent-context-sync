@@ -8296,6 +8296,10 @@ reason written today starts with `not a zip`: policy's `NOT_ZIP_AT_OFFSET_0` rea
   in `ocr_failed` once per try. The sums are worded as waits and conversions, and the number of files
   waiting is the newest run's `ocr_deferred` (the image line's `deferred on this Mac` is the same backlog
   from the manifest).
+  Amended 2026-10-13, §16.69 H5: the report calls the field build "the early OCR build" in every string it shows
+  (the versions line, the table's `of them early OCR build` column, the counted kinds, "or comes from the early OCR
+  build", and the lead), and the OCR
+  part's first mention adds "(an OCR build that was never released)".
 
 **Quarantine by reason.** Every file whose row carries a reason: the quarantined and refused ones, and a
 present file whose download the OS refused. One row per source, state and class with the file count, how
@@ -11779,6 +11783,11 @@ table's lead is unchanged byte for byte. No command, flag, config key or environ
 fallback has no OCR part, so it has no twin. `docs/deploy/setup-feedback.md` names the line in its OCR row and in
 the finished-state sentences. Test: `test_an_all_zero_re_read_table_is_one_line` (all finished; one `failed once`
 brings every row back; an unfinished scan with every count 0 keeps the table).
+Amended 2026-10-13, §16.69 H5: the line reads `- re-read, per source: finished in all N local or inbox source(s)
+with a record (<labels>). Every count is 0, so the table is left out. No file on this Mac from before OCR is waiting
+to be read again, from the early OCR build or not, none failed once, none was given up (under any engine or
+version), and no read was cut off when a cycle died.`, and the run sentence reads "Run <id> is the newest run that
+records what its re-read looked for, and `finished` is measured against it; it had an engine."
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
@@ -15821,6 +15830,19 @@ or no install run keeps today's wording; logs from before the flag are unchanged
 RB's (H7). Tests: `tests/test_setup_report.py::test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked`,
 `tests/test_install_oneshot.py::test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
 `tests/test_install_oneshot.py::test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`.
+
+**The OCR part says "the early OCR build", and its all-zero re-read line reads in short sentences** (H5; dated lines
+at §16.28 and §16.40 N37). "Field build" was defined only in CONTRACTS §16.27 and code, yet five report strings used
+it. One constant, `_FIELD_BUILD = "the early OCR build"`, now names it in all of them (`_VERSION_WORDS[1]`, the
+re-read table's `of them early OCR build` column, the counted kinds, the no-engine lead and the one-line bullet),
+and `_ocr_part` adds `(an OCR build that was never released)` to the part's first mention, so one thing has one name.
+`_reread_finished` keeps every fact of its one sentence (on this Mac, from the early OCR build or not, none failed,
+none given up under any engine or version, none cut off by a dying cycle) in four short sentences, and its run
+sentence says the run was chosen as the newest that records what its re-read looked for, then whether it had an
+engine. The finder's wording was not built: "the newest run with an OCR engine" is not how `looked` is chosen, and
+"nothing is left to read again" drops "on this Mac" and the dying-cycle fact (the verifier's measurement). Tests:
+`tests/test_setup_report.py::test_an_all_zero_re_read_table_is_one_line`,
+`tests/test_setup_report.py::test_ocr_part_counts_images_documents_rereads_and_time`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
