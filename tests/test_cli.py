@@ -34,7 +34,7 @@ from agentsync import (
     skill,
 )
 from agentsync import cycle as cycle_mod
-from agentsync.config import Config, inbox_source_table, load_config
+from agentsync.config import Config, canonical_source_root, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
 from agentsync.graph import auth as graph_auth
@@ -2477,6 +2477,33 @@ def test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folde
     assert paths.provider_link_resolved(cloud / "OneDrive-Out" / "x") == cloud / "OneDrive-Out" / "x"
     (real / "Inner").symlink_to(real, target_is_directory=True)
     assert paths.provider_link_resolved(real / "Inner" / "x") == real / "Inner" / "x"
+
+
+def test_a_cloud_link_written_in_a_linked_homes_other_form_is_the_same_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H34: under a home reached through a link (``/tmp`` is ``/private/tmp``), a provider link
+    whose target is written in the unresolved form was read through to that form, while the stored path and
+    the real folder are in the resolved one: the two never matched, so the folder was added a second time
+    and mirrored twice. The result keeps the form of the root that held the path."""
+    (tmp_path / "real" / "home").mkdir(parents=True)
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path / "real", target_is_directory=True)
+    monkeypatch.setenv("HOME", str(alias / "home"))
+    cloud = alias / "home" / "Library" / "CloudStorage"
+    real = cloud / "OneDrive-Contoso" / "Project Alpha"
+    real.mkdir(parents=True)
+    (cloud / "OneDrive-Link").symlink_to(cloud / "OneDrive-Contoso", target_is_directory=True)
+    linked = cloud / "OneDrive-Link" / "Project Alpha"
+    stored, direct = canonical_source_root(linked), canonical_source_root(real)
+    assert paths.provider_link_resolved(stored) == direct
+    assert cli._same_folder(stored, direct) and cli._same_folder(direct, stored)
+    cfg = str(tmp_path / "ctx" / "sources.toml")
+    assert cli.main(["add-source", str(linked), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    assert cli.main(["add-source", str(real), "--config", cfg]) == cli.EXIT_OK
+    assert "already configured: source " in capsys.readouterr().out
+    assert sum(1 for s in load_config(Path(cfg)).sources if s.kind is SourceKind.LOCAL) == 1
 
 
 def test_init_and_add_source_keep_exactly_one_inbox(

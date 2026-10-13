@@ -102,7 +102,10 @@ def provider_link_resolved(path: Path) -> Path:
         return p
     if target.parent not in roots:
         return p
-    return target.joinpath(*rel.parts[1:])
+    # In the form of the root that held ``path``: under a home reached through a link (``/tmp`` is
+    # ``/private/tmp``) a link written in the other form names the same folder, and the two must compare
+    # equal (B13 round 7 H34).
+    return root.joinpath(target.name, *rel.parts[1:])
 
 
 def cloud_relative(path: Path) -> PurePosixPath | None:
