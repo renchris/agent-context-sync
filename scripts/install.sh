@@ -2151,9 +2151,11 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # Nor does its end invite sending it (B13 round 4 Q10, Q18): the "Send it:" line and the issue link are
 # dropped here, not by the writer, so an agentsync older than this installer (a stopped copy stops before the
 # install) and the shell fallback are covered alike. Both links start with ISSUE_URL, written after redaction;
-# index() and LC_ALL=C read them byte for byte. An earlier run's "bring back:", issue link and NEXT lines, quoted in
+# index() and LC_ALL=C read them byte for byte. An earlier run's "bring back:" and issue link lines, quoted in
 # the report's install.out tail, go too, with one line saying so in their place, and the Redaction legend's
 # "Read the report before sending it: a..." reads "A..." (B13 round 5 F16, F7): a field Mac has an earlier run.
+# Its NEXT line stays: it invites no sending, the Installer section counts it, and install.out never holds a
+# --report-only run's NEXT, the one that names bring-back.md (B13 round 6 G14).
 # The closing line has a blank line of its own: the one held before the dropped issue link is never printed, and
 # without it Markdown reads the closing line into the Redaction part (B13 round 6 G18).
 stopped_report_note() { # KEPT-REPORT-PATH
@@ -2164,9 +2166,9 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	if {
 		printf '%s\n\n' "$note" &&
 			LC_ALL=C awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
-				-v gone="(an earlier run's bring-back, issue link and NEXT lines are left out of this report)" '
+				-v gone="(an earlier run's bring-back and issue link lines are left out of this report)" '
 				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
-				index($0, u) > 0 || index($0, "bring back: ") == 1 || index($0, "bring-back.md and copy") > 0 { if (shown++) next; $0 = gone }
+				index($0, u) > 0 || index($0, "bring back: ") == 1 { if (shown++) next; $0 = gone }
 				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
 				$0 == "" { blank++; next }
 				{ for (; blank > 0; blank--) print ""; print }

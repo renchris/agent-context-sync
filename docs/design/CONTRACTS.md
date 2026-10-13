@@ -14082,6 +14082,7 @@ item amends an older section, a dated line sits at that section too.
   NEXT lines are left out of this report)` line in their place, and the legend's `Read the report before
   sending it: a...` reads `A...`.
   Amended 2026-10-13, §16.65 G18: a blank line always comes before the closing `Not for sending` line.
+  Amended 2026-10-13, §16.65 G14: an earlier run's `NEXT:` line is no longer dropped (see §16.65).
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
@@ -14827,6 +14828,8 @@ built here.
   `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` seeds install.out with a full run's end;
   `_sends_nothing` holds both writers to no `issues/new`, no `bring back: ` line and no "Read the report before
   sending it".
+  Amended 2026-10-13, §16.65 G14: the marker reads `(an earlier run's bring-back and issue link lines are left
+  out of this report)` and the NEXT line is kept; install.out never holds a `--report-only` run's NEXT.
 - **A newer copy** (F17). `--log-start` with a version above `SETUP_PROMPT_COMPAT` reads its own checkout's
   upstream branch and that remote's URL, origin's when there is no upstream (git, read-only, only with the
   developer tools; `newer_copy_fix`). Following main of the canonical repository: the copy came from another
@@ -15348,6 +15351,14 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   until a line that is kept follows, so the blank before the dropped issue link was never printed and Markdown
   read `Not for sending: ...` into the Redaction part. Its END prints a blank line first, whichever line the
   input ended on. `_sends_nothing` checks the gap for both writers.
+- **An earlier run's NEXT line stays** (G14). The marker that stands for an earlier run's quoted `bring back: `
+  and issue link lines read `(an earlier run's bring-back, issue link and NEXT lines are left out of this
+  report)` while the earlier run's NEXT was the very next line: the clause that dropped a NEXT naming
+  `bring-back.md and copy` matched only a `--report-only` run's, and `start_capture` never writes one of those
+  into install.out. The clause is gone and the marker reads `(an earlier run's bring-back and issue link lines
+  are left out of this report)`. Dropping step 2's real NEXT instead would contradict the Installer section's
+  count of NEXT lines in install.out. `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` seeds
+  install.out with a full run's real end and checks the line after the marker is that run's `NEXT: stop:`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

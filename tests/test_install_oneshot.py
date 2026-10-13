@@ -4327,16 +4327,17 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     )
     side = report_path(real_env).parent / "setup" / "stopped-copy-report.md"
     # An earlier full install run's end, as install.out keeps it: the stopped copy's report quotes its tail
-    # (B13 round 5 F16, F7: every field Mac has one)
+    # (B13 round 5 F16, F7: every field Mac has one). install.out never holds a --report-only run, so the NEXT
+    # is step 2's own (B13 round 6 G14)
     out = side.parent / "install.out"
     out.parent.mkdir(parents=True, mode=0o700)
     out.write_text(
-        "# run=20261012T090000Z-41 2026-10-12T09:00:00Z install.sh\n"
+        '# run=20261012T090000Z-41 2026-10-12T09:00:00Z install.sh --source-local "Contoso Docs"\n'
         "report: ~/agent-context/setup-report.md\n"
         "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)\n"
         f"issue link (review the report first): {setup_report.ISSUE_URL}&title=Contoso\n"
-        "NEXT: review ~/agent-context/bring-back.md and copy that one file back privately, or paste the "
-        "setup report into the issue the link above opens (nothing is sent for you)\n"
+        "NEXT: stop: the operator confirms the baseline questions in Contoso Docs; session done "
+        "[setup report: ~/agent-context/setup-report.md]\n"
     )
     out.chmod(0o600)
     assert install_sh(real_env, "--log-start", "x").returncode == 2
@@ -4344,9 +4345,12 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     assert stopped.returncode == 0 and "(agentsync setup-report)" in stopped.stdout, stopped.stdout
     assert "## Redaction" in side.read_text()
     _sends_nothing(side)
-    gone = "(an earlier run's bring-back, issue link and NEXT lines are left out of this report)"
-    assert side.read_text().splitlines().count(gone) == 1, side.read_text()
-    assert "bring-back.md and copy" not in side.read_text(), "nor the earlier run's NEXT"
+    gone = "(an earlier run's bring-back and issue link lines are left out of this report)"
+    lines = side.read_text().splitlines()
+    assert lines.count(gone) == 1, side.read_text()
+    assert lines[lines.index(gone) + 1].startswith("NEXT: stop: "), (
+        "the earlier run's NEXT is kept, and the line above it does not say otherwise (B13 round 6 G14)"
+    )
     _backdate(real_env, 11)
     assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     real = install_sh(real_env, "--report-only")
