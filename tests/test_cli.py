@@ -71,6 +71,30 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     assert "75  skipped" in capsys.readouterr().out
 
 
+def test_help_text_names_every_command_to_run_by_its_full_path(capsys: pytest.CaptureFixture[str]) -> None:
+    """B13 round 6 G79: F95 named every printed command by ~/.local/bin/agentsync, which works with that
+    folder off PATH, but left the --help epilog, the hidden commands' help and the sources.toml header bare;
+    a renamed alias's help said "run agentsync status" while its stderr gave the full path."""
+    from agentsync.config import default_config_text  # noqa: PLC0415
+
+    bin_ = "~/.local/bin/agentsync"
+    assert cli.main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert f"`{bin_} graph login`" in out and f"`{bin_} status`" in out
+    assert "`agentsync " not in out
+    for argv, said in (
+        (["doctor", "--help"], f"renamed: run {bin_} status"),
+        (["policy", "--help"], f"renamed: run {bin_} status"),
+        (["curate-queue", "--help"], f"renamed: run {bin_} curate"),
+        (["reconcile", "--help"], f"old spelling of {bin_} accept-deletions SOURCE"),
+        (["reconcile", "--help"], f"(`{bin_} sync` runs one when due)"),
+    ):
+        assert cli.main(argv) == 0, argv
+        assert said in " ".join(capsys.readouterr().out.split()), argv  # argparse wraps help text
+    first = default_config_text().splitlines()[0]
+    assert first.startswith("# agentsync sources.toml") and f"`{bin_} add-source <folder>`" in first
+
+
 def test_graph_verbs_it_request_and_config_are_hidden_but_parse(capsys: pytest.CaptureFixture[str]) -> None:
     """KISS K18: graph, its four top-level aliases and it-request are hidden from help, as are the global
     --config and graph login --device-code; each still parses."""

@@ -5666,7 +5666,9 @@ Exit 1 only when a blocking finding exists; rows alone exit 0, and an unusable D
 Baseline hold (`loop.curation_held`): while no curated page exists (`curate.iter_topic_pages` is empty) and there is
 no `_eval/results-*-before.md`, the rows section is one `no curation rows yet` line; findings and NEXT still print.
 `curate-queue`, `lint` and `refresh-queue` are hidden aliases: they print `renamed: run agentsync curate` on stderr,
-then run `curate`. `curate.refresh_queue` stays (the cycle's STALE banners use it). The `lint` base change: it used
+then run `curate`. **Amended 2026-10-13, §16.63 G79 (by §16.56 F95):** the stderr reads `renamed: run
+~/.local/bin/agentsync curate`; since G79 the aliases' `--help` says the same.
+`curate.refresh_queue` stays (the cycle's STALE banners use it). The `lint` base change: it used
 the `curated` tag, which kept the last session's pages in scope, so a page a later sync only marked STALE was an
 ERROR (exit 1) instead of a row.
 
@@ -5959,7 +5961,9 @@ A green doctor or a full-looking status read as "done" while the curation half h
 
 Exit 1 on any FAIL (an ERROR-severity check), else 0. Zero folder sources is rule 2's NEXT with exit 0, not a FAIL.
 `doctor` and `policy show` are hidden aliases that run `status` (stderr "renamed: run agentsync status" unless
-`AGENTSYNC_NO_NEXT_HINT=1`); `doctor --network` exits 2. The "no manifest" status line now reads `manifest: none
+`AGENTSYNC_NO_NEXT_HINT=1`); `doctor --network` exits 2. **Amended 2026-10-13, §16.63 G79 (by §16.56 F95):** the
+stderr reads `renamed: run ~/.local/bin/agentsync status`; since G79 the aliases' `--help` says the same.
+The "no manifest" status line now reads `manifest: none
 yet (no sync has run)` (NEXT is the instruction).
 
 New checks (`cli._extra_checks`):
@@ -14393,7 +14397,10 @@ bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync pur
   `<bin> status probes it`; config's missing-file error (`run <bin> add-source <folder>`); graph.auth's Entra and
   device-code error texts (`<bin> graph login`, `<bin> login`, `<bin> logout`); discover's 401 advice.
 Left as they are: docstrings, comments, the `--help` epilog and help strings (read, not pasted), and the comment line
-at the top of the sources.toml template. Q49's scope now covers these modules. Tests: `tests/test_governance.py`
+at the top of the sources.toml template. **Amended 2026-10-13, §16.63 G79:** the `--help` epilog, the help strings
+and the template's comment line now name `~/.local/bin/agentsync` too (a command in backticks is pasted); only the
+usage line's `prog="agentsync"` and the `--version` text stay bare.
+Q49's scope now covers these modules. Tests: `tests/test_governance.py`
 (`test_kept_purges_note_names_the_run_that_clears_them`), `tests/test_cycle.py`
 (`test_a_recording_given_up_under_either_stub_text_is_read_in_the_recording_pass`,
 `test_a_recording_given_up_under_either_stub_text_keeps_its_pieces_at_the_prune`,

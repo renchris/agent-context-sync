@@ -105,7 +105,9 @@ EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
 
-_EPILOG = """\
+# Commands by their full path, which works with ~/.local/bin off PATH (B13 round 6 G79, as §16.51 Q49); the
+# usage line keeps prog="agentsync".
+_EPILOG = f"""\
 exit codes:
   0   ok
   1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a status check
@@ -113,11 +115,13 @@ exit codes:
   2   usage error (bad arguments)
   75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
       `sync` (not a LaunchAgent's run) first waits up to 10 minutes for it
-  77  sign-in required: a Graph source needs `agentsync graph login` (auth REAUTH_REQUIRED), or Entra
-      blocked sign-in (blocked: device|policy|consent|assignment, config-invalid; the message names the fix)
+  77  sign-in required: a Graph source needs `{loop.BIN} graph login` (auth REAUTH_REQUIRED),
+      or Entra blocked sign-in (blocked: device|policy|consent|assignment, config-invalid; the message
+      names the fix)
   78  configuration invalid: sources.toml or policy.toml is missing or wrong (the message names the key)
   79  (LaunchAgent runs only) TCC_PENDING: the signed launcher's canary or watchdog timed out waiting for a
-      macOS privacy prompt; the cycle never ran or was stopped (see the job's .err.log, `agentsync status`)
+      macOS privacy prompt; the cycle never ran or was stopped (see the job's .err.log,
+      `{loop.BIN} status`)
 
 files: ~/agent-context/sources.toml (config) · ~/agent-context/docs (the docs git repo) ·
 ~/Library/Application Support/agentsync (manifest, lock, heartbeat, governance/) · ~/Library/Caches/agentsync
@@ -238,7 +242,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add(
         "reconcile",
-        "run one full-enumeration cycle (agentsync sync runs one when due)",
+        f"run one full-enumeration cycle (`{loop.BIN} sync` runs one when due)",
         _cmd_reconcile,
         hidden=True,
     )
@@ -248,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--accept-deletions",
         action="store_true",
-        help="old spelling of agentsync accept-deletions SOURCE (needs --source)",
+        help=f"old spelling of {loop.BIN} accept-deletions SOURCE (needs --source)",
     )
 
     add(
@@ -257,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
         "FAIL), then policy, holds, queued purges and each source",
         _cmd_status,
     )
-    add("doctor", "renamed: run agentsync status", _cmd_status_renamed, hidden=True)
+    add("doctor", f"renamed: run {loop.BIN} status", _cmd_status_renamed, hidden=True)
     add(
         "curate",
         "the curation work list: every lint finding, mirror changes since the last checkpoint, the refresh "
@@ -266,7 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
         _cmd_curate,
     )
     for old_name in ("curate-queue", "lint", "refresh-queue"):
-        add(old_name, "renamed: run agentsync curate", _cmd_curate_renamed, hidden=True)
+        add(old_name, f"renamed: run {loop.BIN} curate", _cmd_curate_renamed, hidden=True)
     add("checkpoint", "run sync (every sync records the checkpoint itself)", _cmd_checkpoint, hidden=True)
     add(
         "install-skill",
@@ -358,7 +362,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="list only (the default without --confirm)")
     p.add_argument("--confirm", metavar="DOCS_REPO", help="the docs repo path: required to remove anything")
 
-    p = add("policy", "renamed: run agentsync status", _cmd_status_renamed, hidden=True)
+    p = add("policy", f"renamed: run {loop.BIN} status", _cmd_status_renamed, hidden=True)
     p.add_argument("action", choices=["show"])
 
     p = add(

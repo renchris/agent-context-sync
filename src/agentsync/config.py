@@ -857,8 +857,10 @@ def _source_table_span(lines: list[str], source_id: str) -> tuple[int, int] | No
     return found[0] if len(found) == 1 else None
 
 
-_TEMPLATE = """\
-# agentsync sources.toml: `agentsync add-source <folder>` adds one [[source]] table per folder below.
+# The command by its full path, which works with ~/.local/bin off PATH (B13 round 6 G79, as §16.51 Q49).
+_TEMPLATE = f"""\
+# agentsync sources.toml: `{AGENTSYNC_BIN} add-source <folder>` adds one [[source]] table per
+# folder below.
 
 # [governance]
 # archive = true   # on: keep deleted pages and a snapshot tag per checkpoint, never compact; off: default
