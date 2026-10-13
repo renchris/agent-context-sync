@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import re
 import shlex
 import sqlite3
@@ -45,7 +46,7 @@ from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import CycleMode, CycleReport, PassKind, RowState, SourceKind, SourceReport, Verdict
 from agentsync.ops import doctor, launchd
-from agentsync.ops.lock import SingleWriterLock
+from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
 
 
 def git(repo: Path, *args: str) -> str:
@@ -935,7 +936,12 @@ def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
             assert any(ln.startswith("skipped: lock held (") and f"stage {stage!r}" in ln for ln in err), err
     finally:
         lock.release()
-    assert texts == ["agentsync.cli: skipped: lock held by reconcile"] * 2
+    # B13 round 7 H33: a cycle's label is its pass, not who started it (a sync typed in a terminal holds the
+    # lock as poll or reconcile too); any other holder is named as it is
+    assert texts == ["agentsync.cli: skipped: lock held by another sync (its pass: reconcile)"] * 2
+    assert cli._lock_holder("poll") == "another sync (its pass: poll)"
+    for other in (EMPTY_BODY_HOLDER, "an unidentified holder (unparseable lock body)", "governance"):
+        assert cli._lock_holder(other) == other
 
 
 def test_sync_without_mode_waits_for_a_running_sync(
@@ -964,6 +970,42 @@ def test_interactive_lock_wait_is_injectable_and_ends_in_lock_held(initialised: 
     # §16.39 N24: the re-raise keeps the holder's label for the WARNING and does not double the prefix
     assert ei.value.who == "poll"
     assert str(ei.value).count("lock held: ") == 1, str(ei.value)
+
+
+def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 7 H31: install.sh's first sync prints its own wait line and a ticker, and agentsync's lock
+    wait added a WARNING every 30 s and two skip lines more. Under AGENTSYNC_QUIET_LOCK_WAIT=1 (install.sh's
+    first sync only) the wait logs its first line and sends the beats to DEBUG, and the skip is said once, on
+    the stderr line that names the holder. A run without it keeps a beat every interval: it has no ticker."""
+    monkeypatch.setattr(cycle_mod, "_LOCK_PROGRESS_S", 0.2)
+    lock = SingleWriterLock(initialised.state_paths.lock, "poll")
+    lock.acquire()
+
+    def beats() -> list[int]:
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG, logger=cycle_mod.__name__), pytest.raises(LockHeldError):
+            run_cycle(initialised, mode=None, lock_wait_s=2.0)  # a retry every 0.5 s
+        return [r.levelno for r in caplog.records if "another sync is running" in r.getMessage()]
+
+    try:
+        default = beats()
+        assert len(default) >= 3 and set(default) == {logging.WARNING}, default
+        monkeypatch.setenv(cycle_mod.QUIET_LOCK_WAIT_ENV, "1")
+        quiet = beats()
+        assert len(quiet) >= 3 and quiet[0] == logging.WARNING and set(quiet[1:]) == {logging.DEBUG}, quiet
+        capsys.readouterr()
+        assert cli.main(["sync", "--mode", "poll", "--config", str(initialised.config_path)]) == 75
+        err = capsys.readouterr().err.splitlines()
+        assert [ln for ln in err if ln.startswith("skipped: lock held (")] and not [
+            ln for ln in err if "WARNING agentsync.cli: skipped" in ln
+        ], err
+    finally:
+        lock.release()
 
 
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:

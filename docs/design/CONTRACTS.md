@@ -397,6 +397,9 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    agentsync, a status or doctor check, or a cycle starting)` (one constant, `agentsync.ops.lock.EMPTY_BODY_HOLDER`),
    in the WARNING, the stderr line and doctor alike: install.sh's lockf, an `is_held` probe from status or doctor,
    and a cycle between its flock and its body write all leave the body empty.
+   **Amended 2026-10-13, §16.68 H33:** a cycle label reads `skipped: lock held by another sync (its pass:
+   <label>)`: a sync typed in a terminal holds the lock as `poll` or `reconcile`, as the background job does. Any
+   other holder (the unrecorded and unidentified texts, governance, exclude-empty) is named as before.
    **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
    exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
    truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
@@ -3674,6 +3677,10 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
     """Compare manifest tree_sha / pending cursors with git HEAD and repair (design 4.7 recovery)."""
 
 INTERACTIVE_LOCK_WAIT_S = 600.0  # KISS K12: how long a mode=None run waits for another cycle's lock
+QUIET_LOCK_WAIT_ENV = "AGENTSYNC_QUIET_LOCK_WAIT"  # 2026-10-13 (§16.68 H31): install.sh's first sync only
+
+def quiet_lock_wait() -> bool:  # 2026-10-13 (§16.68 H31): the lock wait's beats at DEBUG, no skip WARNING
+    ...
 
 def run_cycle(
     config: Config,
@@ -3730,7 +3737,7 @@ EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 
 EXIT_USAGE = 2
 
-EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <label>"
+EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <holder>"
 
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 
@@ -11269,6 +11276,9 @@ instant)`; a body that does not parse keeps `an unidentified holder (unparseable
 a constant, so Recent errors still merges it (one new entry once, when the text changed). doctor's lock line
 adds `(a cycle is running)` only when the held lock has a body: with none it reads `held by an unrecorded
 holder (...)`.
+**Amended 2026-10-13, §16.68 H33:** a cycle label (`poll`, `reconcile`, `dry_run`) is now rendered `another sync
+(its pass: <label>)` in the WARNING, since a sync typed in a terminal holds the lock as `poll` too; `who` itself
+is unchanged, and the text is still one constant per label, so Recent errors still merges it.
 
 Why the label alone: the setup report's Recent errors keeps only lines with a level word, so the holder was
 on a line it drops, and it merges only lines that read the same after their time (§16.36). The beat and its
@@ -11825,6 +11835,11 @@ records what its re-read looked for, and `finished` is measured against it; it h
     at its interval). lockf's own exit codes (64, 69, 71, 73, 75) mean it did not start uv, which never exits
     with them: then uv runs unlocked as before, after `agentsync: the background sync is still running after
     <N>s; reinstalling without waiting longer` when the wait ran out. A signalled uv (lockf 70) stays a failure.
+  - **Amended 2026-10-13, §16.68 H33:** the lock does not say who started the sync, so the lines are now
+    `agentsync: another sync is running (the background job, or one started in a terminal); the reinstall waits
+    for it to end (at most <N>s)`, `agentsync: reinstalling after the other sync ends, still running, <N>s` and
+    `agentsync: the other sync is still running after <N>s; reinstalling without waiting longer`. The install
+    log's note `waited-for-a-background-sync` is a machine word the setup report reads, and stays.
   - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
     lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
     FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as

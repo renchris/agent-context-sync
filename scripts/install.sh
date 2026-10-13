@@ -104,7 +104,8 @@
 #      It holds the lock of this run's config and of the config each LaunchAgent's plist names after --config
 #      (they can differ).
 #      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s, for all its locks
-#      together; 0 never waits), with "agentsync: reinstalling after the background sync ends, still running, <N>s" lines.
+#      together; 0 never waits), with "agentsync: reinstalling after the other sync ends, still running, <N>s" lines
+#      (the lock does not say who started the sync: the background job, or one started in a terminal).
 #      A background sync that starts meanwhile and reaches its lock is skipped (exit 75); a launchd tick that
 #      starts while the environment is being recreated ends in the launcher's SPAWN_FAILED (exit 71) or an
 #      import error instead, and uv itself may fail on the half-removed environment, so a failed locked
@@ -200,7 +201,8 @@
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of
-# its own), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
+# its own; the first sync also gets AGENTSYNC_QUIET_LOCK_WAIT=1, since that step prints its own lock-wait line
+# and ticker), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
 # then say the agent step below installs the LaunchAgents instead of naming a command). Step 9's setup-report
 # gets AGENTSYNC_REPORT_RUN=<this run's id>: the run's NEXT: line comes after the report, which counts it as
 # still to come.
@@ -2920,8 +2922,10 @@ uv_tool_install() {
 		done <<<"$locks"
 		[ "$busy" -eq 75 ] || busy=0
 		if [ "$busy" -eq 75 ]; then
-			say "agentsync: a background sync is running; the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
-			ticker "agentsync: reinstalling after the background sync ends" &
+			# The lock does not say who started the holder: the background job and a sync typed in a terminal
+			# hold it alike (B13 round 7 H33). AGENTSYNC_NOTE keeps its machine word below.
+			say "agentsync: another sync is running (the background job, or one started in a terminal); the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
+			ticker "agentsync: reinstalling after the other sync ends" &
 		else # a sync that starts after this probe is waited for too, so a line still comes
 			ticker "agentsync: reinstalling" &
 		fi
@@ -2949,7 +2953,7 @@ uv_tool_install() {
 		*) return "$rc" ;;
 		esac
 		[ "$rc" -ne 75 ] ||
-			say "agentsync: the background sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
+			say "agentsync: the other sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
 	fi
 	uv_run "$UV" "${args[@]}"
 }
@@ -3347,7 +3351,10 @@ FIRST_SYNC_NOTE=""
 SYNC_LABEL="first sync"
 [ "$CONFIG_STATE" = "created" ] || SYNC_LABEL="sync"
 SYNC_SUMMARY_RE='converted [0-9]+, deferred [0-9]+ online-only'
-first_sync_run() { "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"; } # stderr as it comes
+# stderr as it comes. AGENTSYNC_QUIET_LOCK_WAIT=1: this step prints its own wait line and ticker, so agentsync logs
+# its lock wait once (its 30 s beats go to DEBUG) and leaves its skip WARNING to the stderr line beside it (B13
+# round 7 H31); an older agentsync ignores it.
+first_sync_run() { AGENTSYNC_QUIET_LOCK_WAIT=1 "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"; }
 # What the first sync printed: its "converted N, deferred M online-only" line(s) after a success, else all of
 # it (a failure's detail, or an agentsync that prints no such line).
 show_first_sync() { # RC
@@ -3399,7 +3406,9 @@ else
 		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$ORIG_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -eq 75 ]; then
-		say "$SYNC_LABEL: skipped, $(rc_meaning 75)"
+		# agentsync's own "skipped: lock held (...)" line above names the holder; this one only closes the step
+		# (B13 round 7 H31: a third line said the same news again).
+		say "$SYNC_LABEL: skipped, lock busy"
 		step_end skipped 75 lock-busy
 	else
 		step_end failed "$SYNC_RC"

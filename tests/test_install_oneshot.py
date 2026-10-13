@@ -156,6 +156,7 @@ case "$sub" in
       exit 0
     fi
     [ -z "${STUB_SYNC_SLEEP:-}" ] || sleep "$STUB_SYNC_SLEEP"
+    echo "quiet=${AGENTSYNC_QUIET_LOCK_WAIT:-}" >> "$STUB_LOG.quiet"
     echo "stub cycle"
     [ -z "${STUB_SYNC_OUT:-}" ] || printf '%s\\n' "$STUB_SYNC_OUT"
     [ -z "${STUB_SYNC_ERR:-}" ] || printf '%s\\n' "$STUB_SYNC_ERR" >&2
@@ -593,8 +594,12 @@ def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder:
         {**env, "STUB_SYNC_RC": "75"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"
     )
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert "first sync: skipped, lock busy" in cp.stdout
+    assert "first sync: skipped, lock busy" in cp.stdout.splitlines()
     assert ("first-sync", "skipped", "75", "lock-busy") in steps(install_log(env))
+    # B13 round 7 H31: the step's own line closes it with no third copy of the news (agentsync's stderr line
+    # names the holder), and the first sync is asked for the quiet lock wait, as this step ticks on its own
+    assert "another agentsync cycle is running" not in cp.stdout
+    assert (Path(env["STUB_LOG"] + ".quiet")).read_text(encoding="utf-8").splitlines() == ["quiet=1"]
 
 
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:
@@ -5910,7 +5915,12 @@ def test_the_shell_report_reads_a_linked_worktrees_git_config(env: dict[str, str
 
 # ---- step 2 holds the background sync's lock (N6) ----------------------------------------------------------
 
-REINSTALL_TICK = r"agentsync: reinstalling after the background sync ends, still running, \d+s"
+REINSTALL_TICK = r"agentsync: reinstalling after the other sync ends, still running, \d+s"
+REINSTALL_WAITS = (
+    "agentsync: another sync is running (the background job, or one started in a terminal); the reinstall "
+    "waits for it to end (at most {}s)"
+)
+"""The reinstall's wait line: the lock does not say who started the sync it waits for (B13 round 7 H33)."""
 
 
 def _held_sync(env: dict[str, str]) -> tuple[dict[str, str], Path]:
@@ -5984,7 +5994,7 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
     lines = early + rest.splitlines()
     out = "\n".join(lines)
     assert proc.returncode == 0, out
-    assert "agentsync: a background sync is running; the reinstall waits for it to end (at most 60s)" in lines
+    assert REINSTALL_WAITS.format(60) in lines
     ticks = [ln for ln in lines if ln.startswith("agentsync: reinstalling")]
     assert ticks and all(re.fullmatch(REINSTALL_TICK, t) for t in ticks), out
     assert "still running after" not in out
@@ -6004,9 +6014,8 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     with SingleWriterLock(lock, "reconcile"):
         cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert (
-        "agentsync: the background sync is still running after 1s; reinstalling without waiting longer"
-        in (cp.stdout.splitlines())
+    assert "agentsync: the other sync is still running after 1s; reinstalling without waiting longer" in (
+        cp.stdout.splitlines()
     )
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e)), "B13 round 2 R34"
@@ -6020,7 +6029,7 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     wait = "sync: another sync is still running; waiting for it to end, at most 10 minutes"
     assert wait in out, cp.stdout
     assert out.index(wait) > out.index(
-        "agentsync: the background sync is still running after 1s; reinstalling without waiting longer"
+        "agentsync: the other sync is still running after 1s; reinstalling without waiting longer"
     )
 
 
@@ -6095,9 +6104,7 @@ def test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with(
     with SingleWriterLock(job_lock, "poll"):
         cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert "agentsync: a background sync is running; the reinstall waits for it to end (at most 1s)" in (
-        cp.stdout.splitlines()
-    )
+    assert REINSTALL_WAITS.format(1) in cp.stdout.splitlines()
     assert ("agentsync", "done", "0", "wait-ran-out-after-1s") in steps(install_log(e))
 
 
@@ -6134,9 +6141,8 @@ def test_the_reinstall_waits_once_however_many_locks_are_busy(
         if first.held:
             first.release()
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert (
-        "agentsync: the background sync is still running after 4s; reinstalling without waiting longer"
-        in (cp.stdout.splitlines())
+    assert "agentsync: the other sync is still running after 4s; reinstalling without waiting longer" in (
+        cp.stdout.splitlines()
     )
     assert ("agentsync", "done", "0", "wait-ran-out-after-4s") in steps(install_log(e))
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1, "the reinstall still runs"

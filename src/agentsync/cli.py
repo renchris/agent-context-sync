@@ -75,6 +75,7 @@ from agentsync.cycle import (
     _acquire_waiting,
     _holds_home,
     _tighten_own_paths,
+    quiet_lock_wait,
     run_cycle,
     source_statuses,
 )
@@ -100,7 +101,7 @@ from agentsync.slug import collision_key
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 EXIT_USAGE = 2
-EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <label>"
+EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <holder>"
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
@@ -2092,6 +2093,15 @@ def _cmd_offboard(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------------------------------------
 
 
+def _lock_holder(who: str) -> str:
+    """The skip WARNING's holder: a cycle's lock label as ``another sync (its pass: poll)``, since a sync
+    typed in a terminal holds the lock as ``poll`` or ``reconcile`` just as the background job does, and the
+    bare word read as the job (B13 round 7 H33). Any other holder (the unrecorded and unidentified texts,
+    governance's label) is named as it is: wrapping those would call install.sh's reinstall a sync. One text
+    per label, so the report's Recent errors still merges repeated skips."""
+    return f"another sync (its pass: {who})" if who in {m.value for m in CycleMode} else who
+
+
 def _setup_logging(verbosity: int) -> None:
     level = logging.WARNING if verbosity <= 0 else logging.INFO if verbosity == 1 else logging.DEBUG
     root = logging.getLogger()
@@ -2133,7 +2143,8 @@ def _main(argv: Sequence[str] | None) -> int:
         return handler(args)
     except LockHeldError as exc:
         _err(f"skipped: lock held ({exc})")
-        _log.warning("skipped: lock held by %s", exc.who)
+        if not quiet_lock_wait():  # install.sh's first sync: the line above says it on the same stderr (H31)
+            _log.warning("skipped: lock held by %s", _lock_holder(exc.who))
         return EXIT_LOCK_HELD
     except ConfigError as exc:
         _err(f"configuration error: {exc}")

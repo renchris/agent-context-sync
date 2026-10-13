@@ -4965,6 +4965,16 @@ INTERACTIVE_LOCK_WAIT_S = 600.0
 """How long a mode-None (interactive) run waits for another cycle's lock before LockHeldError (exit 75)."""
 _LOCK_RETRY_S = 0.5
 _LOCK_PROGRESS_S = 30.0
+QUIET_LOCK_WAIT_ENV = "AGENTSYNC_QUIET_LOCK_WAIT"
+"""Set to 1 by scripts/install.sh for its first sync only, which prints its own wait line and a ticker: the
+lock wait then logs its first WARNING and sends the 30 s beats to DEBUG, and the CLI drops its skip WARNING,
+which the stderr line beside it already carries (B13 round 7 H31). Every other run keeps the beats: with no
+ticker of its own, they are its only sign of life while it waits."""
+
+
+def quiet_lock_wait() -> bool:
+    """Whether :data:`QUIET_LOCK_WAIT_ENV` asks for the quiet lock wait (install.sh's first sync)."""
+    return os.environ.get(QUIET_LOCK_WAIT_ENV) == "1"
 
 
 def _interactive_mode(config: Config, now: datetime) -> CycleMode:
@@ -4998,10 +5008,13 @@ def _interactive_mode(config: Config, now: datetime) -> CycleMode:
 
 
 def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
-    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s.  After ``wait_s``
-    the last LockHeldError is raised (naming how long this run waited)."""
+    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s, after the first
+    line at DEBUG under :func:`quiet_lock_wait`.  After ``wait_s`` the last LockHeldError is raised (naming
+    how long this run waited)."""
     start = time.monotonic()
     noted = -_LOCK_PROGRESS_S
+    later = logging.DEBUG if quiet_lock_wait() else logging.WARNING
+    level = logging.WARNING
     while True:
         try:
             return lock.acquire()
@@ -5011,12 +5024,14 @@ def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
                 raise LockHeldError(f"{exc.holder}; waited {int(waited)}s", who=exc.who) from None
             if waited - noted >= _LOCK_PROGRESS_S:
                 noted = waited
-                log.warning(
+                log.log(
+                    level,
                     "another sync is running (%s); waiting for it to finish (%ds of at most %ds)",
                     exc,
                     int(waited),
                     int(wait_s),
                 )
+                level = later
             time.sleep(min(_LOCK_RETRY_S, max(0.0, wait_s - waited)))
 
 

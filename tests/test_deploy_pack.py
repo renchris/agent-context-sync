@@ -1482,12 +1482,13 @@ def test_readme_step2_is_the_one_install_command() -> None:
     # in its own line, the one the prompt quotes, and the cap is agentsync's own.
     wait_line = "another sync is still running; waiting for it to end, at most 10 minutes"
     assert f'say "$SYNC_LABEL: {wait_line}"' in script
-    assert 'say "$SYNC_LABEL: skipped, $(rc_meaning 75)"' in script
+    # B13 round 7 H31: agentsync's own stderr line names the holder, so the step's line says no more
+    assert 'say "$SYNC_LABEL: skipped, lock busy"' in script
     assert "75) printf 'lock busy: another agentsync cycle is running' ;;" in script
     from agentsync import cycle  # noqa: PLC0415
 
     assert cycle.INTERACTIVE_LOCK_WAIT_S == 10 * 60
-    assert "agentsync: reinstalling after the background sync ends" in script
+    assert "agentsync: reinstalling after the other sync ends" in script
     assert 'say "$1, still running, $((SECONDS - t0))s"' in script, "the ticker's words"
     assert "reinstalling without waiting longer" in script, "and it goes on when the wait runs out"
 

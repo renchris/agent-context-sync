@@ -468,10 +468,11 @@ group and other inside `~/agent-context/setup`, and no check looks in that folde
 Triage: a report whose fix request says files in `setup/` are readable by others, from a build with this
 fix, means a file there belongs to another user or the folder is a symlink: the walk leaves both alone.
 
-On a re-run, step 2 waits for a background sync before it reinstalls agentsync, at most 2 minutes
+On a re-run, step 2 waits for a running sync before it reinstalls agentsync, at most 2 minutes
 ([CONTRACTS §16.41](../design/CONTRACTS.md), "The reinstall holds the background sync's lock"). The lines are
-`agentsync: a background sync is running; ...` and
-`agentsync: reinstalling after the background sync ends, still running, <N>s`. A poll that exits 75 at that
+`agentsync: another sync is running (the background job, or one started in a terminal); ...` and
+`agentsync: reinstalling after the other sync ends, still running, <N>s`: the lock does not say who started the
+sync, and one typed in a terminal holds it as the background job does (B13 round 7 H33). A poll that exits 75 at that
 time was skipped on purpose: the reinstall held its lock, and launchd starts the next at its interval. The
 report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock held by an unrecorded holder
 (install.sh while it reinstalls agentsync, a status or doctor check, or a cycle starting)`, and doctor's lock line during the wait
