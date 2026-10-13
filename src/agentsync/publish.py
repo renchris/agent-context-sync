@@ -299,6 +299,11 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
+_ALARM_MAX = 6000
+"""An alarm line's cap in STATE.md: the waits send the reader there for the folder names an alarm holds, and
+an alarm names up to five, each in full (five relative paths at macOS's 1024-character limit fit); at
+:data:`_REASON_MAX` five nested OneDrive paths lost their last names and the ``(+N more ...)`` tail (B13 round
+7 H48). Errors, skipped reasons and lint messages keep 300."""
 STUB_RENDER = 5
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
@@ -2097,7 +2102,7 @@ class Publisher:
                 )
                 if r.skipped_reason:
                     lines.append(f"skipped_reason: {_quoted(r.skipped_reason)}")
-                lines += [f"alarm: {_quoted(a)}" for a in r.alarms]
+                lines += [f"alarm: {_quoted(a, _ALARM_MAX)}" for a in r.alarms]
                 lines += [f"error: {_quoted(e)}" for e in r.errors]
         if report.lint_findings:
             lines += ["", "## Lint findings", ""]

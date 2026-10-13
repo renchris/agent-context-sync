@@ -1561,3 +1561,45 @@ def test_the_baseline_next_names_the_agents_md_that_carries_the_section(tmp_path
     guide = Path(m.group(1)).expanduser()
     assert guide == config.docs_repo / "AGENTS.md" and guide.is_file(), guide
     assert skill.BASELINE in guide.read_text(encoding="utf-8"), "the file named carries the section"
+
+
+_LONG = [f"Client Projects/2026/Contoso Renewal Workstream {c}/Drafts Archive" for c in "ABCDEF"]
+"""Six nested folder paths of about 65 characters each, sharing a 37-character start (B13 round 7 H48)."""
+
+
+def _kept_alarms(config: Config) -> list[str]:
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+    return [ln for ln in state_md.read_text(encoding="utf-8").splitlines() if ln.startswith("alarm: ")]
+
+
+def test_state_md_keeps_the_five_long_folder_names_the_empty_folder_wait_points_at(tmp_path: Path) -> None:
+    """B13 round 7 H48: the waits send the reader to STATE.md for the folder names, but STATE.md cut each
+    alarm at 300 characters: of five names of about 65 characters it kept three, and lost the ``(+1 more``
+    tail. An alarm line there now holds what the alarm printed."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    for rel in _LONG:
+        (root / rel).mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert "STATE.md" in wait and not any(rel in wait for rel in _LONG)
+    assert any(all(f"'{rel}'" in ln for rel in _LONG[:5]) and "(+1 more" in ln for ln in _kept_alarms(config))
+
+
+def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at(
+    tmp_path: Path, folder: Path
+) -> None:
+    """B13 round 7 H48: the could-not-list wait makes the same promise as the empty-folder one."""
+    for rel in _LONG:
+        _write(folder / rel / "memo.txt", "Memo for Project Alpha.\n")
+        (folder / rel).chmod(0)
+    try:
+        config = _setup(tmp_path, local_source_table("work", folder))
+        run_cycle(config, mode=None)
+        (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        for rel in _LONG:
+            (folder / rel).chmod(0o755)
+    assert "could not be listed" in wait and "STATE.md" in wait
+    assert any(all(f"'{rel}'" in ln for rel in _LONG[:5]) and "(+1 more" in ln for ln in _kept_alarms(config))
