@@ -1566,6 +1566,16 @@ class Outcome:
             return f"Failed at step {step} ({PROMPT_STEPS[step]})"
         return None
 
+    @property
+    def title_label(self) -> str | None:
+        """The issue title's words: a failed step named as the attempt's own prompt names it (v14's step 3 is
+        "sync loop and report"), where :attr:`form_label` keeps v6's option names so every link's prefilled
+        field stays a valid option (KISS K16b; B13 round 6 G12). Otherwise :attr:`form_label`."""
+        steps = prompt_layout(self.version).steps
+        if self.kind == "failed" and self.step in steps:
+            return f"Failed at step {self.step} ({steps[self.step]})"
+        return self.form_label
+
 
 def _run_events(attempt: Attempt) -> list[FrictionEvent]:
     """The attempt's events up to its closing ``finished`` line: a line logged after the run finished cannot
@@ -1845,10 +1855,13 @@ def build_issue_url(
     prompt: str | None,
     agent: str | None,
     loop_stage: str | None = None,
+    title_outcome: str | None = None,
 ) -> str:
     """The prefilled "Setup report" issue link: :data:`ISSUE_URL`, a title, and the form fields of
-    :data:`ISSUE_FIELDS`, URL-encoded. Only these five values go in: never the report body."""
-    title = ISSUE_TITLE + " · ".join(v for v in (outcome, run_type, prompt) if v)
+    :data:`ISSUE_FIELDS`, URL-encoded. Only these five values go in: never the report body. The title says
+    ``title_outcome`` (the attempt's own step name, :attr:`Outcome.title_label`) when given, else
+    ``outcome``."""
+    title = ISSUE_TITLE + " · ".join(v for v in (title_outcome or outcome, run_type, prompt) if v)
     params: list[tuple[str, str]] = [("title", title)]
     values = (
         ("outcome", outcome),
@@ -6871,6 +6884,7 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     outcome = r.outcome or compute_outcome(att, _latest_runs(r))  # the Summary's, else by the same runs
     return build_issue_url(
         outcome=outcome.form_label,
+        title_outcome=outcome.title_label,
         run_type=ISSUE_RUN_TYPES.get(r.run_type or ""),
         prompt=_prompt_version(att),
         agent=agent or None,

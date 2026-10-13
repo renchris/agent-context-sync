@@ -3156,6 +3156,23 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
+    # B13 round 6 G12: the title names the attempt's own step; the field keeps v6's option
+    for version in (7, 14, None):
+        failed = setup_report.Outcome("failed", 3, (), version)
+        assert failed.title_label == "Failed at step 3 (sync loop and report)"
+        link = setup_report.build_issue_url(
+            outcome=failed.form_label,
+            title_outcome=failed.title_label,
+            run_type="Sandbox",
+            prompt="v14",
+            agent=None,
+        )
+        query = parse_qs(urlsplit(link).query)
+        assert query["title"] == ["Setup report: Failed at step 3 (sync loop and report) · Sandbox · v14"]
+        assert query[setup_report.ISSUE_FIELDS["outcome"]] == ["Failed at step 3 (IT request and report)"]
+    for step, name in setup_report.PROMPT_STEPS.items():
+        assert setup_report.Outcome("failed", step, (), 6).title_label == f"Failed at step {step} ({name})"
+    assert setup_report.Outcome("fully one command", None, (), 14).title_label == "Fully one command"
 
 
 V8_BUSY_LINES = (

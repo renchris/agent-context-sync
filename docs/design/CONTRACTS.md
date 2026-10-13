@@ -15222,6 +15222,13 @@ first in `1a37b7ec` with this item's fix (the legend, setup-feedback.md's Quaran
 `label_withheld_suffixes` docstrings); this lane builds nothing more for it. Test:
 `test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter`.
 
+**G12: the issue title names the attempt's own step.** `Outcome.title_label` is `Failed at step N (<the step's name
+in the attempt's own prompt layout>)` for a failed step that layout has, else `form_label`; `build_issue_url` takes
+it as `title_outcome` for the title only. A v7 to v14 attempt failed at step 3 gives the title `Setup report: Failed
+at step 3 (sync loop and report) · …`, while the `outcome` field keeps v6's option `Failed at step 3 (IT request and
+report)` (KISS K16b), so old and new links stay valid options and triage counts stay in one bucket. v6 titles are
+unchanged. Test: `test_prompt_layout_is_picked_by_explicit_version`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.
