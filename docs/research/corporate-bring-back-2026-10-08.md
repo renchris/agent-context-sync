@@ -346,6 +346,11 @@ recorded here, not decided.
 
 **`71d3e66ef726` — May a cloud folder that is on the Mac and still empty ever count as empty?**
 
+CORRECTED (2026-10-13): the built rule no longer asks for a hand-pasted `exclude` line. In a real File Provider
+domain the wait counts the empty folders and names `~/.local/bin/agentsync exclude-empty <id>` (B13 Q71) and
+`~/.local/bin/agentsync sync -v` to list them (B13 F43); a plain folder under `~/Library/CloudStorage` is just empty
+(B13 R1). The cost of keeping the rule is now one command per source, not one pasted line per folder.
+
 What moved:
 
 - **The evidence is the same, twice.** `<source-1>` has 5 unknown folders, 5 of 5 checked: 0 dataless, 5
