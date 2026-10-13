@@ -3303,3 +3303,37 @@ def test_a_round_5_item_that_amends_another_has_a_dated_line_there() -> None:
         said = [" ".join(chunk.split("**")[:2]) for chunk in dated]
         found = [f for f in named if any(re.search(rf"\b{f}\b", line) for line in said)]
         assert found, (section, item, sorted(named))
+
+
+def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
+    """B13 round 7: the reviewer's guide lagged round 6's report code.  H43, H61, H67 (one defect): §16.64
+    G23's `stopped at step 1 (<note>)` outcome was missing from the computed outcomes, whose `Failed at step
+    N` fallback and agent-friction sentence called such an attempt failed, and the `title` row said the title
+    holds the outcome, while since G12 it names the step as the attempt's own prompt does."""
+    from agentsync.setup_report import Outcome, compute_outcome, parse_friction  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    head = "Attempt: 2026-10-13T10:00:00Z\nPrompt: v15\nAgent: Tool-A\n"
+    for what in ("stopped to wait for the folder answer", "listed the folders by hand"):
+        [attempt] = parse_friction(f"{head}2026-10-13T10:01:00Z | step 1 | deviation | {what} | -\n").attempts
+        stopped = compute_outcome(attempt, ())
+        assert stopped.kind == "stopped", what
+        assert f"`{stopped.text}`" in page, what
+        assert f"`{stopped.form_label}`" in page
+    assert "**Stopped at step 1**: no install run, no `error` line and no `end | finished` line" in page
+    assert "failing that the last step logged (unless the attempt only stopped at step 1, below)" in page
+    assert "the form has no stopped option, so it records a stopped attempt as step 1's failure" in page
+    assert "and they do not change the outcome. They" not in page
+    assert "except that an attempt whose only lines are step 1 deviations reads 'stopped'" in page
+    assert '"Setup report: " and the outcome, run type and prompt version)' not in page
+    failed = Outcome("failed", 2, (), 15)
+    assert failed.title_label != failed.form_label
+    assert f"step 2 is `{str(failed.title_label).split('(')[1].rstrip(')')}`" in page
+    assert f"such as `{failed.form_label}`" in page
+    stopped = Outcome("stopped", 1, (), 15, "waiting for the folder answer")
+    assert (
+        f"A stopped attempt's title reads `{stopped.title_label}` and its field `{stopped.form_label}`"
+        in page
+    )
+    contracts = _contracts_section("### 16.64 ", "### 16.65 ")
+    assert '**Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later' in contracts

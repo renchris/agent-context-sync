@@ -15307,6 +15307,10 @@ stays for v6 and v5 links, so triage of step 3 now adds both options (`FORM_OUTC
 Amended 2026-10-13, §16.69 H42: a `stopped` attempt's title reads `Stopped at step 1 (<the step's name in its own
 layout>)`, as its Summary does; its `outcome` field stays `Failed at step 1 (preflight)`.
 
+**Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later attempt: `prompt_layout` reads every
+later version with v7's layout until one adds an entry. A v5 title names v5's own step number and name too (its step 3 is `install and start`, which
+the field files as step 2).
+
 **G20: a newer copy's cause comes from the installer's fix column.** The Summary's prompt clause for a copy newer than
 the installer no longer always blames the checkout. install.sh's error line says `this checkout is older than the
 prompt` in every newer-copy case; only its fix column (`newer_copy_fix`) names the cause, and the report matches its
@@ -16099,3 +16103,13 @@ changes. Each item is pinned by a test in `tests/test_deploy_pack.py` that fails
 `reason:` and as its `_sync/QUARANTINE.tsv` reason, also for one withheld without a download; data-governance.md
 still said the QUARANTINE.tsv reason stays `no converter for .msg`, which is now only the stored reason. Test:
 `test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`.
+
+**The stopped outcome and the title's step name are in the reviewer's guide** (H43, H61, H67: one defect; dated
+line at §16.64 G12). setup-feedback.md's computed outcomes had no `stopped at step 1 (<note>)` (§16.64 G23), and its
+`Failed at step N` fallback and agent-friction sentence called such an attempt failed; a fourth bullet gives the
+whole condition (no install run, no error, no end line, every line a step 1 deviation), both notes and the form's
+`Failed at step 1 (preflight)`. The `title` row said the title holds the outcome; since §16.64 G12 it names the
+step as the attempt's own prompt does, while the `outcome` field takes the form's option (since §16.69 H11 the same
+words for step 3; v7's step 2 `install` and a v5 step still map to the option for the same work), and since §16.69
+H42 a stopped attempt's title reads `Stopped at step 1 (preflight)`. Test:
+`test_setup_feedback_states_the_report_rules_of_round_6`.
