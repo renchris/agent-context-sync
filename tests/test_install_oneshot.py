@@ -5788,6 +5788,54 @@ def test_the_shell_report_redacts_the_pac_url_and_proxy_hosts(
     assert "- proxy environment: yes" in text, "a host with no dot is not registered"
 
 
+def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str, str]) -> None:
+    """B13 round 7 H20, the shell twin of the Python report's: v15's git stop names a URL rewrite as a cause,
+    and git's error names the rewrite's host. The bases of ``[url "<base>"] insteadOf`` are read as files (no
+    git process), an https base and an scp base by host and by base, never GitHub's own host; the
+    Environment part counts them."""
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_text(
+        '[url "https://jdoe@mirror.northwind.invalid:8443/northwind-team/"]\n'
+        "\tinsteadOf = https://github.com/\n"
+        '[url "git@scp.northwind-two.invalid:northwind-scp/"]\n'
+        "\tInsteadOf = https://github.com/someone/\n"
+        '[url "git@github.com:"]\n'
+        "\tinsteadOf = https://github.com/\n"
+        '[url "https://push.northwind-three.invalid/"]\n'
+        "\tpushInsteadOf = https://github.com/\n"
+        '[URL "https://Mirror.Northwind-Four.invalid/git"]\n'  # a generic path, a host in mixed case
+        "insteadof=https://github.com/x/\n"
+    )
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    (setup / "friction.md").write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n"
+        "2026-10-10T00:00:01Z | step 1 | error | git clone https://mirror.northwind.invalid:8443/northwind-team/"
+        "someone/agent-context-sync.git/: Could not resolve host: mirror.northwind.invalid | -\n"
+        "2026-10-10T00:00:02Z | step 1 | error | git pull git@scp.northwind-two.invalid:northwind-scp/x.git: "
+        "Could not resolve hostname scp.northwind-two.invalid | -\n"
+        "2026-10-10T00:00:03Z | step 1 | error | Could not resolve host: mirror.northwind-four.invalid; "
+        "/usr/bin/git and https://github.com/astral-sh/uv stay | -\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert "northwind" not in text.lower(), [ln for ln in text.splitlines() if "northwind" in ln.lower()]
+    assert re.search(
+        r"git clone https://<proxy-\d+>/someone/agent-context-sync\.git/: Could not resolve host: "
+        r"<proxy-\d+> \|",
+        text,
+    ), text
+    assert re.search(r"git pull git@<proxy-\d+>/x\.git: Could not resolve hostname <proxy-\d+> \|", text), (
+        text
+    )
+    assert "/usr/bin/git and https://github.com/astral-sh/uv stay" in text, "a generic path is no value"
+    assert "- URL rewrite in git's config: set (4)\n" in text
+    (home / ".gitconfig").unlink()
+    assert install_sh(env, "--report-only").returncode == 0
+    assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()
+
+
 def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
     env: dict[str, str], tmp_path: Path
 ) -> None:

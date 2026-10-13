@@ -4534,6 +4534,67 @@ def test_a_proxy_only_git_knows_is_redacted(fake_mac: dict[str, Path], tmp_path:
     assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \(exit 1\)", text)) >= 2, text
 
 
+def test_a_git_url_rewrite_host_and_path_are_redacted(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 7 H20: v15's git stop names a URL rewrite as a cause, and git's error then names the
+    rewrite's host, which the report printed in clear (only a proxy was registered). The bases of
+    ``[url "<base>"] insteadOf`` are read as files, with no git process: an https base and an scp base by
+    host and by their path, never GitHub's own host; the Environment line counts them."""
+    (Path.home() / ".gitconfig").write_text(
+        '[url "https://jdoe@mirror.northwind.invalid:8443/northwind-team/"]\n'
+        "\tinsteadOf = https://github.com/\n"
+        '[url "git@scp.northwind-two.invalid:northwind-scp/"]\n'
+        "\tInsteadOf = https://github.com/someone/\n"
+        '[url "git@github.com:"]\n'
+        "\tinsteadOf = https://github.com/\n"
+        '[url "https://push.northwind-three.invalid/"]\n'
+        "\tpushInsteadOf = https://github.com/\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "no-tools"))  # step 1's Xcode stop: no git at all
+    assert setup_report._git_rewrite_bases() == [
+        "https://jdoe@mirror.northwind.invalid:8443/northwind-team/",
+        "git@scp.northwind-two.invalid:northwind-scp/",
+        "git@github.com:",
+    ]
+    v6_install_log(fake_mac)
+    lines = (
+        "2026-09-29T10:01:20Z | step 1 | error | git clone https://mirror.northwind.invalid:8443/northwind-team/"
+        "someone/agent-context-sync.git/: Could not resolve host: mirror.northwind.invalid (exit 128) | -\n"
+        "2026-09-29T10:01:21Z | step 1 | error | git pull git@scp.northwind-two.invalid:northwind-scp/x.git: "
+        "Could not resolve hostname scp.northwind-two.invalid (exit 1) | -\n"
+    )
+    write_friction(fake_mac, V11_HAPPY + lines)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "northwind" not in text.lower(), [ln for ln in text.splitlines() if "northwind" in ln.lower()]
+    for part in (section(text, "Summary"), section(text, "Agent friction log")):
+        assert re.search(r"Could not resolve host: <proxy-\d+> \(exit 128\)", part), part
+        assert re.search(r"git clone https://<proxy-\d+>/someone/agent-context-sync\.git/:", part), part
+        # git@host is an email address to the redactor; the scp base's path is a value of its own
+        assert re.search(r"git pull <email-\d+><proxy-\d+>/x\.git: ", part), part
+    assert "URL rewrite in git's config: set (3)" in section(text, "Environment")
+    assert text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL), "GitHub's host is kept"
+    # a path of a server's generic words is no value of its own: it would cut /usr/bin/git (a reviewer's
+    # finding); a URL base's path goes with its host
+    red = setup_report.Redactor()
+    for base in ("https://mirror.northwind-four.invalid/git/", "git@scm.northwind-five.invalid:scm/repos/"):
+        found = setup_report._rewrite_values(base)
+        assert found is not None and found[2] == "", (base, found)
+        host, value, _tail = found
+        red.add("proxy", host, ignore_case=True)
+        red.add("proxy", value, ignore_case=True)
+    shown = red.redact(
+        "/usr/bin/git; /opt/homebrew/bin/git; ~/src/agent-context-sync/.git/config; /Git/hooks"
+    )
+    assert shown == "/usr/bin/git; /opt/homebrew/bin/git; ~/src/agent-context-sync/.git/config; /Git/hooks"
+    assert setup_report._rewrite_values("https://GitHub.com/") is None
+    assert setup_report._rewrite_values("ssh://git@GITHUB.com/") is None
+    (Path.home() / ".gitconfig").unlink()
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "URL rewrite in git's config: not set" in section(text, "Environment")
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_go_ahead_in_the_chat_is_a_turn_and_what_it_allowed_is_agent_friction(
     fake_mac: dict[str, Path], tmp_path: Path

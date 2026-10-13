@@ -1091,17 +1091,37 @@ generic_proxy_host() {
 # with no git. An empty "proxy =" (git's off switch) prints nothing.
 git_proxy_values() {
 	local g
-	{
-		printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
-		[ -z "${repo:-}" ] || checkout_git_configs "$repo"
-		checkout_git_configs "$HOME/src/agent-context-sync"
-	} | while IFS= read -r g; do
+	git_config_files | while IFS= read -r g; do
 		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
 		# LaunchAgent's proxies after it went unread).
 		[ ! -f "$g" ] ||
 			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g" ||
 			true
 	done 2>/dev/null
+}
+# The config files git reads that the report reads too, one a line (setup_report._git_config_names).
+git_config_files() {
+	printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
+	[ -z "${repo:-}" ] || checkout_git_configs "$repo"
+	checkout_git_configs "$HOME/src/agent-context-sync"
+}
+# The bases of git's URL rewrites ([url "<base>"] with an insteadOf key), one a line, from the same files, as
+# setup_report._git_rewrite_bases reads them (B13 round 7 H20): v15's git stop names a rewrite as a cause, and
+# git's error then names its host. As files, with no git process; pushInsteadOf is left out.
+git_rewrite_bases() {
+	local g
+	git_config_files | while IFS= read -r g; do
+		[ ! -f "$g" ] || LC_ALL=C awk '
+			/^[ \t]*\[/ {
+				base = ""
+				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
+					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+				}
+				next
+			}
+			base != "" && tolower($0) ~ /^[ \t]*insteadof[ \t]*(=|$)/ { print base }
+		' "$g" || true
+	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
 }
 # What setup_report._norm keeps of an ASCII id or folder name: lower case, no blank, "_", "\" or "-".
 id_key() { printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
@@ -1112,7 +1132,7 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
-	local port k folders_seen=$'\n' ph b
+	local port k folders_seen=$'\n' ph b auth sep tail rw
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1424,11 +1444,42 @@ redaction_pairs() {
 	seen=" "
 	while IFS= read -r u; do
 		pac=""
-		case "$u" in pac=*)
+		tail=""
+		rw=""
+		case "$u" in
+		pac=*)
 			u="${u#pac=}"
 			pac="${u#*://}"
 			# A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only.
 			case "$pac" in */*) ;; *) ! generic_proxy_host "${pac%%:*}" || pac="" ;; esac
+			;;
+		rw=*)
+			# A URL rewrite's base (B13 round 7 H20), a URL or git's scp form (git@host:path): its base after
+			# the scheme and user and its host, as the Python report registers them, in their written and lower
+			# case forms (git prints the host as configured, a resolver error in lower case); an scp base's
+			# path too, a whole word, unless it is a server's generic layout (git, scm, repos), since the Python
+			# report reads git@host as an email address first. GitHub's own host is skipped, so the repository
+			# locator and the issue link stay.
+			rw=1
+			u="${u#rw=}"
+			case "$u" in *://*) h="${u#*://}" sep="/" ;; *) h="$u" sep=":" ;; esac
+			auth="${h%%"$sep"*}"
+			case "$h" in *"$sep"*) tail="$sep${h#*"$sep"}" ;; esac
+			while :; do case "$tail" in */ | *:) tail="${tail%?}" ;; *) break ;; esac; done
+			auth="${auth##*@}"
+			case "$(printf '%s' "${auth%%:*}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in "" | github.com) continue ;; esac
+			[ "$sep" = / ] || auth="${auth%%:*}"
+			pac="$auth$tail"
+			[ "$pac" != "${auth%%:*}" ] || pac=""
+			u="rw://$auth/"
+			k=""
+			b=" git scm repo repos mirror mirrors src source code " # setup_report._GENERIC_PATH_WORDS
+			if [ "$sep" = : ]; then
+				for w in $(printf '%s' "$tail" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr '[:upper:]' '[:lower:]'); do
+					case "$b" in *" $w "*) ;; *) k=1 ;; esac
+				done
+			fi
+			[ -n "$k" ] || tail=""
 			;;
 		esac
 		h="${u#*://}"
@@ -1437,13 +1488,17 @@ redaction_pairs() {
 		port=""
 		case "$h" in *:*) port="${h#*:}" ;; esac
 		h="${h%%:*}"
-		for v in "$pac" "$h"; do
+		for v in "$pac" "$h" "$tail"; do
 			[ -n "$v" ] || continue
 			case "$seen" in *" $v "*) continue ;; esac
 			seen="$seen$v "
 			n=$((n + 1))
 			case "$v" in
-			"$pac" | *.*) add_pair "$v" "<proxy-$n>" ;;
+			"$tail") add_pair "$v" "<proxy-$n>" w ;;
+			"$pac" | *.*)
+				add_pair "$v" "<proxy-$n>"
+				[ -z "$rw" ] || add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<proxy-$n>"
+				;;
 			*)
 				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only where a URL names it, so
 				# the report's HTTPS_PROXY and network.proxy stay; any other (contosogw) can name the company and
@@ -1467,6 +1522,7 @@ redaction_pairs() {
 				"${HTTP_PROXY:-}" "${http_proxy:-}"
 			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
 			git_proxy_values
+			git_rewrite_bases | LC_ALL=C sed 's/^/rw=/'
 			# The LaunchAgent environment (launchctl setenv) that the doctor network.proxy.job line prints (B13 R68); a
 			# read, as launchd_print is, and none when launchd is simulated (no launchctl call at all).
 			[ "$SIMULATE" -eq 1 ] || for k in HTTPS_PROXY https_proxy ALL_PROXY all_proxy HTTP_PROXY http_proxy; do
@@ -1771,6 +1827,13 @@ fallback_body() {
 		say "- proxy in git's config: set (git uses it before HTTPS_PROXY)"
 	else
 		say "- proxy in git's config: not set"
+	fi
+	# A count, never a host (B13 round 7 H20)
+	k="$(git_rewrite_bases | LC_ALL=C wc -l | LC_ALL=C tr -d ' ')"
+	if [ "${k:-0}" -gt 0 ]; then
+		say "- URL rewrite in git's config: set ($k)"
+	else
+		say "- URL rewrite in git's config: not set"
 	fi
 	# Folders only, as setup_report.cloud counts them since B13 round 4 Q33: a symlink and any other entry are
 	# counted apart, and named only when there is one (B13 round 5 F56). BSD find does not follow a link (-P).

@@ -12969,6 +12969,9 @@ needs no pair: `redact_stream` makes every `$'..'` word `<path>` first.
 - The Environment line ends `· proxy in git's config: set (git uses it before HTTPS_PROXY)` or `not set`, from
   `_git_proxy_urls`; the shell prints `- proxy in git's config: …` from the same files (`git_proxy_values`). Set
   or not set only, never the host.
+  Amended 2026-10-13, §16.69 H20: then `· URL rewrite in git's config: set (N)` or `not set` (the shell: `- URL
+  rewrite in git's config: …`), a count of `[url "<base>"] insteadOf` bases, never a host; each base's host, the
+  base after its scheme and user, and its path are registered as `<proxy-N>` after git's proxies.
 - The shell fallback prints `- system proxy (scutil --proxy): manual HTTPS yes|no · PAC yes|no · WPAD yes|no`
   from the Enable flags, as `net.py` reads them (a host key can stay while its flag is 0), or `unknown`.
 - The LaunchAgent's own proxy, which doctor's `network.proxy.job` line prints where it differs from this
@@ -15858,6 +15861,31 @@ is the one G12 avoided, two buckets for step 3, now stated in the form and in se
 `tests/test_setup_report.py::test_prompt_layout_is_picked_by_explicit_version`,
 `tests/test_deploy_pack.py::test_setup_report_form_outcomes_match_the_readme_prompt` (every layout's failed step is
 an option) and `test_setup_report_form_has_a_run_type` (the options are `FORM_OUTCOME_OPTIONS`).
+
+**A git URL rewrite's host and path are redacted, in both reports** (H20; dated line at §16.46 Proxies). v15's git
+stop names a URL rewrite as a cause, and with `url."https://<mirror>/".insteadOf = https://github.com/` git's error
+names the mirror (`Could not resolve host: <mirror>`), which both reports printed in clear: only proxies were
+registered. Both readers now read `[url "<base>"]` sections with an `insteadOf` key (never `pushInsteadOf`) from the
+files they read git's proxies from (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`, `/etc/gitconfig`, the two
+checkouts' repository configs), as files, with no git process: on a Mac without the developer tools `/usr/bin/git`
+opens the install dialog, and that is the step 1 stop in which the report runs. Python: `_git_rewrite_bases`, sharing
+`_git_config_names` with `_git_proxy_urls`; shell: `git_rewrite_bases`, sharing `git_config_files` with
+`git_proxy_values`, every pipeline stage under `LC_ALL=C`. A base is a URL (`https://user@host:port/path/`) or git's
+scp form (`git@host:path`); a base whose host is `github.com`, in any case and form, is skipped, so the repository
+locator and the issue link stay whole (registering it would have made GitHub `<proxy-N>`). For each other base its
+host is registered as a proxy host is (a dotless generic host only inside a URL), then the base after its scheme and
+user, as the PAC value is, so a company word in its path goes too (`dev.example/<org>/` would otherwise read
+`<proxy-1>/<org>/`), and for the scp form its path with the leading `:`: the Python redactor matches `user@host` as
+an email address before any value, so a printed `git@host:path` kept its path otherwise. A URL base's path is not a
+value of its own (its base value covers it), nor is an scp path of a server's generic words only (`git`, `scm`,
+`repos`: `_GENERIC_PATH_WORDS`, and the report's own words in Python), which would cut `/usr/bin/git` and a
+`github.com` link (a reviewer's measurement); the shell matches the path as a whole word (pair flag `w`). The shell
+also adds each value's lower-case form, since its pairs are case-sensitive and a resolver error prints the host in
+lower case, and registers the base before the host, as it does the PAC value, so its `<proxy-N>` numbers can differ
+from the Python report's. All are `<proxy-N>`, registered after git's proxies and before the LaunchAgent's, so no
+existing `<proxy-N>` is renumbered and no placeholder class or legend changes. The Environment line adds a count, `URL rewrite in git's config: set (N)` or `not set`. Tests:
+`tests/test_setup_report.py::test_a_git_url_rewrite_host_and_path_are_redacted` (with no git on PATH),
+`tests/test_install_oneshot.py::test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

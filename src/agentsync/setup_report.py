@@ -2464,17 +2464,77 @@ def _git_proxy_urls() -> list[str]:
     git process: step 1 may have stopped on missing developer tools. Since setup prompt v11 step 1's git stop
     logs git's error, which names that proxy's host (``Could not resolve proxy: <host>``).
     ``scripts/install.sh``'s fallback redaction reads the same files (``checkout_git_configs``)."""
+    urls: list[str] = []
+    for name in _git_config_names():
+        with contextlib.suppress(OSError):
+            urls += _GIT_PROXY_RE.findall(name.read_text(encoding="utf-8", errors="replace"))
+    return urls
+
+
+_GIT_SECTION_RE = re.compile(r'^[ \t]*\[[ \t]*([A-Za-z0-9.-]+)(?:[ \t]+"((?:[^"\\]|\\.)*)")?[ \t]*\]')
+"""A git config section header, ``[url "<base>"]``: its name and its quoted subsection."""
+_GIT_INSTEADOF_RE = re.compile(r"^[ \t]*insteadof[ \t]*(?:=|$)", re.IGNORECASE)
+"""An ``insteadOf`` key line (git's key names are case-insensitive); never ``pushInsteadOf``."""
+
+
+def _git_config_names() -> list[Path]:
+    """The config files git reads that the report reads too (:func:`_git_proxy_urls`)."""
     xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     names = [Path.home() / ".gitconfig", Path(xdg) / "git" / "config", Path("/etc/gitconfig")]
     for checkout in (_installed_from()[1], Path.home() / "src" / "agent-context-sync"):
         for name in _checkout_git_configs(checkout) if checkout is not None else []:
             if name not in names:
                 names.append(name)
-    urls: list[str] = []
-    for name in names:
+    return names
+
+
+def _git_rewrite_bases() -> list[str]:
+    """The bases of git's URL rewrites (``[url "<base>"]`` with an ``insteadOf`` key) in the files
+    :func:`_git_proxy_urls` reads, as files, with no git process (B13 round 7 H20): since v15 step 1's git
+    stop names a rewrite as a cause, and git's error then names the rewrite's host (``Could not resolve
+    host: <host>``). ``pushInsteadOf`` is left out: a pull never uses it. ``scripts/install.sh``'s fallback
+    reads the same (``git_rewrite_bases``)."""
+    bases: list[str] = []
+    for name in _git_config_names():
         with contextlib.suppress(OSError):
-            urls += _GIT_PROXY_RE.findall(name.read_text(encoding="utf-8", errors="replace"))
-    return urls
+            section: str | None = None
+            for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
+                head = _GIT_SECTION_RE.match(line)
+                if head is not None:
+                    is_url = head.group(1).lower() == "url" and head.group(2)
+                    section = head.group(2).replace('\\"', '"').replace("\\\\", "\\") if is_url else None
+                elif section and _GIT_INSTEADOF_RE.match(line) and section not in bases:
+                    bases.append(section)
+    return bases
+
+
+_GENERIC_PATH_WORDS = frozenset({"git", "scm", "repo", "repos", "mirror", "mirrors", "src", "source", "code"})
+"""Path words a git server's own layout uses: a rewrite path of these alone names no company (H20)."""
+
+
+def _rewrite_values(base: str) -> tuple[str, str, str] | None:
+    """(host, base after its scheme and user, the scp form's path after its ``:``) of a rewrite base, a URL
+    (``https://user@host:port/path/``) or git's scp form (``git@host:path``); None for GitHub's own host,
+    which the repository locator and the issue link name, and for a base with no host. An scp path is its own
+    value too: ``user@host`` is an email address to the redactor, matched before any value, so a printed
+    ``git@host:path`` kept its path otherwise. Not a URL's path, which its base value covers, and not a path
+    of generic words only (``git``, ``scm/repos``), which would cut ``/usr/bin/git``."""
+    if "://" in base:
+        rest = base.split("://", 1)[1]
+        auth, sep, path = rest.partition("/")
+        hostport = auth.rpartition("@")[2]
+        host = hostport.split(":", 1)[0]
+        value, scp = hostport, False
+    else:
+        auth, sep, path = base.partition(":")
+        host = value = auth.rpartition("@")[2]
+        scp = True
+    tail = (sep + path).rstrip("/:")
+    if not host or host.lower() == "github.com":
+        return None
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", path.lower()) if w]
+    own = scp and any(w not in _GENERIC_PATH_WORDS and w not in report_words() for w in words)
+    return host, value + tail, tail if own else ""
 
 
 def _proxy_urls(r: _Run) -> list[str]:
@@ -2734,6 +2794,16 @@ def _build_redactor(r: _Run) -> Redactor:
     # Git's proxies last, after the PAC value: a git-only proxy leaves every other <proxy-N> as it was.
     for host in _proxy_hosts(_git_proxy_urls()):
         _add_proxy_host(red, host)
+    # Then git's URL rewrites (B13 round 7 H20): each base's host, and the base after its scheme and user,
+    # as the PAC value is, so a company word in its path (``dev.example/contoso/``) goes too. GitHub's own
+    # host is skipped, so the repository locator and the issue link stay.
+    for found in filter(None, map(_rewrite_values, _git_rewrite_bases())):
+        host, value, tail = found
+        _add_proxy_host(red, host)
+        if value.lower() != host.lower():
+            red.add("proxy", value, ignore_case=True)
+        if tail:
+            red.add("proxy", tail, ignore_case=True)
     # The LaunchAgent's own proxy (``launchctl setenv``), which network.proxy.job prints where it differs from
     # this shell's: last, so it renumbers no other <proxy-N> (B13 R68).
     if r.hooks.job_proxy is not None:
@@ -3059,6 +3129,8 @@ def _environment(r: _Run) -> list[str]:
             f"[network] proxy: {'set' if configured else 'not set'} · agentsync resolves: "
             f"{resolved.describe()} · proxy in git's config: "
             + ("set (git uses it before HTTPS_PROXY)" if _git_proxy_urls() else "not set")
+            + " · URL rewrite in git's config: "  # a count, never a host (B13 round 7 H20)
+            + (f"set ({len(bases)})" if (bases := _git_rewrite_bases()) else "not set")
         )
 
     def cloud() -> str:
