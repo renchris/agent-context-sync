@@ -1875,10 +1875,12 @@ class _Cycle:
         reason when the page has none), a credential or path stub among them (B13 round 5 F94: their page is
         made from the name, the path, the reason and the hashes alone, as any other stub's), and a ``no
         converter`` stub from its name, or from its stored reason and output row once a converter claims the
-        name (B13 round 5 F63). Never a redacted item, whose page is not its stub's. A page is written only
-        where the plan differs from the intact page there (as ``_stub_stands`` compares); no verdict or
-        count moves. The meta key is written after the last row, so an interrupted run tries again, and only
-        on a run that covers every live source."""
+        name (B13 round 5 F63). A redacted item's stub too (B13 round 6 G76): the publisher redacts the
+        re-plan itself (``_shown_name``, ``_shown_path``, ``_alloc_rel``), as it did the first one, and the
+        secret scan's "survives redaction" check stands behind it. A page is written only where the plan
+        differs from the intact page there (as ``_stub_stands`` compares); no verdict or count moves. The
+        meta key is written after the last row, so an interrupted run tries again, and only on a run that
+        covers every live source."""
         if self.manifest.get_meta(_STUB_RENDER_META) == str(STUB_RENDER):
             return
         if {s.id for s in self.config.live_sources()} - {s.id for s in self.selected}:
@@ -1912,8 +1914,6 @@ class _Cycle:
     def _stub_again(self, src: SourceConfig, row: ItemRow) -> ConversionResult | None:
         """The result ``row``'s stub was published from, rebuilt from stored state alone, or None when it
         cannot be (see ``_rerender_stubs``) or its page is not an intact single stub."""
-        if self.manifest.is_redacted(row.source_id, row.stable_id):
-            return None
         reason = row.state_reason or ""
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]

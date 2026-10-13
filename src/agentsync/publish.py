@@ -305,8 +305,8 @@ for a reason the stored state already holds. An unchanged refused row is never p
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
 2: the banner before the heading, a withheld file's summary, no ``refused: refused:`` (B13 round 4 Q9, Q27,
 Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, and a withheld stub names no
-converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule
-(B13 round 6 G29)."""
+converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule,
+and a redacted item's stub is rendered again too (B13 round 6 G29, G76)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"

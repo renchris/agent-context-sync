@@ -1396,6 +1396,44 @@ def test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_onc
     assert run(sample_config).commit_sha is None and fetched == []
 
 
+def test_a_redacted_stub_from_an_older_rendering_is_rendered_again_once_and_stays_redacted(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 6 G76: the one-time stub re-render skipped a redacted item, on the reasoning that a re-plan
+    could unredact it. The publisher redacts the plan itself, from the stored redaction, so its stub is
+    rendered again as any other: one rewrite, the title, path and page name still redacted, the secret in no
+    commit, CHANGELOG or QUARANTINE.tsv; then nothing."""
+    secret = "Zq8Wv3Lp7Kd2"
+    rel = f"projects/contoso vpn password={secret}.txt"
+    (local_source_dir / rel).write_text("see the name\n", encoding="utf-8")
+    with monkeypatch.context() as old:
+        old.setattr(publish_mod, "policy", _OldPolicy())
+        assert run(sample_config).exit_code == 0
+    repo = sample_config.docs_repo
+    [at] = [p for p in git(repo, "ls-files", "mirror").split() if "/redacted-" in p]
+    before_fm, before_body = page(repo, at)
+    assert not before_body.startswith(UNTRUSTED_BANNER)
+    assert before_fm["source_path"].startswith("[redacted: credential in name] ")
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.MODIFIED, at)]
+    fm, body = page(repo, at)
+    assert body.startswith(UNTRUSTED_BANNER)
+    assert (fm["source_path"], fm["source_title"]) == (before_fm["source_path"], before_fm["source_title"])
+    assert f"] {fm['source_title']}" in body and fm["source_title"].startswith(
+        "[redacted: credential in name] "
+    )
+    for text in (
+        git(repo, "log", "--all", "-p", "--format=%B"),
+        (repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8"),
+        *(month.read_text(encoding="utf-8") for month in (repo / "CHANGELOG").glob("*.md")),
+    ):
+        assert secret not in text and secret.lower() not in text.lower()
+    assert run(sample_config).commit_sha is None
+
+
 def test_a_capped_file_whose_page_leaves_no_room_for_a_sidecar_is_one_quarantined_item(
     sample_config: Config, local_source_dir: Path
 ) -> None:
