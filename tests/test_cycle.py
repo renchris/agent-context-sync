@@ -66,6 +66,7 @@ from agentsync.model import (
     ChangeOp,
     CycleMode,
     CycleReport,
+    OutputStatus,
     PassKind,
     RenderedUnit,
     RowState,
@@ -1431,6 +1432,63 @@ def test_a_redacted_stub_from_an_older_rendering_is_rendered_again_once_and_stay
         *(month.read_text(encoding="utf-8") for month in (repo / "CHANGELOG").glob("*.md")),
     ):
         assert secret not in text and secret.lower() not in text.lower()
+    assert run(sample_config).commit_sha is None
+
+
+@pytest.mark.parametrize("due", [False, True], ids=["kept", "due for reaping"])
+def test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_with_its_own_title(
+    sample_config: Config, local_source_dir: Path, due: bool
+) -> None:
+    """B13 round 6 G77: a tombstone written before the banner came first (B13 round 4 Q9) kept its heading
+    above the banner until it was reaped, since the one-time stub re-render read only refused and
+    quarantined rows. Intact tombstones are rendered again once now, from their own frontmatter: the banner
+    moves to the top, the title (a deck's own, not its file name) stays, and the output row takes the new
+    hashes, so the repair path sees no drift; then nothing. ``due``: one this run reaps is only deleted."""
+    rel = "projects/Contoso Board Template.potx"
+    build_potx(local_source_dir / rel)
+    assert run(sample_config).exit_code == 0
+    (local_source_dir / rel).unlink()
+    run(sample_config)  # a local file must be absent from two complete passes
+    assert run(sample_config).commit_sha is not None
+    repo, at = sample_config.docs_repo, str(slug.mirror_rel_path(SID, rel))
+    text = (repo / at).read_text(encoding="utf-8")
+    fm, body = page(repo, at)
+    heading = f"# [DELETED UPSTREAM] {fm['source_title']}"
+    assert (fm["status"], fm["source_title"]) == ("deleted", "Contoso Quarterly Template")
+    assert body.startswith(f"{UNTRUSTED_BANNER}\n\n{heading}\n")
+    old = text.replace(f"{UNTRUSTED_BANNER}\n\n{heading}\n", f"{heading}\n\n{UNTRUSTED_BANNER}\n")
+    (repo / at).write_text(old, encoding="utf-8")  # the layout before Q9, with its row's hashes
+    with Manifest(sample_config.state_paths.db) as m:
+        [out] = [o for o in m.iter_outputs(source_id=SID) if o.output_path == at]
+        assert out.status is OutputStatus.TOMBSTONE
+        m.replace_outputs(
+            SID,
+            out.stable_id,
+            [
+                dataclasses.replace(o, page_sha256=hashlib.sha256(old.encode()).hexdigest())
+                if o.output_path == at
+                else o
+                for o in m.outputs_for(SID, out.stable_id)
+            ],
+        )
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+        if due:
+            m._db.execute("UPDATE tombstones SET reap_after = '2000-01-01' WHERE output_path = ?", (at,))
+    git(repo, "commit", "-qam", "a tombstone from before Q9")
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    if due:
+        assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.DELETED, at)]
+        assert not (repo / at).exists()
+        return
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.MODIFIED, at)]
+    assert (repo / at).read_text(encoding="utf-8") == text, "the page this version writes, title and all"
+    with Manifest(sample_config.state_paths.db) as m:
+        [out] = [o for o in m.iter_outputs(source_id=SID) if o.output_path == at]
+    assert out.page_sha256 == hashlib.sha256(text.encode()).hexdigest()
+    assert run(sample_config).commit_sha is None
+    with Manifest(sample_config.state_paths.db) as m:  # a later rendering finds the page as this one left it
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")
     assert run(sample_config).commit_sha is None
 
 

@@ -1877,7 +1877,8 @@ class _Cycle:
         converter`` stub from its name, or from its stored reason and output row once a converter claims the
         name (B13 round 5 F63). A redacted item's stub too (B13 round 6 G76): the publisher redacts the
         re-plan itself (``_shown_name``, ``_shown_path``, ``_alloc_rel``), as it did the first one, and the
-        secret scan's "survives redaction" check stands behind it. A page is written only where the plan
+        secret scan's "survives redaction" check stands behind it. And every intact tombstone page, from its
+        own frontmatter (``_rerender_tombstones``, B13 round 6 G77). A page is written only where the plan
         differs from the intact page there (as ``_stub_stands`` compares); no verdict or count moves. The
         meta key is written after the last row, so an interrupted run tries again, and only on a run that
         covers every live source."""
@@ -1907,9 +1908,54 @@ class _Cycle:
                     continue
                 self.stub_pages.update(p.output_path for p in pages)
                 rewritten += 1
+        for src in self.config.sources:  # a retired source's too: a tombstone needs nothing of its source
+            rewritten += self._rerender_tombstones(src.id)
         self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
-            log.info("%d stub page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
+            log.info("%d stub or tombstone page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
+
+    def _rerender_tombstones(self, source_id: str) -> int:
+        """Re-render the intact tombstone pages of ``source_id`` in this version's layout (B13 round 6
+        G77): one written before Q9 kept its heading above the banner until it was reaped. Each is rebuilt
+        from its own frontmatter, so its title, path and redaction stay; a page that is missing or changed
+        is the repair path's. Its output row takes the new hashes, or that repair would see drift. The
+        count."""
+        rewritten, today = 0, self.today()
+        for out in list(self.manifest.iter_outputs(source_id=source_id)):
+            path = self.repo / out.output_path
+            tomb = self.manifest.get_tombstone(out.output_path)
+            if (
+                out.status is not OutputStatus.TOMBSTONE
+                or tomb is None
+                or tomb.reap_after <= today  # this run reaps it: one D, not an M and a D
+                or out.page_sha256 is None
+                or path.is_symlink()
+                or not path.is_file()
+                or _sha256_file(path) != out.page_sha256
+            ):
+                continue
+            try:
+                new = self.publisher.rerender_tombstone(out)
+            except (PublishError, OSError) as exc:
+                log.warning(
+                    "%s: a tombstone could not be rendered again (%s); it keeps its page", source_id, exc
+                )
+                continue
+            if new is None:
+                continue
+            self._replace_output(new)
+            self.changes.append(
+                MirrorChange(ChangeOp.MODIFIED, out.output_path, out.source_id, out.stable_id)
+            )
+            rewritten += 1
+        return rewritten
+
+    def _replace_output(self, new: OutputRow) -> None:
+        """Store ``new`` in place of its item's output row at the same path."""
+        rows = self.manifest.outputs_for(new.source_id, new.stable_id)
+        self.manifest.replace_outputs(
+            new.source_id, new.stable_id, [new if o.output_path == new.output_path else o for o in rows]
+        )
 
     def _stub_again(self, src: SourceConfig, row: ItemRow) -> ConversionResult | None:
         """The result ``row``'s stub was published from, rebuilt from stored state alone, or None when it
@@ -2258,10 +2304,7 @@ class _Cycle:
         if out is not None and out.status is OutputStatus.TOMBSTONE:
             new = self.publisher.unarchive_tombstone(out)
             if new is not None:
-                rows = self.manifest.outputs_for(out.source_id, out.stable_id)
-                self.manifest.replace_outputs(
-                    out.source_id, out.stable_id, [new if o.output_path == mirror else o for o in rows]
-                )
+                self._replace_output(new)
                 self.changes.append(MirrorChange(ChangeOp.MODIFIED, mirror, out.source_id, out.stable_id))
         rows = self.manifest.outputs_for(sid, stable)
         self._published_credential(sid, durable, rows, now_is="its archive/ copy is deleted")

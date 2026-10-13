@@ -306,7 +306,8 @@ re-renders the stubs it can rebuild without reading a byte, once per version (``
 2: the banner before the heading, a withheld file's summary, no ``refused: refused:`` (B13 round 4 Q9, Q27,
 Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, and a withheld stub names no
 converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule,
-and a redacted item's stub is rendered again too (B13 round 6 G29, G76)."""
+a redacted item's stub is rendered again too, and so is every intact tombstone page (B13 round 6 G29, G76,
+G77)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
@@ -1334,6 +1335,24 @@ class Publisher:
         """Render the tombstone page of ``out`` again without the line naming its ``archive/`` copy, which
         was deleted (``remove_archive_copy``); the updated row, or None when there is no tombstone to
         rewrite or it named no copy."""
+        return self._tombstone_again(out, archived=False)
+
+    def rerender_tombstone(self, out: OutputRow) -> OutputRow | None:
+        """Render the tombstone page of ``out`` again in this version's layout (``Cycle._rerender_stubs``,
+        B13 round 6 G77); the updated row, or None when there is no tombstone to rewrite or it has this
+        layout already. Only the layout moves: the title, path and redaction are the page's own."""
+        row = self._manifest.get_tombstone(out.output_path)
+        archived = (
+            row is not None
+            and row.reason == DELETED_UPSTREAM
+            and self._abs(archive_path(out.output_path)).is_file()
+        )
+        return self._tombstone_again(out, archived=archived)
+
+    def _tombstone_again(self, out: OutputRow, *, archived: bool) -> OutputRow | None:
+        """Render the tombstone page of ``out`` again from its row and its own frontmatter (a removed unit's
+        title is its unit's, not the item's name); the updated row, or None when there is no tombstone, its
+        page does not parse or the text is unchanged."""
         row = self._manifest.get_tombstone(out.output_path)
         current = self._read_text(out.output_path)
         if row is None or current is None:
@@ -1348,6 +1367,7 @@ class Publisher:
             source_kind=fm.source_kind,
             source_path=fm.source_path,
             durable_id=fm.stable_id,
+            archived=archived,
         )
         if text == current:
             return None

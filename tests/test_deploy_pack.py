@@ -2890,8 +2890,12 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     assert "a `.msg` that holds MIME text is screened and read as an `.eml`" in feedback
     assert "runs once the file is gone again" not in page
     assert "once the file is gone, the next `agentsync purge --queue` runs it" in page
-    assert "may carry a one-line title heading above it" in page
-    assert "and a redacted stub; a credential or path stub is rendered again once" in page  # B13 round 5 F94
+    # B13 round 6 G76, G77: a redacted stub and an old tombstone are rendered again once too
+    assert "may carry a one-line title heading above it" not in page
+    assert (
+        "A stub or tombstone written before the banner came first (a credential, path or redacted stub"
+        in page
+    )
 
 
 def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
